@@ -40,6 +40,21 @@ function ids(merged: MailboxResponse | undefined) {
 }
 
 describe("mergeMailboxPages", () => {
+  test("keeps the limited-search notice from whichever page carried it", () => {
+    const degraded = {
+      reason: "index_stopped" as const,
+      searched_fields: ["subject", "sender", "preview"],
+      notice: "Search is limited while the index is unavailable.",
+    };
+    const first = page([{ id: "today", label: "Today", rows: [row("m1", "t1")] }], true, 1);
+    const second = {
+      mailbox: { ...page([], false, null).mailbox, degraded },
+    } satisfies MailboxResponse;
+
+    expect(mergeMailboxPages([first, second], "threads")?.mailbox.degraded).toEqual(degraded);
+    expect(mergeMailboxPages([first], "threads")?.mailbox.degraded).toBeUndefined();
+  });
+
   test("a thread that shifts onto the next page appears once", () => {
     const first = page(
       [{ id: "today", label: "Today", rows: [row("m1", "t1"), row("m2", "t2")] }],

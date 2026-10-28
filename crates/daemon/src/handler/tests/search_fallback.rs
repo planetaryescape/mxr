@@ -406,3 +406,137 @@ async fn triage_will_not_judge_the_narrower_result_set() {
     assert_eq!(code, "search_index_unavailable");
     assert!(message.contains("Triage needs the full index"), "{message}");
 }
+
+async fn store_detailed(
+    state: &AppState,
+    account: &mxr_core::AccountId,
+    tag: &str,
+    subject: &str,
+    snippet: &str,
+    sender: (&str, &str),
+) -> Envelope {
+    let envelope = TestEnvelopeBuilder::new()
+        .account_id(account.clone())
+        .provider_id(format!("fb-{tag}"))
+        .sender_address(sender.0, sender.1)
+        .subject(subject)
+        .snippet(snippet)
+        .date(Utc::now() - Duration::days(1))
+        .build();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    envelope
+}
+
+#[tokio::test]
+async fn from_matches_the_whole_address_as_the_index_does() {
+    let state = stopped_state().await;
+    let account = state.default_account_id();
+    let exact = store_detailed(
+        &state,
+        &account,
+        "a",
+        "one",
+        "",
+        ("Someone", "Alice@Example.com"),
+    )
+    .await;
+    store_detailed(
+        &state,
+        &account,
+        "b",
+        "two",
+        "",
+        ("Someone", "alice@example.com.evil"),
+    )
+    .await;
+    store_detailed(
+        &state,
+        &account,
+        "c",
+        "three",
+        "",
+        ("alice@example.com", "z@other.test"),
+    )
+    .await;
+    store_detailed(
+        &state,
+        &account,
+        "d",
+        "four",
+        "",
+        ("Alice", "malice@example.com"),
+    )
+    .await;
+
+    let by_address = page(
+        send(
+            &state,
+            search_request("from:alice@example.com", None, 10, 0),
+        )
+        .await,
+    );
+    let upper = page(
+        send(
+            &state,
+            search_request("from:ALICE@EXAMPLE.COM", None, 10, 0),
+        )
+        .await,
+    );
+    let bare_name = page(send(&state, search_request("from:alice", None, 10, 0)).await);
+
+    assert_eq!(by_address.ids, vec![exact.id.as_str()]);
+    assert_eq!(upper.ids, vec![exact.id.as_str()]);
+    assert!(
+        bare_name.ids.is_empty(),
+        "a bare name matches no address, as in the index"
+    );
+    assert!(bare_name.degraded.is_some());
+}
+
+#[tokio::test]
+async fn a_compound_word_needs_every_token_not_the_phrase() {
+    let state = stopped_state().await;
+    let account = state.default_account_id();
+    let apart = store_detailed(
+        &state,
+        &account,
+        "a",
+        "alpha middle beta",
+        "",
+        ("S", "a@one.test"),
+    )
+    .await;
+    let across_fields = store_detailed(
+        &state,
+        &account,
+        "b",
+        "alpha",
+        "and beta",
+        ("S", "b@two.test"),
+    )
+    .await;
+    store_detailed(
+        &state,
+        &account,
+        "c",
+        "alpha only",
+        "",
+        ("S", "c@three.test"),
+    )
+    .await;
+
+    let found = page(send(&state, search_request("alpha-beta", None, 10, 0)).await);
+    let exact = page(send(&state, search_request("+alpha-beta", None, 10, 0)).await);
+    let phrase = page(send(&state, search_request("\"alpha beta\"", None, 10, 0)).await);
+
+    let mut both = vec![apart.id.as_str(), across_fields.id.as_str()];
+    both.sort();
+    let mut got = found.ids.clone();
+    got.sort();
+    assert_eq!(got, both);
+    assert_eq!(exact.ids.len(), 2);
+    assert!(
+        phrase.ids.is_empty(),
+        "only a quoted phrase must be adjacent"
+    );
+}

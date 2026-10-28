@@ -1,5 +1,5 @@
 import { apiFetch } from "@/api/client";
-import type { MailboxResponse } from "@/features/mailbox/types";
+import type { MailboxResponse, SearchDegraded } from "@/features/mailbox/types";
 
 export type SearchMode = "lexical" | "semantic" | "hybrid";
 export type SearchSort = "relevance" | "newest" | "oldest" | "verdict";
@@ -16,14 +16,6 @@ export interface SearchParams {
 }
 
 export type SearchGroupBy = "from" | "list" | "category";
-
-/** Present only when the daemon answered from SQLite because its index was down. */
-export interface SearchDegraded {
-  reason: "index_stopped" | "index_rebuilding";
-  searched_fields: string[];
-  /** The one line to show above the results, as the daemon words it. */
-  notice: string;
-}
 
 export interface SearchResponse {
   scope: string;

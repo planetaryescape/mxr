@@ -3,7 +3,9 @@
 //! The table holds subject, sender and snippet only, so this answers a
 //! narrower question than the lexical index. Callers translate the queries
 //! they can honour into [`FtsFallbackQuery`] and refuse the rest; nothing here
-//! guesses. Unchecked queries, like the other internal queries, so the table
+//! guesses. Words match the same columns the index searches for bare words
+//! (subject, sender name, snippet); `from:` is an exact, case-insensitive
+//! match on the whole sender address, as in the index, never a word match. Unchecked queries, like the other internal queries, so the table
 //! needs no `.sqlx` cache entry.
 
 use crate::{decode_id, message::future_date_cutoff_timestamp, trace_query};
@@ -14,25 +16,24 @@ use sqlx::{QueryBuilder, Row, Sqlite};
 /// Which `messages_fts` columns a clause looks in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FtsColumns {
-    /// Subject, sender and snippet.
+    /// Subject, sender name and snippet. The sender address is left out: the
+    /// index holds it as one whole term, so a bare word never matches it.
     Any,
     Subject,
-    /// Sender address and display name.
-    Sender,
 }
 
 impl FtsColumns {
     /// A fixed FTS5 column filter. Never built from user text.
     fn filter(self) -> &'static str {
         match self {
-            Self::Any => "",
+            Self::Any => "{subject from_name snippet} : ",
             Self::Subject => "{subject} : ",
-            Self::Sender => "{from_email from_name} : ",
         }
     }
 }
 
-/// One word or phrase that must appear in `columns`.
+/// One word or phrase that must appear in `columns`. The caller splits text
+/// into words the way the index does; a multi-word `text` is a phrase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FtsClause {
     pub columns: FtsColumns,
@@ -43,6 +44,8 @@ pub struct FtsClause {
 #[derive(Debug, Clone)]
 pub struct FtsFallbackQuery {
     pub clauses: Vec<FtsClause>,
+    /// Whole sender addresses, each an exact case-insensitive match.
+    pub sender_addresses: Vec<String>,
     /// The accounts whose mail is readable now. The caller resolves this the
     /// same way the lexical path does, so a disabled account never leaks.
     pub visible_accounts: Vec<AccountId>,
@@ -91,15 +94,24 @@ fn match_expression(clauses: &[FtsClause]) -> Option<String> {
 fn push_filters(
     builder: &mut QueryBuilder<Sqlite>,
     query: &FtsFallbackQuery,
-    expression: &str,
+    expression: Option<&str>,
     visible_accounts_json: &str,
 ) {
     builder
-        .push(" WHERE messages_fts MATCH ")
-        .push_bind(expression.to_string())
-        .push(" AND m.account_id IN (SELECT value FROM json_each(")
+        .push(" WHERE m.account_id IN (SELECT value FROM json_each(")
         .push_bind(visible_accounts_json.to_string())
         .push("))");
+    if let Some(expression) = expression {
+        builder
+            .push(" AND messages_fts MATCH ")
+            .push_bind(expression.to_string());
+    }
+    // ASCII lowercasing on both sides, as the index lowercases addresses.
+    for address in &query.sender_addresses {
+        builder
+            .push(" AND LOWER(m.from_email) = ")
+            .push_bind(address.to_ascii_lowercase());
+    }
     if let Some(account_id) = &query.account_id {
         builder
             .push(" AND m.account_id = ")
@@ -136,16 +148,15 @@ impl super::Store {
         offset: usize,
     ) -> Result<FtsFallbackPage, sqlx::Error> {
         let started_at = std::time::Instant::now();
-        let (Some(expression), false) = (
-            match_expression(&query.clauses),
-            query.visible_accounts.is_empty(),
-        ) else {
+        let expression = match_expression(&query.clauses);
+        let nothing_to_match = expression.is_none() && query.sender_addresses.is_empty();
+        if nothing_to_match || query.visible_accounts.is_empty() {
             return Ok(FtsFallbackPage {
                 hits: Vec::new(),
                 total: 0,
                 has_more: false,
             });
-        };
+        }
         let visible_accounts_json = serde_json::to_string(
             &query
                 .visible_accounts
@@ -155,18 +166,32 @@ impl super::Store {
         )
         .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
-        let mut count = QueryBuilder::<Sqlite>::new(
-            "SELECT COUNT(*) FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid",
+        // Without words there is no FTS5 query to run, and the join would only
+        // narrow the sender match to messages the table holds.
+        let source = if expression.is_some() {
+            "messages_fts JOIN messages m ON m.rowid = messages_fts.rowid"
+        } else {
+            "messages m"
+        };
+        let mut count = QueryBuilder::<Sqlite>::new(format!("SELECT COUNT(*) FROM {source}"));
+        push_filters(
+            &mut count,
+            query,
+            expression.as_deref(),
+            &visible_accounts_json,
         );
-        push_filters(&mut count, query, &expression, &visible_accounts_json);
         let total: i64 = count.build_query_scalar().fetch_one(self.reader()).await?;
 
         let direction = if query.oldest_first { "ASC" } else { "DESC" };
-        let mut page = QueryBuilder::<Sqlite>::new(
-            "SELECT m.id, m.account_id, m.thread_id \
-             FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid",
+        let mut page = QueryBuilder::<Sqlite>::new(format!(
+            "SELECT m.id, m.account_id, m.thread_id FROM {source}"
+        ));
+        push_filters(
+            &mut page,
+            query,
+            expression.as_deref(),
+            &visible_accounts_json,
         );
-        push_filters(&mut page, query, &expression, &visible_accounts_json);
         page.push(" ORDER BY CASE WHEN m.date > ")
             .push_bind(future_date_cutoff_timestamp())
             .push(format!(
@@ -221,6 +246,7 @@ mod tests {
     fn query(clauses: Vec<FtsClause>, accounts: &[&Account]) -> FtsFallbackQuery {
         FtsFallbackQuery {
             clauses,
+            sender_addresses: Vec::new(),
             visible_accounts: accounts.iter().map(|account| account.id.clone()).collect(),
             account_id: None,
             hide_trash: false,
@@ -283,9 +309,15 @@ mod tests {
             "your invoice is due",
             1,
         );
-        let in_sender = envelope(&account, "c", "Hi", "invoice@three.test", "nothing", 2);
+        // The address is one whole term in the index, so a bare word never
+        // matches it; the display name (here "Sender Person") is searched.
+        let in_address = envelope(&account, "c", "Hi", "invoice@three.test", "nothing", 2);
         let other = envelope(&account, "d", "Lunch", "z@four.test", "sandwiches", 0);
-        let store = store_with(&[&account], &[&in_subject, &in_snippet, &in_sender, &other]).await;
+        let store = store_with(
+            &[&account],
+            &[&in_subject, &in_snippet, &in_address, &other],
+        )
+        .await;
 
         let found = ids(
             &store,
@@ -293,44 +325,79 @@ mod tests {
         )
         .await;
 
-        assert_eq!(found, vec![in_snippet.id, in_sender.id, in_subject.id]);
+        assert_eq!(found, vec![in_snippet.id, in_subject.id]);
     }
 
     #[tokio::test]
-    async fn subject_and_sender_clauses_only_look_in_their_own_columns() {
+    async fn the_subject_column_and_the_sender_name_are_searched_separately() {
         let account = test_account();
         let subject_hit = envelope(&account, "a", "Quarterly plan", "x@one.test", "", 1);
-        let sender_hit = envelope(&account, "b", "Other", "plan@two.test", "", 2);
-        let store = store_with(&[&account], &[&subject_hit, &sender_hit]).await;
+        let mut name_hit = envelope(&account, "b", "Other", "y@two.test", "", 2);
+        name_hit.from.name = Some("Pat Planner".into());
+        let store = store_with(&[&account], &[&subject_hit, &name_hit]).await;
 
         let by_subject = ids(
             &store,
             &query(vec![clause(FtsColumns::Subject, "plan")], &[&account]),
         )
         .await;
-        let by_sender = ids(
+        let by_word = ids(
             &store,
-            &query(vec![clause(FtsColumns::Sender, "plan")], &[&account]),
+            &query(vec![clause(FtsColumns::Any, "planner")], &[&account]),
         )
         .await;
 
         assert_eq!(by_subject, vec![subject_hit.id]);
-        assert_eq!(by_sender, vec![sender_hit.id]);
+        assert_eq!(by_word, vec![name_hit.id]);
+    }
+
+    #[tokio::test]
+    async fn a_sender_address_matches_the_whole_address_only_and_ignores_case() {
+        let account = test_account();
+        let exact = envelope(&account, "a", "one", "Alice@Example.com", "", 1);
+        let longer = envelope(&account, "b", "two", "alice@example.com.evil", "", 2);
+        let other_local = envelope(&account, "c", "three", "malice@example.com", "", 3);
+        let mut in_name = envelope(&account, "d", "four", "z@four.test", "", 4);
+        in_name.from.name = Some("alice@example.com".into());
+        let store = store_with(&[&account], &[&exact, &longer, &other_local, &in_name]).await;
+        let mut by_address = query(Vec::new(), &[&account]);
+        by_address.sender_addresses = vec!["ALICE@example.com".into()];
+
+        assert_eq!(ids(&store, &by_address).await, vec![exact.id.clone()]);
+
+        // A bare name is an address that matches nothing, as in the index.
+        by_address.sender_addresses = vec!["alice".into()];
+        assert!(ids(&store, &by_address).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_sender_address_and_words_are_anded() {
+        let account = test_account();
+        let both = envelope(&account, "a", "Invoice", "billing@one.test", "", 1);
+        let wrong_sender = envelope(&account, "b", "Invoice", "x@two.test", "", 2);
+        let wrong_subject = envelope(&account, "c", "Lunch", "billing@one.test", "", 3);
+        let store = store_with(&[&account], &[&both, &wrong_sender, &wrong_subject]).await;
+        let mut combined = query(vec![clause(FtsColumns::Subject, "invoice")], &[&account]);
+        combined.sender_addresses = vec!["billing@one.test".into()];
+
+        assert_eq!(ids(&store, &combined).await, vec![both.id]);
+        let page = store.search_fts_fallback(&combined, 10, 0).await.unwrap();
+        assert_eq!(page.total, 1);
     }
 
     #[tokio::test]
     async fn clauses_are_anded() {
         let account = test_account();
-        let both = envelope(&account, "a", "Invoice", "billing@one.test", "", 1);
-        let only_subject = envelope(&account, "b", "Invoice", "x@two.test", "", 2);
-        let store = store_with(&[&account], &[&both, &only_subject]).await;
+        let both = envelope(&account, "a", "Invoice paid", "x@one.test", "", 1);
+        let only_one = envelope(&account, "b", "Invoice", "x@two.test", "", 2);
+        let store = store_with(&[&account], &[&both, &only_one]).await;
 
         let found = ids(
             &store,
             &query(
                 vec![
                     clause(FtsColumns::Subject, "invoice"),
-                    clause(FtsColumns::Sender, "billing"),
+                    clause(FtsColumns::Subject, "paid"),
                 ],
                 &[&account],
             ),

@@ -150,7 +150,8 @@ curl -G -H "Authorization: Bearer $MXR_TOKEN" \
 When the daemon's search index is unavailable, `/mail/search` answers plain
 words, `subject:` and `from:` from SQLite and adds
 `degraded: {reason, searched_fields, notice}`. The field is absent on a normal
-reply. Other queries fail with code `search_index_unavailable`.
+reply. `/mail/mailbox` carries it as `mailbox.degraded` for saved-search and
+subscription lists. Other queries fail with code `search_index_unavailable`.
 
 ## `/api/v1/mail/*` — Mutations
 

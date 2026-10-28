@@ -212,13 +212,14 @@ async fn mailbox(
     } else {
         None
     };
-    let (lens_label, counts, mut rows, row_envelopes, page_size) = match thread_page {
+    let (lens_label, counts, mut rows, row_envelopes, page_size, degraded) = match thread_page {
         Some(page) => (
             page.lens_label,
             page.counts,
             page.rows,
             page.row_envelopes,
             page.thread_count as u32,
+            None,
         ),
         None => {
             let mailbox = load_mailbox_selection(
@@ -248,6 +249,7 @@ async fn mailbox(
                 rows,
                 mailbox.envelopes,
                 page_size,
+                mailbox.degraded,
             )
         }
     };
@@ -268,7 +270,7 @@ async fn mailbox(
         && lens.sender_email.is_some());
     let has_more = supports_pagination && page_size == query.limit;
     let next_offset = has_more.then(|| query.offset.saturating_add(query.limit));
-    Ok(Json(json!({
+    let mut response = json!({
         "shell": chrome.shell,
         "sidebar": chrome.sidebar,
         "mailbox": {
@@ -279,7 +281,13 @@ async fn mailbox(
             "next_offset": next_offset,
             "groups": groups,
         }
-    })))
+    });
+    // Only on a saved-search or subscription lens the daemon answered from
+    // SQLite: the list shows the notice as given.
+    if let Some(degraded) = degraded {
+        response["mailbox"]["degraded"] = degraded_json(&degraded);
+    }
+    Ok(Json(response))
 }
 
 async fn open_commitment_counts(
@@ -448,6 +456,16 @@ async fn export_thread(
     }
 }
 
+/// A limited-search label as the bridge sends it: the wire fields plus the
+/// daemon's own sentence, so every page says the same thing.
+fn degraded_json(degraded: &mxr_protocol::SearchDegraded) -> serde_json::Value {
+    json!({
+        "reason": degraded.reason,
+        "searched_fields": degraded.searched_fields,
+        "notice": degraded.notice(),
+    })
+}
+
 async fn search(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -567,11 +585,7 @@ async fn search(
             // Only present when SQLite answered; the page shows `notice`
             // as given so every client says the same sentence.
             if let Some(degraded) = degraded {
-                response["degraded"] = json!({
-                    "reason": degraded.reason,
-                    "searched_fields": degraded.searched_fields,
-                    "notice": degraded.notice(),
-                });
+                response["degraded"] = degraded_json(&degraded);
             }
             Ok(Json(response))
         }

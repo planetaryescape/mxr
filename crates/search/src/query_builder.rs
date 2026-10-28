@@ -631,7 +631,9 @@ fn prose_words(text: &str) -> Vec<String> {
     words
 }
 
-fn tokenize_text_value(value: &str) -> Vec<String> {
+/// Splits text into the lowercase words the index stores and searches, so
+/// other readers of the same mail (the SQLite fallback) cut words identically.
+pub fn tokenize_text_value(value: &str) -> Vec<String> {
     value
         .split(|ch: char| !ch.is_alphanumeric())
         .filter(|part| !part.is_empty())

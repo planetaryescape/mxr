@@ -620,7 +620,7 @@ CREATE INDEX idx_sync_log_account ON sync_log(account_id, started_at DESC);
 
 Tantivy is the primary search engine. FTS5 is the fallback the daemon answers from when the lexical index is unavailable: the worker has stopped, or the index is being wiped and rebuilt from SQLite.
 
-`messages_fts` holds subject, sender address, sender name and snippet only. The fallback therefore covers plain words, `+words`, "phrases", `subject:`, `from:`, AND of those and `in:anywhere`, newest first, within the same enabled accounts the index serves. Every other part of a query (every other field and filter, dates, sizes, labels, OR, NOT, `AROUND`) is refused by name, never loosened. Every term is quoted before it reaches FTS5, so user text is never FTS5 syntax. Replies carry `degraded` so clients say the search was limited; see `05-search.md`.
+`messages_fts` holds subject, sender address, sender name and snippet only. The fallback therefore covers plain words and `+words` (each token of a compound word required, matched in subject, sender name and snippet, as the index does), "phrases", `subject:`, `from:` (the whole address, an exact case-insensitive match on `messages.from_email`, as the index does), AND of those and `in:anywhere` (which asks for Trash and Spam), newest first, within the same enabled accounts the index serves. Every other part of a query (every other field and filter, dates, sizes, labels, OR, NOT, `AROUND`) is refused by name, never loosened. Every term is quoted before it reaches FTS5, so user text is never FTS5 syntax. Replies carry `degraded` so clients say the search was limited; see `05-search.md`.
 
 Migration/reindexing and diagnostic queries can still read the table directly.
 

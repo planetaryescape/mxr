@@ -82,6 +82,7 @@ function LensView({ lens }: { lens: MailLens }) {
   const setListMode = useUiPrefs((s) => s.setListMode);
   const account = useUiPrefs((s) => s.accountScope);
   const counts = mailbox.data?.mailbox.counts;
+  const degraded = mailbox.data?.mailbox.degraded;
 
   return (
     <ListWithReader
@@ -102,6 +103,13 @@ function LensView({ lens }: { lens: MailLens }) {
       modeChips={lens.key === "inbox"}
       empty={<EmptyLens lens={lens} />}
       purpose={lensPurpose(lens)}
+      toolbar={
+        degraded ? (
+          <p role="status" className="type-meta text-text-2">
+            {degraded.notice}
+          </p>
+        ) : undefined
+      }
       // One persistent control: which grouping is on. The list refreshes
       // itself from daemon events; Sync now lives in the status bar and the
       // palette (docs/web-app-controls.md).

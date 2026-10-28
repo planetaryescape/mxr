@@ -13,6 +13,7 @@ use crate::state::AppState;
 use mxr_core::types::{SearchMode, SortOrder};
 use mxr_protocol::{SearchDegraded, SearchDegradedReason};
 use mxr_search::ast::{FilterKind, QueryField, QueryNode};
+use mxr_search::query_builder::tokenize_text_value;
 use mxr_search::{parse_query, SearchResult};
 use mxr_store::{FtsClause, FtsColumns, FtsFallbackQuery};
 
@@ -60,6 +61,8 @@ impl From<SearchError> for HandlerError {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct FallbackPlan {
     pub(super) clauses: Vec<FtsClause>,
+    /// Whole addresses from `from:`, matched exactly as the index does.
+    pub(super) sender_addresses: Vec<String>,
     pub(super) hide_trash: bool,
     pub(super) hide_spam: bool,
 }
@@ -67,7 +70,8 @@ pub(super) struct FallbackPlan {
 /// Translates a query into a [`FallbackPlan`], or names every part of it the
 /// fallback cannot honour.
 ///
-/// Supported: words, `+words`, "phrases", `subject:`, `from:`, AND of those,
+/// Supported: words (each word of a compound term ANDed, as the index does),
+/// `+words`, "phrases", `subject:`, `from:` (the whole address), AND of those,
 /// `in:anywhere`, and the Trash/Spam exclusion `execute_search` adds by
 /// default. Everything else is refused, including every kind of NOT and OR:
 /// FTS5 can express them, but not with the index's meaning of a missing field
@@ -75,12 +79,13 @@ pub(super) struct FallbackPlan {
 pub(super) fn plan_fallback(ast: &QueryNode) -> Result<FallbackPlan, Vec<String>> {
     let mut plan = FallbackPlan {
         clauses: Vec::new(),
+        sender_addresses: Vec::new(),
         hide_trash: false,
         hide_spam: false,
     };
     let mut unsupported = Vec::new();
     collect(ast, &mut plan, &mut unsupported);
-    if unsupported.is_empty() && plan.clauses.is_empty() {
+    if unsupported.is_empty() && plan.clauses.is_empty() && plan.sender_addresses.is_empty() {
         unsupported.push("a query with no words to search for".to_string());
     }
     unsupported.dedup();
@@ -104,17 +109,43 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
             collect(left, plan, unsupported);
             collect(right, plan, unsupported);
         }
-        QueryNode::Text(text) | QueryNode::Exact(text) | QueryNode::Phrase(text) => {
-            push_clause(FtsColumns::Any, text, node, plan, unsupported);
+        // The index cuts a bare word into tokens and requires every one of
+        // them, each in any searched field: `alpha-beta` is `alpha` AND
+        // `beta`, not the phrase.
+        QueryNode::Text(text) | QueryNode::Exact(text) => {
+            let words = words_of(text, node, unsupported);
+            plan.clauses.extend(words.into_iter().map(|word| FtsClause {
+                columns: FtsColumns::Any,
+                text: word,
+            }));
+        }
+        QueryNode::Phrase(text) => {
+            let words = words_of(text, node, unsupported);
+            if !words.is_empty() {
+                plan.clauses.push(FtsClause {
+                    columns: FtsColumns::Any,
+                    text: words.join(" "),
+                });
+            }
         }
         QueryNode::Field {
             field: QueryField::Subject,
             value,
-        } => push_clause(FtsColumns::Subject, value, node, plan, unsupported),
+        } => {
+            let words = words_of(value, node, unsupported);
+            if !words.is_empty() {
+                plan.clauses.push(FtsClause {
+                    columns: FtsColumns::Subject,
+                    text: words.join(" "),
+                });
+            }
+        }
+        // The index holds the sender address as one whole lowercase term, so
+        // `from:` is an exact address match; a bare name matches nothing.
         QueryNode::Field {
             field: QueryField::From,
             value,
-        } => push_clause(FtsColumns::Sender, value, node, plan, unsupported),
+        } => plan.sender_addresses.push(value.clone()),
         // `in:anywhere` only lifts the Trash/Spam exclusion, which is not
         // added when it is present; there is nothing left for it to do here.
         QueryNode::Filter(FilterKind::Anywhere) => {}
@@ -123,23 +154,15 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
     }
 }
 
-fn push_clause(
-    columns: FtsColumns,
-    text: &str,
-    node: &QueryNode,
-    plan: &mut FallbackPlan,
-    unsupported: &mut Vec<String>,
-) {
-    // A term with no letters or digits has no words in it, so the table has
-    // nothing to match it against and the index would not either.
-    if text.chars().any(char::is_alphanumeric) {
-        plan.clauses.push(FtsClause {
-            columns,
-            text: text.to_string(),
-        });
-    } else {
+/// The words of `text` as the index cuts them. A term with no letters or
+/// digits has none, so the table has nothing to match it against and the
+/// index would not either: it is refused, by name.
+fn words_of(text: &str, node: &QueryNode, unsupported: &mut Vec<String>) -> Vec<String> {
+    let words = tokenize_text_value(text);
+    if words.is_empty() {
         unsupported.push(format!("{node} (no letters or digits)"));
     }
+    words
 }
 
 /// The error for a request that has no limited form (counts, grouping).
@@ -187,6 +210,7 @@ pub(super) async fn limited_search(
         .search_fts_fallback(
             &FtsFallbackQuery {
                 clauses: plan.clauses,
+                sender_addresses: plan.sender_addresses,
                 visible_accounts,
                 account_id: options.account_id.clone(),
                 hide_trash: plan.hide_trash,
@@ -294,14 +318,9 @@ mod tests {
 
     #[test]
     fn subject_and_from_fields_pick_their_columns() {
-        let plan = plan("subject:plan from:alice@example.com").unwrap();
-        assert_eq!(
-            plan.clauses,
-            vec![
-                clause(FtsColumns::Subject, "plan"),
-                clause(FtsColumns::Sender, "alice@example.com")
-            ]
-        );
+        let plan = plan("subject:plan from:Alice@example.com").unwrap();
+        assert_eq!(plan.clauses, vec![clause(FtsColumns::Subject, "plan")]);
+        assert_eq!(plan.sender_addresses, vec!["Alice@example.com".to_string()]);
     }
 
     #[test]
@@ -377,5 +396,24 @@ mod tests {
     fn terms_with_fts5_syntax_are_kept_as_words_for_the_store_to_quote() {
         let plan = plan("\"alpha NEAR beta\" \"x OR y\"").unwrap();
         assert_eq!(plan.clauses.len(), 2);
+    }
+
+    #[test]
+    fn a_compound_word_is_every_one_of_its_tokens_not_a_phrase() {
+        let words = vec![
+            clause(FtsColumns::Any, "alpha"),
+            clause(FtsColumns::Any, "beta"),
+        ];
+        assert_eq!(plan("alpha-beta").unwrap().clauses, words);
+        assert_eq!(plan("+alpha_beta").unwrap().clauses, words);
+    }
+
+    #[test]
+    fn a_quoted_phrase_stays_a_phrase_of_the_index_tokens() {
+        let plan = plan("\"Alpha-Beta gamma\"").unwrap();
+        assert_eq!(
+            plan.clauses,
+            vec![clause(FtsColumns::Any, "alpha beta gamma")]
+        );
     }
 }

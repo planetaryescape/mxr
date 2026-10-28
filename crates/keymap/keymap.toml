@@ -327,7 +327,7 @@ keys = ["g n"]
 [[action.tui]]
 name = "OpenSnoozed"
 keys = ["g n"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.trash"

@@ -254,6 +254,7 @@
     "g i": "GoToInbox",
     "g l": "GoToLabel",
     "g m": "OpenMessages",
+    "g n": "OpenSnoozed",
     "g o": "OpenOwedReplies",
     "g q": "OpenReplyQueue",
     "g r": "OpenReading",

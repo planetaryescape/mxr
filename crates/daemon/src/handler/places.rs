@@ -12,7 +12,7 @@ use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId};
-use mxr_core::types::{OwnedAddresses, UnsubscribeMethod};
+use mxr_core::types::{MessageDirection, OwnedAddresses, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData, PlaceMessageData,
@@ -222,7 +222,9 @@ impl AccountKinds {
     /// Mail you sent (or sent to yourself) never belongs to a place.
     pub(super) fn is_outbound(&self, message: &PlaceMessage) -> bool {
         message.direction == "outbound"
-            || (message.direction != "inbound" && self.is_self(&message.from_email))
+            || (message.direction != "inbound"
+                && MessageDirection::for_message(self.is_self(&message.from_email), message.flags)
+                    == MessageDirection::Outbound)
     }
 }
 

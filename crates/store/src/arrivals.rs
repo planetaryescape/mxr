@@ -69,6 +69,7 @@ impl super::Store {
                            SELECT lower(email) FROM account_addresses WHERE account_id = ?1
                        )
                        OR lower(m.from_email) = (SELECT lower(email) FROM accounts WHERE id = ?1)
+                       OR (m.flags & ?5) != 0
                    )
                )
                AND NOT EXISTS (
@@ -82,6 +83,7 @@ impl super::Store {
         .bind(future_cutoff)
         .bind(hidden_flags)
         .bind(i64::from(limit.saturating_add(REORDER_SLACK)))
+        .bind(i64::from(MessageFlags::SENT.bits()))
         .fetch_all(self.reader())
         .await?;
         let mut arrivals = rows

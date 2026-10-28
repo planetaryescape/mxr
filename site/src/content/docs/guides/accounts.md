@@ -111,8 +111,19 @@ DW   2026-10-22 21:58  2 msgs (0 unread)  Launch checklist for Project Aurora
 ## Owned addresses and aliases
 
 An account owns its configured account email plus any aliases you register.
-mxr uses that set to classify mail as inbound vs outbound, and to let you send
-from any of them. The current primary address cannot be removed; `remove` fails
+mxr uses that set, together with the provider's sent mark, to classify mail as
+inbound vs outbound, and to let you send from any of them. Mail is outbound when
+its From is one of your owned addresses, or when the provider marks it as sent.
+Gmail's SENT label marks mail sent from a Gmail send-as address, so that mail
+counts as sent even if you have not added the address as an alias. Over IMAP, mxr
+marks mail as sent from Gmail's labels and from a folder named in English, such
+as `Sent`, `Sent Items`, `Sent Mail` or `Sent Messages`. A localised Sent folder
+does not count yet, because mxr does not read the folder's special-use
+attribute. Screening still follows owned addresses only: a message from a
+screened sender is screened unless its From is one of your addresses, whatever
+the sent mark says.
+
+The current primary address cannot be removed; `remove` fails
 with `cannot remove the primary address; set another address as primary first`,
 so promote another address with `set-primary` first.
 
@@ -126,7 +137,8 @@ mxr accounts addresses remove --account work support@planetaryescape.xyz
 
 Adding or removing an address reclassifies the account's stored mail against
 the new set in the same command. Mail from an address you now own reads as
-sent, and sent mail from an address you no longer own reads as received. Reply
+sent, and mail from an address you no longer own reads as received, unless the
+provider filed it as sent. Reply
 pairs follow in the same command. The contacts table is rebuilt in the
 background, starting about ten seconds after the last change; a contacts or
 analytics view already open shows the new counts after you reload it. A sync pass that was already running when you made the change
@@ -221,7 +233,7 @@ What you get: `account addresses changed account=<account-id>` in the
 sends the same event.
 
 Sync decides each new message's direction (inbound or outbound) from the owned
-set. If the daemon cannot rebuild that set, it stores new mail with direction
+set and the provider's sent mark. If the daemon cannot rebuild that set, it stores new mail with direction
 `Unknown` instead of guessing, and `mxr doctor` warns:
 
 ```text
@@ -232,8 +244,9 @@ The JSON report has the same signal as `address_cache_stale`. Run `mxr sync`, as
 the finding suggests. Once the set rebuilds, the next sync
 pass reclassifies the `Unknown` rows.
 
-Registering an alias does not change mail that is already stored. Messages you
-sent from the alias before you registered it stay inbound.
+Registering an alias reclassifies mail that is already stored. Messages you
+sent from an alias you never registered still count as sent when Gmail marks
+them SENT, as it does for send-as addresses.
 
 ## Selecting an account
 

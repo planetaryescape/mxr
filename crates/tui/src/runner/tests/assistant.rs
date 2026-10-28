@@ -339,6 +339,24 @@ fn s_skips_the_question() {
 }
 
 #[test]
+fn esc_and_q_leave_the_question_waiting() {
+    for key in [KeyCode::Esc, KeyCode::Char('q')] {
+        let mut app = showing(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![question()],
+        ));
+        let _ = requests(&mut app);
+        press(&mut app, key, KeyModifiers::NONE);
+        assert!(
+            requests(&mut app).is_empty(),
+            "{key:?} decided the question"
+        );
+        assert_eq!(app.assistant.focus, AssistantFocus::Away, "{key:?}");
+        assert_eq!(app.assistant.pending().len(), 1, "{key:?}");
+    }
+}
+
+#[test]
 fn ctrl_c_stops_a_running_turn() {
     let mut app = showing(conversation(AssistantStatusData::Running, Vec::new()));
     press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);

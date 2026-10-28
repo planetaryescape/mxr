@@ -21,8 +21,8 @@ These are features, not keys. They are marked web-only in the definition, each w
 
 - The Focus page (`g F`). The TUI starts focus from the reply queue.
 - The Snoozed list (`g n`).
-- Folding quoted text and collapsing messages in the reader (`o`, `[`, `]`).
-- Archive and step to the next one in the reader (`Q`, `;`).
+- Folding quoted text and collapsing messages in the reader: done. The keys are `o` (one message), `;` (all) and `Q` (quoted text), as in the web reader; this list had them swapped with archive-and-step's. The TUI folds quotes with `mxr_reader`'s detection in the reading view and its HTML quote markers in the HTML view, and lands the reader on the folded message.
+- Archive and step to the next one in the reader: done. `]` and `[` run the list's archive (same request, confirm and undo) and open the next or previous conversation once the daemon has archived it.
 - Peeking at an Updates item (`Space`).
 - The row action `w` (wake) on the Snoozed and reply-queue pages. Blueprint 35 lists `w` as free, and nobody has decided what wake gets instead.
 
@@ -32,5 +32,7 @@ These are features, not keys. They are marked web-only in the definition, each w
 - A bare `Enter` in the TUI send review: done. It runs the lit option, marked `›`: Send, or Edit again when the safety check found something or the draft can't go as it is, the way the web's send confirm opens on "Back to draft".
 - Unsubscribe's "and archive" option: done. It is `e` (and `E`) in both clients; `a` and `A` say where it went until 0.6.204.
 - Overlay keys: done. Every overlay is a context in the definition (`OVERLAY_CONTEXTS` in `crates/keymap/src/lib.rs`), so TUI help, the keybindings page's TUI tables and its web "Dialogs" tables are generated, and the hand-written tables are gone. `runner::tests::overlay_keys` holds each TUI overlay's handler to its entries. The web's dialogs read their keys by id (`apps/web/src/lib/keys/overlayKeys.ts`), except keys the browser or the dialog primitive gives, which the definition marks `web_native`.
+
+- The web keys #754 left out: done. The assistant's approval, question and history are overlays in the definition, compared between the clients (the web gained `a`, `o`, `s`, digits to 9, the arrows and `q` there; history deletes with `#` in both, and `d` says so); the web's Categories dialog and the popovers that close on `Esc` read their keys by id, the popovers as web-only `popover.close`.
 
 The web's help, palette, label picker, Categories and Reply later are filter lists where letters type, and its bulk and sweep previews are two-button dialogs, so those overlays are listed per client and not compared (`SHARED_OVERLAYS` in `parity.rs` says why).

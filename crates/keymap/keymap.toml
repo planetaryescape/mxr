@@ -1939,8 +1939,11 @@ group = "Read"
 scopes = ["reader"]
 keys = ["o"]
 hide_in_palette = true
-clients = ["web"]
-note = "The TUI shows every message in full, so there is nothing to collapse"
+
+[[action.tui]]
+name = "ToggleMessage"
+keys = ["o"]
+contexts = ["reader", "search-preview"]
 
 [[action]]
 id = "reader.expand-all"
@@ -1951,8 +1954,11 @@ scopes = ["reader"]
 # ";" as in Gmail: X moves the email to another mode (blueprint 22).
 keys = [";"]
 hide_in_palette = true
-clients = ["web"]
-note = "The TUI shows every message in full, so there is nothing to collapse"
+
+[[action.tui]]
+name = "ToggleAllMessages"
+keys = [";"]
+contexts = ["reader", "search-preview"]
 
 [[action]]
 id = "reader.next-thread"
@@ -1990,8 +1996,11 @@ group = "Mail"
 scopes = ["reader"]
 keys = ["]"]
 hide_in_palette = true
-clients = ["web"]
-note = "The TUI reader sits beside the list, so e archives and n steps on"
+
+[[action.tui]]
+name = "ArchiveNext"
+keys = ["]"]
+contexts = ["reader", "search-preview"]
 
 [[action]]
 id = "reader.archive-prev"
@@ -2001,8 +2010,11 @@ group = "Mail"
 scopes = ["reader"]
 keys = ["["]
 hide_in_palette = true
-clients = ["web"]
-note = "The TUI reader sits beside the list, so e archives and N steps back"
+
+[[action.tui]]
+name = "ArchivePrev"
+keys = ["["]
+contexts = ["reader", "search-preview"]
 
 [[action]]
 id = "reader.list"
@@ -2101,8 +2113,11 @@ group = "View"
 scopes = ["reader"]
 keys = ["Q"]
 hide_in_palette = true
-clients = ["web"]
-note = "The TUI reader has no way to fold quoted text yet"
+
+[[action.tui]]
+name = "ToggleQuotes"
+keys = ["Q"]
+contexts = ["reader", "search-preview"]
 
 [[action]]
 id = "reader.headers"
@@ -2132,18 +2147,6 @@ contexts = ["list", "reader", "place", "search", "search-preview"]
 
 
 # The TUI reader's o opened the original, as O does; o is the email itself now.
-[[action]]
-id = "tui.reader-open-original"
-label = "Open in browser"
-group = "View"
-clients = ["tui"]
-
-[[action.moved]]
-key = "o"
-contexts = ["reader"]
-until = "0.6.185"
-to = "reader.open-original"
-
 [[action]]
 id = "reader.summary"
 label = "Summarize thread"
@@ -6617,11 +6620,12 @@ label = "Command palette"
 group = "Navigate"
 clients = ["tui"]
 hide_in_palette = true
+note = "The web's assistant history is a list in the page, so its palette key works as it does everywhere"
 
 [[action.tui]]
 name = "OpenCommandPalette"
 keys = ["Ctrl+k", "Ctrl+p"]
-contexts = ["assistant", "assistant-input"]
+contexts = ["assistant", "assistant-input", "assistant-history"]
 
 [[action.tui]]
 name = "OpenCommandPalette"
@@ -6820,11 +6824,18 @@ name = "inline:focus_pane"
 keys = ["Escape"]
 contexts = ["assistant-input"]
 
+# The assistant's waiting proof, its question and its history list are
+# overlays in both clients: each reads its own keys while it has them (the
+# web's card or list while focus is in it, the TUI's pane while a proof or a
+# question waits, or while the history list is open). In the TUI, any other
+# key with a proof or a question waiting works as it does in the pane.
+
 [[action]]
-id = "tui.assistant.approve"
+id = "assistant.approve"
 label = "Approve the waiting change"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-approval"]
+keys = ["y"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6833,10 +6844,11 @@ keys = ["y"]
 contexts = ["assistant-approval"]
 
 [[action]]
-id = "tui.assistant.reject"
+id = "assistant.reject"
 label = "Reject it, with a reason"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-approval"]
+keys = ["n"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6845,10 +6857,11 @@ keys = ["n"]
 contexts = ["assistant-approval"]
 
 [[action]]
-id = "tui.assistant.exact-call"
+id = "assistant.exact-call"
 label = "Show or hide its exact call"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-approval"]
+keys = ["x"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6857,10 +6870,11 @@ keys = ["x"]
 contexts = ["assistant-approval"]
 
 [[action]]
-id = "tui.assistant.all-messages"
+id = "assistant.all-messages"
 label = "Show all or fewer of its messages"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-approval"]
+keys = ["a"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6869,10 +6883,11 @@ keys = ["a"]
 contexts = ["assistant-approval"]
 
 [[action]]
-id = "tui.assistant.choose"
+id = "assistant.choose"
 label = "Choose an answer by number"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-question"]
+keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6881,10 +6896,11 @@ keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 contexts = ["assistant-question"]
 
 [[action]]
-id = "tui.assistant.own-answer"
+id = "assistant.own-answer"
 label = "Write your own answer"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-question"]
+keys = ["o"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6898,6 +6914,7 @@ label = "Next question"
 group = "Assistant"
 clients = ["tui"]
 hide_in_palette = true
+note = "A browser keeps Tab for focus order; the web's number keys answer the first question not yet answered"
 
 [[action.tui]]
 name = "inline:next_question"
@@ -6910,6 +6927,7 @@ label = "Previous question"
 group = "Assistant"
 clients = ["tui"]
 hide_in_palette = true
+note = "A browser keeps Tab for focus order; the web's number keys answer the first question not yet answered"
 
 [[action.tui]]
 name = "inline:previous_question"
@@ -6917,10 +6935,11 @@ keys = ["Shift+Tab"]
 contexts = ["assistant-question"]
 
 [[action]]
-id = "tui.assistant.answer"
+id = "assistant.answer"
 label = "Answer"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-question"]
+keys = ["Enter"]
 hide_in_palette = true
 
 [[action.tui]]
@@ -6929,16 +6948,69 @@ keys = ["Enter"]
 contexts = ["assistant-question"]
 
 [[action]]
-id = "tui.assistant.skip"
+id = "assistant.skip"
 label = "Skip the question"
 group = "Assistant"
-clients = ["tui"]
+scopes = ["assistant-question"]
+keys = ["s"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "inline:skip"
-keys = ["s", "Escape"]
+keys = ["s"]
 contexts = ["assistant-question"]
+
+# The overlay grammar: Esc and q close without changing anything, so the
+# question stays waiting; only s declines it.
+[[action]]
+id = "assistant.leave-question"
+label = "Leave the question for later"
+group = "Assistant"
+scopes = ["assistant-question"]
+keys = ["Escape", "q"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:leave_question"
+keys = ["Escape", "q"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "assistant-history.open"
+label = "Open the conversation"
+group = "Assistant"
+scopes = ["assistant-history"]
+keys = ["Enter"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:open"
+keys = ["Enter"]
+contexts = ["assistant-history"]
+
+[[action]]
+id = "assistant-history.delete"
+label = "Delete the conversation"
+description = "Shows what would go first, then asks."
+group = "Assistant"
+scopes = ["assistant-history"]
+keys = ["#"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "D"
+contexts = ["assistant-history"]
+until = "0.6.185"
+
+[[action.moved]]
+key = "d"
+contexts = ["assistant-history"]
+until = "0.6.185"
+
+[[action.tui]]
+name = "inline:delete"
+keys = ["#"]
+contexts = ["assistant-history"]
 
 [[action]]
 id = "tui.invites.open"
@@ -7003,12 +7075,12 @@ contexts = ["invites"]
 id = "overlay.close"
 label = "Close"
 group = "Navigate"
-scopes = ["links", "unsubscribe", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "send-confirm", "let-go-preview", "compose-discard"]
+scopes = ["links", "unsubscribe", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "send-confirm", "let-go-preview", "compose-discard", "assistant-history"]
 keys = ["Escape", "q"]
 [[action.tui]]
 name = "inline:close"
 keys = ["Escape", "q"]
-contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "model-picker", "voice-source", "pass-menu", "categories", "resume-draft"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "model-picker", "voice-source", "pass-menu", "categories", "resume-draft", "assistant-history"]
 [[action.tui]]
 name = "CancelUnsubscribe"
 keys = ["Escape", "q"]
@@ -7055,7 +7127,7 @@ id = "overlay.cancel"
 label = "Close"
 description = "Where letters type, only Esc closes."
 group = "Navigate"
-scopes = ["palette", "label-picker", "reply-later", "search-palette"]
+scopes = ["palette", "label-picker", "reply-later", "search-palette", "categories"]
 keys = ["Escape"]
 web_native = true
 [[action.tui]]
@@ -7080,6 +7152,16 @@ keys = ["Escape"]
 contexts = ["auth-session"]
 
 [[action]]
+id = "popover.close"
+label = "Close"
+description = "Folds the panel away and puts focus back on what opened it."
+group = "Navigate"
+scopes = ["popover"]
+keys = ["Escape"]
+clients = ["web"]
+note = "The TUI has no popovers: its panels are overlays or panes, which close with Esc or q"
+
+[[action]]
 id = "overlay.back"
 label = "Back"
 group = "Navigate"
@@ -7094,12 +7176,12 @@ contexts = ["not-now-custom", "send-time"]
 id = "overlay.down"
 label = "Move down"
 group = "Navigate"
-scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo"]
+scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "assistant-history"]
 keys = ["j", "ArrowDown"]
 [[action.tui]]
 name = "inline:down"
 keys = ["j", "ArrowDown"]
-contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories", "assistant-history"]
 [[action.tui]]
 name = "SnippetsModalNext"
 keys = ["j", "ArrowDown"]
@@ -7121,12 +7203,12 @@ contexts = ["drafts"]
 id = "overlay.up"
 label = "Move up"
 group = "Navigate"
-scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo"]
+scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "assistant-history"]
 keys = ["k", "ArrowUp"]
 [[action.tui]]
 name = "inline:up"
 keys = ["k", "ArrowUp"]
-contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories", "assistant-history"]
 [[action.tui]]
 name = "SnippetsModalPrev"
 keys = ["k", "ArrowUp"]
@@ -7149,7 +7231,7 @@ id = "overlay.filter-down"
 label = "Move down"
 description = "Where letters type, Ctrl-n moves instead of j."
 group = "Navigate"
-scopes = ["not-now", "palette", "label-picker"]
+scopes = ["not-now", "palette", "label-picker", "categories"]
 keys = ["ArrowDown"]
 mac_keys = ["Ctrl+n"]
 [[action.tui]]
@@ -7162,7 +7244,7 @@ id = "overlay.filter-up"
 label = "Move up"
 description = "Where letters type, Ctrl-p moves instead of k."
 group = "Navigate"
-scopes = ["not-now", "palette", "label-picker"]
+scopes = ["not-now", "palette", "label-picker", "categories"]
 keys = ["ArrowUp"]
 mac_keys = ["Ctrl+p"]
 [[action.tui]]
@@ -7234,7 +7316,7 @@ contexts = ["voice-source"]
 id = "overlay.run"
 label = "Run the highlighted option"
 group = "Navigate"
-scopes = ["move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "palette", "label-picker", "send-confirm"]
+scopes = ["move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "palette", "label-picker", "send-confirm", "categories"]
 keys = ["Enter"]
 web_native = true
 [[action.tui]]

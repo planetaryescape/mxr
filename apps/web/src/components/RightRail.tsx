@@ -7,6 +7,7 @@ import { AskArchivePanel } from "@/features/ask/AskArchivePanel";
 import { WhoisPanel, isWhoisPayload } from "@/features/ask/WhoisPanel";
 import { ExpertFinderPanel } from "@/features/mailbox/ExpertFinderPanel";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 import { useModals } from "@/state/modalStore";
 import { BriefingPanel } from "./right-rail/BriefingPanel";
 import { CommitmentsPanel } from "./right-rail/CommitmentsPanel";
@@ -22,7 +23,7 @@ export function RightRail() {
   useEffect(() => {
     if (!rail) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (!pressedOverlayKey(event, "popover.close") || event.defaultPrevented) return;
       const target = event.target;
       if (target instanceof Element && target.closest('[role="dialog"], input, textarea')) return;
       event.preventDefault();

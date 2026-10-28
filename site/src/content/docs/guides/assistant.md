@@ -36,7 +36,7 @@ While the pane has the keys, everything you type goes to it, not to the screen b
 | `i` | Back to the message box |
 | `y` / `n` | Approve or reject the waiting change; `n` asks why (optional), `Enter` rejects |
 | `x` | Show or hide the waiting change's exact call: the tool and its arguments |
-| `1`-`9`, `o`, `Enter`, `s` | Choose an option, write your own answer, answer, or skip the question |
+| `1`-`9`, `o`, `Enter`, `s` | Choose an option, write your own answer, answer, or skip the question; `Esc` or `q` leaves it waiting |
 | `1`-`9` | With no question waiting, open a numbered link in the latest reply with links: an email opens in the reader, a person in Messages |
 | `Ctrl-c` | Stop a running turn |
 | `M` | Choose the model; `j` / `k` move, `Enter` uses it, `Esc` goes back |
@@ -53,13 +53,13 @@ The assistant also knows what you have open: the screen, the thread in the reade
 When the assistant wants to change something, the turn pauses and a proof appears:
 
 - **The change in words**, such as "Archive 14 emails", and the reason the assistant gave.
-- **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more", which opens the full list; `a` in the TUI), or the draft it would send with its recipients, subject and body.
+- **What it touches**: the messages as rows with sender, subject and date (the first few, then "and 11 more", which opens the full list, as `a` does), or the draft it would send with its recipients, subject and body.
 - **Can't be undone**, in red above the button (in the TUI, in red above the keys), for sending, trash, spam, deleting and rules. mxr itself words it, so the web app, the terminal and `mxr assistant show` say the same thing.
 - **Exact call**, under `x`: the tool and arguments that run if you approve.
 
 **Apply** (`y` in the web app) runs exactly that call, once, and the proof folds into a line such as "Archived 14 emails" with **Undo** where mxr can undo it; the rows it changed in the page beside the assistant wear a thin cyan underline that fades. **Send back with a note** (`n`) runs nothing and tells the assistant why, or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
 
-The keys work while the proof has the keyboard and never while you are typing, so a `y` in the message box or the note can't apply anything. Press `Esc` in the message box to hand the keyboard to a waiting proof, or click it. A question takes `1` to `6` for its options, `Enter` to answer, and a "Something else" row in the same list; the answer then shows in the conversation as your own quoted reply.
+The keys work while the proof has the keyboard and never while you are typing, so a `y` in the message box or the note can't apply anything. Press `Esc` in the message box to hand the keyboard to a waiting proof, or click it. A question takes `1` to `9` for its options, `o` for the "Something else" row in the same list, `Enter` to answer and `s` to skip it. `Esc` or `q` hands the keyboard back without answering, and the question keeps waiting. An answer shows in the conversation as your own quoted reply.
 
 The same from the terminal: `send`, `approve`, `reject` and `answer` wait for the turn to finish and print what is waiting with the command that answers it.
 
@@ -83,7 +83,7 @@ Once a turn ends the steps fold into one line such as "3 steps · 14 found · 1 
 
 Replies link the emails and people they name as chips, drawn in the link colour: a person with their avatar, an email with its subject and the glyph of the mode that holds it (Reading's newspaper, To do's checklist, and so on). An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. An email's row shows who it is from and the start of its text under the subject, with a paperclip if it has an attachment, the mode glyph and when it arrived on the right; unread mail has a bold subject. In the web app, hovering a chip or an email row (or tabbing to it) opens a small card after a short pause: for an email its subject, who wrote last and when, how many messages, the start of the text, the modes that hold it, an attachment clip and the unread count; for a person their name, how you usually trade messages and whether it is your turn. The card has no buttons, `Esc` closes it, and a tap on a touch screen just opens the link. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. A reply that quotes an email's subject, a to-do's title or a person's name as a tool listed it gets the same link, even when the assistant wrote no link. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
 
-Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `#` asks before deleting it (`y` deletes; `n`, `Esc` or a bare `Enter` keeps it, and in the TUI `j` and `k` light **Delete conversation** for `Enter`), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
+Past conversations are under the history button, where `j` and `k` (or the arrows) move, `Enter` opens one, `Esc` or `q` goes back, and `#` asks before deleting it (`y` deletes; `n`, `Esc` or a bare `Enter` keeps it, and in the TUI `j` and `k` light **Delete conversation** for `Enter`), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
 ## Pick the model
 

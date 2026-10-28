@@ -153,6 +153,7 @@ impl App {
                     if let Some(effect) = pending.optimistic_effect.as_ref() {
                         self.apply_local_mutation_effect(effect);
                     }
+                    let archived = archive_request_ids(&pending.request).map(<[_]>::to_vec);
                     let id = self.queue_mutation(
                         pending.request,
                         pending.effect,
@@ -163,6 +164,9 @@ impl App {
                     }
                     if let Some(snapshot) = snapshot {
                         self.mutation_snapshots.insert(id, snapshot);
+                    }
+                    if let Some(ids) = archived {
+                        self.adopt_archive_step(id, &ids);
                     }
                     self.clear_selection();
                     return;

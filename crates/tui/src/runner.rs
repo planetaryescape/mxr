@@ -4452,7 +4452,11 @@ pub async fn run() -> anyhow::Result<()> {
                                     app.pending_optimistic.clear(id);
                                     let show_completion_status = app.pending_mutation_count == 0;
                                     let effect = app.with_done_note(id, effect);
+                                    let archive_step = app.take_archive_step(id);
                                     app.apply_mutation_completion(effect, show_completion_status);
+                                    if let Some((step, reader_on_it)) = archive_step {
+                                        app.finish_archive_step(step, reader_on_it);
+                                    }
                                     // In the invites lens, a completed mutation is an
                                     // RSVP — refetch so the row's RSVP status updates.
                                     if app.mailbox.mailbox_view
@@ -4475,6 +4479,8 @@ pub async fn run() -> anyhow::Result<()> {
                                     if sync_request_pending_failure {
                                         handle_sync_request_failed(&mut app);
                                     }
+                                    // A failed `]` or `[` archive leaves the reader where it is.
+                                    let _ = app.take_archive_step(id);
                                     app.handle_mutation_failure_result(id, best_effort, &e);
                                 }
                             }

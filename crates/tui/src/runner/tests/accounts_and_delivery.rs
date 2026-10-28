@@ -219,7 +219,7 @@ fn search_preview_attachment_key_opens_modal() {
 }
 
 #[test]
-fn search_preview_shift_o_opens_in_browser_and_o_says_so() {
+fn search_preview_shift_o_opens_in_browser_and_o_folds_the_message() {
     let mut app = App::new();
     let results = make_test_envelopes(1);
     let env = results[0].clone();
@@ -233,12 +233,14 @@ fn search_preview_shift_o_opens_in_browser_and_o_says_so() {
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::OpenInBrowser));
 
-    // `o` opened the original until K3 (blueprint 35): it says where it went.
+    // `o` folds the message, as in the web reader (blueprint 35); folding
+    // names `O` for anyone who still reaches for `o` to open the original.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
-    assert_eq!(action, None);
+    assert_eq!(action, Some(Action::ToggleMessage));
+    app.apply(Action::ToggleMessage);
     assert_eq!(
         app.status_message.as_deref(),
-        Some("Open in browser is now O")
+        Some("Message folded; o opens it, O opens it in the browser")
     );
 }
 

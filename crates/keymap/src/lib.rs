@@ -52,7 +52,7 @@ pub const TUI_CONTEXTS: [&str; 14] = [
 /// handler (`App::announce_moved`). The tool screens, Search and the
 /// assistant pane list their keys here too, for help and the docs; a TUI
 /// runner test holds them to what each handler does.
-pub const SCREEN_CONTEXTS: [&str; 25] = [
+pub const SCREEN_CONTEXTS: [&str; 23] = [
     "accounts",
     "assistant",
     "invites",
@@ -76,8 +76,6 @@ pub const SCREEN_CONTEXTS: [&str; 25] = [
     "search-preview",
     "search-editor",
     "assistant-input",
-    "assistant-approval",
-    "assistant-question",
 ];
 
 /// Overlays: pickers, confirms, previews, prompts and sheets (blueprint 35,
@@ -86,7 +84,7 @@ pub const SCREEN_CONTEXTS: [&str; 25] = [
 /// dispatcher. The names are shared: a TUI binding names the overlay it is
 /// live in, and a web action's `scopes` name the dialog that reads it. A
 /// TUI runner test holds each TUI overlay's handler to its entries.
-pub const OVERLAY_CONTEXTS: [&str; 54] = [
+pub const OVERLAY_CONTEXTS: [&str; 58] = [
     // Both clients.
     "help",
     "palette",
@@ -105,6 +103,9 @@ pub const OVERLAY_CONTEXTS: [&str; 54] = [
     "reply-later",
     "sender-ask",
     "categories",
+    "assistant-approval",
+    "assistant-question",
+    "assistant-history",
     // The TUI's.
     "not-now-custom",
     "send-review",
@@ -144,6 +145,7 @@ pub const OVERLAY_CONTEXTS: [&str; 54] = [
     "let-go-preview",
     "compose-discard",
     "search-palette",
+    "popover",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).

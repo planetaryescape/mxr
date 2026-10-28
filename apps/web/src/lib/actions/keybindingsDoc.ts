@@ -131,6 +131,12 @@ const OVERLAYS: { scope: string; title: string; intro: string }[] = [
     title: "Labels",
     intro: "`l` labels and `v` moves. Letters type into its filter, and `Enter` ticks a label.",
   },
+  {
+    scope: "categories",
+    title: "Categories",
+    intro:
+      "Letters type into its filter, and `Enter` ticks or unticks a category; Preview shows the change before it applies.",
+  },
   { scope: "links", title: "Links", intro: "`L` opens it." },
   { scope: "unsubscribe", title: "Unsubscribe", intro: "`D` opens it." },
   {
@@ -197,6 +203,29 @@ const OVERLAYS: { scope: string; title: string; intro: string }[] = [
     scope: "compose-discard",
     title: "Discard draft",
     intro: "Discarding a draft from the composer. It opens on Keep.",
+  },
+  {
+    scope: "assistant-approval",
+    title: "Assistant: a change waiting for approval",
+    intro:
+      "The proof card in the assistant, while it has focus. `Esc` in the message box moves there.",
+  },
+  {
+    scope: "assistant-question",
+    title: "Assistant: a question waiting for an answer",
+    intro:
+      "The question card in the assistant, while it has focus. Number keys answer the first question not yet answered.",
+  },
+  {
+    scope: "assistant-history",
+    title: "Assistant: past conversations",
+    intro: "The assistant's history list.",
+  },
+  {
+    scope: "popover",
+    title: "Popovers and panels",
+    intro:
+      "A topic list, the people in a conversation, Search's filters, a link preview or the side rail. Menus close with `Esc` too.",
   },
 ];
 

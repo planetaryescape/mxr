@@ -180,6 +180,13 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
+        self.draw_frame(frame);
+        // `o` and `;` land the reader on the folded message for one frame;
+        // after that the scroll is the person's again.
+        self.mailbox.scroll_to_focused_message = false;
+    }
+
+    fn draw_frame(&mut self, frame: &mut Frame) {
         self.mailbox.todo_page.microsoft_review_visible.set(false);
         self.mailbox
             .todo_page
@@ -677,7 +684,7 @@ impl App {
             Screen::Search => {
                 let rows = self.search_mail_list_rows();
                 let preview_blocks = self.thread_message_blocks();
-                ui::search_page::draw(
+                let preview_scroll = ui::search_page::draw(
                     frame,
                     content_area,
                     ui::search_page::SearchPageView {
@@ -694,6 +701,11 @@ impl App {
                     },
                     theme,
                 );
+                // Kept, as the mailbox reader keeps its own, so `o` and `;`
+                // landing on a folded message holds after this frame.
+                if let Some(scroll) = preview_scroll {
+                    self.mailbox.message_scroll_offset = scroll;
+                }
             }
             Screen::Rules => {
                 ui::rules_page::draw(

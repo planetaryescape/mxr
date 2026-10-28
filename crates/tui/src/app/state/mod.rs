@@ -50,13 +50,13 @@ pub use export_modal::{ExportDestination, ExportModalState, ExportStage, Pending
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
-    ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
-    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
-    LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
-    PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm, PlaceFetch, PlacePageState,
-    SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection, SubscriptionEntry,
-    SubscriptionsPageState, SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES,
-    PLACE_PAGE_SENDERS,
+    ActivePane, ArchiveStep, AttachmentOperation, AttachmentPanelState, AttachmentSummary,
+    BodySource, BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState,
+    DeskPageState, LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView,
+    OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm,
+    PlaceFetch, PlacePageState, SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection,
+    SubscriptionEntry, SubscriptionsPageState, SweepTarget, ThreadSummaryPreview,
+    PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
 pub use messages::{
     row_key, AckCountdown, DoneNote, MessagesFocus, MessagesItem, MessagesPageState, MessagesRowKey,

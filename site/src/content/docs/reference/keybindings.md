@@ -165,6 +165,12 @@ with your `keys.toml` remaps.
   see whether it starts an `Alt` key; every key works without it.
 - `n` and `N` step to the next and previous conversation from the message
   view, as in the web app; in the list they say `j` and `k` until 0.6.200.
+- The reader folds as the web reader does: `o` folds or opens the focused
+  message (`J` and `K` move the focus), `;` folds all but the newest and
+  unread messages or opens them all, and `Q` shows or folds quoted text.
+  `]` and `[` archive the conversation, with the list's confirm and undo, and
+  then open the next or previous one. The reader's `o` used to open the
+  original in the browser; that is `O`.
 - Digits count rows only in visual line mode (`V`, `3`, `j` selects 4 rows),
   and `Esc` with a count typed drops the count. Before a multi-message action
   runs, the confirm lists the messages it will touch.
@@ -312,13 +318,18 @@ An open conversation.
 | `End`, `G` | End of thread |
 | `J` | Next message |
 | `K` | Previous message |
+| `o` | Expand or collapse message |
+| `;` | Expand or collapse all |
 | `n` | Next conversation |
 | `N` | Previous conversation |
+| `]` | Archive, open next |
+| `[` | Archive, open previous |
 | `←`, `h` | Back to list |
 | `Esc`, `q` | Close conversation |
 | `H` | Formatted (HTML) view, or back to plain |
 | `M` | Load remote images |
 | `S` | Show or hide signatures |
+| `Q` | Show or hide quoted text |
 
 ### Sidebar
 
@@ -726,8 +737,13 @@ The thread previewed beside the results.
 | `B` | Thread briefing |
 | `p` | Sender profile |
 | `L` | Links in this message |
+| `o` | Expand or collapse message |
+| `;` | Expand or collapse all |
+| `]` | Archive, open next |
+| `[` | Archive, open previous |
 | `R` | Reader view, or back to plain |
 | `S` | Show or hide signatures |
+| `Q` | Show or hide quoted text |
 | `O` | Open original in a new tab |
 | `/` | Edit the query |
 | `h`, `←`, `Esc` | Back to the results |
@@ -958,26 +974,6 @@ The year in review moves between tiles instead of rows.
 | `Enter` | Send |
 | `Alt+Enter`, `Ctrl+j` | New line |
 | `Esc` | To the pane keys |
-
-### Assistant: a change waiting for approval
-
-| Key | Action |
-|-----|--------|
-| `y` | Approve the waiting change |
-| `n` | Reject it, with a reason |
-| `x` | Show or hide its exact call |
-| `a` | Show all or fewer of its messages |
-
-### Assistant: a question waiting for an answer
-
-| Key | Action |
-|-----|--------|
-| `1`–`9` | Choose an answer by number |
-| `o` | Write your own answer |
-| `Tab` | Next question |
-| `Shift+Tab` | Previous question |
-| `Enter` | Answer |
-| `s`, `Esc` | Skip the question |
 
 ### Writing proof
 
@@ -1240,6 +1236,44 @@ After a Not-sure answer. Any other key drops the question and does what it alway
 | `c` | New category |
 | `r` | Rename |
 | `#` | Delete the category |
+
+#### Assistant: a change waiting for approval
+
+A change the assistant wants to make, waiting in its pane. Any other key works as it does in the pane.
+
+| Key | Action |
+|-----|--------|
+| `y` | Approve the waiting change |
+| `n` | Reject it, with a reason |
+| `x` | Show or hide its exact call |
+| `a` | Show all or fewer of its messages |
+
+#### Assistant: a question waiting for an answer
+
+A question the assistant asks, waiting in its pane. Any other key works as it does in the pane.
+
+| Key | Action |
+|-----|--------|
+| `1`–`9` | Choose an answer by number |
+| `o` | Write your own answer |
+| `Tab` | Next question |
+| `Shift+Tab` | Previous question |
+| `Enter` | Answer |
+| `s` | Skip the question |
+| `Esc`, `q` | Leave the question for later |
+
+#### Assistant: past conversations
+
+`L` in the assistant pane opens it.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+k`, `Ctrl+p` | Command palette |
+| `Enter` | Open the conversation |
+| `#` | Delete the conversation |
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
 
 #### Send review
 
@@ -1757,19 +1791,19 @@ Selection and filter keys act on the mail list beside the reader.
 | `G`, `End` | End of thread |  |
 | `J` | Next message |  |
 | `K` | Previous message |  |
-| `o` | Expand or collapse message | The TUI shows every message in full, so there is nothing to collapse |
-| `;` | Expand or collapse all | The TUI shows every message in full, so there is nothing to collapse |
+| `o` | Expand or collapse message |  |
+| `;` | Expand or collapse all |  |
 | `n` | Next conversation |  |
 | `N` | Previous conversation |  |
-| `]` | Archive, open next | The TUI reader sits beside the list, so e archives and n steps on |
-| `[` | Archive, open previous | The TUI reader sits beside the list, so e archives and N steps back |
+| `]` | Archive, open next |  |
+| `[` | Archive, open previous |  |
 | `h`, `ArrowLeft` | Back to list |  |
 | `Esc`, `q` | Close conversation |  |
 | `R` | Reader view, or back to plain |  |
 | `H` | Formatted (HTML) view, or back to plain |  |
 | `M` | Load remote images |  |
 | `S` | Show or hide signatures |  |
-| `Q` | Show or hide quoted text | The TUI reader has no way to fold quoted text yet |
+| `Q` | Show or hide quoted text |  |
 | `O` | Open original in a new tab |  |
 | `F` | Full-width reader |  |
 
@@ -2132,6 +2166,17 @@ An open dialog takes every key until it closes. `Esc` closes any of them without
 | `Enter` | Run the highlighted option | The browser's own key |
 | `⌘Enter / Ctrl+Enter` | Apply the ticked labels | The web's label picker ticks several labels with Enter, then applies them; the TUI's picks one |
 
+#### Categories
+
+Letters type into its filter, and `Enter` ticks or unticks a category; Preview shows the change before it applies.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The browser's own key |
+| `ArrowDown`, `Ctrl+N` (macOS) | Move down |  |
+| `ArrowUp`, `Ctrl+P` (macOS) | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+
 #### Links
 
 `L` opens it.
@@ -2333,6 +2378,49 @@ Discarding a draft from the composer. It opens on Keep.
 | `Esc`, `q` | Close |  |
 | `y` | Yes |  |
 | `n` | No |  |
+
+#### Assistant: a change waiting for approval
+
+The proof card in the assistant, while it has focus. `Esc` in the message box moves there.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `y` | Approve the waiting change |  |
+| `n` | Reject it, with a reason |  |
+| `x` | Show or hide its exact call |  |
+| `a` | Show all or fewer of its messages |  |
+
+#### Assistant: a question waiting for an answer
+
+The question card in the assistant, while it has focus. Number keys answer the first question not yet answered.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9` | Choose an answer by number |  |
+| `o` | Write your own answer |  |
+| `Enter` | Answer |  |
+| `s` | Skip the question |  |
+| `Esc`, `q` | Leave the question for later |  |
+
+#### Assistant: past conversations
+
+The assistant's history list.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Enter` | Open the conversation |  |
+| `#` | Delete the conversation |  |
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+
+#### Popovers and panels
+
+A topic list, the people in a conversation, Search's filters, a link preview or the side rail. Menus close with `Esc` too.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The TUI has no popovers: its panels are overlays or panes, which close with Esc or q |
 
 <!-- web-keys:end -->
 

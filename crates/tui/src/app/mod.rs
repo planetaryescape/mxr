@@ -4,6 +4,7 @@ mod account_identity;
 mod account_marks;
 mod actions;
 mod analytics_actions;
+mod archive_step;
 mod assistant_actions;
 mod attachment_helpers;
 mod body_helpers;
@@ -89,6 +90,7 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
+use archive_step::archive_request_ids;
 pub use focus_run::FocusRun;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub(crate) use messages_actions::MESSAGES_MODE;

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { RuntimeAccount } from "@/features/compose/api";
 import { plural } from "@/lib/format";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 import { parseSearchTokens, removeSearchToken } from "@/lib/searchSyntax";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -183,7 +184,7 @@ export function SearchToolbar({
           className="mt-2 flex flex-wrap items-center gap-2"
           data-testid="search-filters"
           onKeyDown={(event) => {
-            if (event.key !== "Escape" || event.defaultPrevented) return;
+            if (!pressedOverlayKey(event, "popover.close") || event.defaultPrevented) return;
             event.preventDefault();
             onFiltersToggle();
             filterButtonRef.current?.focus();

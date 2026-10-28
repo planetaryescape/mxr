@@ -89,6 +89,7 @@ const OVERLAYS: &[OverlayProbe] = &[
     probe("account-mode-switch", &[account_mode_switch]),
     probe("identity-editor", &[identity_editor]),
     probe("auth-session", &[auth_session]),
+    probe("assistant-history", &[assistant_history]),
 ];
 
 /// Overlays the probe leaves out, and why. Every other overlay with TUI
@@ -99,6 +100,11 @@ const NOT_PROBED: &[&str] = &[
     "sender-ask",
     // The same: any other key works as usual. `app::promises` covers it.
     "promise-prompt",
+    // With a proof or a question waiting, any other key works as it does
+    // in the assistant pane, which the screen probe covers;
+    // `runner::tests::assistant` covers their own keys.
+    "assistant-approval",
+    "assistant-question",
 ];
 
 fn inbox() -> App {
@@ -617,7 +623,11 @@ fn todo_prompt(app: &mut App) {
 fn arrivals_list(app: &mut App) {
     *app = inbox();
     app.mailbox.mailbox_view = MailboxView::Now;
-    let now = chrono::Utc::now();
+    // A fixed day, not the clock: "2m ago" turning into "3m ago" during
+    // the probe's two minutes would read as every later key acting.
+    let now = chrono::DateTime::parse_from_rfc3339("2026-01-05T09:00:00Z")
+        .expect("a valid time")
+        .with_timezone(&chrono::Utc);
     let item = |subject: &str| mxr_protocol::ArrivalItemData {
         account_id: AccountId::new(),
         message_id: MessageId::new(),
@@ -705,6 +715,32 @@ fn auth_session(app: &mut App) {
     });
 }
 
+fn assistant_history(app: &mut App) {
+    let summary = |id: &str, title: &str| mxr_protocol::AssistantConversationSummaryData {
+        id: id.into(),
+        title: title.into(),
+        status: mxr_protocol::AssistantStatusData::Idle,
+        last_outcome: None,
+        created_at: 0,
+        updated_at: 0,
+        message_count: 2,
+        pending_count: 0,
+    };
+    app.screen = Screen::Mailbox;
+    app.assistant.open = true;
+    app.assistant.focus = crate::app::AssistantFocus::Pane;
+    app.assistant.list = Some(crate::app::AssistantListState {
+        loading: false,
+        // The middle row lit, so both j and k move.
+        conversations: vec![
+            summary("c1", "Receipts"),
+            summary("c2", "Old trip"),
+            summary("c3", "Invoices"),
+        ],
+        selected: 1,
+    });
+}
+
 /// What a key can change while an overlay is open: the drawn screen, the
 /// status line, and requests waiting to go out.
 fn fingerprint(app: &mut App) -> String {
@@ -720,7 +756,7 @@ fn fingerprint(app: &mut App) -> String {
     }
     // State a key changes that the screen behind an overlay may not draw.
     format!(
-        "{} {:?} {} {} {} {} {:?} {:?} {} {} {:?} {:?} {} {:?}",
+        "{} {:?} {} {} {} {} {:?} {:?} {} {} {:?} {:?} {} {:?} {}",
         screen.finish(),
         app.status_message,
         app.pending_mutation_queue.len(),
@@ -735,6 +771,7 @@ fn fingerprint(app: &mut App) -> String {
         app.mailbox.records_page.pending_file_preview.is_some(),
         app.modals.personal_categories.filtering,
         app.modals.sender_profile.active_tab,
+        app.assistant.outbound.len(),
     )
 }
 

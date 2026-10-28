@@ -82,7 +82,6 @@ const SCREENS: &[ScreenProbe] = &[
         "search",
         Unlisted::Shared,
     ),
-    // The preview's `o` moved away from the reader's, and says so.
     (
         "search-preview",
         |app| search(app, SearchPane::Preview),
@@ -279,10 +278,6 @@ fn screen_keys_are_what_the_definition_says() {
 const NOT_PROBED: &[&str] = &[
     // Dispatched from the definition itself (`compose_assist.rs`).
     "compose-assist-proof",
-    // Only reachable with an approval or a question waiting; every key
-    // acts in place, and `runner::tests::assistant` covers them.
-    "assistant-approval",
-    "assistant-question",
 ];
 
 #[test]

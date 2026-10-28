@@ -536,6 +536,17 @@ pub enum Action {
     ToggleHtmlView,
     ToggleRemoteContent,
     ToggleSignature,
+    /// Show the quoted text the reader folds, or fold it again (`Q`).
+    ToggleQuotes,
+    /// Collapse the focused message of the thread to one line, or open it (`o`).
+    ToggleMessage,
+    /// Open every message of the thread, or collapse all but the newest and
+    /// unread ones (`;`).
+    ToggleAllMessages,
+    /// Archive the open conversation, then open the next one (`]`).
+    ArchiveNext,
+    /// Archive the open conversation, then open the previous one (`[`).
+    ArchivePrev,
 
     // --- Phase 2: Batch operations (A007) ---
     ToggleSelect,

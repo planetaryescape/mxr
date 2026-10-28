@@ -47,6 +47,8 @@ impl App {
             }
         }
         match action {
+            Action::ArchiveNext => self.archive_and_step(true),
+            Action::ArchivePrev => self.archive_and_step(false),
             Action::Archive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {

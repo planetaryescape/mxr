@@ -5,6 +5,7 @@ import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { KeyChip } from "@/components/KeyChip";
 import { ModeFrame } from "@/components/ModeFrame";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 import { cn } from "@/lib/utils";
 
 import type { PersonPage } from "./api";
@@ -71,7 +72,7 @@ export function TopicSwitcher({
               data-testid="topics"
               className="mt-1 flex max-h-[45dvh] flex-col gap-0.5 overflow-y-auto"
               onKeyDown={(event) => {
-                if (event.key !== "Escape") return;
+                if (!pressedOverlayKey(event, "popover.close")) return;
                 event.preventDefault();
                 setOpen(false);
                 requestAnimationFrame(() => trigger.current?.focus());

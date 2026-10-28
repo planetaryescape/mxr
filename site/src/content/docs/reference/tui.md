@@ -66,6 +66,15 @@ Behavior:
 - Explicit right-pane dismissal with `Esc`
 - Press `F` in an open message to fill the main mail area; the sidebar and message list hide. Press `F` again for split view, or `Esc` to return to the list.
 - Bulk selection with confirmation modals
+- In a thread, `J` and `K` move between messages. `o` folds the focused
+  message to one line (who, when, how it starts) and opens it again; `;`
+  folds every message but the newest and the unread ones, and opens them all
+  when pressed again. The reading and HTML views fold quoted text, and `Q`
+  shows it. Plain text (`R` off) shows every quoted line.
+- `]` archives the open conversation and then opens the next one; `[` opens
+  the previous one. It is the list's archive, with its confirm for a
+  multi-message thread and `u` to undo, and the reader moves only once the
+  archive is done.
 - An open message shows when it arrived in your local time, never UTC and
   never a day alone: `Today 14:02 · 2h ago` for today's mail, `Tue 21 Oct
   14:02` for earlier mail this year, and `Tue 21 Oct 2025 14:02` after that.

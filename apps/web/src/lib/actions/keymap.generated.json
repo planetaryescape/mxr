@@ -4183,9 +4183,17 @@
         "o"
       ],
       "hide_in_palette": true,
-      "note": "The TUI shows every message in full, so there is nothing to collapse",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "ToggleMessage",
+          "keys": [
+            "o"
+          ],
+          "contexts": [
+            "reader",
+            "search-preview"
+          ]
+        }
       ]
     },
     {
@@ -4200,9 +4208,17 @@
         ";"
       ],
       "hide_in_palette": true,
-      "note": "The TUI shows every message in full, so there is nothing to collapse",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "ToggleAllMessages",
+          "keys": [
+            ";"
+          ],
+          "contexts": [
+            "reader",
+            "search-preview"
+          ]
+        }
       ]
     },
     {
@@ -4265,9 +4281,17 @@
         "]"
       ],
       "hide_in_palette": true,
-      "note": "The TUI reader sits beside the list, so e archives and n steps on",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "ArchiveNext",
+          "keys": [
+            "]"
+          ],
+          "contexts": [
+            "reader",
+            "search-preview"
+          ]
+        }
       ]
     },
     {
@@ -4282,9 +4306,17 @@
         "["
       ],
       "hide_in_palette": true,
-      "note": "The TUI reader sits beside the list, so e archives and N steps back",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "ArchivePrev",
+          "keys": [
+            "["
+          ],
+          "contexts": [
+            "reader",
+            "search-preview"
+          ]
+        }
       ]
     },
     {
@@ -4463,9 +4495,17 @@
         "Q"
       ],
       "hide_in_palette": true,
-      "note": "The TUI reader has no way to fold quoted text yet",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "ToggleQuotes",
+          "keys": [
+            "Q"
+          ],
+          "contexts": [
+            "reader",
+            "search-preview"
+          ]
+        }
       ]
     },
     {
@@ -4512,24 +4552,6 @@
             "search",
             "search-preview"
           ]
-        }
-      ]
-    },
-    {
-      "id": "tui.reader-open-original",
-      "label": "Open in browser",
-      "group": "View",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "o",
-          "contexts": [
-            "reader"
-          ],
-          "until": "0.6.185",
-          "to": "reader.open-original"
         }
       ]
     },
@@ -11953,6 +11975,7 @@
       "label": "Command palette",
       "group": "Navigate",
       "hide_in_palette": true,
+      "note": "The web's assistant history is a list in the page, so its palette key works as it does everywhere",
       "clients": [
         "tui"
       ],
@@ -11965,7 +11988,8 @@
           ],
           "contexts": [
             "assistant",
-            "assistant-input"
+            "assistant-input",
+            "assistant-history"
           ]
         },
         {
@@ -12314,13 +12338,16 @@
       ]
     },
     {
-      "id": "tui.assistant.approve",
+      "id": "assistant.approve",
       "label": "Approve the waiting change",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-approval"
       ],
+      "keys": [
+        "y"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:approve",
@@ -12334,13 +12361,16 @@
       ]
     },
     {
-      "id": "tui.assistant.reject",
+      "id": "assistant.reject",
       "label": "Reject it, with a reason",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-approval"
       ],
+      "keys": [
+        "n"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:reject",
@@ -12354,13 +12384,16 @@
       ]
     },
     {
-      "id": "tui.assistant.exact-call",
+      "id": "assistant.exact-call",
       "label": "Show or hide its exact call",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-approval"
       ],
+      "keys": [
+        "x"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:exact_call",
@@ -12374,13 +12407,16 @@
       ]
     },
     {
-      "id": "tui.assistant.all-messages",
+      "id": "assistant.all-messages",
       "label": "Show all or fewer of its messages",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-approval"
       ],
+      "keys": [
+        "a"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:all_messages",
@@ -12394,13 +12430,24 @@
       ]
     },
     {
-      "id": "tui.assistant.choose",
+      "id": "assistant.choose",
       "label": "Choose an answer by number",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-question"
       ],
+      "keys": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:choose",
@@ -12422,13 +12469,16 @@
       ]
     },
     {
-      "id": "tui.assistant.own-answer",
+      "id": "assistant.own-answer",
       "label": "Write your own answer",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-question"
       ],
+      "keys": [
+        "o"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:own_answer",
@@ -12446,6 +12496,7 @@
       "label": "Next question",
       "group": "Assistant",
       "hide_in_palette": true,
+      "note": "A browser keeps Tab for focus order; the web's number keys answer the first question not yet answered",
       "clients": [
         "tui"
       ],
@@ -12466,6 +12517,7 @@
       "label": "Previous question",
       "group": "Assistant",
       "hide_in_palette": true,
+      "note": "A browser keeps Tab for focus order; the web's number keys answer the first question not yet answered",
       "clients": [
         "tui"
       ],
@@ -12482,13 +12534,16 @@
       ]
     },
     {
-      "id": "tui.assistant.answer",
+      "id": "assistant.answer",
       "label": "Answer",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-question"
       ],
+      "keys": [
+        "Enter"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:answer",
@@ -12502,23 +12557,113 @@
       ]
     },
     {
-      "id": "tui.assistant.skip",
+      "id": "assistant.skip",
       "label": "Skip the question",
       "group": "Assistant",
-      "hide_in_palette": true,
-      "clients": [
-        "tui"
+      "scopes": [
+        "assistant-question"
       ],
+      "keys": [
+        "s"
+      ],
+      "hide_in_palette": true,
       "tui": [
         {
           "name": "inline:skip",
           "keys": [
-            "s",
-            "Escape"
+            "s"
           ],
           "contexts": [
             "assistant-question"
           ]
+        }
+      ]
+    },
+    {
+      "id": "assistant.leave-question",
+      "label": "Leave the question for later",
+      "group": "Assistant",
+      "scopes": [
+        "assistant-question"
+      ],
+      "keys": [
+        "Escape",
+        "q"
+      ],
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:leave_question",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assistant-history.open",
+      "label": "Open the conversation",
+      "group": "Assistant",
+      "scopes": [
+        "assistant-history"
+      ],
+      "keys": [
+        "Enter"
+      ],
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:open",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "assistant-history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assistant-history.delete",
+      "label": "Delete the conversation",
+      "description": "Shows what would go first, then asks.",
+      "group": "Assistant",
+      "scopes": [
+        "assistant-history"
+      ],
+      "keys": [
+        "#"
+      ],
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:delete",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "assistant-history"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "D",
+          "contexts": [
+            "assistant-history"
+          ],
+          "until": "0.6.185"
+        },
+        {
+          "key": "d",
+          "contexts": [
+            "assistant-history"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -12623,7 +12768,8 @@
         "sweep-confirm",
         "send-confirm",
         "let-go-preview",
-        "compose-discard"
+        "compose-discard",
+        "assistant-history"
       ],
       "keys": [
         "Escape",
@@ -12651,7 +12797,8 @@
             "voice-source",
             "pass-menu",
             "categories",
-            "resume-draft"
+            "resume-draft",
+            "assistant-history"
           ]
         },
         {
@@ -12770,7 +12917,8 @@
         "palette",
         "label-picker",
         "reply-later",
-        "search-palette"
+        "search-palette",
+        "categories"
       ],
       "keys": [
         "Escape"
@@ -12837,6 +12985,22 @@
       "web_native": true
     },
     {
+      "id": "popover.close",
+      "label": "Close",
+      "description": "Folds the panel away and puts focus back on what opened it.",
+      "group": "Navigate",
+      "scopes": [
+        "popover"
+      ],
+      "keys": [
+        "Escape"
+      ],
+      "note": "The TUI has no popovers: its panels are overlays or panes, which close with Esc or q",
+      "clients": [
+        "web"
+      ]
+    },
+    {
       "id": "overlay.back",
       "label": "Back",
       "group": "Navigate",
@@ -12867,7 +13031,8 @@
         "move-picker-sender",
         "new-sender-picker",
         "sender-kind-picker",
-        "correct-todo"
+        "correct-todo",
+        "assistant-history"
       ],
       "keys": [
         "j",
@@ -12894,7 +13059,8 @@
             "attachments",
             "model-picker",
             "messages-filter",
-            "categories"
+            "categories",
+            "assistant-history"
           ]
         },
         {
@@ -12949,7 +13115,8 @@
         "move-picker-sender",
         "new-sender-picker",
         "sender-kind-picker",
-        "correct-todo"
+        "correct-todo",
+        "assistant-history"
       ],
       "keys": [
         "k",
@@ -12976,7 +13143,8 @@
             "attachments",
             "model-picker",
             "messages-filter",
-            "categories"
+            "categories",
+            "assistant-history"
           ]
         },
         {
@@ -13029,7 +13197,8 @@
       "scopes": [
         "not-now",
         "palette",
-        "label-picker"
+        "label-picker",
+        "categories"
       ],
       "keys": [
         "ArrowDown"
@@ -13061,7 +13230,8 @@
       "scopes": [
         "not-now",
         "palette",
-        "label-picker"
+        "label-picker",
+        "categories"
       ],
       "keys": [
         "ArrowUp"
@@ -13219,7 +13389,8 @@
         "sweep-confirm",
         "palette",
         "label-picker",
-        "send-confirm"
+        "send-confirm",
+        "categories"
       ],
       "keys": [
         "Enter"

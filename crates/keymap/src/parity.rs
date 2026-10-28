@@ -40,7 +40,7 @@ const SHARED_PLACES: [(&str, &[&str]); 10] = [
 /// lists on the web, where letters type, and the web's bulk and sweep
 /// previews are two-button dialogs while the TUI's are scrolling sheets, so
 /// those are listed per client and not compared.
-const SHARED_OVERLAYS: [&str; 10] = [
+const SHARED_OVERLAYS: [&str; 13] = [
     "links",
     "unsubscribe",
     "move-picker",
@@ -51,6 +51,9 @@ const SHARED_OVERLAYS: [&str; 10] = [
     "not-now",
     "delete-confirm",
     "sender-ask",
+    "assistant-approval",
+    "assistant-question",
+    "assistant-history",
 ];
 
 /// Keys TUI defaults never use, because a terminal sends something else

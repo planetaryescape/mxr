@@ -268,6 +268,10 @@ impl App {
                 bulk_selected: self.mailbox.selected_set.contains(&message.id),
                 has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
                 signature_expanded: self.mailbox.signature_expanded,
+                quotes_expanded: self.mailbox.quotes_expanded,
+                collapsed: self.mailbox.collapsed_messages.contains(&message.id),
+                scroll_here: self.mailbox.scroll_to_focused_message
+                    && self.focused_thread_envelope().map(|env| &env.id) == Some(&message.id),
                 highlight_link: self
                     .mailbox
                     .todo_link

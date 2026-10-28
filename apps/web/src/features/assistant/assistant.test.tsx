@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   fireEvent,
   render as renderPlain,
   renderHook,
@@ -183,6 +184,20 @@ describe("proof", () => {
     expect(onDecide).not.toHaveBeenCalled();
   });
 
+  test("a shows all of its rows and folds them again", () => {
+    const envelopes = Array.from({ length: 8 }, (_, n) => ({
+      id: `m${n}`,
+      subject: `Subject ${n}`,
+      from: { name: `Sender ${n}`, email: "s@x" },
+    }));
+    cards([{ ...approval, preview: { preview: { envelopes } } } as AssistantPending]);
+    const card = screen.getByRole("region", { name: "Archive 2 emails" });
+    fireEvent.keyDown(card, { key: "a" });
+    expect(screen.getByText("Subject 7")).toBeVisible();
+    fireEvent.keyDown(card, { key: "a" });
+    expect(screen.queryByText("Subject 7")).toBeNull();
+  });
+
   test("y applies from the card", () => {
     const onDecide = cards([approval]);
     fireEvent.keyDown(screen.getByRole("region", { name: "Archive 2 emails" }), { key: "y" });
@@ -303,6 +318,39 @@ describe("question", () => {
     fireEvent.keyDown(card, { key: "1" });
     expect(screen.getAllByRole("radio")[0]).toHaveAttribute("aria-checked", "true");
     expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  test("Enter answers once something is chosen, o goes to your own answer, s skips", () => {
+    const onDecide = cards([question]);
+    const card = screen.getByRole("region", { name: "A question for you" });
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(onDecide).not.toHaveBeenCalled();
+    fireEvent.keyDown(card, { key: "2" });
+    fireEvent.keyDown(card, { key: "Enter" });
+    expect(onDecide).toHaveBeenLastCalledWith({
+      call_id: "q1",
+      decision: "answer",
+      answers: [{ selected: ["Work"], other: undefined }],
+    });
+
+    fireEvent.keyDown(card, { key: "o" });
+    expect(screen.getByLabelText("Something else")).toHaveFocus();
+
+    fireEvent.keyDown(card, { key: "s" });
+    expect(onDecide).toHaveBeenLastCalledWith({ call_id: "q1", decision: "reject" });
+  });
+
+  test("Esc and q leave the question waiting and let go of the keys", () => {
+    for (const key of ["Escape", "q"]) {
+      cleanup();
+      const onDecide = cards([question]);
+      const card = screen.getByRole("region", { name: "A question for you" });
+      card.focus();
+      fireEvent.keyDown(card, { key });
+      expect(onDecide).not.toHaveBeenCalled();
+      expect(card).not.toHaveFocus();
+      expect(screen.getByRole("region", { name: "A question for you" })).toBeInTheDocument();
+    }
   });
 
   test("typing an answer replaces a single choice, and Skip declines", () => {

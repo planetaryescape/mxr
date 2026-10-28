@@ -160,6 +160,7 @@ mod pattern_select;
 mod places;
 mod prefix_guide;
 mod reader_and_diagnostics;
+mod reader_folding;
 mod reading;
 mod records;
 mod screen_keys;

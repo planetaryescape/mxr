@@ -40,6 +40,7 @@ pub fn place_title(place: &str) -> Option<&'static str> {
         "assistant-input" => "Assistant: message box",
         "assistant-approval" => "Assistant: a change waiting for approval",
         "assistant-question" => "Assistant: a question waiting for an answer",
+        "assistant-history" => "Assistant: past conversations",
         "compose-assist-proof" => "Writing proof",
         "help" => "Help",
         "palette" => "Command palette",
@@ -95,6 +96,7 @@ pub fn place_title(place: &str) -> Option<&'static str> {
         "let-go-preview" => "Let go preview",
         "compose-discard" => "Discard draft",
         "search-palette" => "Search palette",
+        "popover" => "Popovers and panels",
         _ => return None,
     })
 }

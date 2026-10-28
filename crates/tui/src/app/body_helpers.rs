@@ -378,6 +378,7 @@ impl App {
     pub(super) fn reader_config(&self) -> mxr_reader::ReaderConfig {
         mxr_reader::ReaderConfig {
             html_command: self.mailbox.render_html_command.clone(),
+            collapse_quotes: !self.mailbox.quotes_expanded,
             ..Default::default()
         }
     }

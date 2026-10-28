@@ -1,7 +1,7 @@
 /*
  * A question the assistant needs answered, on the overlay surface: the
  * question in Heading, the options as rows with a radio or checkbox mark,
- * keys 1 to 6, "Something else" as a row in the same list, and Skip quiet.
+ * number keys, "Something else" as a row in the same list, and Skip quiet.
  * Once answered it collapses into your quoted reply in the transcript.
  */
 
@@ -13,7 +13,9 @@ import { onBareKey, PENDING_CARD_ATTRIBUTE } from "./cardKeys";
 import { KeyChip } from "@/components/KeyChip";
 import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
+import { definedKeys } from "@/lib/actions/definition";
 import { isComposingKey } from "@/lib/keys/composition";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /** An answer being written: what is chosen and what is typed. */
 interface Draft {
@@ -21,7 +23,7 @@ interface Draft {
   other: string;
 }
 
-const MAX_KEYED = 6;
+const CHOOSE_KEYS = definedKeys("assistant.choose");
 const ROWS = { "--row-height": "52px" } as React.CSSProperties;
 
 export interface Option {
@@ -86,19 +88,34 @@ export function QuestionCard({
       aria-label="A question for you"
       tabIndex={-1}
       {...{ [PENDING_CARD_ATTRIBUTE]: "", "data-keys-owner": "" }}
-      onKeyDown={onBareKey((key) => {
+      onKeyDown={onBareKey((key, event) => {
         const question = item.questions[active];
         const answer = answers[active];
         if (!question || !answer) return false;
-        const number = Number(key);
-        if (Number.isInteger(number) && number >= 1 && number <= MAX_KEYED) {
-          const option = orderedOptions(question)[number - 1];
+        if (pressedOverlayKey(event, "assistant.choose")) {
+          const option = orderedOptions(question)[CHOOSE_KEYS.indexOf(key)];
           if (!option) return false;
           update(active, choose(question, answer, option.label));
           return true;
         }
-        if (key === "Enter" && complete) {
+        if (pressedOverlayKey(event, "assistant.answer") && complete) {
           submit();
+          return true;
+        }
+        if (pressedOverlayKey(event, "assistant.own-answer") && question.allow_other) {
+          // The fields are one per question, in order.
+          const field = event.currentTarget.querySelectorAll("fieldset").item(active);
+          field?.querySelector<HTMLInputElement>('input[aria-label="Something else"]')?.focus();
+          return true;
+        }
+        if (pressedOverlayKey(event, "assistant.skip")) {
+          skip();
+          return true;
+        }
+        // Esc and q close without deciding (the overlay grammar): the card
+        // lets go of the keys and the question keeps waiting.
+        if (pressedOverlayKey(event, "assistant.leave-question")) {
+          if (event.currentTarget instanceof HTMLElement) event.currentTarget.blur();
           return true;
         }
         return false;
@@ -216,8 +233,8 @@ function QuestionField({
               }
               secondary={option.description ?? undefined}
               trail={
-                keyed && index < MAX_KEYED ? (
-                  <KeyChip className="h-4 px-1 pointer-coarse:hidden">{index + 1}</KeyChip>
+                keyed && index < CHOOSE_KEYS.length ? (
+                  <KeyChip className="h-4 px-1 pointer-coarse:hidden">{CHOOSE_KEYS[index]}</KeyChip>
                 ) : undefined
               }
               renderMain={(content, className) => (

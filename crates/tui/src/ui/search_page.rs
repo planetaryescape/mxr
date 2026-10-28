@@ -25,7 +25,8 @@ pub struct SearchPageView<'a> {
     pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) {
+/// Returns the preview's scroll, clamped to its content, when it drew one.
+pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) -> Option<u16> {
     let SearchPageView {
         state,
         rows,
@@ -144,8 +145,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                 .wrap(Wrap { trim: false }),
             *inner.last().unwrap_or(&chunks[1]),
         );
+        None
     } else {
-        message_view::draw(
+        Some(message_view::draw(
             frame,
             *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
@@ -160,7 +162,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                 now,
                 zone,
             },
-        );
+        ))
     }
 }
 

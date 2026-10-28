@@ -62,6 +62,16 @@ pub struct HtmlParts {
 /// Remove the marked quote and signature from `html`. A body that is
 /// nothing but quote (a bare forward) keeps its quote.
 pub fn split_html_quote(html: &str) -> HtmlParts {
+    split(html, false)
+}
+
+/// [`split_html_quote`] for a view that shows the signature: only the
+/// quote goes, and `has_signature` still says whether there is one.
+pub fn split_html_quote_keeping_signature(html: &str) -> HtmlParts {
+    split(html, true)
+}
+
+fn split(html: &str, keep_signature: bool) -> HtmlParts {
     let unchanged = || HtmlParts {
         main: html.to_string(),
         has_quote: false,
@@ -100,7 +110,9 @@ pub fn split_html_quote(html: &str) -> HtmlParts {
     for selector in SIGNATURES.iter() {
         for element in doc.select(selector) {
             has_signature = true;
-            doomed.push(element.id());
+            if !keep_signature {
+                doomed.push(element.id());
+            }
         }
     }
     if let Some(header) = first_in_document_order(&doc, &QUOTE_HEADERS) {
@@ -254,6 +266,17 @@ mod tests {
         assert!(parts.main.contains("Thursday works"));
         assert!(!parts.main.contains("Are you around"));
         assert!(!parts.main.contains("Launchpad"));
+    }
+
+    #[test]
+    fn keeping_the_signature_removes_only_the_quote() {
+        let html = r#"<div dir="ltr">Sounds good, Thursday works.<div><br></div><div class="gmail_signature">Samir Patel<br>Launchpad</div></div><br><div class="gmail_quote"><div class="gmail_attr">On Mon, Alex wrote:</div><blockquote class="gmail_quote">Are you around Thursday?</blockquote></div>"#;
+        let parts = split_html_quote_keeping_signature(html);
+        assert!(parts.has_quote);
+        assert!(parts.has_signature);
+        assert!(parts.main.contains("Thursday works"));
+        assert!(!parts.main.contains("Are you around"));
+        assert!(parts.main.contains("Launchpad"));
     }
 
     #[test]

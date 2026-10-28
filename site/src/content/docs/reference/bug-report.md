@@ -25,6 +25,10 @@ mxr bug-report --since 2h
 mxr bug-report --no-sanitize
 ```
 
+`--full-logs` includes every log line from today instead of the last 100 (or 500 with `--verbose`). The report is still sanitized.
+
+`--no-sanitize` writes the report without redaction. mxr prints a warning to stderr before it generates anything, and says `(not sanitized)` on the saved-file line. stdout stays clean, so `--stdout` piping still works, and the command never prompts. Read the report before you share it: it can contain email addresses, names, message subjects and body text, and tokens.
+
 ## Included data
 
 - System details

@@ -323,7 +323,7 @@ When you need a shareable diagnostic bundle:
 mxr bug-report                         # writes a Markdown file
 mxr bug-report --stdout                # prints to stdout
 mxr bug-report --github                # opens a pre-filled GitHub issue
-mxr bug-report --full-logs             # include unredacted log tail
+mxr bug-report --full-logs             # include every log line from today (still sanitized)
 ```
 
 Or open the TUI Diagnostics screen and press `b` for one-click bug-report.

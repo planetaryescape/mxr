@@ -807,6 +807,96 @@ mod tests {
         assert!(label_ids.contains(&trash.id));
     }
 
+    /// Ingests one message from a denied sender that the provider filed as
+    /// sent (SENT flag set). `message_labels` are its provider label ids, and
+    /// `labels` is the account's label set. Returns the stored direction, the
+    /// stored flags and the provider ids of the labels the message ended with.
+    async fn ingest_denied_sent_message(
+        message_labels: Vec<String>,
+    ) -> (MessageDirection, MessageFlags, Vec<String>) {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let account_id = AccountId::new();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["user@example.com"],
+            )),
+        );
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let labels = vec![
+            make_test_label(&account_id, "Inbox", "INBOX"),
+            make_test_label(&account_id, "Sent", "SENT"),
+            make_test_label(&account_id, "Trash", "TRASH"),
+        ];
+        store
+            .set_screener_decision(&ScreenerDecision {
+                account_id: account_id.clone(),
+                sender_email: "denied@other.example".into(),
+                disposition: ScreenerDisposition::Deny,
+                route_label: None,
+                decided_at: chrono::Utc::now(),
+            })
+            .await
+            .unwrap();
+
+        let mut msg = make_test_envelope(&account_id, "sent-msg", message_labels);
+        msg.from.email = "denied@other.example".into();
+        msg.flags = MessageFlags::SENT;
+        let provider =
+            DeltaLabelProvider::new(account_id.clone(), vec![msg], labels.clone(), vec![]);
+        engine.sync_account(&provider).await.unwrap();
+
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, "sent-msg")
+            .await
+            .unwrap()
+            .unwrap();
+        let direction = store
+            .list_message_directions_by_ids(std::slice::from_ref(&msg_id))
+            .await
+            .unwrap()
+            .remove(&msg_id)
+            .unwrap();
+        let envelope = store.get_envelope(&msg_id).await.unwrap().unwrap();
+        let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
+        let mut provider_ids: Vec<String> = labels
+            .iter()
+            .filter(|label| label_ids.contains(&label.id))
+            .map(|label| label.provider_id.clone())
+            .collect();
+        provider_ids.sort();
+        (direction, envelope.flags, provider_ids)
+    }
+
+    #[tokio::test]
+    async fn imap_sent_folder_mail_from_a_denied_sender_is_outbound_and_still_trashed() {
+        // A folder named like "Projects/Sent" sets SENT by its name. The
+        // message is outbound for analytics, but its sender is not owned, so the
+        // deny decision still applies: read, out of the inbox, in TRASH.
+        let (direction, flags, provider_ids) =
+            ingest_denied_sent_message(vec!["INBOX".to_string()]).await;
+        assert_eq!(direction, MessageDirection::Outbound);
+        assert!(flags.contains(MessageFlags::READ));
+        assert_eq!(provider_ids, vec!["TRASH".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn gmail_send_as_mail_from_a_denied_sender_keeps_the_screener_routing() {
+        // Gmail labels send-as mail SENT. The deny routing it got before the
+        // direction rule still applies: read and TRASH, with the SENT label kept.
+        let (direction, flags, provider_ids) =
+            ingest_denied_sent_message(vec!["SENT".to_string()]).await;
+        assert_eq!(direction, MessageDirection::Outbound);
+        assert!(flags.contains(MessageFlags::READ));
+        assert_eq!(provider_ids, vec!["SENT".to_string(), "TRASH".to_string()]);
+    }
+
     #[tokio::test]
     async fn sync_ingest_routes_feed_screener_decision() {
         let store = Arc::new(Store::in_memory().await.unwrap());
@@ -917,6 +1007,64 @@ mod tests {
             directions.get(&own_id),
             Some(&MessageDirection::Outbound),
             "sender is the receiving account's own address"
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_sent_mail_from_an_unowned_sender_is_outbound() {
+        // Gmail send-as addresses are not registered in mxr, so From is not
+        // owned. The provider still filed the message as sent: that is outbound.
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let account_id = AccountId::new();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["me@x.com"],
+            )),
+        );
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+
+        let mut sent = make_test_envelope(&account_id, "sent-as-alias", vec!["SENT".to_string()]);
+        sent.from.email = "alias@send-as.example".to_string();
+        sent.flags = MessageFlags::SENT;
+        let mut received = make_test_envelope(&account_id, "received", vec!["INBOX".to_string()]);
+        received.from.email = "alias@send-as.example".to_string();
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![sent, received],
+            vec![inbox],
+            vec![],
+        );
+        engine.sync_account(&provider).await.unwrap();
+
+        let sent_id = store
+            .get_message_id_by_provider_id(&account_id, "sent-as-alias")
+            .await
+            .unwrap()
+            .unwrap();
+        let received_id = store
+            .get_message_id_by_provider_id(&account_id, "received")
+            .await
+            .unwrap()
+            .unwrap();
+        let directions = store
+            .list_message_directions_by_ids(&[sent_id.clone(), received_id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(directions.get(&sent_id), Some(&MessageDirection::Outbound));
+        assert_eq!(
+            directions.get(&received_id),
+            Some(&MessageDirection::Inbound),
+            "without the SENT flag an unowned sender is still inbound"
         );
     }
 

@@ -845,15 +845,10 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
-        let search_index = open_search_index(
-            &index_path,
-            &store,
-            mxr_reader::ReaderConfig {
-                html_command: config.render.html_command.clone(),
-                ..Default::default()
-            },
-        )
-        .await?;
+        // Indexing never runs `render.html_command`: a rebuild would spawn it
+        // once per HTML message. The built-in converter yields the same words.
+        let search_index =
+            open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default()).await?;
         let lexical_content_stale = std::sync::OnceLock::new();
         if let Some(path) = search_index.stale_content_path {
             let _ = lexical_content_stale.set(path);

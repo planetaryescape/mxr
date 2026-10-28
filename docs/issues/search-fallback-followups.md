@@ -20,8 +20,8 @@ Search indexes the reader's cleaned text, but rules do not. `RuleMessage` sets `
 
 Fix direction: decide whether rules should match the reader text, then route `RuleMessage` through `mxr_reader::clean` the same way the index does, and say so in the rules guide.
 
-## Changing html_command does not rebuild the index
+## Search uses the built-in HTML converter, not html_command
 
-The index cleans HTML with the `render.html_command` in effect when the daemon starts. Changing that setting does not mark the index stale, so existing mail keeps the old text until the next content-version bump or a manual `mxr doctor --reindex`. A configured command also runs once per HTML message during a rebuild, so a 50k-message rebuild starts one external process per message (`crates/daemon/src/state.rs`, `open_search_index` call in `AppState::new`).
+The index cleans HTML with the built-in converter even when `render.html_command` is set, because a rebuild would otherwise start one external process per HTML message (`crates/daemon/src/state.rs`, `open_search_index` call in `AppState::new`). For `html_command` users, a word the external renderer produces differently (table layout, entity handling) can read one way in the reader and match another way in search.
 
-Fix direction: include a fingerprint of the effective reader config in the content-version marker, or keep the index on the built-in renderer and document that search and the reader can differ for `html_command` users.
+Fix direction: only if this shows up in practice, run the external command in batches or cache its output per body hash, and include the setting in the content-version marker.

@@ -854,6 +854,16 @@ impl AppState {
         }
         let (search, search_worker) = SearchServiceHandle::start(search_index.index);
         runtime_tasks.set_search_worker(search_worker);
+        // A stale or short index is incomplete until the startup rebuild
+        // finishes. This is the same condition startup maintenance rebuilds on,
+        // so a failed rebuild on an earlier start is not advertised as Ready.
+        let expected_docs = store.count_all_messages().await.unwrap_or_default();
+        let indexed_docs = search.num_docs().await.unwrap_or_default();
+        if lexical_content_stale.get().is_some()
+            || (expected_docs != 0 && indexed_docs != expected_docs as u64)
+        {
+            search.mark_incomplete();
+        }
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(store.clone(), &data_dir, config.search.semantic.clone()),
             background_db.clone(),

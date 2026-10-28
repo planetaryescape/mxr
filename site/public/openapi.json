@@ -40795,7 +40795,8 @@
         "type": "string",
         "enum": [
           "index_stopped",
-          "index_rebuilding"
+          "index_rebuilding",
+          "index_incomplete"
         ]
       },
       "SearchExplain": {

@@ -79,7 +79,7 @@ Tantivy indexes:
 - sender name/email
 - recipient email (`to`, `cc`, `bcc`)
 - snippet
-- cleaned body text: the reader's pipeline (`mxr_reader::clean`) with quote collapsing off. Quoted earlier messages stay searchable, so an inline reply or a quote-only message is findable by its words. HTML markup, styles, tracking URLs, signatures and boilerplate do not match. If cleaning panics or leaves nothing, the plain text (or tag-stripped HTML) is indexed instead. Rules matching still uses the raw body text.
+- message text: `text_plain` as stored, and `text_html` converted to text by the reader's built-in converter. Markup, CSS and scripts do not match. Quoted replies and signatures are searchable, because the index runs no removal steps: each one can drop words the reader shows. If the converter panics on a malformed part, that part is indexed as tag-stripped text and the rebuild logs a count. Rules matching still uses the raw body text.
 - attachment filenames
 - RFC 822 Message-ID header
 - List-Id header

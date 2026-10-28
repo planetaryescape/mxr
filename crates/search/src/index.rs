@@ -26,54 +26,50 @@ pub struct SearchIndex {
     pub(crate) clean_fallbacks: Arc<AtomicU64>,
 }
 
-/// The cleaning search indexes. It is the reader's pipeline with quote
-/// collapsing off: quoted replies stay searchable, while HTML markup, CSS,
-/// tracking links, signatures and boilerplate do not match. It never runs
-/// `render.html_command`, since a rebuild would spawn it once per message.
-fn index_reader_config() -> ReaderConfig {
+/// The reader's HTML conversion with every removal step off. Quoted replies,
+/// signatures and boilerplate stay in the text: each removal can drop words the
+/// reader shows. Markup, CSS and scripts are still dropped by the conversion.
+fn conversion_only_config() -> ReaderConfig {
     ReaderConfig {
         html_command: None,
         collapse_quotes: false,
-        ..ReaderConfig::default()
+        strip_signatures: false,
+        strip_boilerplate: false,
+        strip_tracking: false,
     }
 }
 
-/// The body text search matches for this message. Cleaning is wrapped in
-/// `catch_unwind` because html2text panics on some malformed tables; a message
-/// that panics is still indexed from its plain text or stripped HTML.
-fn indexed_body_text(body: &MessageBody, clean_fallbacks: &AtomicU64) -> String {
-    let plain = body
-        .text_plain
-        .as_deref()
-        .filter(|text| !text.trim().is_empty());
-    // Mirrors the reader view, which prefers the plain part when it has text.
-    let (text, html) = match plain {
-        Some(text) => (Some(text), None),
-        None => (None, body.text_html.as_deref()),
-    };
-    let cleaned = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        clean(text, html, &index_reader_config()).content
-    }));
-    match cleaned {
-        Ok(content) if !content.trim().is_empty() => content,
-        // Cleaning left nothing to index, so index the message text as written.
-        Ok(_) => plain_fallback_text(body),
-        Err(_) => {
-            clean_fallbacks.fetch_add(1, Ordering::Relaxed);
-            plain_fallback_text(body)
+/// The values added to the body field for a message: `text_plain` as stored,
+/// and `text_html` converted to text. A part that is itself an HTML document is
+/// converted rather than indexed as markup. The reader's built-in converter is
+/// used, never `render.html_command`.
+fn indexed_body_parts(body: &MessageBody, clean_fallbacks: &AtomicU64) -> Vec<String> {
+    let mut parts = Vec::with_capacity(2);
+    if let Some(plain) = body.text_plain.as_deref() {
+        parts.push(convert_part(plain, false, clean_fallbacks));
+    }
+    if let Some(html) = body.text_html.as_deref() {
+        parts.push(convert_part(html, true, clean_fallbacks));
+    }
+    parts.retain(|part| !part.trim().is_empty());
+    parts
+}
+
+/// Converts one part with the reader's pipeline. A panic in html2text, which
+/// it hits on some malformed tables, falls back to tag stripping and is counted.
+fn convert_part(text: &str, as_html: bool, clean_fallbacks: &AtomicU64) -> String {
+    let config = conversion_only_config();
+    let converted = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        if as_html {
+            clean(None, Some(text), &config).content
+        } else {
+            clean(Some(text), None, &config).content
         }
-    }
-}
-
-fn plain_fallback_text(body: &MessageBody) -> String {
-    match body
-        .text_plain
-        .as_deref()
-        .filter(|text| !text.trim().is_empty())
-    {
-        Some(text) => text.to_string(),
-        None => strip_html_tags(body.text_html.as_deref().unwrap_or("")),
-    }
+    }));
+    converted.unwrap_or_else(|_| {
+        clean_fallbacks.fetch_add(1, Ordering::Relaxed);
+        strip_html_tags(text)
+    })
 }
 
 /// Text between tags, with `<style>` and `<script>` contents dropped. Used only
@@ -422,7 +418,9 @@ impl SearchIndex {
             doc.add_text(s.labels, label.to_lowercase());
         }
 
-        doc.add_text(s.body_text, indexed_body_text(body, &self.clean_fallbacks));
+        for part in indexed_body_parts(body, &self.clean_fallbacks) {
+            doc.add_text(s.body_text, part);
+        }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
         }
@@ -817,6 +815,8 @@ mod reader_text_tests {
 <div class="gmail_signature">sigwordzeta</div>
 </body></html>"#;
 
+    const SCRIPT_MESSAGE: &str = r#"<p>Visible tail</p><script>var zzscriptword = 1;</script><div class="zzclassword">x</div><zztagword>tail</zztagword>"#;
+
     /// html2text panics on this table (unchecked column arithmetic).
     const PANICKING_HTML: &str = r#"<table><tr><td colspan="18446744073709551615">tablewordalpha</td><td>tablewordbeta</td></tr></table>"#;
 
@@ -824,31 +824,47 @@ mod reader_text_tests {
     fn html_only_message_matches_visible_words_not_markup() {
         let (index, id) = index_one(None, Some(HTML_MESSAGE));
 
-        assert_eq!(search_ids(&index, "visiblebananaword"), vec![id]);
+        assert_eq!(search_ids(&index, "body:visiblebananaword"), vec![id]);
         for hidden in ["cssproperty", "mxrclassword", "quuxtoken", "track"] {
             assert!(
-                search_ids(&index, hidden).is_empty(),
+                search_ids(&index, &format!("body:{hidden}")).is_empty(),
                 "{hidden} is markup and must not match"
             );
         }
     }
 
     #[test]
-    fn html_signature_does_not_match_but_quoted_reply_does() {
-        let (index, id) = index_one(None, Some(HTML_MESSAGE));
+    fn script_contents_class_names_and_tag_names_do_not_match() {
+        let (index, id) = index_one(None, Some(SCRIPT_MESSAGE));
 
-        assert!(search_ids(&index, "sigwordzeta").is_empty());
-        assert_eq!(search_ids(&index, "earlierquotedword"), vec![id]);
+        assert_eq!(search_ids(&index, "body:tail"), vec![id]);
+        for hidden in ["zzscriptword", "zzclassword", "zztagword"] {
+            assert!(
+                search_ids(&index, &format!("body:{hidden}")).is_empty(),
+                "{hidden} is code or markup and must not match"
+            );
+        }
     }
 
     #[test]
-    fn plain_text_quoted_block_stays_searchable() {
+    fn quoted_reply_and_signature_in_html_are_searchable() {
+        let (index, id) = index_one(None, Some(HTML_MESSAGE));
+
+        assert_eq!(
+            search_ids(&index, "body:earlierquotedword"),
+            vec![id.clone()]
+        );
+        assert_eq!(search_ids(&index, "body:sigwordzeta"), vec![id]);
+    }
+
+    #[test]
+    fn plain_text_quoted_block_is_searchable() {
         let text =
             "Fresh plainwordalpha reply.\n\n> quotedplainword from before\n> more quoted text";
         let (index, id) = index_one(Some(text), None);
 
-        assert_eq!(search_ids(&index, "plainwordalpha"), vec![id.clone()]);
-        assert_eq!(search_ids(&index, "quotedplainword"), vec![id]);
+        assert_eq!(search_ids(&index, "body:plainwordalpha"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "body:quotedplainword"), vec![id]);
     }
 
     #[test]
@@ -856,7 +872,7 @@ mod reader_text_tests {
         let text = "Intro.\n> Can we use ultramarine?\nYes.";
         let (index, id) = index_one(Some(text), None);
 
-        assert_eq!(search_ids(&index, "ultramarine"), vec![id]);
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
     }
 
     #[test]
@@ -864,7 +880,24 @@ mod reader_text_tests {
         let text = "On Tue, Alice wrote:\n> ultramarine";
         let (index, id) = index_one(Some(text), None);
 
-        assert_eq!(search_ids(&index, "ultramarine"), vec![id]);
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn confidential_line_does_not_hide_later_words() {
+        let text = "Intro.\n> This email is confidential.\n> ultramarine\nYes, cobalt.";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "body:cobalt"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn html_part_words_are_indexed_alongside_a_shorter_plain_part() {
+        let html = r#"<p>Intro ultramarine.</p><div class="gmail_signature">Sam</div>"#;
+        let (index, id) = index_one(Some("Intro."), Some(html));
+
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
     }
 
     #[test]
@@ -876,15 +909,17 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn malformed_table_that_panics_html2text_is_indexed_from_fallback() {
-        // Both shapes: HTML only (tag-stripped fallback) and with a plain part.
+    fn malformed_table_that_panics_html2text_still_indexes() {
+        // HTML only: the HTML part falls back to tag stripping.
         let (index, id) = index_one(None, Some(PANICKING_HTML));
-        assert_eq!(search_ids(&index, "tablewordalpha"), vec![id]);
+        assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id]);
         assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
 
+        // With a plain part: the plain part indexes as stored, the HTML part
+        // falls back.
         let (index, id) = index_one(Some("plain tablewordbeta"), Some(PANICKING_HTML));
-        assert_eq!(search_ids(&index, "tablewordbeta"), vec![id]);
-        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 0);
+        assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
+        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
     }
 
     #[test]
@@ -901,16 +936,19 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn clean_index_text_drops_markup_and_keeps_visible_text() {
+    fn indexed_parts_keep_quotes_and_signatures_and_drop_markup() {
         let envelope = TestEnvelopeBuilder::new().build();
         let counter = AtomicU64::new(0);
-        let text = indexed_body_text(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
+        let parts = indexed_body_parts(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
+        let text = parts.join("\n");
 
         assert!(text.contains("visiblebananaword"));
         assert!(text.contains("earlierquotedword"));
+        assert!(text.contains("sigwordzeta"));
         assert!(!text.contains('<'));
         assert!(!text.contains("cssproperty"));
         assert!(!text.contains("quuxtoken"));
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
     }
 
     /// Debug-build timing for the upgrade cost: run with
@@ -935,7 +973,7 @@ mod reader_text_tests {
         let counter = AtomicU64::new(0);
         let clean_started = Instant::now();
         for (_, body) in &envelopes {
-            std::hint::black_box(indexed_body_text(body, &counter));
+            std::hint::black_box(indexed_body_parts(body, &counter));
         }
         let clean_elapsed = clean_started.elapsed();
 
@@ -948,7 +986,7 @@ mod reader_text_tests {
         let index_elapsed = index_started.elapsed();
 
         eprintln!(
-            "reindex timing, {COUNT} messages, debug build: cleaned index {index_elapsed:?} (clean alone {clean_elapsed:?})"
+            "reindex timing, {COUNT} messages, debug build: indexed {index_elapsed:?} (conversion alone {clean_elapsed:?})"
         );
         assert_eq!(index.num_docs(), COUNT as u64);
     }

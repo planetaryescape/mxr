@@ -16,6 +16,9 @@ pub enum SearchDegradedReason {
     IndexStopped,
     /// The index is being wiped and rebuilt from SQLite.
     IndexRebuilding,
+    /// The last rebuild failed or was interrupted, so the index holds only
+    /// part of the mail until a rebuild finishes.
+    IndexIncomplete,
 }
 
 impl SearchDegradedReason {
@@ -23,6 +26,7 @@ impl SearchDegradedReason {
         match self {
             Self::IndexStopped => "Search is limited while the index is unavailable",
             Self::IndexRebuilding => "Search is limited while the index is rebuilding",
+            Self::IndexIncomplete => "Search is limited because the last index rebuild failed",
         }
     }
 
@@ -30,6 +34,9 @@ impl SearchDegradedReason {
         match self {
             Self::IndexStopped => "Restart the daemon or run `mxr doctor --reindex`.",
             Self::IndexRebuilding => "Full search returns when the rebuild finishes.",
+            Self::IndexIncomplete => {
+                "Run `mxr doctor --reindex` or restart the daemon to retry the rebuild."
+            }
         }
     }
 }

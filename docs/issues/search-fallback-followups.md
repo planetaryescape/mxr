@@ -16,7 +16,7 @@ Fix direction: for a bare term containing `@`, also accept `LOWER(m.from_email) 
 
 ## Rules still match the raw body text
 
-Search indexes the reader's cleaned text, but rules do not. `RuleMessage` sets `body_text` from `text_plain` only, and its `MessageView` implementation reads `text_plain` or `text_html` for other body fields (`crates/daemon/src/loops.rs:1854` and `:1899`). A rule on body text can match signatures or markup that search now ignores. Changing what rules match is a separate behaviour change, so it stays out of the reader-text change.
+Search indexes the reader's cleaned text, but rules do not. `RuleMessage` sets `body_text` from `text_plain` only, and its `MessageView` implementation reads `text_plain` or `text_html` for other body fields (`crates/daemon/src/loops.rs:1854` and `:1899`). A rule on body text can match words that search does not index, such as markup and script contents. Changing what rules match is a separate behaviour change, so it stays out of the reader-text change.
 
 Fix direction: decide whether rules should match the reader text, then route `RuleMessage` through `mxr_reader::clean` the same way the index does, and say so in the rules guide.
 
@@ -28,7 +28,7 @@ Fix direction: only if this shows up in practice, run the external command in ba
 
 ## The reader's HTML conversion panics on malformed tables
 
-html2text 0.17.4 panics on some malformed tables, for example `<td colspan="18446744073709551615">` (unchecked column arithmetic). The search index now catches the panic and indexes the message from its plain text or tag-stripped HTML (`crates/search/src/index.rs`, `indexed_body_text`). The reader display path does not, so the same message panics there. Verified by calling `mxr_reader::clean` on the input: it panics.
+html2text 0.17.4 panics on some malformed tables, for example `<td colspan="18446744073709551615">` (unchecked column arithmetic). The search index now catches the panic and indexes that part as tag-stripped text (`crates/search/src/index.rs`, `convert_part`). The reader display path does not, so the same message panics there. Verified by calling `mxr_reader::clean` on the input: it panics.
 
 Display call sites that reach the built-in converter with HTML bodies, not fixed here:
 

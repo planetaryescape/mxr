@@ -14758,7 +14758,7 @@ export interface components {
             searched_fields: string[];
         };
         /** @enum {string} */
-        SearchDegradedReason: "index_stopped" | "index_rebuilding";
+        SearchDegradedReason: "index_stopped" | "index_rebuilding" | "index_incomplete";
         SearchExplain: {
             /** Format: int32 */
             dense_candidates: number;

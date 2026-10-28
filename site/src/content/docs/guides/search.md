@@ -21,16 +21,17 @@ mxr records ask "dell receipt"
 
 ## What a search matches
 
-A search matches the words in a message's text. Quoted replies stay searchable,
-so a phrase you only find inside an earlier message in the thread still matches.
-HTML markup, styles, tracking links, signatures and boilerplate do not match.
+A search matches the words in a message's text. HTML markup, styles and scripts
+are not indexed. Quoted replies and signatures are searchable, so a phrase you
+only find inside an earlier message in the thread still matches.
 `has:youtube`, `has:link` and the other `has:` filters still read the raw
 message, so they keep finding links inside HTML.
 
 After you upgrade, the first start rebuilds the search index once, from the local
 store, because the indexed text changed. Until the rebuild finishes, search
-answers from a limited local search, and the result says so. You don't need to run
-`mxr doctor --reindex`.
+answers from a limited local search, and the result says so. If that rebuild
+fails, search stays limited and says the last rebuild failed. Run
+`mxr doctor --reindex` or restart the daemon to retry.
 
 ## Common patterns
 

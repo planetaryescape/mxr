@@ -2,7 +2,7 @@ use crate::{SearchIndex, SearchPage};
 use mxr_core::id::MessageId;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tantivy::query::Query;
 use tokio::sync::{mpsc, oneshot};
@@ -25,6 +25,10 @@ pub struct SearchUpdateBatch {
 pub struct SearchServiceHandle {
     tx: mpsc::Sender<SearchCommand>,
     rebuilds: Arc<AtomicU64>,
+    /// Set while the index is known to hold only part of the mail: from the
+    /// start of a rebuild until one finishes, and from startup when the index
+    /// on disk is stale or short. A failed rebuild leaves it set.
+    incomplete: Arc<AtomicBool>,
     clean_fallbacks: Arc<AtomicU64>,
 }
 
@@ -39,13 +43,26 @@ pub enum IndexAvailability {
     /// The index is being wiped and refilled from SQLite, so it holds part of
     /// the mail.
     Rebuilding,
+    /// The last rebuild failed or was interrupted, so the index holds part of
+    /// the mail. It stays here until a rebuild finishes.
+    Incomplete,
 }
 
-/// Held while the index is wiped and refilled. Dropping it ends the rebuild,
-/// including when the rebuild fails or its future is cancelled.
+/// Held while the index is wiped and refilled. Dropping it ends the rebuild.
+/// Only [`RebuildGuard::finish`] makes the index complete again; a rebuild that
+/// fails, or whose future is cancelled, drops the guard and leaves it
+/// [`IndexAvailability::Incomplete`].
 #[must_use = "the index counts as rebuilding only while this guard is alive"]
 pub struct RebuildGuard {
     rebuilds: Arc<AtomicU64>,
+    incomplete: Arc<AtomicBool>,
+}
+
+impl RebuildGuard {
+    /// Call once the index holds every message. Ends the rebuild as complete.
+    pub fn finish(self) {
+        self.incomplete.store(false, Ordering::Release);
+    }
 }
 
 // One word holds both the rebuilds in progress (low bits) and an epoch (high
@@ -188,6 +205,7 @@ impl SearchServiceHandle {
             Self {
                 tx,
                 rebuilds: Arc::new(AtomicU64::new(0)),
+                incomplete: Arc::new(AtomicBool::new(false)),
                 clean_fallbacks,
             },
             handle,
@@ -198,10 +216,20 @@ impl SearchServiceHandle {
     /// [`IndexAvailability::Rebuilding`] in the meantime and can answer from
     /// SQLite instead of from a half-filled index.
     pub fn begin_rebuild(&self) -> RebuildGuard {
+        // Set before the rebuild count, so a reader that sees the count also
+        // sees the index as incomplete.
+        self.incomplete.store(true, Ordering::Release);
         self.rebuilds.fetch_add(START_REBUILD, Ordering::AcqRel);
         RebuildGuard {
             rebuilds: Arc::clone(&self.rebuilds),
+            incomplete: Arc::clone(&self.incomplete),
         }
+    }
+
+    /// Marks the index incomplete without a rebuild running, for an index found
+    /// stale or short at startup. A rebuild that finishes clears it.
+    pub fn mark_incomplete(&self) {
+        self.incomplete.store(true, Ordering::Release);
     }
 
     /// Bodies indexed from their fallback text since the last call, because
@@ -218,6 +246,8 @@ impl SearchServiceHandle {
         let state = self.rebuilds.load(Ordering::Acquire);
         if state & REBUILD_MASK != 0 {
             IndexAvailability::Rebuilding
+        } else if self.incomplete.load(Ordering::Acquire) {
+            IndexAvailability::Incomplete
         } else {
             IndexAvailability::Ready {
                 epoch: state >> REBUILD_BITS,
@@ -461,7 +491,7 @@ mod tests {
         assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
         assert!(!handle.still_ready(epoch));
 
-        drop(guard);
+        guard.finish();
         let after = ready_epoch(&handle).unwrap();
         // A query that straddled the rebuild must not pass for a clean one,
         // even though the index looks ready again.
@@ -478,7 +508,36 @@ mod tests {
         let second = handle.begin_rebuild();
         drop(first);
         assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
-        drop(second);
+        second.finish();
+        assert!(matches!(
+            handle.availability(),
+            IndexAvailability::Ready { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_that_is_dropped_unfinished_stays_incomplete_until_one_finishes() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        drop(handle.begin_rebuild());
+        assert_eq!(handle.availability(), IndexAvailability::Incomplete);
+        assert!(handle.num_docs().await.is_ok());
+
+        handle.begin_rebuild().finish();
+        assert!(matches!(
+            handle.availability(),
+            IndexAvailability::Ready { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_index_marked_incomplete_at_startup_is_not_ready_until_rebuilt() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        handle.mark_incomplete();
+        assert_eq!(handle.availability(), IndexAvailability::Incomplete);
+
+        handle.begin_rebuild().finish();
         assert!(matches!(
             handle.availability(),
             IndexAvailability::Ready { .. }

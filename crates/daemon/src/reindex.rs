@@ -41,7 +41,9 @@ async fn reindex_in_batches(
 ) -> Result<u32, MxrError> {
     // Searches answer from SQLite while the index is wiped and refilled,
     // instead of from the part of it that exists so far.
-    let _rebuilding = search.begin_rebuild();
+    // Only a complete rebuild clears the incomplete state. A rebuild that fails
+    // part way drops this guard unfinished, so search keeps answering from SQLite.
+    let rebuilding = search.begin_rebuild();
     // Count only the bodies this rebuild falls back on, not earlier syncs.
     search.take_clean_fallbacks();
     let total = store
@@ -123,6 +125,7 @@ async fn reindex_in_batches(
         .await
         .map_err(|e| MxrError::Store(e.to_string()))?;
 
+    rebuilding.finish();
     Ok(indexed)
 }
 

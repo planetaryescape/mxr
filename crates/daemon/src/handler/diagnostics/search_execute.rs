@@ -103,6 +103,7 @@ async fn run_search(
             }
             IndexAvailability::Stopped => SearchDegradedReason::IndexStopped,
             IndexAvailability::Rebuilding => SearchDegradedReason::IndexRebuilding,
+            IndexAvailability::Incomplete => SearchDegradedReason::IndexIncomplete,
         };
         return answer_without_index(state, query, options, reason, limited_ok).await;
     }

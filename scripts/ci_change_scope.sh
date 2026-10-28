@@ -83,6 +83,35 @@ classify_path() {
   esac
 }
 
+# A release-please merge bumps the workspace version in Cargo.toml and every
+# workspace crate's entry in Cargo.lock (release-please-config.json). Nothing
+# compiles differently, so those manifests alone don't start the Rust suites.
+# Compared with the versions blanked, so a dependency, feature or checksum
+# change in the same diff still counts.
+normalize_lock() {
+  awk 'BEGIN { RS = ""; ORS = "\n\n" }
+    !/\nsource = / && /\nname = "mxr(-[a-z0-9-]+)?"\n/ { sub(/\nversion = "[^"]*"/, "\nversion = \"*\"") }
+    { print }'
+}
+
+normalize_manifest() {
+  awk '/^\[/ { section = $0 }
+    (section == "[package]" || section == "[workspace.package]") && /^version[[:space:]]*=[[:space:]]*"/ { $0 = "version = \"*\"" }
+    { print }'
+}
+
+version_only_manifest() {
+  local path="$1" normalize before after
+  case "$path" in
+    Cargo.lock) normalize=normalize_lock ;;
+    Cargo.toml | crates/*/Cargo.toml) normalize=normalize_manifest ;;
+    *) return 1 ;;
+  esac
+  before="$(git show "${base}:${path}")" || return 1
+  after="$(git show "${head}:${path}")" || return 1
+  [[ "$("$normalize" <<<"$before")" == "$("$normalize" <<<"$after")" ]]
+}
+
 if [[ "$event_name" == "workflow_dispatch" ]]; then
   rust=true
   web=true
@@ -133,6 +162,9 @@ while IFS= read -r -d '' status; do
       ;;
     *)
       IFS= read -r -d '' path
+      if [[ "$status" == M ]] && version_only_manifest "$path"; then
+        continue
+      fi
       classify_path "$path"
       ;;
   esac

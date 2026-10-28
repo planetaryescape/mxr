@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createTcpServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OwnedProcesses, cleanupManifest } from "./e2e-owned-processes.mjs";
@@ -41,6 +42,8 @@ async function main() {
   prepareRuntime();
   mkdirSync(dirname(manifestPath), { recursive: true });
   await cleanupManifest(manifestPath);
+  await assertPortFree(bridgePort, "bridge", "MXR_E2E_BRIDGE_PORT");
+  await assertPortFree(controlPort, "control", "MXR_E2E_CONTROL_PORT");
   owned = new OwnedProcesses(manifestPath);
   daemon = startDaemon();
   watchDaemon(daemon);
@@ -117,6 +120,29 @@ type = "fake"
 function startupCut() {
   const at = new Date(Date.now() - 60_000);
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * A daemon whose bridge port is taken keeps running without its bridge, and
+ * the health check below then passes against whatever holds the port: often
+ * another worktree's e2e daemon, which takes the same token. The whole suite
+ * would run against that daemon's mailbox, and stopping ours would never take
+ * the bridge offline. Refuse to start instead.
+ */
+async function assertPortFree(port, label, variable) {
+  await new Promise((resolvePort, reject) => {
+    const probe = createTcpServer();
+    probe.once("error", (error) => {
+      reject(
+        error.code === "EADDRINUSE"
+          ? new Error(
+              `the e2e ${label} port 127.0.0.1:${port} is already in use; stop what holds it or set ${variable}`,
+            )
+          : error,
+      );
+    });
+    probe.listen(port, "127.0.0.1", () => probe.close(resolvePort));
+  });
 }
 
 function startDaemon() {

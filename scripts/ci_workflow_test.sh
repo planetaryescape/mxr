@@ -14,6 +14,12 @@ if ! grep -Fq 'libasound2-dev libdbus-1-dev pkg-config' <<<"$sqlx_block"; then
   exit 1
 fi
 
+concurrency_block="$(sed -n '/^concurrency:/,/^env:/p' "$workflow")"
+if ! grep -Fq 'group: ci-${{ github.event.pull_request.number || github.sha }}' <<<"$concurrency_block"; then
+  echo "CI must group main pushes by commit so a later push never cancels a main run." >&2
+  exit 1
+fi
+
 changes_block="$(sed -n '/^  changes:/,/^  deny:/p' "$workflow")"
 classifier_command="scripts/ci_change_scope.sh \"\${EVENT_NAME}\" \"\${base}\" \"\${head}\" >> \"\${GITHUB_OUTPUT}\""
 if ! grep -Fq "$classifier_command" <<<"$changes_block"; then

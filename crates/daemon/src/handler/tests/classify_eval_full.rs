@@ -26,7 +26,7 @@ use mxr_provider_fake::fixtures::scenarios::{SELF_EMAIL, WORK_EMAIL};
 use mxr_provider_fake::FakeProvider;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// The sync page the demo is fed through. The daemon pages a demo by the
 /// provider's own page size; a larger page only changes how much post-sync
@@ -70,6 +70,32 @@ fn account(email: &str, name: &str) -> Account {
 /// The demo is dated, and its to-dos and records are found, as of today at
 /// noon UTC ([`pinned_now`]), not the moment the run starts.
 async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
+    let (state, personal, work, _) = demo_state_timed(total).await;
+    (state, personal, work)
+}
+
+/// Lines with this prefix are a markdown table the CI job copies into its
+/// summary (`.github/workflows/ci.yml`, job `classifier-eval`), so a slow run
+/// shows which stage was slow without opening the log.
+const TIMING_PREFIX: &str = "classify-eval-timing: ";
+
+fn timing_row(stage: &str, pages: &str, sync: Option<Duration>, wall: Duration) {
+    let sync_secs = sync.map_or(String::new(), |sync| format!("{:.1}", sync.as_secs_f64()));
+    let other_secs = wall.saturating_sub(sync.unwrap_or_default()).as_secs_f64();
+    eprintln!(
+        "{TIMING_PREFIX}| {stage} | {pages} | {sync_secs} | {other_secs:.1} | {:.1} |",
+        wall.as_secs_f64()
+    );
+}
+
+/// [`demo_state`], printing a [`TIMING_PREFIX`] row per stage, and the time
+/// spent inside `sync_account_with_outcome` for both accounts.
+async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId, Duration) {
+    let mut total_sync = Duration::ZERO;
+    eprintln!(
+        "{TIMING_PREFIX}| Stage | Pages | Sync (s) | Classify and other work (s) | Wall (s) |"
+    );
+    eprintln!("{TIMING_PREFIX}|---|---|---|---|---|");
     let personal = account(SELF_EMAIL, "Alex Demo");
     let work = account(WORK_EMAIL, "Alex Work");
     let now = pinned_now();
@@ -135,11 +161,20 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
             }
         }
         eprintln!("synced and classified {} in {:?}", id, started.elapsed());
+        timing_row(
+            &format!("sync and classify {id}"),
+            &pages.to_string(),
+            Some(sync_time),
+            started.elapsed(),
+        );
+        total_sync += sync_time;
     }
+    let started = Instant::now();
     crate::loops::run_analytics_repair(&state, &personal.id).await;
     state.store.refresh_contacts().await.unwrap();
+    timing_row("analytics repair and contacts", "", None, started.elapsed());
     assert_directions_are_known(&state).await;
-    (state, personal.id, work.id)
+    (state, personal.id, work.id, total_sync)
 }
 
 /// Today at 12:00 UTC. A demo bill is due a whole day ("due by Friday 24
@@ -295,12 +330,20 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
 #[ignore = "builds the whole 50,000-message demo; CI's Classifier Eval job runs it"]
 async fn the_full_set_is_graded_on_the_whole_demo() {
     let started = Instant::now();
-    let (state, _, _) = demo_state(50_000).await;
+    let (state, _, _, sync) = demo_state_timed(50_000).await;
     let built = started.elapsed();
     let (summary, mismatches) = eval(&state, None, ClassifyEvalSetData::Full).await;
+    let graded = started.elapsed() - built;
+    eprintln!("full-set eval: built and classified the demo in {built:?}, graded in {graded:?}");
+    timing_row("reconcile and grade", "", None, graded);
+    let elapsed = started.elapsed();
+    timing_row("whole test", "", Some(sync), elapsed);
+    let work_per_sync = work_per_sync(sync, elapsed);
+    eprintln!("{TIMING_PREFIX}");
     eprintln!(
-        "full-set eval: built and classified the demo in {built:?}, graded in {:?}",
-        started.elapsed() - built
+        "{TIMING_PREFIX}Classify and other work took {work_per_sync:.1} times the sync time \
+         (budget {WORK_PER_SYNC_BUDGET:.0}). The sync time scales with the runner, so a slow \
+         runner moves this ratio far less than a slower classifier does."
     );
     assert_eq!(summary.set, ClassifyEvalSetData::Full);
     assert_eq!(summary.message, None);
@@ -315,7 +358,34 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
     emit_ask_diagnostics(&state, &summary, &mismatches).await;
     classify_eval_floor::check("full", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
+    // Checked after the snapshot, so a run that is both slower and wrong
+    // reports the wrong answers first.
+    assert!(
+        work_per_sync <= WORK_PER_SYNC_BUDGET,
+        "classify and other work took {work_per_sync:.1} times the sync time, over the \
+         budget of {WORK_PER_SYNC_BUDGET:.0}: the classifier, repair or grading got slower \
+         than the sync it follows. If sync itself got faster, re-measure and lower the budget"
+    );
 }
+
+/// Everything but sync (post-sync classification, analytics repair,
+/// reconcile, grading) as a multiple of the time spent syncing.
+///
+/// The job's wall time can't tell a slow runner from a slow classifier: on
+/// 2026-10-28 this test took 9 minutes on main and 22 on a PR that did not
+/// touch the classifier, and compile, sync and classification all slowed by 2
+/// to 3 times. Sync runs on the same runner in the same process and is not
+/// classifier code, so it is the yardstick. Estimated from that day's CI logs,
+/// the ratio was 13 to 14 on main's runners and about 10 on the slow one; on a
+/// heavily loaded laptop it was 16.2.
+fn work_per_sync(sync: Duration, elapsed: Duration) -> f64 {
+    elapsed.saturating_sub(sync).as_secs_f64() / sync.as_secs_f64().max(f64::EPSILON)
+}
+
+/// Roughly twice the usual [`work_per_sync`] ratio: on a usual runner a change
+/// that doubles the classification work per synced email fails, and no runner
+/// measured so far came near it.
+const WORK_PER_SYNC_BUDGET: f64 = 25.0;
 
 #[tokio::test]
 async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart() {

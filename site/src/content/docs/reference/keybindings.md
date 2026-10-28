@@ -209,6 +209,7 @@ In the mail list, the reader, the sidebar and every mode.
 | `g Y` | Activity log |
 | `g L` | Daemon logs |
 | `g C` | Settings |
+| `g n` | Go to Snoozed |
 | `g #` | Go to Trash |
 | `g !` | Go to Spam |
 | `g q` | Reply later |
@@ -287,6 +288,7 @@ Inbox, labels and saved searches.
 | `Ctrl+u`, `PageUp` | Half page up |
 | `→`, `o`, `Enter` | Open conversation |
 | `←`, `h` | Go to sidebar |
+| `w` | Wake: bring it back now |
 | `Esc` | Clear selection, then close |
 | `Ctrl+f` | Filter this list |
 | `S` | Show or hide signatures |
@@ -542,6 +544,7 @@ The briefing: the latest digest, one line per source, with what arrived since be
 | `L` | Open the link |
 | `y` | Copy the one-time code |
 | `o` | Open the email |
+| `Space` | Peek at this update under its line |
 | `s` | Pin or unpin this source's latest email |
 | `Esc` | Dismiss the hint |
 | `X` | Move to… |
@@ -1507,6 +1510,7 @@ The emails behind Now's arrivals line.
 
 | Key | Action |
 |-----|--------|
+| `w` | Wake: bring it back now |
 | `Esc`, `q` | Close |
 | `j`, `↓` | Move down |
 | `k`, `↑` | Move up |
@@ -1674,7 +1678,7 @@ Work on every page except while typing in a field or compose.
 | `g Y` | Activity log |  |
 | `g L` | Daemon logs |  |
 | `g C` | Settings | The TUI opens its Accounts screen, where its settings live; Edit config is in its palette |
-| `g n` | Go to Snoozed | The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes |
+| `g n` | Go to Snoozed |  |
 | `g #` | Go to Trash |  |
 | `g !` | Go to Spam |  |
 | `g q` | Reply later |  |
@@ -1735,7 +1739,7 @@ With a conversation open beside the list, the reader's view keys work from here 
 | `Ctrl+U`, `PageUp` | Half page up |  |
 | `Enter`, `o`, `ArrowRight` | Open conversation |  |
 | `h`, `ArrowLeft` | Go to sidebar |  |
-| `w` | This list's row action | The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys |
+| `w` | Wake: bring it back now |  |
 | `x` | Select and move down |  |
 | `V` | Visual line mode |  |
 | `* a` | Select all |  |
@@ -1990,7 +1994,7 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `L` | Open the link |  |
 | `y` | Copy the one-time code |  |
 | `o` | Open the email |  |
-| `Space` | Peek at this update under its line | The TUI shows each update's details on its line, so there is nothing to peek at |
+| `Space` | Peek at this update under its line |  |
 | `s` | Pin or unpin this source's latest email |  |
 | `Esc` | Dismiss the hint |  |
 

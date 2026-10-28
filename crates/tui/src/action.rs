@@ -77,6 +77,12 @@ pub enum Action {
     /// as pages.
     GoToTrash,
     GoToSpam,
+    /// `g n`: snoozed mail, waking soonest first (`Request::ListSnoozed`).
+    OpenSnoozed,
+    /// `w`: wake it now. In Snoozed the lit conversation comes back to the
+    /// inbox; in the reply queue the lit message leaves the queue. Either
+    /// undoes a Not now (`b`).
+    Wake,
     OpenSubscriptions,
     OpenOwedReplies,
     OpenDesk,
@@ -145,6 +151,8 @@ pub enum Action {
     UpdatesOpenLink,
     /// `y` on Updates: copy the line's one-time code.
     UpdatesCopyCode,
+    /// Space on Updates: open or close the lit line's details under it.
+    UpdatesPeek,
     /// Esc on Updates: close a menu or retire the first-encounter card.
     UpdatesClose,
     /// `g F`: Focus & reply, everyone you owe a reply one conversation at

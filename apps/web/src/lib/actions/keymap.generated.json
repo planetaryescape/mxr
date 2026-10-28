@@ -873,9 +873,28 @@
       "keys": [
         "g n"
       ],
-      "note": "The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "OpenSnoozed",
+          "keys": [
+            "g n"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ]
+        }
       ]
     },
     {
@@ -2129,6 +2148,15 @@
             "search",
             "search-preview"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "w",
+          "contexts": [
+            "desk"
+          ],
+          "until": "0.6.206"
         }
       ]
     },
@@ -3704,9 +3732,9 @@
     },
     {
       "id": "list.row-action",
-      "label": "This list's row action",
-      "short_label": "Row action",
-      "description": "Wake now in Snoozed, Done in the reply queue",
+      "label": "Wake: bring it back now",
+      "short_label": "Wake",
+      "description": "Snoozed: back in the inbox now. Reply later: out of the queue",
       "group": "Mail",
       "scopes": [
         "list"
@@ -3715,9 +3743,17 @@
         "w"
       ],
       "hide_in_palette": true,
-      "note": "The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "Wake",
+          "keys": [
+            "w"
+          ],
+          "contexts": [
+            "list",
+            "reply-queue"
+          ]
+        }
       ]
     },
     {
@@ -8131,9 +8167,16 @@
       "keys": [
         "Space"
       ],
-      "note": "The TUI shows each update's details on its line, so there is nothing to peek at",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "UpdatesPeek",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "updates"
+          ]
+        }
       ]
     },
     {

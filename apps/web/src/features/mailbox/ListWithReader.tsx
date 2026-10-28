@@ -42,6 +42,7 @@ interface ListWithReaderProps extends Pick<
   | "onLoadMore"
   | "readOnly"
   | "rowAction"
+  | "onRowActionKey"
   | "queueLabel"
   | "empty"
   | "renderRow"

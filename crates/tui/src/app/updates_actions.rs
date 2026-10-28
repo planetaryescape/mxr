@@ -70,6 +70,7 @@ impl App {
             Action::UpdatesTuneChoice(choice) => self.updates_tune_choice(choice),
             Action::UpdatesOpenLink => self.updates_open_link(),
             Action::UpdatesCopyCode => self.updates_copy_code(),
+            Action::UpdatesPeek => self.updates_toggle_peek(),
             Action::UpdatesClose => self.updates_close(),
             _ => {}
         }
@@ -416,7 +417,48 @@ impl App {
             self.status_message = Some("Kept the digest".into());
             return;
         }
+        // An open peek closes before the hint, as on the web.
+        if page.peek.take().is_some() {
+            return;
+        }
         self.dismiss_active_hint();
+    }
+
+    /// Space: open the lit line's details under it, or close them. One
+    /// peek at a time. Its latest email is fetched as the reader fetches it,
+    /// so `o` afterwards finds it ready.
+    fn updates_toggle_peek(&mut self) {
+        let Some(line) = self.selected_updates_line() else {
+            return;
+        };
+        let page = &mut self.mailbox.updates_page;
+        if page.peek.as_deref() == Some(line.id.as_str()) {
+            page.peek = None;
+            return;
+        }
+        page.peek = Some(line.id.clone());
+        if let Some(message_id) = line.latest_message_id {
+            self.queue_priority_body_fetch(message_id);
+        }
+    }
+
+    /// The peeked line's latest email as plain text, once fetched. Plain
+    /// text only, as the web's peek reads it.
+    pub(super) fn updates_peek_body(&self) -> Option<&str> {
+        let page = &self.mailbox.updates_page;
+        let peek = page.peek.as_deref()?;
+        let digest = page.digest.as_ref()?;
+        let line = digest
+            .needs_a_look
+            .iter()
+            .chain(&digest.changed)
+            .chain(&digest.routine)
+            .find(|line| line.id == peek)?;
+        let body = self
+            .mailbox
+            .body_cache
+            .get(line.latest_message_id.as_ref()?)?;
+        body.text_plain.as_deref()
     }
 
     /// Key handling for the Updates lens.

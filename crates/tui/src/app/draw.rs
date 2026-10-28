@@ -346,6 +346,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self.updates_peek_body(),
                                 },
                                 theme,
                             );
@@ -528,6 +529,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self.updates_peek_body(),
                                 },
                                 theme,
                             );

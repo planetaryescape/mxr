@@ -172,7 +172,9 @@ browser's Downloads list.
 
 ## Snooze
 
-`Z` opens the snooze modal with presets such as tomorrow morning, tonight, weekend, and next Monday.
+`b` opens Not now: **Later** with no time first, then presets such as tomorrow morning, tonight, weekend and next Monday, and a custom time. A time snoozes the conversation.
+
+`g n` opens **Snoozed** in both the TUI and the web app: what is snoozed, waking soonest first. `w` wakes the conversation under the cursor now, and `b` snoozes it again. From the CLI, `mxr snoozed` lists them and `mxr unsnooze <id>` wakes one.
 
 Snoozing is local-first but also updates provider state where supported. For Gmail that means removing `INBOX` when snoozed and restoring it when the snooze wakes.
 
@@ -186,8 +188,8 @@ The help modal is context-aware. The command palette exposes mailbox, search, ru
 ## In real life
 
 - **First thing in the morning:** open mxr (`mxr`), press `g i` for
-  Inbox, scan with `j/k`, `e` to archive, `b` to bookmark for reply
-  later, `Z` to snooze. You'll be at inbox-zero before your coffee.
+  Inbox, scan with `j/k`, `e` to archive, `b` for Not now (reply
+  later, or snooze until a time). You'll be at inbox-zero before your coffee.
 - **Backlog cleanup on a slow Friday:** `mxr stale --mine
   --older-than-days 30 --format ids | xargs -n1 mxr cat | $PAGER`:
   scan everything you've been ignoring, then bulk-archive what you

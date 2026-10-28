@@ -715,6 +715,7 @@ impl App {
                 MailboxView::Messages => "mail".to_string(),
                 MailboxView::Subscriptions => "subscriptions".into(),
                 MailboxView::Owed => "owed".into(),
+                MailboxView::Snoozed => "snoozed".into(),
                 MailboxView::Desk => "desk".into(),
                 MailboxView::CalendarInvites => "invites".into(),
                 MailboxView::Place(mxr_protocol::MailPlaceData::Reading) => "reading".into(),

@@ -245,10 +245,17 @@ fn build_row<'a>(
     let safe_subject = strip_control_chars(&env.subject);
     // A gist says what the conversation is about and asks; the snippet is
     // the fallback, in the same place.
-    let snippet = view
-        .row_gists
-        .get(&row.thread_id)
-        .map_or(env.snippet.as_str(), crate::app::RowGist::line);
+    // In Snoozed the row says when it comes back, as the web's does.
+    let wake_line = row
+        .wake_at
+        .map(|wake_at| format!("Back {}", format_wake_long(&wake_at)));
+    let snippet = match &wake_line {
+        Some(line) => line.as_str(),
+        None => view
+            .row_gists
+            .get(&row.thread_id)
+            .map_or(env.snippet.as_str(), crate::app::RowGist::line),
+    };
     let safe_snippet = strip_control_chars(snippet);
 
     // Sender (with thread count badge)
@@ -311,7 +318,10 @@ fn build_row<'a>(
     };
 
     // Date
-    let date_str = format_date(&env.date);
+    let date_str = match row.wake_at {
+        Some(wake_at) => format_wake(&wake_at, &Utc::now()),
+        None => format_date(&env.date),
+    };
     let date_cell = Cell::from(Span::styled(date_str, Style::default().fg(row_muted_fg)));
 
     // Attachment chip: paperclip + size readout when present.
@@ -505,6 +515,37 @@ pub fn format_thread_count_badge(message_count: usize) -> String {
 
 fn format_date(date: &chrono::DateTime<Utc>) -> String {
     format_date_relative(date, &Utc::now())
+}
+
+/// When a snoozed row wakes, in the date column's eight characters: the
+/// time today, the weekday this week, else the date. A wake time already
+/// past is due on the snooze loop's next pass, so it reads "now".
+pub(crate) fn format_wake(wake_at: &chrono::DateTime<Utc>, now: &chrono::DateTime<Utc>) -> String {
+    let ahead = wake_at.signed_duration_since(*now);
+    if ahead.num_seconds() <= 0 {
+        return "now".to_string();
+    }
+    let local = wake_at.with_timezone(&Local);
+    let now_local = now.with_timezone(&Local);
+    if local.date_naive() == now_local.date_naive() {
+        return local.format("%H:%M").to_string();
+    }
+    if ahead.num_days() < 6 {
+        return local.format("%a").to_string();
+    }
+    if local.year() == now_local.year() {
+        local.format("%b %-d").to_string()
+    } else {
+        local.format("%m/%d/%y").to_string()
+    }
+}
+
+/// The whole wake time for the row's snippet: "Fri 31 Oct, 09:00".
+pub(crate) fn format_wake_long(wake_at: &chrono::DateTime<Utc>) -> String {
+    wake_at
+        .with_timezone(&Local)
+        .format("%a %-d %b, %H:%M")
+        .to_string()
 }
 
 /// Format a sender address for the inbox row. Prefers the display name
@@ -750,7 +791,40 @@ mod tests {
             reply_later: false,
             pending_mutation: false,
             mode_chip: None,
+            wake_at: None,
         }
+    }
+
+    #[test]
+    fn a_wake_time_reads_forward_from_now() {
+        let now = Utc::now();
+        assert_eq!(
+            format_wake(&(now - chrono::Duration::minutes(1)), &now),
+            "now"
+        );
+        let soon = now + chrono::Duration::minutes(1);
+        let today =
+            soon.with_timezone(&Local).date_naive() == now.with_timezone(&Local).date_naive();
+        if today {
+            assert_eq!(
+                format_wake(&soon, &now),
+                soon.with_timezone(&Local).format("%H:%M").to_string()
+            );
+        }
+        let in_three_days = now + chrono::Duration::days(3);
+        assert_eq!(
+            format_wake(&in_three_days, &now),
+            in_three_days.with_timezone(&Local).format("%a").to_string()
+        );
+        let next_year = now + chrono::Duration::days(400);
+        assert_eq!(
+            format_wake(&next_year, &now),
+            next_year
+                .with_timezone(&Local)
+                .format("%m/%d/%y")
+                .to_string()
+        );
+        assert!(format_wake_long(&next_year).contains(", "));
     }
 
     #[test]

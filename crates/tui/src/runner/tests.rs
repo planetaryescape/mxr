@@ -165,6 +165,7 @@ mod reading;
 mod records;
 mod screen_keys;
 mod semantic_and_connection;
+mod snoozed;
 mod todo;
 mod unified_mailboxes;
 mod updates;

@@ -632,6 +632,7 @@ impl App {
                 (KeyCode::Char('F'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ReplyQueueModalFocus)
                 }
+                (KeyCode::Char('w'), KeyModifiers::NONE) => Some(Action::Wake),
                 _ => None,
             };
         }
@@ -1864,6 +1865,8 @@ impl App {
                 (KeyCode::Char('P'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenSenderMoveMenu)
                 }
+                // Wake: the list's row action, as the web's (live in Snoozed).
+                (KeyCode::Char('w'), KeyModifiers::NONE) => Some(Action::Wake),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },

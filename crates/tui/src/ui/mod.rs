@@ -67,6 +67,7 @@ pub mod toasts;
 pub mod todo_lens;
 pub mod unsubscribe_modal;
 pub mod updates_lens;
+pub mod updates_peek;
 pub mod url_modal;
 pub mod whois_modal;
 

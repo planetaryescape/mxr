@@ -53,6 +53,11 @@ export interface MailboxListProps {
   readOnly?: boolean;
   /** The list's own verb for a row (wake, done): `w`, or a click on the row's chip. */
   rowAction?: RowAction;
+  /**
+   * What `w` does on a list with no row action of its own: the desk says
+   * where its old `w` went.
+   */
+  onRowActionKey?: () => void;
   /** Current queue label, enabling "Route out of this queue". */
   queueLabel?: string;
   empty: ReactNode;
@@ -161,6 +166,7 @@ export function MailboxList({
   onLoadMore,
   readOnly = false,
   rowAction,
+  onRowActionKey,
   queueLabel,
   empty,
   label,
@@ -461,7 +467,11 @@ export function MailboxList({
     viewportTop: () => moveTo(viewportIndex("top")),
     viewportMiddle: () => moveTo(viewportIndex("middle")),
     open: () => focusedRow && onOpenRow(focusedRow, { focusReader: true }),
-    ...(rowAction ? { rowAction: () => focusedRow && rowAction.run(focusedRow) } : {}),
+    ...(rowAction
+      ? { rowAction: () => focusedRow && rowAction.run(focusedRow) }
+      : onRowActionKey
+        ? { rowAction: onRowActionKey }
+        : {}),
     ...(onFilter ? { filter: onFilter } : {}),
     escape: () => {
       if (visualAnchor) {

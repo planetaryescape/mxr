@@ -132,7 +132,9 @@ model submenu, then sends the text region in the form, with the exact reply or r
 mxr's writing help. It opens a proof showing additions in bold, removals
 struck through and unanswered details in inline code. The metadata says which
 model ran, whether it used your writing history, which voice samples it used,
-which of your sentences changed and what details remain open. Your form text
+which of your sentences changed and what details remain open. Each Voice
+example link opens the cited email in the daemon's web app. The Voice samples count
+includes only examples that fit the prompt, and reads None when none were used. Your form text
 stays as written until you accept. Accept replaces only that text region and
 keeps a signature or forwarded message below it; Retry (⌘R) repeats the same
 text and action, **Try Again with Another Model** retries with another

@@ -467,7 +467,8 @@ with more room rather than handed over half-written.
 ### Check how close drafts get
 
 ```bash
-mxr draft --format json eval --limit 20
+mxr draft --format json eval --set mine --limit 20
+mxr draft --format json eval --set mine --limit 20 --rewrite
 mxr draft --format json eval --set quick
 ```
 
@@ -476,6 +477,20 @@ one it rebuilds the conversation and your voice examples as they were just
 before you replied, drafts a reply through the same path the web, TUI and
 CLI use, and compares it with what you actually sent: greeting and sign-off
 match, length ratio, and numbers the draft invented.
+
+The cutoff excludes the answer being replayed and later message evidence.
+Stored relationship summaries and voice profiles are omitted because their
+rows do not preserve the source history needed to reconstruct them at that
+cutoff. Replay therefore measures drafting from the available earlier mail,
+not an exact reconstruction of every historical setting.
+
+Mine skips the humanizer rewrite stage by default, even when normal drafts
+have automatic rewriting enabled. Pass `--rewrite` to allow it. A rewrite
+model call still requires the humanizer and auto-fix to be enabled and the
+draft score to fall below the configured threshold. A skipped rewrite is not
+marked in the replay report. `--rewrite` applies only to Mine; Quick rejects it.
+An older remote daemon that cannot honor this policy rejects the request;
+update the host before running it again.
 
 `--set quick` drafts the labelled drafting set instead: 40 synthetic cases,
 each a short thread, a few emails in a sample voice, and sometimes text

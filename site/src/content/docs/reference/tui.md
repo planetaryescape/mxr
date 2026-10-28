@@ -251,6 +251,10 @@ Two cross-view interactions:
   they cannot run. `[y]` accepts the selected proposal, `[e]` accepts and opens
   `$EDITOR`, `[n]` enters a revision note, and `←`/`→` select proof versions.
   Arrow keys or `j`/`k` scroll; PageUp/PageDown and Home/End move farther.
+  `[o]` opens the next cited voice example in the reader. Scroll with arrows
+  or PageUp/PageDown; `Esc` returns to the same proof. Each proof starts its
+  example cycle at the first source. These are the default bindings; user
+  remaps remain authoritative.
   Accepting a proof with gaps lets you fill them in the editor; send safety
   still blocks sending until they are filled.
 - Bulk confirmation

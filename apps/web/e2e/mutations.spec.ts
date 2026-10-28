@@ -73,14 +73,13 @@ test("hover Archive acts at once on the reviewed selection, then Undo restores i
   await expect(page.getByText(/^Archived 1 messages?$/)).toBeVisible();
   expect(dialogs).toEqual([]);
   await expect(rowById(page, rowId)).toHaveCount(0);
-  await expect
-    .poll(() =>
-      receipts.some((receipt) => receipt.items.every((item) => item.state === "completed")),
-    )
-    .toBe(true);
-  const outcome = receipts.find((receipt) =>
-    receipt.items.every((item) => item.state === "completed"),
-  );
+  // The runner marks each item completed before it writes the undo entry, and
+  // drops its claim only after that; a receipt read while it still runs can
+  // say completed with no undo yet. The client waits for running to clear.
+  const settled = (receipt: ArchiveOperation) =>
+    !receipt.running && receipt.items.every((item) => item.state === "completed");
+  await expect.poll(() => receipts.some(settled)).toBe(true);
+  const outcome = receipts.find(settled);
   expect(outcome?.undo_available).toBe(true);
   expect(outcome?.mutation_id).toBeTruthy();
 

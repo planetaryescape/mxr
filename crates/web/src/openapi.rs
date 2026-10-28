@@ -1948,7 +1948,8 @@ endpoint!(post account_disable "/api/v1/platform/accounts/{key}/disable", "Disab
     params(("key" = String, Path, description = "The account's config key, such as `work`")),
     request_body = crate::routes_v6::SetAccountIdentityBody,
     responses(
-        (status = 200, description = "The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved", body = ResponseData),
+        (status = 200, description = "The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved", body = ResponseData),
+        (status = 422, description = "The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type"),
         (status = 401, description = "Missing or invalid bridge token")
     )
 )]

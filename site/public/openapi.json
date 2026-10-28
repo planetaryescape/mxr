@@ -7292,7 +7292,7 @@
         },
         "responses": {
           "200": {
-            "description": "The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved",
+            "description": "The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -7303,6 +7303,9 @@
           },
           "401": {
             "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type"
           }
         }
       }

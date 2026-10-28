@@ -6917,5 +6917,5 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
         .send()
         .await
         .unwrap();
-    assert!(!response.status().is_success());
+    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
 }

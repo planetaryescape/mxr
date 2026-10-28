@@ -24071,7 +24071,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved */
+            /** @description The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -24085,6 +24085,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+            /** @description The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
                 content?: never;
             };
         };

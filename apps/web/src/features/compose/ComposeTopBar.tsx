@@ -127,20 +127,21 @@ export function FromControl({
   fromAddress: string;
   onFromChange: (email: string) => void;
 }) {
-  // The From line always names the account, one account or several (docs/blueprint/33).
+  // The From line always names the account: one account or several, with one address or aliases (docs/blueprint/33).
   const identities = useAccountIdentities();
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
   const hasAliases = addresses.length > 1;
+  const sole = accounts.length === 1 ? selected : undefined;
+  const soleChip = sole ? identities.byId.get(sole.account_id) : undefined;
 
-  // Single account, single address: nothing to choose — show the account's chip and address.
-  if (accounts.length === 1 && !hasAliases) {
-    const senderAddress = fromAddress || selected?.email;
-    const chip = selected ? identities.byId.get(selected.account_id) : undefined;
+  // Single account, single address: nothing to choose, so the address shows beside the account.
+  if (sole && !hasAliases) {
+    const senderAddress = fromAddress || sole.email;
     return (
       <span className="flex min-w-0 items-center gap-2">
-        {chip ? <AccountMark identity={chip} size="header" /> : null}
-        <span className="min-w-0 truncate text-xs">{selected?.name || selected?.email}</span>
+        {soleChip ? <AccountMark identity={soleChip} size="header" /> : null}
+        <span className="min-w-0 truncate text-xs">{sole.name || sole.email}</span>
         <span
           className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
           title={senderAddress}
@@ -153,6 +154,12 @@ export function FromControl({
 
   return (
     <div className="flex min-w-0 items-center gap-2">
+      {sole ? (
+        <span className="flex min-w-0 shrink-0 items-center gap-2">
+          {soleChip ? <AccountMark identity={soleChip} size="header" /> : null}
+          <span className="max-w-[160px] truncate text-xs">{sole.name || sole.email}</span>
+        </span>
+      ) : null}
       {accounts.length > 1 ? (
         <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
           <SelectTrigger

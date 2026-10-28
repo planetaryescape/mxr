@@ -3,6 +3,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
+import { AccountIdentitiesContext, identitiesFrom } from "@/features/accounts/useAccountIdentities";
+
 import type { RuntimeAccount } from "./api";
 import { ComposeTopBar } from "./ComposeTopBar";
 
@@ -70,5 +72,39 @@ describe("ComposeTopBar send-as picker", () => {
 
     const picker = screen.getByRole("combobox", { name: "Send as address" });
     expect(picker).toHaveTextContent("hello@planetaryescape.xyz");
+  });
+
+  test("one account with aliases: the account's name and chip still name the sender", () => {
+    const withIdentity = account({ identity: { color: "sky", tag: "BK" } });
+    const identities = identitiesFrom([withIdentity], false);
+    render(
+      <AccountIdentitiesContext.Provider value={identities}>
+        <ComposeTopBar
+          title="New message"
+          busy={false}
+          canServerSave={false}
+          onRefresh={vi.fn<() => void>()}
+          onServerSave={vi.fn<() => void>()}
+          onDiscard={vi.fn<() => void>()}
+          accounts={[withIdentity]}
+          accountId="acct-1"
+          onAccountChange={vi.fn<(id: string) => void>()}
+          addresses={["hello@planetaryescape.xyz", "admin@planetaryescape.xyz"]}
+          fromAddress="admin@planetaryescape.xyz"
+          onFromChange={vi.fn<(email: string) => void>()}
+        />
+      </AccountIdentitiesContext.Provider>,
+    );
+
+    expect(screen.getByText("Bhekani.com")).toBeVisible();
+    expect(screen.getByRole("img", { name: "Bhekani.com" })).toHaveTextContent("BK");
+    expect(screen.getByRole("combobox", { name: "Send as address" })).toHaveTextContent(
+      "admin@planetaryescape.xyz",
+    );
+  });
+
+  test("one account, one address: the account's name shows beside its address", () => {
+    renderTopBar();
+    expect(screen.getByText("Bhekani.com")).toBeVisible();
   });
 });

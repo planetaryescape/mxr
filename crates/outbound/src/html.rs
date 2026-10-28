@@ -400,9 +400,39 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// (`crates/reader/src/html.rs`), so the text a recipient gets matches what
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
-    html2text::config::plain_no_decorate()
-        .string_from_read(html.as_bytes(), 80)
-        .unwrap_or_default()
+    // Guarded like the reader's call (html2text panics on some malformed
+    // tables). mxr-outbound cannot depend on mxr-reader, so the fallback is
+    // local: a sent message always gets its text, even if it is rougher.
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        html2text::config::plain_no_decorate().string_from_read(html.as_bytes(), 80)
+    }))
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or_else(|| strip_tags_fallback(html))
+}
+
+/// Tag-stripping fallback for `generate_text_alternative` when html2text
+/// panics. Drops `<...>` runs and decodes the common entities.
+fn strip_tags_fallback(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+    text.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Inline handlers and unsafe URLs carried by one element's attributes.
@@ -880,6 +910,15 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn text_alternative_survives_a_malformed_table_span() {
+        // html2text panics on this colspan; the alternative must still carry the text.
+        let text = generate_text_alternative(
+            r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#,
+        );
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
     use super::*;
 
     /// The whole point of the feature: a designed email survives untouched.

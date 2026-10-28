@@ -260,6 +260,22 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo nextest run --workspace --features semantic-local
 
+  # The key definition fails once the version reaches a moved key's `until`
+  # (blueprint 35, D171), and the commit that crosses it is a release-please
+  # version bump, which skips the Rust suites (scripts/ci_change_scope.sh).
+  # The keymap crate builds in seconds, so its check runs whenever those
+  # suites don't.
+  keymap:
+    name: Key definition
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: needs.changes.outputs.rust != 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p mxr-keymap
+
   # Grades every email of the 50,000-message demo (`mxr classify eval --set
   # full`) through the same post-sync work the daemon runs, and compares the
   # per-question accuracy, the held-out accuracy and the mismatch clusters with

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.170](https://github.com/planetaryescape/mxr/compare/v0.6.169...v0.6.170) (2026-10-28)
+
+
+### Features
+
+* digits pick a mode's tabs, Next time teaches keys, and the TUI palette comes from the key definition ([#735](https://github.com/planetaryescape/mxr/issues/735)) ([12a2068](https://github.com/planetaryescape/mxr/commit/12a20682afe5cfc3561132c2252acb5c00946af4))
+* unify compose voice and source provenance ([0cfa64b](https://github.com/planetaryescape/mxr/commit/0cfa64bad756e1b749f726a272265f7fecd23fbc))
+
+
+### Bug Fixes
+
+* show every account's mail in All accounts mailboxes ([#738](https://github.com/planetaryescape/mxr/issues/738)) ([86871a7](https://github.com/planetaryescape/mxr/commit/86871a734fc69adcc2e832333b83f2fa6c2c92f1))
+
+
+### Documentation
+
+* drop references to the removed impeccable skill and old skill names ([#737](https://github.com/planetaryescape/mxr/issues/737)) ([da0c6c8](https://github.com/planetaryescape/mxr/commit/da0c6c8c3bb6054781cba938c083c726623d5087))
+
 ## [0.6.169](https://github.com/planetaryescape/mxr/compare/v0.6.168...v0.6.169) (2026-10-28)
 
 

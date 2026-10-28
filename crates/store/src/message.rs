@@ -37,7 +37,12 @@ impl super::Store {
         envelope: &Envelope,
         direction: MessageDirection,
     ) -> Result<MessageId, sqlx::Error> {
-        let mut tx = self.writer().begin().await?;
+        // IMMEDIATE because the upsert reads before it writes: a deferred
+        // transaction's read pins a WAL snapshot, and the write then fails
+        // at once with SQLITE_BUSY / SQLITE_BUSY_SNAPSHOT when another
+        // connection holds or has just released the write lock, bypassing
+        // `busy_timeout`. Taking the write lock first lets it wait instead.
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
         let stored = upsert_envelope_tx(&mut tx, envelope, direction).await?;
         tx.commit().await?;
         Ok(stored.id)

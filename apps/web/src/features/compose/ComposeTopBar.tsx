@@ -127,21 +127,26 @@ export function FromControl({
   fromAddress: string;
   onFromChange: (email: string) => void;
 }) {
-  // The From line always names the account when there are several (docs/blueprint/33).
+  // The From line always names the account, one account or several (docs/blueprint/33).
   const identities = useAccountIdentities();
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
   const hasAliases = addresses.length > 1;
 
-  // Single account, single address: nothing to choose — show the address plainly.
+  // Single account, single address: nothing to choose — show the account's chip and address.
   if (accounts.length === 1 && !hasAliases) {
     const senderAddress = fromAddress || selected?.email;
+    const chip = selected ? identities.byId.get(selected.account_id) : undefined;
     return (
-      <span
-        className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
-        title={senderAddress}
-      >
-        {senderAddress}
+      <span className="flex min-w-0 items-center gap-2">
+        {chip ? <AccountMark identity={chip} size="header" /> : null}
+        <span className="min-w-0 truncate text-xs">{selected?.name || selected?.email}</span>
+        <span
+          className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
+          title={senderAddress}
+        >
+          {senderAddress}
+        </span>
       </span>
     );
   }
@@ -158,7 +163,7 @@ export function FromControl({
           </SelectTrigger>
           <SelectContent>
             {accounts.map((account) => {
-              const chip = identities.several ? identities.byId.get(account.account_id) : undefined;
+              const chip = identities.byId.get(account.account_id);
               return (
                 <SelectItem key={account.account_id} value={account.account_id}>
                   <span className="flex min-w-0 items-center gap-2">

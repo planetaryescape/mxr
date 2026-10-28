@@ -170,6 +170,7 @@ use utoipa::{
         crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
+        crate::routes_v6::SetAccountIdentityBody,
         crate::arrival_routes::ArrivalModesBody,
         crate::arrival_routes::MoveBody,
     )),
@@ -1940,7 +1941,19 @@ endpoint!(post account_upsert "/api/v1/platform/accounts/upsert", "Create or upd
 endpoint!(post account_set_default "/api/v1/platform/accounts/default", "Set default account");
 endpoint!(delete account_remove "/api/v1/platform/accounts/{key}", "Remove account");
 endpoint!(post account_disable "/api/v1/platform/accounts/{key}/disable", "Disable account");
-endpoint!(post account_identity "/api/v1/platform/accounts/{key}/identity", "Set account colour and tag");
+#[utoipa::path(
+    post,
+    path = "/api/v1/platform/accounts/{key}/identity",
+    summary = "Set an account's colour and tag",
+    params(("key" = String, Path, description = "The account's config key, such as `work`")),
+    request_body = crate::routes_v6::SetAccountIdentityBody,
+    responses(
+        (status = 200, description = "The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn account_identity() {}
 endpoint!(get account_addresses_list "/api/v1/platform/accounts/{account_id}/addresses", "List account addresses");
 endpoint!(post account_addresses_add "/api/v1/platform/accounts/{account_id}/addresses", "Add account address");
 endpoint!(post account_addresses_remove "/api/v1/platform/accounts/{account_id}/addresses/remove", "Remove account address");

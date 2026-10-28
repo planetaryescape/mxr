@@ -232,9 +232,16 @@ export interface AccountIdentityInput {
   tag?: string;
 }
 
-/** The daemon validates the slot and the tag, and refuses a tag another account holds. */
+/**
+ * The daemon validates the slot and the tag, and refuses a tag another account
+ * holds. A refusal is a 200 with `result.ok` false, as the sibling account
+ * routes answer; callers must check `ok`.
+ */
 export function setAccountIdentity(key: string, identity: AccountIdentityInput) {
-  return apiFetch<unknown>(`/api/v1/platform/accounts/${encodeURIComponent(key)}/identity`, {
+  return apiFetch<{
+    kind: "AccountOperation";
+    result: components["schemas"]["AccountOperationResult"];
+  }>(`/api/v1/platform/accounts/${encodeURIComponent(key)}/identity`, {
     method: "POST",
     body: identity,
   });

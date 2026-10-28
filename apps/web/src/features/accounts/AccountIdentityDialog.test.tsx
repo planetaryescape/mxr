@@ -55,15 +55,29 @@ function renderDialog() {
   return { onClose };
 }
 
+function refused(detail: string) {
+  return {
+    kind: "AccountOperation",
+    result: {
+      ok: false,
+      summary: "Failed to set identity for account 'home'.",
+      save: { ok: false, detail },
+    },
+  };
+}
+
 describe("AccountIdentityDialog", () => {
   test("shows the daemon's refusal inline and keeps the chosen colour", async () => {
-    accountsApi.setAccountIdentity.mockRejectedValue(new Error("tag W is already held by Work"));
+    // The daemon's refusal is a normal response with ok false, not a rejected request.
+    accountsApi.setAccountIdentity.mockResolvedValue(refused("tag W is already held by Work"));
     renderDialog();
     fireEvent.click(screen.getByRole("radio", { name: /^sky/ }));
     fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "w" } });
     expect(screen.getByLabelText("Tag")).toHaveValue("W");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("tag W is already held by Work");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tag")).toHaveValue("W");
     expect(accountsApi.setAccountIdentity).toHaveBeenCalledWith("home", {
       color: "sky",
       tag: "W",
@@ -84,7 +98,10 @@ describe("AccountIdentityDialog", () => {
   });
 
   test("a saved identity closes the dialog", async () => {
-    accountsApi.setAccountIdentity.mockResolvedValue({});
+    accountsApi.setAccountIdentity.mockResolvedValue({
+      kind: "AccountOperation",
+      result: { ok: true, summary: "saved", save: { ok: true, detail: "saved" } },
+    });
     const { onClose } = renderDialog();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());

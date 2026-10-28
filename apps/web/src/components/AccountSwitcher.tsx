@@ -58,6 +58,11 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
     scoped,
     setScope,
   ]);
+  // The trigger names the one account it shows, with its chip, whatever the count.
+  const triggerAccount = scoped ?? (rows.length === 1 ? rows[0] : undefined);
+  const triggerIdentity = triggerAccount
+    ? identities.byId.get(triggerAccount.account_id)
+    : undefined;
   const subtitle = scoped
     ? scoped.email
     : rows.length > 1
@@ -75,9 +80,17 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           )}
           aria-label={`Account: ${title}. Switch account`}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-muted font-mono text-2xs font-semibold text-primary">
-            {scoped || rows.length === 1 ? initials(title) : <Layers className="size-3.5" />}
-          </span>
+          {triggerIdentity ? (
+            <AccountMark
+              identity={triggerIdentity}
+              size="header"
+              className="h-7 min-w-7 justify-center"
+            />
+          ) : (
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-muted font-mono text-2xs font-semibold text-primary">
+              {scoped || rows.length === 1 ? initials(title) : <Layers className="size-3.5" />}
+            </span>
+          )}
           {!collapsed && (
             <>
               <span className="min-w-0 flex-1">
@@ -116,7 +129,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           </DropdownMenuItem>
         ) : null}
         {rows.map((row) => {
-          const chip = identities.several ? identities.byId.get(row.account_id) : undefined;
+          const chip = identities.byId.get(row.account_id);
           return (
             <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
               {chip ? (

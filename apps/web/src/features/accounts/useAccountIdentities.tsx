@@ -58,6 +58,17 @@ export function useAccountIdentities(): AccountIdentities {
   return useContext(AccountIdentitiesContext);
 }
 
+/**
+ * The mark a row for this account wears, when the view mixes accounts. Rows
+ * and their accessible names read it, so a name is spoken only where its chip shows.
+ */
+export function useRowAccountMark(
+  accountId: string | null | undefined,
+): AccountIdentity | undefined {
+  const { byId, marksShown } = useAccountIdentities();
+  return marksShown && accountId ? byId.get(accountId) : undefined;
+}
+
 /** The derived view of an accounts list. `scoped` is true when the app shows one account. */
 export function identitiesFrom(
   list: readonly RuntimeAccount[],

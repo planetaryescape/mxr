@@ -528,6 +528,7 @@ expression: summary
     "SenderSummaryData",
     "SenderUnansweredQuestionData",
     "SenderWeeklyActivityData",
+    "SetAccountIdentityBody",
     "SignatureContextData",
     "SignatureData",
     "SignatureDefaultData",

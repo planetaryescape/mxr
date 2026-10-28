@@ -38,6 +38,7 @@ import {
   nowItems,
   type CardItem,
   type NowItem,
+  nowRowAccount,
   type PersonItem,
   type PickItem,
   type TodoItem,
@@ -287,7 +288,7 @@ function NowBody({ now }: { now: Now }) {
   useLitReason(
     reasonOf(current),
     litSender ? NEW_SENDER_NOTE : null,
-    current?.kind === "reading" ? current.pick.account_id : undefined,
+    current ? nowRowAccount(current) : undefined,
   );
   // The status strip names the verbs of whatever is lit.
   usePageKeys(keysOf(current));

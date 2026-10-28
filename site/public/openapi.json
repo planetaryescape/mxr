@@ -7267,11 +7267,39 @@
     "/api/v1/platform/accounts/{key}/identity": {
       "post": {
         "tags": [],
-        "summary": "Set account colour and tag",
+        "summary": "Set an account's colour and tag",
         "operationId": "account_identity",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The account's config key, such as `work`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAccountIdentityBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -11226,6 +11254,17 @@
           "title"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the listed email came to. Absent for people and to-dos, and from older daemons."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "at": {
             "type": [
               "integer",
@@ -41207,6 +41246,34 @@
           "week_start": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SetAccountIdentityBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/platform/accounts/{key}/identity`. Omitted fields keep their stored value.",
+        "properties": {
+          "color": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountColor",
+                "description": "One of the eight colour slots; the daemon refuses any other value."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Ask the daemon what would change without saving it."
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One to three uppercase letters or digits; the daemon refuses a tag another account holds."
           }
         }
       },

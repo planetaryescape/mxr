@@ -12,6 +12,7 @@ import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
 import { ModeChip } from "@/features/arrivals/ModeChip";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
@@ -76,6 +77,7 @@ export const MailboxRow = memo(function MailboxRow({
   // This row's own line: when it lands, only this row re-renders.
   const gist = useRowGist(row.thread_id);
   const when = useWhen(row.date);
+  const mark = useRowAccountMark(row.account_id);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
   const stop = (handler: () => void) => (event: MouseEvent) => {
@@ -91,7 +93,7 @@ export const MailboxRow = memo(function MailboxRow({
       aria-selected={selected}
       aria-posinset={position}
       aria-setsize={setSize}
-      aria-label={rowLabel(row, who, count, gist, when)}
+      aria-label={rowLabel(row, who, count, gist, when, mark?.name)}
       data-focused={lit ? "true" : undefined}
       lit={lit}
       via={via}
@@ -269,11 +271,13 @@ function rowLabel(
   count: number | null,
   gist: RowGist | undefined,
   when: string,
+  account: string | undefined,
 ): string {
   return [
     row.unread ? "Unread." : null,
     row.starred ? "Starred." : null,
     who,
+    account ?? null,
     row.subject || "(no subject)",
     gist ? gistText(gist) : null,
     count ? `${plural(count, "message")} in conversation` : null,

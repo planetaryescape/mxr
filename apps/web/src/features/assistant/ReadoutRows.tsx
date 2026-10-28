@@ -162,6 +162,7 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
   return (
     <Row
       lit={false}
+      accountId={row.account_id}
       className="mx-0"
       unread={row.unread}
       lead={<Avatar name={who} size="sm" />}

@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 const fetchAccounts = vi.hoisted(() => vi.fn<() => Promise<unknown>>());
@@ -44,16 +44,16 @@ describe("OtherAccountLine", () => {
     ).toBeInTheDocument();
   });
 
-  test("says nothing in the scoped account, or with one account", async () => {
+  test("shows the account for one account too, and says nothing for an unknown account", async () => {
     fetchAccounts.mockResolvedValue({
       accounts: [{ account_id: "home", name: "Home", email: "me@home.example", enabled: true }],
     });
-    useUiPrefs.getState().setAccountScope("work");
-    const { unmount } = renderLine("work");
-    expect(screen.queryByTestId("other-account-line")).toBeNull();
-    unmount();
-    useUiPrefs.getState().setAccountScope(null);
     renderLine("home");
+    expect(await screen.findByTestId("other-account-line")).toHaveTextContent(
+      "In Home · me@home.example",
+    );
+    cleanup();
+    renderLine("work");
     await waitFor(() => expect(fetchAccounts).toHaveBeenCalled());
     expect(screen.queryByTestId("other-account-line")).toBeNull();
   });

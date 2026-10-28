@@ -5,6 +5,7 @@ import { memo, type ReactNode } from "react";
 import { Avatar } from "@/components/Avatar";
 import { ModeMarks, NewMark } from "@/components/ModeMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { rowAge, rowPerson } from "@/features/desk/deskCopy";
 import { rowParty } from "@/features/todo/todoRows";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
@@ -14,7 +15,7 @@ import { useClockLabel } from "@/lib/minuteClock";
 import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
-import { itemTarget, sinceLabel, type NowItem } from "./nowItems";
+import { itemTarget, nowRowAccount, sinceLabel, type NowItem } from "./nowItems";
 
 type Person = Extract<NowItem, { kind: "person" }>;
 type Due = Extract<NowItem, { kind: "todo" }>;
@@ -40,20 +41,6 @@ interface RowState {
  * row's own mode (Tab reaches it, Enter follows it, a screen reader names
  * it); a click anywhere else on the row only lights it.
  */
-/** The account a Now row's mail came to. Undefined for the Updates card, which can span accounts. */
-function nowRowAccount(item: NowItem): string | undefined {
-  switch (item.kind) {
-    case "person":
-      return item.person.row.account_id;
-    case "todo":
-      return item.todo.todo.account_id;
-    case "reading":
-      return item.pick.account_id;
-    case "updates":
-      return undefined;
-  }
-}
-
 function NowRow({
   item,
   state,
@@ -80,6 +67,7 @@ function NowRow({
   verbs?: ReactNode;
   unread?: boolean;
 }) {
+  const mark = useRowAccountMark(nowRowAccount(item));
   return (
     <Row
       // The Updates card can hold lines from several accounts, so it wears no single chip.
@@ -106,7 +94,7 @@ function NowRow({
           // SAFETY: Now items only ever target static routes, which the router accepts as a `to` string.
           {...(itemTarget(item) as { to: string })}
           data-testid="now-open"
-          aria-label={label}
+          aria-label={mark ? `${label}, ${mark.name}` : label}
           onFocus={() => state.onSelect(item, "key")}
           onClick={() => state.onSelect(item, "pointer")}
           className={cn(className, "focus-visible:ring-2 focus-visible:ring-signal")}

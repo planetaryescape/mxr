@@ -692,12 +692,16 @@ async fn disable_account(
     passthrough(response)
 }
 
-#[derive(Debug, Deserialize, Default)]
-struct SetAccountIdentityBody {
+/// Body of `POST /api/v1/platform/accounts/{key}/identity`. Omitted fields keep their stored value.
+#[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
+pub(crate) struct SetAccountIdentityBody {
+    /// One of the eight colour slots; the daemon refuses any other value.
     #[serde(default)]
     color: Option<mxr_core::AccountColor>,
+    /// One to three uppercase letters or digits; the daemon refuses a tag another account holds.
     #[serde(default)]
     tag: Option<String>,
+    /// Ask the daemon what would change without saving it.
     #[serde(default)]
     dry_run: bool,
 }

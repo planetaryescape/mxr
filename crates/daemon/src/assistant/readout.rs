@@ -5,6 +5,7 @@
 //! fields when it lists nothing.
 
 use mxr_assistant::{call_state, readable_result, CallState};
+use mxr_core::AccountId;
 use mxr_llm::ToolChatMessage;
 use mxr_protocol::{
     AssistantLinkData, AssistantReadoutData, AssistantReadoutFactData, AssistantReadoutRowData,
@@ -243,6 +244,7 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
         .or_else(|| text(object.get("sender_name")))
         .or_else(|| text(object.get("sender_email")));
     AssistantReadoutRowData {
+        account_id: text(object.get("account_id")).and_then(|id| id.parse::<AccountId>().ok()),
         title: clipped(&title, DETAIL_CHARS),
         detail,
         link: link(object),
@@ -376,6 +378,30 @@ mod tests {
             })
         );
         assert_eq!(out.rows[1].detail.as_deref(), Some("grace@work.com"));
+    }
+
+    #[test]
+    fn an_email_row_carries_its_account_and_a_person_row_does_not() {
+        let account = "7b0a9f2e-0000-4000-8000-000000000001";
+        let out = read(json!({
+            "kind": "Envelopes",
+            "envelopes": [
+                {"id": "m1", "thread_id": "t1", "subject": "Weekly sync",
+                 "account_id": account,
+                 "from": {"name": "Quinn Dev", "email": "quinn@work.com"}},
+                {"id": "m2", "thread_id": "t2", "subject": "Invoice",
+                 "from": {"name": "", "email": "grace@work.com"}},
+            ],
+        }));
+        assert_eq!(
+            out.rows[0]
+                .account_id
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(account)
+        );
+        assert_eq!(out.rows[1].account_id, None);
     }
 
     #[test]

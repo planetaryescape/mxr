@@ -74,7 +74,12 @@ function IdentityForm({
 
   const save = useMutation({
     mutationFn: () => setAccountIdentity(account.key ?? "", { color, tag }),
-    onSuccess: () => {
+    onSuccess: ({ result }) => {
+      // The daemon answers a refused change as a normal response, so `ok` decides.
+      if (!result.ok) {
+        setRefusal(result.save?.detail || result.summary);
+        return;
+      }
       toast.success("Colour and tag saved");
       void qc.invalidateQueries({ queryKey: ["accounts"] });
       onClose();

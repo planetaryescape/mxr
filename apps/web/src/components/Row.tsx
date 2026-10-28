@@ -3,7 +3,7 @@ import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "r
 
 import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
-import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useLanded } from "@/state/landingStore";
 
@@ -93,8 +93,7 @@ export const Row = memo(function Row({
   ...rest
 }: RowProps) {
   const landed = useLanded(...land);
-  const accounts = useAccountIdentities();
-  const identity = accountId && accounts.marksShown ? accounts.byId.get(accountId) : undefined;
+  const identity = useRowAccountMark(accountId);
   const text = (
     <>
       {leadControl ? null : lead}

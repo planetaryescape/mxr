@@ -3848,7 +3848,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set account colour and tag */
+        /** Set an account's colour and tag */
         post: operations["account_identity"];
         delete?: never;
         options?: never;
@@ -5672,6 +5672,7 @@ export interface components {
         };
         /** @description One thing a result lists: an email, a person, a to-do. */
         AssistantReadoutRowData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /**
              * Format: int64
              * @description When the email arrived or the person last wrote: unix seconds.
@@ -14897,6 +14898,14 @@ export interface components {
             /** Format: date-time */
             week_start: string;
         };
+        /** @description Body of `POST /api/v1/platform/accounts/{key}/identity`. Omitted fields keep their stored value. */
+        SetAccountIdentityBody: {
+            color?: components["schemas"]["AccountColor"] | null;
+            /** @description Ask the daemon what would change without saving it. */
+            dry_run?: boolean;
+            /** @description One to three uppercase letters or digits; the daemon refuses a tag another account holds. */
+            tag?: string | null;
+        };
         /** @enum {string} */
         SignatureContextData: "new" | "reply";
         SignatureData: {
@@ -24050,17 +24059,26 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The account's config key, such as `work` */
+                key: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAccountIdentityBody"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description The `AccountOperation` variant. When the daemon refuses (a clashing or malformed tag, an unknown colour), `result.ok` is false and `result.save.detail` says why; nothing is saved */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

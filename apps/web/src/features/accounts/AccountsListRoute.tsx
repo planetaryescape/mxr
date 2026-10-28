@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { RuntimeAccount } from "@/features/compose/api";
+import { AccountMark } from "@/components/AccountMark";
 import { SyncHealthWords } from "@/features/freshness/AccountSyncHealth";
 import { StatusDot } from "@/components/StatusDot";
 import { useHeldPending } from "@/hooks/useDelayedPending";
@@ -88,11 +89,13 @@ export function AccountsListRoute() {
         <RuledList label="Accounts">
           {rows.map((account) => {
             const key = account.key ?? account.account_id;
+            const chip = identities.byId.get(account.account_id);
             return (
               <RuledRow
                 key={account.account_id}
                 title={
                   <span className="flex items-center gap-2">
+                    {chip ? <AccountMark identity={chip} size="header" /> : null}
                     {account.enabled ? null : (
                       <StatusDot className="size-1.5 bg-muted-foreground" />
                     )}

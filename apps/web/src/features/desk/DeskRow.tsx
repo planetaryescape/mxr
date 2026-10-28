@@ -10,6 +10,8 @@ import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
 import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import type { MessageRowView } from "@/features/mailbox/types";
+import { AccountMark } from "@/components/AccountMark";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useClockLabel } from "@/lib/minuteClock";
 
@@ -52,6 +54,7 @@ export const DeskRow = memo(function DeskRow({
   ...state
 }: DeskRowProps) {
   const who = rowPerson(desk);
+  const mark = useRowAccountMark(desk.account_id);
   // The label is kept current; the rest of the age doesn't change on its own.
   const age = { ...rowAge(desk), label: useClockLabel((now) => rowAge(desk, now).label) };
   const subject = desk.subject.trim();
@@ -70,6 +73,7 @@ export const DeskRow = memo(function DeskRow({
       aria-label={[
         row.starred ? "Starred." : null,
         who,
+        mark?.name ?? null,
         subject || null,
         ask ? null : desk.reason,
         gist ? gistText(gist) : null,
@@ -161,6 +165,7 @@ export const DeskRow = memo(function DeskRow({
         </span>
       ) : null}
       <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 @2xl:col-start-3">
+        {mark ? <AccountMark identity={mark} /> : null}
         <time
           dateTime={desk.since}
           title={age.title}

@@ -6779,12 +6779,14 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
                 data: ResponseData::AssistantStepRows {
                     rows: vec![
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Quarterly report".into(),
                             detail: Some("Ann".into()),
                             link: None,
                             ..Default::default()
                         },
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Invoice 42".into(),
                             detail: None,
                             link: None,
@@ -6890,7 +6892,9 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
     .unwrap();
 
     let response = test_http_client()
-        .post(format!("http://{addr}/api/v1/platform/accounts/work/identity"))
+        .post(format!(
+            "http://{addr}/api/v1/platform/accounts/work/identity"
+        ))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&serde_json::json!({ "color": "amber", "tag": "W", "dry_run": true }))
         .send()
@@ -6905,7 +6909,9 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
 
     // A colour the daemon doesn't know is refused at the bridge, before any IPC.
     let response = test_http_client()
-        .post(format!("http://{addr}/api/v1/platform/accounts/work/identity"))
+        .post(format!(
+            "http://{addr}/api/v1/platform/accounts/work/identity"
+        ))
         .bearer_auth(TEST_AUTH_TOKEN)
         .json(&serde_json::json!({ "color": "teal" }))
         .send()

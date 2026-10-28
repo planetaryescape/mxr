@@ -1,7 +1,7 @@
 # DESIGN.md
 
 Visual system documentation, derived from `site/src/styles/custom.css`
-and used by impeccable for on-brand output. Format follows the
+for consistent visual output. Format follows the
 [Google Stitch DESIGN.md schema](https://stitch.withgoogle.com/docs/design-md/format/).
 
 ## Theme

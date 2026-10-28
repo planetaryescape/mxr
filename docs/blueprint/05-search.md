@@ -79,7 +79,7 @@ Tantivy indexes:
 - sender name/email
 - recipient email (`to`, `cc`, `bcc`)
 - snippet
-- cleaned body text
+- cleaned body text: the reader's output for the message (`mxr_reader::clean`), so markup, styles, tracking URLs, quoted earlier messages and signatures do not match. If the cleaned text is only a quoted reply, the uncleaned text is indexed so the message stays findable. Rules matching still uses the raw body text.
 - attachment filenames
 - RFC 822 Message-ID header
 - List-Id header

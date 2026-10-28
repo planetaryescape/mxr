@@ -147,7 +147,8 @@ mxr/
 │   │
 │   ├── search/                   # Tantivy indexing and query engine
 │   │                             # BM25, field boosts, saved searches, query parser.
-│   │                             # Depends on: core
+│   │                             # Indexes the reader's cleaned text, not raw HTML.
+│   │                             # Depends on: core, reader
 │   │
 │   ├── provider-gmail/           # Gmail API adapter (MailSyncProvider + MailSendProvider)
 │   │                             # OAuth2 flow, history.list delta sync, batch API.
@@ -272,7 +273,7 @@ These are strict. Violations should be caught in code review:
 3. **`transport` depends on no internal mxr crate.** It is a pure byte-stream seam (`ServerTransport` / `TransportListener` / `Connector` traits, `PeerInfo` auth evidence, `TransportCapabilities`, `unix://` addressing, UDS + in-memory (`test-util`) adapters), depending only on `tokio` / `async-trait` / `thiserror` / `tracing`. A `protocol` dependency may arrive in phase 5 with the additive `Authenticate` request. `client` and `daemon` may depend on `transport`; `transport` must not depend on daemon, store, search, sync, semantic, or provider crates. The wire protocol stays frozen — transports abstract only where bytes come from.
 4. **`client` depends only on `protocol` and `transport` at runtime.** It is the one shared IPC connection (connect + frame + correlate + read events, kinded `ClientError`), generic over a transport `Connector`. Test fixtures may dev-depend on `core` (as provider crates dev-depend on `provider-fake`), but no other runtime dependency is allowed. The daemon (for its CLI/internal client), `tui`, `web`, and `mcp` may depend on `client`; `client` must not depend on daemon, store, search, sync, semantic, or provider crates.
 4. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. Gmail, IMAP, SMTP, Outlook, and fake adapters do NOT depend on store, search, sync, daemon, TUI, or web.
-4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
+4. **`store` depends only on `core`, and `search` depends only on `core` and `reader`.** They are storage backends, not business logic. `search` takes its document text from `reader` so search matches what the reader shows.
 5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.
 6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
 6a. **`assistant` owns the in-app assistant's loop, approval gate and prompt.** It depends only on `llm`. Mail reaches it only through the `ToolHost`, `ChatModel` and `TurnSink` traits the daemon implements (with the MCP tools run in-process), so it can't bypass the daemon's dispatch, safety policy or activity log.

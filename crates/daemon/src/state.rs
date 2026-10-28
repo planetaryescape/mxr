@@ -604,6 +604,10 @@ pub struct AppState {
     /// end of an initial backfill may still force another warm-up because they
     /// can publish a new Tantivy reader generation.
     lexical_search_warmed: std::sync::atomic::AtomicBool,
+    /// Index path when the opened lexical index was built from older text than
+    /// the reader now produces. Startup maintenance rebuilds it and then records
+    /// the current content version there.
+    pub(crate) lexical_content_stale: std::sync::OnceLock<std::path::PathBuf>,
     config: RwLock<mxr_config::MxrConfig>,
     pub(crate) assessment_config_gate: tokio::sync::RwLock<()>,
     shutdown_tx: watch::Sender<bool>,
@@ -841,8 +845,20 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
-        let (search, search_worker) =
-            SearchServiceHandle::start(open_search_index(&index_path, &store).await?);
+        let search_index = open_search_index(
+            &index_path,
+            &store,
+            mxr_reader::ReaderConfig {
+                html_command: config.render.html_command.clone(),
+                ..Default::default()
+            },
+        )
+        .await?;
+        let lexical_content_stale = std::sync::OnceLock::new();
+        if let Some(path) = search_index.stale_content_path {
+            let _ = lexical_content_stale.set(path);
+        }
+        let (search, search_worker) = SearchServiceHandle::start(search_index.index);
         runtime_tasks.set_search_worker(search_worker);
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(store.clone(), &data_dir, config.search.semantic.clone()),
@@ -939,6 +955,7 @@ impl AppState {
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
+            lexical_content_stale,
             config: RwLock::new(config),
             assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
@@ -2418,6 +2435,7 @@ impl AppState {
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
+            lexical_content_stale: std::sync::OnceLock::new(),
             config: RwLock::new(config),
             assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
@@ -2516,6 +2534,7 @@ impl AppState {
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
+            lexical_content_stale: std::sync::OnceLock::new(),
             config: RwLock::new(config),
             assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
@@ -2640,6 +2659,7 @@ impl AppState {
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
+                lexical_content_stale: std::sync::OnceLock::new(),
                 config: RwLock::new(config),
                 assessment_config_gate: tokio::sync::RwLock::new(()),
                 shutdown_tx,
@@ -2671,7 +2691,38 @@ fn test_attachment_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4()))
 }
 
+/// A lexical index opened at startup, plus the path to mark once it is rebuilt
+/// when the index was built from older text than the reader now produces.
+struct OpenedSearchIndex {
+    index: SearchIndex,
+    stale_content_path: Option<std::path::PathBuf>,
+}
+
 async fn open_search_index(
+    index_path: &std::path::Path,
+    store: &Store,
+    reader_config: mxr_reader::ReaderConfig,
+) -> anyhow::Result<OpenedSearchIndex> {
+    let existed = index_path.join("meta.json").exists();
+    let index = open_search_index_files(index_path, store)
+        .await?
+        .with_reader_config(reader_config);
+    if !existed {
+        // A new index is built from the current text, so there is nothing to rebuild.
+        mxr_search::record_lexical_content_version(index_path)?;
+        return Ok(OpenedSearchIndex {
+            index,
+            stale_content_path: None,
+        });
+    }
+    let stale = !mxr_search::lexical_content_is_current(index_path);
+    Ok(OpenedSearchIndex {
+        index,
+        stale_content_path: stale.then(|| index_path.to_path_buf()),
+    })
+}
+
+async fn open_search_index_files(
     index_path: &std::path::Path,
     store: &Store,
 ) -> anyhow::Result<SearchIndex> {
@@ -2964,6 +3015,29 @@ pub(crate) async fn owned_sets_by_account(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn open_search_index_records_new_index_and_flags_old_one_as_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let index_path = dir.path().join("search_index");
+        std::fs::create_dir_all(&index_path).unwrap();
+        let store = Store::in_memory().await.unwrap();
+
+        let opened = open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default())
+            .await
+            .unwrap();
+        assert!(opened.stale_content_path.is_none());
+        assert!(mxr_search::lexical_content_is_current(&index_path));
+        drop(opened);
+
+        // An index built before the marker existed has to rebuild once.
+        std::fs::remove_file(dir.path().join("search_index.content-version")).unwrap();
+        let opened = open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default())
+            .await
+            .unwrap();
+        assert_eq!(opened.stale_content_path, Some(index_path.clone()));
+        // The marker is written only after a completed rebuild, not on open.
+        assert!(!mxr_search::lexical_content_is_current(&index_path));
+    }
 
     use super::*;
 

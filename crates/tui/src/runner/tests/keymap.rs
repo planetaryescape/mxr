@@ -1320,11 +1320,6 @@ fn third_wave_keys_name_their_new_keys() {
     let palette = "has no key now; find it in the palette";
     for (context, key, notice) in [
         (
-            "reader",
-            press_of('o'),
-            "Open in browser is now O".to_string(),
-        ),
-        (
             "list",
             shifted('E'),
             format!("Export as Markdown {palette}"),

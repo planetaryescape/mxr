@@ -18,6 +18,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { formatWhen } from "@/lib/format";
+import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 const PREVIEW_ROWS = 5;
 const COMPACT = { "--row-height": "44px" } as React.CSSProperties;
@@ -66,11 +67,12 @@ export function Proof({
       aria-label={title}
       tabIndex={-1}
       {...{ [PENDING_CARD_ATTRIBUTE]: "", "data-keys-owner": "" }}
-      onKeyDown={onBareKey((key) => {
+      onKeyDown={onBareKey((_, event) => {
         if (rejecting) return false;
-        if (key === "y") apply();
-        else if (key === "n") setRejecting(true);
-        else if (key === "x") setShowCall((value) => !value);
+        if (pressedOverlayKey(event, "assistant.approve")) apply();
+        else if (pressedOverlayKey(event, "assistant.reject")) setRejecting(true);
+        else if (pressedOverlayKey(event, "assistant.exact-call")) setShowCall((value) => !value);
+        else if (pressedOverlayKey(event, "assistant.all-messages")) setShowAll((value) => !value);
         else return false;
         return true;
       })}
@@ -143,9 +145,13 @@ export function Proof({
         <div className="mt-3 px-4">
           {warning ? <p className="type-meta mb-2 text-danger">{warning}</p> : null}
           <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
-            <QuietKey keys="n" label="send back with a note" onClick={() => setRejecting(true)} />
             <QuietKey
-              keys="x"
+              keys={optionLetter("assistant.reject")}
+              label="send back with a note"
+              onClick={() => setRejecting(true)}
+            />
+            <QuietKey
+              keys={optionLetter("assistant.exact-call")}
               label="exact call"
               pressed={showCall}
               onClick={() => setShowCall((value) => !value)}
@@ -153,7 +159,7 @@ export function Proof({
             <Button size="sm" className="ml-auto" disabled={busy} onClick={apply}>
               Apply
               <KeyChip className="pointer-coarse:hidden border-transparent bg-transparent text-inherit shadow-none">
-                y
+                {optionLetter("assistant.approve")}
               </KeyChip>
             </Button>
           </div>

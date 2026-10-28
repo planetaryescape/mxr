@@ -574,6 +574,8 @@ impl App {
         self.mailbox.todo_link = None;
         self.close_attachment_panel();
         self.mailbox.signature_expanded = false;
+        self.mailbox.quotes_expanded = false;
+        self.mailbox.collapsed_messages.clear();
         self.mailbox.viewed_thread = None;
         self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.mailbox.thread_summary = None;

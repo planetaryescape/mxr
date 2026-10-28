@@ -428,12 +428,17 @@ impl App {
             | Action::RespondInviteWithComment(_)
             | Action::ToggleSelect
             | Action::VisualLineMode
-            | Action::PatternSelect(_) => self.apply_mutation_action(action),
+            | Action::PatternSelect(_)
+            | Action::ArchiveNext
+            | Action::ArchivePrev => self.apply_mutation_action(action),
             Action::OpenInBrowser
             | Action::ToggleReaderMode
             | Action::ToggleHtmlView
             | Action::ToggleRemoteContent
             | Action::ToggleSignature
+            | Action::ToggleQuotes
+            | Action::ToggleMessage
+            | Action::ToggleAllMessages
             | Action::AttachmentList
             | Action::OpenLinks
             | Action::ToggleFullscreen

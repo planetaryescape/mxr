@@ -12,6 +12,24 @@ pub struct PendingBrowserOpen {
     pub document: String,
 }
 
+/// An archive from the reader that opens the next or previous
+/// conversation once the daemon has done it, as the web reader's `]` and
+/// `[` do. The step waits for the archive, so a failed or refused one
+/// leaves the reader where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveStep {
+    /// The messages the archive acts on, so a bulk confirm adopts the step
+    /// only for this archive.
+    pub message_ids: Vec<MessageId>,
+    pub thread_id: mxr_core::ThreadId,
+    pub forward: bool,
+    /// The row to open afterwards, by its representative message; `None`
+    /// when the conversation was the last (or first) one.
+    pub neighbour: Option<MessageId>,
+    /// The queued archive, once it is queued.
+    pub mutation: Option<crate::app::MutationId>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivePane {
     Sidebar,
@@ -715,6 +733,15 @@ pub struct MailboxState {
     pub show_reader_stats: bool,
     pub remote_content_enabled: bool,
     pub signature_expanded: bool,
+    /// `Q`: the open thread's quoted text in full instead of folded.
+    pub quotes_expanded: bool,
+    /// `o` and `;`: messages of the open thread shown as one line.
+    pub collapsed_messages: HashSet<MessageId>,
+    /// Set by `o` and `;` so the next frame scrolls the reader to the
+    /// focused message; folding shifts every row below it.
+    pub scroll_to_focused_message: bool,
+    /// `]` and `[`: where the reader goes once the archive is done.
+    pub archive_step: Option<ArchiveStep>,
     pub attachment_panel: AttachmentPanelState,
     pub pending_attachment_action: Option<PendingAttachmentAction>,
     pub selected_set: HashSet<MessageId>,
@@ -827,6 +854,10 @@ impl MailboxState {
             show_reader_stats: render.show_reader_stats,
             remote_content_enabled: render.html_remote_content,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed_messages: HashSet::new(),
+            scroll_to_focused_message: false,
+            archive_step: None,
             attachment_panel: AttachmentPanelState::default(),
             pending_attachment_action: None,
             selected_set: HashSet::new(),

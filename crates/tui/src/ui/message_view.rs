@@ -25,6 +25,13 @@ pub struct ThreadMessageBlock {
     pub bulk_selected: bool,
     pub has_unsubscribe: bool,
     pub signature_expanded: bool,
+    /// `Q`: quoted text in full instead of folded.
+    pub quotes_expanded: bool,
+    /// `o` and `;`: only the message's header line shows.
+    pub collapsed: bool,
+    /// Scroll so this message's header is the reader's top line, this
+    /// frame only; set after folding moved it.
+    pub scroll_here: bool,
     /// A To do row's link, marked where it appears in this message.
     pub highlight_link: Option<String>,
     /// Phase 3.4: true while remote HTML assets for this message are
@@ -139,8 +146,11 @@ pub fn draw(
         blocks.push(RenderBlock::Text(vec![Line::from("")]));
     }
 
+    let mut anchor_block = None;
     for (index, message) in messages.iter().enumerate() {
-        if index > 0 {
+        // Folded messages stack as a list of header lines.
+        let after_folded = index > 0 && messages[index - 1].collapsed && message.collapsed;
+        if index > 0 && !after_folded {
             blocks.push(RenderBlock::Text(vec![
                 Line::from(""),
                 Line::from(Span::styled(
@@ -151,6 +161,10 @@ pub fn draw(
             ]));
         }
 
+        if message.scroll_here {
+            anchor_block = Some(blocks.len());
+        }
+
         let env = &message.envelope;
         let from = env.from.name.as_deref().unwrap_or(&env.from.email);
         let label_style = if message.selected {
@@ -159,6 +173,17 @@ pub fn draw(
             Style::default().fg(theme.text_muted)
         };
         let value_style = Style::default().fg(theme.text_primary);
+
+        if message.collapsed {
+            blocks.push(RenderBlock::Text(vec![collapsed_message_line(
+                message,
+                from,
+                received_label(env.date, now, zone),
+                usize::from(inner.width),
+                theme,
+            )]));
+            continue;
+        }
         let mut text_lines: Vec<Line<'static>> = Vec::new();
 
         // Aligned headers with consistent label width
@@ -275,19 +300,30 @@ pub fn draw(
                 ));
                 if metadata.mode == BodyViewMode::Html && *source == BodySource::Html {
                     blocks.push(RenderBlock::Text(text_lines));
+                    // As the web reader's formatted view: the quoted
+                    // conversation stays folded until `Q`.
+                    let parts = (!message.quotes_expanded)
+                        .then(|| mxr_reader::split_html_quote_keeping_signature(raw))
+                        .filter(|parts| parts.has_quote);
                     blocks.extend(render_html_blocks(
                         &message.envelope.id,
-                        raw,
+                        parts
+                            .as_ref()
+                            .map_or(raw.as_str(), |parts| parts.main.as_str()),
                         inner.width,
                         theme,
                         metadata.remote_content_enabled,
                     ));
+                    if parts.is_some() {
+                        blocks.push(RenderBlock::Text(vec![folded_quote_line(theme)]));
+                    }
                 } else {
                     let body = process_body_lines(
                         rendered,
                         theme,
                         message.signature_expanded,
                         metadata.reader_applied,
+                        message.quotes_expanded,
                     );
                     match &message.highlight_link {
                         Some(link) => text_lines
@@ -299,7 +335,7 @@ pub fn draw(
             }
             BodyViewState::Loading { preview } => {
                 if let Some(preview) = preview {
-                    text_lines.extend(process_body_lines(preview, theme, false, false));
+                    text_lines.extend(process_body_lines(preview, theme, false, false, false));
                     text_lines.push(Line::from(""));
                 }
                 text_lines.push(Line::from(Span::styled(
@@ -310,7 +346,7 @@ pub fn draw(
             }
             BodyViewState::Empty { preview } => {
                 if let Some(preview) = preview {
-                    text_lines.extend(process_body_lines(preview, theme, false, false));
+                    text_lines.extend(process_body_lines(preview, theme, false, false, false));
                     text_lines.push(Line::from(""));
                 }
                 text_lines.push(Line::from(Span::styled(
@@ -324,7 +360,7 @@ pub fn draw(
                 preview,
             } => {
                 if let Some(preview) = preview {
-                    text_lines.extend(process_body_lines(preview, theme, false, false));
+                    text_lines.extend(process_body_lines(preview, theme, false, false, false));
                     text_lines.push(Line::from(""));
                 }
                 text_lines.push(Line::from(Span::styled(
@@ -359,7 +395,18 @@ pub fn draw(
         ));
     }
     let max_scroll = content_height.saturating_sub(inner.height);
-    let scroll_offset = scroll_offset.min(max_scroll);
+    let scroll_offset = match anchor_block {
+        Some(anchor) => blocks[..anchor].iter().fold(0u16, |rows, block| {
+            rows.saturating_add(render_block_height(
+                block,
+                inner.width,
+                inner.height,
+                html_images,
+            ))
+        }),
+        None => scroll_offset,
+    }
+    .min(max_scroll);
 
     render_blocks(frame, inner, scroll_offset, blocks, theme, html_images);
 
@@ -388,7 +435,7 @@ fn thread_summary_lines(summary: ThreadSummaryBlock, theme: &Theme) -> Vec<Line<
 
     let mut lines = vec![Line::from(header)];
     if let Some(text) = summary.text.as_deref() {
-        lines.extend(process_body_lines(text.trim(), theme, false, false));
+        lines.extend(process_body_lines(text.trim(), theme, false, false, false));
     }
     if let Some(error) = summary.error.as_deref() {
         lines.push(Line::from(Span::styled(
@@ -647,6 +694,7 @@ fn process_body_lines(
     theme: &Theme,
     signature_expanded: bool,
     reader_applied: bool,
+    quotes_expanded: bool,
 ) -> Vec<Line<'static>> {
     // Sanitize at the render boundary: strip C0/DEL/C1 control characters
     // before any line is turned into a ratatui Span. Keeps \n and \t.
@@ -674,7 +722,7 @@ fn process_body_lines(
     for line in raw.lines() {
         // Signature detection
         if line == "-- " || line == "--" {
-            flush_quotes(&mut quote_buffer, &mut lines, theme);
+            flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
             in_signature = true;
             continue;
         }
@@ -685,7 +733,7 @@ fn process_body_lines(
                 signature_lines.push(String::new());
                 continue;
             }
-            flush_quotes(&mut quote_buffer, &mut lines, theme);
+            flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
             consecutive_blanks += 1;
             if consecutive_blanks <= 2 {
                 lines.push(Line::from(""));
@@ -706,12 +754,21 @@ fn process_body_lines(
         }
 
         // Regular line — flush any pending quotes first
-        flush_quotes(&mut quote_buffer, &mut lines, theme);
+        flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
+        if is_folded_quote_label(line) {
+            lines.push(Line::from(Span::styled(
+                format!("{line} (Q shows it)"),
+                Style::default()
+                    .fg(theme.quote_fg)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+            continue;
+        }
         lines.push(style_line_with_links(line, theme));
     }
 
     // Flush remaining
-    flush_quotes(&mut quote_buffer, &mut lines, theme);
+    flush_quotes(&mut quote_buffer, &mut lines, theme, quotes_expanded);
 
     if !signature_lines.is_empty() {
         if signature_expanded {
@@ -935,7 +992,7 @@ fn render_html_blocks(
         Some(Some(lines)) => lines,
         Some(None) => {
             return vec![RenderBlock::Text(process_body_lines(
-                html, theme, false, false,
+                html, theme, false, false, false,
             ))];
         }
         // html2text panicked; show the tag-stripped text rather than raw markup.
@@ -943,6 +1000,7 @@ fn render_html_blocks(
             return vec![RenderBlock::Text(process_body_lines(
                 &mxr_reader::strip_html_tags(html),
                 theme,
+                false,
                 false,
                 false,
             ))];
@@ -1201,14 +1259,73 @@ fn human_size(size_bytes: u64) -> String {
     }
 }
 
-fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme: &Theme) {
+/// The line `mxr_reader` leaves where it folded a quoted reply:
+/// `[previous message]` or `[previous message from …]`.
+fn is_folded_quote_label(line: &str) -> bool {
+    line.starts_with("[previous message") && line.ends_with(']')
+}
+
+/// Where the HTML view folded the quoted conversation away.
+fn folded_quote_line(theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        "  ┆ quoted text folded (Q shows it)",
+        Style::default()
+            .fg(theme.quote_fg)
+            .add_modifier(Modifier::ITALIC),
+    ))
+}
+
+/// A message folded by `o` or `;`: who, when and the start of what they
+/// wrote, cut to one line so the folded messages read as a list.
+fn collapsed_message_line(
+    message: &ThreadMessageBlock,
+    from: &str,
+    date: String,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker_style = if message.selected {
+        Style::default().fg(theme.accent).bold()
+    } else {
+        Style::default().fg(theme.text_muted)
+    };
+    let from = strip_control_chars(from).into_owned();
+    let snippet = strip_control_chars(&message.envelope.snippet)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let used = 2 + from.chars().count() + 2 + date.chars().count() + 2;
+    let room = width.saturating_sub(used);
+    let snippet = if snippet.chars().count() > room {
+        let mut cut: String = snippet.chars().take(room.saturating_sub(1)).collect();
+        if !cut.is_empty() {
+            cut.push('…');
+        }
+        cut
+    } else {
+        snippet
+    };
+    Line::from(vec![
+        Span::styled("▸ ", marker_style),
+        Span::styled(from, Style::default().fg(theme.text_primary)),
+        Span::styled(format!("  {date}  "), Style::default().fg(theme.text_muted)),
+        Span::styled(snippet, Style::default().fg(theme.text_muted)),
+    ])
+}
+
+fn flush_quotes(
+    buffer: &mut Vec<String>,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+    expanded: bool,
+) {
     if buffer.is_empty() {
         return;
     }
 
     let quote_style = Style::default().fg(theme.quote_fg);
 
-    if buffer.len() <= 3 {
+    if buffer.len() <= 3 || expanded {
         for line in buffer.drain(..) {
             let cleaned = line
                 .trim_start_matches('>')
@@ -1232,7 +1349,7 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme:
         }
         let hidden = buffer.len() - 2;
         lines.push(Line::from(Span::styled(
-            format!("  ┆ ... {hidden} more quoted lines ..."),
+            format!("  ┆ ... {hidden} more quoted lines (Q shows them) ..."),
             Style::default()
                 .fg(theme.quote_fg)
                 .add_modifier(Modifier::ITALIC),
@@ -1437,6 +1554,9 @@ mod tests {
             bulk_selected: true,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1486,6 +1606,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1539,6 +1662,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1597,6 +1723,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1657,6 +1786,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1712,6 +1844,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: true,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1774,6 +1909,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };
@@ -1839,6 +1977,9 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            quotes_expanded: false,
+            collapsed: false,
+            scroll_here: false,
             highlight_link: None,
             assets_loading: false,
         };

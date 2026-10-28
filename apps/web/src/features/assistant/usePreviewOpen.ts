@@ -37,6 +37,8 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
+
 export const OPEN_DELAY_MS = 400;
 export const CLOSE_DELAY_MS = 200;
 
@@ -65,7 +67,7 @@ export function usePreviewOpen() {
     const wanted = openTimer.current !== null || isOpen.current;
     if (wanted && !escape.current) {
       escape.current = (event) => {
-        if (event.key === "Escape") suppress();
+        if (pressedOverlayKey(event, "popover.close")) suppress();
       };
       document.addEventListener("keydown", escape.current, true);
     } else if (!wanted && escape.current) {

@@ -77,7 +77,9 @@ describe("History", () => {
     fireEvent.keyDown(history, { key: "j" });
     // d deleted until K3 (blueprint 35): it names # and asks nothing.
     fireEvent.keyDown(history, { key: "d" });
-    expect(useKeyScope.getState().moved).toEqual({ label: "Delete", key: "#" });
+    expect(useKeyScope.getState().moved).toEqual({ label: "Delete the conversation", key: "#" });
+    fireEvent.keyDown(history, { key: "D" });
+    expect(useKeyScope.getState().moved).toEqual({ label: "Delete the conversation", key: "#" });
     expect(deletes()).toEqual([]);
     fireEvent.keyDown(history, { key: "#" });
 
@@ -132,5 +134,28 @@ describe("History", () => {
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "y" });
     await waitFor(() => expect(deletes().at(-1)).toMatchObject({ dryRun: false }));
+  });
+
+  test("the arrows move as j and k do, Enter opens, and q closes as Esc does", async () => {
+    const onPick = vi.fn<(id: string | null) => void>();
+    const onClose = vi.fn<() => void>();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <History currentId={null} onPick={onPick} onClose={onClose} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Old trip");
+    const history = screen.getByRole("heading", { name: "Past conversations" }).parentElement!;
+
+    fireEvent.keyDown(history, { key: "ArrowDown" });
+    fireEvent.keyDown(history, { key: "ArrowUp" });
+    fireEvent.keyDown(history, { key: "ArrowDown" });
+    fireEvent.keyDown(history, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("c2");
+
+    onClose.mockClear();
+    fireEvent.keyDown(history, { key: "q" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

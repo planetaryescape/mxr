@@ -214,11 +214,18 @@ impl App {
                     self.submit_assistant_answers(call_id);
                     return None;
                 }
-                (KeyCode::Char('s'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
+                (KeyCode::Char('s'), KeyModifiers::NONE) => {
                     self.decide_assistant_call(
                         call_id,
                         AssistantDecisionKindData::Reject { reason: None },
                     );
+                    return None;
+                }
+                // Esc and q close without deciding (blueprint 35's overlay
+                // grammar): the pane hands the keys back and the question
+                // keeps waiting.
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), KeyModifiers::NONE) => {
+                    self.assistant.focus = AssistantFocus::Away;
                     return None;
                 }
                 _ => {}
@@ -275,8 +282,8 @@ impl App {
     }
 
     fn assistant_list_key(&mut self, key: KeyEvent) {
-        if key.code == KeyCode::Char('D') && self.assistant.list.is_some() {
-            self.announce_moved("assistant", "D");
+        if let KeyCode::Char(c @ ('d' | 'D')) = key.code {
+            self.announce_moved("assistant-history", &c.to_string());
             return;
         }
         let Some(list) = self.assistant.list.as_mut() else {

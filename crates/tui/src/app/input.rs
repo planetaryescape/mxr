@@ -5,6 +5,20 @@ pub(super) fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
+/// The web reader's folds and archive-and-step (blueprint 35): `o` the
+/// focused message, `;` every message, `Q` quoted text, `]` and `[`
+/// archive and open the next or previous conversation.
+fn reader_fold_key(key: crossterm::event::KeyEvent) -> Option<Action> {
+    match (key.code, key.modifiers) {
+        (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::ToggleMessage),
+        (KeyCode::Char(';'), KeyModifiers::NONE) => Some(Action::ToggleAllMessages),
+        (KeyCode::Char('Q'), modifiers) if plain_or_shift(modifiers) => Some(Action::ToggleQuotes),
+        (KeyCode::Char(']'), KeyModifiers::NONE) => Some(Action::ArchiveNext),
+        (KeyCode::Char('['), KeyModifiers::NONE) => Some(Action::ArchivePrev),
+        _ => None,
+    }
+}
+
 fn draft_from_pending(
     pending: &PendingSend,
     draft_id: mxr_core::id::DraftId,
@@ -1174,6 +1188,15 @@ impl App {
                 }
                 (KeyCode::Esc, _) | (KeyCode::Char('n' | 'q'), KeyModifiers::NONE) => {
                     self.modals.pending_bulk_confirm = None;
+                    // A `]` or `[` waiting on this confirm steps nowhere.
+                    if self
+                        .mailbox
+                        .archive_step
+                        .as_ref()
+                        .is_some_and(|step| step.mutation.is_none())
+                    {
+                        self.mailbox.archive_step = None;
+                    }
                     self.status_message = Some("Bulk action cancelled".into());
                     None
                 }
@@ -1761,6 +1784,7 @@ impl App {
                 // the web reader leaves Enter to its buttons (blueprint 35's
                 // same keys in both clients).
                 (KeyCode::Enter, _) => None,
+                _ if reader_fold_key(key).is_some() => reader_fold_key(key),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
@@ -2336,11 +2360,6 @@ impl App {
                     self.search.page.editing = true;
                     None
                 }
-                // `o` opened the original, as `O` does; it says so until 0.6.185.
-                (KeyCode::Char('o'), KeyModifiers::NONE) => {
-                    self.announce_moved("reader", "o");
-                    None
-                }
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     self.search.page.active_pane = SearchPane::Results;
                     None
@@ -2377,6 +2396,7 @@ impl App {
                     self.reset_search_preview_selection();
                     None
                 }
+                _ if reader_fold_key(key).is_some() => reader_fold_key(key),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },

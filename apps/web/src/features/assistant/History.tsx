@@ -1,9 +1,10 @@
 /*
  * Past conversations, as the shared Row: the title, where it stands, the
- * time, and a mark for one waiting on you. j and k move, Enter opens, Esc
- * goes back. # asks the daemon what would go (a dry run), then y or Enter
- * deletes and n or Esc keeps it, as in the TUI. d deleted until K3
- * (blueprint 35) and says so until 0.6.185, as the definition's moved keys do.
+ * time, and a mark for one waiting on you. Its keys are the definition's
+ * `assistant-history` overlay, as in the TUI: j and k move, Enter opens,
+ * Esc or q goes back, and # asks the daemon what would go (a dry run), then
+ * y deletes and n, Esc or a bare Enter keeps it. d and D say where delete
+ * went.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,8 +24,8 @@ import { KeyChip } from "@/components/KeyChip";
 import { Row, RowVerb } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { formatRelative, plural } from "@/lib/format";
-import { useKeyScope } from "@/state/keyScopeStore";
 import { definedKeys } from "@/lib/actions/definition";
+import { announceMovedOverlayKey, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 function standing(summary: AssistantSummary): string {
   if (summary.pending_count > 0) return "Waiting for you";
@@ -77,7 +78,7 @@ export function History({
       data-keys-owner=""
       ref={(element) => element?.focus({ preventScroll: true })}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (pressedOverlayKey(event, "overlay.close")) {
           event.stopPropagation();
           if (confirming) setConfirming(null);
           else onClose();
@@ -96,12 +97,14 @@ export function History({
             return true;
           }
           const current = list[litIndex];
-          if (key === "j") setLit(Math.min(litIndex + 1, list.length - 1));
-          else if (key === "k") setLit(Math.max(litIndex - 1, 0));
-          else if (key === "Enter" && current) open(current.id);
-          else if (key === "#" && current) void askToRemove(current.id);
-          else if (key === "d") useKeyScope.getState().showMoved("Delete", "#");
-          else return false;
+          if (pressedOverlayKey(keyEvent, "overlay.down")) {
+            setLit(Math.min(litIndex + 1, list.length - 1));
+          } else if (pressedOverlayKey(keyEvent, "overlay.up")) setLit(Math.max(litIndex - 1, 0));
+          else if (pressedOverlayKey(keyEvent, "assistant-history.open") && current)
+            open(current.id);
+          else if (pressedOverlayKey(keyEvent, "assistant-history.delete") && current) {
+            void askToRemove(current.id);
+          } else if (!announceMovedOverlayKey(keyEvent, "assistant-history")) return false;
           return true;
         })(event);
       }}

@@ -87,8 +87,6 @@ pub(crate) const PLACES: &[(&str, &str)] = &[
         "`@` opens the pane and gives it the keys. While it has them, nothing you type reaches the screen behind it. See [the assistant guide](/guides/assistant/#in-the-terminal).",
     ),
     ("assistant-input", ""),
-    ("assistant-approval", ""),
-    ("assistant-question", ""),
     (
         "compose-assist-proof",
         "The proof shown for a draft written in your voice, before it goes into your editor.",
@@ -133,6 +131,15 @@ pub(crate) const OVERLAYS: &[(&str, &str)] = &[
     ),
     ("sender-ask", "After a Not-sure answer. Any other key drops the question and does what it always does."),
     ("categories", ""),
+    (
+        "assistant-approval",
+        "A change the assistant wants to make, waiting in its pane. Any other key works as it does in the pane.",
+    ),
+    (
+        "assistant-question",
+        "A question the assistant asks, waiting in its pane. Any other key works as it does in the pane.",
+    ),
+    ("assistant-history", "`L` in the assistant pane opens it."),
     (
         "send-review",
         "After you save and quit `$EDITOR`. It opens on Send.",

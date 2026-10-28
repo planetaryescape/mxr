@@ -39,14 +39,10 @@ pub(crate) fn places_for(context: UiContext) -> Vec<&'static str> {
 
 /// Places help lists wherever it is opened: the assistant pane takes the
 /// keys while it is open, so help can't be opened from it, and the writing
-/// proof is an overlay.
-pub(crate) const ALWAYS_LISTED: [&str; 5] = [
-    "assistant",
-    "assistant-input",
-    "assistant-approval",
-    "assistant-question",
-    "compose-assist-proof",
-];
+/// proof is an overlay. Help lists every overlay after these, the
+/// assistant's proof, question and history among them.
+pub(crate) const ALWAYS_LISTED: [&str; 3] =
+    ["assistant", "assistant-input", "compose-assist-proof"];
 
 /// The keys that run the definition's actions, as the person has them.
 pub(crate) struct KeyRows<'a> {

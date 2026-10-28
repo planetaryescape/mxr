@@ -52,12 +52,12 @@ pub use focus::{FocusItem, FocusPageState, FocusProgress, FocusReply, FocusRetur
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
-    ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
-    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
-    LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
-    PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm, PlaceFetch, PlacePageState,
-    SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection, SnoozedPageState,
-    SubscriptionEntry, SubscriptionsPageState, SweepTarget, ThreadSummaryPreview,
+    ActivePane, ArchiveStep, AttachmentOperation, AttachmentPanelState, AttachmentSummary,
+    BodySource, BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState,
+    DeskPageState, LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView,
+    OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm,
+    PlaceFetch, PlacePageState, SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection,
+    SnoozedPageState, SubscriptionEntry, SubscriptionsPageState, SweepTarget, ThreadSummaryPreview,
     PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
 pub use messages::{

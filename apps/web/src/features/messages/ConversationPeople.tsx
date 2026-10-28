@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { fetchThread } from "@/features/mailbox/api";
 import type { AddressView } from "@/features/mailbox/types";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 import { CopyableAddress } from "./AddressDisclosure";
 
@@ -53,7 +54,7 @@ export function ConversationPeople({
             data-testid="conversation-people"
             className="mb-2 max-h-[min(45dvh,20rem)] w-full overflow-y-auto border-y border-rule-soft px-4 py-2"
             onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
+              if (!pressedOverlayKey(event, "popover.close")) return;
               event.preventDefault();
               setOpen(false);
               requestAnimationFrame(() => trigger.current?.focus());

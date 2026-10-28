@@ -215,7 +215,8 @@ pub fn draw(
     let mut footer_hint = if state.accounts.is_empty() {
         "c:new account  Esc:mailbox".to_string()
     } else if selected_unhealthy {
-        "j/k:select  Enter:edit  c:new  t:test  d:default  i:colour  r:repair  R:refresh".to_string()
+        "j/k:select  Enter:edit  c:new  t:test  d:default  i:colour  r:repair  R:refresh"
+            .to_string()
     } else {
         "j/k:select  Enter:edit  c:new  t:test  d:default  i:colour  r:refresh".to_string()
     };

@@ -157,8 +157,7 @@ with your `keys.toml` remaps.
   innermost layer (a menu, the reader, a sub-view, a screen) and quits only at
   the mailbox root. `Ctrl-z` suspends the TUI to the shell; `fg` brings it back.
 - `g` and a lowercase letter goes to a mail place or mode; `g` and a capital
-  opens a tool. The digits that used to open the tabs say where each went
-  until 0.6.180.
+  opens a tool. The digits that used to open the tabs retired.
 - Pasted text types into the focused text field. With no field focused, the
   TUI drops it, so a paste never runs as shortcuts. In terminals that support
   the kitty keyboard protocol, `Esc` also acts at once instead of waiting to
@@ -234,7 +233,7 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `m` | Mark read and archive |
 | `#`, `Delete`, `Backspace` | Move to Trash |
 | `!` | Mark as spam |
@@ -330,7 +329,7 @@ Places, labels and saved searches, on the left.
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `b` | Not now… |
 | `A` | Attachments |
 | `i a` | Accept invite |
@@ -392,7 +391,7 @@ The front page the TUI opens on. Acting on a row does it in that row's own mode.
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `b` | Not now… |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
@@ -419,7 +418,7 @@ People as rows with their topics inside. See [Messages](/guides/messages/).
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
 | `Ctrl+d`, `PageDown` | Half page down |
@@ -455,7 +454,7 @@ See [Act on To dos](/guides/todo/).
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
 | `Ctrl+d`, `PageDown` | Half page down |
@@ -483,7 +482,7 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
 | `Ctrl+d`, `PageDown` | Half page down |
@@ -528,7 +527,7 @@ The briefing: the latest digest, one line per source, with what arrived since be
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
 | `Ctrl+d`, `PageDown` | Half page down |
@@ -558,7 +557,7 @@ The [edition](/guides/reading/). Mail keys such as archive, star and reply don't
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `t` | Make a to-do from this |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
@@ -592,7 +591,7 @@ One item from the edition, open.
 |-----|--------|
 | `/` | Search mail |
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `t` | Make a to-do from this |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
@@ -622,7 +621,7 @@ The records lens, with the answer box focused.
 | Key | Action |
 |-----|--------|
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `Home`, `g g` | First conversation |
 | `End`, `G` | Last conversation |
 | `Ctrl+d`, `PageDown` | Half page down |
@@ -694,7 +693,7 @@ The Search screen's results.
 | Key | Action |
 |-----|--------|
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `e` | Archive |
 | `m` | Mark read and archive |
 | `#`, `Delete`, `Backspace` | Move to Trash |
@@ -728,7 +727,7 @@ The thread previewed beside the results.
 | Key | Action |
 |-----|--------|
 | `c` | Compose |
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `e` | Archive |
 | `m` | Mark read and archive |
 | `#`, `Delete`, `Backspace` | Move to Trash |
@@ -1476,7 +1475,7 @@ The emails behind Now's arrivals line.
 
 | Key | Action |
 |-----|--------|
-| `u` | Undo last action |
+| `u`, `z` | Undo last action |
 | `X` | Move to… |
 | `P` | Send everything from this sender to… |
 | `j`, `↓` | Next |
@@ -1624,7 +1623,7 @@ Diagnostics, `g P` Deliveries, `g C` Settings (was `g c` and `0`) and `g Y`
 Activity (was `g y`). The digit tabs, `8`, `9`, `g E`, `g p`, the list's `H`
 and `M`, and raw headers' `g H` retired; raw headers are in the palette. The
 assistant is `@` as well as `⌘.`, and Summarize folded into the briefing
-(`B`). Each old key says where it went until 0.6.180.
+(`B`).
 
 The next wave moved these, each saying where it went until 0.6.185: Export
 (`E`, in the mail list and Archive) and Updates' sender sweep (`S`) are in the

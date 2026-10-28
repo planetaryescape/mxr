@@ -27,9 +27,8 @@ The TUI has seven top-level screens. Tools open with `g` and a capital:
 - Analytics (`gA`)
 - Deliveries (`gP`)
 
-The digits that used to open them say where each went until 0.6.180. The
-command palette (`:` or `Ctrl-k`) opens each by name too. Rebind the keys in
-`keys.toml` next to the file printed by `mxr config path` (see
+The command palette (`:` or `Ctrl-k`) opens each by name too. Rebind the keys
+in `keys.toml` next to the file printed by `mxr config path` (see
 [Custom keybindings](/reference/config/#custom-keybindings)), or with
 `mxr keys set` or the web app's **Settings → Keyboard**, which change both
 clients. With `single_keys = false` a character typed on its own does nothing

@@ -145,28 +145,11 @@ fn with_single_keys_off_no_prefix_waits() {
     assert!(!screen(&mut app).contains("g then…"));
 }
 
-/// A prefix with nothing to list (`z`, held for the retired `z z`) clears
-/// after a second, so a stray `z` doesn't swallow the next key for four.
 #[test]
-fn a_prefix_with_nothing_to_list_clears_after_a_second() {
+fn z_undoes_now_that_z_z_retired() {
     let mut app = mailbox(MailboxView::Messages);
-    assert_eq!(press(&mut app, 'z'), None);
-    app.age_prefix_for_tests(std::time::Duration::from_millis(990));
-    app.tick();
-    assert!(app.input_pending(), "z still waits just under a second");
-    app.age_prefix_for_tests(std::time::Duration::from_millis(20));
-    app.tick();
-    assert!(!app.input_pending(), "z clears after a second");
-    assert_eq!(press(&mut app, 'j'), Some(Action::MoveDown));
-}
-
-#[test]
-fn z_z_still_says_where_it_went_and_runs_nothing() {
-    let mut app = mailbox(MailboxView::Messages);
-    assert_eq!(press(&mut app, 'z'), None);
-    assert_eq!(press(&mut app, 'z'), None);
-    let notice = app.status_message.clone().unwrap_or_default();
-    assert!(notice.contains("Center current"), "{notice}");
+    assert_eq!(press(&mut app, 'z'), Some(Action::UndoLastMutation));
+    assert!(!app.input_pending());
 }
 
 #[test]

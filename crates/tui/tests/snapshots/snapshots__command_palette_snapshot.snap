@@ -10,7 +10,7 @@ expression: snapshot
 "       ││> un                                                ││       "
 "       │╰────────────────────────────────────────────────────╯│       "
 "       │╭ Commands ──────────────────────────────────────────▲│       "
-"       ││@    Mail  Undo last action               u         █│       "
+"       ││@    Mail  Undo last action               u / z     █│       "
 "       ││@    Mail  Unsubscribe…                   D         █│       "
 "       ││@    Mail  Star or unstar                 s         ║│       "
 "       ││@    Mail  Mark unread                    U         ║│       "

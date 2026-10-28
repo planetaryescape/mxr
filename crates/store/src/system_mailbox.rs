@@ -802,7 +802,11 @@ mod tests {
         visible.date = Utc::now() - Duration::minutes(10);
         t.store.upsert_envelope(&visible).await.unwrap();
         t.store
-            .set_message_labels(&visible.id, std::slice::from_ref(&t.a_inbox.id), EventSource::Sync)
+            .set_message_labels(
+                &visible.id,
+                std::slice::from_ref(&t.a_inbox.id),
+                EventSource::Sync,
+            )
             .await
             .unwrap();
         let mut hidden = TestEnvelopeBuilder::new()
@@ -819,7 +823,11 @@ mod tests {
         hidden.date = Utc::now();
         t.store.upsert_envelope(&hidden).await.unwrap();
         t.store
-            .set_message_labels(&hidden.id, std::slice::from_ref(&outsider_inbox.id), EventSource::Sync)
+            .set_message_labels(
+                &hidden.id,
+                std::slice::from_ref(&outsider_inbox.id),
+                EventSource::Sync,
+            )
             .await
             .unwrap();
 

@@ -141,7 +141,10 @@ mod tests {
     #[derive(serde::Deserialize)]
     #[serde(tag = "cmd")]
     #[allow(dead_code, reason = "fields are read through the decode only")]
-    #[allow(clippy::enum_variant_names, reason = "variant names are the wire commands")]
+    #[allow(
+        clippy::enum_variant_names,
+        reason = "variant names are the wire commands"
+    )]
     enum PreLabelRoleRequest {
         ListEnvelopes {
             label_id: Option<LabelId>,

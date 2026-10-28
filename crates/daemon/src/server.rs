@@ -6,6 +6,7 @@
     )
 )]
 
+use crate::cli_error::CliError;
 use crate::ipc_client::IpcClient;
 use crate::loops;
 use crate::reindex::{reindex, ReindexProgress};
@@ -692,11 +693,11 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     }
 
     if !autostart_enabled {
-        anyhow::bail!(
+        return Err(CliError::daemon_unavailable(format!(
             "{} ({})",
             mxr_client::daemon_autostart_disabled_message(),
             sock_path.display()
-        );
+        )));
     }
 
     match recover_from_broken_socket(&sock_path).await {
@@ -726,21 +727,21 @@ async fn ensure_supervised_daemon_compatible(sock_path: &std::path::Path) -> any
     let snapshot = fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT)
         .await
         .map_err(|error| {
-            anyhow::anyhow!(
+            CliError::daemon_unavailable(format!(
                 "{} ({}) — daemon status failed: {error}",
                 mxr_client::daemon_autostart_disabled_message(),
                 sock_path.display()
-            )
+            ))
         })?;
     if daemon_requires_restart(
         snapshot.protocol_version,
         snapshot.daemon_version.as_deref(),
         snapshot.daemon_build_id.as_deref(),
     ) {
-        anyhow::bail!(
+        return Err(CliError::daemon_incompatible(format!(
             "The supervised daemon at {} is incompatible with this mxr binary. Update or restart it through the service manager; mxr did not replace the supervised process.",
             sock_path.display()
-        );
+        )));
     }
     Ok(())
 }
@@ -2048,7 +2049,9 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     detach_daemon_child(&mut command);
-    let mut child = command.spawn()?;
+    let mut child = command
+        .spawn()
+        .map_err(|error| CliError::daemon_unavailable(error.to_string()))?;
 
     for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
@@ -2103,10 +2106,10 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
             }
         }
     }
-    anyhow::bail!(
+    Err(CliError::daemon_unavailable(format!(
         "Failed to start daemon. Check logs at {}. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
         log_path.display()
-    )
+    )))
 }
 
 #[cfg(unix)]

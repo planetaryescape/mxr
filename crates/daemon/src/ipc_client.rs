@@ -1,5 +1,7 @@
+use crate::cli_error::CliError;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_protocol::*;
+use mxr_transport::TransportError;
 use std::path::Path;
 use tokio::time::Duration;
 
@@ -93,11 +95,11 @@ impl IpcClient {
         let conn = IpcConnection::connect(socket_path, ClientKind::Cli)
             .await
             .map_err(|error| match error {
-                ClientError::Connect { path, source } => anyhow::anyhow!(
+                ClientError::Connect { path, source } => CliError::daemon_unavailable(format!(
                     "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
                     path.display(),
                     source
-                ),
+                )),
                 other => anyhow::Error::new(other),
             })?
             .with_default_timeout(request_timeout());
@@ -217,21 +219,30 @@ impl IpcClient {
 /// the request-error mapper.
 fn map_connect_error(error: ClientError) -> anyhow::Error {
     match error {
-        ClientError::Connect { path, source } => anyhow::anyhow!(
+        ClientError::Connect { path, source } => CliError::daemon_unavailable(format!(
             "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",
             path.display(),
             source
-        ),
-        ClientError::Transport(source) => anyhow::anyhow!(
-            "{source}. Is the daemon running and reachable at MXR_DAEMON_ADDR?"
-        ),
+        )),
+        ClientError::Transport(source) => {
+            let message = format!(
+                "{source}. Is the daemon running and reachable at MXR_DAEMON_ADDR?"
+            );
+            // Only a failed dial means the daemon is unreachable; an invalid
+            // address is a configuration error and keeps exit 1.
+            if matches!(source, TransportError::Connect { .. }) {
+                CliError::daemon_unavailable(message)
+            } else {
+                anyhow::anyhow!(message)
+            }
+        }
         ClientError::Daemon {
             kind: IpcErrorKind::Auth,
             message,
             ..
-        } => anyhow::anyhow!(
+        } => CliError::daemon_auth(format!(
             "Daemon authentication failed: {message}. Set MXR_DAEMON_TOKEN (or check the daemon token file)."
-        ),
+        )),
         other => map_request_error(other),
     }
 }
@@ -242,13 +253,21 @@ fn map_connect_error(error: ClientError) -> anyhow::Error {
 /// guidance.
 fn map_request_error(error: ClientError) -> anyhow::Error {
     match error {
-        ClientError::Closed => anyhow::anyhow!(
-            "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
+        ClientError::Closed => CliError::daemon_incompatible(
+            "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.",
         ),
         ClientError::Timeout(duration) => {
             anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
         }
-        ClientError::Io(source) => anyhow::anyhow!("{}", describe_ipc_failure(&source.to_string())),
+        ClientError::Io(source) => {
+            let message = source.to_string();
+            let text = describe_ipc_failure(&message);
+            if is_protocol_mismatch(&message) {
+                CliError::daemon_incompatible(text)
+            } else {
+                anyhow::anyhow!("{text}")
+            }
+        }
         // Recreate the exact pre-refactor protocol-error strings.
         ClientError::UnexpectedFrame {
             frame_id,
@@ -264,8 +283,12 @@ fn map_request_error(error: ClientError) -> anyhow::Error {
     }
 }
 
+fn is_protocol_mismatch(message: &str) -> bool {
+    message.contains("unknown variant") || message.contains("missing field")
+}
+
 fn describe_ipc_failure(message: &str) -> String {
-    if message.contains("unknown variant") || message.contains("missing field") {
+    if is_protocol_mismatch(message) {
         format!("IPC protocol mismatch: {message}. Restart the daemon after upgrading.")
     } else {
         format!("IPC error: {message}")

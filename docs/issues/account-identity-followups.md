@@ -77,3 +77,26 @@ Now and desk rows name the account in their labels; the assistant row does not.
 
 Fix direction: add the account name to the assistant row's link label, as
 `NowRows.tsx` does (`features/now/NowRows.tsx`, the `now-open` link).
+
+## TUI rows without an account
+
+The TUI's Owed, Place and assistant readout rows show no chip, because their
+row data carries no `account_id` (`crates/tui/src/ui/owed_lens.rs`,
+`place_lens.rs`, the assistant pane). Owed and Place need the account on their
+protocol rows; readout rows need the same fix as the web's above.
+
+## An unknown colour slot fails the whole accounts list
+
+`AccountColor` is a strict serde enum, so a newer daemon that sends a slot this
+client doesn't know fails the accounts parse, not just that account's chip.
+Blueprint 33 wants unknown slots to fall back to slate.
+
+Fix direction: decode the slot leniently (an `Unknown` catch-all or a string
+that clients map), then render slate.
+
+## The TUI's account text fields and the single-key gate
+
+With `single_keys = false`, letters on the Accounts page are blocked like other
+single-key shortcuts. The identity editor's tag field counts as text input, so
+typing works there, but the add/edit account form's text fields have the same
+gap and were left as they are.

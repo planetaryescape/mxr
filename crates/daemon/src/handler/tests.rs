@@ -759,6 +759,7 @@ mod system_mailboxes;
 mod thread_gists;
 mod thread_previews;
 mod todo;
+mod unsubscribe_plan;
 mod updates;
 mod updates_report;
 

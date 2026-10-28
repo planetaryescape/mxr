@@ -362,6 +362,7 @@ All accept a positional `<MESSAGE_ID>...`, piped IDs on stdin, OR `--search <QUE
 | `mxr label "<name>" <id>` / `mxr unlabel "<name>" <id>` | |
 | `mxr move "<label>" <id>` | Move to label/folder |
 | `mxr unsubscribe <id>` | Use List-Unsubscribe header |
+| `mxr unsubscribe <address>` | One request per address, from its newest message with a usable List-Unsubscribe method (date first); `--dry-run` shows it |
 
 ### `mxr archive-operation [OPERATION_ID]`
 

@@ -112,7 +112,7 @@ const COMMAND_EXAMPLES = {
   },
   unsnooze: { use: 'Wake snoozed messages early.', examples: ["mxr unsnooze MESSAGE_ID", "mxr unsnooze --all --dry-run"] },
   unsubscribe: {
-    use: 'Unsubscribe from a single message id, or from every message by a given sender address. Passing an email address is shorthand for `--search "from:<addr>"`; the daemon picks the most recent match and uses its List-Unsubscribe header.',
+    use: 'Unsubscribe from a single message id, or from a sender by email address. An address sends one request, from the newest message from that sender with a usable List-Unsubscribe method. On the same date, one-click beats a link, and a link beats mailto. Several addresses each get their own request. A sender that runs several lists needs one message id per list. `--dry-run` shows the request. Combine with `--search` to scope the address.',
     examples: [
       "mxr unsubscribe alice@example.com --dry-run",
       "mxr unsubscribe alice@example.com bob@example.com --yes",

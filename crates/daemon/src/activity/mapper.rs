@@ -735,6 +735,7 @@ pub fn map_request(
         // is classified as logged above or intentionally skipped here. -----
         Request::ListEnvelopes { .. }
         | Request::ListEnvelopesByIds { .. }
+        | Request::PlanUnsubscribe { .. }
         | Request::GetEnvelope { .. }
         | Request::GetBody { .. }
         | Request::GetInvite { .. }

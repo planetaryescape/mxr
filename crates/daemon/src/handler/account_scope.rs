@@ -302,6 +302,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             Targets(vec![T::Message(sent_message_id)])
         }
         Request::ListEnvelopesByIds { message_ids }
+        | Request::PlanUnsubscribe { message_ids }
         | Request::ListBodies { message_ids }
         | Request::PinMessages { message_ids, .. }
         | Request::GetArrivalModes { message_ids } => messages(message_ids),

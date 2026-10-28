@@ -2113,16 +2113,20 @@ pub enum Command {
     ///
     /// Positional argument accepts either a message id (uses the
     /// List-Unsubscribe header on that exact message) or an email
-    /// address (`alice@example.com`), which is rewritten to
-    /// `--search "from:alice@example.com"` and acts on the most recent
-    /// match. Combine with `--search` to scope an address-wide
-    /// unsubscribe to a label or date range.
+    /// address (`alice@example.com`). An address sends one request, from
+    /// the newest message from that sender with a usable List-Unsubscribe
+    /// method. On the same date, one-click beats a link, and a link beats
+    /// mailto. Several addresses each get their own request. A sender
+    /// that runs several lists needs one message id per list. `--dry-run`
+    /// shows the requests before anything is sent. Combine with `--search`
+    /// to scope an address to a label or date range.
     Unsubscribe {
-        #[arg(value_name = "MESSAGE_ID_OR_ADDRESS", conflicts_with = "search")]
+        #[arg(value_name = "MESSAGE_ID_OR_ADDRESS")]
         message_ids: Vec<String>,
         #[arg(long)]
         yes: bool,
-        #[arg(long)]
+        /// Scope an address's unsubscribe to matching mail. Not with --purge, which acts on the whole sender footprint.
+        #[arg(long, conflicts_with = "purge")]
         search: Option<String>,
         #[arg(long)]
         account: Option<String>,
@@ -4230,6 +4234,33 @@ mod tests {
                 }
             }) if expected_workspace == owner
         ));
+    }
+
+    #[test]
+    fn unsubscribe_search_cannot_combine_with_purge() {
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "unsubscribe",
+            "news@example.com",
+            "--search",
+            "label:promos",
+            "--purge",
+            "--yes",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn unsubscribe_address_can_be_scoped_by_search() {
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "unsubscribe",
+            "news@example.com",
+            "--search",
+            "label:newsletters",
+            "--dry-run",
+        ])
+        .is_ok());
     }
 
     #[test]

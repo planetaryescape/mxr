@@ -133,6 +133,18 @@ impl super::Store {
                 .await?;
         Ok(row.is_some())
     }
+
+    /// The method on this message's row: [`PENDING_METHOD`] while an attempt is
+    /// in flight, otherwise the confirmed method. `None` when there is no row.
+    pub async fn unsubscribe_receipt_method(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar("SELECT method FROM unsubscribe_receipts WHERE message_id = ?")
+            .bind(message_id.as_str())
+            .fetch_optional(self.reader())
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -399,6 +411,54 @@ mod tests {
                 .unwrap(),
             Claim::InProgress,
             "the takeover is itself a live claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn receipt_method_reports_pending_then_confirmed_then_nothing() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, id) = fresh_message(&store).await;
+        assert_eq!(store.unsubscribe_receipt_method(&id).await.unwrap(), None);
+
+        let Claim::Claimed { claimed_at } =
+            store.claim_unsubscribe(&id, &account, 1).await.unwrap()
+        else {
+            panic!("first claim must be granted");
+        };
+        assert_eq!(
+            store
+                .unsubscribe_receipt_method(&id)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some(PENDING_METHOD)
+        );
+
+        store
+            .confirm_unsubscribe(&id, "one_click", 2)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .unsubscribe_receipt_method(&id)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("one_click")
+        );
+
+        store
+            .release_unsubscribe_claim(&id, claimed_at)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .unsubscribe_receipt_method(&id)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("one_click"),
+            "a release never removes a confirmed receipt"
         );
     }
 

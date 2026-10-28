@@ -118,6 +118,7 @@ mod todo_view;
 pub(crate) mod todos;
 mod triage;
 mod turn_units;
+mod unsubscribe_plan;
 pub(crate) mod updates;
 mod updates_digest;
 mod user_voice;
@@ -2297,6 +2298,9 @@ async fn dispatch(
         Request::UpdateDraft { draft } => mutations::update_draft(state, draft).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
+        Request::PlanUnsubscribe { message_ids } => {
+            unsubscribe_plan::plan_unsubscribe(state, message_ids).await
+        }
         Request::UnsubscribePurge {
             address,
             account_id,
@@ -2567,6 +2571,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // --- Read: pure reads, exports, previews, local AI analysis ---
         Request::ListEnvelopes { .. }
         | Request::ListEnvelopesByIds { .. }
+        | Request::PlanUnsubscribe { .. }
         | Request::GetEnvelope { .. }
         | Request::GetBody { .. }
         | Request::GetInvite { .. }
@@ -2988,6 +2993,7 @@ fn request_kind(req: &Request) -> &'static str {
     match req {
         Request::ListEnvelopes { .. } => "list_envelopes",
         Request::ListEnvelopesByIds { .. } => "list_envelopes_by_ids",
+        Request::PlanUnsubscribe { .. } => "plan_unsubscribe",
         Request::GetEnvelope { .. } => "get_envelope",
         Request::GetBody { .. } => "get_body",
         Request::GetInvite { .. } => "get_invite",

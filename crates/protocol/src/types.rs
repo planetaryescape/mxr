@@ -1333,6 +1333,14 @@ pub enum Request {
         #[serde(default)]
         archive_on_no_method: bool,
     },
+    /// Plans the one unsubscribe request for messages picked by one email
+    /// address: the newest message with a usable method. On the same date, a
+    /// one-click link beats an http(s) link, which beats mailto. Read-only. The
+    /// CLI sends that message through `Unsubscribe`, so the per-message receipt
+    /// still applies.
+    PlanUnsubscribe {
+        message_ids: Vec<MessageId>,
+    },
     Snooze {
         message_id: MessageId,
         wake_at: chrono::DateTime<chrono::Utc>,
@@ -2994,6 +3002,7 @@ impl Request {
         match self {
             Self::ListEnvelopes { .. }
             | Self::ListEnvelopesByIds { .. }
+            | Self::PlanUnsubscribe { .. }
             | Self::GetEnvelope { .. }
             | Self::GetBody { .. }
             | Self::GetInvite { .. }
@@ -3503,6 +3512,32 @@ pub struct UnsubscribePurgeResultData {
     pub preview_token: Option<String>,
 }
 
+/// What `PlanUnsubscribe` will send for an address. An address sends at most
+/// one request: from the newest message that has a usable method.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnsubscribePlanData {
+    /// Messages the address matched that still exist.
+    #[serde(default)]
+    pub matched_messages: u32,
+    /// The one request to send. `None` when no matched message has a usable
+    /// method, or when the chosen message already has a receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<UnsubscribePlanRequestData>,
+    /// True when the chosen message already has a confirmed receipt, so the
+    /// sender is not sent another request.
+    #[serde(default)]
+    pub already_unsubscribed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnsubscribePlanRequestData {
+    /// The message whose List-Unsubscribe header the request uses.
+    pub message_id: MessageId,
+    pub method: UnsubscribeMethod,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "status")]
@@ -4000,6 +4035,9 @@ pub enum ResponseData {
     },
     UnsubscribePurgeResult {
         result: UnsubscribePurgeResultData,
+    },
+    UnsubscribePlan {
+        plan: UnsubscribePlanData,
     },
 
     // mxr app/platform responses.
@@ -4826,6 +4864,7 @@ impl ResponseData {
             | Self::Jobs { .. }
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
+            | Self::UnsubscribePlan { .. }
             | Self::SendOutcome { .. }
             | Self::SendRecoveryPreview { .. }
             | Self::SendReceipt { .. }

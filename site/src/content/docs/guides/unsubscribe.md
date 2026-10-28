@@ -44,19 +44,41 @@ mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
 ```
 
-An address selects every message from that sender, as
-`--search 'from:newsletter@example.com'` does, and mxr tries each one. The dry
-run says how many it found:
+An address sends one request per sender. mxr finds the messages from that
+sender (narrowed by `--search`, if you pass one) and uses the newest one with a
+usable List-Unsubscribe method. Date comes first, so a current mailto beats an
+old one-click link that may have expired. Only when two messages share a date
+does the method decide: a one-click URL beats an http(s) link, which beats a
+mailto address. A link taken from the HTML body is the last resort. The other
+messages from that sender are not used.
+
+Several addresses are planned one at a time, each with its own search and its
+own request: `mxr unsubscribe alice@example.com bob@example.com --dry-run` lists
+one request for each. A sender that runs several lists, each with its own
+unsubscribe, needs one request per list. Unsubscribe from each list by its
+message id: `mxr unsubscribe MESSAGE_ID --dry-run`, then `--yes`.
+
+`--search` narrows an address, and it cannot be combined with `--purge`, which
+acts on the sender's whole footprint.
+
+The dry run shows the request before anything is sent:
 
 ```bash
 mxr unsubscribe newsletter@example.com --dry-run --format json \
-  | jq '{requested, selected_messages}'
+  | jq '{selected_messages, request_count, requests}'
 ```
 
-What you get: the number of messages mxr will try, for example
-`{"requested": 354, "selected_messages": 354}` for a promotional sender in the
-demo mailbox. To send one request, pass a message id instead:
-`mxr unsubscribe MESSAGE_ID --dry-run`, then `--yes`.
+What you get: how many messages matched, how many requests will be sent (0 or
+1 per address), and the message and method each request uses. The method is one
+of `one-click`, `http-link`, `body-link` or `mailto:<address>`. If that newest
+message already has a receipt, `already_unsubscribed` is `1` and nothing is
+sent. With several addresses, `addresses` holds one entry per address, and the
+top-level fields are totals across them.
+
+In the demo mailbox (`mxr demo --messages 2000`), `offers@promo.demo.mxr.local`
+has 15 messages, and its dry run gives `"request_count": 1`. The request uses
+the newest of them, a one-click URL. Its campaigns put a different token in each
+unsubscribe URL, so one request per distinct URL would still have sent 8.
 
 What happens after confirmation depends on the stored method:
 

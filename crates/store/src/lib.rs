@@ -129,7 +129,7 @@ mod todos;
 mod triage;
 mod undo;
 mod unsubscribe_receipts;
-pub use unsubscribe_receipts::Claim;
+pub use unsubscribe_receipts::{Claim, PENDING_METHOD as UNSUBSCRIBE_PENDING_METHOD};
 mod updates;
 mod user_activity;
 mod user_voice_profile;

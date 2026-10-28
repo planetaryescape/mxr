@@ -38,7 +38,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 26;
+pub const IPC_PROTOCOL_VERSION: u32 = 27;
 
 #[cfg(test)]
 mod tests {

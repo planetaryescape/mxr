@@ -11,7 +11,7 @@ MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr
 
 The TUI uses the same `MXR_DAEMON_ADDR` selection as the CLI and stdio MCP: `unix://`, `cmd://` or authenticated loopback `tcp://`. A remote mailbox loads even when the client has no local accounts. Editors, file pickers and attachment destinations remain on your client.
 
-Remote connection setup authenticates TCP before status, finishes within five seconds and requires IPC protocol 11. Package/build differences are accepted remotely; missing or unsupported protocol and connection failures do not start or query a local daemon. Account setup and credential/config maintenance through remote selections are unsupported; run them on the daemon host.
+Remote connection setup authenticates TCP before status, finishes within five seconds and requires the same IPC protocol version as the client (`protocol_version` in `mxr status --format json`). Package/build differences are accepted remotely; missing or unsupported protocol and connection failures do not start or query a local daemon. Account setup and credential/config maintenance through remote selections are unsupported; run them on the daemon host.
 
 The session retains its first workspace owner across background requests, reply prewarm, archive previews and reconnect. If the selected workspace changes, private drafts, attachments and pending outcomes remain under their original owner. Return to that workspace to recover them. A failed initial owner lookup requires explicit reopen before private work can continue.
 

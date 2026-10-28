@@ -28,11 +28,19 @@ pub(crate) async fn triage_search(
         total,
         has_more,
         next_offset,
+        degraded,
         ..
     } = search
     else {
         return Err("unexpected search response".into());
     };
+    // Triage judges and caches a verdict per message from the results, so it
+    // must not be fed the narrower set the SQLite fallback returns.
+    if let Some(degraded) = degraded {
+        return Err(crate::handler::HandlerError::SearchIndexUnavailable(
+            format!("{} Triage needs the full index.", degraded.notice()),
+        ));
+    }
 
     let mut slots: Vec<Option<TriageMessageData>> = vec![None; results.len()];
     let mut misses = Vec::new();

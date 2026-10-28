@@ -1,8 +1,9 @@
 mod label_resolve;
 mod search_execute;
+mod search_fallback;
 mod search_filter;
 
-use search_execute::execute_search;
+use search_execute::{execute_search, execute_search_or_fallback};
 
 use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
@@ -20,7 +21,7 @@ use mxr_core::types::{
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
     DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, LlmOverrideData, LlmOverridesData,
-    ResponseData, SearchAggregationGroupBy, SearchAggregationRow, SearchExplain,
+    ResponseData, SearchAggregationGroupBy, SearchAggregationRow, SearchDegraded, SearchExplain,
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
@@ -43,6 +44,8 @@ struct SearchExecution {
     next_offset: Option<usize>,
     executed_mode: SearchMode,
     explain: Option<SearchExplain>,
+    /// Set when SQLite answered because the lexical index was unavailable.
+    degraded: Option<SearchDegraded>,
 }
 
 struct ExecutionExplainInput<'a> {
@@ -116,7 +119,7 @@ pub(crate) async fn search(
     sort: SortOrder,
     explain: bool,
 ) -> HandlerResult {
-    let execution = execute_search(
+    let execution = execute_search_or_fallback(
         state,
         query,
         limit as usize,
@@ -134,6 +137,7 @@ pub(crate) async fn search(
         next_offset: execution.next_offset.map(|value| value as u32),
         explain: execution.explain,
         limit: Some(limit),
+        degraded: execution.degraded,
     })
 }
 
@@ -155,7 +159,7 @@ pub(crate) async fn count(
     )
     .await;
     Ok(ResponseData::Count {
-        count: results.map_err(|e| e.clone())?.total as u32,
+        count: results?.total as u32,
     })
 }
 
@@ -177,8 +181,7 @@ pub(crate) async fn search_aggregation(
         SortOrder::DateDesc,
         false,
     )
-    .await
-    .map_err(|e| e.clone())?;
+    .await?;
     if first_page.total == 0 {
         return Ok(ResponseData::SearchAggregation {
             query: query.to_string(),
@@ -198,8 +201,7 @@ pub(crate) async fn search_aggregation(
         SortOrder::DateDesc,
         false,
     )
-    .await
-    .map_err(|e| e.clone())?;
+    .await?;
     let message_ids = execution
         .results
         .iter()
@@ -362,7 +364,8 @@ pub(crate) async fn count_search_matches(
         SortOrder::DateDesc,
         false,
     )
-    .await?;
+    .await
+    .map_err(String::from)?;
     Ok(execution.total as u32)
 }
 
@@ -1380,7 +1383,7 @@ pub(crate) async fn run_saved_search(
         .get_saved_search_by_name(name)
         .await?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
-    let execution = execute_search(
+    let execution = execute_search_or_fallback(
         state,
         &saved.query,
         limit as usize,
@@ -1398,6 +1401,7 @@ pub(crate) async fn run_saved_search(
         next_offset: execution.next_offset.map(|value| value as u32),
         explain: None,
         limit: Some(limit),
+        degraded: execution.degraded,
     })
 }
 
@@ -1956,6 +1960,7 @@ fn build_execution(
         next_offset,
         executed_mode,
         explain,
+        degraded: None,
     }
 }
 

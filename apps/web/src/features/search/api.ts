@@ -17,6 +17,14 @@ export interface SearchParams {
 
 export type SearchGroupBy = "from" | "list" | "category";
 
+/** Present only when the daemon answered from SQLite because its index was down. */
+export interface SearchDegraded {
+  reason: "index_stopped" | "index_rebuilding";
+  searched_fields: string[];
+  /** The one line to show above the results, as the daemon words it. */
+  notice: string;
+}
+
 export interface SearchResponse {
   scope: string;
   sort: string;
@@ -26,6 +34,7 @@ export interface SearchResponse {
   next_offset?: number | null;
   groups: MailboxResponse["mailbox"]["groups"];
   explain?: unknown;
+  degraded?: SearchDegraded;
   llm_calls?: number;
   prompt_version?: string;
 }

@@ -31,7 +31,7 @@ pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
 
 /// The two places search leaves out unless a query asks for them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Hidden {
+pub(super) enum Hidden {
     Trash,
     Spam,
 }
@@ -59,6 +59,14 @@ impl Hidden {
             Box::new(QueryNode::Label(self.label().to_string())),
         )))
     }
+}
+
+/// The place `node` is the default exclusion of, if it is one. Lets the
+/// SQLite fallback read the exclusion back instead of re-deriving it.
+pub(super) fn default_exclusion_of(node: &QueryNode) -> Option<Hidden> {
+    [Hidden::Trash, Hidden::Spam]
+        .into_iter()
+        .find(|place| *node == place.exclusion())
 }
 
 /// Whether `node` asks for `place` (`in:trash`, `in:anywhere`, the label)

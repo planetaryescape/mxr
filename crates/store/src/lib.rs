@@ -101,6 +101,7 @@ mod rules;
 mod scheduled_sends;
 mod screener;
 mod search;
+mod search_fts_fallback;
 mod search_reindex_pending;
 mod semantic;
 mod send_time;
@@ -195,6 +196,9 @@ pub use rules::{
 };
 pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
+pub use search_fts_fallback::{
+    FtsClause, FtsColumns, FtsFallbackHit, FtsFallbackPage, FtsFallbackQuery,
+};
 pub use semantic::SemanticIndexRow;
 pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};
 pub use sender_history::{SenderHistory, SENDER_HISTORY_SUBJECTS};

@@ -65,6 +65,20 @@ pub fn read_piped_ids() -> anyhow::Result<Option<Vec<String>>> {
     Ok(Some(ids))
 }
 
+/// Refuses a `--search` selection the daemon answered from the limited SQLite
+/// search. It covers less than the index does, so acting on it would quietly
+/// skip mail the user's query matches. Reading search results keeps working;
+/// changing mail from them does not.
+pub fn require_indexed_selection(degraded: Option<&SearchDegraded>) -> anyhow::Result<()> {
+    match degraded {
+        Some(degraded) => anyhow::bail!(
+            "{} A --search selection could miss mail, so nothing was selected; pass message IDs instead.",
+            degraded.notice()
+        ),
+        None => Ok(()),
+    }
+}
+
 /// Modifier applied to a `--search` resolution. `--first` and
 /// `--limit N` are mutually exclusive at the clap layer; this enum
 /// exists so the resolver doesn't have to know which flag fired —
@@ -129,8 +143,14 @@ pub async fn resolve_message_ids(
                 .await?;
             match resp {
                 Response::Ok {
-                    data: ResponseData::SearchResults { results, .. },
-                } => Ok(results.into_iter().map(|r| r.message_id).collect()),
+                    data:
+                        ResponseData::SearchResults {
+                            results, degraded, ..
+                        },
+                } => {
+                    require_indexed_selection(degraded.as_ref())?;
+                    Ok(results.into_iter().map(|r| r.message_id).collect())
+                }
                 Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response from search"),
             }
@@ -178,8 +198,14 @@ pub async fn resolve_thread_ids(
                 .await?;
             let results = match resp {
                 Response::Ok {
-                    data: ResponseData::SearchResults { results, .. },
-                } => results,
+                    data:
+                        ResponseData::SearchResults {
+                            results, degraded, ..
+                        },
+                } => {
+                    require_indexed_selection(degraded.as_ref())?;
+                    results
+                }
                 Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response from search"),
             };
@@ -209,6 +235,19 @@ pub async fn resolve_thread_ids(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_selection_from_the_limited_search_is_refused() {
+        let degraded = SearchDegraded::new(SearchDegradedReason::IndexStopped);
+
+        let error = require_indexed_selection(Some(&degraded))
+            .expect_err("a limited selection must be refused")
+            .to_string();
+
+        assert!(error.contains("Search is limited"), "{error}");
+        assert!(error.contains("pass message IDs instead"), "{error}");
+        assert!(require_indexed_selection(None).is_ok());
+    }
 
     #[test]
     fn selection_limit_first_caps_at_one() {

@@ -3831,6 +3831,10 @@ pub enum ResponseData {
         /// `[search] max_results`. Older daemons omit it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u32>,
+        /// Set when the lexical index was unavailable and SQLite answered a
+        /// narrower question. Absent when the index answered.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        degraded: Option<crate::SearchDegraded>,
     },
     SyncStatus {
         sync: AccountSyncStatus,

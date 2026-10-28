@@ -42,9 +42,13 @@ pub(crate) async fn ipc_search_segment(
     .await
     {
         Ok(Response::Ok {
-            data: ResponseData::SearchResults {
-                results, has_more, ..
-            },
+            data:
+                ResponseData::SearchResults {
+                    results,
+                    has_more,
+                    degraded,
+                    ..
+                },
         }) => {
             let mut scores = HashMap::<MessageId, f32>::new();
             let message_ids: Vec<MessageId> = results
@@ -60,6 +64,7 @@ pub(crate) async fn ipc_search_segment(
                     scores,
                     triage_verdicts: HashMap::new(),
                     has_more,
+                    degraded,
                 })
             } else {
                 match ipc_call(bg, Request::ListEnvelopesByIds { message_ids }).await {
@@ -70,6 +75,7 @@ pub(crate) async fn ipc_search_segment(
                         scores,
                         triage_verdicts: HashMap::new(),
                         has_more,
+                        degraded,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(error) => Err(error),
@@ -166,6 +172,7 @@ async fn ipc_triage_segment(
                     scores,
                     triage_verdicts,
                     has_more,
+                    degraded: None,
                 });
             }
             match ipc_call(bg, Request::ListEnvelopesByIds { message_ids }).await {
@@ -176,6 +183,7 @@ async fn ipc_triage_segment(
                     scores,
                     triage_verdicts,
                     has_more,
+                    degraded: None,
                 }),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),

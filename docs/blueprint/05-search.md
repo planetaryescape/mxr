@@ -379,6 +379,23 @@ Fallback behavior should stay boring and honest:
 
 `mxr search --explain` reports requested mode, executed mode, candidate counts, semantic query text when used, and fallback notes.
 
+### When the lexical index is unavailable
+
+The daemon reads the index's availability once per page (`SearchServiceHandle::availability`): `Stopped` when the worker task has ended, `Rebuilding` while a reindex holds its guard (the index is wiped, then refilled from SQLite, so it holds part of the mail), otherwise `Ready` with an epoch that changes whenever a rebuild starts or ends. A page is answered whole by one side: the epoch is checked again after the index query, and a query that straddled a stop or a rebuild is discarded and rerun (at most three times) or answered whole from SQLite. A page is never part index, part SQLite, and an index that simply finds nothing is never a reason to fall back.
+
+`Search` and `RunSavedSearch` then answer from `messages_fts` (`02-data-model.md`) when the whole query is something it can run:
+
+| Supported | Refused, by name |
+|-----------|------------------|
+| words, `+words`, "phrases" (subject, sender, snippet) | `to:` `cc:` `bcc:` `body:` `filename:` `list:` `deliveredto:` `rfc822msgid:` |
+| `subject:`, `from:` | `is:` `has:` `in:` filters (except `in:anywhere`), `label:` `category:` |
+| AND of the above | OR, NOT and `-term`, `AROUND` |
+| `in:anywhere`; the default Trash and Spam exclusion | `after:` `before:` `date:` `older_than:` `size:` |
+
+Results are newest first (oldest first when a client asks for date ascending, as the web app's Oldest sort does), whatever mode was asked for; the score is 0. The reply carries `degraded: { reason: index_stopped | index_rebuilding, searched_fields: [subject, sender, preview] }` and no other reply does. The CLI prints the line on stderr in every format and carries the field in JSON; the TUI replaces the count line under the query; the web app shows it under the search controls. All of them use `SearchDegraded::notice()`: "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`." (while rebuilding: "...while the index is rebuilding: ... Full search returns when the rebuild finishes.").
+
+A refused query, and every request with no limited form (`Count`, `SearchAggregation`, saved-search badges, triage), fails with code `search_index_unavailable` and the same sentence naming what cannot run. `--search` selections for mutations are refused the same way: acting on a narrower set than the query means would skip mail. Other daemon features that read the index directly (`whois`, `expert`, recipient suggestions, Archive ask) keep failing while it is down.
+
 ## Saved searches
 
 Saved searches persist their search mode.

@@ -505,6 +505,7 @@ async fn search(
             total,
             next_offset,
             limit: _,
+            degraded,
         } => {
             let effective_results = if thread_scope {
                 dedupe_search_results_by_thread(results)
@@ -552,7 +553,7 @@ async fn search(
                 group_envelopes(envelopes, &catalog)
             };
 
-            Ok(Json(json!({
+            let mut response = json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
                 // Omitted, the daemon applied its own `[search] default_sort`.
                 "sort": query.sort.unwrap_or_else(|| "default".to_string()),
@@ -562,7 +563,17 @@ async fn search(
                 "next_offset": next_offset,
                 "groups": groups,
                 "explain": explain,
-            })))
+            });
+            // Only present when SQLite answered; the page shows `notice`
+            // as given so every client says the same sentence.
+            if let Some(degraded) = degraded {
+                response["degraded"] = json!({
+                    "reason": degraded.reason,
+                    "searched_fields": degraded.searched_fields,
+                    "notice": degraded.notice(),
+                });
+            }
+            Ok(Json(response))
         }
         _ => Err(BridgeError::UnexpectedResponse),
     }

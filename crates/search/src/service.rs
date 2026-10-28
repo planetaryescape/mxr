@@ -2,6 +2,8 @@ use crate::{SearchIndex, SearchPage};
 use mxr_core::id::MessageId;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tantivy::query::Query;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -22,6 +24,41 @@ pub struct SearchUpdateBatch {
 #[derive(Clone)]
 pub struct SearchServiceHandle {
     tx: mpsc::Sender<SearchCommand>,
+    rebuilds: Arc<AtomicU64>,
+}
+
+/// Whether the lexical index can answer a search right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexAvailability {
+    /// It can. `epoch` changes whenever a rebuild starts or ends, so a caller
+    /// that read `Ready` before a query can check it still holds afterwards.
+    Ready { epoch: u64 },
+    /// The worker has stopped; only a daemon restart brings it back.
+    Stopped,
+    /// The index is being wiped and refilled from SQLite, so it holds part of
+    /// the mail.
+    Rebuilding,
+}
+
+/// Held while the index is wiped and refilled. Dropping it ends the rebuild,
+/// including when the rebuild fails or its future is cancelled.
+#[must_use = "the index counts as rebuilding only while this guard is alive"]
+pub struct RebuildGuard {
+    rebuilds: Arc<AtomicU64>,
+}
+
+// One word holds both the rebuilds in progress (low bits) and an epoch (high
+// bits), so a reader sees both from a single load. Ending a rebuild adds
+// `END_REBUILD`: epoch + 1 and rebuilds - 1 in one step.
+const REBUILD_BITS: u32 = 16;
+const REBUILD_MASK: u64 = (1 << REBUILD_BITS) - 1;
+const START_REBUILD: u64 = (1 << REBUILD_BITS) + 1;
+const END_REBUILD: u64 = (1 << REBUILD_BITS) - 1;
+
+impl Drop for RebuildGuard {
+    fn drop(&mut self) {
+        self.rebuilds.fetch_add(END_REBUILD, Ordering::AcqRel);
+    }
 }
 
 enum SearchCommand {
@@ -145,7 +182,45 @@ impl SearchServiceHandle {
                 }
             }
         });
-        (Self { tx }, handle)
+        (
+            Self {
+                tx,
+                rebuilds: Arc::new(AtomicU64::new(0)),
+            },
+            handle,
+        )
+    }
+
+    /// Marks the index as rebuilding until the guard is dropped. Searches see
+    /// [`IndexAvailability::Rebuilding`] in the meantime and can answer from
+    /// SQLite instead of from a half-filled index.
+    pub fn begin_rebuild(&self) -> RebuildGuard {
+        self.rebuilds.fetch_add(START_REBUILD, Ordering::AcqRel);
+        RebuildGuard {
+            rebuilds: Arc::clone(&self.rebuilds),
+        }
+    }
+
+    pub fn availability(&self) -> IndexAvailability {
+        // A stopped worker outranks a rebuild: waiting does not fix it.
+        if self.worker_stopped() {
+            return IndexAvailability::Stopped;
+        }
+        let state = self.rebuilds.load(Ordering::Acquire);
+        if state & REBUILD_MASK != 0 {
+            IndexAvailability::Rebuilding
+        } else {
+            IndexAvailability::Ready {
+                epoch: state >> REBUILD_BITS,
+            }
+        }
+    }
+
+    /// True while the index is ready and no rebuild has started or ended since
+    /// `availability` returned `Ready { epoch }`. A query that finished while
+    /// this is false may have read a half-filled index and must be discarded.
+    pub fn still_ready(&self, epoch: u64) -> bool {
+        self.availability() == IndexAvailability::Ready { epoch }
     }
 
     pub async fn apply_batch(&self, batch: SearchUpdateBatch) -> Result<(), MxrError> {
@@ -339,6 +414,13 @@ mod tests {
     use super::*;
     use crate::SearchIndex;
 
+    fn ready_epoch(handle: &SearchServiceHandle) -> Option<u64> {
+        match handle.availability() {
+            IndexAvailability::Ready { epoch } => Some(epoch),
+            _ => None,
+        }
+    }
+
     #[tokio::test]
     async fn a_live_worker_is_not_reported_as_stopped() {
         let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
@@ -359,5 +441,48 @@ mod tests {
 
         assert!(handle.worker_stopped());
         assert!(handle.num_docs().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_makes_the_index_unavailable_until_the_guard_drops() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+        let epoch = ready_epoch(&handle).unwrap();
+
+        let guard = handle.begin_rebuild();
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+        assert!(!handle.still_ready(epoch));
+
+        drop(guard);
+        let after = ready_epoch(&handle).unwrap();
+        // A query that straddled the rebuild must not pass for a clean one,
+        // even though the index looks ready again.
+        assert_ne!(epoch, after);
+        assert!(!handle.still_ready(epoch));
+        assert!(handle.still_ready(after));
+    }
+
+    #[tokio::test]
+    async fn overlapping_rebuilds_keep_the_index_unavailable_until_the_last_ends() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        let first = handle.begin_rebuild();
+        let second = handle.begin_rebuild();
+        drop(first);
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+        drop(second);
+        assert!(matches!(
+            handle.availability(),
+            IndexAvailability::Ready { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_stopped_worker_outranks_a_rebuild() {
+        let (handle, worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+        let _guard = handle.begin_rebuild();
+        worker.abort();
+        let _ = worker.await;
+
+        assert_eq!(handle.availability(), IndexAvailability::Stopped);
     }
 }

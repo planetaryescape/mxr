@@ -618,9 +618,10 @@ CREATE INDEX idx_sync_log_account ON sync_log(account_id, started_at DESC);
 
 ### Why both FTS5 and Tantivy?
 
-Tantivy is the primary search engine. FTS5 is a lightweight fallback for:
-- Simple substring queries in the daemon when Tantivy isn't available
-- Migration/reindexing scenarios
-- Diagnostic queries
+Tantivy is the primary search engine. FTS5 is the fallback the daemon answers from when the lexical index is unavailable: the worker has stopped, or the index is being wiped and rebuilt from SQLite.
+
+`messages_fts` holds subject, sender address, sender name and snippet only. The fallback therefore covers plain words, `+words`, "phrases", `subject:`, `from:`, AND of those and `in:anywhere`, newest first, within the same enabled accounts the index serves. Every other part of a query (every other field and filter, dates, sizes, labels, OR, NOT, `AROUND`) is refused by name, never loosened. Every term is quoted before it reaches FTS5, so user text is never FTS5 syntax. Replies carry `degraded` so clients say the search was limited; see `05-search.md`.
+
+Migration/reindexing and diagnostic queries can still read the table directly.
 
 FTS5 costs almost nothing to maintain (triggers handle sync automatically) and provides a safety net. Tantivy is always rebuildable from SQLite, so if the Tantivy index gets corrupted, we reindex from the FTS5/SQLite source of truth.

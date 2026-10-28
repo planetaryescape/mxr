@@ -27,7 +27,9 @@ pub use mail_query::{
 pub use index::{SearchIndex, SearchPage, SearchResult};
 pub use query_builder::{build_query, CompiledQuery, QueryBuilder, MAX_PROSE_WORDS};
 pub use schema::MxrSchema;
-pub use service::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
+pub use service::{
+    IndexAvailability, RebuildGuard, SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch,
+};
 
 /// Canonical name for the mxr-specific `is:owed-reply` filter.
 pub const FILTER_OWED_REPLY: &str = "owed-reply";

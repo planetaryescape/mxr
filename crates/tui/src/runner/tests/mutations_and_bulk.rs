@@ -893,6 +893,7 @@ fn search_results_refresh_preserves_open_row_when_it_still_exists() {
             scores: std::collections::HashMap::new(),
             triage_verdicts: std::collections::HashMap::new(),
             has_more: false,
+            degraded: None,
         },
     );
 
@@ -926,6 +927,7 @@ fn search_results_refresh_clears_open_message_when_selected_row_disappears() {
             scores: std::collections::HashMap::new(),
             triage_verdicts: std::collections::HashMap::new(),
             has_more: false,
+            degraded: None,
         },
     );
 
@@ -934,6 +936,38 @@ fn search_results_refresh_clears_open_message_when_selected_row_disappears() {
     assert_eq!(app.search.page.active_pane, SearchPane::Results);
     assert!(app.mailbox.viewing_envelope.is_none());
     assert!(app.mailbox.viewed_thread_messages.is_empty());
+}
+
+fn limited_page(envelopes: Vec<Envelope>, degraded: bool) -> SearchResultData {
+    SearchResultData {
+        envelopes,
+        scores: std::collections::HashMap::new(),
+        triage_verdicts: std::collections::HashMap::new(),
+        has_more: false,
+        degraded: degraded.then(|| {
+            mxr_protocol::SearchDegraded::new(mxr_protocol::SearchDegradedReason::IndexStopped)
+        }),
+    }
+}
+
+#[test]
+fn search_results_from_the_limited_search_keep_their_notice_until_the_next_search() {
+    let mut app = App::new();
+    let results = make_test_envelopes(3);
+    app.screen = Screen::Search;
+    app.search.page.query = "deploy".into();
+    app.search.page.session_active = true;
+
+    app.apply_search_page_results(false, limited_page(vec![results[0].clone()], true));
+    assert!(app.search.page.degraded.is_some());
+
+    // A later page from the index does not make the list complete again.
+    app.apply_search_page_results(true, limited_page(vec![results[1].clone()], false));
+    assert!(app.search.page.degraded.is_some());
+
+    // A fresh answer from the index replaces it.
+    app.apply_search_page_results(false, limited_page(results.clone(), false));
+    assert!(app.search.page.degraded.is_none());
 }
 
 #[test]

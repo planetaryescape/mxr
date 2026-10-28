@@ -41,7 +41,11 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(0)])
+        // One more row when the notice may need a second line to fit.
+        .constraints([
+            Constraint::Length(if state.degraded.is_some() { 5 } else { 4 }),
+            Constraint::Min(0),
+        ])
         .split(area);
 
     let result_count = rows.len();
@@ -63,6 +67,11 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.warning)),
     );
+    let query = if state.degraded.is_some() {
+        query.wrap(Wrap { trim: true })
+    } else {
+        query
+    };
     frame.render_widget(query, chunks[0]);
 
     let preview_fullscreen = state.preview_fullscreen && state.active_pane == SearchPane::Preview;
@@ -198,6 +207,17 @@ fn query_status_line(
         SearchUiStatus::Error => "search failed / adjust query and retry".to_string(),
     };
 
+    // The count stays in the results title; this line is where a limited
+    // answer says so, in the daemon's own words.
+    if let Some(degraded) = state.degraded.as_ref().filter(|_| {
+        matches!(
+            state.ui_status,
+            SearchUiStatus::Idle | SearchUiStatus::Loaded
+        )
+    }) {
+        return Line::from(Span::styled(degraded.notice(), theme.warning_style()));
+    }
+
     let mut spans = Vec::new();
     if matches!(
         state.ui_status,
@@ -312,5 +332,46 @@ fn preview_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
             Line::from("Use Enter, o, or Right on a result to open the message here."),
             Line::from("When a message is open, j / k keep it synced to the result cursor."),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn a_limited_answer_replaces_the_count_line_with_the_daemons_own_words() {
+        let degraded =
+            mxr_protocol::SearchDegraded::new(mxr_protocol::SearchDegradedReason::IndexStopped);
+        let state = SearchPageState {
+            query: "invoice".into(),
+            ui_status: SearchUiStatus::Loaded,
+            degraded: Some(degraded.clone()),
+            ..SearchPageState::default()
+        };
+
+        let line = query_status_line(&state, 3, &crate::theme::Theme::default());
+
+        assert_eq!(line_text(&line), degraded.notice());
+    }
+
+    #[test]
+    fn a_full_answer_keeps_the_count_line() {
+        let state = SearchPageState {
+            query: "invoice".into(),
+            ui_status: SearchUiStatus::Loaded,
+            ..SearchPageState::default()
+        };
+
+        let line = query_status_line(&state, 3, &crate::theme::Theme::default());
+
+        assert_eq!(line_text(&line), "loaded 3 matches");
     }
 }

@@ -215,11 +215,16 @@ async fn address_selection(
         .await?;
     let ids: Vec<String> = match resp {
         Response::Ok {
-            data: ResponseData::SearchResults { results, .. },
-        } => results
-            .into_iter()
-            .map(|result| result.message_id.as_str())
-            .collect(),
+            data: ResponseData::SearchResults {
+                results, degraded, ..
+            },
+        } => {
+            crate::commands::selection::require_indexed_selection(degraded.as_ref())?;
+            results
+                .into_iter()
+                .map(|result| result.message_id.as_str())
+                .collect()
+        }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response from search"),
     };

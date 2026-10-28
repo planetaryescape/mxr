@@ -112,46 +112,54 @@ pub async fn run(
             let fmt = resolve_format(format);
             match resp {
                 Response::Ok {
-                    data: ResponseData::SearchResults { results, .. },
-                } => match fmt {
-                    OutputFormat::Json => {
-                        println!("{}", serde_json::to_string_pretty(&results)?);
+                    data:
+                        ResponseData::SearchResults {
+                            results, degraded, ..
+                        },
+                } => {
+                    if let Some(degraded) = &degraded {
+                        eprintln!("{}", degraded.notice());
                     }
-                    OutputFormat::Jsonl => {
-                        println!("{}", jsonl(&results)?);
-                    }
-                    OutputFormat::Csv => {
-                        let mut writer = csv::Writer::from_writer(Vec::new());
-                        writer.write_record([
-                            "message_id",
-                            "account_id",
-                            "thread_id",
-                            "score",
-                            "mode",
-                        ])?;
-                        for result in &results {
-                            writer.write_record(vec![
-                                result.message_id.as_str(),
-                                result.account_id.as_str(),
-                                result.thread_id.as_str(),
-                                result.score.to_string(),
-                                result.mode.as_str().to_string(),
+                    match fmt {
+                        OutputFormat::Json => {
+                            println!("{}", serde_json::to_string_pretty(&results)?);
+                        }
+                        OutputFormat::Jsonl => {
+                            println!("{}", jsonl(&results)?);
+                        }
+                        OutputFormat::Csv => {
+                            let mut writer = csv::Writer::from_writer(Vec::new());
+                            writer.write_record([
+                                "message_id",
+                                "account_id",
+                                "thread_id",
+                                "score",
+                                "mode",
                             ])?;
+                            for result in &results {
+                                writer.write_record(vec![
+                                    result.message_id.as_str(),
+                                    result.account_id.as_str(),
+                                    result.thread_id.as_str(),
+                                    result.score.to_string(),
+                                    result.mode.as_str().to_string(),
+                                ])?;
+                            }
+                            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
                         }
-                        println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
-                    }
-                    OutputFormat::Ids => {
-                        for result in &results {
-                            println!("{}", result.message_id);
+                        OutputFormat::Ids => {
+                            for result in &results {
+                                println!("{}", result.message_id);
+                            }
+                        }
+                        _ => {
+                            println!("{} results", results.len());
+                            for r in &results {
+                                println!("  {} (score: {:.2})", r.message_id.as_str(), r.score);
+                            }
                         }
                     }
-                    _ => {
-                        println!("{} results", results.len());
-                        for r in &results {
-                            println!("  {} (score: {:.2})", r.message_id.as_str(), r.score);
-                        }
-                    }
-                },
+                }
                 Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response"),
             }

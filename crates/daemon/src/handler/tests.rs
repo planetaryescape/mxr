@@ -752,6 +752,7 @@ mod record_subscriptions;
 mod records;
 mod reply_semantics;
 mod routing_and_search;
+mod search_fallback;
 mod send_outcomes;
 mod sent_assessments;
 mod stars;

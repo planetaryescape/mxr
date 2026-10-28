@@ -192,6 +192,36 @@ describe("SearchResultsRoute", () => {
     expect(screen.getByText("2 conversations")).toBeVisible();
   });
 
+  test("says so above the results when the daemon answered from the limited search", async () => {
+    const notice =
+      "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.";
+    searchApi.fetchSearch.mockResolvedValue({
+      scope: "threads",
+      sort: "relevance",
+      mode: "lexical",
+      total: rows.length,
+      has_more: false,
+      groups: [{ id: "today", label: "Today", rows }],
+      degraded: {
+        reason: "index_stopped",
+        searched_fields: ["subject", "sender", "preview"],
+        notice,
+      },
+    });
+
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent(notice);
+    expect(screen.getByText("Subject 1")).toBeVisible();
+  });
+
+  test("shows no limited-search line when the index answered", async () => {
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    expect(await screen.findByTestId("mailbox-list")).toBeVisible();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   test("the filter shortcut focuses a control, and Escape returns to the filter button", async () => {
     renderWithQueryClient(<SearchResultsRoute />);
     fireEvent.click(screen.getByRole("button", { name: "Run filter shortcut" }));

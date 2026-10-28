@@ -483,6 +483,8 @@ pub(crate) struct SearchResultData {
     pub(crate) scores: std::collections::HashMap<MessageId, f32>,
     pub(crate) triage_verdicts: std::collections::HashMap<MessageId, String>,
     pub(crate) has_more: bool,
+    /// Set when the daemon answered from SQLite because its index was down.
+    pub(crate) degraded: Option<mxr_protocol::SearchDegraded>,
 }
 
 pub(crate) struct StatusSnapshot {

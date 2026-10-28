@@ -1958,6 +1958,7 @@ mod tests {
             has_more: true,
             next_offset: Some(5),
             explain: None,
+            degraded: None,
         });
         let args = json!({"query": "shipped", "limit": 5});
         assert_eq!(
@@ -1978,6 +1979,7 @@ mod tests {
             has_more: false,
             next_offset: None,
             explain: None,
+            degraded: None,
         });
         assert_eq!(
             step_title(

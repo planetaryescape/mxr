@@ -304,10 +304,11 @@ the item keys.
 ```
 
 `requested` and `selected_messages` both hold the resolved message count.
-`mxr unsubscribe <address>` is the exception: it sends one request per target,
-so its dry run also reports `request_count`, `already_unsubscribed` and
-`requests`, one entry per request with the `message_id` it uses and its
-`method`. See the [unsubscribe guide](/guides/unsubscribe/).
+`mxr unsubscribe <address>` is the exception: it sends at most one request, so
+its dry run also reports `request_count` (0 or 1), `already_unsubscribed` (1
+when the chosen message already has a receipt) and `requests`, which holds the
+one `message_id` and `method` the request uses. See the
+[unsubscribe guide](/guides/unsubscribe/).
 `selected_threads` counts the distinct threads those messages belong to, and
 falls back to the message count when the envelopes could not be resolved.
 `messages[].from` is the sender's display name, falling back to their address

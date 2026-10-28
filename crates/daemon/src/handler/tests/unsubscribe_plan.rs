@@ -70,7 +70,7 @@ async fn plan(state: &Arc<AppState>, message_ids: &[MessageId]) -> UnsubscribePl
     }
 }
 
-/// What the CLI does for each planned request.
+/// What the CLI does for the planned request.
 async fn send_unsubscribe(state: &Arc<AppState>, message_id: &MessageId) -> Response {
     let msg = IpcMessage {
         expected_workspace: None,
@@ -87,51 +87,45 @@ async fn send_unsubscribe(state: &Arc<AppState>, message_id: &MessageId) -> Resp
 }
 
 #[tokio::test]
-async fn an_address_with_many_messages_and_one_target_sends_one_request() {
+async fn one_target_across_many_messages_sends_one_request() {
     let (state, fake) = synced_state().await;
     let ids = stamp_messages(&state, 12, |_| mailto("news@list.example")).await;
 
     let plan = plan(&state, &ids).await;
-    assert_eq!(plan.requests.len(), 1);
-    assert_eq!(plan.requests[0].message_id, *ids.last().unwrap());
-    assert_eq!(plan.already_unsubscribed, 0);
+    assert_eq!(plan.matched_messages, 12);
+    let request = plan.request.clone().expect("one request is planned");
+    assert_eq!(request.message_id, *ids.last().unwrap());
+    assert!(!plan.already_unsubscribed);
 
-    for request in &plan.requests {
-        assert!(matches!(
-            send_unsubscribe(&state, &request.message_id).await,
-            Response::Ok { .. }
-        ));
-    }
+    assert!(matches!(
+        send_unsubscribe(&state, &request.message_id).await,
+        Response::Ok { .. }
+    ));
     assert_eq!(fake.sent_drafts().len(), 1);
 }
 
 #[tokio::test]
-async fn two_distinct_targets_from_one_sender_send_two_requests() {
-    let (state, fake) = synced_state().await;
-    let ids = stamp_messages(&state, 8, |index| {
-        if index % 2 == 0 {
-            mailto("weekly@list.example")
-        } else {
-            mailto("daily@list.example")
-        }
+async fn distinct_tokenised_urls_still_plan_one_request_from_the_newest_message() {
+    let (state, _fake) = synced_state().await;
+    let ids = stamp_messages(&state, 15, |index| UnsubscribeMethod::OneClick {
+        url: format!("https://promo.example/unsubscribe/{index}"),
     })
     .await;
 
     let plan = plan(&state, &ids).await;
-    let mut planned: Vec<MessageId> = plan.requests.iter().map(|r| r.message_id.clone()).collect();
-    planned.sort_by_key(MessageId::as_str);
-    let mut expected = vec![ids[7].clone(), ids[6].clone()];
-    expected.sort_by_key(MessageId::as_str);
-    assert_eq!(planned, expected, "each target uses its own newest message");
-
-    for request in &plan.requests {
-        send_unsubscribe(&state, &request.message_id).await;
-    }
-    assert_eq!(fake.sent_drafts().len(), 2);
+    assert_eq!(plan.matched_messages, 15);
+    let request = plan.request.expect("one request is planned");
+    assert_eq!(request.message_id, *ids.last().unwrap());
+    assert_eq!(
+        request.method,
+        UnsubscribeMethod::OneClick {
+            url: "https://promo.example/unsubscribe/14".into(),
+        }
+    );
 }
 
 #[tokio::test]
-async fn a_newest_message_with_a_receipt_sends_nothing_for_its_target() {
+async fn a_receipt_on_the_newest_message_plans_no_request() {
     let (state, fake) = synced_state().await;
     let ids = stamp_messages(&state, 5, |_| mailto("news@list.example")).await;
     let newest = ids.last().unwrap().clone();
@@ -143,13 +137,13 @@ async fn a_newest_message_with_a_receipt_sends_nothing_for_its_target() {
     assert_eq!(fake.sent_drafts().len(), 1);
 
     let plan = plan(&state, &ids).await;
-    assert!(plan.requests.is_empty(), "{plan:?}");
-    assert_eq!(plan.already_unsubscribed, 1);
-    assert_eq!(fake.sent_drafts().len(), 1, "planning never sends anything");
+    assert!(plan.request.is_none(), "{plan:?}");
+    assert!(plan.already_unsubscribed);
+    assert_eq!(fake.sent_drafts().len(), 1, "planning never sends");
 }
 
 #[tokio::test]
-async fn a_target_whose_request_is_in_progress_stays_in_the_plan() {
+async fn an_in_progress_claim_stays_in_the_plan_and_the_real_run_reports_it() {
     let (state, _fake) = synced_state().await;
     let ids = stamp_messages(&state, 3, |_| mailto("news@list.example")).await;
     let newest = ids.last().unwrap().clone();
@@ -161,38 +155,13 @@ async fn a_target_whose_request_is_in_progress_stays_in_the_plan() {
         .unwrap();
 
     let plan = plan(&state, &ids).await;
-    assert_eq!(plan.requests.len(), 1, "{plan:?}");
-    assert_eq!(plan.already_unsubscribed, 0);
+    let request = plan.request.expect("the in-flight request stays planned");
+    assert_eq!(request.message_id, newest);
+    assert!(!plan.already_unsubscribed);
     assert!(matches!(
         send_unsubscribe(&state, &newest).await,
         Response::Error { code, .. } if code == "unsubscribe_in_progress"
     ));
-}
-
-#[tokio::test]
-async fn the_plan_the_dry_run_shows_is_what_the_real_run_leaves_unsent() {
-    let (state, fake) = synced_state().await;
-    let ids = stamp_messages(&state, 6, |index| {
-        if index < 3 {
-            mailto("a@list.example")
-        } else {
-            mailto("b@list.example")
-        }
-    })
-    .await;
-
-    let preview = plan(&state, &ids).await;
-    let again = plan(&state, &ids).await;
-    assert_eq!(preview, again, "the preview and a second plan agree");
-
-    for request in &preview.requests {
-        send_unsubscribe(&state, &request.message_id).await;
-    }
-    assert_eq!(fake.sent_drafts().len(), preview.requests.len());
-
-    let after = plan(&state, &ids).await;
-    assert!(after.requests.is_empty());
-    assert_eq!(after.already_unsubscribed as usize, preview.requests.len());
 }
 
 #[tokio::test]
@@ -207,4 +176,43 @@ async fn explicit_message_ids_still_send_one_request_each() {
         ));
     }
     assert_eq!(fake.sent_drafts().len(), 3);
+}
+
+#[tokio::test]
+async fn the_dry_run_plan_is_the_request_the_real_run_sends() {
+    let (state, fake) = synced_state().await;
+    let ids = stamp_messages(&state, 6, |index| {
+        if index < 3 {
+            mailto("a@list.example")
+        } else {
+            mailto("b@list.example")
+        }
+    })
+    .await;
+
+    let preview = plan(&state, &ids).await;
+    assert_eq!(preview, plan(&state, &ids).await, "a second plan agrees");
+
+    let request = preview.request.clone().expect("one request is planned");
+    assert!(matches!(
+        send_unsubscribe(&state, &request.message_id).await,
+        Response::Ok { .. }
+    ));
+    assert_eq!(fake.sent_drafts().len(), 1);
+
+    let after = plan(&state, &ids).await;
+    assert!(after.request.is_none());
+    assert!(after.already_unsubscribed);
+}
+
+#[tokio::test]
+async fn messages_without_a_usable_method_plan_nothing_to_send() {
+    let (state, fake) = synced_state().await;
+    let ids = stamp_messages(&state, 4, |_| UnsubscribeMethod::None).await;
+
+    let plan = plan(&state, &ids).await;
+    assert_eq!(plan.matched_messages, 4);
+    assert!(plan.request.is_none());
+    assert!(!plan.already_unsubscribed);
+    assert!(fake.sent_drafts().is_empty());
 }

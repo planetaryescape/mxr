@@ -1312,9 +1312,9 @@ pub enum Request {
         #[serde(default)]
         archive_on_no_method: bool,
     },
-    /// Plans the unsubscribe requests for messages picked by an email
-    /// address: one per distinct List-Unsubscribe target, each from the newest
-    /// message carrying it. Read-only. The CLI then sends each planned message
+    /// Plans the one unsubscribe request for messages picked by an email
+    /// address: the newest message with a usable method, preferring one-click,
+    /// then an http(s) link, then mailto. Read-only. The CLI sends that message
     /// through `Unsubscribe`, so the per-message receipt still applies.
     PlanUnsubscribe {
         message_ids: Vec<MessageId>,
@@ -3489,17 +3489,22 @@ pub struct UnsubscribePurgeResultData {
     pub preview_token: Option<String>,
 }
 
-/// What `PlanUnsubscribe` will send: one request per entry.
+/// What `PlanUnsubscribe` will send for an address. An address sends at most
+/// one request: from the newest message that has a usable method.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UnsubscribePlanData {
-    /// Newest target first.
+    /// Messages the address matched that still exist.
     #[serde(default)]
-    pub requests: Vec<UnsubscribePlanRequestData>,
-    /// Targets whose newest message already has a receipt. Nothing is sent
-    /// for them.
+    pub matched_messages: u32,
+    /// The one request to send. `None` when no matched message has a usable
+    /// method, or when the chosen message already has a receipt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<UnsubscribePlanRequestData>,
+    /// True when the chosen message already has a confirmed receipt, so the
+    /// sender is not sent another request.
     #[serde(default)]
-    pub already_unsubscribed: u32,
+    pub already_unsubscribed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,8 +1,8 @@
-//! `mxr unsubscribe <address>`: one request per distinct List-Unsubscribe
-//! target, from the newest message carrying that target.
+//! `mxr unsubscribe <address>`: one request for the sender, from the newest
+//! message with a usable List-Unsubscribe method.
 //!
-//! The daemon plans the requests (`Request::PlanUnsubscribe`). The dry run
-//! prints that plan and the real run sends it, so they cannot disagree. Each
+//! The daemon plans the request (`Request::PlanUnsubscribe`). The dry run
+//! prints that plan and the real run sends it, so they cannot disagree. The
 //! planned message then goes through `Request::Unsubscribe`, which writes its
 //! receipt and enforces the claim.
 
@@ -49,7 +49,7 @@ pub(super) async fn unsubscribe_by_address(
         return print_preview(selection, &plan, &requests, counts, format);
     }
 
-    if plan.requests.is_empty() && plan.already_unsubscribed == 0 {
+    if plan.request.is_none() && !plan.already_unsubscribed {
         anyhow::bail!("No matched message has a usable List-Unsubscribe method");
     }
 
@@ -59,7 +59,7 @@ pub(super) async fn unsubscribe_by_address(
 
     let mut succeeded = 0usize;
     let mut errors = Vec::new();
-    for request in &plan.requests {
+    for request in plan.request.iter() {
         let id = &request.message_id;
         let resp = client
             .request(Request::Unsubscribe {
@@ -90,11 +90,8 @@ pub(super) async fn unsubscribe_by_address(
     print_run(
         selection, &plan, &requests, counts, succeeded, errors, format,
     )?;
-    if !plan.requests.is_empty() && succeeded == 0 {
-        anyhow::bail!(
-            "No unsubscribe requests succeeded ({} failed)",
-            plan.requests.len()
-        );
+    if plan.request.is_some() && succeeded == 0 {
+        anyhow::bail!("The unsubscribe request was not sent; see the error above");
     }
     Ok(())
 }
@@ -112,7 +109,7 @@ fn request_records(
     selection: &MutationSelection,
     plan: &UnsubscribePlanData,
 ) -> Vec<RequestRecord> {
-    plan.requests
+    plan.request
         .iter()
         .map(|request| {
             let envelope = selection
@@ -157,11 +154,13 @@ fn summary_lines(
     )];
     lines.push(counts.selection_line());
     lines.extend(request_lines(requests));
-    if plan.already_unsubscribed > 0 {
-        lines.push(format!(
-            "{} target(s) already unsubscribed; skipped",
-            plan.already_unsubscribed
-        ));
+    if plan.already_unsubscribed {
+        lines.push(
+            "The newest message from this sender already has a receipt; no request is sent."
+                .to_owned(),
+        );
+    } else if plan.request.is_none() {
+        lines.push("No matched message has a usable List-Unsubscribe method.".to_owned());
     }
     lines
 }
@@ -200,7 +199,7 @@ struct RunOutput {
     requested: usize,
     selected_messages: usize,
     selected_threads: usize,
-    /// Requests sent. `succeeded` and `failed` count these, not messages.
+    /// Requests sent (0 or 1). `succeeded` and `failed` count these, not messages.
     request_count: usize,
     already_unsubscribed: u32,
     succeeded: usize,
@@ -275,7 +274,7 @@ fn preview_output(
         selected_messages: counts.selected_messages,
         selected_threads: counts.selected_threads,
         request_count: requests.len(),
-        already_unsubscribed: plan.already_unsubscribed,
+        already_unsubscribed: u32::from(plan.already_unsubscribed),
         message_ids: selected_ids(selection),
         requests: requests.to_vec(),
     }
@@ -297,7 +296,7 @@ fn print_run(
         selected_messages: counts.selected_messages,
         selected_threads: counts.selected_threads,
         request_count: requests.len(),
-        already_unsubscribed: plan.already_unsubscribed,
+        already_unsubscribed: u32::from(plan.already_unsubscribed),
         succeeded,
         failed: errors.len(),
         message_ids: selected_ids(selection),

@@ -40,6 +40,20 @@ interface RowState {
  * row's own mode (Tab reaches it, Enter follows it, a screen reader names
  * it); a click anywhere else on the row only lights it.
  */
+/** The account a Now row's mail came to. Undefined for the Updates card, which can span accounts. */
+function nowRowAccount(item: NowItem): string | undefined {
+  switch (item.kind) {
+    case "person":
+      return item.person.row.account_id;
+    case "todo":
+      return item.todo.todo.account_id;
+    case "reading":
+      return item.pick.account_id;
+    case "updates":
+      return undefined;
+  }
+}
+
 function NowRow({
   item,
   state,
@@ -68,7 +82,8 @@ function NowRow({
 }) {
   return (
     <Row
-      accountId={item.kind === "reading" ? item.pick.account_id : undefined}
+      // The Updates card can hold lines from several accounts, so it wears no single chip.
+      accountId={nowRowAccount(item)}
       data-index={state.index}
       data-testid="now-row"
       data-kind={item.kind}

@@ -73,6 +73,6 @@ function isMode(bucket: ArrivalBucket): bucket is ModeId {
 export function ModeChipReason({ messageId }: { messageId: string | undefined }) {
   const item = useContext(ChipContext)?.get(messageId ?? "");
   const line = item?.chip.replace(/^→\s*/, "");
-  useLitReason(line ? `went to ${line}` : null);
+  useLitReason(line ? `went to ${line}` : null, null, item?.account_id);
   return null;
 }

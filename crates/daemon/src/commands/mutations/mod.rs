@@ -989,6 +989,13 @@ pub async fn unsubscribe(
     preview_token: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    // Classified before connecting, so a mixed command fails before the
+    // daemon is asked for anything. Purge has its own argument rule.
+    let addresses = if purge {
+        Vec::new()
+    } else {
+        unsubscribe_addresses(&message_ids)?
+    };
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if purge {
@@ -1006,16 +1013,7 @@ pub async fn unsubscribe(
         .await;
     }
 
-    let addresses = unique_addresses(&message_ids);
     if !addresses.is_empty() {
-        if addresses.len()
-            != message_ids
-                .iter()
-                .filter(|arg| looks_like_email(arg))
-                .count()
-        {
-            anyhow::bail!("Pass message ids or email addresses, not both");
-        }
         return unsubscribe_address::unsubscribe_by_address(
             &mut client,
             &addresses,
@@ -1374,6 +1372,18 @@ fn unique_addresses(arguments: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// The addresses named by `mxr unsubscribe` arguments, or none when every
+/// argument is a message id. Ids and addresses cannot be mixed, and a mixed
+/// command fails before anything is sent.
+fn unsubscribe_addresses(arguments: &[String]) -> anyhow::Result<Vec<String>> {
+    let addresses = unique_addresses(arguments);
+    let ids_present = arguments.iter().any(|arg| !looks_like_email(arg));
+    if !addresses.is_empty() && ids_present {
+        anyhow::bail!("Pass message ids or email addresses, not both");
+    }
+    Ok(addresses)
+}
+
 fn looks_like_email(value: &str) -> bool {
     // Conservative: must contain exactly one `@`, have at least one
     // character on each side, and contain at least one dot in the
@@ -1598,13 +1608,49 @@ mod tests {
             "Alice@Example.com".to_owned(),
             "alice@example.com".to_owned(),
             "bob@example.com".to_owned(),
-            "8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2".to_owned(),
         ];
         assert_eq!(
-            unique_addresses(&args),
+            unsubscribe_addresses(&args).unwrap(),
             vec!["Alice@Example.com".to_owned(), "bob@example.com".to_owned()]
         );
-        assert!(unique_addresses(&["abc-123".to_owned()]).is_empty());
+        assert!(unsubscribe_addresses(&["abc-123".to_owned()])
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn an_address_mixed_with_a_message_id_is_rejected_before_anything_is_sent() {
+        let args = vec![
+            "alice@example.com".to_owned(),
+            "8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2".to_owned(),
+        ];
+        let error = unsubscribe_addresses(&args).unwrap_err().to_string();
+        assert_eq!(error, "Pass message ids or email addresses, not both");
+    }
+
+    #[tokio::test]
+    async fn a_mixed_command_fails_without_connecting_to_the_daemon() {
+        // No daemon runs in this test. A mixed command must fail on the
+        // argument check, not on the connection.
+        let error = unsubscribe(
+            vec![
+                "alice@example.com".into(),
+                "8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2".into(),
+            ],
+            true,
+            None,
+            None,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert_eq!(error, "Pass message ids or email addresses, not both");
     }
 
     /// A bare `@`-less message id is plainly not an email even if it

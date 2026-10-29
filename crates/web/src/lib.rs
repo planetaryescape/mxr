@@ -4013,6 +4013,7 @@ async fn run_account_save_workflow(
 fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
     mxr_protocol::AccountOperationResult {
         ok: true,
+        saved: false,
         summary: String::new(),
         save: None,
         auth: None,

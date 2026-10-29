@@ -542,10 +542,12 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
         println!("  {} {}", if step.ok { "ok" } else { "error" }, step.detail);
     }
     if result.ok {
-        Ok(())
-    } else {
-        anyhow::bail!(result.summary)
+        return Ok(());
     }
+    if result.saved {
+        println!("The change is saved to config but was not fully applied to the running daemon.");
+    }
+    anyhow::bail!(result.summary)
 }
 
 /// Resolve the OAuth grant flow in the *client* process, where the TTY, SSH,

@@ -625,7 +625,7 @@ pub struct AppState {
     /// Held from snapshot to install by everything that rewrites the
     /// in-memory config, so one writer's stale snapshot can never replace
     /// another's change (a revoked cloud-data setting above all).
-    config_write: tokio::sync::Mutex<()>,
+    pub(crate) config_write: tokio::sync::Mutex<()>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
     /// Live progress of the sync pass running for each account, plus the
     /// contacts a mid-backfill account still owes the relationship worker.

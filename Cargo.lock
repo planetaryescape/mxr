@@ -4664,6 +4664,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "toml",
+ "toml_edit",
  "tracing",
  "uuid",
 ]

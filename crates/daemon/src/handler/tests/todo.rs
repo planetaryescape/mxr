@@ -25,6 +25,7 @@ mod bank_transfer;
 mod html_evidence;
 mod provenance_cases;
 mod resolution_budget;
+mod same_email;
 
 const CAMDEN_AUTH: &str =
     "mx.google.com; dkim=pass header.i=@camden.gov.uk; spf=pass; dmarc=pass (p=REJECT) header.from=camden.gov.uk";

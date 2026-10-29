@@ -3,11 +3,19 @@ use super::*;
 
 #[tokio::test]
 async fn structured_fields_retain_exact_authored_quote_and_revoke_with_account_trust() {
+    // The rescan below moves the due date from now+2 to now+3. On 26 Oct
+    // both fall in one month; on 29 Oct the move crosses into November,
+    // which the due month in a bill's key once turned into a second row.
+    for now in [
+        Utc.with_ymd_and_hms(2026, 10, 26, 12, 0, 0).unwrap(),
+        Utc.with_ymd_and_hms(2026, 10, 29, 12, 0, 0).unwrap(),
+    ] {
+        structured_fields_retain_quote_and_revoke_at(now).await;
+    }
+}
+
+async fn structured_fields_retain_quote_and_revoke_at(now: DateTime<Utc>) {
     let fx = Fixture::new().await;
-    // Pinned so the +2 and +3 day dues below share a month. A bill's to-do
-    // identity includes its due month (`mxr_todo::pass::stored_record`), so
-    // on the wall clock the rescan made a new row whenever now+3 was the 1st.
-    let now = Utc.with_ymd_and_hms(2026, 10, 26, 12, 0, 0).unwrap();
     configure_receiver(&fx).await;
     let quote = "Your council tax payment is due soon.";
     let mut bill = Mail::new(

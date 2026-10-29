@@ -158,8 +158,15 @@ impl Store {
             .pragma("foreign_keys", "ON");
 
         let changes = Arc::new(ChangeFeed::default());
+        // The database lives only inside this one connection, so the pool
+        // must never close it: sqlx's defaults recycle a connection after
+        // 30 minutes and close one idle for 10, and either would leave an
+        // empty database. The full-set classifier eval can run past 30
+        // minutes (its CI limit is 45).
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            .max_lifetime(None)
+            .idle_timeout(None)
             .after_connect(watch_changes(&changes))
             .connect_with(opts)
             .await?;
@@ -1622,6 +1629,14 @@ mod tests {
             error.to_string().contains("bodies.text_plain"),
             "expected missing column error, got {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_in_memory_store_never_recycles_its_only_connection() {
+        let store = Store::in_memory().await.unwrap();
+        let options = store.writer().options();
+        assert_eq!(options.get_max_lifetime(), None);
+        assert_eq!(options.get_idle_timeout(), None);
     }
 
     #[tokio::test]

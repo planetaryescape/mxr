@@ -320,6 +320,14 @@ where
         catchup_max: cfg.catchup_max,
     };
     let mut current_keys = Vec::new();
+    let sibling_keys: Vec<String> = detections
+        .iter()
+        .map(|(_, detection)| {
+            stored_record(&frozen, row, detection.clone(), run_in_progress)
+                .0
+                .dedup_key
+        })
+        .collect();
     for (unit_index, mut detection) in detections {
         let commitment = if detection.kind == TodoKind::Promise {
             match store
@@ -433,6 +441,9 @@ where
             record.dedup_key = prior.dedup_key;
         }
         current_keys.push(record.reason.clone());
+        store
+            .adopt_asks_same_source(&record, answer, &sibling_keys)
+            .await?;
         record_outcome(
             &mut summary,
             &record,
@@ -445,6 +456,10 @@ where
 }
 
 /// The same identity and timing projection serves backfill and new mail.
+/// The key ends in the due (or sent) month so next month's bill from the
+/// same sender is a new to-do. A rescan of one email that moves its date
+/// into another month keeps that email's row: `classify` re-keys it through
+/// `Store::adopt_asks_same_source` before the upsert.
 pub fn stored_record<Tz>(
     cfg: &PassConfig<Tz>,
     row: &TodoScanRow,

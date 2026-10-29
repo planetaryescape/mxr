@@ -126,7 +126,24 @@ export function TuneDialog({
           <DialogTitle>Tune {line ? displaySourceName(line.source_name) : null}</DialogTitle>
           <DialogDescription>How this source reaches you. Undo puts it back.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-1.5">
+        {/* A picker (blueprint 35's overlay grammar): j, k and the arrows
+            move between the choices, Enter takes the focused one. */}
+        <div
+          className="grid gap-1.5"
+          onKeyDown={(event) => {
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const step = pressedOverlayKey(event, "overlay.down")
+              ? 1
+              : pressedOverlayKey(event, "overlay.up")
+                ? -1
+                : 0;
+            if (step === 0) return;
+            event.preventDefault();
+            const buttons = [...event.currentTarget.querySelectorAll("button")];
+            const at = buttons.findIndex((button) => button === document.activeElement);
+            buttons[Math.max(0, Math.min(buttons.length - 1, at + step))]?.focus();
+          }}
+        >
           {SETTINGS.map((setting) => (
             <Button
               key={setting}

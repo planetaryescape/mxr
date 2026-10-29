@@ -536,7 +536,9 @@ function Ledger({
     close: () => {
       if (cardOpen) setCardOpen(false);
       else if (closeHint) closeHint();
-      else if (list) clearSearch();
+      // Esc clears the search and stays on the list, so j and k keep moving
+      // records; only the Clear button puts the cursor back in the box.
+      else if (list) setQuery("");
       else if (showingSubscriptions) setSection("ledger");
       else if (filter.issuer) setFilter({ ...filter, issuer: undefined });
     },

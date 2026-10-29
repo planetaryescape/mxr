@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { useKeyScope } from "@/state/keyScopeStore";
+import { announced } from "@/test/movedKeys";
 
 import { ArrivalsView } from "./ArrivalsLine";
 import { arrivals, notSure, outcome } from "./testing";
@@ -220,12 +221,15 @@ describe("Not sure", () => {
 
   test("X on a question opens the move picker as its answer; the old letters say so", () => {
     useMailDialogs.getState().close();
+    useKeyScope.setState({ moved: null });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
     openSortingDetails();
     const row = screen.getAllByTestId("not-sure-row")[0]!;
     fireEvent.keyDown(row, { key: "m" });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(useKeyScope.getState().moved).toEqual({ label: "Move", key: "X" });
+    expect(useKeyScope.getState().moved).toEqual(
+      announced("modes.move", "m", "not-sure") ? { label: "Move", key: "X" } : null,
+    );
 
     fireEvent.keyDown(row, { key: "X", shiftKey: true });
     const dialog = useMailDialogs.getState().dialog;

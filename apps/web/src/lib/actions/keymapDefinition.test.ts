@@ -11,29 +11,13 @@
 import { describe, expect, test } from "vitest";
 
 import "./catalog";
-import { isOverlayKey } from "./definition";
+import { isOverlayKey, MXR_VERSION, withoutExpiredMoves, type DefinedAction } from "./definition";
 import keymap from "./keymap.generated.json";
 import { getRegistry } from "./registry";
 
-interface DefinedAction {
-  id: string;
-  label: string;
-  short_label?: string;
-  description?: string;
-  group: string;
-  scopes?: string[];
-  keys?: string[];
-  mac_keys?: string[];
-  retired_keys?: string[];
-  palette_only?: boolean;
-  hide_in_palette?: boolean;
-  note?: string;
-  clients?: string[];
-  moved?: { key: string; contexts: string[] }[];
-}
-
-// An overlay's keys are read by the overlay, never registered.
-const defined = (keymap.action as DefinedAction[]).filter(
+// An overlay's keys are read by the overlay, never registered. A move this
+// version has reached the `until` of is no binding either (D171).
+const defined = withoutExpiredMoves(keymap.action as DefinedAction[], MXR_VERSION).filter(
   (action) => (!action.clients || action.clients.includes("web")) && !isOverlayKey(action),
 );
 

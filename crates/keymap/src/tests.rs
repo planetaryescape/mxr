@@ -178,7 +178,7 @@ fn the_web_data_is_generated_from_the_definition() {
     let path = repo_file(WEB_DATA);
     let fresh = format!(
         "{}\n",
-        serde_json::to_string_pretty(defaults()).expect("the keymap serialises")
+        serde_json::to_string_pretty(definition()).expect("the keymap serialises")
     );
     if std::env::var_os("UPDATE_KEYMAP").is_some() {
         std::fs::write(&path, &fresh).expect("write the web keymap data");
@@ -199,7 +199,7 @@ fn the_raycast_data_is_generated_from_the_definition() {
     let path = repo_file(RAYCAST_DATA);
     let fresh = format!(
         "{}\n",
-        serde_json::to_string_pretty(&defaults().raycast_keys()).expect("the keys serialise")
+        serde_json::to_string_pretty(&definition().raycast_keys()).expect("the keys serialise")
     );
     if std::env::var_os("UPDATE_KEYMAP").is_some() {
         std::fs::write(&path, &fresh).expect("write the Raycast keymap data");
@@ -229,7 +229,7 @@ fn the_tui_keybindings_tables_are_generated_from_the_definition() {
         .find(TUI_DOC_END)
         .expect("keybindings.md has the TUI end marker");
     let current = doc[start + TUI_DOC_START.len()..end].trim();
-    let fresh = defaults().tui_reference_markdown();
+    let fresh = definition().tui_reference_markdown();
     if std::env::var_os("UPDATE_KEYMAP").is_some() && current != fresh {
         let updated = format!(
             "{}\n\n{fresh}\n\n{}",
@@ -600,7 +600,7 @@ fn binding_a_sequence_prefix_alone_is_reported() {
 }
 
 #[test]
-fn a_moved_key_must_be_free_where_it_moved_and_expires() {
+fn a_moved_key_must_be_free_where_it_moved() {
     let keymap = Keymap::parse(
         r#"
         [[action]]
@@ -632,21 +632,134 @@ fn a_moved_key_must_be_free_where_it_moved_and_expires() {
         keymap.problems(),
         vec!["updates.let-go-all: `A` moved away in updates but is still bound there".to_string()]
     );
-    let expired = Keymap::parse(
-        r#"
-        [[action]]
-        id = "x"
-        label = "X"
-        group = "Mail"
-        keys = ["E"]
-        [[action.moved]]
-        key = "A"
-        contexts = ["list"]
-        until = "0.0.1"
-        "#,
-    )
-    .expect("parses");
-    assert!(expired.problems()[0].contains("delete the entry"));
+}
+
+/// The definition with one move announced until 0.6.197, beside another
+/// until 0.6.200, and a TUI action that only carries a move.
+const EXPIRING: &str = r#"
+[[action]]
+id = "todo.catchup"
+label = "Catch up"
+group = "Navigate"
+scopes = ["todo"]
+keys = ["2"]
+
+# Catch up left C in K3 wave 4b.
+[[action.moved]]
+key = "C"
+contexts = ["todo"]
+until = "0.6.197"
+
+[[action.moved]]
+key = "c"
+contexts = ["todo"]
+until = "0.6.200"
+
+[[action]]
+id = "tui.next-search-result"
+label = "Next search result"
+group = "TUI"
+clients = ["tui"]
+
+[[action.moved]]
+key = "n"
+contexts = ["list"]
+until = "0.6.197"
+"#;
+
+#[test]
+fn a_move_is_ignored_from_its_until_on() {
+    let keymap = Keymap::parse(EXPIRING).expect("parses");
+    let before = keymap.live_at("0.6.196");
+    assert_eq!(before, keymap, "nothing has expired yet");
+    assert!(before.moved_from("todo", "C").is_some());
+    assert!(before.moved_from("list", "n").is_some());
+
+    let after = keymap.live_at("0.6.197");
+    assert_eq!(
+        after.moved_from("todo", "C"),
+        None,
+        "the old key does nothing"
+    );
+    assert!(
+        after.moved_from("todo", "c").is_some(),
+        "a later until still shows"
+    );
+    assert_eq!(
+        after.get("tui.next-search-result"),
+        None,
+        "a TUI action that only carried the move goes with it"
+    );
+    assert_eq!(after.problems(), Vec::<String>::new());
+    assert_eq!(
+        keymap.expired_moves("0.6.197"),
+        vec![
+            "todo.catchup: the move of `C` in todo expired at 0.6.197".to_string(),
+            "tui.next-search-result: the move of `n` in list expired at 0.6.197".to_string(),
+        ]
+    );
+    assert_eq!(keymap.expired_moves("0.6.196"), Vec::<String>::new());
+    // Expiry is never a problem in the file as written either: the clients
+    // ignore the entry, so no release waits on deleting it.
+    assert_eq!(keymap.problems(), Vec::<String>::new());
+}
+
+#[test]
+fn the_clients_use_the_definition_at_this_version() {
+    assert_eq!(*defaults(), definition().live_at(VERSION));
+}
+
+/// Each release that crosses an `until` drops moves from the definition the
+/// clients use. None of those releases may fail the definition check.
+#[test]
+fn no_release_fails_the_check_by_crossing_an_until() {
+    let mut versions: Vec<&str> = definition()
+        .actions
+        .iter()
+        .flat_map(|action| action.moved.iter().map(|moved| moved.until.as_str()))
+        .collect();
+    versions.push("999.0.0");
+    for version in versions {
+        let live = definition().live_at(version);
+        assert_eq!(live.problems(), Vec::<String>::new(), "at {version}");
+        assert_eq!(
+            live.client_differences(),
+            Vec::<String>::new(),
+            "at {version}"
+        );
+    }
+}
+
+#[test]
+fn the_prune_deletes_exactly_the_expired_moves() {
+    let pruned = prune_expired_moves(EXPIRING, "0.6.197").expect("prunes");
+    assert_eq!(
+        Keymap::parse(&pruned).expect("the pruned file parses"),
+        Keymap::parse(EXPIRING).expect("parses").live_at("0.6.197")
+    );
+    assert!(!pruned.contains("Catch up left C"), "its comment goes too");
+    assert!(pruned.contains("until = \"0.6.200\""), "{pruned}");
+    assert!(!pruned.contains("tui.next-search-result"), "{pruned}");
+    assert_eq!(
+        prune_expired_moves(EXPIRING, "0.6.196").expect("prunes"),
+        EXPIRING,
+        "nothing expired, nothing changes"
+    );
+}
+
+/// The prune of the shipped file at any version leaves what the clients
+/// use at that version. The file may hold expired moves until the
+/// scheduled prune runs, so this never compares it with the file itself.
+#[test]
+fn the_prune_of_the_shipped_file_matches_what_the_clients_ignore() {
+    for version in ["0.6.197", "0.6.200", "999.0.0"] {
+        let pruned = prune_expired_moves(DEFAULT_KEYMAP, version).expect("prunes");
+        assert_eq!(
+            Keymap::parse(&pruned).expect("the pruned file parses"),
+            definition().live_at(version),
+            "at {version}"
+        );
+    }
 }
 
 #[test]
@@ -899,36 +1012,36 @@ fn an_action_key_that_clashes_is_left_out() {
 
 #[test]
 fn a_remap_onto_a_moved_key_drops_that_notice() {
-    // Any moved key with a web action beside it will do; which ones exist
-    // changes as moves expire (D171).
-    let (moved, target) = defaults()
-        .actions
-        .iter()
-        .flat_map(|action| action.moved.iter().map(move |moved| (action, moved)))
-        .find_map(|(action, moved)| {
-            let target = defaults().actions.iter().find(|other| {
-                other.id != action.id
-                    && !other.palette_only
-                    && other.is_for(Client::Web)
-                    && other
-                        .web_scopes()
-                        .iter()
-                        .any(|scope| moved.contexts.iter().any(|c| c == scope))
-            })?;
-            Some((moved.clone(), target))
-        })
-        .expect("another action lives where a key moved");
-    let keys = vec![moved.key.clone()];
-    let remapped = defaults().with_action_keys(&target.id, &keys);
-    let still = remapped.moved_entry(
-        target
-            .web_scopes()
-            .into_iter()
-            .find(|scope| moved.contexts.iter().any(|c| c == scope))
-            .expect("the target lives where the key moved"),
-        &moved.key,
+    // Its own definition, since which moves the shipped one announces
+    // changes as they expire (D171).
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "updates.let-go-all"
+        label = "Let go of all"
+        group = "Triage"
+        scopes = ["updates"]
+        keys = ["E"]
+        [[action.moved]]
+        key = "A"
+        contexts = ["updates"]
+        until = "99.0.0"
+
+        [[action]]
+        id = "updates.attach"
+        label = "Attachments"
+        group = "Mail"
+        scopes = ["updates"]
+        keys = ["x"]
+        "#,
+    )
+    .expect("parses");
+    assert!(keymap.moved_entry("updates", "A").is_some());
+    let remapped = keymap.with_action_keys("updates.attach", &["A".to_string()]);
+    assert!(
+        remapped.moved_entry("updates", "A").is_none(),
+        "the old notice would hide the new key"
     );
-    assert!(still.is_none(), "the old notice would hide the new key");
 }
 
 #[test]

@@ -255,11 +255,12 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo nextest run --workspace --features semantic-local
 
-  # The key definition fails once the version reaches a moved key's `until`
-  # (blueprint 35, D171), and the commit that crosses it is a release-please
-  # version bump, which skips the Rust suites (scripts/ci_change_scope.sh).
+  # A release-please version bump skips the Rust suites
+  # (scripts/ci_change_scope.sh) but changes which moved keys the clients
+  # announce: from a move's `until` on, mxr ignores it (blueprint 35, D171).
   # The keymap crate builds in seconds, so its check runs whenever those
-  # suites don't.
+  # suites don't. An expired move never fails it; the job only warns, and
+  # .github/workflows/prune-key-moves.yml deletes expired moves weekly.
   keymap:
     name: Key definition
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -270,6 +271,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p mxr-keymap
+      - name: Warn about expired key moves
+        run: cargo run --quiet -p mxr-keymap --example expired_key_moves
 
   # Grades every email of the 50,000-message demo (`mxr classify eval --set
   # full`) through the same post-sync work the daemon runs, and compares the

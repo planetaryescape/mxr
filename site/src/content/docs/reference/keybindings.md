@@ -20,6 +20,7 @@ letter, except where Raycast keeps its own key. See [Raycast](/guides/raycast/#w
 
 When a default moves, the old key keeps a reminder for 30 releases: pressing
 it shows "<action> is now <key>" in the status bar and does nothing else.
+After that the old key does nothing, unless another action takes it.
 
 :::tip[The 10 keys that get you 80% of mxr]
 If you only learn ten, learn these:

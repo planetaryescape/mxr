@@ -1417,13 +1417,15 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 ## D171: Retired keys show where their action went, and never run it
 
-**Chosen**: For 30 patch releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. Each move is an `[[action.moved]]` entry in `keymap.toml` with an `until` version, and the definition check fails once mxr reaches it, so the entry is deleted rather than kept forever. (Amended 2026-10-23: the first draft said two releases, but mxr ships several releases a day.) An action run from the palette or by click shows "Next time: `e`" once per action and profile.
+**Chosen**: For 30 patch releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. Each move is an `[[action.moved]]` entry in `keymap.toml` with an `until` version, and the definition check fails once mxr reaches it, so the entry is deleted rather than kept forever (superseded by the 2026-10-29 amendment below). (Amended 2026-10-23: the first draft said two releases, but mxr ships several releases a day.) An action run from the palette or by click shows "Next time: `e`" once per action and profile.
 
 **Considered**: Keeping old keys as working aliases (`retiredAliases`); silent removal.
 
 **Why**: Working aliases keep two keys per verb alive indefinitely (`g R` and `g P` outlived their 0.6.41 removal by a hundred releases). NN/g and Superhuman teach a key right after the action is done another way.
 
 **Trade-offs accepted**: An old habit costs one extra keystroke during the window.
+
+**Amended 2026-10-29: an expired notice just stops.** Failing the check at `until` blocked the release PR every few days until someone deleted the entries by hand (#770, #784). Now an entry is ignored from its `until` release on: the clients build their key map without it (`mxr_keymap::defaults()` in Rust; the web app filters the generated JSON against the version baked into its build, so both agree), so the old key does nothing and shows nothing. The definition check never fails on expiry. CI's Key definition job prints a warning naming each expired entry, and a weekly workflow (`.github/workflows/prune-key-moves.yml`, `scripts/prune_expired_key_moves`) deletes them in one `chore:` PR, with any TUI-only action that only carried them. Hand-written TUI `announce_moved` call sites go quiet on their own, since they announce only what the definition still has; deleting them stays a human's cleanup. *Trade-off*: expired entries can sit in `keymap.toml` for up to a week.
 
 ## D172: Keys move in four rungs, and the first two change no key
 

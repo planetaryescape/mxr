@@ -97,7 +97,25 @@ fi
 
 keymap_block="$(sed -n '/^  keymap:/,/^  classifier-eval:/p' "$workflow")"
 if ! grep -Fq "needs.changes.outputs.rust != 'true'" <<<"$keymap_block" || ! grep -Fq 'cargo test -p mxr-keymap' <<<"$keymap_block"; then
-  echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump past a moved key's until fails." >&2
+  echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump is checked against the moves it expires." >&2
+  exit 1
+fi
+if ! grep -Fq 'cargo run --quiet -p mxr-keymap --example expired_key_moves' <<<"$keymap_block" || grep -Fq -- '--prune' <<<"$keymap_block"; then
+  echo "Key definition must list expired key moves as warnings, and never prune or fail on them." >&2
+  exit 1
+fi
+
+prune_workflow=".github/workflows/prune-key-moves.yml"
+if ! grep -Fq 'workflow_dispatch:' "$prune_workflow" || ! grep -Eq 'cron: "[1-9][0-9]? ' "$prune_workflow"; then
+  echo "The key-move prune must run on an off-minute schedule and on demand." >&2
+  exit 1
+fi
+if ! grep -Fq 'token: ${{ secrets.RELEASE_PLEASE_TOKEN }}' "$prune_workflow" || ! grep -Fq 'GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}' "$prune_workflow"; then
+  echo "The key-move prune must push and open its PR with RELEASE_PLEASE_TOKEN; a GITHUB_TOKEN PR runs no CI." >&2
+  exit 1
+fi
+if ! grep -Fq 'run: scripts/prune_expired_key_moves' "$prune_workflow"; then
+  echo "The key-move prune must run scripts/prune_expired_key_moves." >&2
   exit 1
 fi
 

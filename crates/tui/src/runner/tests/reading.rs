@@ -560,9 +560,13 @@ fn the_digits_pick_reading_tabs_and_esc_comes_back_from_later() {
 #[test]
 fn shift_b_says_later_moved_to_a_digit() {
     let mut app = reading_app();
+    let before = app.status_message.clone();
     key(&mut app, 'B');
     assert!(!app.mailbox.reading_page.later_shelf);
-    assert_eq!(app.status_message.as_deref(), Some("Later is now 2"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("reading", "B", "Later is now 2", before.as_deref())
+    );
 }
 
 /// The reader's `1` leaves the reader for the edition, as Esc does.

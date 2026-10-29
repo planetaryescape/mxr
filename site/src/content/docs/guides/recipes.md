@@ -28,6 +28,33 @@ mxr archive --account work --search 'from:no-reply@example.com older_than:30d' -
 ```
 :::
 
+## Act on every match of a search
+
+`--search` holds at most the newest 1,000 matches, so a typo cannot fan out
+across the mailbox. For `archive`, `read-archive`, `label` and `unlabel`,
+`--all` lifts the cap on purpose: the daemon counts the whole search, shows
+you the number, and runs it as one background job.
+
+```bash
+# 1. Dry run: the exact count, thread and account counts, the newest 20.
+mxr archive --search 'from:noreply@example.com older_than:30d' --all --dry-run
+
+# 2. Run it. Waits for the job, with progress on stderr.
+mxr archive --search 'from:noreply@example.com older_than:30d' --all --yes
+
+# 3. Changed your mind within the hour: one command reverses the whole job.
+mxr undo JOB_ID
+```
+
+Without `--yes` the command shows the same preview and asks. Add `--no-wait` to
+return once the daemon has accepted the job and follow it with `mxr jobs
+JOB_ID`. To run exactly what a dry run counted, pass its token:
+`mxr archive --search '…' --all --preview-token TOKEN`. If the job fails the
+command exits non-zero and names the counts and the first message that failed;
+mail the job never reached is still where it was, and running the same command
+again carries on. `mxr undo` skips, and counts, any message whose undo snapshot
+has expired or whose mail is gone.
+
 ## Inspect local mail for one account
 
 Use the account key, email address, account id, or unambiguous display name

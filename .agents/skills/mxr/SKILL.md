@@ -38,7 +38,7 @@ results, `cat`/`thread` views, summaries, exports).
    flight status, gate, availability, provider policy, claim outcome, or current
    account balance. Check the provider's system for current information.
 3. Message IDs are UUIDs. Get them with `mxr search "<query>" --format ids`.
-4. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits. `--search` holds at most the newest 1,000 matches (lexical, newest first); when more match, the dry run and JSON carry `capped: true` and a notice goes to stderr, so tell the user and narrow the query instead of assuming the batch is everything.
+4. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits. `--search` holds at most the newest 1,000 matches (lexical, newest first); when more match, the dry run and JSON carry `capped: true` and a notice goes to stderr, so tell the user and narrow the query instead of assuming the batch is everything. For `archive`, `read-archive`, `label` and `unlabel`, `--all` acts on every match as one daemon job: `--all --dry-run` first (exact `selected_messages`, account counts, 20-message sample, `preview_token`), show the user, then `--all --yes` (waits; non-zero exit if the job fails; `--no-wait` returns the job id). `mxr undo <job_id>` reverses the whole job within an hour.
 5. Dry-run first for mutations, compose flows, rules, reset, and undo.
 6. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
 7. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.

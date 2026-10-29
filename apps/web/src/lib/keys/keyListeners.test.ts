@@ -91,6 +91,10 @@ const ALLOWED = {
     rule: "text field or editor",
     why: "Esc leaves the search query field",
   },
+  "features/settings/KeybindingsSection.tsx": {
+    rule: "text field or editor",
+    why: "Esc in an action's keys field cancels the edit",
+  },
   "features/time/NaturalTimeInput.tsx": {
     rule: "text field or editor",
     why: "the time picker's field and its which-time-did-you-mean choices",

@@ -13,6 +13,7 @@ import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
 import { isCharacterKey } from "@/state/keymapStore";
 
 import { isComposingKey } from "./composition";
+import { focusActivePane } from "./focusPane";
 
 // Leave time to read the continuation guide; fast typists never wait on it.
 export const SEQUENCE_TIMEOUT_MS = 4000;
@@ -167,6 +168,14 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       return;
     }
     if (activatesNativeControl(event.target, token)) return;
+    // Esc steps back out of the tabs and filters `g f` focused, to the pane
+    // whose keys they sit above; left there, Enter toggled a filter instead
+    // of opening the lit row. The next Esc is the page's own.
+    if (token === "Escape" && buffer.length === 0 && inChoiceControls(event.target)) {
+      event.preventDefault();
+      focusActivePane();
+      return;
+    }
     if (buffer.length === 0 && options.singleKeysOff?.() && isCharacterKey(token)) return;
 
     const ctx = options.context();
@@ -331,6 +340,15 @@ function closesOnQ(target: EventTarget | null): target is Element {
     target.closest(
       '[role="dialog"]:not([data-state="closed"]), [role="alertdialog"]:not([data-state="closed"])',
     ) !== null
+  );
+}
+
+/** A tab strip, segmented choice or filter bar on the page (not in a dialog). */
+function inChoiceControls(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return (
+    target.closest('[role="radiogroup"], [role="tablist"], [data-choice-controls]') !== null &&
+    target.closest('[role="dialog"], [role="alertdialog"]') === null
   );
 }
 

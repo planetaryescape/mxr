@@ -542,6 +542,24 @@ describe("installKeyDispatcher", () => {
     }
   });
 
+  test("Esc leaves the filters g f focused for the pane, before the page's own Esc", () => {
+    const escape = runAction("messages.escape", "Escape", { scopes: ["messages"] });
+    registry.define(escape.action);
+    scopes = ["messages", "global"];
+    document.body.innerHTML = `
+      <section data-mode-pane tabindex="-1"></section>
+      <div role="radiogroup"><button role="radio">Your turn</button></div>`;
+    const radio = document.querySelector("button")!;
+    radio.focus();
+
+    press({ key: "Escape" }, radio);
+    expect(document.activeElement).toBe(document.querySelector("[data-mode-pane]"));
+    expect(escape.run).not.toHaveBeenCalled();
+
+    press({ key: "Escape" }, document.activeElement!);
+    expect(escape.run).toHaveBeenCalledTimes(1);
+  });
+
   test("q closes a mail dialog, which suspends the page's keys while it is open", () => {
     const dialog = document.createElement("div");
     dialog.setAttribute("role", "dialog");

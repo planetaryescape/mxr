@@ -11,12 +11,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI
-    ? [
-        ["github"],
-        ["line"],
-        ["./e2e/helpers/progress-reporter.ts"],
-        ["./e2e/helpers/people-trace-reporter.ts"],
-      ]
+    ? [["github"], ["line"], ["./e2e/helpers/progress-reporter.ts"]]
     : "list",
   use: {
     baseURL: appUrl,

@@ -1,90 +1,62 @@
+import { randomUUID } from "node:crypto";
+
 import { expect, test } from "@playwright/test";
 
-import { mailList, mailRows, openList, pressSequence } from "./helpers/mail";
-import { openApp, readE2EState } from "./helpers/state";
+import { expectCursorOn, mailRows, reader, renderedRowIds } from "./helpers/mail";
+import { deliver } from "./helpers/spool";
+import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-function query(page: { url: () => string }): string {
-  return new URL(page.url()).searchParams.get("q") ?? "";
-}
+test("new mail is searchable; archive-and-advance from results, Esc back to the query, undo", async ({
+  page,
+}) => {
+  const query = randomUUID().slice(0, 8);
+  for (const index of [0, 1, 2]) {
+    deliver({
+      from: `archive-${index}@example.test`,
+      subject: `${query} inbox fixture ${index}`,
+      body: `Searchable Inbox fixture ${query} ${index}.`,
+    });
+  }
+  await bridge(page, "/api/v1/mail/sync", {});
+  const origin = `/search?q=${query}`;
+  await openApp(page, origin);
+  await expect(mailRows(page)).toHaveCount(3, { timeout: 15_000 });
+  const ids = await renderedRowIds(page);
+  expect(ids).toHaveLength(3);
 
-test("operator chips show each token and removing one rewrites the query", async ({ page }) => {
-  // A zero-result search still exercises chip rendering and query rewriting.
-  await openApp(page, "/search?q=canary%20is:unread");
-  const chip = page.getByRole("button", { name: /^Remove is:\s?unread/ });
-  await expect(chip).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Remove canary/ })).toBeVisible();
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+  const opened = page.url();
+  const archivedThreadId = decodeURIComponent(new URL(opened).pathname.split("/").at(-1) ?? "");
+  if (!archivedThreadId) throw new Error("opened search result has no thread id");
+  const threadHasInboxMessage = async () => {
+    const { messages } = await bridge<{
+      messages: { labels?: { name: string }[] }[];
+    }>(page, `/api/v1/mail/threads/${encodeURIComponent(archivedThreadId)}`);
+    return messages.some((message) =>
+      (message.labels ?? []).some((label) => label.name.toLowerCase() === "inbox"),
+    );
+  };
+  expect(await threadHasInboxMessage()).toBe(true);
 
-  await chip.click();
-  await expect.poll(() => query(page)).toBe("canary");
-  await expect(page.getByLabel("Search query")).toHaveValue("canary");
-  await expect(page.getByRole("button", { name: /^Remove is:\s?unread/ })).toHaveCount(0);
-});
+  await page.keyboard.press("]");
+  await expect(page).not.toHaveURL(opened);
+  await expect(page).toHaveURL(new RegExp(`/search/[^/?]+\\?q=${query}$`));
+  await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible();
+  await expect.poll(threadHasInboxMessage).toBe(false);
+  // Archived mail still matches the query, so the next result is the one open.
+  await expectCursorOn(page, ids[2]!);
 
-test("clicking a sender facet narrows the query and the results", async ({ page }) => {
-  await openList(page, "/search?q=canary");
-  // The filters are one key away, not on the page until asked for.
-  await expect(page.getByTestId("search-filters")).toHaveCount(0);
-  await page.keyboard.press("g");
-  await page.keyboard.press("f");
-  await expect(page.getByTestId("search-filters")).toBeVisible();
-  const facet = page.locator('button[title*=" unread"]').first();
-  await expect(facet).toBeVisible();
-  // Counts are messages: the tooltip says so, and the chip leaves them off beside conversations.
-  const facetCount = Number(
-    /(\d+) messages?,/.exec((await facet.getAttribute("title")) ?? "")?.[1],
-  );
-  const before = await mailRows(page).count();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(new RegExp(`/search\\?q=${query}$`));
+  await expectCursorOn(page, ids[2]!);
 
-  await facet.click();
-  await expect.poll(() => query(page)).toMatch(/^canary from:\S+/);
-  await expect(page.getByRole("button", { name: /^Remove from:/ })).toBeVisible();
-  await expect(mailRows(page).first()).toBeVisible();
-  const after = await mailRows(page).count();
-  expect(after).toBeLessThanOrEqual(Math.min(before, facetCount));
-});
-
-test("save a search, find it in the sidebar, and jump to it with g 1", async ({ page }) => {
-  const name = `E2E canary ${Date.now().toString(36)}`;
-  await openList(page, "/search?q=canary");
-
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Save this search" });
-  await dialog.getByLabel("Name").fill(name);
-  await dialog.getByRole("button", { name: "Save search" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByText(`Saved “${name}”`)).toBeVisible();
-
-  const sidebarLink = page.getByRole("complementary", { name: "Mailboxes" }).getByRole("link", {
-    name: new RegExp(`^${name}`),
-  });
-  await expect(sidebarLink).toBeVisible();
-
-  // Leave for Inbox, then jump back with the saved-search chord.
-  await pressSequence(page, "g", "i");
-  await expect(page).toHaveURL(/\/m\/inbox$/);
-  await expect(mailList(page)).toBeVisible();
-  await pressSequence(page, "g", "1");
-  await expect(page).toHaveURL(/\/m\/saved\/[^/]+$/);
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-  await expect(mailRows(page).first()).toBeVisible();
-
-  // The daemon outlives the test: free slot 1 for the "empty slot" test.
-  const state = readE2EState();
-  const removed = await page.request.post(
-    `${state.bridgeUrl}/api/v1/platform/saved-searches/delete`,
-    {
-      headers: { "x-mxr-bridge-token": state.token },
-      data: { name },
-    },
-  );
-  expect(removed.ok()).toBe(true);
-});
-
-test("g 1 with no saved search in that slot says so and stays put", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await pressSequence(page, "g", "1");
-  await expect(page.getByText("No saved search in slot 1")).toBeVisible();
-  await expect(page).toHaveURL(/\/m\/inbox$/);
+  const undoResponse = page.waitForResponse("**/api/v1/mail/mutations/undo");
+  await page.keyboard.press("u");
+  expect((await undoResponse).ok()).toBe(true);
+  await expect(page.getByText(/^Undone$/)).toBeVisible();
+  await expect.poll(threadHasInboxMessage).toBe(true);
 });

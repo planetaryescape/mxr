@@ -423,7 +423,7 @@ jobs:
         run: npm run test
 
   web-e2e:
-    name: Web E2E (${{ matrix.shard }}/2)
+    name: Web E2E
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [changes, test, web-tests, build-e2e-daemon]
     # See the draft-skip note on the `test` job above — this is the single
@@ -433,12 +433,13 @@ jobs:
       !failure() && !cancelled() &&
       (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    # The suite runs across 2 parallel shards against prebuilt daemon binaries.
+    # One runner: the suite is a handful of core journeys (apps/web/e2e/README.md)
+    # against a prebuilt daemon binary.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1]
     defaults:
       run:
         working-directory: apps/web
@@ -467,15 +468,14 @@ jobs:
             echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
           fi
       # One worker: every spec shares the FakeProvider daemon's mailbox.
-      # Pull requests run the core engine subset (e2e:engine, ~15 specs) sharded across 2 runners;
-      # main and manual runs run the full regression matrix sharded across 2 runners.
+      # Pull requests and main run the same suite (e2e:engine is an alias of e2e).
       - name: Run the Chromium suite (bounded, with progress log)
         run: |
           set -o pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 --shard=${{ matrix.shard }}/1 2>&1 | tee playwright-run.log
           else
-            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/1 2>&1 | tee playwright-run.log
           fi
       # Keep functional failures separate from the speed traces below.
       - name: Upload Playwright results

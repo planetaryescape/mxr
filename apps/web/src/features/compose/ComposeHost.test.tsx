@@ -311,6 +311,29 @@ describe("ComposeHost send safety", () => {
     });
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
   });
+
+  test("a send whose undo window closes while mxr is down is cancelled, not sent once it is back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send⌘↵" }));
+    await waitFor(() => expect(useUndo.getState().pendingSendCancel).not.toBeNull());
+    act(() => useConnectionStore.getState().setState({ daemonDown: true }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(toasts.warning).toHaveBeenCalledWith(
+      "Can't send while mxr is unavailable",
+      expect.anything(),
+    );
+
+    act(() => useConnectionStore.getState().setState({ daemonDown: false }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(api.sendComposeSession).not.toHaveBeenCalled();
+  });
 });
 
 describe("ComposeHost never loses typing on the way out", () => {

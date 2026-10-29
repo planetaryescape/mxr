@@ -446,6 +446,7 @@ fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -494,6 +495,7 @@ fn send_key_uses_pending_compose_account() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -541,6 +543,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
@@ -611,6 +614,7 @@ fn remind_prompt_sends_draft_with_pending_reminder_time() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
@@ -1253,6 +1257,7 @@ fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -1298,6 +1303,7 @@ fn save_key_saves_missing_recipient_draft_to_server() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
@@ -1349,6 +1355,7 @@ fn edit_key_reopens_missing_recipient_draft() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
@@ -1393,6 +1400,7 @@ fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: Account
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     }
 }
 

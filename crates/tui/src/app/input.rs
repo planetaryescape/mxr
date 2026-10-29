@@ -872,22 +872,32 @@ impl App {
                                 }
                             };
                             let draft_id = pending.draft_id();
-                            let draft = match draft_from_pending(&pending, draft_id.clone(), now) {
-                                Ok(draft) => draft,
-                                Err(error) => {
-                                    self.compose.pending_send_confirm = Some(pending);
-                                    self.compose.pending_send_at_input = Some(input);
-                                    self.push_toast(Toast::error(error.to_string()));
-                                    return None;
+                            // A stored draft was saved before its review; saving it
+                            // again would move the revision the schedule names.
+                            let prelude = if pending.stored_draft.is_some() {
+                                Vec::new()
+                            } else {
+                                match draft_from_pending(&pending, draft_id.clone(), now) {
+                                    Ok(draft) => vec![Request::SaveDraft { draft }],
+                                    Err(error) => {
+                                        self.compose.pending_send_confirm = Some(pending);
+                                        self.compose.pending_send_at_input = Some(input);
+                                        self.push_toast(Toast::error(error.to_string()));
+                                        return None;
+                                    }
                                 }
                             };
+                            let expected_revision = match pending.stored_draft.as_ref() {
+                                Some(stored) => stored.revision,
+                                None => pending.draft_revision.or(Some(1)),
+                            };
                             self.queue_platform_request_after(
-                                vec![Request::SaveDraft { draft }],
+                                prelude,
                                 Request::ScheduleSend {
                                     managed_attachments_reviewed: true,
                                     draft_id,
                                     send_at,
-                                    expected_revision: pending.draft_revision.or(Some(1)),
+                                    expected_revision,
                                 },
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
@@ -1025,6 +1035,21 @@ impl App {
                             return None;
                         }
                         let retained = pending.clone();
+                        if let Some(stored) = pending.stored_draft.as_deref() {
+                            // Already saved before the review: keep it, and put it
+                            // on the server as a fresh reply's save does.
+                            let id = self.queue_mutation(
+                                Request::SaveDraftToServer {
+                                    draft: stored.clone(),
+                                },
+                                MutationEffect::StatusOnly("Draft saved".into()),
+                                "Saving draft...".into(),
+                            );
+                            self.compose
+                                .pending_send_mutations
+                                .insert(id, (retained, false));
+                            return None;
+                        }
                         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
                             mxr_core::types::ReplyHeaders {
@@ -1084,19 +1109,44 @@ impl App {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
-                        self.compose.pending_compose = Some(ComposeAction::EditDraft {
-                            path: pending.draft_path,
-                            account_id: pending.account_id,
-                        });
+                        if let Some(stored) = pending.stored_draft {
+                            // Its saved text is the only copy that matters now.
+                            self.schedule_draft_cleanup(pending.draft_path);
+                            self.pending_draft_edit_request = Some(*stored);
+                        } else {
+                            self.compose.pending_compose = Some(ComposeAction::EditDraft {
+                                path: pending.draft_path,
+                                account_id: pending.account_id,
+                            });
+                        }
                     }
                     return None;
                 }
                 (KeyCode::Char('r'), KeyModifiers::NONE) => {
+                    // Draft for me rewrites the review's text, which a stored
+                    // draft sends exactly as saved: edit it instead.
+                    if self
+                        .compose
+                        .pending_send_confirm
+                        .as_ref()
+                        .is_some_and(|pending| pending.stored_draft.is_some())
+                    {
+                        return None;
+                    }
                     return Some(Action::RefinePendingDraft);
                 }
                 // Discard only on the option that names it, with the shared
                 // destroy key (blueprint 36's "# discard draft").
                 (KeyCode::Char('#'), _) => {
+                    // A stored draft is deleted from Drafts, behind its own preview.
+                    if self
+                        .compose
+                        .pending_send_confirm
+                        .as_ref()
+                        .is_some_and(|pending| pending.stored_draft.is_some())
+                    {
+                        return None;
+                    }
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;

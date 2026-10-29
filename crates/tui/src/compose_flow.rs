@@ -382,6 +382,56 @@ pub(crate) async fn resume_reply_draft(
     prepare_draft_edit(bg, draft).await
 }
 
+/// A stored draft's edits are saved: open the same send review a fresh
+/// reply gets (From check, safety check, Send, Send at, Remind, Save), bound
+/// to this draft and its new revision. Collaborator suggestions are left out:
+/// adding a Cc there would change a draft that sends exactly as saved.
+async fn after_stored_draft_saved(
+    app: &mut App,
+    data: &DraftEditReadyData,
+    saved: Draft,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) {
+    app.status_message = Some("Draft updated".into());
+    // Messages shows a reply's draft on its row: keep it current.
+    if app.mailbox.mailbox_view == crate::app::MailboxView::People {
+        app.mailbox.messages_page.pending_refresh = true;
+    }
+    let ready = ComposeReadyData {
+        account_id: saved.account_id.clone(),
+        draft_revision: saved.revision,
+        intent: saved.intent,
+        draft_path: data.path.clone(),
+        cursor_line: 1,
+        // Never "unchanged": a saved draft can be sent as it stands.
+        initial_content: String::new(),
+        invite_reply: saved.inline_calendar_reply.clone(),
+    };
+    let mut pending = match pending_send_from_edited_draft(&ready).await {
+        Ok(pending) => pending,
+        Err(error) => {
+            // Saved, but not sendable as written: say why, and keep it in Drafts.
+            app.schedule_draft_cleanup(data.path.clone());
+            app.report_error(error.modal_title(), error.modal_detail());
+            return;
+        }
+    };
+    pending.stored_draft = Some(Box::new(saved));
+    match resolve_pending_from(&pending, bg).await {
+        Ok(resolved) => pending.resolved_from = resolved,
+        Err(message) => {
+            app.schedule_draft_cleanup(data.path.clone());
+            app.report_error(
+                "From address rejected",
+                format!("{message}\n\nThe draft is saved; edit it from Drafts."),
+            );
+            return;
+        }
+    }
+    stamp_safety_report(&mut pending, bg).await;
+    app.compose.pending_send_confirm = Some(pending);
+}
+
 /// Handle the `$EDITOR` exit status for an in-place draft edit. Mirrors
 /// `handle_compose_editor_status`, but the edited content is applied
 /// onto the existing draft (preserving id/account_id/created_at) and
@@ -426,15 +476,26 @@ pub(crate) async fn handle_draft_edit_status(
                 }
             };
 
+            let draft_id = updated.id.clone();
             match ipc_call(bg, Request::UpdateDraft { draft: updated }).await {
                 Ok(Response::Ok {
-                    data: ResponseData::Ack | ResponseData::Draft { .. },
+                    data: ResponseData::Draft { draft: saved },
                 }) => {
-                    app.status_message = Some("Draft updated".into());
-                    app.schedule_draft_cleanup(data.path.clone());
-                    // Messages shows a reply's draft on its row: keep it current.
-                    if app.mailbox.mailbox_view == crate::app::MailboxView::People {
-                        app.mailbox.messages_page.pending_refresh = true;
+                    after_stored_draft_saved(app, data, saved, bg).await;
+                }
+                Ok(Response::Ok {
+                    data: ResponseData::Ack,
+                }) => {
+                    // An older daemon acknowledges without the saved draft; the
+                    // review needs its new revision, so read it back.
+                    match ipc_call(bg, Request::GetDraft { draft_id }).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::Draft { draft: saved },
+                        }) => after_stored_draft_saved(app, data, saved, bg).await,
+                        _ => {
+                            app.status_message = Some("Draft updated".into());
+                            app.schedule_draft_cleanup(data.path.clone());
+                        }
                     }
                 }
                 Ok(Response::Error { message, .. }) => {
@@ -681,6 +742,7 @@ pub(crate) async fn pending_send_from_edited_draft(
         suggested_collaborators: vec![],
         invite_reply: data.invite_reply.clone(),
         resolved_from: None,
+        stored_draft: None,
     })
 }
 
@@ -854,6 +916,9 @@ async fn stamp_suggestions(pending: &mut PendingSend, bg: &mpsc::UnboundedSender
 pub(crate) fn draft_from_pending(
     pending: &PendingSend,
 ) -> Result<mxr_core::Draft, mxr_compose::frontmatter::ComposeError> {
+    if let Some(stored) = pending.stored_draft.as_deref() {
+        return Ok(stored.clone());
+    }
     let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
     let reply_headers =
         pending
@@ -1306,6 +1371,121 @@ mod tests {
             bg_rx.try_recv().is_err(),
             "a draft that cannot be edited must not cost a daemon round trip"
         );
+    }
+
+    /// Editing a stored draft (a resumed reply, or from Drafts) saves the
+    /// edits, then opens the same send review as a fresh reply, bound to
+    /// that draft and the revision the save produced.
+    #[tokio::test]
+    async fn an_edited_stored_draft_saves_then_opens_the_send_review() {
+        use crate::app::{App, PendingSendMode};
+        use crate::async_result::DraftEditReadyData;
+        use std::os::unix::process::ExitStatusExt;
+
+        let account = mxr_core::AccountId::new();
+        let stored = mxr_core::Draft {
+            revision: Some(3),
+            id: mxr_core::DraftId::new(),
+            account_id: account.clone(),
+            from: None,
+            reply_headers: Some(mxr_core::types::ReplyHeaders {
+                in_reply_to: "<source@example.com>".into(),
+                references: vec![],
+                thread_id: None,
+            }),
+            intent: mxr_core::DraftIntent::Reply,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "pat@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Re: Renewal".into(),
+            content: mxr_core::DraftContent::markdown("Thursday works."),
+            managed_attachments: None,
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let file = mxr_compose::draft_codec::draft_to_compose_file(&stored, "me@example.com")
+            .unwrap()
+            .replace("Thursday works.", "Thursday at ten works.");
+        let path =
+            std::env::temp_dir().join(format!("mxr-stored-review-test-{}.md", std::process::id()));
+        std::fs::write(&path, file).unwrap();
+        let data = DraftEditReadyData {
+            existing: Box::new(stored.clone()),
+            path: path.clone(),
+        };
+
+        let (bg, mut requests) = mpsc::unbounded_channel::<IpcRequest>();
+        let saved_id = stored.id.clone();
+        tokio::spawn(async move {
+            while let Some(request) = requests.recv().await {
+                let data = match request.request {
+                    Request::UpdateDraft { mut draft } => {
+                        assert_eq!(draft.id, saved_id);
+                        assert!(draft
+                            .content
+                            .analysis_text()
+                            .contains("Thursday at ten works."));
+                        draft.revision = Some(4);
+                        ResponseData::Draft { draft }
+                    }
+                    Request::GetArchiveWorkspace => ResponseData::ArchiveWorkspace {
+                        workspace: mxr_protocol::ArchiveWorkspaceData {
+                            workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                            recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+                        },
+                    },
+                    Request::ResolveSendFrom { .. } => ResponseData::ResolvedSendFrom {
+                        from: mxr_core::types::Address {
+                            name: None,
+                            email: "me@example.com".into(),
+                        },
+                    },
+                    Request::CheckDraftSafety { draft, .. } => {
+                        assert_eq!(draft.revision, Some(4), "checks the saved draft");
+                        ResponseData::DraftSafetyReportResponse {
+                            report: mxr_core::DraftSafetyReport {
+                                allowed: true,
+                                issues: vec![],
+                                verdict: mxr_core::DraftSafetyVerdict::Safe,
+                                checked_at: None,
+                            },
+                        }
+                    }
+                    other => panic!("unexpected request {other:?}"),
+                };
+                let _ = request.reply.send(Ok(Response::Ok { data }));
+            }
+        });
+
+        let mut app = App::new();
+        super::handle_draft_edit_status(
+            &mut app,
+            &data,
+            Ok(std::process::ExitStatus::from_raw(0)),
+            &bg,
+        )
+        .await;
+
+        let pending = app
+            .compose
+            .pending_send_confirm
+            .as_ref()
+            .expect("the send review opens");
+        assert_eq!(pending.mode, PendingSendMode::SendOrSave);
+        assert_eq!(pending.draft_id(), stored.id);
+        let saved = pending
+            .stored_draft
+            .as_ref()
+            .expect("bound to the stored draft");
+        assert_eq!(saved.revision, Some(4));
+        assert!(pending.suggested_collaborators.is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Plan 004 / Step 4b: editor non-zero exit (discard) deletes the

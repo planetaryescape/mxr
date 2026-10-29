@@ -293,6 +293,7 @@ mod tests {
             suggested_collaborators: vec![],
             invite_reply: None,
             resolved_from: None,
+            stored_draft: None,
         }
     }
 

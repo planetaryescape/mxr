@@ -1572,3 +1572,13 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 ## D186: The lexical index converts HTML to text but keeps quotes and signatures
 
 The lexical index converts HTML to text with the reader's built-in converter and keeps quoted replies and signatures, because every removal heuristic can drop words the reader shows (G10c review).
+
+## D187: Leaving a conversation saves its reply as a draft on the row
+
+**Chosen**: When the user leaves a conversation with a reply open (Back on a phone, another person, another topic), the web app saves the reply and closes it. Messages shows that person's row with `Draft:` in the accent colour and the start of the reply in place of the preview, and opening the row resumes the reply inline with the cursor in it. The daemon puts the draft on the row (`MessagesRowData.draft`), so the CLI, TUI and MCP see it too. A reply that cannot save stays open in the sheet.
+
+**Considered**: Keeping the reply in a full sheet over the list (b2ea14e8b); a docked title bar above the tab bar (before b2ea14e8b); a first Back that closes the reply and a second that reaches the list.
+
+**Why**: BK, 2026-10-29: "close the draft, show draft on the message in the message list in the accent color, similar to what whatsapp does, I think imessage does the same, if they open the message, their draft is there and they can continue". On a phone the sheet looked like Back had done nothing (docs/issues/phone-back-reopens-draft.md).
+
+**Trade-offs accepted**: The same rule applies on wide layouts, where b2ea14e8b had already replaced the docked window with the sheet. Moving the lamp with `j` and `k` does not resume the reply, so the keys stay with the list; the reply box under the conversation shows the draft instead.

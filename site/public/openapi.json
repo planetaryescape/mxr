@@ -19822,6 +19822,17 @@
           "closeness": {
             "$ref": "#/components/schemas/ClosenessData"
           },
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessagesRowDraftData",
+                "description": "Your unsent reply on one of the topics, the latest edited when\nseveral have one. Clients show it in place of the preview."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "`person:<email>` or `group:<thread_id>`: what `GetPerson` takes."
@@ -19913,6 +19924,38 @@
           "your_turn": {
             "type": "boolean",
             "description": "A topic needs attention: an unanswered request or due explicit return."
+          }
+        }
+      },
+      "MessagesRowDraftData": {
+        "type": "object",
+        "description": "Your unsent reply in one of a row's conversations: the line clients show\nas \"Draft: ...\" in place of the preview, and what opening the row resumes.",
+        "required": [
+          "draft_id",
+          "thread_id",
+          "text",
+          "reply_all",
+          "updated_at"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "reply_all": {
+            "type": "boolean",
+            "description": "The reply goes to everyone on the conversation."
+          },
+          "text": {
+            "type": "string",
+            "description": "The start of the reply's text, on one line."
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId",
+            "description": "The conversation the reply answers: one of the row's topics."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

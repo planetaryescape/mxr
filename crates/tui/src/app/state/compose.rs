@@ -43,6 +43,11 @@ pub struct PendingSend {
     /// couldn't run (daemon unreachable), in which case the modal falls back to
     /// the raw `from:` text.
     pub resolved_from: Option<mxr_core::types::Address>,
+    /// Set when the review is for a draft already in the daemon's store (a
+    /// resumed reply, or an edit from Drafts): the edits were saved to it
+    /// before the review opened, so sending, scheduling and saving act on
+    /// exactly this draft and revision, and editing again reopens it.
+    pub stored_draft: Option<Box<mxr_core::Draft>>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +107,9 @@ impl ComposeAssistReview {
 
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        if let Some(stored) = &self.stored_draft {
+            return stored.id.clone();
+        }
         if let Some(source) = &self.fm.forward_source {
             return source.draft_id.clone();
         }
@@ -137,6 +145,15 @@ pub enum PendingSendMode {
     SendOrSave,
     DraftOnlyNoRecipients,
     Unchanged,
+}
+
+/// `r` or `a` in Messages on a conversation whose row names an unsent reply:
+/// the runtime asks the daemon for that conversation's reply draft
+/// (`EnsureReplyDraft`, the rule the web uses) and opens it for editing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyDraftResume {
+    pub message_id: mxr_core::MessageId,
+    pub reply_all: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

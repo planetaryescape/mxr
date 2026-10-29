@@ -66,6 +66,7 @@ pub(crate) fn row(
             message_id: None,
             model: None,
         }),
+        draft: None,
         topics,
         usual_reply_seconds: Some(47 * 60),
         pace_label: Some("usually 47m".into()),
@@ -309,6 +310,37 @@ fn a_row_without_a_preview_reads_its_subject_not_a_placeholder() {
     let rendered = render_at(&page(data, true), 120, 0);
     assert!(rendered.contains(&subject), "{rendered}");
     assert!(!rendered.contains("only quoted"), "{rendered}");
+}
+
+#[test]
+fn a_row_with_an_unsent_reply_reads_draft_in_the_accent_in_place_of_its_preview() {
+    let mut data = populated();
+    let jon = &mut data.your_turn[1];
+    let preview = jon.preview.as_ref().unwrap().text.clone();
+    jon.draft = Some(mxr_protocol::MessagesRowDraftData {
+        draft_id: mxr_core::id::DraftId::new(),
+        thread_id: jon.topics[0].thread_id.clone(),
+        text: "Reads right, one tweak to the second line".into(),
+        reply_all: false,
+        updated_at: now(),
+    });
+    let theme = crate::theme::Theme::default();
+    let line = preview_line(jon, 80, &theme).expect("a preview line");
+    let label = line
+        .spans
+        .iter()
+        .find(|span| span.content == "Draft: ")
+        .expect("the label is its own span");
+    assert_eq!(label.style.fg, Some(theme.accent));
+    assert!(label.style.add_modifier.contains(Modifier::BOLD));
+
+    let rendered = render_at(&page(data, true), 120, 0);
+    assert!(
+        rendered.contains("Draft: Reads right, one tweak"),
+        "{rendered}"
+    );
+    // The list column truncates, so the preview's opening words are the check.
+    assert!(!rendered.contains(&preview[..20]), "{rendered}");
 }
 
 #[test]

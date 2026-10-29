@@ -170,6 +170,20 @@ fn preview_line(
     width: usize,
     theme: &crate::theme::Theme,
 ) -> Option<Line<'static>> {
+    let room = width.saturating_sub(4);
+    // Your unsent reply takes the preview's place, its label in the accent
+    // and in words, so the mark doesn't rest on colour.
+    if let Some(draft) = row.draft.as_ref() {
+        const LABEL: &str = "Draft: ";
+        return Some(Line::from(vec![
+            Span::raw("   "),
+            Span::styled(LABEL, theme.accent_style().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                truncate(&one_line(&draft.text), room.saturating_sub(LABEL.len())),
+                Style::default().fg(theme.text_secondary),
+            ),
+        ]));
+    }
     // No preview (a thread of nothing but quotes has none): the subject.
     let text = match row.preview.as_ref() {
         Some(preview) if preview.kind == MessagesPreviewKindData::Ask => {
@@ -179,7 +193,7 @@ fn preview_line(
         None => one_line(&row.topics.first()?.subject),
     };
     Some(Line::from(Span::styled(
-        format!("   {}", truncate(&text, width.saturating_sub(4))),
+        format!("   {}", truncate(&text, room)),
         Style::default().fg(theme.text_secondary),
     )))
 }

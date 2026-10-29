@@ -544,10 +544,16 @@ on a card until you approve it.
 
 Replies and forwards open under the message they answer, with one audience
 line such as “To Pat · Reply all”. Select that line to edit To, Cc and Bcc.
-New messages open in a fresh sheet, leaving earlier drafts in Drafts. A reply
-whose conversation closes stays open in that sheet, keeping the same draft
-and typed text. You can move a reply to
-the sheet or go fullscreen. A sheet is modal:
+New messages open in a fresh sheet, leaving earlier drafts in Drafts. Leaving
+the conversation, by Back on a phone, another person or topic, or another
+email, saves a reply or forward written under it and closes it; nothing is
+put over the list you went to. In Messages the person's row then shows
+`Draft:` in the accent colour with the start of the reply, and opening the
+person brings the reply back under the conversation with the cursor in it
+(see [Unsent replies](/guides/messages/#unsent-replies)). Reply on that
+conversation continues it as well. Saved forwards are in Drafts. If the save
+fails, the reply stays open in the sheet with your text. You can move a reply
+to the sheet or go fullscreen. A sheet is modal:
 Tab stays inside it, `Esc` saves the draft and leaves (inside the Markdown
 editor `Esc` stays with vim, so use `:q`), and focus goes back to where you
 were. On a phone it covers the whole screen. New messages start in the To

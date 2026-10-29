@@ -21,6 +21,7 @@ use super::desk_lanes::{
     thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
 };
 use super::desk_timers::DeskTimers;
+use super::messages_drafts::{attach_drafts, conversation_drafts};
 use super::messages_text::{
     cached_ask, new_texts, preview_texts, wrapped_lines, MessageText, TextRequest,
 };
@@ -552,6 +553,7 @@ fn account_rows(
                 last_at,
                 turn_since: None,
                 preview: None,
+                draft: None,
                 topics: Vec::new(),
                 usual_reply_seconds: None,
                 pace_label: None,
@@ -666,9 +668,11 @@ pub(super) async fn messages_at(
     recent.truncate(limit as usize);
     quiet.truncate(limit as usize);
 
+    let drafts = conversation_drafts(state, &accounts).await?;
     for band in [&mut your_turn, &mut pinned, &mut recent, &mut quiet] {
         load_preview_threads(state, &mut gathered, band).await?;
         fill_previews(state, &gathered, band).await?;
+        attach_drafts(band, &drafts);
     }
 
     let waiting_view = filter.turn == Some(MessagesTurnData::Theirs);
@@ -1054,6 +1058,8 @@ async fn person_page(
     // read leaves both out.
     if with_conversation {
         fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+        let drafts = conversation_drafts(state, std::slice::from_ref(account_id)).await?;
+        attach_drafts(&mut rows, &drafts);
     }
     let row = rows.remove(0);
     let conversation = match pick_topic(&topics, topic) {
@@ -1102,6 +1108,8 @@ async fn group_page(
     let mut rows = vec![build_row(topic.key.clone(), vec![topic.clone()], &ctx)];
     if with_conversation {
         fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+        let drafts = conversation_drafts(state, std::slice::from_ref(account_id)).await?;
+        attach_drafts(&mut rows, &drafts);
     }
     let row = rows.remove(0);
     let conversation = if with_conversation {

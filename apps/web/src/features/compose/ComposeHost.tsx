@@ -3,9 +3,11 @@
  * point opens it: `c`, the compose launcher, reply/forward, drafts, and the
  * /compose/* deep links. Mounted once in AppShell so the compose session
  * survives surface switches and route changes. The inline surface portals the
- * editor into the thread reader's slot (#inline-composer-slot); when no
- * slot exists (user navigated away) it falls back to the overlay so the
- * draft is never hidden.
+ * editor into the thread reader's slot (#inline-composer-slot). Leaving the
+ * conversation removes the slot, and the reply saves and closes, as a chat
+ * app keeps a draft on its conversation; Messages shows it on the person's
+ * row and opening them brings it back. A reply that can't save stays open in
+ * the sheet, and an inline reply whose slot never appeared opens there.
  */
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -16,6 +18,7 @@ import { createPortal } from "react-dom";
 import { PageError } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { overlayMotion, scrimMotion, sheetMotion } from "@/components/ui/motion";
+import { refreshMessages } from "@/features/messages/api";
 import { focusActivePane } from "@/lib/keys/focusPane";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
@@ -46,6 +49,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   // session.
   const closeThisSession = () => {
     if (useComposeUi.getState().intent?.key === intent.key) closeCompose();
+    // Messages marks a conversation's unsent reply on its row: show the
+    // reply just left, or drop the mark once it is sent or discarded.
+    if (intent.kind === "reply" || intent.kind === "reply_all") void refreshMessages();
   };
   const controller = useComposeSession(intent, {
     onSent: closeThisSession,
@@ -82,7 +88,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   // whenever the DOM changes, not only the route: a pane can unmount and
   // remount on the same path (Messages on a phone goes back to the people
   // and reopens the person), and a portal into a detached slot would hide
-  // the draft for good. Without a slot the draft falls back to the overlay.
+  // the draft for good. A slot that goes away means the user left the
+  // conversation: the reply saves and closes (below).
+  const [leftConversation, setLeftConversation] = useState(false);
   useEffect(() => {
     if (surface !== "inline") {
       setSlot(null);
@@ -96,6 +104,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         : "inline-composer-slot";
       const next = document.getElementById(slotId);
       if (next !== current) {
+        if (current && !next) setLeftConversation(true);
         current = next;
         setSlot(next);
       }
@@ -105,6 +114,23 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [intent.contextThreadId, surface]);
+
+  // Leaving the conversation leaves the reply on it, saved, the way Back in a
+  // chat app does; no sheet is thrown over the list (a phone's Back would
+  // seem to do nothing). Only a failed save keeps it open, in the sheet,
+  // with its error and the text.
+  useEffect(() => {
+    if (!leftConversation) return;
+    let current = true;
+    void controllerRef.current.requestClose().then(() => {
+      if (!current) return;
+      setLeftConversation(false);
+      if (useComposeUi.getState().intent?.key === intent.key) setSurface("overlay");
+    });
+    return () => {
+      current = false;
+    };
+  }, [intent.key, leftConversation, setSurface]);
 
   // Bring the inline composer into view once it has content: the slot is
   // hidden while empty, so scrolling to it any earlier does nothing.
@@ -141,8 +167,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     <ComposeEditorPanel controller={controller} inline={inThread} />
   ) : null;
 
-  // If navigation removes the conversation slot, keep the session visible in
-  // its sheet. The inline editor never becomes a floating window over a list.
   const chrome = (
     <div
       data-compose-surface
@@ -201,6 +225,8 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   if (inThread && slot) {
     return createPortal(chrome, slot);
   }
+  // Saving on the way out of the conversation: nothing to show meanwhile.
+  if (leftConversation && surface === "inline") return null;
 
   const fullscreen = surface === "fullscreen";
   // The sheet is modal: focus stays inside it, Esc leaves (the draft is

@@ -18,7 +18,7 @@ use crate::accounts_helpers::load_accounts_page_accounts;
 use crate::async_result::{AsyncResult, StatusSnapshot, UnsubscribeResultData};
 use crate::compose_flow::{
     fetch_reply_context_dedicated, handle_compose_action, handle_compose_editor_status,
-    handle_draft_edit_status, prepare_draft_edit,
+    handle_draft_edit_status, prepare_draft_edit, resume_reply_draft,
 };
 use crate::daemon_events::{
     apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_context_loaded,
@@ -787,6 +787,13 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 AsyncResult::DraftEditReady(prepare_draft_edit(&bg, draft).await)
+            });
+        }
+
+        if let Some(resume) = app.pending_reply_draft_resume.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::DraftEditReady(resume_reply_draft(&bg, resume).await)
             });
         }
 

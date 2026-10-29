@@ -12,6 +12,7 @@ import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
 import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
@@ -72,10 +73,10 @@ vi.mock("@/features/mail-actions/verbFeedback", () => ({
   toneFor: () => "success",
 }));
 vi.mock("./MessagesList", () => ({
-  MessagesList: ({ data }: { data: MessagesData }) => (
+  MessagesList: ({ data, onSelect }: { data: MessagesData; onSelect: (id: string) => void }) => (
     <ul>
       {[...data.your_turn, ...data.recent, ...data.quiet].map((listed) => (
-        <li key={listed.id} data-testid="listed-row">
+        <li key={listed.id} data-testid="listed-row" onClick={() => onSelect(listed.id)}>
           {listed.id}
         </li>
       ))}
@@ -247,7 +248,71 @@ afterEach(() => {
   http.send.mockReset();
   useModeDone.getState().show("messages", [...useModeDone.getState().hidden.messages]);
   useUndo.setState({ lastUndo: null, lastMutationId: null });
+  act(() => useComposeUi.setState({ intent: null, surface: "overlay" }));
   vi.restoreAllMocks();
+});
+
+/** Messages with a person who left a reply unsent on their second topic. */
+function withDraft() {
+  const drafted = {
+    ...row("person:a", [topic("a-first"), topic("a-drafted")]),
+    draft: {
+      draft_id: "draft-a",
+      thread_id: "a-drafted",
+      text: "Friday works for me",
+      reply_all: true,
+      updated_at: "2026-10-19T00:00:00Z",
+    },
+  };
+  const other = row("person:b", [topic("b-live")]);
+  const list = listOf(other, drafted);
+  client.setQueryData(listKey, list);
+  cachePage(drafted, "a-drafted", "a-drafted");
+  cachePage(drafted, null, "a-first");
+  cachePage(other, "b-live", "b-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: list };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  return { drafted, other };
+}
+
+test("opening a person with an unsent reply opens its conversation and resumes the reply inline", async () => {
+  const { drafted } = withDraft();
+  const router = await mountMessages("/messages?turn=mine");
+
+  const listed = await screen.findAllByTestId("listed-row");
+  fireEvent.click(listed.find((item) => item.textContent === drafted.id)!);
+
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: drafted.id, topic: "a-drafted" }),
+  );
+  await waitFor(() =>
+    expect(useComposeUi.getState().intent).toMatchObject({
+      kind: "reply_all",
+      messageId: "m-a-drafted",
+      contextThreadId: "a-drafted",
+    }),
+  );
+  expect(useComposeUi.getState().surface).toBe("inline");
+});
+
+test("moving the lamp onto a person with an unsent reply leaves the keys in the list", async () => {
+  const { drafted, other } = withDraft();
+  const router = await mountMessages(
+    `/messages?turn=mine&person=${encodeURIComponent(other.id)}&topic=b-live`,
+  );
+  await screen.findByText("b-live");
+
+  act(() => {
+    runCommand("messages", "down");
+  });
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: drafted.id, topic: "a-first" }),
+  );
+  await screen.findByText("a-first");
+  expect(useComposeUi.getState().intent).toBeNull();
 });
 
 test("Done advances to the next person's current open topic, not their cached closed default, while its fetch is delayed", async () => {

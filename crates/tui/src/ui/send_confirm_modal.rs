@@ -174,6 +174,11 @@ fn modal_lines(
     } else {
         ("[s] send", "\u{203a} [e/Esc] edit again")
     };
+    // A stored draft is already saved: it is kept, not discarded, from here,
+    // and it sends exactly as saved, so Draft for me edits it instead.
+    let stored = pending.stored_draft.is_some();
+    let discard = if stored { "" } else { "   [#] discard draft" };
+    let assist = if stored { "" } else { "[r] draft for me   " };
     match pending.mode {
         PendingSendMode::SendOrSave if blocked => {
             let override_action = if pending.override_token.is_some() {
@@ -181,19 +186,19 @@ fn modal_lines(
             } else {
                 ""
             };
-            lines.push(format!("{edit}{override_action}   [#] discard draft"));
+            lines.push(format!("{edit}{override_action}{discard}"));
         }
         PendingSendMode::SendOrSave => {
             lines.push(format!(
                 "{send}   [a] send at   [n] remind   [d] save draft"
             ));
-            lines.push(format!("[r] draft for me   {edit}   [#] discard draft"));
+            lines.push(format!("{assist}{edit}{discard}"));
         }
         PendingSendMode::DraftOnlyNoRecipients => {
-            lines.push(format!("[d] save draft   {edit}   [#] discard draft"));
+            lines.push(format!("[d] save draft   {edit}{discard}"));
         }
         PendingSendMode::Unchanged => {
-            lines.push(format!("{edit}   [#] discard draft"));
+            lines.push(format!("{edit}{discard}"));
         }
     }
     lines
@@ -275,6 +280,7 @@ mod tests {
             suggested_collaborators: vec![],
             invite_reply: None,
             resolved_from: None,
+            stored_draft: None,
         }
     }
 

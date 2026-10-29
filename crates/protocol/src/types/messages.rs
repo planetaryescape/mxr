@@ -233,6 +233,21 @@ pub struct MessagesPreviewData {
     pub model: Option<String>,
 }
 
+/// Your unsent reply in one of a row's conversations: the line clients show
+/// as "Draft: ..." in place of the preview, and what opening the row resumes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MessagesRowDraftData {
+    pub draft_id: DraftId,
+    /// The conversation the reply answers: one of the row's topics.
+    pub thread_id: ThreadId,
+    /// The start of the reply's text, on one line.
+    pub text: String,
+    /// The reply goes to everyone on the conversation.
+    pub reply_all: bool,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// One conversation inside a row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -282,6 +297,10 @@ pub struct MessagesRowData {
     pub turn_since: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<MessagesPreviewData>,
+    /// Your unsent reply on one of the topics, the latest edited when
+    /// several have one. Clients show it in place of the preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<MessagesRowDraftData>,
     /// Most pressing first: your turn, then waiting, then by recency.
     pub topics: Vec<MessagesTopicData>,
     /// How fast you usually reply to them, in seconds, from past replies.

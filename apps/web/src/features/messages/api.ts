@@ -17,6 +17,7 @@ import { NO_FILTER, type MessagesFilter } from "./filters";
 type Schemas = components["schemas"];
 export type MessagesData = Schemas["MessagesData"];
 export type MessagesRow = Schemas["MessagesRowData"];
+export type MessagesRowDraft = Schemas["MessagesRowDraftData"];
 export type MessagesTopic = Schemas["MessagesTopicData"];
 export type PersonPage = Schemas["PersonPageData"];
 export type Conversation = Schemas["ConversationData"];

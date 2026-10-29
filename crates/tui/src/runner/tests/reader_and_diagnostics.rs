@@ -1277,6 +1277,7 @@ fn refine_pending_draft_loads_the_daemon_compose_catalogue_before_proof() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     app.apply(Action::RefinePendingDraft);
@@ -1325,6 +1326,7 @@ fn selecting_a_compose_model_keeps_the_saved_body_as_the_proof_baseline() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     };
     app.compose.pending_send_confirm = Some(pending.clone());
     app.compose.model_picker = Some(crate::app::ComposeModelPicker {
@@ -1388,6 +1390,7 @@ fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     };
     app.compose.pending_send_confirm = Some(pending.clone());
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
@@ -1464,6 +1467,7 @@ fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     };
     app.compose.pending_send_confirm = Some(pending.clone());
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
@@ -1522,6 +1526,7 @@ fn proof_with_gaps_can_be_accepted_and_send_safety_is_rechecked() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     };
     let mut proposal = test_compose_proposal();
     proposal.gaps.push(mxr_protocol::GapData {
@@ -1853,6 +1858,7 @@ fn test_pending_send(path: &str) -> PendingSend {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     }
 }
 

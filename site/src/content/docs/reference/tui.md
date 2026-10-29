@@ -289,6 +289,13 @@ them too.
   overrides that block and sends once; a gap block has no override. A bare
   `Enter` runs the option marked `›`: Send, or Edit again when the safety
   check found something or the draft can't go as it is.
+- Drafts (`g d`): `Enter` opens the selected draft in `$EDITOR`, as `r` does
+  for a conversation's unsent reply in Messages. Closing the editor saves your
+  changes to that draft and opens the compose confirmation for it. `[s]`,
+  `[a]` and `[n]` send it, schedule it or send it with a reminder, `[d]` keeps
+  it as a draft, and `[e]` or `Esc` reopens it in `$EDITOR`. The confirmation
+  doesn't offer `[#]` or `[r]` for a saved draft: delete it from the Drafts
+  list, and edit it to change its text.
 - Writing proof: additions are highlighted and removals are struck through;
   set `NO_COLOR` to show `[-removed-]{+added+}` marks. Gap ranges use the
   warning style, and the warning says sending remains blocked. `Esc` keeps the

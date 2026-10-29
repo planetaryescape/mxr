@@ -168,7 +168,11 @@ impl App {
             created_at: now,
             updated_at: now,
         };
-        if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
+        if let Some(stored) = pending.stored_draft.as_deref() {
+            // A stored draft is sent exactly as saved and reviewed: the daemon
+            // refuses content that differs from its saved revision.
+            draft = stored.clone();
+        } else if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
             self.push_toast(Toast::error(error.to_string()));
             return;
         }

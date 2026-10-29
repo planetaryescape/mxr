@@ -5,6 +5,7 @@
 //! `--register` / `--length` to override the inferred tone.
 
 use crate::cli::{DraftLengthArg, OutputFormat, VoiceRegisterArg};
+use crate::commands::daemon_response_error;
 use crate::commands::draft_output::{
     draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
 };
@@ -146,6 +147,6 @@ async fn draft_one(
     match resp {
         Response::Ok { data } => DraftSuggestionView::from_response(data)
             .ok_or_else(|| anyhow::anyhow!("Unexpected response")),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }

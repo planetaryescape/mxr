@@ -1,4 +1,5 @@
 use crate::cli::{CommitmentStatusArg, CommitmentsAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -20,7 +21,9 @@ pub async fn run(
                 .await?;
             match resp {
                 Response::Ok { .. } => println!("resolved"),
-                Response::Error { message, .. } => anyhow::bail!(message),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
             }
         }
         Some(CommitmentsAction::Add {
@@ -79,7 +82,7 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 }
             }
         },
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())

@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::selection::{
     parse_message_id as selection_parse_id, CappedFields, CappedSelection, SelectionLimit,
 };
@@ -68,7 +69,9 @@ pub(super) async fn resolve_mutation_selection_with_limit(
             Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             } => envelopes,
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response from envelope lookup"),
         }
     };
@@ -609,7 +612,7 @@ pub(super) fn handle_mutation_response(
         Response::Ok {
             data: ResponseData::JobStarted { job },
         } => print_job_started_output(action, message_ids, counts, job, format)?,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -985,7 +988,7 @@ pub(super) async fn load_attachments(
             }
             Ok(body.attachments)
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

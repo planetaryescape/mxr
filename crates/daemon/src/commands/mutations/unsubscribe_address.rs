@@ -13,6 +13,7 @@ use super::helpers::{
     SelectionCounts,
 };
 use super::{unsubscribe_method_text, IpcClient, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::selection::{
     selection_search_request, CappedFields, CappedSelection, SEARCH_HARD_CAP,
 };
@@ -277,7 +278,7 @@ async fn address_selection(
                 .map(|result| result.message_id.as_str())
                 .collect()
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from search"),
     };
     if ids.is_empty() {
@@ -324,7 +325,7 @@ async fn request_plan(
         Response::Ok {
             data: ResponseData::UnsubscribePlan { plan },
         } => Ok(plan),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from unsubscribe plan"),
     }
 }

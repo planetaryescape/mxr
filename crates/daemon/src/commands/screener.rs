@@ -1,6 +1,7 @@
 //! `mxr screener` — manage per-sender consent decisions.
 
 use crate::cli::{OutputFormat, ScreenerAction};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_protocol::*;
@@ -149,7 +150,7 @@ fn render_queue(resp: Response, format: Option<OutputFormat>) -> anyhow::Result<
                 }
             }
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -185,7 +186,7 @@ fn render_decisions(resp: Response, format: Option<OutputFormat>) -> anyhow::Res
                 }
             }
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -199,7 +200,7 @@ fn ack_or_bail(resp: Response, success: &str) -> anyhow::Result<()> {
             println!("{success}");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -213,7 +214,7 @@ async fn resolve_account(
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     if let Some(key) = explicit {

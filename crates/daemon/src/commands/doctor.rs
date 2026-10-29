@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::diagnostics::{client_local_metadata, selected_target_metadata};
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::handler::{
@@ -64,8 +65,11 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     elapsed.as_secs_f64()
                 );
             }
-            Response::Error { message, .. } => {
-                anyhow::bail!("recompute-link-counts failed: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("recompute-link-counts failed: {message}"),
+                    kind,
+                ));
             }
             other => anyhow::bail!("unexpected response: {other:?}"),
         }
@@ -156,7 +160,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     }
                 }
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -170,7 +176,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             } => {
                 println!("Refreshed {rows} contact rows.");
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -225,7 +233,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     }
                 }
             },
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
         if options.semantic_status && !options.reindex {
@@ -313,7 +323,7 @@ async fn collect_selected_report(remote_target: bool) -> anyhow::Result<DoctorRe
         Response::Ok {
             data: ResponseData::DoctorReport { report },
         } => Ok(report),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("unexpected doctor response: {other:?}"),
     }
 }

@@ -1,4 +1,5 @@
 use super::{IpcClient, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::selection::CappedSelection;
 use crate::output::resolve_format;
 use mxr_protocol::{ArchiveOperationData, Request, Response, ResponseData};
@@ -39,9 +40,12 @@ pub async fn archive_operation(
                 Response::Ok {
                     data: ResponseData::ArchiveOperation { operation },
                 } => Ok(operation),
-                response @ Response::Error { .. } => {
+                response @ Response::Error { kind, .. } => {
                     println!("{}", serde_json::to_string(&response)?);
-                    anyhow::bail!("Archive query refused; original identity retained");
+                    return Err(daemon_response_error(
+                        "Archive query refused; original identity retained".to_string(),
+                        kind,
+                    ));
                 }
                 _ => anyhow::bail!("Unexpected Archive response"),
             }
@@ -87,8 +91,9 @@ async fn query_archive_operation_list(
                 Response::Ok {
                     data: ResponseData::ArchiveOperation { operation },
                 } => Ok(operation),
-                Response::Error { message, .. } => Err(anyhow::anyhow!(
-                    "Archive query refused: {message}; original identity retained"
+                Response::Error { message, kind, .. } => Err(daemon_response_error(
+                    format!("Archive query refused: {message}; original identity retained"),
+                    kind,
                 )),
                 _ => Err(anyhow::anyhow!("Unexpected Archive response")),
             },

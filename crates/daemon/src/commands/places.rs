@@ -4,6 +4,7 @@
 
 use crate::cli::{OutputFormat, PlaceArg, PlaceArgs, SenderAction, SenderKindArg};
 use crate::commands::account_mark::AccountMarks;
+use crate::commands::daemon_response_error;
 use crate::commands::desk::plural;
 use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::selection::parse_message_id;
@@ -42,7 +43,7 @@ pub(crate) const fn kind_label(kind: SenderKindData) -> &'static str {
 fn expect_ok(resp: Response) -> anyhow::Result<ResponseData> {
     match resp {
         Response::Ok { data } => Ok(data),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 

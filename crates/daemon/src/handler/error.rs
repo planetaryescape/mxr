@@ -126,6 +126,11 @@ impl HandlerError {
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)
             }
+            // A rejected account credential is an auth failure whatever its
+            // text says, so it never falls back to the substring classifier.
+            Self::Core(error @ MxrError::ProviderAuth(_)) => {
+                Response::error_kinded(error.to_string(), IpcErrorKind::Auth)
+            }
             other => Response::error(other),
         }
     }
@@ -152,6 +157,18 @@ impl From<HandlerError> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejected_credentials_reach_the_wire_as_auth_with_the_same_message() {
+        let response =
+            HandlerError::Core(MxrError::ProviderAuth("oauth token revoked".to_string()))
+                .into_response();
+        assert!(matches!(
+            &response,
+            Response::Error { message, kind: IpcErrorKind::Auth, code, retryable: false, .. }
+                if message == "Provider error: oauth token revoked" && code == "auth"
+        ));
+    }
 
     #[test]
     fn display_is_wire_identical_to_the_source_string() {

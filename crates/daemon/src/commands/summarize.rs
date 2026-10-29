@@ -3,6 +3,7 @@
 //! threads in one go (one LLM call per thread).
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
 use crate::commands::selection::{resolve_thread_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
@@ -118,7 +119,7 @@ async fn summarize_one(
         Response::Ok {
             data: ResponseData::ThreadSummary { text, model },
         } => Ok((text, model)),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

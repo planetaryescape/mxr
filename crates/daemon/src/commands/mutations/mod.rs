@@ -41,13 +41,13 @@ pub async fn undo(
             print_undo_output(&mutation_id, false, format)?;
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
 
 use crate::cli::OutputFormat;
-use crate::commands::resolve_optional_account;
+use crate::commands::{daemon_response_error, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
@@ -72,6 +72,17 @@ struct UndoOutput<'a> {
 #[derive(Serialize)]
 struct JobsOutput {
     jobs: Vec<JobData>,
+}
+
+/// The summary error once every item in a batch failed. One auth rejection in
+/// the batch makes the whole run exit 4, the same as a single rejected request.
+fn batch_all_failed(message: String, auth_failed: bool) -> anyhow::Error {
+    let kind = if auth_failed {
+        IpcErrorKind::Auth
+    } else {
+        IpcErrorKind::Internal
+    };
+    daemon_response_error(message, kind)
 }
 
 fn print_undo_output(
@@ -131,7 +142,7 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
         Response::Ok {
             data: ResponseData::Jobs { jobs },
         } => print_jobs_output(jobs, format),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -686,6 +697,7 @@ pub async fn snooze(
     confirm_selection(&action, &selection, false, yes)?;
     let mut succeeded = 0usize;
     let mut errors = Vec::new();
+    let mut auth_failed = false;
     for id in &selection.ids {
         let resp = client
             .request(Request::Snooze {
@@ -697,7 +709,8 @@ pub async fn snooze(
             Response::Ok {
                 data: ResponseData::Ack,
             } => succeeded += 1,
-            Response::Error { message, .. } => {
+            Response::Error { message, kind, .. } => {
+                auth_failed |= kind == IpcErrorKind::Auth;
                 eprintln!("Skipped {} ({message})", id.as_str());
                 errors.push(BatchMutationError {
                     message_id: id.as_str().clone(),
@@ -728,7 +741,10 @@ pub async fn snooze(
         format,
     )?;
     if succeeded == 0 {
-        anyhow::bail!("No messages snoozed ({} failed)", errors.len());
+        return Err(batch_all_failed(
+            format!("No messages snoozed ({} failed)", errors.len()),
+            auth_failed,
+        ));
     }
     Ok(())
 }
@@ -810,6 +826,7 @@ pub async fn unsnooze(
                 }
                 let mut succeeded = 0usize;
                 let mut errors = Vec::new();
+                let mut auth_failed = false;
                 for s in &snoozed {
                     let resp = client
                         .request(Request::Unsnooze {
@@ -820,7 +837,8 @@ pub async fn unsnooze(
                         Response::Ok {
                             data: ResponseData::Ack,
                         } => succeeded += 1,
-                        Response::Error { message, .. } => {
+                        Response::Error { message, kind, .. } => {
+                            auth_failed |= kind == IpcErrorKind::Auth;
                             eprintln!("Failed to unsnooze {}: {message}", s.message_id);
                             errors.push(BatchMutationError {
                                 message_id: s.message_id.as_str().clone(),
@@ -847,10 +865,15 @@ pub async fn unsnooze(
                     format,
                 )?;
                 if succeeded == 0 && !errors.is_empty() {
-                    anyhow::bail!("No messages unsnoozed ({} failed)", errors.len());
+                    return Err(batch_all_failed(
+                        format!("No messages unsnoozed ({} failed)", errors.len()),
+                        auth_failed,
+                    ));
                 }
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
     } else {
@@ -865,6 +888,7 @@ pub async fn unsnooze(
         }
         let mut succeeded = 0usize;
         let mut errors = Vec::new();
+        let mut auth_failed = false;
         for id in &selection.ids {
             let resp = client
                 .request(Request::Unsnooze {
@@ -875,7 +899,8 @@ pub async fn unsnooze(
                 Response::Ok {
                     data: ResponseData::Ack,
                 } => succeeded += 1,
-                Response::Error { message, .. } => {
+                Response::Error { message, kind, .. } => {
+                    auth_failed |= kind == IpcErrorKind::Auth;
                     errors.push(BatchMutationError {
                         message_id: id.as_str().clone(),
                         error: message,
@@ -898,7 +923,10 @@ pub async fn unsnooze(
             format,
         )?;
         if succeeded == 0 {
-            anyhow::bail!("No messages unsnoozed ({} failed)", errors.len());
+            return Err(batch_all_failed(
+                format!("No messages unsnoozed ({} failed)", errors.len()),
+                auth_failed,
+            ));
         }
     }
     Ok(())
@@ -963,7 +991,7 @@ pub async fn snoozed(account: Option<String>, format: Option<OutputFormat>) -> a
                 }
             }
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -1034,6 +1062,7 @@ pub async fn unsubscribe(
     confirm_selection("unsubscribe", &selection, true, yes)?;
     let mut succeeded = 0usize;
     let mut errors = Vec::new();
+    let mut auth_failed = false;
     for id in &selection.ids {
         let resp = client
             .request(Request::Unsubscribe {
@@ -1044,7 +1073,8 @@ pub async fn unsubscribe(
             Response::Ok {
                 data: ResponseData::Ack,
             } => succeeded += 1,
-            Response::Error { message, .. } => {
+            Response::Error { message, kind, .. } => {
+                auth_failed |= kind == IpcErrorKind::Auth;
                 eprintln!("Skipped {} ({message})", id.as_str());
                 errors.push(BatchMutationError {
                     message_id: id.as_str().clone(),
@@ -1071,7 +1101,10 @@ pub async fn unsubscribe(
         format,
     )?;
     if succeeded == 0 {
-        anyhow::bail!("No messages unsubscribed ({} failed)", errors.len());
+        return Err(batch_all_failed(
+            format!("No messages unsubscribed ({} failed)", errors.len()),
+            auth_failed,
+        ));
     }
     Ok(())
 }
@@ -1236,7 +1269,7 @@ async fn request_unsubscribe_purge(
         Response::Ok {
             data: ResponseData::UnsubscribePurgeResult { result },
         } => Ok(result),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -1452,7 +1485,9 @@ pub async fn open_in_browser(
                 maybe_cleanup_browser_cache(&dir, &path);
                 println!("Opened in browser: {}", path.display());
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
     }

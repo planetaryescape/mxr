@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::{LabelsAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -80,7 +81,9 @@ pub async fn run(
                 } => {
                     println!("{}", render_labels(&labels, resolve_format(format))?);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -112,7 +115,9 @@ pub async fn run(
                 } => {
                     println!("{}", label.name);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -139,7 +144,9 @@ pub async fn run(
                 Response::Ok {
                     data: ResponseData::Ack,
                 } => println!("Deleted"),
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -170,7 +177,9 @@ pub async fn run(
                 Response::Ok {
                     data: ResponseData::Label { label },
                 } => println!("{}", label.name),
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

@@ -2730,6 +2730,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
+        ClientError::DaemonIncompatible { message } => BridgeError::Ipc(message),
         // A non-response frame kept mapping to UnexpectedResponse before, so
         // `bridge_error_kind` still reports "unexpected_response".
         ClientError::UnexpectedFrame {

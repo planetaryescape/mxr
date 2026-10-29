@@ -1,4 +1,5 @@
 use crate::cli::{DraftAction, DraftEvalSetArg, DraftLengthArg, OutputFormat, VoiceRegisterArg};
+use crate::commands::daemon_response_error;
 use crate::commands::draft_output::{
     draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
 };
@@ -72,7 +73,9 @@ pub async fn run(
                         data: ResponseData::DraftEval { cases, summary },
                     } => print_eval(&cases, &summary, fmt),
                     Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-                    Response::Error { message, .. } => anyhow::bail!(message),
+                    Response::Error { message, kind, .. } => {
+                        Err(daemon_response_error(message, kind))
+                    }
                 }
             }
             DraftEvalSetArg::Quick => {
@@ -109,7 +112,9 @@ pub async fn run(
                         data: ResponseData::DraftEvalQuick { cases, summary },
                     } => print_eval_quick(&cases, &summary, fmt),
                     Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-                    Response::Error { message, .. } => anyhow::bail!(message),
+                    Response::Error { message, kind, .. } => {
+                        Err(daemon_response_error(message, kind))
+                    }
                 }
             }
         },
@@ -141,7 +146,7 @@ fn print_draft_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()>
     let view = match resp {
         Response::Ok { data } => DraftSuggestionView::from_response(data)
             .ok_or_else(|| anyhow::anyhow!("Unexpected response"))?,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
     };
     match fmt {
         OutputFormat::Json => {

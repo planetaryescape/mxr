@@ -8070,6 +8070,13 @@ export interface components {
             action?: components["schemas"]["MutationCommand"] | null;
             error?: string | null;
             /**
+             * Format: int32
+             * @description How many failure records the job holds. `ListJobs` leaves `failures`
+             *     (and `undo_ids`) empty and says how many there are here; `GetJob`
+             *     carries them.
+             */
+            failure_count?: number;
+            /**
              * @description The first messages that failed, with why (at most 50); the exact total
              *     is in `progress.failed`.
              */
@@ -8097,9 +8104,10 @@ export interface components {
             undo_expires_at?: number | null;
             /**
              * Format: int32
-             * @description How many undo ids the job holds. `undo_ids` carries at most the newest
+             * @description How many undo ids the job holds. `GetJob` carries at most the newest
              *     100 of them so a job over half a million messages stays small on the
-             *     wire; a selection job is undone as a whole by its own id.
+             *     wire, and `ListJobs` none; a selection job is undone as a whole by its
+             *     own id.
              */
             undo_id_count?: number;
             undo_ids?: string[];

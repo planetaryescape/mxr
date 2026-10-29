@@ -79,8 +79,8 @@ CI is the workspace gate. `scripts/ci_change_scope.sh` selects Rust, web, docs a
 ### Test boundaries and preventing test bloat
 
 - **Vitest first for UI**: Component rendering, modal dialogs, keypress handling, date parsing, and form validations belong in Vitest + jsdom (`apps/web/src/**/*.test.tsx`). 1,500 Vitest tests run in 1 minute; Playwright takes minutes per spec.
-- **Playwright is for full-stack integration and browser engine quirks**: Write Playwright E2E (`apps/web/e2e/`) only when verifying end-to-end user journeys against a running daemon bridge (e.g. archiving a thread and seeing it leave the list and wake in snoozed) or Safari/WebKit engine rendering bugs. Never write Playwright specs to test date parsing permutations, CSS animation frame polling, or keyboard reducer transitions.
-- **PR tiering**: PRs run `npm run e2e:engine` and `npm run e2e:webkit:engine` (the core ~15 user journey specs); the full regression matrix runs on `main` and manual dispatch.
+- **Playwright is for core journeys only**: one test per core capability that crosses browser → bridge → daemon → store against the e2e daemon (send, archive and Done with undo, search, a mode move seen by a second client, sync and offline recovery, preview-then-commit mutations), plus browser-only security checks such as sandboxed HTML mail. `apps/web/e2e/README.md` lists them. Extend the capability's journey instead of adding a test. Never write Playwright specs for layout, motion, copy, keyboard detail, control inventories, axe sweeps, date parsing or reducer transitions.
+- **One run everywhere**: pull requests and `main` run the whole Chromium suite (`npm run e2e:engine` is the same run as `npm run e2e`); `npm run e2e:perf` is the separate production-build speed gate.
 - **No milestone or spike specs**: Never check in or leave sprint/milestone relics (e.g. `w6-*.spec.ts`, `milestone-*.spec.ts`). Either merge the assertions into canonical feature specs or remove them before landing.
 
 Then push and read the PR checks. If one is red, reproduce that one failure with `-p <crate>`, fix, push again.

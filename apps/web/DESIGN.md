@@ -4,7 +4,7 @@ The web app's design source is [docs/blueprint/26-web-design-concept.md](../../d
 
 The colour roles per theme are generated: [src/styles/themes.ts](src/styles/themes.ts) holds each theme's inputs, [src/styles/themeGenerator.ts](src/styles/themeGenerator.ts) the rules, and `npm run gen:themes` writes [src/styles/themes.generated.css](src/styles/themes.generated.css), which [src/styles/tokens.css](src/styles/tokens.css) imports. [src/styles/type.css](src/styles/type.css) has the type roles. Every page renders [src/components/PageFrame.tsx](src/components/PageFrame.tsx).
 
-`npm run lint` holds the rules: `scripts/check-type-scale.mjs`, `check-motion.mjs`, `check-shape.mjs`, `check-frames.mjs` and `check-ai-marks.mjs`. `e2e/design-gate.spec.ts` screenshots the main pages in four themes at three widths.
+`npm run lint` holds the rules: `scripts/check-type-scale.mjs`, `check-motion.mjs`, `check-shape.mjs`, `check-frames.mjs` and `check-ai-marks.mjs`.
 
 ## Adding a theme
 

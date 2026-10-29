@@ -677,7 +677,7 @@ impl App {
             }),
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
-            keybindings: crate::keybindings::default_keybindings(),
+            keybindings: crate::keybindings::shown_keybindings().clone(),
             input_context: None,
         }
     }

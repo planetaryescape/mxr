@@ -732,11 +732,18 @@ impl From<String> for ApplyError {
 }
 
 /// A provider asked a job to wait; these messages were not tried.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(super) struct RateLimitStop {
     pub retry_after_secs: u64,
     pub unprocessed: Vec<mxr_core::MessageId>,
+    /// The pre-run state of a message the limit stopped part way (read-archive
+    /// marks read, then the archive is refused). Its retry must not snapshot
+    /// the half-changed message, or undo would keep it read.
+    pub partial: Vec<UndoEntrySnapshot>,
 }
+
+/// Pre-run snapshots a job keeps across a retry, by message.
+pub(super) type CarriedSnapshots = HashMap<mxr_core::MessageId, UndoEntrySnapshot>;
 
 /// What one chunk of a mutation did.
 pub(super) struct ChunkOutcome {
@@ -764,6 +771,7 @@ pub(super) async fn mutation(
         client_correlation_id,
         None,
         ChunkMode::Immediate,
+        &CarriedSnapshots::new(),
     )
     .await
     .map(|outcome| ResponseData::MutationResult {
@@ -779,6 +787,7 @@ async fn mutation_checked(
     client_correlation_id: Option<&str>,
     check: Option<&mut super::places::SweepCheck>,
     mode: ChunkMode,
+    carried: &CarriedSnapshots,
 ) -> Result<ChunkOutcome, HandlerError> {
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
@@ -840,7 +849,7 @@ async fn mutation_checked(
         failures,
         rate_limit,
         stale_label_counts,
-    } = apply_mutation_batch_with(state, cmd, &mutation_id, check, mode).await?;
+    } = apply_mutation_batch_with(state, cmd, &mutation_id, check, mode, carried).await?;
     let succeeded = accounts.iter().map(|account| account.succeeded).sum();
     let skipped = accounts.iter().map(|account| account.skipped).sum();
     let failed = accounts.iter().map(|account| account.failed).sum();
@@ -968,7 +977,15 @@ pub(super) async fn apply_mutation_batch(
     mutation_id: &str,
     check: Option<&mut super::places::SweepCheck>,
 ) -> Result<BatchOutcome, HandlerError> {
-    apply_mutation_batch_with(state, cmd, mutation_id, check, ChunkMode::Immediate).await
+    apply_mutation_batch_with(
+        state,
+        cmd,
+        mutation_id,
+        check,
+        ChunkMode::Immediate,
+        &CarriedSnapshots::new(),
+    )
+    .await
 }
 
 async fn apply_mutation_batch_with(
@@ -977,6 +994,7 @@ async fn apply_mutation_batch_with(
     mutation_id: &str,
     mut check: Option<&mut super::places::SweepCheck>,
     mode: ChunkMode,
+    carried: &CarriedSnapshots,
 ) -> Result<BatchOutcome, HandlerError> {
     let undoable = undoable_kind(cmd).is_some();
     let mut left_out = 0u32;
@@ -1028,14 +1046,20 @@ async fn apply_mutation_batch_with(
         for (index, envelope) in envelopes.iter().enumerate() {
             // Capture the prior state BEFORE the mutation runs so undo
             // can restore exactly what the user had. Cheap clone — flags
-            // are u32 and label IDs are short strings.
-            let snapshot = undoable.then(|| UndoEntrySnapshot {
-                message_id: envelope.id.clone(),
-                account_id: envelope.account_id.clone(),
-                provider_id: envelope.provider_id.clone(),
-                prior_flags_bits: envelope.flags.bits(),
-                prior_label_provider_ids: envelope.label_provider_ids.clone(),
-                uncertain: false,
+            // are u32 and label IDs are short strings. A retry after a rate
+            // limit keeps the snapshot from before the first attempt.
+            let snapshot = undoable.then(|| {
+                carried
+                    .get(&envelope.id)
+                    .cloned()
+                    .unwrap_or_else(|| UndoEntrySnapshot {
+                        message_id: envelope.id.clone(),
+                        account_id: envelope.account_id.clone(),
+                        provider_id: envelope.provider_id.clone(),
+                        prior_flags_bits: envelope.flags.bits(),
+                        prior_label_provider_ids: envelope.label_provider_ids.clone(),
+                        uncertain: false,
+                    })
             });
 
             let applied = match check.as_deref_mut() {
@@ -1092,23 +1116,20 @@ async fn apply_mutation_batch_with(
                 Err(ApplyError::RateLimited {
                     retry_after_secs, ..
                 }) if mode.is_job() => {
-                    // The provider refused before touching this message, so
-                    // nothing changed: no undo snapshot, no failure. This
-                    // message and the rest of the account's batch go back
-                    // to the job to try again after the wait.
+                    // The provider refused this call, so it is not a failure.
+                    // This message and the rest of the account's batch go
+                    // back to the job to try again after the wait. The
+                    // message itself may be part done (marked read, archive
+                    // refused), so its pre-run snapshot goes back with it.
                     let unprocessed = envelopes[index..].iter().map(|e| e.id.clone());
-                    match rate_limit.as_mut() {
-                        Some(stop) => {
-                            stop.retry_after_secs = stop.retry_after_secs.max(retry_after_secs);
-                            stop.unprocessed.extend(unprocessed);
-                        }
-                        None => {
-                            rate_limit = Some(RateLimitStop {
-                                retry_after_secs,
-                                unprocessed: unprocessed.collect(),
-                            });
-                        }
-                    }
+                    let stop = rate_limit.get_or_insert_with(|| RateLimitStop {
+                        retry_after_secs,
+                        unprocessed: Vec::new(),
+                        partial: Vec::new(),
+                    });
+                    stop.retry_after_secs = stop.retry_after_secs.max(retry_after_secs);
+                    stop.unprocessed.extend(unprocessed);
+                    stop.partial.extend(snapshot);
                     break;
                 }
                 Err(error) => {
@@ -1290,24 +1311,24 @@ pub(super) async fn start_mutation_job(
     start_job(state, JobSpec::new(cmd, client_correlation_id, guard)).await
 }
 
-pub(super) async fn start_job(state: Arc<AppState>, spec: JobSpec) -> HandlerResult {
-    let total = mutation_message_ids(&spec.cmd).len() as u32;
-    if total == 0 {
-        return Err("No messages matched".into());
-    }
-
-    let job_id = spec
-        .job_id
-        .clone()
-        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
-    let now = chrono::Utc::now().timestamp_millis();
-    let result = (!spec.accounts.is_empty()).then(|| MutationResultData {
-        accounts: spec.accounts.clone(),
+/// A job as it is when accepted: queued, nothing done.
+pub(super) fn queued_job(
+    job_id: String,
+    cmd: &MutationCommand,
+    total: u32,
+    selection: Option<&SelectionData>,
+    accounts: &[AccountMutationResultData],
+) -> JobData {
+    let result = (!accounts.is_empty()).then(|| MutationResultData {
+        accounts: accounts.to_vec(),
         ..empty_mutation_result(total)
     });
-    let job = JobData {
+    // Remember what a selection job does, without its ids, so the same job
+    // id sent again with another action is not mistaken for it.
+    let action = selection.map(|_| mutation_command_with_ids(cmd, Vec::new()));
+    JobData {
         job_id,
-        kind: mutation_job_kind(&spec.cmd).to_string(),
+        kind: mutation_job_kind(cmd).to_string(),
         status: JobStatusData::Queued,
         progress: JobProgressData {
             total,
@@ -1318,34 +1339,89 @@ pub(super) async fn start_job(state: Arc<AppState>, spec: JobSpec) -> HandlerRes
         },
         undo_ids: Vec::new(),
         error: None,
-        started_at: now,
+        started_at: chrono::Utc::now().timestamp_millis(),
         finished_at: None,
         result,
-        selection: spec.selection.clone(),
+        selection: selection.cloned(),
         failures: Vec::new(),
         paused_until: None,
         undo_expires_at: None,
         undo_of: None,
-    };
-    if spec.selection.is_some() {
-        // The caller recovers a lost reply by asking for this job, so a job
-        // that was not saved must not be acknowledged.
-        persist_job_checked(&state, &job)
-            .await
-            .map_err(|error| HandlerError::from(format!("could not record the job: {error}")))?;
-    } else {
-        persist_job(&state, &job).await;
+        action,
+        undo_id_count: 0,
     }
+}
+
+/// Take the job's id in the store. Exactly one caller of any number with the
+/// same id gets `true`; the rest find the job that caller is starting.
+pub(super) async fn claim_job(state: &AppState, job: &JobData) -> Result<bool, HandlerError> {
+    let data_json = serde_json::to_string(job).map_err(|e| HandlerError::from(e.to_string()))?;
+    state
+        .store
+        .claim_mutation_job(
+            &job.job_id,
+            &job.kind,
+            job_status_str(&job.status),
+            job.started_at,
+            &data_json,
+        )
+        .await
+        .map_err(|error| HandlerError::from(format!("could not record the job: {error}")))
+}
+
+/// Give up a claim whose job will not start.
+pub(super) async fn release_job_claim(state: &AppState, job_id: &str) {
+    if let Err(error) = state.store.delete_mutation_job(job_id).await {
+        tracing::warn!(%error, job_id, "could not release a job claim");
+    }
+}
+
+pub(super) async fn start_job(state: Arc<AppState>, spec: JobSpec) -> HandlerResult {
+    let total = mutation_message_ids(&spec.cmd).len() as u32;
+    if total == 0 {
+        return Err("No messages matched".into());
+    }
+    let job_id = spec
+        .job_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
+    let job = queued_job(
+        job_id,
+        &spec.cmd,
+        total,
+        spec.selection.as_ref(),
+        &spec.accounts,
+    );
+    persist_job(&state, &job).await;
+    Ok(run_claimed_job(state, job, spec))
+}
+
+/// Start the job whose row is already saved: record its acceptance and run it
+/// in the background.
+pub(super) fn run_claimed_job(state: Arc<AppState>, job: JobData, spec: JobSpec) -> ResponseData {
     if let Some(activity) = spec.activity.as_ref() {
         super::selection_jobs::record_job_accepted(&state, activity, &job);
     }
-
     let started = job.clone();
     tokio::spawn(async move {
         run_mutation_job(state, job, spec).await;
     });
+    ResponseData::JobStarted { job: started }
+}
 
-    Ok(ResponseData::JobStarted { job: started })
+/// The most undo ids a response carries (the newest). The rest stay in the
+/// store: a job over half a million messages has 5,000, and a listing of the
+/// 100 retained jobs would pass the frame limit. `undo_id_count` says how
+/// many there were.
+pub(super) const MAX_UNDO_IDS_ON_THE_WIRE: usize = 100;
+
+pub(super) fn bound_for_wire(mut job: JobData) -> JobData {
+    job.undo_id_count = job.undo_ids.len() as u32;
+    if job.undo_ids.len() > MAX_UNDO_IDS_ON_THE_WIRE {
+        let drop = job.undo_ids.len() - MAX_UNDO_IDS_ON_THE_WIRE;
+        job.undo_ids.drain(..drop);
+    }
+    job
 }
 
 pub(super) async fn list_jobs(state: &AppState) -> HandlerResult {
@@ -1357,6 +1433,7 @@ pub(super) async fn list_jobs(state: &AppState) -> HandlerResult {
     let jobs = rows
         .iter()
         .filter_map(|json| serde_json::from_str::<JobData>(json).ok())
+        .map(bound_for_wire)
         .collect();
     Ok(ResponseData::Jobs { jobs })
 }
@@ -1370,7 +1447,9 @@ pub(super) async fn get_job(state: &AppState, job_id: &str) -> HandlerResult {
         .ok_or_else(|| HandlerError::from(format!("job not found: {job_id}")))?;
     let job =
         serde_json::from_str::<JobData>(&json).map_err(|e| HandlerError::from(e.to_string()))?;
-    Ok(ResponseData::Job { job })
+    Ok(ResponseData::Job {
+        job: bound_for_wire(job),
+    })
 }
 
 /// How long a job waits out a provider's rate limit. Tests count each
@@ -1428,6 +1507,7 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
     let mut carry: Vec<mxr_core::MessageId> = Vec::new();
     let mut waits_in_a_row = 0u32;
     let mut label_counts = LabelCountSchedule::new();
+    let mut carried = CarriedSnapshots::new();
 
     loop {
         let chunk_ids: Vec<mxr_core::MessageId> = if carry.is_empty() {
@@ -1461,6 +1541,7 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
             client_correlation_id.as_deref(),
             check.as_mut(),
             mode,
+            &carried,
         )
         .await
         {
@@ -1483,6 +1564,20 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         for failure in outcome.failures {
             if job.failures.len() < MAX_JOB_FAILURES {
                 job.failures.push(failure);
+            }
+        }
+        // Messages a rate limit stopped part way keep their pre-run snapshot
+        // for the retry; everything else is done with.
+        match &outcome.rate_limit {
+            None => carried.clear(),
+            Some(stop) => {
+                let pending: HashSet<&mxr_core::MessageId> = stop.unprocessed.iter().collect();
+                carried.retain(|id, _| pending.contains(id));
+                for snapshot in &stop.partial {
+                    carried
+                        .entry(snapshot.message_id.clone())
+                        .or_insert_with(|| snapshot.clone());
+                }
             }
         }
         let stopped = outcome.result.skipped > 0 || outcome.result.failed > 0;
@@ -1536,6 +1631,35 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         }
     }
 
+    // A message left part done when the job stopped (read, archive refused)
+    // has no entry yet; without one its undo would be lost.
+    if let (false, Some(kind)) = (carried.is_empty(), undoable_kind(&cmd)) {
+        let now = chrono::Utc::now().timestamp();
+        let entry = UndoEntry {
+            mutation_id: uuid::Uuid::now_v7().to_string(),
+            kind,
+            snapshots: carried
+                .drain()
+                .map(|(_, snapshot)| UndoEntrySnapshot {
+                    uncertain: true,
+                    ..snapshot
+                })
+                .collect(),
+            desk: None,
+            applied_at: now,
+            expires_at: if anchored_undo {
+                i64::MAX
+            } else {
+                now + UNDO_WINDOW_SECS
+            },
+        };
+        match state.store.write_undo_entry(&entry).await {
+            Ok(()) => job.undo_ids.push(entry.mutation_id),
+            Err(error) => {
+                tracing::warn!(%error, job_id = %job.job_id, "could not keep the undo of messages left part done");
+            }
+        }
+    }
     label_counts.refresh(&state).await;
     let finished_at = chrono::Utc::now().timestamp_millis();
     if aggregate.mutation_id.is_none() && job.undo_ids.len() == 1 {
@@ -1919,6 +2043,9 @@ pub(super) struct RestoreOutcome {
     /// Accounts whose label counts the restore left stale; the caller
     /// refreshes them (see [`refresh_label_counts`]).
     pub stale_label_counts: Vec<mxr_core::AccountId>,
+    /// `restored` and `irreversible` by account.
+    pub restored_by_account: HashMap<mxr_core::AccountId, u32>,
+    pub irreversible_by_account: HashMap<mxr_core::AccountId, u32>,
 }
 
 /// Put each snapshot's message back as it was, account by account (the
@@ -1946,6 +2073,8 @@ pub(super) async fn restore_snapshots(
         last_error: None,
         rate_limited_secs: None,
         stale_label_counts: Vec::new(),
+        restored_by_account: HashMap::new(),
+        irreversible_by_account: HashMap::new(),
     };
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
@@ -1961,6 +2090,10 @@ pub(super) async fn restore_snapshots(
             match restore_snapshot(state, provider.as_ref(), kind, snapshot).await {
                 Ok(()) => {
                     outcome.restored += 1;
+                    *outcome
+                        .restored_by_account
+                        .entry(account_id.clone())
+                        .or_default() += 1;
                     outcome.reindex.push(snapshot.message_id.clone());
                     if kind != UndoableMutationKind::Star
                         && !outcome.stale_label_counts.contains(&account_id)
@@ -1970,6 +2103,10 @@ pub(super) async fn restore_snapshots(
                 }
                 Err(SnapshotError::Irreversible(msg)) => {
                     outcome.irreversible += 1;
+                    *outcome
+                        .irreversible_by_account
+                        .entry(account_id.clone())
+                        .or_default() += 1;
                     outcome.last_error = Some(msg);
                 }
                 Err(SnapshotError::RateLimited {
@@ -5781,12 +5918,23 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
 fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -> Vec<String> {
     refs.iter()
         .map(|label_ref| {
-            labels
-                .iter()
-                .find(|l| l.name == *label_ref || l.provider_id == *label_ref)
+            find_label(labels, label_ref)
                 .map_or_else(|| label_ref.clone(), |l| l.provider_id.clone())
         })
         .collect()
+}
+
+/// The label a name or provider id refers to in one account: the first whose
+/// name or provider id matches exactly. Label edits resolve through here, and
+/// a selection job checks the labels it names through here, so the two agree
+/// on what a name means.
+pub(super) fn find_label<'a>(
+    labels: &'a [mxr_core::types::Label],
+    label_ref: &str,
+) -> Option<&'a mxr_core::types::Label> {
+    labels
+        .iter()
+        .find(|l| l.name == label_ref || l.provider_id == label_ref)
 }
 
 pub(super) async fn set_flags(

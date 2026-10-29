@@ -253,7 +253,10 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
 /// so a long list is a count and the command that reverses the whole job.
 fn undo_summary(job: &JobData) -> String {
     const LISTED: usize = 3;
-    if job.undo_ids.is_empty() {
+    // The response carries the newest undo ids only; the daemon says how many
+    // there were.
+    let count = (job.undo_id_count as usize).max(job.undo_ids.len());
+    if count == 0 {
         return String::new();
     }
     if let Some(until) = job
@@ -268,12 +271,11 @@ fn undo_summary(job: &JobData) -> String {
                 .format("%Y-%m-%d %H:%M:%S")
         );
     }
-    if job.undo_ids.len() <= LISTED {
+    if count <= LISTED {
         return job.undo_ids.join(",");
     }
     format!(
-        "{} undo ids (list them with: mxr jobs {} --format json)",
-        job.undo_ids.len(),
+        "{count} undo ids (list them with: mxr jobs {} --format json)",
         job.job_id
     )
 }
@@ -1809,6 +1811,8 @@ mod tests {
             paused_until: None,
             undo_expires_at: anchored.then_some(1_761_600_000_000),
             undo_of: None,
+            action: None,
+            undo_id_count: 0,
         }
     }
 

@@ -443,40 +443,56 @@ fn without_yes_and_without_a_terminal_it_asks_for_yes_and_changes_nothing() {
 }
 
 #[test]
-fn label_all_refuses_trash_and_spam_but_unlabel_all_may_remove_them() {
+fn label_edits_over_all_work_only_on_labels_the_user_created() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
     let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
     let before = inbox_ids(&instance, &data_dir, &config_dir);
-    for name in ["TRASH", "spam", "Spam"] {
+    // Adding or removing a system label acts on the mail (trash, spam, the
+    // inbox itself), and names that are no label are not guessed at.
+    for (command, name) in [
+        ("label", "TRASH"),
+        ("label", "spam"),
+        ("label", "Spam"),
+        ("label", "INBOX"),
+        ("label", "DELETED"),
+        ("unlabel", "TRASH"),
+        ("unlabel", "INBOX"),
+    ] {
         for extra in [&["--dry-run"][..], &["--yes"]] {
-            let mut args = vec!["label", name, "--search", INBOX, "--all"];
+            let mut args = vec![command, name, "--search", INBOX, "--all"];
             args.extend_from_slice(extra);
             let output = run_failing(&instance, &data_dir, &config_dir, &args);
             let stderr = String::from_utf8_lossy(&output.stderr);
             assert!(
-                stderr.contains("trash and spam are not available for --all yet"),
-                "{name} {extra:?}: {stderr}"
+                stderr.contains("only work on labels you created"),
+                "{command} {name} {extra:?}: {stderr}"
             );
         }
     }
     assert_eq!(inbox_ids(&instance, &data_dir, &config_dir), before);
 
-    // Taking the labels off is allowed (here nothing carries them).
-    let preview = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &[
-            "unlabel",
-            "TRASH",
-            "--search",
-            INBOX,
-            "--all",
-            "--dry-run",
-            "--format",
-            "json",
-        ],
-    );
-    assert_eq!(preview["dry_run"], true);
+    // A label the user created is fine to add and to remove.
+    for command in ["label", "unlabel"] {
+        let preview = run_json(
+            &instance,
+            &data_dir,
+            &config_dir,
+            &[
+                command,
+                "Work",
+                "--search",
+                INBOX,
+                "--all",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+        );
+        assert_eq!(preview["dry_run"], true);
+        assert_eq!(
+            preview["selected_messages"].as_u64().unwrap() as usize,
+            before.len()
+        );
+    }
 }

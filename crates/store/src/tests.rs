@@ -4418,6 +4418,32 @@ async fn list_unfinished_mutation_jobs_returns_only_queued_and_running_jobs() {
     );
 }
 
+/// A job id is taken by one insert: of any number of callers with the same id,
+/// one wins, the row is the winner's, and a released id can be taken again.
+#[tokio::test]
+async fn claim_mutation_job_is_won_by_exactly_one_caller() {
+    let store = Store::in_memory().await.unwrap();
+    let (a, b, c) = tokio::join!(
+        store.claim_mutation_job("job", "mutation.archive", "queued", 1, r#"{"by":"a"}"#),
+        store.claim_mutation_job("job", "mutation.archive", "queued", 2, r#"{"by":"b"}"#),
+        store.claim_mutation_job("job", "mutation.archive", "queued", 3, r#"{"by":"c"}"#),
+    );
+    let results = [a.unwrap(), b.unwrap(), c.unwrap()];
+    assert_eq!(results.iter().filter(|won| **won).count(), 1);
+    let winner = ["a", "b", "c"][results.iter().position(|won| *won).unwrap()];
+    assert_eq!(
+        store.get_mutation_job("job").await.unwrap().unwrap(),
+        format!(r#"{{"by":"{winner}"}}"#)
+    );
+
+    store.delete_mutation_job("job").await.unwrap();
+    assert!(store.get_mutation_job("job").await.unwrap().is_none());
+    assert!(store
+        .claim_mutation_job("job", "mutation.archive", "queued", 4, "{}")
+        .await
+        .unwrap());
+}
+
 /// The existence check behind a search selection: three columns, in the
 /// order asked, with ids the store dropped left out, across the bind chunk.
 #[tokio::test]

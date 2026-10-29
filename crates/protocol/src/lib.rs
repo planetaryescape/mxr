@@ -192,6 +192,8 @@ mod tests {
             paused_until: Some(3),
             undo_expires_at: Some(4),
             undo_of: None,
+            action: None,
+            undo_id_count: 0,
         }
     }
 
@@ -253,6 +255,8 @@ mod tests {
             "paused_until",
             "undo_expires_at",
             "undo_of",
+            "action",
+            "undo_id_count",
         ] {
             assert!(plain_wire.get(key).is_none(), "{key} should be omitted");
         }
@@ -1475,6 +1479,8 @@ mod tests {
                         paused_until: None,
                         undo_expires_at: None,
                         undo_of: None,
+                        action: None,
+                        undo_id_count: 0,
                     },
                 },
                 IpcCategory::CoreMail,

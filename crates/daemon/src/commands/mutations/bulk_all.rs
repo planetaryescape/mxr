@@ -722,6 +722,8 @@ mod tests {
             paused_until: None,
             undo_expires_at: Some(3),
             undo_of: None,
+            action: None,
+            undo_id_count: 0,
         }
     }
 

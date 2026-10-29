@@ -62,6 +62,9 @@ pub struct MessagesPageState {
     /// A row to select once the bands are in, by id (`person:<email>`):
     /// the person an assistant link opened.
     pub select_row: Option<String>,
+    /// A conversation to open once the bands are in: the row whose topics
+    /// hold it, with its page on that topic (Now's Enter on a person).
+    pub select_thread: Option<ThreadId>,
     /// Ask the daemon for a Got it preview on this thread.
     pub pending_ack_preview: Option<ThreadId>,
     /// The thread `.` asked a preview for: only its preview may start a

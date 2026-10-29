@@ -412,12 +412,13 @@ fn the_first_done_here_says_what_it_clears_once() {
 #[test]
 fn enter_opens_each_row_in_its_own_mode() {
     let mut app = now_app(true);
-    let message = app.mailbox.now_page.now.as_ref().unwrap().people.rows[0]
+    let thread = app.mailbox.now_page.now.as_ref().unwrap().people.rows[0]
         .row
-        .message_id
+        .thread_id
         .clone();
     press(&mut app, KeyCode::Enter);
-    assert_eq!(app.mailbox.pending_invite_open, Some(message));
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
+    assert_eq!(app.mailbox.messages_page.select_thread, Some(thread));
 
     let mut app = now_app(true);
     app.mailbox.selected_index = 3;
@@ -538,4 +539,91 @@ fn the_hint_bar_offers_nows_verbs_for_a_lit_person_not_the_mailboxes() {
         ],
         "the same verbs as the web's now.person strip, with the TUI's keys"
     );
+}
+
+fn screen(app: &mut App) -> String {
+    let backend = ratatui::backend::TestBackend::new(160, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Dogfood 2026-10-29: Enter on a person opened their email in a reader the
+/// Now page never drew, so the keys went to an invisible reader. It opens
+/// Messages on that person now, their page on that conversation, as the
+/// web's Enter does.
+#[test]
+fn enter_on_a_person_opens_messages_on_that_conversation() {
+    let mut app = now_app(true);
+    let thread = app.mailbox.now_page.now.as_ref().unwrap().people.rows[0]
+        .row
+        .thread_id
+        .clone();
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
+    assert!(
+        app.mailbox.pending_invite_open.is_none(),
+        "no hidden reader"
+    );
+    // The bands arrive with the conversation under the second person.
+    let mut messages = crate::ui::messages_lens::tests::populated();
+    let row = messages.your_turn.get_mut(1).expect("a second person");
+    row.topics[0].thread_id = thread.clone();
+    let row_id = row.id.clone();
+    // The runtime has asked for the bands by the time they arrive.
+    app.mailbox.messages_page.pending_refresh = false;
+    app.set_messages(messages, None);
+    let page = &app.mailbox.messages_page;
+    assert_eq!(
+        app.selected_messages_row().map(|row| row.id.clone()),
+        Some(row_id.clone())
+    );
+    assert_eq!(page.focus, crate::app::MessagesFocus::Person);
+    assert_eq!(page.pending_person, Some((row_id, Some(thread))));
+    assert!(page.select_thread.is_none());
+}
+
+/// Dogfood 2026-10-29: `o` opens the email itself, full width, since Now
+/// draws no reader beside it; Esc comes back to Now.
+#[test]
+fn o_opens_the_email_where_it_can_be_seen_and_esc_comes_back() {
+    let mut app = now_app(true);
+    press(&mut app, KeyCode::Char('o'));
+    assert!(app.mailbox.pending_invite_open.take().is_some());
+    let envelope = make_test_envelopes(1).remove(0);
+    let subject = envelope.subject.clone();
+    app.open_invite_envelope(envelope);
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::FullScreen);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+    let shown = screen(&mut app);
+    assert!(shown.contains(&subject), "the email is on screen: {shown}");
+    // F would split it beside a list Now doesn't draw: it stays full width.
+    press(&mut app, KeyCode::Char('F'));
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::FullScreen);
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Now);
+    assert!(screen(&mut app).contains("Now"));
+}
+
+/// Dogfood 2026-10-29: before the daemon's guide arrived, Now's key line
+/// printed action ids ("now.open open in its mode"), and the Updates card
+/// named the retired `A`.
+#[test]
+fn nows_key_lines_name_keys_from_the_definition() {
+    let mut app = now_app(true);
+    app.mailbox.now_page.guide = None;
+    let shown = screen(&mut app);
+    assert!(!shown.contains("now.done"), "{shown}");
+    assert!(shown.contains("e done here"), "{shown}");
+    assert!(shown.contains("E let go of this digest"), "{shown}");
+    assert!(!shown.contains("A let go"), "{shown}");
 }

@@ -199,10 +199,14 @@ fn body_for(
         plural(digest.source_count, "source", "sources")
     );
     // The key hint goes first when space runs short; the footer has it.
+    let let_go_hint = format!(
+        "{} let go all",
+        mxr_keymap::guide_key("updates.let-go-all").unwrap_or_default()
+    );
     let let_go = if digest.let_go_line.is_some()
-        && cut.chars().count() + "A let go all".len() + 5 <= width
+        && cut.chars().count() + let_go_hint.chars().count() + 5 <= width
     {
-        "A let go all"
+        let_go_hint.as_str()
     } else {
         ""
     };
@@ -215,7 +219,7 @@ fn body_for(
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(gap)),
-        Span::styled(let_go, muted),
+        Span::styled(let_go.to_string(), muted),
     ]));
     if !digest.headline.is_empty() {
         for line in wrap(&one_line(&digest.headline), width.saturating_sub(4)) {
@@ -436,25 +440,32 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &UpdatesView<'_>, theme: &crate
     );
 
     if let Some(preview) = &view.page.let_go_preview {
-        draw_let_go_preview(frame, area, preview, theme);
+        let title = if view.page.let_go_source.is_some() {
+            " Let go of this source "
+        } else {
+            " Let go of this digest "
+        };
+        draw_let_go_preview(frame, area, preview, title, theme);
     }
     if let Some(menu) = &view.page.tune {
         draw_tune_menu(frame, area, menu, theme);
     }
 }
 
-/// Letting go of a digest as the daemon previewed it: Enter lets go of
-/// exactly that selection. Shared with Now's Updates card.
+/// Letting go of a digest, or one source in it (`title` says which), as
+/// the daemon previewed it: Enter lets go of exactly that selection.
+/// Shared with Now's Updates card.
 pub(crate) fn draw_let_go_preview(
     frame: &mut Frame,
     area: Rect,
     preview: &UpdatesLetGoData,
+    title: &str,
     theme: &crate::theme::Theme,
 ) {
     let popup = super::centered_rect(60, 40, area);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
-        .title(" Let go of this digest ")
+        .title(title)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning))
         .style(Style::default().bg(theme.modal_bg));

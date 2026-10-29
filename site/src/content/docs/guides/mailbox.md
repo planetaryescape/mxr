@@ -172,9 +172,9 @@ browser's Downloads list.
 
 ## Snooze
 
-`b` opens Not now: **Later** with no time first, then presets such as tomorrow morning, tonight, weekend and next Monday, and a custom time. A time snoozes the conversation.
+`b` opens Not now: **Later** with no time first, then presets such as tomorrow morning, tonight, weekend and next Monday, and a custom time. Tonight leaves the list once your evening hour has passed. A time snoozes the conversation.
 
-`g n` opens **Snoozed** in both the TUI and the web app: what is snoozed, waking soonest first. `w` wakes the conversation under the cursor now, and `b` snoozes it again. From the CLI, `mxr snoozed` lists them and `mxr unsnooze <id>` wakes one.
+`g n` opens **Snoozed** in both the TUI and the web app: what is snoozed, waking soonest first. `w` wakes the conversation under the cursor now, and `b` snoozes it again with a new time. From the CLI, `mxr snoozed` lists them and `mxr unsnooze <id>` wakes one.
 
 Snoozing is local-first but also updates provider state where supported. For Gmail that means removing `INBOX` when snoozed and restoring it when the snooze wakes.
 

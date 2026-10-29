@@ -6,7 +6,7 @@ People with several accounts read Now, the five modes and search as one stream. 
 
 An account has an identity: a **colour** and a **tag**.
 
-- **Colour** is one of eight named slots: `sky`, `amber`, `green`, `yellow`, `blue`, `vermilion`, `purple`, `slate`. The wire carries the slot name, never a hex value. Each client maps the name to its own theme: web tokens, TUI theme colours. So a colour reads correctly in Midnight, Light, Paper and Eclipse, and in a 16-colour terminal.
+- **Colour** is one of eight named slots: `sky`, `amber`, `green`, `yellow`, `blue`, `vermilion`, `purple`, `slate`. The wire carries the slot name, never a hex value. Each client maps the name to its own theme: web tokens, TUI theme colours. A slot a newer daemon sends that a client does not know decodes as unknown and draws as slate; the account's other fields still load. So a colour reads correctly in Midnight, Light, Paper and Eclipse, and in a 16-colour terminal.
 - **Tag** is one to three characters, uppercase letters and digits, shown on every marked row. It carries identity by itself, so colour is never the only cue (WCAG 1.4.1).
 
 The daemon resolves both and sends them on `AccountSummaryData.identity` (`AccountIdentityData { color, tag }`). Clients join rows to identities by `account_id`, which nearly every row payload already carries. The colour is not copied onto every row. A client that reads an older daemon without `identity` draws no account mark.
@@ -50,5 +50,5 @@ Labels keep their own colours and sender avatars keep the chart colours. The acc
 - **27 Web design system:** the row's trail gains the account mark, and the token list gains the account pairs.
 - **12 Config:** `[accounts.<key>] color` and `tag`.
 - **08 TUI and 09 CLI:** the mark's column and its fallbacks.
-- **Protocol:** `AccountSummaryData.identity`. `AssistantReadoutRowData` gains `account_id` so readout rows can be marked.
+- **Protocol:** `AccountSummaryData.identity`. `AssistantReadoutRowData`, `ThreadPreviewData` and `OwedReplyRowData` gain `account_id` so their rows can be marked.
 - **Store:** `accounts.identity_color`.

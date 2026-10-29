@@ -696,7 +696,7 @@ async fn disable_account(
 #[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
 pub(crate) struct SetAccountIdentityBody {
     /// One of the eight colour slots; the daemon refuses any other value.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "known_colour")]
     color: Option<mxr_core::AccountColor>,
     /// One to three uppercase letters or digits; the daemon refuses a tag another account holds.
     #[serde(default)]
@@ -704,6 +704,21 @@ pub(crate) struct SetAccountIdentityBody {
     /// Ask the daemon what would change without saving it.
     #[serde(default)]
     dry_run: bool,
+}
+
+/// A slot this build doesn't know decodes as `Unknown` so an accounts list
+/// from a newer daemon still parses. A request body may not name one: the
+/// bridge refuses it here, before any IPC.
+fn known_colour<'de, D>(deserializer: D) -> Result<Option<mxr_core::AccountColor>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match <Option<mxr_core::AccountColor> as serde::Deserialize>::deserialize(deserializer)? {
+        Some(mxr_core::AccountColor::Unknown) => Err(serde::de::Error::custom(
+            "unknown account colour; use one of sky, amber, green, yellow, blue, vermilion, purple, slate",
+        )),
+        color => Ok(color),
+    }
 }
 
 async fn set_account_identity(

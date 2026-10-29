@@ -43,6 +43,7 @@ pub(super) async fn get_thread_previews(
                     unread_count: record.unread_count,
                     snippet: record.snippet,
                     has_attachments: record.has_attachments,
+                    account_id: Some(record.account_id),
                 },
             )
         })

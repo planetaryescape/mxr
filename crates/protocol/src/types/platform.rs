@@ -422,6 +422,9 @@ pub struct OwedReplyRowData {
     /// `expected_days` falls back to a day without it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usual_seconds: Option<i64>,
+    /// The account the reply is owed from. Absent from older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

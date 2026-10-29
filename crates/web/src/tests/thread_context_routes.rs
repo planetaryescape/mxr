@@ -60,6 +60,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
                             unread_count: 1,
                             snippet: "Please confirm".into(),
                             has_attachments: false,
+                            account_id: None,
                         })
                         .collect(),
                 },

@@ -2577,6 +2577,32 @@ mod tests {
         assert_eq!(back, identity);
     }
 
+    #[test]
+    fn an_account_with_a_colour_from_a_newer_daemon_still_parses() {
+        // A daemon that knows a slot this build does not must not fail the
+        // whole accounts list, only that account's colour.
+        let newer = serde_json::json!({
+            "account_id": AccountId::new(),
+            "key": "work",
+            "name": "Work",
+            "email": "bk@work.example",
+            "provider_kind": "fake",
+            "sync_kind": null,
+            "send_kind": null,
+            "enabled": true,
+            "is_default": false,
+            "source": "config",
+            "editable": "full",
+            "sync": null,
+            "send": null,
+            "identity": { "color": "teal", "tag": "W" },
+        });
+        let decoded: AccountSummaryData = serde_json::from_value(newer).unwrap();
+        let identity = decoded.identity.expect("identity");
+        assert_eq!(identity.color, mxr_core::AccountColor::Unknown);
+        assert_eq!(identity.tag, "W");
+    }
+
     /// New clients name the replay policy explicitly; old clients still decode.
     #[test]
     fn replay_policy_is_not_silently_ignored_by_older_daemons() {

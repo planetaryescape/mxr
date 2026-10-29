@@ -322,6 +322,7 @@ impl App {
                                     place,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -409,6 +410,7 @@ impl App {
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
                                 self.mailbox.owed_page.people,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
@@ -505,6 +507,7 @@ impl App {
                                     place,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -592,6 +595,7 @@ impl App {
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
                                 self.mailbox.owed_page.people,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
@@ -780,6 +784,7 @@ impl App {
                 pane,
                 &self.assistant,
                 std::time::Instant::now(),
+                &account_marks,
                 theme,
             );
         }

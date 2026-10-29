@@ -13,6 +13,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, PendingSweepConfirm, PlacePageState, SenderKindMenu};
+use crate::ui::account_mark::AccountMarks;
 use crate::ui::centered_rect_fixed_height;
 use crate::ui::sanitize::{one_line, truncate};
 
@@ -23,6 +24,7 @@ pub struct PlaceView<'a> {
     pub active_pane: &'a ActivePane,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    pub account_marks: &'a AccountMarks,
 }
 
 pub(crate) const fn place_title(place: MailPlaceData) -> &'static str {
@@ -92,12 +94,18 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::
             format!("    here because: {}", one_line(&bundle.kind.reason)),
             Style::default().fg(theme.text_muted),
         )));
+        let chip = view
+            .account_marks
+            .row_cell(&bundle.account_id, theme)
+            .unwrap_or_default();
         for message in &bundle.messages {
             let selected = row_index == view.selected_index;
             if selected {
                 selected_line = lines.len();
             }
-            lines.push(message_line(message, selected, width, theme, view.zone));
+            lines.push(message_line(
+                message, selected, width, &chip, theme, view.zone,
+            ));
             row_index += 1;
         }
         let hidden = (bundle.message_count as usize).saturating_sub(bundle.messages.len());
@@ -175,19 +183,23 @@ fn bundle_header(
     ])
 }
 
+/// One message. `chip` is the bundle's account chip, empty when the view
+/// shows none; it sits in the trailing column before the date.
 fn message_line(
     message: &PlaceMessageData,
     selected: bool,
     width: usize,
+    chip: &[Span<'static>],
     theme: &crate::theme::Theme,
     zone: crate::ui::received_label::DisplayZone,
 ) -> Line<'static> {
     let marker = if selected { "\u{258c} " } else { "  " };
     let pin = if message.pinned { "\u{2022} " } else { "  " };
     let date = zone.at(message.date).format("%-d %b").to_string();
-    // marker (2) + indent (2) + pin (2) + subject + gap (2) + date
+    let chip_width: usize = chip.iter().map(Span::width).sum();
+    // marker (2) + indent (2) + pin (2) + subject + gap (2) + chip + date
     let subject_width = width
-        .saturating_sub(2 + 2 + 2 + 2 + date.chars().count())
+        .saturating_sub(2 + 2 + 2 + 2 + chip_width + date.chars().count())
         .max(8);
     let mut spans = vec![
         Span::raw(marker),
@@ -200,8 +212,9 @@ fn message_line(
             ),
             Style::default().fg(theme.text_secondary),
         ),
-        Span::styled(date, Style::default().fg(theme.text_muted)),
     ];
+    spans.extend(chip.iter().cloned());
+    spans.push(Span::styled(date, Style::default().fg(theme.text_muted)));
     if selected {
         for span in &mut spans {
             span.style = span.style.add_modifier(Modifier::REVERSED);
@@ -488,10 +501,60 @@ mod tests {
                     place: MailPlaceData::PaperTrail,
                     selected_index: 1,
                     active_pane: &ActivePane::MailList,
+                    account_marks: &AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );
         })
+    }
+
+    #[test]
+    fn mixed_accounts_mark_each_message_with_its_senders_chip() {
+        use chrono::TimeZone;
+        let work = AccountId::new();
+        let home = AccountId::new();
+        let mut shop = bundle("Shop", &["Receipt 2"], 0);
+        shop.account_id = work.clone();
+        let mut bank = bundle("Bank", &["Statement 1"], 0);
+        bank.account_id = home.clone();
+        // A fixed date keeps the snapshot the same tomorrow.
+        let fixed = chrono::Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap();
+        for message in shop.messages.iter_mut().chain(bank.messages.iter_mut()) {
+            message.date = fixed;
+        }
+        let marks = crate::ui::account_mark::plain_marks_for_tests(&[
+            (&work, "Work", "W"),
+            (&home, "Home", "H"),
+        ]);
+        let page = page(vec![shop, bank]);
+        let rendered = render_to_string(100, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 20),
+                &PlaceView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
+                    page: &page,
+                    place: MailPlaceData::PaperTrail,
+                    selected_index: 0,
+                    active_pane: &ActivePane::MailList,
+                    account_marks: &marks,
+                },
+                &crate::theme::Theme::default(),
+            );
+        });
+        let receipt = rendered
+            .lines()
+            .find(|line| line.contains("Receipt 2"))
+            .expect("the Shop message");
+        let statement = rendered
+            .lines()
+            .find(|line| line.contains("Statement 1"))
+            .expect("the Bank message");
+        assert!(receipt.contains("[W]"), "{rendered}");
+        assert!(statement.contains("[H]"), "{rendered}");
+        insta::assert_snapshot!("place_lens_mixed_accounts", rendered);
     }
 
     #[test]

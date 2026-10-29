@@ -2939,6 +2939,21 @@ impl App {
             };
         }
 
+        // With single-key shortcuts off, a letter typed into a text field is
+        // text, not the form's command for that letter (`s` saves, `r`
+        // reauthorises). Enter is not needed first.
+        if !self.keybindings.single_keys
+            && matches!(key.code, KeyCode::Char(_))
+            && plain_or_shift(key.modifiers)
+            && account_form_field_is_editable(&self.accounts.page.form)
+        {
+            self.accounts.page.form.editing_field = true;
+            self.accounts.page.form.field_cursor =
+                account_form_field_value(&self.accounts.page.form)
+                    .map_or(0, |value| value.chars().count());
+            return self.handle_account_form_key(key);
+        }
+
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => {
                 self.maybe_preserve_new_account_form_draft();

@@ -121,6 +121,7 @@ mod tests {
             unread_count: 1,
             snippet: "line".into(),
             has_attachments: true,
+            account_id: None,
         }]);
         assert!(!text.contains('\u{1b}'));
         assert!(text.contains("Dana <dana@example.com>"));
@@ -140,6 +141,7 @@ mod tests {
             unread_count: 0,
             snippet: "line one\nline \u{1b}[31mtwo".into(),
             has_attachments: false,
+            account_id: None,
         }]);
         assert_eq!(
             text,

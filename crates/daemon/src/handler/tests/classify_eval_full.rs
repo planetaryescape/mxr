@@ -387,10 +387,33 @@ fn work_per_sync(sync: Duration, elapsed: Duration) -> f64 {
 /// measured so far came near it.
 const WORK_PER_SYNC_BUDGET: f64 = 25.0;
 
+// Each test below builds one generated demo and runs several checks on it.
+// Building the demo is nearly all of a check's time, and a runner that gives
+// every test its own process (nextest) shares nothing between tests. Grading
+// twice gives the same answer (checked below), so one check's grading does not
+// change what the next one sees.
+
 #[tokio::test]
-async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart() {
+async fn a_generated_demo_grades_both_accounts_and_the_quick_set_only_on_curated_mail() {
     let (state, personal, work) = demo_state(2_500).await;
-    let (summary, mismatches) = eval(&state, None, ClassifyEvalSetData::Full).await;
+    the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(&state, &personal, &work)
+        .await;
+    the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail(&state).await;
+}
+
+#[tokio::test]
+async fn a_generated_demo_grades_the_same_twice_and_with_the_quick_sets_labels() {
+    let (state, personal, _) = demo_state(1_200).await;
+    grading_the_full_set_twice_gives_the_same_answer(&state).await;
+    the_full_set_labels_the_curated_mail_with_the_quick_sets_labels(&state, &personal).await;
+}
+
+async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(
+    state: &AppState,
+    personal: &AccountId,
+    work: &AccountId,
+) {
+    let (summary, mismatches) = eval(state, None, ClassifyEvalSetData::Full).await;
     assert_eq!(summary.set, ClassifyEvalSetData::Full);
     assert_eq!(summary.message, None);
     assert_eq!(
@@ -430,8 +453,8 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart() {
 
     // Asked about one account, only that account's mail is graded; together
     // they are the whole.
-    let (personal_only, _) = eval(&state, Some(&personal), ClassifyEvalSetData::Full).await;
-    let (work_only, _) = eval(&state, Some(&work), ClassifyEvalSetData::Full).await;
+    let (personal_only, _) = eval(state, Some(personal), ClassifyEvalSetData::Full).await;
+    let (work_only, _) = eval(state, Some(work), ClassifyEvalSetData::Full).await;
     assert!(personal_only.present > 0 && work_only.present > 0);
     assert_eq!(personal_only.present + work_only.present, summary.present);
     assert_eq!(
@@ -440,11 +463,9 @@ async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart() {
     );
 }
 
-#[tokio::test]
-async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() {
-    let (state, _, _) = demo_state(1_500).await;
-    let (quick, quick_mismatches) = eval(&state, None, ClassifyEvalSetData::Quick).await;
-    let (full, _) = eval(&state, None, ClassifyEvalSetData::Full).await;
+async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail(state: &AppState) {
+    let (quick, quick_mismatches) = eval(state, None, ClassifyEvalSetData::Quick).await;
+    let (full, _) = eval(state, None, ClassifyEvalSetData::Full).await;
     // The quick set is the hand-written mail of the personal account: the
     // twins are not in a demo, and none of it is held out.
     assert_eq!(quick.set, ClassifyEvalSetData::Quick);
@@ -458,11 +479,9 @@ async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() 
     );
 }
 
-#[tokio::test]
-async fn grading_the_full_set_twice_gives_the_same_answer() {
-    let (state, _, _) = demo_state(1_200).await;
-    let first = eval(&state, None, ClassifyEvalSetData::Full).await;
-    emit_ask_diagnostics(&state, &first.0, &first.1).await;
+async fn grading_the_full_set_twice_gives_the_same_answer(state: &AppState) {
+    let first = eval(state, None, ClassifyEvalSetData::Full).await;
+    emit_ask_diagnostics(state, &first.0, &first.1).await;
     let before: i64 = sqlx::query_scalar("SELECT total_changes()")
         .fetch_one(state.store.writer())
         .await
@@ -471,7 +490,7 @@ async fn grading_the_full_set_twice_gives_the_same_answer() {
         .fetch_one(state.store.reader())
         .await
         .unwrap();
-    let read_only = classify_eval(&state, None, ClassifyEvalSetData::Full)
+    let read_only = classify_eval(state, None, ClassifyEvalSetData::Full)
         .await
         .unwrap();
     let after: i64 = sqlx::query_scalar("SELECT total_changes()")
@@ -500,17 +519,18 @@ async fn grading_the_full_set_twice_gives_the_same_answer() {
         (summary, mismatches),
         "production reads are stable without repair"
     );
-    let second = eval(&state, None, ClassifyEvalSetData::Full).await;
+    let second = eval(state, None, ClassifyEvalSetData::Full).await;
     assert_eq!(first, second, "no state carries over between runs");
 }
 
-#[tokio::test]
-async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
-    let (state, personal, _) = demo_state(1_200).await;
+async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels(
+    state: &AppState,
+    personal: &AccountId,
+) {
     // Every mismatch the quick set finds on the curated mail is also found,
     // with the same expected and actual answer, by the full set.
-    let (_, quick_mismatches) = eval(&state, Some(&personal), ClassifyEvalSetData::Quick).await;
-    let (_, full_mismatches) = eval(&state, Some(&personal), ClassifyEvalSetData::Full).await;
+    let (_, quick_mismatches) = eval(state, Some(personal), ClassifyEvalSetData::Quick).await;
+    let (_, full_mismatches) = eval(state, Some(personal), ClassifyEvalSetData::Full).await;
     assert!(!quick_mismatches.is_empty());
     for quick in &quick_mismatches {
         assert!(

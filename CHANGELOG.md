@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.192](https://github.com/planetaryescape/mxr/compare/v0.6.191...v0.6.192) (2026-10-29)
+
+
+### Bug Fixes
+
+* leaving a conversation saves the reply as a Draft on its Messages row, in every client ([#808](https://github.com/planetaryescape/mxr/issues/808)) ([2c33f44](https://github.com/planetaryescape/mxr/commit/2c33f44309a42037e236987158c68f8c728b980d))
+
 ## [0.6.191](https://github.com/planetaryescape/mxr/compare/v0.6.190...v0.6.191) (2026-10-29)
 
 

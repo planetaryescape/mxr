@@ -4,6 +4,7 @@
 //! than one enabled account and no `--account` scope. JSON and JSONL never
 //! carry the column; rows keep `account_id` there.
 
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use mxr_core::AccountId;
 use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
@@ -31,7 +32,9 @@ impl AccountMarks {
             Response::Ok {
                 data: ResponseData::Accounts { accounts },
             } => accounts,
-            Response::Error { message, .. } => anyhow::bail!(message),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             other => anyhow::bail!("Unexpected accounts response: {other:?}"),
         };
         Ok(Self::from_accounts(&accounts, scoped))

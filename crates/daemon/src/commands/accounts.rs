@@ -1,4 +1,5 @@
 use crate::cli::{AccountsAction, AddressesOp, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::AccountId;
@@ -135,7 +136,7 @@ async fn resolve_account_id(name: Option<&str>) -> anyhow::Result<AccountId> {
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     };
 
@@ -167,7 +168,7 @@ async fn list_addresses(
         Response::Ok {
             data: ResponseData::AccountAddresses { addresses },
         } => addresses,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected addresses response: {other:?}"),
     };
     render_addresses(&addresses, format)
@@ -288,7 +289,7 @@ async fn address_change(request: Request) -> anyhow::Result<(u32, u32)> {
                     to_inbound,
                 },
         } => Ok((to_outbound, to_inbound)),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected address response: {other:?}"),
     }
 }
@@ -445,7 +446,7 @@ async fn account_summaries() -> anyhow::Result<Vec<AccountSummaryData>> {
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => Ok(accounts),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
 }
@@ -500,7 +501,7 @@ async fn account_configs() -> anyhow::Result<Vec<AccountConfigData>> {
         Response::Ok {
             data: ResponseData::AccountsConfig { accounts },
         } => Ok(accounts),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
 }
@@ -527,7 +528,7 @@ async fn request_account_operation(
         Response::Ok {
             data: ResponseData::AccountOperation { result },
         } => Ok(result),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected account operation response: {other:?}"),
     }
 }
@@ -676,7 +677,7 @@ async fn request_auth_session(
         Response::Ok {
             data: ResponseData::AuthSession { session },
         } => Ok(session),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected auth session response: {other:?}"),
     }
 }

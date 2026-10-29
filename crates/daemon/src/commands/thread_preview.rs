@@ -2,6 +2,7 @@
 //! bodies, from `GetThreadPreviews`.
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::desk::parse_thread_ids;
 use crate::commands::owed::csv_escape;
 use crate::ipc_client::IpcClient;
@@ -20,7 +21,7 @@ pub async fn run(thread_ids: Vec<String>, format: Option<OutputFormat>) -> anyho
         Response::Ok {
             data: ResponseData::ThreadPreviews { previews },
         } => previews,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response to GetThreadPreviews"),
     };
     match resolve_format(format) {

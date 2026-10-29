@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::diagnostics::{client_local_metadata, selected_target_metadata};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -295,7 +296,9 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     )?
                 );
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
 

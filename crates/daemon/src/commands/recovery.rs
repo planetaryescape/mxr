@@ -1,3 +1,4 @@
+use crate::commands::daemon_response_error;
 use crate::{cli::RecoveryAction, ipc_client::IpcClient};
 use anyhow::{bail, Context};
 use mxr_protocol::{Request, Response};
@@ -60,7 +61,17 @@ pub async fn run(action: RecoveryAction) -> anyhow::Result<()> {
         Response::Ok { data } => {
             crate::output::print_json(&data, format.unwrap_or(crate::cli::OutputFormat::Json))?;
         }
-        Response::Error { message, code, .. } => bail!("recovery failed ({code}): {message}"),
+        Response::Error {
+            message,
+            code,
+            kind,
+            ..
+        } => {
+            return Err(daemon_response_error(
+                format!("recovery failed ({code}): {message}"),
+                kind,
+            ))
+        }
     }
     Ok(())
 }

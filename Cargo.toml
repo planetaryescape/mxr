@@ -60,6 +60,10 @@ name = "cli_exit_codes_cli"
 path = "crates/daemon/tests/cli_exit_codes_cli.rs"
 
 [[test]]
+name = "cli_auth_exit_cli"
+path = "crates/daemon/tests/cli_auth_exit_cli.rs"
+
+[[test]]
 name = "selected_daemon_diagnostics"
 path = "crates/daemon/tests/selected_daemon_diagnostics.rs"
 

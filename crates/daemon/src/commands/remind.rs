@@ -2,6 +2,7 @@
 //! message. Reuses the conversational time parser from `mxr-core` so
 //! `--when` accepts the same forms as `mxr snooze --until`.
 
+use crate::commands::daemon_response_error;
 use crate::commands::{ensure_message_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use mxr_core::id::MessageId;
@@ -54,7 +55,7 @@ fn ack_or_bail(resp: Response, success_message: &str) -> anyhow::Result<()> {
             println!("{success_message}");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

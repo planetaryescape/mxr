@@ -138,6 +138,17 @@ impl Spool {
                 detail: None,
             });
         }
+        if let Some(rest) = line
+            .strip_prefix("auth")
+            .filter(|rest| rest.is_empty() || rest.starts_with(' '))
+        {
+            let reason = rest.trim();
+            return Some(MxrError::ProviderAuth(if reason.is_empty() {
+                "fake provider rejected the credentials".to_string()
+            } else {
+                reason.to_string()
+            }));
+        }
         Some(MxrError::Provider(if line.is_empty() {
             "fake provider failure".to_string()
         } else {
@@ -366,6 +377,11 @@ mod tests {
         assert!(
             matches!(spool.failure(), Some(MxrError::Provider(text)) if text == "oauth token revoked")
         );
+        std::fs::write(dir.join("fail"), "auth oauth token revoked").unwrap();
+        assert!(matches!(
+            spool.failure(),
+            Some(MxrError::ProviderAuth(text)) if text == "oauth token revoked"
+        ));
         std::fs::remove_file(dir.join("fail")).unwrap();
         assert!(spool.failure().is_none());
         std::fs::remove_dir_all(dir).unwrap();

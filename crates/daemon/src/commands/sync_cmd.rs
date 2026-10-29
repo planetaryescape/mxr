@@ -1,11 +1,14 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::degraded_status_reading;
 use crate::commands::progress::{format_thousands, ProgressPrinter};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
-use mxr_protocol::{AccountSyncStatus, Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
+use mxr_protocol::{
+    AccountSyncStatus, IpcErrorKind, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
+};
 use std::time::{Duration, Instant};
 
 fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus], protocol_version: u32) {
@@ -194,7 +197,7 @@ pub async fn run(
         // The daemon rejects a sync it could not start at all — an unknown
         // account, no provider. Once started, failures show up on the status
         // row instead, which is what `--wait` reports.
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 
@@ -246,7 +249,7 @@ async fn run_all(
                 protocol_version, ..
             },
         } => protocol_version,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from daemon while checking global sync support"),
     };
     ensure_sync_all_protocol(protocol_version)?;
@@ -260,7 +263,9 @@ async fn run_all(
             Response::Ok {
                 data: ResponseData::SyncPlan { targets },
             } => targets,
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response from daemon while selecting sync targets"),
         };
         match resolve_format(format) {
@@ -311,7 +316,7 @@ async fn run_all(
         Response::Ok {
             data: ResponseData::SyncBatch { results },
         } => results,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from daemon while starting global sync"),
     };
 
@@ -488,7 +493,9 @@ async fn wait_for_sync_targets(
                 }
             }
             StatusPoll::Degraded => {}
-            StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
+            StatusPoll::Rejected(kind, message) => {
+                return Err(daemon_response_error(message, kind))
+            }
             StatusPoll::Disconnected(error) => *client = reconnect_client(&error).await?,
         }
         if Instant::now() >= deadline {
@@ -566,7 +573,7 @@ async fn fetch_sync_statuses(
                 data: ResponseData::Status { sync_statuses, .. },
             },
         ) => Ok(sync_statuses),
-        (_, Response::Error { message, .. }) => anyhow::bail!("{message}"),
+        (_, Response::Error { message, kind, .. }) => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from daemon"),
     }
 }
@@ -616,7 +623,9 @@ async fn wait_for_sync_quiescence(
                 }
             }
             StatusPoll::Degraded => {}
-            StatusPoll::Rejected(message) => anyhow::bail!("{message}"),
+            StatusPoll::Rejected(kind, message) => {
+                return Err(daemon_response_error(message, kind))
+            }
             StatusPoll::Disconnected(error) => {
                 *client = reconnect_client(&error).await?;
             }
@@ -662,7 +671,7 @@ enum StatusPoll {
     /// as "no account is syncing" would end the wait on the daemon's busiest
     /// moment, so treat it as no reading at all.
     Degraded,
-    Rejected(String),
+    Rejected(IpcErrorKind, String),
     Disconnected(anyhow::Error),
 }
 
@@ -693,8 +702,11 @@ async fn poll_sync_statuses(client: &mut IpcClient, account_id: Option<&AccountI
                     StatusPoll::Statuses(sync_statuses)
                 }
             }
-            (_, Response::Error { message, .. }) => StatusPoll::Rejected(message),
-            _ => StatusPoll::Rejected("Unexpected response from daemon".to_string()),
+            (_, Response::Error { message, kind, .. }) => StatusPoll::Rejected(kind, message),
+            _ => StatusPoll::Rejected(
+                IpcErrorKind::Internal,
+                "Unexpected response from daemon".to_string(),
+            ),
         },
         Err(error) => StatusPoll::Disconnected(error),
     }

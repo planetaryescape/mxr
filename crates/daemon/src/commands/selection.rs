@@ -12,6 +12,7 @@
 //! `--limit` are presentation modifiers applied after the daemon
 //! returns its sorted (date-desc) results.
 
+use crate::commands::daemon_response_error;
 use crate::commands::progress::format_thousands;
 use crate::ipc_client::IpcClient;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -242,7 +243,7 @@ async fn run_selection_search(
             require_indexed_selection(degraded.as_ref())?;
             Ok((results, has_more))
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from search"),
     }
 }

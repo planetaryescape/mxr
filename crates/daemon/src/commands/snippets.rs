@@ -1,6 +1,7 @@
 //! `mxr snippets` — manage compose snippets.
 
 use crate::cli::{OutputFormat, SnippetsAction};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_protocol::*;
@@ -42,7 +43,9 @@ pub async fn run(
                         }
                     }
                 },
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -68,7 +71,9 @@ pub async fn run(
                 } => {
                     println!("Saved ;{}", snippet.name);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -82,7 +87,9 @@ pub async fn run(
                 } => {
                     println!("Deleted ;{name}");
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

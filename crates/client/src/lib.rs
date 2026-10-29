@@ -193,6 +193,15 @@ pub enum ClientError {
     #[error("connection closed")]
     Closed,
 
+    /// A supervised daemon answered its status request with a build or
+    /// protocol that is not this binary's. Typed so the CLI can exit as
+    /// `daemon_incompatible`; the message is the one a plain I/O error carried.
+    #[error("{message}")]
+    DaemonIncompatible {
+        /// Human-readable reason, including the supervised socket path.
+        message: String,
+    },
+
     /// A [`Connector`] failed to establish the connection. Produced by
     /// [`IpcConnection::connect_with`]; the path-based [`IpcConnection::connect`]
     /// re-maps a connect failure onto the historical [`ClientError::Connect`]
@@ -356,10 +365,12 @@ impl IpcConnection {
             {
                 Ok(connection)
             }
-            ResponseData::Status { .. } => Err(supervised_connection_error(
-                path,
-                "the running daemon is incompatible with this mxr binary",
-            )),
+            ResponseData::Status { .. } => Err(ClientError::DaemonIncompatible {
+                message: supervised_message(
+                    path,
+                    "the running daemon is incompatible with this mxr binary",
+                ),
+            }),
             _ => Err(supervised_connection_error(
                 path,
                 "the daemon returned an unexpected response to its status request",
@@ -1028,11 +1039,15 @@ impl IpcConnection {
 }
 
 fn supervised_connection_error(path: &Path, reason: &str) -> ClientError {
-    ClientError::Io(std::io::Error::other(format!(
+    ClientError::Io(std::io::Error::other(supervised_message(path, reason)))
+}
+
+fn supervised_message(path: &Path, reason: &str) -> String {
+    format!(
         "{} ({}): {reason}",
         daemon_autostart_disabled_message(),
         path.display()
-    )))
+    )
 }
 
 fn drop_event(_event: DaemonEvent) {}

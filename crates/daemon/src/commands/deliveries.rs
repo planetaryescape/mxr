@@ -1,6 +1,7 @@
 //! `mxr deliveries` — track packages and deliveries detected in your mail.
 
 use crate::cli::{DeliveriesAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -37,7 +38,9 @@ pub async fn run(
                     OutputFormat::Jsonl => println!("{}", jsonl(&deliveries)?),
                     _ => print_table(&deliveries),
                 },
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -54,7 +57,9 @@ pub async fn run(
                     ensure_delivery_account(&delivery, account_id.as_ref())?;
                     println!("{}", serde_json::to_string_pretty(&delivery)?);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -73,7 +78,9 @@ pub async fn run(
                     short(&delivery.id.to_string()),
                     delivery.status
                 ),
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -88,7 +95,9 @@ pub async fn run(
                 Response::Ok {
                     data: ResponseData::Ack,
                 } => println!("Dismissed {delivery_id}"),
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -131,7 +140,9 @@ pub async fn run(
                         summary.shortlisted,
                     ),
                 },
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

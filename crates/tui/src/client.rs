@@ -541,6 +541,9 @@ fn map_request_error(error: ClientError) -> MxrError {
             "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.".into(),
         ),
         ClientError::Io(source) => MxrError::Ipc(describe_ipc_failure(&source.to_string())),
+        ClientError::DaemonIncompatible { message } => {
+            MxrError::Ipc(describe_ipc_failure(&message))
+        }
         ClientError::Daemon { message, .. } => MxrError::Ipc(message),
         // Intentional deviation: the old `request` loop silently skipped a
         // rogue frame and kept reading; we now surface it as an error. A frame

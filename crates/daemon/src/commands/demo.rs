@@ -1,3 +1,4 @@
+use crate::commands::daemon_response_error;
 use crate::commands::degraded_status_reading;
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::ipc_client::IpcClient;
@@ -6,7 +7,7 @@ use futures::FutureExt as _;
 use mxr_config::{AccountConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
 use mxr_core::types::SemanticProfileStatus;
-use mxr_protocol::{AccountSyncStatus, Request, Response, ResponseData};
+use mxr_protocol::{AccountSyncStatus, IpcErrorKind, Request, Response, ResponseData};
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -377,7 +378,7 @@ async fn fetch_semantic_progress(
         Response::Ok {
             data: ResponseData::SemanticStatus { snapshot },
         } => snapshot,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected semantic status response: {other:?}"),
     };
     Ok(snapshot
@@ -590,7 +591,9 @@ async fn sync_demo_account(account_id: &AccountId, expected_messages: usize) -> 
         }) => None,
         // The daemon only rejects a sync it could not start; anything that
         // goes wrong once it is running lands on the status row we watch next.
-        Ok(Response::Error { message, .. }) => anyhow::bail!(message),
+        Ok(Response::Error { message, kind, .. }) => {
+            return Err(daemon_response_error(message, kind))
+        }
         Ok(other) => anyhow::bail!("Unexpected sync response: {other:?}"),
         Err(error) => {
             client = reconnect_demo_client(&error).await?;
@@ -665,7 +668,9 @@ async fn wait_for_demo_sync(
             Ok(Response::Ok {
                 data: ResponseData::SyncStatus { sync },
             }) => Some(sync),
-            Ok(Response::Error { message, .. }) => anyhow::bail!(message),
+            Ok(Response::Error { message, kind, .. }) => {
+                return Err(daemon_response_error(message, kind))
+            }
             Ok(other) => anyhow::bail!("Unexpected sync status response: {other:?}"),
             Err(error) => {
                 last_failure = format!("transport: {error}");
@@ -691,7 +696,7 @@ async fn wait_for_demo_sync(
                     CountPoll::Degraded => {
                         last_failure = "degraded status snapshot".to_string();
                     }
-                    CountPoll::Rejected(message) => {
+                    CountPoll::Rejected(_, message) => {
                         last_failure = format!("message count poll: {message}");
                     }
                     // The shared client broke; the status poll above owns
@@ -823,8 +828,11 @@ async fn wait_for_seeded_count(expected: usize, stall_timeout: Duration) -> anyh
             // reconnecting on every busy-daemon poll would churn a connection a
             // second.
             CountPoll::Degraded => last_failure = "degraded status snapshot".to_string(),
-            CountPoll::Rejected(message) => {
-                anyhow::bail!("demo message count query failed: {message}");
+            CountPoll::Rejected(kind, message) => {
+                return Err(daemon_response_error(
+                    format!("demo message count query failed: {message}"),
+                    kind,
+                ));
             }
             CountPoll::Disconnected(error) => {
                 last_failure = format!("transport: {error}");
@@ -870,7 +878,7 @@ async fn fetch_demo_sync_status(
         Response::Ok {
             data: ResponseData::SyncStatus { sync },
         } => Ok(sync),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected sync status response: {other:?}"),
     }
 }
@@ -883,7 +891,7 @@ enum CountPoll {
     /// connection.
     Degraded,
     /// The daemon rejected the query. Retrying will not help.
-    Rejected(String),
+    Rejected(IpcErrorKind, String),
     /// The connection failed. Reconnect before retrying.
     Disconnected(anyhow::Error),
 }
@@ -913,8 +921,11 @@ async fn fetch_message_count(client: &mut IpcClient) -> CountPoll {
                 CountPoll::Count(total_messages as usize)
             }
         }
-        Ok(Response::Error { message, .. }) => CountPoll::Rejected(message),
-        Ok(other) => CountPoll::Rejected(format!("Unexpected status response: {other:?}")),
+        Ok(Response::Error { message, kind, .. }) => CountPoll::Rejected(kind, message),
+        Ok(other) => CountPoll::Rejected(
+            IpcErrorKind::Internal,
+            format!("Unexpected status response: {other:?}"),
+        ),
         Err(error) => CountPoll::Disconnected(error),
     }
 }
@@ -927,7 +938,12 @@ async fn seed_demo_rules() -> anyhow::Result<()> {
             Response::Ok {
                 data: ResponseData::RuleData { .. },
             } => {}
-            Response::Error { message, .. } => anyhow::bail!("failed to seed demo rule: {message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed demo rule: {message}"),
+                    kind,
+                ))
+            }
             other => anyhow::bail!("Unexpected rule seed response: {other:?}"),
         }
     }
@@ -1003,8 +1019,8 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
                 progress: 1.0,
             })
             .await?;
-        if let Response::Error { message, .. } = response {
-            anyhow::bail!(message);
+        if let Response::Error { message, kind, .. } = response {
+            return Err(daemon_response_error(message, kind));
         }
     }
     let key = format!(
@@ -1030,8 +1046,8 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
             seen: false,
         },
     ] {
-        if let Response::Error { message, .. } = client.request(request).await? {
-            anyhow::bail!(message);
+        if let Response::Error { message, kind, .. } = client.request(request).await? {
+            return Err(daemon_response_error(message, kind));
         }
     }
     Ok(())
@@ -1043,7 +1059,7 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
 async fn seed_demo_contacts(client: &mut IpcClient) -> anyhow::Result<()> {
     match client.request(Request::RefreshContacts).await? {
         Response::Ok { .. } => Ok(()),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -1097,7 +1113,7 @@ async fn seed_demo_todos(client: &mut IpcClient) -> anyhow::Result<()> {
             }
         }
     }
-    if let Response::Error { message, .. } = client
+    if let Response::Error { message, kind, .. } = client
         .request(Request::CreateTodo {
             message_id,
             title: "Send the signed engagement form".to_string(),
@@ -1108,7 +1124,7 @@ async fn seed_demo_todos(client: &mut IpcClient) -> anyhow::Result<()> {
         })
         .await?
     {
-        anyhow::bail!(message);
+        return Err(daemon_response_error(message, kind));
     }
     Ok(())
 }
@@ -1153,8 +1169,11 @@ async fn seed_demo_snippets(client: &mut IpcClient) -> anyhow::Result<()> {
             .await?
         {
             Response::Ok { .. } => {}
-            Response::Error { message, .. } => {
-                anyhow::bail!("failed to seed snippet `{name}`: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed snippet `{name}`: {message}"),
+                    kind,
+                ));
             }
         }
     }
@@ -1175,8 +1194,11 @@ async fn seed_demo_signatures(client: &mut IpcClient) -> anyhow::Result<()> {
             .await?
         {
             Response::Ok { .. } => {}
-            Response::Error { message, .. } => {
-                anyhow::bail!("failed to seed signature `{name}`: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed signature `{name}`: {message}"),
+                    kind,
+                ));
             }
         }
     }
@@ -1203,8 +1225,11 @@ async fn seed_demo_labels(client: &mut IpcClient) -> anyhow::Result<()> {
             // idempotent at the provider layer (the fake provider should be,
             // but real providers reject duplicates).
             Response::Error { message, .. } if message.to_ascii_lowercase().contains("exist") => {}
-            Response::Error { message, .. } => {
-                anyhow::bail!("failed to seed label `{name}`: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed label `{name}`: {message}"),
+                    kind,
+                ));
             }
         }
     }
@@ -1234,8 +1259,11 @@ async fn seed_demo_saved_searches(client: &mut IpcClient) -> anyhow::Result<()> 
             Response::Error { message, .. }
                 if message.to_ascii_lowercase().contains("exist")
                     || message.to_ascii_lowercase().contains("unique") => {}
-            Response::Error { message, .. } => {
-                anyhow::bail!("failed to seed saved search `{name}`: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed saved search `{name}`: {message}"),
+                    kind,
+                ));
             }
         }
     }
@@ -1295,8 +1323,11 @@ async fn seed_demo_screener(client: &mut IpcClient) -> anyhow::Result<()> {
             .await?
         {
             Response::Ok { .. } => {}
-            Response::Error { message, .. } => {
-                anyhow::bail!("failed to seed screener decision `{sender_email}`: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("failed to seed screener decision `{sender_email}`: {message}"),
+                    kind,
+                ));
             }
         }
     }
@@ -1320,8 +1351,11 @@ async fn seed_demo_message_state(client: &mut IpcClient) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Envelopes { envelopes },
         } => envelopes,
-        Response::Error { message, .. } => {
-            anyhow::bail!("failed to list demo envelopes: {message}");
+        Response::Error { message, kind, .. } => {
+            return Err(daemon_response_error(
+                format!("failed to list demo envelopes: {message}"),
+                kind,
+            ));
         }
         other => anyhow::bail!("Unexpected envelope list response: {other:?}"),
     };
@@ -1402,7 +1436,7 @@ async fn prewarm_user_voice(client: &mut IpcClient, account_id: &AccountId) -> a
     .await?
     {
         Response::Ok { .. } => Ok(()),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -1422,7 +1456,7 @@ async fn prewarm_decision_log(
     .await?
     {
         Response::Ok { .. } => Ok(()),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 

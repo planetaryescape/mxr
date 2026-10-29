@@ -5,6 +5,7 @@
 //! never roundtrip to the provider.
 
 use crate::cli::{OutputFormat, RepliesAction};
+use crate::commands::daemon_response_error;
 use crate::commands::{ensure_message_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -79,7 +80,7 @@ async fn list_reply_queue(client: &mut IpcClient) -> anyhow::Result<Vec<Envelope
         Response::Ok {
             data: ResponseData::ReplyQueue { messages },
         } => Ok(messages),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -231,7 +232,7 @@ fn ack_or_bail(resp: Response, success_message: &str) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

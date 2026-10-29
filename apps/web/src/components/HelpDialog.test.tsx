@@ -62,7 +62,8 @@ describe("HelpDialog", () => {
       "Search",
       "Go to",
     ]);
-    expect(screen.getByText("Select and move down")).toBeVisible();
+    // In Mail actions, and under Sidebar, where x selects too.
+    expect(screen.getAllByText("Select and move down")[0]).toBeVisible();
     expect(screen.getByText("Go to Inbox")).toBeVisible();
     expect(screen.getByText("Keyboard help")).toBeVisible();
   });

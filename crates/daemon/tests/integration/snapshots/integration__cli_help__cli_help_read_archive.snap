@@ -14,6 +14,9 @@ Options:
       --account <ACCOUNT>
       --yes
       --dry-run
-      --async              Run as a daemon-side background job and poll with `mxr jobs`
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --async                  Run as a daemon-side background job and poll with `mxr jobs`
+      --all                    Act on every message the search matches, not only the newest 1,000. The daemon resolves the whole set, so the exact count is shown before anything changes, and runs it as one background job that this command waits for. `mxr undo <JOB_ID>` reverses the whole job for an hour after it ends. Preview with --dry-run first
+      --no-wait                With --all, return once the daemon has accepted the job instead of waiting for it. Follow it with `mxr jobs <JOB_ID>`
+      --preview-token <TOKEN>  With --all, run exactly the messages an earlier `--all --dry-run` counted (its `preview_token`; valid for 10 minutes, once)
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

@@ -38,6 +38,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useScopeController } from "@/lib/keys/controllers";
+import { focusActivePane } from "@/lib/keys/focusPane";
 
 import {
   refreshMessages,
@@ -781,8 +782,14 @@ function MessagesBody({
       if (commands && replyKeys.current.has(commands.intentKey)) commands.send();
     },
     escape: () => {
-      if (closeHint) closeHint();
-      else setPageOpen(false);
+      if (closeHint) {
+        closeHint();
+        return;
+      }
+      setPageOpen(false);
+      // Back from the person page `p` went into: on a wide screen it stays
+      // in view, so the keys' focus has to come back to Messages by itself.
+      if (document.activeElement?.closest('[data-testid="person-page"]')) focusActivePane();
     },
     // X and P act on the newest email the other side sent; on a new
     // sender's row their capitals answer its question.

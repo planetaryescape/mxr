@@ -949,6 +949,22 @@ test("p focuses the current topic when open, or its trigger when the topic list 
   await waitFor(() => expect(current).toHaveFocus());
 });
 
+test("Esc after p brings focus back from the person page to Messages", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  await waitFor(() => expect(screen.getByTestId("topics-trigger")).toHaveFocus());
+
+  act(() => expect(runCommand("messages", "escape")).toBe(true));
+
+  // Enter now opens the lit person instead of pressing the topic picker.
+  expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
+});
+
 test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {
   // Four people still owe a reply; none is unread, so the filtered view is empty.
   const empty = listWith({

@@ -92,6 +92,15 @@ pub(super) async fn resolve_mutation_selection_with_limit(
     })
 }
 
+impl MutationSelection {
+    /// For the commands that take `--all`: the cap notice then says so.
+    #[must_use]
+    pub(super) fn offering_all(mut self) -> Self {
+        self.capped = self.capped.map(CappedSelection::offering_all);
+        self
+    }
+}
+
 pub(super) fn requires_confirmation(
     destructive: bool,
     used_search: bool,
@@ -481,7 +490,7 @@ pub(super) fn confirm_prompt(preview_lines: &[String]) -> anyhow::Result<()> {
     prompt_to_continue()
 }
 
-fn prompt_to_continue() -> anyhow::Result<()> {
+pub(super) fn prompt_to_continue() -> anyhow::Result<()> {
     print!("\nContinue? [y/N] ");
     std::io::stdout().flush()?;
 
@@ -1141,7 +1150,7 @@ mod tests {
             ids: vec![envelope.id.clone()],
             envelopes: vec![envelope],
             used_search: true,
-            capped: Some(CappedSelection { selected: 1_000 }),
+            capped: Some(CappedSelection::new(1_000)),
         };
 
         // The same lines are the dry-run table and the confirmation prompt.
@@ -1154,8 +1163,41 @@ mod tests {
     }
 
     #[test]
+    fn the_commands_that_take_all_point_at_it_in_the_cap_notice_and_the_others_do_not() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let selection = || MutationSelection {
+            ids: vec![envelope.id.clone()],
+            envelopes: vec![envelope.clone()],
+            used_search: true,
+            capped: Some(CappedSelection::new(1_000)),
+        };
+
+        let plain = render_selection_preview_lines("trash", &selection());
+        assert!(plain.contains(
+            &"More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.".to_owned()
+        ));
+        let with_all = render_selection_preview_lines("archive", &selection().offering_all());
+        assert!(with_all.contains(
+            &"More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.".to_owned()
+        ));
+
+        // The same sentence goes to stderr with `--yes`.
+        let mut notices = Vec::new();
+        let capped = selection().offering_all();
+        confirm_selection_to("archive", &capped, false, true, &mut notices).unwrap();
+        assert_eq!(
+            String::from_utf8(notices).unwrap(),
+            "More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.\n"
+        );
+        // An uncapped selection offers nothing.
+        let mut uncapped = selection();
+        uncapped.capped = None;
+        assert!(uncapped.offering_all().capped.is_none());
+    }
+
+    #[test]
     fn capped_fields_reach_every_output_built_from_the_counts_and_only_then() {
-        let capped = CappedSelection { selected: 1_000 };
+        let capped = CappedSelection::new(1_000);
         let uncapped_counts = SelectionCounts {
             selected_threads: 2,
             selected_messages: 3,

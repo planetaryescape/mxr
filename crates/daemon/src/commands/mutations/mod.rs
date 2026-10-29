@@ -1,5 +1,7 @@
 mod archive;
 pub use archive::archive_operation;
+mod bulk_all;
+pub use bulk_all::{run as bulk_all, BulkAction, BulkAllRun};
 mod attachments;
 mod compose;
 mod compose_html;
@@ -14,10 +16,12 @@ pub use compose::{
     send_outcome, ComposeOptions, ForwardCommand, ReplyCommand, SavedSendReview,
 };
 
-/// CLI surface for `mxr undo <mutation_id>`.
+/// CLI surface for `mxr undo <id>`.
 ///
-/// Sends `Request::UndoMutation` and prints the success message or the
-/// daemon's specific failure (NotFound / WindowExpired / Irreversible).
+/// A job id (from `--all`) undoes the whole job as a background job of its
+/// own, which this waits for. Any other id is a mutation id: sends
+/// `Request::UndoMutation` and prints the success message or the daemon's
+/// specific failure (NotFound / WindowExpired / Irreversible).
 pub async fn undo(
     mutation_id: String,
     dry_run: bool,
@@ -29,6 +33,17 @@ pub async fn undo(
     }
 
     let mut client = IpcClient::connect().await?;
+    let known_job = client
+        .request(Request::GetJob {
+            job_id: mutation_id.clone(),
+        })
+        .await?;
+    if let Response::Ok {
+        data: ResponseData::Job { .. },
+    } = known_job
+    {
+        return undo_job(&mut client, &mutation_id, format).await;
+    }
     let resp = client
         .request(Request::UndoMutation {
             mutation_id: mutation_id.clone(),
@@ -44,6 +59,92 @@ pub async fn undo(
         Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
+}
+
+/// Reverses a whole job, then waits for the undo job and reports how many
+/// messages came back and how many had to be skipped.
+async fn undo_job(
+    client: &mut IpcClient,
+    job_id: &str,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let resp = client
+        .request(Request::UndoJob {
+            job_id: job_id.to_owned(),
+        })
+        .await?;
+    let started = match resp {
+        Response::Ok {
+            data: ResponseData::JobStarted { job },
+        } => job,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    };
+    let undo = bulk_all::wait_for_job(client, started, "undo").await?;
+    print_undo_job_output(job_id, &undo, format)?;
+    bulk_all::fail_if_job_failed(&undo)
+}
+
+#[derive(Serialize)]
+struct UndoJobOutput<'a> {
+    /// The job that was undone.
+    mutation_id: &'a str,
+    dry_run: bool,
+    undone: bool,
+    /// The undo's own job.
+    job: &'a JobData,
+}
+
+fn print_undo_job_output(
+    undone_job_id: &str,
+    undo: &JobData,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let output = UndoJobOutput {
+        mutation_id: undone_job_id,
+        dry_run: false,
+        undone: undo.status == JobStatusData::Succeeded,
+        job: undo,
+    };
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            println!(
+                "Restored {} of {} message(s).",
+                undo.progress.succeeded, undo.progress.total
+            );
+            if undo.progress.skipped > 0 {
+                println!(
+                    "Skipped {} message(s): their snapshot expired or is missing, or the mail is gone.",
+                    undo.progress.skipped
+                );
+            }
+            println!("Undo job: {}", undo.job_id);
+        }
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&output)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "mutation_id",
+                "job_id",
+                "status",
+                "restored",
+                "skipped",
+                "failed",
+            ])?;
+            writer.write_record([
+                undone_job_id.to_owned(),
+                undo.job_id.clone(),
+                format!("{:?}", undo.status).to_ascii_lowercase(),
+                undo.progress.succeeded.to_string(),
+                undo.progress.skipped.to_string(),
+                undo.progress.failed.to_string(),
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{}", undo.job_id),
+    }
+    Ok(())
 }
 
 use crate::cli::OutputFormat;
@@ -147,6 +248,36 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
     }
 }
 
+/// The table's undo column. A job over thousands of messages has one undo id
+/// per batch of 100: listing them all made a single row hundreds of KB wide,
+/// so a long list is a count and the command that reverses the whole job.
+fn undo_summary(job: &JobData) -> String {
+    const LISTED: usize = 3;
+    if job.undo_ids.is_empty() {
+        return String::new();
+    }
+    if let Some(until) = job
+        .undo_expires_at
+        .and_then(chrono::DateTime::from_timestamp_millis)
+    {
+        return format!(
+            "mxr undo {} (until {})",
+            job.job_id,
+            until
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+        );
+    }
+    if job.undo_ids.len() <= LISTED {
+        return job.undo_ids.join(",");
+    }
+    format!(
+        "{} undo ids (list them with: mxr jobs {} --format json)",
+        job.undo_ids.len(),
+        job.job_id
+    )
+}
+
 fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     match resolve_format(format) {
         OutputFormat::Table => {
@@ -160,16 +291,31 @@ fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow
             );
             for job in jobs {
                 println!(
-                    "{:<36}  {:<10}  {:<22}  {:>4}/{:<4}  {}{}",
+                    "{:<36}  {:<10}  {:<22}  {:>4}/{:<4}  {}{}{}{}",
                     job.job_id,
                     format!("{:?}", job.status).to_ascii_lowercase(),
                     job.kind,
                     job.progress.completed,
                     job.progress.total,
-                    job.undo_ids.join(","),
+                    undo_summary(&job),
+                    job.paused_until
+                        .and_then(chrono::DateTime::from_timestamp_millis)
+                        .map(|until| format!(
+                            "  paused until {} (provider rate limit)",
+                            until.with_timezone(&chrono::Local).format("%H:%M:%S")
+                        ))
+                        .unwrap_or_default(),
                     job.error
                         .as_ref()
                         .map(|error| format!("  error={error}"))
+                        .unwrap_or_default(),
+                    job.failures
+                        .first()
+                        .map(|failure| format!(
+                            "  first_failure={}: {}",
+                            failure.message_id.as_str(),
+                            failure.error
+                        ))
                         .unwrap_or_default()
                 );
             }
@@ -244,7 +390,9 @@ pub async fn archive(
         )
         .await?
     } else {
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all()
     };
     let operation = client
         .preview_archive(MutationCommand::Archive {
@@ -284,7 +432,9 @@ pub async fn read_archive(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -569,7 +719,9 @@ pub async fn label(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -607,7 +759,9 @@ pub async fn unlabel(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -1632,6 +1786,55 @@ fn render_plain_text_browser_document(text: &str) -> String {
 mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
+
+    fn job_with_undo_ids(count: usize, anchored: bool) -> JobData {
+        JobData {
+            job_id: "job-1".into(),
+            kind: "mutation.archive".into(),
+            status: JobStatusData::Succeeded,
+            progress: JobProgressData {
+                total: 1,
+                completed: 1,
+                succeeded: 1,
+                skipped: 0,
+                failed: 0,
+            },
+            undo_ids: (0..count).map(|n| format!("undo-{n}")).collect(),
+            error: None,
+            started_at: 0,
+            finished_at: Some(1),
+            result: None,
+            selection: None,
+            failures: Vec::new(),
+            paused_until: None,
+            undo_expires_at: anchored.then_some(1_761_600_000_000),
+            undo_of: None,
+        }
+    }
+
+    #[test]
+    fn the_jobs_table_names_a_few_undo_ids_and_counts_a_long_list() {
+        assert_eq!(undo_summary(&job_with_undo_ids(0, false)), "");
+        assert_eq!(
+            undo_summary(&job_with_undo_ids(3, false)),
+            "undo-0,undo-1,undo-2"
+        );
+        let long = undo_summary(&job_with_undo_ids(5_000, false));
+        assert!(long.starts_with("5000 undo ids"), "{long}");
+        assert!(
+            long.len() < 120,
+            "one row stays one short line: {}",
+            long.len()
+        );
+        assert!(!long.contains("undo-4999"));
+    }
+
+    #[test]
+    fn a_job_with_a_whole_job_undo_points_at_the_one_command() {
+        let summary = undo_summary(&job_with_undo_ids(5_000, true));
+        assert!(summary.starts_with("mxr undo job-1 (until "), "{summary}");
+        assert!(!summary.contains("undo-0"));
+    }
 
     #[test]
     fn repeated_addresses_are_planned_once_and_message_ids_are_not_addresses() {

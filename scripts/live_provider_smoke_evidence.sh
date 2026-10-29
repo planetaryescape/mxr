@@ -47,7 +47,7 @@ smtp_env=(MXR_SMTP_SMOKE_HOST MXR_SMTP_SMOKE_USERNAME MXR_SMTP_SMOKE_PASSWORD MX
 
 if has_all "${gmail_env[@]}"; then
   emit gmail creds_available "$(required_csv "${gmail_env[@]}")" '{"live_smoke":"live_gmail_e2e"}'
-  scripts/cargo-test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+  scripts/cargo-test -p mxr --test integration live_gmail_e2e:: -- --ignored --nocapture
   emit gmail live_smoke_passed "$(required_csv "${gmail_env[@]}")" '{"live_smoke":"live_gmail_e2e"}'
 else
   emit gmail skipped_missing_creds "$(required_csv "${gmail_env[@]}")"

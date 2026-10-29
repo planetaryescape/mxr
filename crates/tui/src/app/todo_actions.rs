@@ -751,18 +751,6 @@ impl App {
                 self.microsoft_todo_request(true);
                 return None;
             }
-            let installed = page
-                .microsoft_status
-                .as_ref()
-                .is_some_and(|status| status.installed);
-            // Microsoft To Do is in the palette now; M and S say so to the
-            // people who had them.
-            if let KeyCode::Char(c @ ('M' | 'S')) = key.code {
-                if installed {
-                    self.announce_moved("todo-microsoft", &c.to_string());
-                    return None;
-                }
-            }
         }
         let page = &self.mailbox.todo_page;
         if page.catchup_preview.is_some() {

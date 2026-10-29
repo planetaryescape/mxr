@@ -167,13 +167,6 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
         .as_mut()
         .unwrap()
         .installed = true;
-    // M sent it until K3 (blueprint 35); the palette does now.
-    press_shifted(&mut app, 'M');
-    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Send to Microsoft To Do has no key now; find it in the palette")
-    );
     app.apply(Action::TodoSendToMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),

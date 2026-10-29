@@ -1045,11 +1045,6 @@ group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
 
-[[action.moved]]
-key = "E"
-contexts = ["list", "reader", "sidebar"]
-until = "0.6.185"
-
 [[action.tui]]
 name = "ExportThread"
 keys = []
@@ -1097,7 +1092,7 @@ keys = ["p"]
 [[action.tui]]
 name = "OpenSenderView"
 keys = ["p"]
-contexts = ["list", "reader", "search", "search-preview"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.links"
@@ -1121,7 +1116,7 @@ keys = ["A"]
 [[action.tui]]
 name = "AttachmentList"
 keys = ["A"]
-contexts = ["list", "reader", "sidebar"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action]]
 id = "invite.accept"
@@ -1135,11 +1130,6 @@ name = "RespondInvite(Accept)"
 keys = ["i a"]
 contexts = ["list", "reader", "sidebar", "place"]
 
-[[action.moved]]
-key = "a"
-contexts = ["invites"]
-until = "0.6.185"
-
 [[action]]
 id = "invite.tentative"
 label = "Maybe (invite)"
@@ -1151,16 +1141,6 @@ keys = ["i m"]
 name = "RespondInvite(Tentative)"
 keys = ["i m"]
 contexts = ["list", "reader", "sidebar", "place"]
-
-[[action.moved]]
-key = "t"
-contexts = ["invites"]
-until = "0.6.185"
-
-[[action.moved]]
-key = "m"
-contexts = ["invites"]
-until = "0.6.185"
 
 [[action]]
 id = "invite.decline"
@@ -1174,11 +1154,6 @@ name = "RespondInvite(Decline)"
 keys = ["i d"]
 contexts = ["list", "reader", "sidebar", "place"]
 
-[[action.moved]]
-key = "d"
-contexts = ["invites"]
-until = "0.6.185"
-
 [[action]]
 id = "invite.accept-comment"
 label = "Accept with comment"
@@ -1190,11 +1165,6 @@ keys = ["i A"]
 name = "RespondInviteWithComment(Accept)"
 keys = ["i A"]
 contexts = ["list", "reader", "sidebar", "place"]
-
-[[action.moved]]
-key = "A"
-contexts = ["invites"]
-until = "0.6.185"
 
 [[action]]
 id = "invite.tentative-comment"
@@ -1208,16 +1178,6 @@ name = "RespondInviteWithComment(Tentative)"
 keys = ["i M"]
 contexts = ["list", "reader", "sidebar", "place"]
 
-[[action.moved]]
-key = "T"
-contexts = ["invites"]
-until = "0.6.185"
-
-[[action.moved]]
-key = "M"
-contexts = ["invites"]
-until = "0.6.185"
-
 [[action]]
 id = "invite.decline-comment"
 label = "Decline with comment"
@@ -1229,11 +1189,6 @@ keys = ["i D"]
 name = "RespondInviteWithComment(Decline)"
 keys = ["i D"]
 contexts = ["list", "reader", "sidebar", "place"]
-
-[[action.moved]]
-key = "D"
-contexts = ["invites"]
-until = "0.6.185"
 
 [[action]]
 id = "mail.cancel-reminder"
@@ -1380,12 +1335,6 @@ scopes = ["sidebar"]
 palette_only = true
 hide_in_palette = true
 
-[[action.moved]]
-key = "["
-contexts = ["sidebar"]
-until = "0.6.185"
-to = "sidebar.open"
-
 [[action]]
 id = "sidebar.expand"
 label = "Expand section"
@@ -1393,12 +1342,6 @@ group = "View"
 scopes = ["sidebar"]
 palette_only = true
 hide_in_palette = true
-
-[[action.moved]]
-key = "]"
-contexts = ["sidebar"]
-until = "0.6.185"
-to = "sidebar.open"
 
 # Enter on a section header folds or unfolds it (sidebar.open).
 [[action]]
@@ -2016,7 +1959,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "ToggleSignature"
 keys = ["S"]
-contexts = ["list", "reader", "search", "search-preview"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "reader.quotes"
@@ -2210,11 +2153,6 @@ name = "FocusSkip"
 keys = ["j"]
 contexts = ["focus"]
 
-[[action.moved]]
-key = "s"
-contexts = ["focus"]
-until = "0.6.185"
-
 [[action]]
 id = "focus.done"
 label = "Done, no reply needed"
@@ -2369,11 +2307,6 @@ name = "TogglePin"
 keys = ["s"]
 contexts = ["place"]
 
-[[action.moved]]
-key = "p"
-contexts = ["place"]
-until = "0.6.185"
-
 [[action]]
 id = "place.sweep-bundle"
 label = "Sweep this sender's bundle…"
@@ -2381,11 +2314,6 @@ short_label = "Sweep sender"
 group = "Triage"
 palette_only = true
 clients = ["tui"]
-
-[[action.moved]]
-key = "S"
-contexts = ["place"]
-until = "0.6.185"
 
 [[action.tui]]
 name = "SweepBundle"
@@ -2404,11 +2332,6 @@ name = "SweepPlace"
 keys = ["E"]
 contexts = ["place"]
 
-[[action.moved]]
-key = "A"
-contexts = ["place"]
-until = "0.6.185"
-
 [[action]]
 id = "place.move-sender"
 label = "Move sender to…"
@@ -2420,11 +2343,6 @@ clients = ["tui"]
 name = "OpenSenderKindMenu"
 keys = ["P"]
 contexts = ["place"]
-
-[[action.moved]]
-key = "K"
-contexts = ["place"]
-until = "0.6.185"
 
 [[action]]
 id = "place.unsubscribe"
@@ -2576,12 +2494,6 @@ short_label = "Details"
 group = "Triage"
 scopes = ["todo"]
 palette_only = true
-
-[[action.moved]]
-key = "v"
-contexts = ["todo"]
-until = "0.6.185"
-to = "todo.edit"
 
 # To do's tabs are digits, in the order they show (blueprint 35, D166).
 [[action]]
@@ -2929,12 +2841,6 @@ group = "Triage"
 scopes = ["archive"]
 palette_only = true
 
-[[action.moved]]
-key = "v"
-contexts = ["archive"]
-until = "0.6.185"
-to = "archive.edit"
-
 [[action.tui]]
 name = "RecordsMarkChecked"
 keys = []
@@ -2961,11 +2867,6 @@ description = "CSV of the records in view, after a preview of what it holds"
 group = "Triage"
 scopes = ["archive"]
 palette_only = true
-
-[[action.moved]]
-key = "E"
-contexts = ["archive"]
-until = "0.6.185"
 
 [[action.tui]]
 name = "RecordsExport"
@@ -4019,11 +3920,6 @@ scopes = ["updates"]
 palette_only = true
 note = "Previews the daemon's dry run first; undo afterwards"
 
-[[action.moved]]
-key = "S"
-contexts = ["updates"]
-until = "0.6.185"
-
 [[action.tui]]
 name = "UpdatesSweep"
 keys = []
@@ -4189,12 +4085,6 @@ group = "Rules"
 scopes = ["global"]
 palette_only = true
 
-[[action.moved]]
-key = "n"
-contexts = ["rules"]
-until = "0.6.185"
-to_key = "c"
-
 [[action.tui]]
 name = "OpenRuleFormNew"
 keys = []
@@ -4207,12 +4097,6 @@ description = "Open account onboarding"
 group = "Accounts"
 scopes = ["global"]
 palette_only = true
-
-[[action.moved]]
-key = "n"
-contexts = ["accounts"]
-until = "0.6.185"
-to_key = "c"
 
 [[action.tui]]
 name = "OpenAccountFormNew"
@@ -4319,7 +4203,7 @@ clients = ["tui"]
 
 [[action.moved]]
 key = "n"
-contexts = ["list", "place", "invites"]
+contexts = ["list", "sidebar", "place", "invites"]
 until = "0.6.200"
 to = "list.down"
 
@@ -4371,22 +4255,12 @@ name = "OpenSavedSearchFormNew"
 keys = ["c"]
 contexts = ["sidebar"]
 
-[[action.moved]]
-key = "n"
-contexts = ["sidebar"]
-until = "0.6.185"
-
 [[action]]
 id = "tui.more-from-sender"
 label = "More from this sender"
 group = "TUI"
 palette_only = true
 clients = ["tui"]
-
-[[action.moved]]
-key = "+"
-contexts = ["place"]
-until = "0.6.185"
 
 [[action.tui]]
 name = "MoreFromSender"
@@ -4399,11 +4273,6 @@ label = "More senders in this place"
 group = "TUI"
 palette_only = true
 clients = ["tui"]
-
-[[action.moved]]
-key = ">"
-contexts = ["place"]
-until = "0.6.185"
 
 [[action.tui]]
 name = "MorePlaceSenders"
@@ -4445,11 +4314,6 @@ group = "Triage"
 palette_only = true
 clients = ["tui"]
 
-[[action.moved]]
-key = "M"
-contexts = ["todo-microsoft"]
-until = "0.6.185"
-
 [[action.tui]]
 name = "TodoSendToMicrosoft"
 keys = []
@@ -4462,75 +4326,10 @@ group = "Triage"
 palette_only = true
 clients = ["tui"]
 
-[[action.moved]]
-key = "S"
-contexts = ["todo-microsoft"]
-until = "0.6.185"
-
 [[action.tui]]
 name = "TodoSyncMicrosoft"
 keys = []
 contexts = ["todo"]
-
-[[action]]
-id = "tui.drafts-delete"
-label = "Delete draft"
-group = "Compose"
-clients = ["tui"]
-
-[[action.moved]]
-key = "d"
-contexts = ["drafts"]
-until = "0.6.185"
-to_key = "#"
-
-[[action]]
-id = "tui.drafts-edit"
-label = "Edit draft"
-group = "Compose"
-clients = ["tui"]
-
-[[action.moved]]
-key = "e"
-contexts = ["drafts"]
-until = "0.6.185"
-to_key = "Enter"
-
-[[action]]
-id = "tui.delete-saved-search"
-label = "Delete saved search"
-group = "Search"
-clients = ["tui"]
-
-[[action.moved]]
-key = "d"
-contexts = ["saved-searches"]
-until = "0.6.185"
-to_key = "#"
-
-[[action]]
-id = "tui.new-category"
-label = "New category"
-group = "Mail"
-clients = ["tui"]
-
-[[action.moved]]
-key = "n"
-contexts = ["categories"]
-until = "0.6.185"
-to_key = "c"
-
-[[action]]
-id = "tui.delete-category"
-label = "Delete category"
-group = "Mail"
-clients = ["tui"]
-
-[[action.moved]]
-key = "d"
-contexts = ["categories"]
-until = "0.6.185"
-to_key = "#"
 
 [[action]]
 id = "tui.delete-assistant-conversation"
@@ -4538,12 +4337,6 @@ label = "Delete conversation"
 group = "Mail"
 palette_only = true
 clients = ["tui"]
-
-[[action.moved]]
-key = "D"
-contexts = ["assistant"]
-until = "0.6.185"
-to_key = "#"
 
 [[action.tui]]
 name = "DeleteAssistantConversation"
@@ -6840,16 +6633,6 @@ group = "Assistant"
 scopes = ["assistant-history"]
 keys = ["#"]
 hide_in_palette = true
-
-[[action.moved]]
-key = "D"
-contexts = ["assistant-history"]
-until = "0.6.185"
-
-[[action.moved]]
-key = "d"
-contexts = ["assistant-history"]
-until = "0.6.185"
 
 [[action.tui]]
 name = "inline:delete"

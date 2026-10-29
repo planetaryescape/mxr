@@ -35,7 +35,7 @@ calamine = { version = "0.37", optional = true }
 chrono = { workspace = true }
 # Recheck BGE-small and E5 model loading before widening beyond 7.1;
 # download and embedding are verified with the locked 7.1.1 release.
-fastembed = { version = ">=5.13, <7.2", optional = true }
+fastembed = { version = ">=5.13, <7.6", optional = true }
 hnsw_rs = { version = "0.3.4", optional = true }
 rayon = { version = "1.10", optional = true }
 sha2 = { version = "0.11", optional = true }

@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview by default; compare the challenge before --confirm
+
+Usage: mxr serve pair approve [OPTIONS] <REQUEST_ID>
+
+Arguments:
+  <REQUEST_ID>
+
+Options:
+      --dry-run
+      --confirm
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

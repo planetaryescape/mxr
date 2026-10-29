@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Show a whole conversation
+
+Usage: mxr assistant show [OPTIONS] <CONVERSATION>
+
+Arguments:
+  <CONVERSATION>
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

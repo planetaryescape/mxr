@@ -1,0 +1,25 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Forward a message
+
+Usage: mxr forward [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  Message ID to forward
+
+Options:
+      --account <ACCOUNT>
+      --from <FROM>            Send from this owned address (the account primary or a registered alias). Defaults to the address the original was delivered to
+      --to <TO>                Forward to recipient(s)
+      --body <BODY>            Inline body
+      --body-stdin             Read body from stdin
+      --attach <ATTACH>        File path to attach (repeatable)
+      --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
+      --no-signature           Do not insert any signature
+      --yes                    Skip confirmation
+      --draft                  Save as a draft instead of sending. Never transmits; the forward lands in `mxr drafts`, ready to send with `mxr send <draft-id> --expected-revision <reviewed-revision> --expected-workspace '<owner-json>'`. Mutually exclusive with `--yes`, so no added flag can turn a draft into a send
+      --dry-run                Show what would be sent
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

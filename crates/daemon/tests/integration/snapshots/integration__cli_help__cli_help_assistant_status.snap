@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Whether the assistant can run, and on which model
+
+Usage: mxr assistant status [OPTIONS]
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

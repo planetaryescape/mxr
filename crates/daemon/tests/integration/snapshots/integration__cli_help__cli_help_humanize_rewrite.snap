@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Rewrite arbitrary text using the LLM rewrite pass
+
+Usage: mxr humanize rewrite [OPTIONS] <TEXT>
+
+Arguments:
+  <TEXT>
+
+Options:
+      --max-iterations <MAX_ITERATIONS>
+  -h, --help                             Print help

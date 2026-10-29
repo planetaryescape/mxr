@@ -26,7 +26,7 @@ jobs:
   # so it does not run on schedule by default — credentials are supplied
   # explicitly when the maintainer wants to gate a release on a real-API run.
   # The 0.4.52 label-id regression would have been caught here. See
-  # crates/daemon/tests/live_gmail_e2e.rs for what is covered.
+  # crates/daemon/tests/integration/live_gmail_e2e.rs for what is covered.
   live-gmail-e2e:
     if: github.event_name == 'workflow_dispatch'
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -48,4 +48,4 @@ jobs:
             exit 1
           fi
       - name: Run live Gmail end-to-end smoke
-        run: cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+        run: cargo test -p mxr --test integration live_gmail_e2e:: -- --ignored --nocapture

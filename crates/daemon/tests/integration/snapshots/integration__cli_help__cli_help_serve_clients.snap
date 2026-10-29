@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+List registered clients, or preview/revoke one
+
+Usage: mxr serve clients [OPTIONS] [COMMAND]
+
+Commands:
+  revoke  Preview by default; --confirm revokes credentials without cancelling mail work
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

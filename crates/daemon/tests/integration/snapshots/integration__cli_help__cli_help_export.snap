@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Export a thread or matching search results
+
+Usage: mxr export [OPTIONS] [THREAD_ID]
+
+Arguments:
+  [THREAD_ID]
+
+Options:
+      --search <SEARCH>
+      --account <ACCOUNT>
+      --format <FORMAT>    [default: markdown]
+      --output <OUTPUT>
+  -h, --help               Print help

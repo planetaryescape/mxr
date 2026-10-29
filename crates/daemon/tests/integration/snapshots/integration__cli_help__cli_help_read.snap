@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Mark message as read
+
+Usage: mxr read [OPTIONS] [MESSAGE_ID]...
+
+Arguments:
+  [MESSAGE_ID]...
+
+Options:
+      --search <SEARCH>
+      --account <ACCOUNT>
+      --yes
+      --dry-run
+      --async              Run as a daemon-side background job and poll with `mxr jobs`
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

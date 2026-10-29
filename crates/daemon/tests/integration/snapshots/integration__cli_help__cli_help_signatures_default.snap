@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Set a scoped default signature
+
+Usage: mxr signatures default [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  Signature name
+
+Options:
+      --kind <KIND>        Which compose kind this default applies to [default: all] [possible values: all, new, reply]
+      --account <ACCOUNT>  Account selector (key, name, email, or id). Omit for global default
+      --from <FROM_EMAIL>  Exact from-address default within the account
+  -h, --help               Print help

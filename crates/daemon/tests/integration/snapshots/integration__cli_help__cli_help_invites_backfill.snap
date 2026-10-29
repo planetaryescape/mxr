@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Backfill invite rows from already stored message bodies
+
+Usage: mxr invites backfill [OPTIONS]
+
+Options:
+      --account <ACCOUNT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

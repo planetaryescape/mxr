@@ -1,0 +1,79 @@
+---
+source: crates/daemon/tests/integration/modes_cli.rs
+assertion_line: 161
+expression: "serde_json::to_string_pretty(&guides).unwrap()"
+---
+[
+  {
+    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; Space ticks it off and o opens the email it came from.",
+    "add_one": "Press `t` on any email to add one yourself.",
+    "clear_for_now": "Nothing needs you.",
+    "first_run_line": "What email asked you to do",
+    "header": "Things email asked you to do, ordered by when to act.",
+    "hints": [
+      {
+        "anchor": "The first row",
+        "id": "todo.runway",
+        "key": {
+          "key": "e",
+          "verb": "tick off"
+        },
+        "seen": false,
+        "text": "Press e to tick this off, or o to open the email it came from."
+      },
+      {
+        "anchor": "The first catch-up line",
+        "id": "todo.catchup",
+        "key": {
+          "key": "2",
+          "verb": "catch up"
+        },
+        "seen": false,
+        "text": "These came in before mxr sorted your mail. 2 goes through them: keep or let go of each."
+      }
+    ],
+    "keys": [
+      {
+        "key": "Enter",
+        "verb": "do it"
+      },
+      {
+        "key": "e",
+        "verb": "tick off"
+      },
+      {
+        "key": "b",
+        "verb": "schedule"
+      },
+      {
+        "key": ",",
+        "verb": "edit"
+      },
+      {
+        "key": "X",
+        "verb": "correct to-do"
+      },
+      {
+        "key": "o",
+        "verb": "open the email"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "2",
+        "verb": "catch up"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "Bills, failed payments, renewals, invites to answer, links to verify, forms to sign and promises you made.",
+    "mode": "todo",
+    "name": "To do",
+    "never_had_any": "When an email asks you to pay, sign, reply by a date or confirm something, it shows up here as one line: what to do and when to act.",
+    "why_template": "Here because: \"{evidence}\" ({source})."
+  }
+]

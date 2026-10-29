@@ -371,13 +371,13 @@ layer reuses. The conventions:
 - Each AI CLI surface has an integration test that runs the daemon against
   real SQLite fixtures — not mocks. The integration tests are the spec for
   CLI/JSON output stability.
-- Snapshots under `crates/daemon/tests/snapshots/` lock CLI help and JSON
+- Snapshots under `crates/daemon/tests/integration/snapshots/` lock CLI help and JSON
   report shape; update them deliberately when surfaces change.
 - LLM tests use a mock LLM. The mock must emit invalid citations in at
   least one test per LLM-backed feature so the citation validator stays
   honest.
 
-Known flaky-but-out-of-scope: `crates/daemon/tests/reset_cli.rs` has a
+Known flaky-but-out-of-scope: `crates/daemon/tests/integration/reset_cli.rs` has a
 `wait_for_process_exit` timeout that flakes under load. Separate ticket,
 not an AI-email regression.
 

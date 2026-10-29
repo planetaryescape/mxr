@@ -241,9 +241,9 @@ cargo build -p mxr
 Focused checks:
 
 ```bash
-scripts/cargo-test -p mxr --test cli_help
-scripts/cargo-test -p mxr --test cli_journey
-scripts/cargo-test -p mxr --test daemon_lifecycle
+scripts/cargo-test -p mxr --test integration cli_help::
+scripts/cargo-test -p mxr --test integration cli_journey::
+scripts/cargo-test -p mxr --test integration daemon_lifecycle::
 cargo test --workspace provider_offline_smoke_
 ```
 

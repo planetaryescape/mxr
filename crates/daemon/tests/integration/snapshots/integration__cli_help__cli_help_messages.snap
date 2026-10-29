@@ -1,0 +1,27 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Conversations that need your attention, one row per person. Reply or mark done.
+
+By default, only actionable topics appear: unanswered directed requests and due reminders you explicitly set. Recent, unread, pinned, archived and sent-only mail do not qualify just because they exist. Use `mxr messages list --turn all` for All conversations, including history in Recent and Quiet; `messages person EMAIL` also retains that person's history. Each row is a person, merged across their addresses; a group thread is its own row. The preview is what they asked, from the conversation's gist when one is cached, else their latest new text.
+
+Usage: mxr messages [OPTIONS] [COMMAND]
+
+Commands:
+  list    Conversations needing attention (the default), or an explicit history view
+  person  One person's page: how you know them, every topic, and the selected topic as a conversation of what each message newly says [alias: show]
+  ack     Got it: reply with a short acknowledgement in your usual greeting and sign-off for that person. --dry-run prints the exact text
+  merge   Make several addresses one person, by hand. mxr only ever suggests a merge (same name, you've written to both); --suggestions lists them
+  split   Take an address back out of the person it was merged into
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

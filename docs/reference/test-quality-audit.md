@@ -49,8 +49,8 @@ the public `mail-query` crate and mxr executes it through `mxr-search`.
 | crates/daemon/src/server.rs | 8 | 30/30 | high_confidence | keep | 0 | 0 |
 | crates/daemon/src/state.rs | 3 | 30/30 | high_confidence | keep | 0 | 0 |
 | crates/daemon/src/unsubscribe.rs | 2 | 30/30 | high_confidence | keep | 0 | 0 |
-| crates/daemon/tests/cli_help.rs | 1 | 30/30 | high_confidence | keep | 0 | 1 |
-| crates/daemon/tests/daemon_lifecycle.rs | 1 | 30/30 | high_confidence | keep | 0 | 0 |
+| crates/daemon/tests/integration/cli_help.rs | 1 | 30/30 | high_confidence | keep | 0 | 1 |
+| crates/daemon/tests/integration/daemon_lifecycle.rs | 1 | 30/30 | high_confidence | keep | 0 | 0 |
 | crates/export/src/json.rs | 10 | 30/30 | high_confidence | keep | 0 | 0 |
 | crates/export/src/lib.rs | 2 | 30/30 | high_confidence | keep | 0 | 0 |
 | crates/export/src/llm.rs | 13 | 30/30 | high_confidence | keep | 0 | 0 |

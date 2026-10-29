@@ -39,97 +39,11 @@ path = "crates/daemon/src/main.rs"
 name = "mxr-chime-player"
 path = "crates/daemon/src/bin/chime_player.rs"
 
+# One test program for crates/daemon/tests: as separate targets, each of the
+# 23 files linked the whole mxr library again (4-9 s apiece per build).
 [[test]]
-name = "cli_help"
-path = "crates/daemon/tests/cli_help.rs"
-
-[[test]]
-name = "bug_report_cli"
-path = "crates/daemon/tests/bug_report_cli.rs"
-
-[[test]]
-name = "bounded_logs"
-path = "crates/daemon/tests/bounded_logs.rs"
-
-[[test]]
-name = "dial_stdio_cli"
-path = "crates/daemon/tests/dial_stdio_cli.rs"
-
-[[test]]
-name = "cli_exit_codes_cli"
-path = "crates/daemon/tests/cli_exit_codes_cli.rs"
-
-[[test]]
-name = "cli_auth_exit_cli"
-path = "crates/daemon/tests/cli_auth_exit_cli.rs"
-
-[[test]]
-name = "selected_daemon_diagnostics"
-path = "crates/daemon/tests/selected_daemon_diagnostics.rs"
-
-[[test]]
-name = "stdio_server_cli"
-path = "crates/daemon/tests/stdio_server_cli.rs"
-
-[[test]]
-name = "daemon_lifecycle"
-path = "crates/daemon/tests/daemon_lifecycle.rs"
-
-[[test]]
-name = "reset_cli"
-path = "crates/daemon/tests/reset_cli.rs"
-
-[[test]]
-name = "accounts_repair_cli"
-path = "crates/daemon/tests/accounts_repair_cli.rs"
-
-[[test]]
-name = "cli_journey"
-path = "crates/daemon/tests/cli_journey.rs"
-
-[[test]]
-name = "demo_cli"
-path = "crates/daemon/tests/demo_cli.rs"
-
-[[test]]
-name = "live_gmail_e2e"
-path = "crates/daemon/tests/live_gmail_e2e.rs"
-
-[[test]]
-name = "compose_check_cli"
-path = "crates/daemon/tests/compose_check_cli.rs"
-
-[[test]]
-name = "compose_html_cli"
-path = "crates/daemon/tests/compose_html_cli.rs"
-
-[[test]]
-name = "forward_cli"
-path = "crates/daemon/tests/forward_cli.rs"
-
-[[test]]
-name = "scheduled_sends_cli"
-path = "crates/daemon/tests/scheduled_sends_cli.rs"
-
-[[test]]
-name = "timing_cadence_cli"
-path = "crates/daemon/tests/timing_cadence_cli.rs"
-
-[[test]]
-name = "archive_intelligence_cli"
-path = "crates/daemon/tests/archive_intelligence_cli.rs"
-
-[[test]]
-name = "activity_invariants"
-path = "crates/daemon/tests/activity_invariants.rs"
-
-[[test]]
-name = "modes_cli"
-path = "crates/daemon/tests/modes_cli.rs"
-
-[[test]]
-name = "unsubscribe_cli"
-path = "crates/daemon/tests/unsubscribe_cli.rs"
+name = "integration"
+path = "crates/daemon/tests/integration/main.rs"
 
 [features]
 # Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).

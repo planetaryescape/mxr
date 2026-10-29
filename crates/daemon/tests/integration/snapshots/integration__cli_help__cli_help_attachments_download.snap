@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Download attachment(s)
+
+Usage: mxr attachments download [OPTIONS] <MESSAGE_ID> [INDEX]
+
+Arguments:
+  <MESSAGE_ID>
+  [INDEX]       Attachment index (1-based, omit for all)
+
+Options:
+      --account <ACCOUNT>
+      --dir <DIR>          Output directory
+      --format <FORMAT>    Output format for completed local paths [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

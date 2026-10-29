@@ -89,7 +89,7 @@ The differentiation trade-off test passes: a competitor *could* credibly claim t
 | Web diagnostics integration | `apps/web/src/features/diagnostics/{DiagnosticsRoute.tsx,EventsPanel.tsx,LogsPanel.tsx}` |
 | Config | `crates/config/src/types.rs::ActivityConfig` + `ActivityRetentionConfig` |
 | Agent context summary | `AGENTS.md` activity/privacy invariant + `.agents/skills/mxr-development/SKILL.md` |
-| PII audit + structural test | `crates/daemon/tests/activity_invariants.rs` |
+| PII audit + structural test | `crates/daemon/tests/integration/activity_invariants.rs` |
 | Bench harness | `benches/user_activity.rs` |
 
 ## Capture seam — why one place, what flows through it
@@ -282,7 +282,7 @@ When adding new behavior:
 - [ ] If a new IPC verb queries the table, make sure it can't bypass the `redacted` filter unless `include_redacted=true` is explicit. We accidentally exposed redacted rows in the first export-handler draft; the test in `redact_excluded_from_default_list` (in storage tests) catches that.
 - [ ] If the TUI gains a new pane, register it in `DiagnosticsPaneKind::next()/prev()`, `all_panes()`, `pane_label()`, scroll offset accessors, and `summary_lines` / `pane_lines`. Then re-snapshot the diagnostics-page test.
 - [ ] If the web gains a new bridge route, add it to `extend_admin` (or the appropriate router), regenerate the OpenAPI snapshot, and add a typed client in `apps/web/src/features/activity/api.ts`.
-- [ ] If the CLI gains a new subcommand, regenerate `crates/daemon/tests/snapshots/cli_help__*.snap` and the published reference page (`cd site && npm run generate`).
+- [ ] If the CLI gains a new subcommand, regenerate `crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap` and the published reference page (`cd site && npm run generate`).
 
 When changing existing behavior:
 
@@ -304,8 +304,8 @@ cargo test -p mxr-tui activity_modal_tests
 cargo test -p mxr-tui --test snapshots diagnostics_page_snapshot
 
 # Integration tests
-cargo test -p mxr --test activity_invariants
-cargo test -p mxr --test cli_help
+cargo test -p mxr --test integration activity_invariants::
+cargo test -p mxr --test integration cli_help::
 
 # End-to-end against a real daemon (or `mxr demo`):
 mxr activity --help

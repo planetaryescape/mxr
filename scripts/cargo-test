@@ -14,7 +14,7 @@
 # Usage:
 #   scripts/cargo-test -p mxr-store --lib pool::tests::pre_versioning_db_is_backfilled_into_schema_migrations
 #   scripts/cargo-test -p mxr-protocol
-#   scripts/cargo-test -p mxr --test cli_help
+#   scripts/cargo-test -p mxr --test integration cli_help::
 #
 # Avoid `--workspace` here. The workspace is 14 crates; full builds
 # routinely run minutes and overrun agent Bash timeouts. Per AGENTS.md,

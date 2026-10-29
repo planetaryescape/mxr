@@ -17,7 +17,7 @@ function fixture(t) {
   writeFileSync(join(output, 'previous.md'), 'last successful generation');
   writeFileSync(join(output, 'concepts.md'), 'handwritten concepts');
   function snapshot(name, body) {
-    writeFileSync(join(snapshots, `cli_help__cli_help_${name}.snap`), `---\nsource: fixture\n---\n${body}\n`);
+    writeFileSync(join(snapshots, `integration__cli_help__cli_help_${name}.snap`), `---\nsource: fixture\n---\n${body}\n`);
   }
   return { root, snapshots, output, snapshot };
 }
@@ -31,7 +31,7 @@ test('a symlinked CLI entry generates pages while stdin imports remain side-effe
   for (const name of ['generate-cli-reference.mjs', 'cli-reference-examples.json']) {
     copyFileSync(new URL(name, import.meta.url), join(scripts, name));
   }
-  cpSync(snapshots, join(root, 'crates', 'daemon', 'tests', 'snapshots'), { recursive: true });
+  cpSync(snapshots, join(root, 'crates', 'daemon', 'tests', 'integration', 'snapshots'), { recursive: true });
   const script = join(scripts, 'generate-cli-reference.mjs');
   const output = join(root, 'site', 'src', 'content', 'docs', 'reference', 'cli', 'example.md');
   const imported = spawnSync(process.execPath, ['--input-type=module', '-'], {

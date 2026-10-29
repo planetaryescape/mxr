@@ -502,10 +502,12 @@ retries just those. A batch the undo job is restoring cannot be undone on its
 own at the same time (`mxr undo MUTATION_ID` says it `is being undone
 already`); a batch undone on its own first is skipped by the undo job.
 
-`mxr jobs JOB_ID` carries at most the newest 100 `undo_ids` and the first 50
-`failures`; `undo_id_count` and `failure_count` say how many the job holds (a
-job over half a million messages has 5,000 undo ids), and a selection job is
-undone as a whole with `mxr undo JOB_ID`. The `mxr jobs` listing carries
+`mxr jobs JOB_ID` carries the first 50 `failures` and, for an `--all` job, at
+most the newest 100 `undo_ids`; `undo_id_count` and `failure_count` say how
+many the job holds (a job over half a million messages has 5,000 undo ids),
+and an `--all` job is undone as a whole with `mxr undo JOB_ID`. Other jobs (a
+sweep, `--async`) are undone from their list, so `mxr jobs JOB_ID` carries all
+of their `undo_ids`. The `mxr jobs` listing carries
 neither list: `undo_ids` and `failures` are empty there, and the two counts say
 how many `mxr jobs JOB_ID` shows. Every error and failure reason is cut to 512
 bytes (an account name to 128) when the job is saved, so a listing of the 100
@@ -513,7 +515,14 @@ retained jobs stays well under the 16 MiB frame limit. A selection job also
 carries `action`, the label edit or archive it applies, so a start repeated
 under the same job id with a different action is refused. A job id is only
 ever returned for a job the daemon has recorded: a start that loses the
-preview token to another start is refused and leaves no job.
+preview token to another start is refused and leaves no job. If the
+connection drops before the daemon replies to `--all --yes`, the command looks
+for the job under its id for 10 seconds; if it still has not appeared, the
+command exits non-zero saying the outcome is unknown, with the job id and
+`mxr jobs JOB_ID` to check it, because the start may still be in progress.
+
+The dry run's sample cuts each message's `from` and `subject` to 256 bytes,
+and account names to 128, so a preview stays small whatever the mail holds.
 
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address

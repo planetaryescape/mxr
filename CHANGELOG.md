@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.185](https://github.com/planetaryescape/mxr/compare/v0.6.184...v0.6.185) (2026-10-29)
+
+
+### Bug Fixes
+
+* clear the seroval advisory and pin the clock in the bill re-date to-do test ([#782](https://github.com/planetaryescape/mxr/issues/782)) ([f4b1e2c](https://github.com/planetaryescape/mxr/commit/f4b1e2c6cd02089bde977d74674a57a405260b42))
+* keep daemon auth kinds through every CLI command ([#787](https://github.com/planetaryescape/mxr/issues/787)) ([3950d42](https://github.com/planetaryescape/mxr/commit/3950d4243d6861bee35bde69351a6a5e12a7e2fb))
+* mark account rows in assistant, Owed and Place, and read unknown colour slots ([#785](https://github.com/planetaryescape/mxr/issues/785)) ([22f9624](https://github.com/planetaryescape/mxr/commit/22f9624999be235b5a087cc0b6f6687b85443c62))
+* retire the key moves announced until 0.6.185 ([#784](https://github.com/planetaryescape/mxr/issues/784)) ([be8dccf](https://github.com/planetaryescape/mxr/commit/be8dccf6ef09333997ef6eb1810f67d1bb499420))
+* stop idle daemons that have no real mail account ([#781](https://github.com/planetaryescape/mxr/issues/781)) ([166ccc2](https://github.com/planetaryescape/mxr/commit/166ccc26186d2b09e204b81e922c25d61589c369))
+
+
+### Performance
+
+* make the slowest Rust tests fast without losing any check ([#786](https://github.com/planetaryescape/mxr/issues/786)) ([8278a73](https://github.com/planetaryescape/mxr/commit/8278a7314f04228b2a80aa363972d7ecac96c34a))
+
 ## [0.6.184](https://github.com/planetaryescape/mxr/compare/v0.6.183...v0.6.184) (2026-10-29)
 
 

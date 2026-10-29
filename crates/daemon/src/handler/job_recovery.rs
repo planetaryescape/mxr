@@ -4,7 +4,8 @@
 //! stays `running` forever unless someone marks it. At startup this marks
 //! every such job failed, with the counts the job had persisted after its
 //! last finished chunk, and starts the hour an `--all` job's undo stays open.
-//! Re-running the same search finishes what is left.
+//! Re-running the same search finishes what is left. Undo entries the dead
+//! daemon was restoring are released.
 
 use super::mutations::{persist_job, SELECTION_UNDO_WINDOW_SECS};
 use super::selection_jobs::{record_job_finished, JobActivity};
@@ -69,6 +70,28 @@ pub(crate) async fn mark_interrupted_mutation_jobs(state: &AppState) -> usize {
         );
     }
     marked
+}
+
+/// Releases every undo entry claim. A claim belongs to an undo running in a
+/// daemon process; at startup every holder is a process that died, and its
+/// undo job was just marked interrupted, so the entries go back to whoever
+/// undoes them next.
+pub(crate) async fn release_undo_claims_of_dead_daemon(state: &AppState) -> u64 {
+    match state.store.release_all_undo_claims().await {
+        Ok(released) => {
+            if released > 0 {
+                tracing::warn!(
+                    entries = released,
+                    "released undo entries a previous daemon was restoring"
+                );
+            }
+            released
+        }
+        Err(error) => {
+            tracing::warn!(%error, "could not release undo claims a previous daemon held");
+            0
+        }
+    }
 }
 
 fn action_for_kind(kind: &str) -> &'static str {

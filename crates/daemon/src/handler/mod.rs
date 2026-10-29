@@ -63,6 +63,7 @@ mod gist_numbers;
 mod helpers;
 mod home_projection;
 mod humanizer;
+mod job_records;
 pub(crate) mod job_recovery;
 mod job_undo;
 mod keymap;

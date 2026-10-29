@@ -43,9 +43,9 @@ impl super::Store {
         Ok(())
     }
 
-    /// Take a job id for a new job, if nobody holds it. The insert is the
-    /// claim: of any number of concurrent callers with one id, exactly one gets
-    /// `true`. The others find the job the winner is starting.
+    /// Insert a new job's row, unless a job with this id exists. Of any number
+    /// of concurrent callers with one id exactly one gets `true`; the others
+    /// find that caller's job. The row is the job itself, never a placeholder.
     pub async fn claim_mutation_job(
         &self,
         job_id: &str,
@@ -67,17 +67,6 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(result.rows_affected() == 1)
-    }
-
-    /// Give up a claim whose job never started.
-    pub async fn delete_mutation_job(&self, job_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM mutation_jobs WHERE job_id = ?1 AND kind != 'recoverable_archive'",
-        )
-        .bind(job_id)
-        .execute(self.writer())
-        .await?;
-        Ok(())
     }
 
     /// Initialize the database identity once, including under concurrent first use.

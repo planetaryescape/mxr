@@ -194,6 +194,7 @@ mod tests {
             undo_of: None,
             action: None,
             undo_id_count: 0,
+            failure_count: 0,
         }
     }
 
@@ -1481,6 +1482,7 @@ mod tests {
                         undo_of: None,
                         action: None,
                         undo_id_count: 0,
+                        failure_count: 0,
                     },
                 },
                 IpcCategory::CoreMail,

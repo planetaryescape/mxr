@@ -366,6 +366,15 @@ impl FakeProvider {
             (skip, times, retry_after_secs);
     }
 
+    /// Rate-limit refusals still to come (the `times` of the last
+    /// `rate_limit_mutations_after`), so a test can tell one has happened.
+    pub fn pending_rate_limits(&self) -> u32 {
+        self.rate_limited_mutations
+            .lock()
+            .expect("fake provider rate limit mutex should not be poisoned")
+            .1
+    }
+
     /// Make every subsequent send accept the mail and then fail, or stop.
     pub fn fail_sends_after_accepting(&self, fail: bool) {
         self.sends_fail_after_accepting

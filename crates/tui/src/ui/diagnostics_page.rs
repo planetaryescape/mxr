@@ -773,7 +773,12 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                             job.progress.succeeded,
                             job.progress.skipped,
                             job.progress.failed,
-                            job.undo_ids.join(","),
+                            if job.undo_ids.is_empty() && job.undo_id_count > 0 {
+                                // A listing carries the count, not the ids.
+                                job.undo_id_count.to_string()
+                            } else {
+                                job.undo_ids.join(",")
+                            },
                             job.error
                                 .as_ref()
                                 .map(|error| format!(" error={error}"))

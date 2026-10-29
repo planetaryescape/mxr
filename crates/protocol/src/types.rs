@@ -3559,11 +3559,17 @@ pub struct JobData {
     /// A repeated start under the same job id must name the same action.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<MutationCommand>,
-    /// How many undo ids the job holds. `undo_ids` carries at most the newest
+    /// How many undo ids the job holds. `GetJob` carries at most the newest
     /// 100 of them so a job over half a million messages stays small on the
-    /// wire; a selection job is undone as a whole by its own id.
+    /// wire, and `ListJobs` none; a selection job is undone as a whole by its
+    /// own id.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub undo_id_count: u32,
+    /// How many failure records the job holds. `ListJobs` leaves `failures`
+    /// (and `undo_ids`) empty and says how many there are here; `GetJob`
+    /// carries them.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub failure_count: u32,
 }
 
 fn is_zero(value: &u32) -> bool {

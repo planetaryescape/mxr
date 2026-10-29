@@ -49,7 +49,7 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 106);
+    assert_eq!(manifest.schema_version, 107);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -113,6 +113,10 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
         )
         .await
         .unwrap();
+        sqlx::raw_sql(PRE_UNDO_CLAIMS_SCHEMA)
+            .execute(&mut db)
+            .await
+            .unwrap();
         sqlx::raw_sql(include_str!("../pre_conversation_summaries.sql"))
             .execute(&mut db)
             .await
@@ -177,7 +181,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105, 106]);
+            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105, 106, 107]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

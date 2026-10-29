@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.191](https://github.com/planetaryescape/mxr/compare/v0.6.190...v0.6.191) (2026-10-29)
+
+
+### Bug Fixes
+
+* let expired key-move notices stop instead of blocking releases ([#805](https://github.com/planetaryescape/mxr/issues/805)) ([24cd0a0](https://github.com/planetaryescape/mxr/commit/24cd0a034dbe04ed85c4d4ea77ba4159ac2bfac6))
+
+
+### Documentation
+
+* take mxr worktrees from the warm pool ([#804](https://github.com/planetaryescape/mxr/issues/804)) ([b226b04](https://github.com/planetaryescape/mxr/commit/b226b04cf56caaccc6956e2e53c0a618dfddd049))
+
 ## [0.6.190](https://github.com/planetaryescape/mxr/compare/v0.6.189...v0.6.190) (2026-10-29)
 
 

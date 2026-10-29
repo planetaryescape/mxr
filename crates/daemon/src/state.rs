@@ -512,6 +512,10 @@ pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 pub struct AppState {
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
+    /// An in-memory test state's attachment folder, deleted with the state so
+    /// test runs don't fill the temp directory.
+    #[cfg(test)]
+    _test_attachment_dir: Option<tempfile::TempDir>,
     pub store: Arc<Store>,
     /// Static locale resolved once at daemon startup from `MXR_LOCALE` env
     /// var or config `locale` key. Handlers reference this for subject and
@@ -911,6 +915,8 @@ impl AppState {
 
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(pending),
+            #[cfg(test)]
+            _test_attachment_dir: None,
             store,
             locale,
             activity,
@@ -2348,7 +2354,8 @@ impl AppState {
         debug_assert_eq!(provider.account_id(), &account.id);
 
         let mut config = mxr_config::MxrConfig::default();
-        config.general.attachment_dir = test_attachment_dir();
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -2391,6 +2398,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
+            _test_attachment_dir: Some(attachment_dir),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2459,7 +2467,8 @@ impl AppState {
     pub async fn in_memory_without_accounts_with_config(
         mut config: mxr_config::MxrConfig,
     ) -> anyhow::Result<Self> {
-        config.general.attachment_dir = test_attachment_dir();
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -2490,6 +2499,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
+            _test_attachment_dir: Some(attachment_dir),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2559,7 +2569,8 @@ impl AppState {
     pub async fn in_memory_with_fake_config(
         mut config: mxr_config::MxrConfig,
     ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
-        config.general.attachment_dir = test_attachment_dir();
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -2615,6 +2626,7 @@ impl AppState {
         Ok((
             Self {
                 restore_pending: std::sync::atomic::AtomicBool::new(false),
+                _test_attachment_dir: Some(attachment_dir),
                 store,
                 locale: mxr_core::i18n::DEFAULT_LOCALE,
                 activity,
@@ -2687,8 +2699,10 @@ impl AppState {
 }
 
 #[cfg(test)]
-fn test_attachment_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4()))
+fn test_attachment_dir() -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix("mxr-attachments-test-")
+        .tempdir()
 }
 
 /// A lexical index opened at startup, plus the path to mark once it is rebuilt

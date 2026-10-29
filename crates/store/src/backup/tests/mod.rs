@@ -88,6 +88,20 @@ fn write_manifest(stage: &Path, mut manifest: BackupManifest) -> BackupManifest 
     manifest
 }
 
+/// A copy of a staged bundle, so each case starts from the same bytes.
+fn copy_bundle(from: &Path, to: &Path) {
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            std::fs::create_dir_all(&target).unwrap();
+            copy_bundle(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
 async fn seed_resolution_queue(store: &Store) -> Vec<QueueSnapshot> {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -995,17 +1009,21 @@ async fn exact_schema_82_backup_remains_restorable() {
 
 #[tokio::test]
 async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
+    // Staged once and copied per version: staging runs every migration twice.
+    let source = tempfile::tempdir().unwrap();
+    let staged = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    store.writer().close().await;
+    let staged_manifest = write_manifest(
+        staged.path(),
+        populate(source.path(), staged.path()).await.unwrap(),
+    );
     for schema_version in [83, 84] {
-        let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
-        let store = Store::fresh_backup(&source.path().join("mxr.db"))
-            .await
-            .unwrap();
-        store.writer().close().await;
-        let mut manifest = write_manifest(
-            stage.path(),
-            populate(source.path(), stage.path()).await.unwrap(),
-        );
+        copy_bundle(staged.path(), stage.path());
+        let mut manifest = staged_manifest.clone();
         let mut db = SqliteConnection::connect_with(
             &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
         )

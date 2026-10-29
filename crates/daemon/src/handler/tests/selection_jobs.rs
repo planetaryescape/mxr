@@ -951,6 +951,36 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
     );
 }
 
+/// A label stored as the user's but carrying a mailbox role is refused too.
+#[tokio::test]
+async fn a_user_label_with_a_mailbox_role_is_refused() {
+    let fx = Fixture::new().await;
+    fx.state
+        .store
+        .upsert_label(&Label {
+            id: LabelId::from_scoped_provider_id(&fx.account, "fake", "Label_bin"),
+            account_id: fx.account.clone(),
+            name: "Bin".into(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "Label_bin".into(),
+            unread_count: 0,
+            total_count: 0,
+            role: Some(mxr_core::types::Role::Trash),
+        })
+        .await
+        .unwrap();
+    fx.many(2, "invoice").await;
+    let refusal = fx
+        .refused(Request::PreviewSelection {
+            selection: Fixture::selection("invoice", Some(&fx.account)),
+            mutation: edit_labels(&["Bin"], &[]),
+            sample_size: None,
+        })
+        .await;
+    assert!(refusal.contains("system label or folder"), "{refusal}");
+}
+
 /// Across accounts a name must be the user's label in each of them, because
 /// each message is edited with its own account's label of that name.
 #[tokio::test]

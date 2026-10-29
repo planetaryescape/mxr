@@ -82,13 +82,7 @@ export function SnoozedRoute() {
         describe: (row) => `Wake ${row.subject} now`,
         run: (row) => wake.mutate(row.message_ids?.length ? row.message_ids : [row.id]),
       }}
-      empty={
-        <PageEmpty
-          framed
-          title="Nothing snoozed"
-          body={snoozedEmptyBody()}
-        />
-      }
+      empty={<PageEmpty framed title="Nothing snoozed" body={snoozedEmptyBody()} />}
     />
   );
 }

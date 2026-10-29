@@ -5,11 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ComposeDraftState } from "./composeDraft";
 import { useComposeAutofocus } from "./useComposeAutofocus";
 
-const reply = { current: { frontmatter: { to: "sam@example.com" } } } as unknown as MutableRefObject<
-  ComposeDraftState | null
->;
+const reply = {
+  current: { frontmatter: { to: "sam@example.com" } },
+} as unknown as MutableRefObject<ComposeDraftState | null>;
 
-const nextFrame = () => act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+const nextFrame = () =>
+  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
 /** The lazily loaded editor arriving: the body CodeMirror renders. */
 function mountEditor(): HTMLElement {

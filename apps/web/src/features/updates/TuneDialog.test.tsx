@@ -8,7 +8,9 @@ const line = { source_name: "GitHub acme/api", setting: "digest" } as unknown as
 
 describe("TuneDialog", () => {
   it("moves between its choices with j, k and the arrows, as every picker does", () => {
-    render(<TuneDialog line={line} onOpenChange={vi.fn()} onChoose={vi.fn()} />);
+    render(
+      <TuneDialog line={line} onOpenChange={vi.fn<() => void>()} onChoose={vi.fn<() => void>()} />,
+    );
     const choices = screen.getAllByRole("button").filter((button) => button.closest(".grid"));
     choices[0]!.focus();
 

@@ -197,18 +197,17 @@ describe("Archive consuming client recovery", () => {
 
 describe("which retained Archives Archive recovery offers", () => {
   test("a finished Archive is not offered; an unaccepted, running or unconfirmed one is", () => {
-    const finished = operation();
-    finished.accepted = true;
-    finished.items = finished.items.map((item) => ({ ...item, state: "completed" }));
+    const withItems = (state: "completed" | "unknown"): ArchiveOperation => {
+      const op = operation();
+      op.accepted = true;
+      for (const item of op.items) item.state = state;
+      return op;
+    };
+    const finished = withItems("completed");
     expect(needsRecovery(finished)).toBe(false);
 
     expect(needsRecovery(operation())).toBe(true);
     expect(needsRecovery({ ...finished, running: true })).toBe(true);
-    expect(
-      needsRecovery({
-        ...finished,
-        items: finished.items.map((item) => ({ ...item, state: "unknown" })),
-      }),
-    ).toBe(true);
+    expect(needsRecovery(withItems("unknown"))).toBe(true);
   });
 });

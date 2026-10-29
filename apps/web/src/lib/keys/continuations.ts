@@ -57,9 +57,7 @@ export function shortcutContinuations(
   return [...rows.values()]
     .toSorted(
       (a, b) =>
-        a.priority - b.priority ||
-        keyClass(a.next[0]!) - keyClass(b.next[0]!) ||
-        a.order - b.order,
+        a.priority - b.priority || keyClass(a.next[0]!) - keyClass(b.next[0]!) || a.order - b.order,
     )
     .map(({ chord, next, label }) => ({ chord, next, label }));
 }

@@ -34,7 +34,7 @@ export interface JobData {
   status: JobStatus;
   progress: JobProgress;
   undo_ids: string[];
-  /** How many undo ids the job holds; the listing leaves `undo_ids` empty, one job carries the newest 100. */
+  /** How many undo ids the job holds; the listing leaves `undo_ids` empty, one job carries them (an --all job only its newest 100). */
   undo_id_count?: number;
   error?: string | null;
   /** Unix milliseconds. */

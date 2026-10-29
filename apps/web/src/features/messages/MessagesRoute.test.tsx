@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
 import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
+import { BridgeRequestError } from "@/api/client";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
@@ -448,6 +449,67 @@ test("Undo from the explicit landing restores the original topic after a cached-
     expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
   );
   expect(posts).toEqual([["a-live"]]);
+});
+
+test("a person Done took out of the list reopens on their own topic when undo brings them back", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  const b = row("person:b", [topic("b-live")]);
+  let list = listOf(a, b);
+  client.setQueryData(listKey, list);
+  cachePage(a, "a-live", "a-live");
+  cachePage(b, "b-live", "b-live");
+  const asked: (string | null)[] = [];
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (path.endsWith("/messages/done")) {
+      list = listOf(b);
+      return {
+        mutation_id: "synthetic-done",
+        items: [{ thread_id: "a-live", mode: "messages", provider: "fake", copy: "Done." }],
+      };
+    }
+    if (path.includes("/undo")) {
+      list = listOf(a, b);
+      return { result: { succeeded: 1 } };
+    }
+    if (url.pathname.endsWith("/people")) return { messages: list };
+    if (url.pathname.endsWith("/people/page")) {
+      const requested = url.searchParams.get("topic");
+      asked.push(requested);
+      // The bridge refuses a topic that isn't a thread id, as the real one does.
+      if (requested?.startsWith("person:")) {
+        throw new BridgeRequestError(400, "topic: UUID parsing failed");
+      }
+      const person = url.searchParams.get("person") === a.id ? a : b;
+      return { page: personPage(person, requested ?? person.topics[0]?.thread_id ?? "") };
+    }
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: b.id, topic: "b-live" }),
+  );
+  // Done's own refresh lands first: a has left the list.
+  await waitFor(() => expect(screen.queryByText(a.id)).toBeNull());
+  await waitFor(() => expect(useUndo.getState().lastMutationId).toBe("synthetic-done"));
+  // Undo's list refresh brings a back before the undo's own follow-up runs,
+  // so the list watcher reopens a first (the order the e2e run caught).
+  await act(async () => {
+    client.setQueryData(listKey, listOf(a, b));
+  });
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ person: a.id }));
+  expect(router.state.location.search.topic).not.toBe(b.id);
+  await act(async () => {
+    expect(await useUndo.getState().lastUndo?.()).toBe(true);
+  });
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
+  );
+  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
+  expect(screen.queryByText("Couldn't find this person")).toBeNull();
+  expect(asked).not.toContain(b.id);
 });
 
 test("rapid Done does not revisit settled topics while query-notification delivery is deferred", async () => {

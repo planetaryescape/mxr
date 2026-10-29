@@ -962,7 +962,10 @@ function SelectionAdvance({
     selectedId,
     isPresent: (id) => present.has(id),
     presenceSource: present,
-    onAdvance,
+    // The hook's second argument is the row it moved off, not a topic.
+    // Passed on, `advanceTo` opened that row id as the topic, which the
+    // bridge refuses, and the page said it couldn't find the person.
+    onAdvance: (id) => onAdvance(id),
     onEmpty,
   });
   return null;

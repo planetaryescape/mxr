@@ -193,6 +193,10 @@ pub enum HtmlIssueKind {
     /// comments are real markup to Outlook, so a `<script>` in one is a live
     /// script, not inert text.
     ForbiddenElementInComment { tag: String },
+    /// The document is over the parser budget (size, tag count, attribute count
+    /// or table shape), so it cannot be checked safely. It is refused, and the
+    /// fix is to simplify the HTML.
+    TooComplexToCheck,
 }
 
 impl fmt::Display for HtmlIssue {
@@ -202,6 +206,11 @@ impl fmt::Display for HtmlIssue {
             None => String::new(),
         };
         match &self.kind {
+            HtmlIssueKind::TooComplexToCheck => write!(
+                f,
+                "HTML is too complex to check safely, so it cannot be sent{where_}: \
+                 simplify it (fewer tags, attributes or table cells) and try again"
+            ),
             HtmlIssueKind::ForbiddenElement { tag } => {
                 write!(
                     f,
@@ -287,50 +296,6 @@ impl fmt::Display for HtmlValidationError {
 
 impl std::error::Error for HtmlValidationError {}
 
-/// The checks a linear scan can make without parsing, for a document over the
-/// parser budget: forbidden elements, and `javascript:` in a link or source
-/// attribute. Regex, not a parse, so the cost is linear in the input. Line
-/// numbers are not reported, because locating them per match would cost a
-/// rescan of the input for each one.
-fn linear_active_content_issues(html: &str) -> Vec<HtmlIssue> {
-    static FORBIDDEN_TAG_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(&format!(
-            r"(?i)<\s*/?\s*({})\b",
-            FORBIDDEN_ELEMENTS.join("|")
-        ))
-        .expect("forbidden element regex should compile")
-    });
-    static JAVASCRIPT_URL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(
-            r#"(?i)\b(href|src|action|formaction|xlink:href)\s*=\s*["']?\s*javascript\s*:"#,
-        )
-        .expect("javascript URL regex should compile")
-    });
-
-    let mut issues = Vec::new();
-    for caps in FORBIDDEN_TAG_RE.captures_iter(html) {
-        let tag = caps[1].to_ascii_lowercase();
-        issues.push(HtmlIssue {
-            kind: HtmlIssueKind::ForbiddenElement { tag },
-            line: None,
-            detail: truncate(&caps[0], 80),
-            origin: IssueOrigin::Document,
-        });
-    }
-    for caps in JAVASCRIPT_URL_RE.captures_iter(html) {
-        issues.push(HtmlIssue {
-            kind: HtmlIssueKind::UnsafeUrlScheme {
-                attribute: caps[1].to_ascii_lowercase(),
-                scheme: "javascript".to_string(),
-            },
-            line: None,
-            detail: truncate(&caps[0], 80),
-            origin: IssueOrigin::Document,
-        });
-    }
-    issues
-}
-
 /// Inspect `html` for active or unsafe content.
 ///
 /// Returns `Ok(())` when the document is safe to send. The input is never
@@ -347,18 +312,19 @@ fn linear_active_content_issues(html: &str) -> Vec<HtmlIssue> {
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
-    // Over the parser budget nothing is parsed. The linear pass still refuses
-    // the clearest active content; the rest of the checks need a parse, and the
-    // draft safety report carries the warning that they were skipped. The nested
-    // parses below run on parts of this same document, so they are within
-    // budget too.
+    // Over the parser budget the document is refused, not checked by a weaker
+    // pass: a linear scan cannot see through attribute counts or entities, so
+    // every check is missed for such a document. The nested parses below run on
+    // parts of this same document, so they are within budget too.
     if !crate::html_limits::within_budget(html) {
-        let issues = linear_active_content_issues(html);
-        return if issues.is_empty() {
-            Ok(())
-        } else {
-            Err(HtmlValidationError { issues })
-        };
+        return Err(HtmlValidationError {
+            issues: vec![HtmlIssue {
+                kind: HtmlIssueKind::TooComplexToCheck,
+                line: None,
+                detail: String::new(),
+                origin: IssueOrigin::Document,
+            }],
+        });
     }
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
@@ -1957,35 +1923,47 @@ mod tests {
 mod budget_validation_tests {
     use super::*;
 
+    fn refused_as_too_complex(html: &str) -> bool {
+        validate_html(html).is_err_and(|error| {
+            error
+                .issues
+                .iter()
+                .any(|issue| issue.kind == HtmlIssueKind::TooComplexToCheck)
+        })
+    }
+
+    fn sixty_five_inert_attributes() -> String {
+        (0..65).map(|n| format!(" a{n}")).collect()
+    }
+
     #[test]
-    fn an_over_budget_html_send_is_not_blocked_for_size_alone() {
+    fn an_over_budget_html_send_is_refused_as_too_complex() {
         let over = format!("<table>{}</table>", "<br>".repeat(200_000));
-        assert!(validate_html(&over).is_ok());
+        assert!(refused_as_too_complex(&over));
     }
 
     #[test]
-    fn a_script_in_an_over_budget_document_is_still_refused() {
-        let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
-        let error = validate_html(&over).expect_err("active content stays refused");
-        assert!(error
-            .issues
-            .iter()
-            .any(|issue| matches!(&issue.kind, HtmlIssueKind::ForbiddenElement { tag } if tag == "script")));
-    }
-
-    #[test]
-    fn a_javascript_link_in_an_over_budget_document_is_still_refused() {
-        let over = format!(
-            r#"<a href="javascript:x()">x</a>{}"#,
-            "<br>".repeat(200_000)
+    fn an_image_with_an_onerror_hidden_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<img{} src=x onerror="alert(1)">"#,
+            sixty_five_inert_attributes()
         );
-        assert!(validate_html(&over).is_err());
+        assert!(refused_as_too_complex(&html));
     }
 
     #[test]
-    fn a_word_javascript_in_text_is_not_refused_over_budget() {
-        let over = format!("<p>javascript: the language</p>{}", "<br>".repeat(200_000));
-        assert!(validate_html(&over).is_ok());
+    fn a_link_with_an_entity_encoded_javascript_url_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<a{} href="jav&#x61;script:alert(1)">x</a>"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_script_in_an_over_budget_document_is_refused() {
+        let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
     }
 
     #[test]

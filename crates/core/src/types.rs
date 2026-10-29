@@ -1941,11 +1941,6 @@ pub enum DraftSafetyIssueCode {
     /// else in the protocol gives a response enum an unknown-value fallback, so
     /// this one does not either.
     UnfilledGap,
-    /// The HTML body is too large or too structurally complex to check in full,
-    /// so the markup checks that need a parse were not run. A warning, not a
-    /// blocker: the send goes ahead. A client that predates this code cannot
-    /// decode a report that holds it, the same as for `UnfilledGap`.
-    HtmlNotFullyChecked,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

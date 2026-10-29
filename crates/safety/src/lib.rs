@@ -17,7 +17,6 @@ pub mod attachment;
 pub mod commitments;
 pub mod config;
 pub mod gaps;
-pub mod html_budget;
 pub mod pii;
 pub mod recipients;
 pub mod reply_all;
@@ -92,7 +91,6 @@ pub fn check_draft_deterministic(
     let mut issues = Vec::new();
     issues.extend(attachment::check(draft));
     issues.extend(gaps::check(draft));
-    issues.extend(html_budget::check(draft));
     issues.extend(pii::check(draft));
     if ctx.mode_reply_all {
         issues.extend(reply_all::check(draft, ctx));

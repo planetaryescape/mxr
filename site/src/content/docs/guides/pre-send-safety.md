@@ -36,7 +36,6 @@ draft, supply an override token, or kill the draft.
 | `ToneMismatch` | Warning | `contact_style` baseline (>= 3 prior messages) | No |
 | `AnswerCoverage` | Warning (or `Info` if LLM disabled) | parent thread | Yes |
 | `UnfilledGap` | Blocker, no override | subject + body, quoted text and signature included | No |
-| `HtmlNotFullyChecked` | Warning (never blocks) | HTML body size and structure | No |
 
 ## Quick start
 

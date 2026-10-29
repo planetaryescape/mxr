@@ -16987,8 +16987,7 @@
           "answer_coverage",
           "commitment_candidate",
           "send_time_note",
-          "unfilled_gap",
-          "html_not_fully_checked"
+          "unfilled_gap"
         ]
       },
       "DraftSafetyModeData": {

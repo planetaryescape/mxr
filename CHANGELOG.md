@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.189](https://github.com/planetaryescape/mxr/compare/v0.6.188...v0.6.189) (2026-10-29)
+
+
+### Bug Fixes
+
+* keep keyboard shortcuts working after a click inside an HTML mail ([#797](https://github.com/planetaryescape/mxr/issues/797)) ([7f8e8f3](https://github.com/planetaryescape/mxr/commit/7f8e8f3f9420e476381a0f0888b2243d68e78614))
+
 ## [0.6.188](https://github.com/planetaryescape/mxr/compare/v0.6.187...v0.6.188) (2026-10-29)
 
 

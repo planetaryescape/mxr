@@ -112,6 +112,78 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
     );
 }
 
+fn snooze_message(id: u64, message_id: mxr_core::MessageId, hours: i64) -> IpcMessage {
+    IpcMessage {
+        expected_workspace: None,
+        id,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Snooze {
+            message_id,
+            wake_at: chrono::Utc::now() + chrono::Duration::hours(hours),
+        }),
+    }
+}
+
+/// Dogfood 2026-10-29: Not now on mail that was already snoozed (Snoozed's
+/// `b`, "send it away again") failed with "UNIQUE constraint failed:
+/// snoozed.message_id". It moves the wake time, and waking still restores
+/// the labels from before the first snooze.
+#[tokio::test]
+async fn snoozing_snoozed_mail_again_moves_its_wake_time() {
+    let state = folder_copy_state().await;
+    let original_id = sync_and_get_first_id(&state).await;
+    match handle_request(&state, &snooze_message(1, original_id, 4))
+        .await
+        .payload
+    {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
+    }
+    let first = state.store.list_snoozed().await.unwrap().remove(0);
+
+    let again = snooze_message(2, first.message_id.clone(), 48);
+    match handle_request(&state, &again).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for a second Snooze, got {other:?}"),
+    }
+    let snoozed = state.store.list_snoozed().await.unwrap();
+    assert_eq!(snoozed.len(), 1, "still one snooze: {snoozed:?}");
+    assert_eq!(snoozed[0].message_id, first.message_id);
+    assert!(snoozed[0].wake_at > first.wake_at + chrono::Duration::hours(40));
+    assert_eq!(snoozed[0].original_labels, first.original_labels);
+    assert_eq!(snoozed[0].snoozed_at, first.snoozed_at);
+
+    let unsnooze = IpcMessage {
+        expected_workspace: None,
+        id: 3,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Unsnooze {
+            message_id: first.message_id.clone(),
+        }),
+    };
+    match handle_request(&state, &unsnooze).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Unsnooze, got {other:?}"),
+    }
+    let inbox = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+        .await
+        .unwrap();
+    assert!(
+        inbox
+            .iter()
+            .all(|envelope| envelope.label_provider_ids == vec!["INBOX".to_string()]),
+        "waking puts it back in the inbox: {inbox:?}"
+    );
+}
+
 #[tokio::test]
 async fn snooze_waits_for_account_provider_lock() {
     let state = folder_copy_state().await;
@@ -4171,4 +4243,50 @@ async fn unsubscribe_preview_commit_preserves_explicit_archive_only_opt_in() {
     assert_eq!(result.message_ids, preview.message_ids);
     assert_eq!(result.archived_count, preview.message_count);
     assert!(fake.sent_drafts().is_empty());
+}
+
+async fn ensure_reply(
+    state: &Arc<AppState>,
+    message_id: &mxr_core::MessageId,
+) -> mxr_core::types::Draft {
+    let response = handle_request(
+        state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id: message_id.clone(),
+            reply_all: false,
+            dry_run: false,
+        }),
+    )
+    .await;
+    match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected reply draft, got {other:?}"),
+    }
+}
+
+/// Dogfood 2026-10-29: with an empty reply and one with text on the same
+/// conversation, Messages showed "Draft: <text>" but `r` resumed the older
+/// empty one. Opening the reply continues the draft the row shows.
+#[tokio::test]
+async fn ensure_reply_draft_continues_the_draft_with_text_over_an_older_empty_one() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "resume-text", &[]).await;
+    let state = Arc::new(state);
+    let empty = ensure_reply(&state, &message_id).await;
+    assert_eq!(empty.content.analysis_text(), "");
+    let mut written = empty.clone();
+    written.id = mxr_core::DraftId::new();
+    written.revision = None;
+    written.content = mxr_core::types::DraftContent::markdown("Thanks, sounds good.");
+    written.created_at = empty.created_at + chrono::Duration::seconds(30);
+    written.updated_at = written.created_at;
+    state.store.insert_draft(&written).await.unwrap();
+
+    let resumed = ensure_reply(&state, &message_id).await;
+    assert_eq!(resumed.id, written.id);
+    assert_eq!(resumed.content.analysis_text(), "Thanks, sounds good.");
 }

@@ -9,6 +9,7 @@ mod accounts_repair_cli;
 mod activity_invariants;
 mod archive_intelligence_cli;
 mod bounded_logs;
+mod bulk_all_cli;
 mod bug_report_cli;
 mod cli_auth_exit_cli;
 mod cli_exit_codes_cli;

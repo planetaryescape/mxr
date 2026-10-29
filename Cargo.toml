@@ -45,10 +45,6 @@ path = "crates/daemon/src/bin/chime_player.rs"
 name = "integration"
 path = "crates/daemon/tests/integration/main.rs"
 
-[[test]]
-name = "bulk_all_cli"
-path = "crates/daemon/tests/bulk_all_cli.rs"
-
 [features]
 # Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).
 # Activate the full local-semantic stack with `--features semantic-local`.

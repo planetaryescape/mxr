@@ -405,7 +405,12 @@ pub fn generate_text_alternative(html: &str) -> String {
     // the fallback are local copies; keep them in step with
     // `mxr_reader::clamp_table_spans`. A sent message always gets its text,
     // even if it is rougher.
-    let clamped = clamp_table_spans(html);
+    // Bounded input first: an adversarial table costs html2text gigabytes, and
+    // an allocation failure aborts, so `catch_unwind` cannot protect against it.
+    let Some(bounded) = crate::html_limits::bounded_html(html) else {
+        return strip_tags_fallback(html);
+    };
+    let clamped = clamp_table_spans(&bounded);
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
     }))
@@ -932,6 +937,35 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn text_alternative_bounds_an_adversarial_table_before_html2text() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(text.contains("c0") && text.contains("r19999"));
+        assert!(text.len() < 4 * html.len());
+    }
+
+    #[test]
+    fn text_alternative_of_an_oversized_body_is_the_tag_strip() {
+        let html = format!(
+            "<p>zzoversizedword</p>{}",
+            "<p>filler</p>".repeat(crate::html_limits::MAX_HTML_BYTES / 13 + 1)
+        );
+        let text = generate_text_alternative(&html);
+        assert!(text.contains("zzoversizedword"));
+        assert!(!text.contains('<'));
+    }
+
     #[test]
     fn text_alternative_renders_a_huge_span_without_the_fallback() {
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;

@@ -981,12 +981,17 @@ fn render_html_blocks(
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
     let width = usize::from(width.max(20));
-    let clamped = mxr_reader::clamp_table_spans(html);
-    let rendered = mxr_reader::guard_html2text("tui html body", || {
-        let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
-        html2text::config::rich()
-            .render_to_lines(render_tree, width)
-            .ok()
+    // Over the size cap, or on a panic, the tag strip below stands in. The
+    // bounded input keeps html2text off adversarial tables (see mxr-reader's
+    // `html_limits`).
+    let rendered = mxr_reader::bounded_html(html).and_then(|bounded| {
+        let clamped = mxr_reader::clamp_table_spans(&bounded);
+        mxr_reader::guard_html2text("tui html body", || {
+            let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
+            html2text::config::rich()
+                .render_to_lines(render_tree, width)
+                .ok()
+        })
     });
     let tagged_lines = match rendered {
         Some(Some(lines)) => lines,
@@ -1460,6 +1465,57 @@ mod tests {
             .flat_map(|line| line.spans.iter().map(|span| span.content.to_string()))
             .collect();
         assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
+    fn rendered_text(html: &str) -> String {
+        render_html_blocks(
+            &mxr_core::MessageId::new(),
+            html,
+            80,
+            &Theme::default(),
+            false,
+        )
+        .iter()
+        .filter_map(|block| match block {
+            RenderBlock::Text(lines) => Some(lines),
+            _ => None,
+        })
+        .flatten()
+        .flat_map(|line| line.spans.iter().map(|span| span.content.to_string()))
+        .collect()
+    }
+
+    #[test]
+    fn an_adversarial_table_renders_its_text_quickly_without_html2text_blowing_up() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(
+            text.contains("c0") && text.contains("r19999"),
+            "got {}",
+            text.chars().take(200).collect::<String>()
+        );
+    }
+
+    #[test]
+    fn an_oversized_html_body_shows_its_text_not_its_markup() {
+        let html = format!(
+            "<p>zzoversizedword</p>{}",
+            "<p>filler</p>".repeat(mxr_reader::MAX_HTML_BYTES / 13 + 1)
+        );
+        assert!(mxr_reader::bounded_html(&html).is_none());
+        let text = rendered_text(&html);
+        assert!(text.contains("zzoversizedword"));
+        assert!(!text.contains("<p>"), "markup leaked into the view");
     }
 
     /// The reader names the account a message came to, led by its chip, even

@@ -12,4 +12,5 @@
 pub mod attachments;
 pub mod email;
 pub mod html;
+mod html_limits;
 pub mod render;

@@ -157,7 +157,6 @@ async fn reindex_in_batches(
         .map_err(|e| MxrError::Store(e.to_string()))?;
 
     rebuilding.finish();
-    search.end_live_record().await?;
     Ok(indexed)
 }
 
@@ -438,7 +437,6 @@ mod tests {
             .await
             .unwrap();
         drop(rebuild);
-        state.search.end_live_record().await.unwrap();
 
         assert_eq!(
             subject_hits(&state, "freshpageword").await,
@@ -479,7 +477,6 @@ mod tests {
             .await
             .unwrap();
         drop(rebuild);
-        state.search.end_live_record().await.unwrap();
 
         assert_eq!(
             subject_hits(&state, "freshpageword").await,
@@ -509,9 +506,43 @@ mod tests {
             .await
             .unwrap();
         drop(rebuild);
-        state.search.end_live_record().await.unwrap();
 
         assert!(subject_hits(&state, "deletedpageword").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_rebuild_leaves_no_record_and_the_next_one_starts_empty() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let stored = stored_with_subject(&state, "failedrunword").await;
+
+        // A rebuild that fails after a live update: its guard is dropped unfinished.
+        let failed = state.search.begin_rebuild();
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: Vec::new(),
+                removed_message_ids: vec![stored.id.clone()],
+            })
+            .await
+            .unwrap();
+        assert_eq!(state.search.live_record_len().await.unwrap(), 1);
+        drop(failed);
+        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
+
+        // The next rebuild starts with an empty record and keeps its page's row.
+        let next = state.search.begin_rebuild();
+        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
+        let read_seq = state.search.read_seq();
+        state
+            .search
+            .apply_rebuild_batch(page_of(&stored), read_seq)
+            .await
+            .unwrap();
+        drop(next);
+        assert_eq!(
+            subject_hits(&state, "failedrunword").await,
+            [stored.id.as_str()]
+        );
     }
 
     #[tokio::test]

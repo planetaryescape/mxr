@@ -102,9 +102,6 @@ enum SearchCommand {
         kind: BatchKind,
         resp: oneshot::Sender<Result<(), MxrError>>,
     },
-    ClearLiveRecord {
-        resp: oneshot::Sender<()>,
-    },
     LiveRecordLen {
         resp: oneshot::Sender<usize>,
     },
@@ -151,18 +148,25 @@ impl SearchServiceHandle {
             // Newest live sequence applied per message, kept only while a
             // rebuild runs. Only the worker touches it, so no lock is needed.
             let mut live_record: HashMap<MessageId, u64> = HashMap::new();
+            // The rebuild epoch the record was built under. Every rebuild start
+            // and end changes the epoch, so a record from an earlier rebuild,
+            // whether it ended cleanly, failed or was cancelled, is cleared
+            // before anything is recorded or read under the new one.
+            let mut record_epoch: u64 = 0;
             while let Some(command) = rx.recv().await {
+                let state = worker_rebuilds.load(Ordering::Acquire);
+                let rebuilding = state & REBUILD_MASK != 0;
+                let epoch = state >> REBUILD_BITS;
+                if !rebuilding || epoch != record_epoch {
+                    live_record.clear();
+                    record_epoch = epoch;
+                }
                 match command {
                     SearchCommand::ApplyBatch {
                         mut batch,
                         kind,
                         resp,
                     } => {
-                        let rebuilding =
-                            worker_rebuilds.load(Ordering::Acquire) & REBUILD_MASK != 0;
-                        if !rebuilding {
-                            live_record.clear();
-                        }
                         match kind {
                             BatchKind::Live { seq } => {
                                 if rebuilding {
@@ -213,10 +217,6 @@ impl SearchServiceHandle {
                                 break;
                             }
                         }
-                    }
-                    SearchCommand::ClearLiveRecord { resp } => {
-                        live_record.clear();
-                        let _ = resp.send(());
                     }
                     SearchCommand::LiveRecordLen { resp } => {
                         let _ = resp.send(live_record.len());
@@ -388,17 +388,8 @@ impl SearchServiceHandle {
         self.apply(batch, BatchKind::Rebuild { read_seq }).await
     }
 
-    /// Forgets the live-update record. A rebuild calls this when it ends.
-    pub async fn end_live_record(&self) -> Result<(), MxrError> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.tx
-            .send(SearchCommand::ClearLiveRecord { resp: resp_tx })
-            .await
-            .map_err(closed_error)?;
-        resp_rx.await.map_err(|_| worker_stopped())
-    }
-
-    /// Number of messages in the live-update record. Zero outside a rebuild.
+    /// Number of messages in the live-update record. Zero outside a rebuild:
+    /// the record is cleared by the first worker command after a rebuild ends.
     pub async fn live_record_len(&self) -> Result<usize, MxrError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -752,9 +743,8 @@ mod tests {
         handle.apply_batch(removal()).await.unwrap();
         assert_eq!(handle.live_record_len().await.unwrap(), 1);
 
-        handle.end_live_record().await.unwrap();
-        assert_eq!(handle.live_record_len().await.unwrap(), 0);
         drop(rebuild);
+        assert_eq!(handle.live_record_len().await.unwrap(), 0);
     }
 
     #[tokio::test]

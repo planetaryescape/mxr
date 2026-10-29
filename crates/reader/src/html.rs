@@ -1,3 +1,4 @@
+use crate::html_limits::bounded_html;
 use crate::pipeline::ReaderConfig;
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -120,10 +121,7 @@ pub fn guard_html2text<T>(site: &'static str, render: impl FnOnce() -> T) -> Opt
 /// collapse whitespace themselves. Returns the text, and whether a panic in
 /// the conversion forced the tag-strip fallback.
 pub(crate) fn html_to_match_text(html: &str, site: &'static str) -> (String, bool) {
-    let clamped = clamp_table_spans(html);
-    guarded_or_strip(html, site, || {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
-    })
+    render_bounded(html, site)
 }
 
 /// Runs a render under the guard. A render error is tag-stripped quietly; a
@@ -174,14 +172,23 @@ mod match_text_tests {
 /// (undecorated) renderer. Never panics: when html2text fails, the tag strip
 /// below stands in so the message still shows its text.
 pub fn html_to_plain_text(html: &str, site: &'static str) -> String {
+    render_bounded(html, site).0
+}
+
+/// The one render every reader caller goes through: html2text at the reader's
+/// width, on input bounded by `html_limits` and with table spans clamped. Over
+/// the size cap the tag strip stands in without a render. Errors and panics
+/// also give the strip. The second value is true only for a panic.
+fn render_bounded(html: &str, site: &'static str) -> (String, bool) {
+    let Some(bounded) = bounded_html(html) else {
+        return (strip_html_tags(html), false);
+    };
+    let clamped = clamp_table_spans(&bounded);
     // plain_no_decorate keeps the pre-0.17 behavior: no markdown-style
     // `**bold**` / `*italic*` markers in the reader's plain text.
-    let clamped = clamp_table_spans(html);
-    guard_html2text(site, || {
+    guarded_or_strip(html, site, || {
         html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
     })
-    .and_then(Result::ok)
-    .unwrap_or_else(|| strip_html_tags(html))
 }
 
 static STYLE_OR_SCRIPT_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {

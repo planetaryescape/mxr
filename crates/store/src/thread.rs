@@ -53,7 +53,9 @@ impl super::Store {
             .collect()
     }
 
-    /// Hydrate Thread rows in bulk. Ids with zero matching messages
+    /// Hydrate Thread rows in bulk, one per (thread id, account): a legacy
+    /// thread id shared by two accounts comes back as two rows, each with only
+    /// that account's messages. Ids with zero matching messages
     /// are silently skipped — callers that need tombstone Threads for
     /// missing ids (typically the sync engine emitting
     /// `threads_changed`) must synthesise them using their own
@@ -91,7 +93,7 @@ impl super::Store {
                 snippet as "snippet!"
              FROM messages
              WHERE thread_id IN (SELECT value FROM json_each(?))
-             GROUP BY thread_id"#,
+             GROUP BY thread_id, account_id"#,
             cutoff,
             ids_json,
         )
@@ -107,6 +109,7 @@ impl super::Store {
         let participant_rows = sqlx::query!(
             r#"SELECT DISTINCT
                 thread_id as "thread_id!",
+                account_id as "account_id!",
                 from_name,
                 from_email as "from_email!"
              FROM messages
@@ -121,10 +124,10 @@ impl super::Store {
             participant_rows.len(),
         );
 
-        let mut participants_by_thread: HashMap<String, Vec<Address>> = HashMap::new();
+        let mut participants_by_thread: HashMap<(String, String), Vec<Address>> = HashMap::new();
         for row in participant_rows {
             participants_by_thread
-                .entry(row.thread_id)
+                .entry((row.thread_id, row.account_id))
                 .or_default()
                 .push(Address {
                     name: row.from_name,
@@ -136,10 +139,12 @@ impl super::Store {
         let id_rows = sqlx::query!(
             r#"SELECT
                 thread_id as "thread_id!",
+                account_id as "account_id!",
                 id as "id!"
              FROM messages
              WHERE thread_id IN (SELECT value FROM json_each(?))
              ORDER BY thread_id ASC,
+                      account_id ASC,
                       CASE WHEN date > ? THEN 0 ELSE date END ASC,
                       id ASC"#,
             ids_json,
@@ -153,10 +158,10 @@ impl super::Store {
             id_rows.len(),
         );
 
-        let mut message_ids_by_thread: HashMap<String, Vec<MessageId>> = HashMap::new();
+        let mut message_ids_by_thread: HashMap<(String, String), Vec<MessageId>> = HashMap::new();
         for row in id_rows {
             message_ids_by_thread
-                .entry(row.thread_id)
+                .entry((row.thread_id, row.account_id))
                 .or_default()
                 .push(decode_id(&row.id)?);
         }
@@ -164,21 +169,17 @@ impl super::Store {
         aggregate_rows
             .into_iter()
             .map(|row| {
-                let thread_id_str = row.thread_id.clone();
+                let key = (row.thread_id.clone(), row.account_id.clone());
                 Ok(Thread {
                     id: decode_id(&row.thread_id)?,
                     account_id: decode_id(&row.account_id)?,
                     subject: row.subject,
-                    participants: participants_by_thread
-                        .remove(&thread_id_str)
-                        .unwrap_or_default(),
+                    participants: participants_by_thread.remove(&key).unwrap_or_default(),
                     message_count: row.message_count as u32,
                     unread_count: row.unread_count as u32,
                     latest_date: decode_timestamp(row.latest_date)?,
                     snippet: row.snippet,
-                    message_ids: message_ids_by_thread
-                        .remove(&thread_id_str)
-                        .unwrap_or_default(),
+                    message_ids: message_ids_by_thread.remove(&key).unwrap_or_default(),
                 })
             })
             .collect()

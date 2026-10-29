@@ -51,7 +51,7 @@ impl Fixture {
                 provider_id: "INBOX".into(),
                 unread_count: 0,
                 total_count: 0,
-                role: None,
+                role: Some(mxr_core::Role::Inbox),
             })
             .await
             .unwrap();

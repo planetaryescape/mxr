@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT DISTINCT\n                thread_id as \"thread_id!\",\n                from_name,\n                from_email as \"from_email!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))",
+  "query": "SELECT DISTINCT\n                thread_id as \"thread_id!\",\n                account_id as \"account_id!\",\n                from_name,\n                from_email as \"from_email!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))",
   "describe": {
     "columns": [
       {
@@ -15,8 +15,19 @@
         }
       },
       {
-        "name": "from_name",
+        "name": "account_id!",
         "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "from_name",
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -27,7 +38,7 @@
       },
       {
         "name": "from_email!",
-        "ordinal": 2,
+        "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -42,9 +53,10 @@
     },
     "nullable": [
       false,
+      false,
       true,
       false
     ]
   },
-  "hash": "8bfd5dabff12aa50c8300dddb1d72f3acb7a25bdbeb47f8b9dd5bab83120e76e"
+  "hash": "a957465c0e82751b22e6224603f436da1b7498e28c7718a210fa962da28182a9"
 }

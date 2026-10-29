@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                thread_id as \"thread_id!\",\n                account_id as \"account_id!\",\n                MIN(subject) as \"subject!: String\",\n                COUNT(*) as \"message_count!: i64\",\n                SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) as \"unread_count!: i64\",\n                MAX(CASE WHEN date > ? THEN 0 ELSE date END) as \"latest_date!: i64\",\n                snippet as \"snippet!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))\n             GROUP BY thread_id",
+  "query": "SELECT\n                thread_id as \"thread_id!\",\n                account_id as \"account_id!\",\n                MIN(subject) as \"subject!: String\",\n                COUNT(*) as \"message_count!: i64\",\n                SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) as \"unread_count!: i64\",\n                MAX(CASE WHEN date > ? THEN 0 ELSE date END) as \"latest_date!: i64\",\n                snippet as \"snippet!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))\n             GROUP BY thread_id, account_id",
   "describe": {
     "columns": [
       {
@@ -74,5 +74,5 @@
       true
     ]
   },
-  "hash": "92123d650f5d5ec8cb114329612575f7591d93cacd7da6f7c5072846af36195a"
+  "hash": "1b3011cd6da277e1d61e5082003c272b1cada01a024d0ffc3f8d9f5dddfe079e"
 }

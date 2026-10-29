@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                thread_id as \"thread_id!\",\n                account_id as \"account_id!\",\n                id as \"id!\"\n             FROM messages\n             WHERE thread_id IN (SELECT value FROM json_each(?))\n             ORDER BY thread_id ASC,\n                      account_id ASC,\n                      CASE WHEN date > ? THEN 0 ELSE date END ASC,\n                      id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "thread_id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "thread_id"
+          }
+        }
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "id!",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "707c72dc7a3c26eb6eabeb30c273d696bd898f688aeb9518a49b71c5d1fd82f4"
+}

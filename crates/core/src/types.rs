@@ -402,10 +402,10 @@ pub enum Role {
 }
 
 /// The system mailboxes that "All accounts" views merge across accounts,
-/// each with the lowercase label names providers give it. The store does not
-/// persist `Label::role`, so a system label is matched by name; this table is
-/// the one place that mapping lives (store queries, daemon, web, TUI and CLI
-/// all go through it).
+/// each with the lowercase label names providers give it. Providers report a
+/// role and the store keeps it, so this table only backfills rows synced
+/// before the role was stored, and names a mailbox for the CLI and the title
+/// lookup.
 const SYSTEM_MAILBOX_NAMES: [(Role, &str, &[&str]); 7] = [
     (Role::Inbox, "inbox", &["inbox"]),
     (Role::Starred, "starred", &["starred"]),
@@ -416,7 +416,42 @@ const SYSTEM_MAILBOX_NAMES: [(Role, &str, &[&str]); 7] = [
     (Role::AllMail, "all_mail", &["all", "all mail"]),
 ];
 
+/// Every role, for reading a stored name back.
+const ALL_ROLES: [Role; 9] = [
+    Role::Inbox,
+    Role::Sent,
+    Role::Drafts,
+    Role::Trash,
+    Role::Spam,
+    Role::Archive,
+    Role::AllMail,
+    Role::Important,
+    Role::Starred,
+];
+
 impl Role {
+    /// The name a role is stored under. It is the serde name, so a row written
+    /// by one build reads back the same on another.
+    pub fn storage_name(self) -> &'static str {
+        match self {
+            Self::Inbox => "inbox",
+            Self::Sent => "sent",
+            Self::Drafts => "drafts",
+            Self::Trash => "trash",
+            Self::Spam => "spam",
+            Self::Archive => "archive",
+            Self::AllMail => "all_mail",
+            Self::Important => "important",
+            Self::Starred => "starred",
+        }
+    }
+
+    pub fn from_storage_name(name: &str) -> Option<Self> {
+        ALL_ROLES
+            .into_iter()
+            .find(|role| role.storage_name() == name)
+    }
+
     /// Roles that have a unified "All accounts" mailbox.
     pub fn system_mailboxes() -> impl Iterator<Item = Self> {
         SYSTEM_MAILBOX_NAMES.iter().map(|(role, _, _)| *role)
@@ -472,7 +507,9 @@ impl Role {
 
 impl Label {
     /// The unified system mailbox this label belongs to. Only System labels
-    /// qualify, so a user label or folder named "Inbox" never matches.
+    /// qualify, so a user label or folder named "Inbox" never matches. The
+    /// provider's role wins; the name is used only for a label that carries
+    /// no role.
     pub fn system_mailbox_role(&self) -> Option<Role> {
         if self.kind != LabelKind::System {
             return None;
@@ -3014,6 +3051,16 @@ mod system_mailbox_tests {
     fn provider_role_wins_over_the_name() {
         let imap_inbox = label("Posteingang", LabelKind::System, Some(Role::Inbox));
         assert_eq!(imap_inbox.system_mailbox_role(), Some(Role::Inbox));
+    }
+
+    #[test]
+    fn storage_names_are_the_serde_names_and_round_trip() {
+        for role in ALL_ROLES {
+            let serde_name = serde_json::to_value(role).unwrap();
+            assert_eq!(serde_name, serde_json::json!(role.storage_name()));
+            assert_eq!(Role::from_storage_name(role.storage_name()), Some(role));
+        }
+        assert_eq!(Role::from_storage_name("Inbox"), None);
     }
 
     #[test]

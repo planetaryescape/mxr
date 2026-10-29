@@ -3,7 +3,8 @@
 //! sidebar is built from mailbox roles, and counts come from the daemon.
 
 use super::*;
-use mxr_core::{LabelId, LabelKind};
+use crate::mailbox_threads::{thread_rows, Membership};
+use mxr_core::{LabelId, LabelKind, Role};
 use std::sync::{Arc, Mutex};
 
 struct World {
@@ -488,4 +489,58 @@ async fn starred_is_listed_by_role_when_no_account_has_a_starred_label() {
         serde_json::json!([starred.id.to_string()])
     );
     assert_eq!(json["mailbox"]["counts"]["total"], 1);
+}
+
+#[test]
+fn a_role_view_lists_only_threads_with_a_message_in_the_mailbox_and_counts_the_rest() {
+    let account = AccountId::new();
+    // A German IMAP folder that the provider reports as Sent: the stored role
+    // places it, not the name.
+    let sent = Label {
+        id: LabelId::from_scoped_provider_id(&account, "imap", "Gesendete Elemente"),
+        account_id: account.clone(),
+        name: "Gesendete Elemente".into(),
+        kind: LabelKind::System,
+        color: None,
+        provider_id: "Gesendete Elemente".into(),
+        unread_count: 0,
+        total_count: 0,
+        role: Some(Role::Sent),
+    };
+    let mut in_sent = sample_envelope();
+    in_sent.account_id = account.clone();
+    in_sent.label_provider_ids = vec!["Gesendete Elemente".into()];
+    let mut in_inbox = sample_envelope();
+    in_inbox.account_id = account.clone();
+    in_inbox.label_provider_ids = vec!["INBOX".into()];
+    // A thread the daemon listed whose message the page did not fetch.
+    let unfetched = sample_envelope();
+    let missing = sample_thread(&unfetched);
+
+    let threads = vec![
+        sample_thread(&in_sent),
+        sample_thread(&in_inbox),
+        missing.clone(),
+    ];
+    let envelopes: std::collections::HashMap<MessageId, Envelope> =
+        [in_sent.clone(), in_inbox.clone()]
+            .into_iter()
+            .map(|envelope| (envelope.id.clone(), envelope))
+            .collect();
+    let labels = [sent];
+    let membership = Membership::Role {
+        role: Role::Sent,
+        labels: &labels,
+    };
+
+    let built = thread_rows(&threads, &envelopes, &membership);
+
+    assert_eq!(built.rows.len(), 1);
+    assert_eq!(built.row_envelopes.len(), 1);
+    assert_eq!(built.row_envelopes[0].id, in_sent.id);
+    // The Inbox-only thread and the unfetched one are counted, not shown.
+    assert_eq!(
+        built.dropped,
+        vec![threads[1].id.clone(), missing.id.clone()]
+    );
 }

@@ -19,6 +19,10 @@ struct Accounts {
 
 async fn label(fx: &Fixture, account: &AccountId, name: &str, kind: LabelKind) -> LabelId {
     let id = LabelId::from_scoped_provider_id(account, "test", name);
+    // A System label carries the role its name stands for, as a provider reports it.
+    let role = (kind == LabelKind::System)
+        .then(|| mxr_core::Role::from_system_label_name(name))
+        .flatten();
     fx.state
         .store
         .upsert_label(&Label {
@@ -30,7 +34,7 @@ async fn label(fx: &Fixture, account: &AccountId, name: &str, kind: LabelKind) -
             provider_id: name.into(),
             unread_count: 0,
             total_count: 0,
-            role: None,
+            role,
         })
         .await
         .unwrap();

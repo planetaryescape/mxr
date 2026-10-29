@@ -2,10 +2,13 @@
 //! accounts, for the "All accounts" views.
 //!
 //! The single-label queries (`list_threads`, `list_envelopes_by_label`) stay
-//! the path for an explicit label id. These match labels by role instead:
-//! every System label in the account set whose name maps to the role through
-//! `Role::system_label_names`. They are unchecked queries so they need no
-//! `.sqlx` cache entry.
+//! the path for an explicit label id. These match labels by the role stored
+//! on them (`labels.role`, from the provider). They are unchecked queries so
+//! they need no `.sqlx` cache entry.
+//!
+//! A legacy thread id can span accounts, so a thread is keyed by
+//! (account, thread) everywhere here: one row per account, each with only
+//! that account's messages.
 
 use crate::message::{future_date_cutoff_timestamp, sqlite_row_to_envelope};
 use crate::{decode_id, decode_timestamp, trace_query};
@@ -27,8 +30,8 @@ fn account_ids_json(account_ids: &[AccountId]) -> Result<String, sqlx::Error> {
     json_array(account_ids.iter().map(AccountId::as_str))
 }
 
-fn label_names_json(role: Role) -> Result<String, sqlx::Error> {
-    json_array(role.system_label_names().iter().copied())
+fn role_json(role: Role) -> Result<String, sqlx::Error> {
+    json_array([role.storage_name()])
 }
 
 /// How a role selects messages (`?3`): by System label (0), every message
@@ -46,8 +49,8 @@ fn role_mode(role: Role) -> i64 {
 }
 
 /// Messages that belong to the role in one of the accounts (`?1` accounts,
-/// `?2` label names, `?3` the mode above). A macro so the final SQL stays a
-/// literal.
+/// `?2` the role's stored name as a JSON array, `?3` the mode above). A macro
+/// so the final SQL stays a literal.
 macro_rules! role_filter {
     () => {
         "(?3 = 1 OR (?3 = 2 AND (m.flags & 2) != 0) OR (?3 = 0 AND m.id IN (
@@ -55,25 +58,28 @@ macro_rules! role_filter {
             JOIN labels l ON l.id = ml.label_id
             WHERE l.kind = 'system'
               AND l.account_id IN (SELECT value FROM json_each(?1))
-              AND lower(l.name) IN (SELECT value FROM json_each(?2))
+              AND l.role IN (SELECT value FROM json_each(?2))
         )))"
     };
 }
 
-/// Thread id breaks date ties so paging never depends on storage order.
+/// (account, thread) per row. Account and thread id break date ties so
+/// paging never depends on storage order.
 macro_rules! thread_ids_sql {
     ($direction:literal) => {
         concat!(
-            "SELECT m.thread_id AS thread_id
+            "SELECT m.account_id AS account_id, m.thread_id AS thread_id
              FROM messages m
              WHERE m.account_id IN (SELECT value FROM json_each(?1))
                AND ",
             role_filter!(),
             "
-             GROUP BY m.thread_id
+             GROUP BY m.account_id, m.thread_id
              ORDER BY MAX(CASE WHEN m.date > ?4 THEN 0 ELSE m.date END) ",
             $direction,
             ", m.thread_id ",
+            $direction,
+            ", m.account_id ",
             $direction,
             "
              LIMIT ?5 OFFSET ?6"
@@ -82,10 +88,10 @@ macro_rules! thread_ids_sql {
 }
 
 impl super::Store {
-    /// Hydrate threads from the messages of `account_ids` only. A legacy
-    /// thread id can span accounts, and `get_threads_batch` aggregates over
-    /// all of them, which would leak a disabled or out-of-scope account's
-    /// subject, snippet and counts into the row.
+    /// Hydrate threads from the messages of `account_ids` only, one thread per
+    /// (account, thread id). A legacy thread id can span accounts; grouping by
+    /// the id alone would fold two accounts into one row and leak a disabled or
+    /// out-of-scope account's subject, snippet and counts into it.
     pub async fn hydrate_threads_in_accounts(
         &self,
         thread_ids: &[ThreadId],
@@ -108,7 +114,7 @@ impl super::Store {
              FROM messages
              WHERE thread_id IN (SELECT value FROM json_each(?1))
                AND account_id IN (SELECT value FROM json_each(?2))
-             GROUP BY thread_id",
+             GROUP BY thread_id, account_id",
         )
         .bind(&threads_json)
         .bind(&accounts_json)
@@ -117,7 +123,7 @@ impl super::Store {
         .await?;
 
         let participants = sqlx::query(
-            "SELECT DISTINCT thread_id, from_name, from_email
+            "SELECT DISTINCT thread_id, account_id, from_name, from_email
              FROM messages
              WHERE thread_id IN (SELECT value FROM json_each(?1))
                AND account_id IN (SELECT value FROM json_each(?2))",
@@ -126,11 +132,14 @@ impl super::Store {
         .bind(&accounts_json)
         .fetch_all(self.reader())
         .await?;
-        let mut participants_by_thread: std::collections::HashMap<String, Vec<Address>> =
+        let mut participants_by_thread: std::collections::HashMap<(String, String), Vec<Address>> =
             std::collections::HashMap::new();
         for row in participants {
             participants_by_thread
-                .entry(row.get::<String, _>("thread_id"))
+                .entry((
+                    row.get::<String, _>("thread_id"),
+                    row.get::<String, _>("account_id"),
+                ))
                 .or_default()
                 .push(Address {
                     name: row.get::<Option<String>, _>("from_name"),
@@ -139,10 +148,11 @@ impl super::Store {
         }
 
         let members = sqlx::query(
-            "SELECT thread_id, id FROM messages
+            "SELECT thread_id, account_id, id FROM messages
              WHERE thread_id IN (SELECT value FROM json_each(?1))
                AND account_id IN (SELECT value FROM json_each(?2))
              ORDER BY thread_id ASC,
+                      account_id ASC,
                       CASE WHEN date > ?3 THEN 0 ELSE date END ASC,
                       id ASC",
         )
@@ -151,11 +161,14 @@ impl super::Store {
         .bind(cutoff)
         .fetch_all(self.reader())
         .await?;
-        let mut message_ids_by_thread: std::collections::HashMap<String, Vec<MessageId>> =
+        let mut message_ids_by_thread: std::collections::HashMap<(String, String), Vec<MessageId>> =
             std::collections::HashMap::new();
         for row in members {
             message_ids_by_thread
-                .entry(row.get::<String, _>("thread_id"))
+                .entry((
+                    row.get::<String, _>("thread_id"),
+                    row.get::<String, _>("account_id"),
+                ))
                 .or_default()
                 .push(decode_id(&row.get::<String, _>("id"))?);
         }
@@ -164,18 +177,18 @@ impl super::Store {
             .into_iter()
             .map(|row| {
                 let thread_id: String = row.get("thread_id");
+                let account_id: String = row.get("account_id");
+                let key = (thread_id.clone(), account_id.clone());
                 Ok(Thread {
                     id: decode_id(&thread_id)?,
-                    account_id: decode_id(&row.get::<String, _>("account_id"))?,
+                    account_id: decode_id(&account_id)?,
                     subject: row.get("subject"),
-                    participants: participants_by_thread
-                        .remove(&thread_id)
-                        .unwrap_or_default(),
+                    participants: participants_by_thread.remove(&key).unwrap_or_default(),
                     message_count: row.get::<i64, _>("message_count") as u32,
                     unread_count: row.get::<i64, _>("unread_count") as u32,
                     latest_date: decode_timestamp(row.get::<i64, _>("latest_date"))?,
                     snippet: row.get("snippet"),
-                    message_ids: message_ids_by_thread.remove(&thread_id).unwrap_or_default(),
+                    message_ids: message_ids_by_thread.remove(&key).unwrap_or_default(),
                 })
             })
             .collect()
@@ -198,7 +211,7 @@ impl super::Store {
             std::collections::HashMap::new();
 
         let labels = sqlx::query(
-            "SELECT name, unread_count, total_count FROM labels
+            "SELECT role, unread_count, total_count FROM labels
              WHERE kind = 'system'
                AND account_id IN (SELECT value FROM json_each(?1))",
         )
@@ -206,11 +219,13 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
         for row in labels {
-            let name: String = row.get("name");
-            let Some(role) = Role::from_system_label_name(&name) else {
+            let stored: Option<String> = row.get("role");
+            let Some(role) = stored.as_deref().and_then(Role::from_storage_name) else {
                 continue;
             };
-            if matches!(role, Role::AllMail | Role::Starred) {
+            if role.system_mailbox_wire_name().is_none()
+                || matches!(role, Role::AllMail | Role::Starred)
+            {
                 continue;
             }
             let entry = counts.entry(role).or_default();
@@ -229,7 +244,7 @@ impl super::Store {
                 role_filter!()
             ))
             .bind(&accounts_json)
-            .bind(label_names_json(role)?)
+            .bind(role_json(role)?)
             .bind(role_mode(role))
             .fetch_one(self.reader())
             .await?;
@@ -272,7 +287,7 @@ impl super::Store {
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(sql)
             .bind(account_ids_json(account_ids)?)
-            .bind(label_names_json(role)?)
+            .bind(role_json(role)?)
             .bind(role_mode(role))
             .bind(future_date_cutoff_timestamp())
             .bind(i64::from(limit))
@@ -285,17 +300,28 @@ impl super::Store {
             rows.len(),
         );
 
-        let thread_ids = rows
+        let page = rows
             .iter()
-            .map(|row| decode_id::<ThreadId>(&row.get::<String, _>("thread_id")))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|row| {
+                Ok((
+                    decode_id::<AccountId>(&row.get::<String, _>("account_id"))?,
+                    decode_id::<ThreadId>(&row.get::<String, _>("thread_id"))?,
+                ))
+            })
+            .collect::<Result<Vec<(AccountId, ThreadId)>, sqlx::Error>>()?;
+        let thread_ids = page
+            .iter()
+            .map(|(_, thread_id)| thread_id.clone())
+            .collect::<Vec<_>>();
+        // Hydrating a thread id yields every account's copy of it; keep only
+        // the (account, thread) pairs this page selected.
         let mut threads = self
             .hydrate_threads_in_accounts(&thread_ids, account_ids)
             .await?;
+        threads.retain(|thread| page.contains(&(thread.account_id.clone(), thread.id.clone())));
         threads.sort_by_key(|thread| {
-            thread_ids
-                .iter()
-                .position(|id| id == &thread.id)
+            page.iter()
+                .position(|(account, id)| *account == thread.account_id && *id == thread.id)
                 .unwrap_or(usize::MAX)
         });
         Ok(threads)
@@ -335,7 +361,7 @@ impl super::Store {
              LIMIT ?5 OFFSET ?6"
         ))
         .bind(account_ids_json(account_ids)?)
-        .bind(label_names_json(role)?)
+        .bind(role_json(role)?)
         .bind(role_mode(role))
         .bind(future_date_cutoff_timestamp())
         .bind(i64::from(limit))
@@ -378,7 +404,12 @@ mod tests {
         account
     }
 
+    /// A label as a provider reports it: a System label carries the role its
+    /// name stands for.
     async fn label(store: &Store, account_id: &AccountId, name: &str, kind: LabelKind) -> Label {
+        let role = (kind == LabelKind::System)
+            .then(|| Role::from_system_label_name(name))
+            .flatten();
         let label = Label {
             id: LabelId::new(),
             account_id: account_id.clone(),
@@ -388,7 +419,7 @@ mod tests {
             provider_id: name.to_string(),
             unread_count: 0,
             total_count: 0,
-            role: None,
+            role,
         };
         store.upsert_label(&label).await.unwrap();
         label
@@ -646,22 +677,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_thread_id_shared_across_accounts_is_listed_once() {
+    async fn a_thread_id_shared_across_accounts_is_listed_once_per_account() {
         let t = two_accounts().await;
         // Legacy Gmail thread ids are not account-scoped, so two accounts can
-        // hold the same id. `get_threads_batch` keys on it, so the listing
-        // returns the thread once rather than twice.
+        // hold the same id. The listing keys on (account, thread): one row per
+        // account, each holding only that account's message.
         let shared = ThreadId::new();
-        message(&t.store, &t.a.id, 10, &[&t.a_inbox], Some(shared.clone())).await;
-        message(&t.store, &t.b.id, 20, &[&t.b_inbox], Some(shared.clone())).await;
+        let (_, a_message) =
+            message(&t.store, &t.a.id, 10, &[&t.a_inbox], Some(shared.clone())).await;
+        let (_, b_message) =
+            message(&t.store, &t.b.id, 20, &[&t.b_inbox], Some(shared.clone())).await;
         let both = [t.a.id.clone(), t.b.id.clone()];
         let threads = t
             .store
             .list_threads_by_role(&both, Role::Inbox, 10, 0, SortOrder::DateDesc)
             .await
             .unwrap();
-        assert_eq!(threads.len(), 1);
+        assert_eq!(threads.len(), 2);
         assert_eq!(threads[0].id, shared);
+        assert_eq!(threads[0].account_id, t.a.id);
+        assert_eq!(threads[0].message_ids, vec![a_message]);
+        assert_eq!(threads[1].id, shared);
+        assert_eq!(threads[1].account_id, t.b.id);
+        assert_eq!(threads[1].message_ids, vec![b_message]);
+        assert!(threads.iter().all(|thread| thread.message_count == 1));
+
+        // A page of one row takes account A's copy and leaves B's for the next.
+        let first = t
+            .store
+            .list_threads_by_role(&both, Role::Inbox, 1, 0, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        let second = t
+            .store
+            .list_threads_by_role(&both, Role::Inbox, 1, 1, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].account_id, t.a.id);
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].account_id, t.b.id);
+    }
+
+    #[tokio::test]
+    async fn a_system_label_joins_the_role_it_is_stored_with_not_its_name() {
+        let store = Store::in_memory().await.unwrap();
+        let acct = account(&store).await;
+        // An IMAP folder named in German with the \Sent special-use: the
+        // provider reports Sent, so the name is not what places it.
+        let sent = Label {
+            id: LabelId::new(),
+            account_id: acct.id.clone(),
+            name: "Gesendete Elemente".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "Gesendete Elemente".to_string(),
+            unread_count: 0,
+            total_count: 0,
+            role: Some(Role::Sent),
+        };
+        store.upsert_label(&sent).await.unwrap();
+        let (thread, _) = message(&store, &acct.id, 10, &[&sent], None).await;
+
+        let listed = store
+            .list_threads_by_role(&[acct.id.clone()], Role::Sent, 10, 0, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert_eq!(
+            listed.iter().map(|t| t.id.clone()).collect::<Vec<_>>(),
+            vec![thread]
+        );
+        let stored = store
+            .list_labels_by_account(&acct.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|label| label.name == "Gesendete Elemente")
+            .unwrap();
+        assert_eq!(stored.role, Some(Role::Sent));
     }
 
     /// A message with `flags`, in `account_id`, carrying `labels`.

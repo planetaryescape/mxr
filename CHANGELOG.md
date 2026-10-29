@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.190](https://github.com/planetaryescape/mxr/compare/v0.6.189...v0.6.190) (2026-10-29)
+
+
+### Bug Fixes
+
+* keep a to-do when a rescan of the same email moves its due date to another month ([#802](https://github.com/planetaryescape/mxr/issues/802)) ([f062799](https://github.com/planetaryescape/mxr/commit/f0627997e1210a5786584639f0d270cc5534ab5b))
+
 ## [0.6.189](https://github.com/planetaryescape/mxr/compare/v0.6.188...v0.6.189) (2026-10-29)
 
 

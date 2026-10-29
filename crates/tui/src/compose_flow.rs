@@ -351,6 +351,37 @@ pub(crate) async fn prepare_draft_edit(
     })
 }
 
+/// The conversation's unsent reply, ready for `$EDITOR`. The daemon picks
+/// it by the rule every client resumes with (`EnsureReplyDraft`), so the
+/// TUI continues the reply the Messages row names, with its saved text and
+/// audience, and saves it back in place.
+pub(crate) async fn resume_reply_draft(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    resume: crate::app::ReplyDraftResume,
+) -> Result<DraftEditReadyData, MxrError> {
+    let draft = match ipc_call(
+        bg,
+        Request::EnsureReplyDraft {
+            message_id: resume.message_id,
+            reply_all: resume.reply_all,
+            dry_run: false,
+        },
+    )
+    .await?
+    {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
+        _ => {
+            return Err(MxrError::Ipc(
+                "unexpected response to EnsureReplyDraft".into(),
+            ))
+        }
+    };
+    prepare_draft_edit(bg, draft).await
+}
+
 /// Handle the `$EDITOR` exit status for an in-place draft edit. Mirrors
 /// `handle_compose_editor_status`, but the edited content is applied
 /// onto the existing draft (preserving id/account_id/created_at) and
@@ -401,6 +432,10 @@ pub(crate) async fn handle_draft_edit_status(
                 }) => {
                     app.status_message = Some("Draft updated".into());
                     app.schedule_draft_cleanup(data.path.clone());
+                    // Messages shows a reply's draft on its row: keep it current.
+                    if app.mailbox.mailbox_view == crate::app::MailboxView::People {
+                        app.mailbox.messages_page.pending_refresh = true;
+                    }
                 }
                 Ok(Response::Error { message, .. }) => {
                     app.report_error(
@@ -1049,6 +1084,97 @@ mod tests {
             .contains(&temp.display().to_string()));
 
         let _ = std::fs::remove_file(&temp);
+    }
+
+    #[tokio::test]
+    async fn resuming_a_conversation_reply_opens_its_saved_text_and_audience() {
+        let account = test_account_summary("me@example.com", true, true);
+        let source = mxr_core::MessageId::new();
+        let draft = mxr_core::Draft {
+            revision: Some(3),
+            id: mxr_core::DraftId::new(),
+            account_id: account.account_id.clone(),
+            from: None,
+            reply_headers: Some(mxr_core::types::ReplyHeaders {
+                in_reply_to: "<source@example.com>".into(),
+                references: vec![],
+                thread_id: None,
+            }),
+            intent: mxr_core::DraftIntent::Reply,
+            to: vec![mxr_core::types::Address {
+                name: Some("Pat".into()),
+                email: "pat@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Re: Renewal".into(),
+            content: mxr_core::DraftContent::markdown("Thursday at ten works for me."),
+            managed_attachments: None,
+            attachments: vec![],
+            inline_assets: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let (bg, mut requests) = mpsc::unbounded_channel::<IpcRequest>();
+        let stored = draft.clone();
+        let asked = source.clone();
+        tokio::spawn(async move {
+            let workspace = || Response::Ok {
+                data: ResponseData::ArchiveWorkspace {
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "00000000-0000-7000-8000-000000000001".into(),
+                        recovery_generation: "00000000-0000-7000-8000-000000000002".into(),
+                    },
+                },
+            };
+            // A draft mutation names the workspace it acts in.
+            let owner = requests.recv().await.expect("request owner");
+            assert!(matches!(owner.request, Request::GetArchiveWorkspace));
+            let _ = owner.reply.send(Ok(workspace()));
+            let ensure = requests
+                .recv()
+                .await
+                .expect("the conversation's reply draft");
+            assert!(matches!(
+                &ensure.request,
+                Request::EnsureReplyDraft { message_id, reply_all: false, dry_run: false }
+                    if *message_id == asked
+            ));
+            let _ = ensure.reply.send(Ok(Response::Ok {
+                data: ResponseData::Draft { draft: stored },
+            }));
+            let capture = requests.recv().await.expect("editor owner");
+            assert!(matches!(capture.request, Request::GetArchiveWorkspace));
+            let _ = capture.reply.send(Ok(workspace()));
+            let accounts = requests.recv().await.expect("account lookup");
+            assert!(matches!(accounts.request, Request::ListAccounts));
+            let _ = accounts.reply.send(Ok(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account],
+                },
+            }));
+        });
+
+        let ready = super::resume_reply_draft(
+            &bg,
+            crate::app::ReplyDraftResume {
+                message_id: source,
+                reply_all: false,
+            },
+        )
+        .await
+        .expect("the reply opens");
+        assert_eq!(
+            ready.existing.id, draft.id,
+            "saves back onto the same draft"
+        );
+        let file = tokio::fs::read_to_string(&ready.path)
+            .await
+            .expect("compose file");
+        assert!(file.contains("Thursday at ten works for me."), "{file}");
+        assert!(file.contains("pat@example.com"), "{file}");
+        tokio::fs::remove_file(&ready.path).await.expect("cleanup");
     }
 
     #[tokio::test]

@@ -139,6 +139,15 @@ pub enum PendingSendMode {
     Unchanged,
 }
 
+/// `r` or `a` in Messages on a conversation whose row names an unsent reply:
+/// the runtime asks the daemon for that conversation's reply draft
+/// (`EnsureReplyDraft`, the rule the web uses) and opens it for editing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyDraftResume {
+    pub message_id: mxr_core::MessageId,
+    pub reply_all: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComposeAction {
     New {

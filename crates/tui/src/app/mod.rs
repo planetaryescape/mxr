@@ -455,6 +455,10 @@ pub struct App {
     /// reports back via `AsyncResult::DraftEditReady` so `$EDITOR` can
     /// be opened on it.
     pub pending_draft_edit_request: Option<mxr_core::Draft>,
+    /// Set by a reply in Messages on a conversation with an unsent reply;
+    /// the runtime resolves the draft and continues through the same
+    /// `DraftEditReady` path as editing a stored draft.
+    pub pending_reply_draft_resume: Option<ReplyDraftResume>,
     /// Confirmed delete/provider-copy operation captured from the stored-drafts
     /// preview. The runtime drains this into the matching daemon request.
     pub pending_draft_operation: Option<StoredDraftOperation>,
@@ -647,6 +651,7 @@ impl App {
             pending_reply_queue_refresh: false,
             pending_drafts_refresh: false,
             pending_draft_edit_request: None,
+            pending_reply_draft_resume: None,
             pending_draft_operation: None,
             pending_deliveries_refresh: false,
             pending_delivery_resolve: None,

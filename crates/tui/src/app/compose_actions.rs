@@ -20,7 +20,20 @@ impl App {
             }
             Action::Reply | Action::ReplyAll if self.messages_list_focused() => {
                 // In Messages, the open topic is the conversation to answer.
+                // A reply left unsent there is continued, not started again.
                 if let Some(topic) = self.selected_messages_topic() {
+                    let drafted = self
+                        .selected_messages_row()
+                        .and_then(|row| row.draft.as_ref())
+                        .is_some_and(|draft| draft.thread_id == topic.thread_id);
+                    if drafted {
+                        self.pending_reply_draft_resume = Some(ReplyDraftResume {
+                            message_id: topic.reply_to,
+                            reply_all: action == Action::ReplyAll,
+                        });
+                        self.status_message = Some("Opening your draft…".into());
+                        return;
+                    }
                     self.dispatch_or_defer_reply(
                         topic.reply_to,
                         topic.account_id,

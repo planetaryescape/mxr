@@ -236,8 +236,11 @@ save, for example while mxr is stopped, stays open in a sheet with its text
 until it saves or you close it.
 
 The TUI's list and `mxr messages` show the same `Draft:` line, with the label
-in the accent colour in the TUI. A reply you opened but left empty is not
-shown as a draft.
+in the accent colour in the TUI. In the TUI, `r` or `a` on that conversation
+opens the saved reply in your editor, with its text and recipients, and saves
+your changes back to the same draft. The TUI can't send a saved draft yet:
+send the reply from the web app, or with `mxr send` and the draft's id. A reply
+you opened but left empty is not shown as a draft.
 
 Topic labels show the state and recency for your turn, waiting and done topics.
 Quiet topics show only recency; the separate Quiet band for people remains.

@@ -297,6 +297,61 @@ fn a_reply_left_unsent_shows_as_a_draft_on_its_row() {
     assert!(!screen.contains("Does the pricing copy"), "{screen}");
 }
 
+#[test]
+fn r_on_a_conversation_with_an_unsent_reply_continues_that_draft() {
+    let mut app = messages_app(true);
+    let conversation = app
+        .mailbox
+        .messages_page
+        .page
+        .as_ref()
+        .and_then(|page| page.conversation.clone())
+        .unwrap();
+    let mut data = populated();
+    data.your_turn[0].draft = Some(mxr_protocol::MessagesRowDraftData {
+        draft_id: mxr_core::id::DraftId::new(),
+        thread_id: conversation.thread_id.clone(),
+        text: "Thursday at ten works".into(),
+        reply_all: false,
+        updated_at: chrono::Utc::now(),
+    });
+    app.set_messages(data, None);
+
+    press(&mut app, KeyCode::Char('r'));
+    assert_eq!(
+        app.pending_reply_draft_resume,
+        Some(crate::app::ReplyDraftResume {
+            message_id: conversation.composer.reply_to_message_id.clone(),
+            reply_all: false,
+        })
+    );
+    assert!(
+        app.compose.pending_compose.is_none(),
+        "no fresh, empty reply alongside the draft"
+    );
+
+    // A draft on another of their conversations is not this one's.
+    let mut app = messages_app(true);
+    let mut data = populated();
+    let other = data.your_turn[0].topics[1].thread_id.clone();
+    assert_ne!(other, conversation.thread_id);
+    data.your_turn[0].draft = Some(mxr_protocol::MessagesRowDraftData {
+        draft_id: mxr_core::id::DraftId::new(),
+        thread_id: other,
+        text: "For the launch checklist".into(),
+        reply_all: false,
+        updated_at: chrono::Utc::now(),
+    });
+    app.set_messages(data, None);
+    press(&mut app, KeyCode::Char('r'));
+    assert!(app.pending_reply_draft_resume.is_none());
+    assert!(matches!(
+        &app.compose.pending_compose,
+        Some(ComposeAction::Reply { message_id, .. })
+            if *message_id == conversation.composer.reply_to_message_id
+    ));
+}
+
 /// `.` pressed and its preview shown: a Got it counting down from `start`.
 fn counting_down(app: &mut App, start: std::time::Instant) -> AckPlanData {
     press(app, KeyCode::Char('.'));

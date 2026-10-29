@@ -7,15 +7,18 @@
 //! confirmed is what runs, and mail that arrives later is left alone.
 
 use super::diagnostics_impl::search_resolve::{resolve_search_selection, ResolvedSelection};
+use super::job_records::MAX_JOB_TEXT_BYTES;
+use super::mutations::{FrozenLabelEdits, ResolvedLabelEdit};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::{AccountId, LabelId, MessageId};
 use mxr_core::types::LabelKind;
 use mxr_protocol::{
     AccountMutationResultData, ClientKind, JobData, MutationCommand, ResponseData,
     SelectionAccountData, SelectionData, SelectionPreviewData, SelectionSampleData,
 };
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -28,12 +31,21 @@ const MAX_PREVIEWS: usize = 16;
 const MAX_PREVIEW_IDS: usize = 2_000_000;
 const DEFAULT_SAMPLE: u32 = 20;
 const MAX_SAMPLE: u32 = 100;
+/// The longest search a selection job takes. The selection is kept with the
+/// job and listed with every job, so it is bounded like the job's other text.
+const MAX_SELECTION_QUERY_BYTES: usize = 2048;
+/// The most labels one selection label edit names, added and removed.
+const MAX_SELECTION_LABELS: usize = 8;
 
-/// What a selection job needs of its mutation: archive, read-archive and label
-/// edits. Everything else (trash, spam, flags, move) is not offered for a whole
-/// selection yet, so a client cannot reach it by skipping the CLI; a label edit
-/// outside the user's own labels is refused by [`require_user_labels`].
-fn require_supported(mutation: &MutationCommand) -> Result<(), HandlerError> {
+/// What a selection job needs of its request: archive, read-archive and label
+/// edits, a query and labels of bounded size. Everything else (trash, spam,
+/// flags, move) is not offered for a whole selection yet, so a client cannot
+/// reach it by skipping the CLI; a label edit outside the user's own labels is
+/// refused by [`freeze_labels`].
+fn require_supported(
+    selection: &SelectionData,
+    mutation: &MutationCommand,
+) -> Result<(), HandlerError> {
     let ids = match mutation {
         MutationCommand::Archive { message_ids }
         | MutationCommand::ReadAndArchive { message_ids }
@@ -47,6 +59,33 @@ fn require_supported(mutation: &MutationCommand) -> Result<(), HandlerError> {
     if !ids.is_empty() {
         return Err("a selection job names its messages by selection, not by id".into());
     }
+    let SelectionData::Search { query, .. } = selection;
+    if query.len() > MAX_SELECTION_QUERY_BYTES {
+        return Err(format!(
+            "a selection's search can be at most {MAX_SELECTION_QUERY_BYTES} bytes"
+        )
+        .into());
+    }
+    if let MutationCommand::ModifyLabels { add, remove, .. } = mutation {
+        if add.is_empty() && remove.is_empty() {
+            return Err("name the label to add or remove".into());
+        }
+        if add.len() + remove.len() > MAX_SELECTION_LABELS {
+            return Err(format!(
+                "a selection label edit names at most {MAX_SELECTION_LABELS} labels"
+            )
+            .into());
+        }
+        if add
+            .iter()
+            .chain(remove)
+            .any(|label| label.len() > MAX_JOB_TEXT_BYTES)
+        {
+            return Err(
+                format!("a label name can be at most {MAX_JOB_TEXT_BYTES} bytes here").into(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -55,14 +94,39 @@ fn action_key(mutation: &MutationCommand) -> String {
     serde_json::to_string(mutation).unwrap_or_default()
 }
 
+/// One label a label edit names, as the preview resolved it in one account.
+#[derive(Debug, Clone)]
+struct FrozenLabel {
+    /// What the user typed, for messages.
+    reference: String,
+    label_id: LabelId,
+    provider_id: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FrozenAccountLabels {
+    add: Vec<FrozenLabel>,
+    remove: Vec<FrozenLabel>,
+}
+
+/// A label edit's labels, by account the selection reaches.
+type FrozenLabels = HashMap<AccountId, FrozenAccountLabels>;
+
 #[derive(Debug)]
 struct PreviewEntry {
     selection: SelectionData,
     action: String,
     ids: Vec<MessageId>,
     accounts: Vec<AccountMutationResultData>,
+    /// Set for a label edit: the labels it names, resolved in each account
+    /// the selection reaches.
+    labels: Option<FrozenLabels>,
     created: Instant,
 }
+
+/// A test's hold on a start between taking its token and recording its job.
+#[cfg(test)]
+pub(crate) type StartPause = (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
 
 /// Previews waiting to be committed, by token. Single use. A daemon restart
 /// loses them, which is safe: nothing had happened yet.
@@ -70,6 +134,10 @@ pub(crate) struct SelectionPreviews {
     entries: Mutex<Vec<(String, PreviewEntry)>>,
     max_previews: usize,
     max_ids: usize,
+    /// Set by a test: the next start signals the first notify once it holds
+    /// its token, then waits for the second.
+    #[cfg(test)]
+    pub(crate) pause_after_take: Mutex<Option<StartPause>>,
 }
 
 impl Default for SelectionPreviews {
@@ -84,6 +152,8 @@ impl SelectionPreviews {
             entries: Mutex::new(Vec::new()),
             max_previews,
             max_ids,
+            #[cfg(test)]
+            pause_after_take: Mutex::new(None),
         }
     }
 
@@ -106,26 +176,6 @@ impl SelectionPreviews {
 
     /// The preview behind `token` for this selection and action, once. A
     /// request for another selection or action leaves the token usable.
-    /// What the preview behind `token` covers, without using it up: the same
-    /// checks as [`Self::take`].
-    fn peek(
-        &self,
-        token: &str,
-        selection: &SelectionData,
-        action: &str,
-    ) -> Result<(u32, Vec<AccountMutationResultData>), HandlerError> {
-        let entries = self.entries.lock();
-        match entries.iter().find(|(held, _)| held == token) {
-            Some((_, entry)) if entry.created.elapsed() >= PREVIEW_TTL => {}
-            Some((_, entry)) if &entry.selection != selection || entry.action != action => {
-                return Err("the preview_token belongs to a different selection or action".into());
-            }
-            Some((_, entry)) => return Ok((entry.ids.len() as u32, entry.accounts.clone())),
-            None => {}
-        }
-        Err("that preview expired or was already used; preview again".into())
-    }
-
     fn take(
         &self,
         token: &str,
@@ -155,6 +205,12 @@ impl SelectionPreviews {
             }
         }
         Err("that preview expired or was already used; preview again".into())
+    }
+
+    /// Give back a taken preview whose job did not start, under its token and
+    /// with its age, so whoever it was meant for can still use it.
+    fn put_back(&self, token: &str, entry: PreviewEntry) {
+        self.entries.lock().push((token.to_string(), entry));
     }
 }
 
@@ -235,7 +291,8 @@ fn record(state: &AppState, activity: &JobActivity, job: &JobData, context: serd
     });
 }
 
-/// A label edit over a whole selection may only name labels the user created.
+/// A label edit over a whole selection may only name labels the user created,
+/// and the preview pins each to the label it means in each account.
 ///
 /// A provider acts on some labels rather than just tagging: adding `TRASH` or
 /// `SPAM` trashes or spams, IMAP maps a trash folder to an id of its own, and a
@@ -245,56 +302,104 @@ fn record(state: &AppState, activity: &JobActivity, job: &JobData, context: serd
 /// be one the store holds for the account with kind `User`. System labels
 /// (INBOX, TRASH, SPAM, IMPORTANT, STARRED, UNREAD, DRAFT, SENT, anything with
 /// a role), provider folders and names that match no label are refused. The
-/// name is resolved the way the runner resolves it, and must resolve to a user
-/// label in every account the selection can reach.
-async fn require_user_labels(
+/// name is resolved the way the runner resolves names, in each account the
+/// resolved selection reaches (`accounts`) and only those.
+///
+/// The result is what the job applies: the label's id in each account, so a
+/// label renamed after the preview, or another created under the old name,
+/// does not change which label the job edits.
+async fn freeze_labels(
     state: &AppState,
-    selection: &SelectionData,
+    accounts: &[AccountId],
     mutation: &MutationCommand,
-) -> Result<(), HandlerError> {
+) -> Result<Option<FrozenLabels>, HandlerError> {
     let MutationCommand::ModifyLabels { add, remove, .. } = mutation else {
-        return Ok(());
+        return Ok(None);
     };
-    if add.is_empty() && remove.is_empty() {
-        return Err("name the label to add or remove".into());
-    }
-    let SelectionData::Search { account_id, .. } = selection;
-    let accounts = match account_id {
-        Some(account_id) => vec![account_id.clone()],
-        None => state
-            .store
-            .list_cached_mail_accounts()
-            .await?
-            .into_iter()
-            .map(|account| account.id)
-            .collect(),
-    };
+    let mut frozen = FrozenLabels::new();
     for account in accounts {
-        let labels = state.store.list_labels_by_account(&account).await?;
-        for reference in add.iter().chain(remove) {
-            match mutations::find_label(&labels, reference) {
-                Some(label) if label.kind == LabelKind::User => {}
-                Some(_) => {
-                    return Err(format!(
+        let labels = state.store.list_labels_by_account(account).await?;
+        let resolve = |references: &[String]| -> Result<Vec<FrozenLabel>, String> {
+            references
+                .iter()
+                .map(|reference| match mutations::find_label(&labels, reference) {
+                    Some(label) if label.kind == LabelKind::User => Ok(FrozenLabel {
+                        reference: reference.clone(),
+                        label_id: label.id.clone(),
+                        provider_id: label.provider_id.clone(),
+                    }),
+                    Some(_) => Err(format!(
                         "`{reference}` is a system label or folder; --all label edits only work on labels you created"
-                    )
-                    .into())
+                    )),
+                    None => Err(reference.clone()),
+                })
+                .collect()
+        };
+        let edit = match (resolve(add), resolve(remove)) {
+            (Ok(add), Ok(remove)) => FrozenAccountLabels { add, remove },
+            (Err(error), _) | (_, Err(error)) => {
+                if error.starts_with('`') {
+                    return Err(error.into());
                 }
-                None => {
-                    let name = state
-                        .store
-                        .get_account(&account)
-                        .await?
-                        .map_or_else(|| account.to_string(), |found| found.name);
-                    return Err(format!(
-                        "`{reference}` is not a label you created in account {name}; --all label edits only work on labels you created"
-                    )
-                    .into());
-                }
+                let name = state
+                    .store
+                    .get_account(account)
+                    .await?
+                    .map_or_else(|| account.to_string(), |found| found.name);
+                return Err(format!(
+                    "`{error}` is not a label you created in account {name}; --all label edits only work on labels you created"
+                )
+                .into());
             }
-        }
+        };
+        frozen.insert(account.clone(), edit);
     }
-    Ok(())
+    Ok(Some(frozen))
+}
+
+/// The provider ids a starting job applies: each label the preview froze,
+/// provided it is still there, still the user's, under the same provider id.
+/// `Ok(Err(..))` when one is not: the preview is stale.
+async fn check_frozen_labels(
+    state: &AppState,
+    frozen: &FrozenLabels,
+) -> Result<Result<FrozenLabelEdits, String>, HandlerError> {
+    let mut edits = FrozenLabelEdits::new();
+    for (account, wanted) in frozen {
+        let labels = state.store.list_labels_by_account(account).await?;
+        let still_there = |frozen: &FrozenLabel| {
+            labels.iter().any(|label| {
+                label.id == frozen.label_id
+                    && label.provider_id == frozen.provider_id
+                    && label.kind == LabelKind::User
+            })
+        };
+        if let Some(gone) = wanted
+            .add
+            .iter()
+            .chain(&wanted.remove)
+            .find(|frozen| !still_there(frozen))
+        {
+            return Ok(Err(format!(
+                "the label `{}` changed since the preview (it was deleted, or is no longer one you created); preview again",
+                gone.reference
+            )));
+        }
+        let ids = |frozen: &[FrozenLabel]| {
+            frozen
+                .iter()
+                .map(|label| label.provider_id.clone())
+                .collect()
+        };
+        edits.insert(
+            account.clone(),
+            ResolvedLabelEdit {
+                add: ids(&wanted.add),
+                remove: ids(&wanted.remove),
+            },
+        );
+    }
+    Ok(Ok(edits))
 }
 
 pub(super) async fn preview_selection(
@@ -303,13 +408,20 @@ pub(super) async fn preview_selection(
     mutation: &MutationCommand,
     sample_size: Option<u32>,
 ) -> HandlerResult {
-    require_supported(mutation)?;
-    require_user_labels(state, selection, mutation).await?;
+    require_supported(selection, mutation)?;
     let SelectionData::Search { query, account_id } = selection;
     if query.trim().is_empty() {
         return Err("a selection needs a non-empty search query".into());
     }
     let resolved = resolve_search_selection(state, query, account_id.as_ref()).await?;
+    // The labels are checked in the accounts the selection reaches, after it
+    // is resolved, and kept with the preview for the job.
+    let reached: Vec<AccountId> = resolved
+        .accounts
+        .iter()
+        .map(|(account, _)| account.clone())
+        .collect();
+    let labels = freeze_labels(state, &reached, mutation).await?;
     let sample_size = sample_size.unwrap_or(DEFAULT_SAMPLE).min(MAX_SAMPLE);
     let (accounts, sample) = describe(state, &resolved, sample_size as usize).await?;
     let count = resolved.ids.len() as u32;
@@ -334,6 +446,7 @@ pub(super) async fn preview_selection(
             action: action_key(mutation),
             ids: resolved.ids,
             accounts: results,
+            labels,
             created: Instant::now(),
         });
         let expires_at = chrono::Utc::now().timestamp_millis()
@@ -403,6 +516,15 @@ async fn describe(
     Ok((accounts, sample))
 }
 
+/// Start the job a preview counted.
+///
+/// The order is what makes a job id mean a real job: (1) the token is taken
+/// from memory, so of any number of requests holding it one gets it; (2) the
+/// job's full row is inserted as `queued` with an insert that fails when the
+/// id exists; (3) the job is spawned. A job id is only ever returned for a
+/// row that is a real queued, running or finished job. When the insert finds
+/// the id taken, the token goes back and the request gets that job if it is
+/// the same selection and action (a retry of an accepted start), or an error.
 #[allow(clippy::too_many_arguments, reason = "mirrors the request's fields")]
 pub(super) async fn start_selection_job(
     state: &Arc<AppState>,
@@ -413,8 +535,7 @@ pub(super) async fn start_selection_job(
     mutation: &MutationCommand,
     client_correlation_id: Option<&str>,
 ) -> HandlerResult {
-    require_supported(mutation)?;
-    require_user_labels(state, selection, mutation).await?;
+    require_supported(selection, mutation)?;
     uuid::Uuid::parse_str(job_id).map_err(|_| {
         HandlerError::from("job_id must be a UUID chosen by the client".to_string())
     })?;
@@ -425,42 +546,65 @@ pub(super) async fn start_selection_job(
         return Ok(ResponseData::JobStarted { job });
     }
 
-    // Claim the id before spending the token or starting anything. The claim
-    // is an insert that only one of any number of concurrent requests with
-    // this id wins; the others get the winner's job (or an error if it is for
-    // something else). The token is only looked at here, so a loser leaves it
-    // for whoever it was meant for.
-    let (total, accounts) =
-        state
-            .selection_previews
-            .peek(preview_token, selection, &action_key(mutation))?;
+    let action = action_key(mutation);
+    let previewed = match state
+        .selection_previews
+        .take(preview_token, selection, &action)
+    {
+        Ok(previewed) => previewed,
+        // Another request took it. If that was this job's own start, its row
+        // may be there by now; otherwise this request did not start a job.
+        Err(error) => {
+            return match existing_job(state, job_id, selection, mutation).await? {
+                Some(job) => Ok(ResponseData::JobStarted { job }),
+                None => Err(error),
+            };
+        }
+    };
+    #[cfg(test)]
+    {
+        let pause = state.selection_previews.pause_after_take.lock().take();
+        if let Some((reached, resume)) = pause {
+            reached.notify_one();
+            resume.notified().await;
+        }
+    }
+
+    // The labels the preview froze must still be there; a stale preview is
+    // dropped, a store error leaves it usable.
+    let labels = match previewed.labels.as_ref() {
+        None => None,
+        Some(frozen) => match check_frozen_labels(state, frozen).await {
+            Ok(Ok(edits)) => Some(edits),
+            Ok(Err(stale)) => return Err(stale.into()),
+            Err(error) => {
+                state.selection_previews.put_back(preview_token, previewed);
+                return Err(error);
+            }
+        },
+    };
+
     let job = mutations::queued_job(
         job_id.to_string(),
         mutation,
-        total,
+        previewed.ids.len() as u32,
         Some(selection),
-        &accounts,
+        &previewed.accounts,
     );
-    if !mutations::claim_job(state, &job).await? {
-        return match existing_job(state, job_id, selection, mutation).await? {
-            Some(job) => Ok(ResponseData::JobStarted { job }),
-            None => Err(format!("job_id {job_id} could not be claimed; try again").into()),
-        };
+    match mutations::claim_job(state, &job).await {
+        Ok(true) => {}
+        Ok(false) => {
+            state.selection_previews.put_back(preview_token, previewed);
+            return match existing_job(state, job_id, selection, mutation).await? {
+                Some(job) => Ok(ResponseData::JobStarted { job }),
+                None => Err(format!("job_id {job_id} is taken; try again").into()),
+            };
+        }
+        Err(error) => {
+            state.selection_previews.put_back(preview_token, previewed);
+            return Err(error);
+        }
     }
-
-    // Now the token: two requests with different ids can hold the same one,
-    // and only one of them gets to use it.
-    let previewed =
-        match state
-            .selection_previews
-            .take(preview_token, selection, &action_key(mutation))
-        {
-            Ok(previewed) => previewed,
-            Err(error) => {
-                mutations::release_job_claim(state, job_id).await;
-                return Err(error);
-            }
-        };
 
     let SelectionData::Search { query, account_id } = selection;
     let cmd = with_ids(mutation, previewed.ids);
@@ -472,6 +616,7 @@ pub(super) async fn start_selection_job(
     spec.job_id = Some(job_id.to_string());
     spec.selection = Some(selection.clone());
     spec.accounts = previewed.accounts;
+    spec.labels = labels;
     spec.activity = Some(JobActivity {
         source,
         action: action_token(mutation),
@@ -498,7 +643,7 @@ async fn existing_job(
     // The whole action, not just its kind: `label Work` and `unlabel Work`
     // under one id are different requests.
     if job.selection.as_ref() == Some(selection) && job.action.as_ref() == Some(mutation) {
-        return Ok(Some(mutations::bound_for_wire(job)));
+        return Ok(Some(super::job_records::job_detail(job)));
     }
     Err(format!("job_id {job_id} is already used by a different job").into())
 }
@@ -527,6 +672,7 @@ mod tests {
             action: action.into(),
             ids: (0..ids).map(|_| MessageId::new()).collect(),
             accounts: Vec::new(),
+            labels: None,
             created: Instant::now(),
         }
     }

@@ -220,6 +220,9 @@ pub fn file_metadata(root: &Path, relative: &str) -> BackupResult<BackupFile> {
 /// `user_activity` as migrations 035 and 036 created it, before 089 widened
 /// its sources. Run against a migrated schema, it restores that definition.
 pub(crate) const PRE_ASSESSMENT_SCHEMA: &str = include_str!("backup/pre_assessment.sql");
+/// Schema 106 and older: no undo entry claims (migration 107).
+pub(crate) const PRE_UNDO_CLAIMS_SCHEMA: &str =
+    "ALTER TABLE mutation_undo_log DROP COLUMN claimed_by";
 
 pub(crate) const PRE_APPROVED_SENDS_SCHEMA: &str = "DROP TRIGGER IF EXISTS approved_send_draft_edited; DROP TABLE IF EXISTS approved_send_attempts; DROP TABLE IF EXISTS approved_sends;";
 
@@ -236,7 +239,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=106).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=107).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -293,6 +296,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 107 {
+        sqlx::query(PRE_UNDO_CLAIMS_SCHEMA)
+            .execute(expected.writer())
+            .await?;
+    }
     if manifest.schema_version < 106 {
         sqlx::query("DROP TABLE mode_row_seen")
             .execute(expected.writer())
@@ -571,7 +579,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=106).contains(&version) {
+    if !(80..=107).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -690,7 +698,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:106, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:107, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 

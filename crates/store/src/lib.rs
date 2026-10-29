@@ -101,9 +101,9 @@ mod rules;
 mod scheduled_sends;
 mod screener;
 mod search;
-mod selection;
 mod search_fts_fallback;
 mod search_reindex_pending;
+mod selection;
 mod semantic;
 mod send_time;
 mod sender_history;
@@ -271,7 +271,7 @@ pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{
     CommitmentPrior, DeskUndo, HighlightPrior, TodoTickPrior, UndoEntry, UndoEntrySnapshot,
-    UndoableMutationKind,
+    UndoEntryState, UndoableMutationKind,
 };
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,

@@ -4390,6 +4390,160 @@ async fn set_undo_entries_expiry_moves_only_the_named_entries() {
     assert!(store.read_undo_entry("other").await.unwrap().is_some());
 }
 
+fn claim_entry(id: &str, expires_at: i64) -> crate::undo::UndoEntry {
+    use crate::undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+    UndoEntry {
+        mutation_id: id.into(),
+        kind: UndoableMutationKind::Archive,
+        snapshots: (0..2)
+            .map(|n| UndoEntrySnapshot {
+                message_id: mxr_core::MessageId::new(),
+                account_id: mxr_core::AccountId::new(),
+                provider_id: format!("p-{n}"),
+                prior_flags_bits: 0,
+                prior_label_provider_ids: vec!["INBOX".into()],
+                uncertain: false,
+            })
+            .collect(),
+        desk: None,
+        applied_at: 100,
+        expires_at,
+    }
+}
+
+/// Two undos reaching one entry: exactly one claim wins, and the entry is
+/// out of reach until its holder gives it back.
+#[tokio::test]
+async fn an_undo_entry_is_claimed_by_exactly_one_undo() {
+    use crate::undo::UndoEntryState;
+    let store = Store::in_memory().await.unwrap();
+    store
+        .write_undo_entry(&claim_entry("e", 1_000))
+        .await
+        .unwrap();
+
+    let (a, b) = tokio::join!(
+        store.claim_undo_entry("e", "undo-a", 500),
+        store.claim_undo_entry("e", "undo-b", 500),
+    );
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert_eq!(usize::from(a.is_some()) + usize::from(b.is_some()), 1);
+    let (holder, other) = if a.is_some() {
+        ("undo-a", "undo-b")
+    } else {
+        ("undo-b", "undo-a")
+    };
+    assert_eq!(
+        store.undo_entry_state("e", 500).await.unwrap(),
+        UndoEntryState::Claimed
+    );
+    // Only the holder ends the claim.
+    store.release_undo_entry("e", other).await.unwrap();
+    assert_eq!(
+        store.undo_entry_state("e", 500).await.unwrap(),
+        UndoEntryState::Claimed
+    );
+    store.release_undo_entry("e", holder).await.unwrap();
+    assert_eq!(
+        store.undo_entry_state("e", 500).await.unwrap(),
+        UndoEntryState::Available
+    );
+    assert!(store
+        .claim_undo_entry("e", "undo-c", 500)
+        .await
+        .unwrap()
+        .is_some());
+    // Someone else's consume does nothing.
+    store.consume_undo_entry("e", "undo-a").await.unwrap();
+    assert_eq!(
+        store.undo_entry_state("e", 500).await.unwrap(),
+        UndoEntryState::Claimed
+    );
+    store.consume_undo_entry("e", "undo-c").await.unwrap();
+    assert_eq!(
+        store.undo_entry_state("e", 500).await.unwrap(),
+        UndoEntryState::Missing
+    );
+}
+
+#[tokio::test]
+async fn an_expired_undo_entry_cannot_be_claimed() {
+    use crate::undo::UndoEntryState;
+    let store = Store::in_memory().await.unwrap();
+    store
+        .write_undo_entry(&claim_entry("e", 1_000))
+        .await
+        .unwrap();
+    assert!(store
+        .claim_undo_entry("e", "undo", 1_000)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        store.undo_entry_state("e", 1_000).await.unwrap(),
+        UndoEntryState::Expired
+    );
+}
+
+/// A part-done restore keeps only what a retry can still restore, and frees
+/// the entry for that retry.
+#[tokio::test]
+async fn releasing_a_claim_can_keep_only_the_rest() {
+    let store = Store::in_memory().await.unwrap();
+    let entry = claim_entry("e", 1_000);
+    store.write_undo_entry(&entry).await.unwrap();
+    let claimed = store
+        .claim_undo_entry("e", "undo", 500)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.snapshots.len(), 2);
+    store
+        .release_undo_entry_keeping("e", "undo", &claimed.snapshots[1..])
+        .await
+        .unwrap();
+    let again = store
+        .claim_undo_entry("e", "retry", 500)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(again.snapshots.len(), 1);
+    assert_eq!(again.snapshots[0].provider_id, "p-1");
+}
+
+/// A claim does not outlive its holder: an undo that ends releases what it
+/// still holds, and a daemon start releases everything.
+#[tokio::test]
+async fn claims_are_released_by_holder_and_at_startup() {
+    use crate::undo::UndoEntryState;
+    let store = Store::in_memory().await.unwrap();
+    for id in ["a", "b", "c"] {
+        store
+            .write_undo_entry(&claim_entry(id, 1_000))
+            .await
+            .unwrap();
+    }
+    for (id, who) in [("a", "job-1"), ("b", "job-1"), ("c", "job-2")] {
+        assert!(store
+            .claim_undo_entry(id, who, 500)
+            .await
+            .unwrap()
+            .is_some());
+    }
+    assert_eq!(store.release_undo_claims_of("job-1").await.unwrap(), 2);
+    assert_eq!(
+        store.undo_entry_state("c", 500).await.unwrap(),
+        UndoEntryState::Claimed
+    );
+    assert_eq!(store.release_all_undo_claims().await.unwrap(), 1);
+    for id in ["a", "b", "c"] {
+        assert_eq!(
+            store.undo_entry_state(id, 500).await.unwrap(),
+            UndoEntryState::Available
+        );
+    }
+}
+
 /// Startup finds the jobs the last daemon left `queued` or `running`, and
 /// nothing else (not finished jobs, not archive receipts).
 #[tokio::test]
@@ -4419,7 +4573,7 @@ async fn list_unfinished_mutation_jobs_returns_only_queued_and_running_jobs() {
 }
 
 /// A job id is taken by one insert: of any number of callers with the same id,
-/// one wins, the row is the winner's, and a released id can be taken again.
+/// one wins and the row is the winner's.
 #[tokio::test]
 async fn claim_mutation_job_is_won_by_exactly_one_caller() {
     let store = Store::in_memory().await.unwrap();
@@ -4435,13 +4589,6 @@ async fn claim_mutation_job_is_won_by_exactly_one_caller() {
         store.get_mutation_job("job").await.unwrap().unwrap(),
         format!(r#"{{"by":"{winner}"}}"#)
     );
-
-    store.delete_mutation_job("job").await.unwrap();
-    assert!(store.get_mutation_job("job").await.unwrap().is_none());
-    assert!(store
-        .claim_mutation_job("job", "mutation.archive", "queued", 4, "{}")
-        .await
-        .unwrap());
 }
 
 /// The existence check behind a search selection: three columns, in the

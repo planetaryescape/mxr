@@ -253,8 +253,8 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
 /// so a long list is a count and the command that reverses the whole job.
 fn undo_summary(job: &JobData) -> String {
     const LISTED: usize = 3;
-    // The response carries the newest undo ids only; the daemon says how many
-    // there were.
+    // `mxr jobs JOB_ID` carries the newest undo ids only and a listing none;
+    // the daemon says how many there were.
     let count = (job.undo_id_count as usize).max(job.undo_ids.len());
     if count == 0 {
         return String::new();
@@ -271,13 +271,33 @@ fn undo_summary(job: &JobData) -> String {
                 .format("%Y-%m-%d %H:%M:%S")
         );
     }
-    if count <= LISTED {
+    if count <= LISTED && job.undo_ids.len() == count {
         return job.undo_ids.join(",");
     }
     format!(
-        "{count} undo ids (list them with: mxr jobs {} --format json)",
+        "{count} undo id{} (list them with: mxr jobs {} --format json)",
+        if count == 1 { "" } else { "s" },
         job.job_id
     )
+}
+
+/// The table's failure note: the first failure when the response carries it
+/// (`mxr jobs JOB_ID`), else how many there are (a listing).
+fn failure_summary(job: &JobData) -> String {
+    if let Some(failure) = job.failures.first() {
+        return format!(
+            "  first_failure={}: {}",
+            failure.message_id.as_str(),
+            failure.error
+        );
+    }
+    if job.failure_count > 0 {
+        return format!(
+            "  failures={} (see mxr jobs {})",
+            job.failure_count, job.job_id
+        );
+    }
+    String::new()
 }
 
 fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow::Result<()> {
@@ -311,14 +331,7 @@ fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow
                         .as_ref()
                         .map(|error| format!("  error={error}"))
                         .unwrap_or_default(),
-                    job.failures
-                        .first()
-                        .map(|failure| format!(
-                            "  first_failure={}: {}",
-                            failure.message_id.as_str(),
-                            failure.error
-                        ))
-                        .unwrap_or_default()
+                    failure_summary(&job)
                 );
             }
         }
@@ -1813,6 +1826,7 @@ mod tests {
             undo_of: None,
             action: None,
             undo_id_count: 0,
+            failure_count: 0,
         }
     }
 
@@ -1831,6 +1845,21 @@ mod tests {
             long.len()
         );
         assert!(!long.contains("undo-4999"));
+    }
+
+    #[test]
+    fn a_listing_without_undo_ids_or_failures_counts_them() {
+        // `ListJobs` carries the counts, not the lists.
+        let mut listed = job_with_undo_ids(0, false);
+        listed.undo_id_count = 2;
+        listed.failure_count = 3;
+        let undo = undo_summary(&listed);
+        assert!(undo.starts_with("2 undo ids"), "{undo}");
+        assert_eq!(
+            failure_summary(&listed),
+            "  failures=3 (see mxr jobs job-1)"
+        );
+        assert_eq!(failure_summary(&job_with_undo_ids(0, false)), "");
     }
 
     #[test]

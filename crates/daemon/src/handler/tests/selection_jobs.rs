@@ -910,6 +910,7 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
             })
             .await;
         refused(preview);
+        // A raw start has no token from a preview that froze such a label.
         let start = fx
             .refused(fx.start_request(
                 &uuid::Uuid::now_v7().to_string(),
@@ -918,7 +919,11 @@ async fn a_label_edit_may_only_name_the_users_own_labels() {
                 &mutation,
             ))
             .await;
-        refused(start);
+        assert!(
+            start.contains("expired or was already used")
+                || start.contains("name the label to add or remove"),
+            "{start}"
+        );
     }
     assert!(fx.fake.mutations().is_empty());
     for message in &msgs {
@@ -973,12 +978,102 @@ async fn a_label_edit_over_every_account_needs_the_label_in_each() {
             .count,
         2
     );
+    // So is a search over every account that only reaches that one: an
+    // account the selection does not reach is not asked about its labels.
+    fx.message(&fx.account, "receipt here", 4).await;
+    let ResponseData::SelectionPreview { preview } = fx
+        .send(Request::PreviewSelection {
+            selection: Fixture::selection("receipt", None),
+            mutation: edit_labels(&["Work"], &[]),
+            sample_size: None,
+        })
+        .await
+    else {
+        panic!("expected a preview");
+    };
+    assert_eq!(preview.count, 1);
 
     fx.label(&other, "Label_work_2", "Work").await;
     let ResponseData::SelectionPreview { preview } = fx.send(preview_all("Work")).await else {
         panic!("expected a preview");
     };
     assert_eq!(preview.count, 3);
+}
+
+// ---------------------------------------------------------------------------
+// The labels are the ones the preview meant
+// ---------------------------------------------------------------------------
+
+/// Provider label ids the fake added, one entry per call.
+fn added_labels(fx: &Fixture) -> Vec<Vec<String>> {
+    fx.fake
+        .mutations()
+        .into_iter()
+        .filter_map(|mutation| match mutation {
+            RecordedMutation::LabelsModified { added, .. } => Some(added),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The preview pins each name to a label. Renaming it afterwards, and making
+/// another label with the old name, does not move the job to the new label,
+/// before the start or while the job runs.
+#[tokio::test]
+async fn a_rename_after_the_preview_does_not_change_which_label_is_edited() {
+    let fx = Fixture::new().await;
+    fx.label(&fx.account, "Label_work", "Work").await;
+    fx.many(250, "invoice").await;
+    let add = edit_labels(&["Work"], &[]);
+    let preview = fx.preview("invoice", &add).await;
+
+    // `Work` becomes `Old`, and a new `Work` appears.
+    fx.label(&fx.account, "Label_work", "Old").await;
+    fx.label(&fx.account, "Label_new", "Work").await;
+    let started = fx.start("invoice", &preview.preview_token, &add).await;
+    // And again while the job runs: no batch resolves the name again.
+    fx.label(&fx.account, "Label_work", "Older").await;
+    fx.label(&fx.account, "Label_newer", "Old").await;
+    let job = fx.wait_for_job(&started.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 250);
+    let added = added_labels(&fx);
+    assert_eq!(added.len(), 250);
+    assert!(
+        added
+            .iter()
+            .all(|labels| labels == &vec!["Label_work".to_string()]),
+        "every batch edits the label the preview meant"
+    );
+}
+
+#[tokio::test]
+async fn a_label_deleted_after_the_preview_refuses_the_start() {
+    let fx = Fixture::new().await;
+    let work = fx.label(&fx.account, "Label_work", "Work").await;
+    fx.many(3, "invoice").await;
+    let add = edit_labels(&["Work"], &[]);
+    let preview = fx.preview("invoice", &add).await;
+    fx.state.store.delete_label(&work).await.unwrap();
+    // A label of the same name made since is not the one previewed.
+    fx.label(&fx.account, "Label_new", "Work").await;
+
+    let job_id = uuid::Uuid::now_v7().to_string();
+    let refusal = fx
+        .refused(fx.start_request(&job_id, "invoice", &preview.preview_token, &add))
+        .await;
+    assert!(refusal.contains("changed since the preview"), "{refusal}");
+    assert!(refusal.contains("preview again"), "{refusal}");
+    assert!(fx.fake.mutations().is_empty());
+    assert!(
+        fx.state
+            .store
+            .get_mutation_job(&job_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "no job was recorded"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2007,6 +2102,134 @@ async fn a_job_id_is_for_one_action_whole() {
     assert!(matches!(again, ResponseData::JobStarted { job } if job.job_id == job_id));
 }
 
+/// Two starts with one token and different job ids: one job runs, the other
+/// request is refused, and no job is recorded for it.
+#[tokio::test]
+async fn one_token_starts_one_job_whatever_the_job_ids() {
+    let fx = Fixture::new().await;
+    fx.many(150, "invoice").await;
+    let token = fx.preview("invoice", &archive()).await.preview_token;
+    let (j, k) = (
+        uuid::Uuid::now_v7().to_string(),
+        uuid::Uuid::now_v7().to_string(),
+    );
+    let (a, b) = tokio::join!(
+        fx.send_raw(fx.start_request(&j, "invoice", &token, &archive())),
+        fx.send_raw(fx.start_request(&k, "invoice", &token, &archive())),
+    );
+    let mut started = Vec::new();
+    for (id, reply) in [(&j, a), (&k, b)] {
+        match reply {
+            Response::Ok {
+                data: ResponseData::JobStarted { job },
+            } => {
+                assert_eq!(&job.job_id, id);
+                started.push(job.job_id);
+            }
+            Response::Error { message, .. } => {
+                assert!(message.contains("expired or was already used"), "{message}");
+                assert!(
+                    fx.state.store.get_mutation_job(id).await.unwrap().is_none(),
+                    "a refused start leaves no job behind"
+                );
+            }
+            other => panic!("unexpected reply {other:?}"),
+        }
+    }
+    assert_eq!(started.len(), 1, "exactly one start won");
+    let job = fx.wait_for_job(&started[0]).await;
+    assert_eq!(job.progress.succeeded, 150);
+    let mut archived = fx.archived_provider_ids();
+    assert_eq!(archived.len(), 150);
+    archived.sort();
+    archived.dedup();
+    assert_eq!(archived.len(), 150);
+}
+
+/// A retry of J that arrives while J's start holds the token and has not
+/// recorded the job yet is refused; it is never handed a job id with no job
+/// behind it. Once J is recorded, a retry gets J.
+#[tokio::test]
+async fn a_retry_while_the_start_is_being_accepted_never_gets_a_phantom_job() {
+    let fx = Fixture::new().await;
+    fx.many(3, "invoice").await;
+    let token = fx.preview("invoice", &archive()).await.preview_token;
+    let job_id = uuid::Uuid::now_v7().to_string();
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let resume = Arc::new(tokio::sync::Notify::new());
+    *fx.state.selection_previews.pause_after_take.lock() = Some((reached.clone(), resume.clone()));
+
+    let first = {
+        let state = fx.state.clone();
+        let request = fx.start_request(&job_id, "invoice", &token, &archive());
+        tokio::spawn(async move {
+            let msg = IpcMessage {
+                expected_workspace: None,
+                id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(request),
+            };
+            handle_request(&state, &msg).await.payload
+        })
+    };
+    reached.notified().await;
+
+    // J holds the token and has no row yet.
+    let retry = fx
+        .send_raw(fx.start_request(&job_id, "invoice", &token, &archive()))
+        .await;
+    let Response::Error { message, .. } = retry else {
+        panic!("a retry before the job is recorded must not get a job: {retry:?}");
+    };
+    assert!(message.contains("expired or was already used"), "{message}");
+    assert!(fx
+        .state
+        .store
+        .get_mutation_job(&job_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    resume.notify_one();
+    let IpcPayload::Response(Response::Ok {
+        data: ResponseData::JobStarted { job },
+    }) = first.await.unwrap()
+    else {
+        panic!("the first start goes through");
+    };
+    assert_eq!(job.job_id, job_id);
+    fx.wait_for_job(&job_id).await;
+    let again = fx
+        .send(fx.start_request(&job_id, "invoice", &token, &archive()))
+        .await;
+    assert!(matches!(again, ResponseData::JobStarted { job } if job.job_id == job_id));
+    assert_eq!(fx.archived_provider_ids().len(), 3, "one job ran");
+}
+
+/// K took the token; a start of J with it afterwards is an error, and J does
+/// not exist.
+#[tokio::test]
+async fn a_start_after_another_job_took_the_token_is_refused() {
+    let fx = Fixture::new().await;
+    fx.many(3, "invoice").await;
+    let token = fx.preview("invoice", &archive()).await.preview_token;
+    let k = fx.start("invoice", &token, &archive()).await;
+    let j = uuid::Uuid::now_v7().to_string();
+    let refusal = fx
+        .refused(fx.start_request(&j, "invoice", &token, &archive()))
+        .await;
+    assert!(refusal.contains("expired or was already used"), "{refusal}");
+    assert!(fx
+        .refused(Request::GetJob { job_id: j.clone() })
+        .await
+        .contains("job not found"));
+    fx.wait_for_job(&k.job_id).await;
+    let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
+        panic!("expected jobs");
+    };
+    assert!(jobs.iter().all(|job| job.job_id != j));
+}
+
 #[tokio::test]
 async fn concurrent_undos_of_one_job_share_one_undo() {
     let fx = Fixture::new().await;
@@ -2094,27 +2317,57 @@ async fn undo_restores_the_unread_state_after_a_rate_limit_between_read_and_arch
 // What a job response carries
 // ---------------------------------------------------------------------------
 
+/// The largest job record there can be: every free-text field far past its
+/// bound (Gmail keeps whole HTTP bodies in its errors), in the characters JSON
+/// spends the most bytes on, every list past its cap, and a selection and
+/// label edit at the largest the daemon accepts. 16 accounts per job. Both
+/// a listing of the 100 retained jobs and one job's detail stay under 4 MiB.
 #[tokio::test]
-async fn a_listing_of_retained_jobs_stays_under_the_frame_limit() {
+async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
+    const FOUR_MIB: usize = 4 * 1024 * 1024;
     let fx = Fixture::new().await;
-    // 100 retained jobs, each over half a million messages with 50 failures.
+    // `"` is two bytes in JSON, a control character six (it becomes a space).
+    let huge = |n: usize| "\"\u{1}é".repeat(n);
     let template = |n: usize| {
+        let accounts: Vec<mxr_protocol::AccountMutationResultData> = (0..16)
+            .map(|_| mxr_protocol::AccountMutationResultData {
+                account_id: AccountId::new(),
+                account_name: huge(400),
+                succeeded: 31_250,
+                skipped: 0,
+                failed: 1,
+                error: Some(huge(4_000)),
+            })
+            .collect();
+        let label = "\"".repeat(512);
+        let mutation = MutationCommand::ModifyLabels {
+            message_ids: Vec::new(),
+            add: vec![label.clone(); 4],
+            remove: vec![label; 4],
+        };
         let mut job = super::super::mutations::queued_job(
             uuid::Uuid::now_v7().to_string(),
-            &archive(),
+            &mutation,
             500_000,
-            Some(&Fixture::selection("invoice", None)),
-            &[],
+            Some(&Fixture::selection(
+                &"\"".repeat(2048),
+                Some(&AccountId::new()),
+            )),
+            &accounts,
         );
         job.status = JobStatusData::Failed;
         job.started_at += n as i64;
+        job.finished_at = Some(job.started_at + 1);
+        job.paused_until = Some(job.started_at);
+        job.undo_expires_at = Some(job.started_at + 3_600_000);
+        job.error = Some(huge(4_000));
         job.undo_ids = (0..5_000)
             .map(|_| uuid::Uuid::now_v7().to_string())
             .collect();
-        job.failures = (0..50)
+        job.failures = (0..80)
             .map(|_| mxr_protocol::JobFailureData {
                 message_id: MessageId::new(),
-                error: "x".repeat(300),
+                error: huge(4_000),
             })
             .collect();
         job
@@ -2131,7 +2384,30 @@ async fn a_listing_of_retained_jobs_stays_under_the_frame_limit() {
     }
     assert!(
         unbounded > 16 * 1024 * 1024,
-        "the setup is the worst case: {unbounded} bytes if every id were sent"
+        "the setup is past the frame limit unbounded: {unbounded} bytes"
+    );
+
+    // Bounded where it is written: the stored row, not just the response.
+    let stored: JobData = serde_json::from_str(
+        &fx.state
+            .store
+            .get_mutation_job(&first_id)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(stored.error.as_ref().unwrap().len() <= 512);
+    assert_eq!(stored.failures.len(), 50);
+    assert!(stored.failures.iter().all(|f| f.error.len() <= 512));
+    for row in &stored.result.as_ref().unwrap().accounts {
+        assert!(row.account_name.len() <= 128);
+        assert!(row.error.as_ref().unwrap().len() <= 512);
+    }
+    assert_eq!(
+        stored.undo_ids.len(),
+        5_000,
+        "undo keeps every id in the store"
     );
 
     let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
@@ -2139,13 +2415,54 @@ async fn a_listing_of_retained_jobs_stays_under_the_frame_limit() {
     };
     assert_eq!(jobs.len(), 100);
     let wire = serde_json::to_vec(&ResponseData::Jobs { jobs: jobs.clone() }).unwrap();
-    assert!(wire.len() < 4 * 1024 * 1024, "{} bytes", wire.len());
+    assert!(wire.len() < FOUR_MIB, "listing: {} bytes", wire.len());
     for job in &jobs {
-        assert_eq!(job.undo_ids.len(), 100);
-        assert_eq!(job.undo_id_count, 5_000);
+        assert!(job.undo_ids.is_empty() && job.failures.is_empty());
+        assert_eq!((job.undo_id_count, job.failure_count), (5_000, 50));
     }
+
     let one = fx.job(&first_id).await;
+    let wire = serde_json::to_vec(&ResponseData::Job { job: one.clone() }).unwrap();
+    assert!(wire.len() < FOUR_MIB, "detail: {} bytes", wire.len());
     assert_eq!((one.undo_ids.len(), one.undo_id_count), (100, 5_000));
+    assert_eq!((one.failures.len(), one.failure_count), (50, 50));
+    eprintln!(
+        "worst case: listing {} bytes, detail {} bytes",
+        serde_json::to_vec(&ResponseData::Jobs { jobs })
+            .unwrap()
+            .len(),
+        wire.len()
+    );
+}
+
+/// The daemon refuses a selection bigger than a job record keeps.
+#[tokio::test]
+async fn a_selection_past_the_record_bounds_is_refused() {
+    let fx = Fixture::new().await;
+    fx.label(&fx.account, "Label_work", "Work").await;
+    fx.many(2, "invoice").await;
+    let preview = |query: String, mutation: MutationCommand| Request::PreviewSelection {
+        selection: Fixture::selection(&query, None),
+        mutation,
+        sample_size: None,
+    };
+    let long_query = fx
+        .refused(preview(format!("invoice {}", "x".repeat(2_048)), archive()))
+        .await;
+    assert!(long_query.contains("at most 2048 bytes"), "{long_query}");
+    let many: Vec<&str> = vec!["Work"; 9];
+    let too_many = fx
+        .refused(preview("invoice".into(), edit_labels(&many, &[])))
+        .await;
+    assert!(too_many.contains("at most 8 labels"), "{too_many}");
+    let long_label = "w".repeat(513);
+    let too_long = fx
+        .refused(preview(
+            "invoice".into(),
+            edit_labels(&[long_label.as_str()], &[]),
+        ))
+        .await;
+    assert!(too_long.contains("at most 512 bytes"), "{too_long}");
 }
 
 #[tokio::test]
@@ -2202,11 +2519,11 @@ async fn a_snapshot_that_expires_while_the_undo_waits_out_a_rate_limit_is_skippe
     // The first 10 restore, the 11th is refused: the undo waits, and by the
     // time it looks again the window has closed.
     fx.fake.rate_limit_mutations_after(10, 1, 5);
-    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // Open until the provider has refused, closed from then on.
     let clock: super::super::job_undo::UndoClock = {
-        let reads = reads.clone();
+        let fake = fx.fake.clone();
         Arc::new(move || {
-            if reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            if fake.pending_rate_limits() > 0 {
                 closes - 60_000
             } else {
                 closes + 1_000
@@ -2254,6 +2571,268 @@ async fn a_snapshot_that_expires_while_the_undo_waits_out_a_rate_limit_is_skippe
         .await
         .unwrap()
         .is_none());
+}
+
+/// The window is checked before every message, not only between entries
+/// and after waits: an undo that reaches the end of the window part way
+/// through an entry stops there, counts the rest skipped, and drops the
+/// entry.
+#[tokio::test]
+async fn the_window_closing_between_two_restores_stops_the_undo_there() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(50, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    let closes = job.undo_expires_at.unwrap();
+    let calls_before = fx.fake.mutations().len();
+    // Open for the first ten restores, closed from the eleventh on.
+    let clock: super::super::job_undo::UndoClock = {
+        let fake = fx.fake.clone();
+        Arc::new(move || {
+            if fake.mutations().len() - calls_before < 10 {
+                closes - 60_000
+            } else {
+                closes + 1_000
+            }
+        })
+    };
+    let ResponseData::JobStarted { job: undo } = super::super::job_undo::start_undo_job_with(
+        &fx.state,
+        ::mxr_protocol::ClientKind::Cli,
+        &job.job_id,
+        closes - 60_000,
+        clock,
+    )
+    .await
+    .unwrap() else {
+        panic!("expected an undo job");
+    };
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(
+        (
+            undo.progress.succeeded,
+            undo.progress.skipped,
+            undo.progress.failed
+        ),
+        (10, 40, 0),
+        "{undo:?}"
+    );
+    assert_eq!(fx.fake.mutations().len() - calls_before, 10);
+    let restored = {
+        let mut restored = 0;
+        for message in &msgs {
+            if fx.in_inbox(&message.id).await {
+                restored += 1;
+            }
+        }
+        restored
+    };
+    assert_eq!(restored, 10);
+    assert!(fx
+        .state
+        .store
+        .read_undo_entry(&job.undo_ids[0])
+        .await
+        .unwrap()
+        .is_none());
+}
+
+/// The same check in a chunk's own undo.
+#[tokio::test]
+async fn a_chunk_undo_stops_where_the_window_closes() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(5, "invoice").await;
+    let ResponseData::MutationResult { result } = fx
+        .send(Request::mutation(MutationCommand::Archive {
+            message_ids: msgs.iter().map(|m| m.id.clone()).collect(),
+        }))
+        .await
+    else {
+        panic!("expected a mutation result");
+    };
+    let mutation_id = result.mutation_id.unwrap();
+    let calls_before = fx.fake.mutations().len();
+    let now = chrono::Utc::now().timestamp_millis();
+    let clock: super::super::job_undo::UndoClock = {
+        let fake = fx.fake.clone();
+        Arc::new(move || {
+            if fake.mutations().len() - calls_before < 2 {
+                now
+            } else {
+                now + 3_600_000
+            }
+        })
+    };
+    let error = super::super::mutations::undo_mutation_with(&fx.state, &mutation_id, clock)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("window closed part way: restored 2, 3 not restored"),
+        "{error}"
+    );
+    assert_eq!(fx.fake.mutations().len() - calls_before, 2);
+    assert!(fx
+        .state
+        .store
+        .read_undo_entry(&mutation_id)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+/// Round 2's race: a whole-job undo paused on a rate limit, a chunk undo in
+/// the meantime, and a message archived again. The chunk the paused undo is
+/// in cannot be undone under it; a chunk it has not reached can, and the
+/// paused undo then leaves that chunk alone, so the message archived again
+/// stays archived.
+#[tokio::test]
+async fn a_chunk_undo_and_a_paused_job_undo_never_restore_one_message_twice() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(150, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    assert_eq!(job.undo_ids.len(), 2);
+    // Newest chunk first: the undo takes the second entry (messages 100..150),
+    // restores five, and waits a while on the sixth.
+    let (older, newer) = (job.undo_ids[0].clone(), job.undo_ids[1].clone());
+    fx.fake.rate_limit_mutations_after(5, 1, 100);
+    let undo = fx.undo(&job.job_id).await;
+    for _ in 0..2_000 {
+        if fx.fake.pending_rate_limits() == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+    assert_eq!(fx.fake.pending_rate_limits(), 0, "the undo is waiting");
+
+    let held = fx
+        .refused(Request::UndoMutation {
+            mutation_id: newer.clone(),
+        })
+        .await;
+    assert!(held.contains("being undone already"), "{held}");
+
+    assert!(matches!(
+        fx.send(Request::UndoMutation {
+            mutation_id: older.clone(),
+        })
+        .await,
+        ResponseData::Ack
+    ));
+    let again = &msgs[0];
+    assert!(fx.in_inbox(&again.id).await);
+    fx.send(Request::mutation(MutationCommand::Archive {
+        message_ids: vec![again.id.clone()],
+    }))
+    .await;
+    assert!(!fx.in_inbox(&again.id).await);
+
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(
+        (
+            undo.progress.succeeded,
+            undo.progress.skipped,
+            undo.progress.failed
+        ),
+        (50, 100, 0),
+        "{undo:?}"
+    );
+    assert!(
+        !fx.in_inbox(&again.id).await,
+        "the message archived again stays archived"
+    );
+    assert_eq!(fx.restores(), 150, "each message restored once");
+}
+
+/// A claim held by a daemon that died is released at the next start.
+#[tokio::test]
+async fn a_claim_left_by_a_dead_daemon_is_released_at_startup() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(3, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    let entry = &job.undo_ids[0];
+    let now = chrono::Utc::now().timestamp();
+    assert!(fx
+        .state
+        .store
+        .claim_undo_entry(entry, "undo-of-a-dead-daemon", now)
+        .await
+        .unwrap()
+        .is_some());
+    let held = fx
+        .refused(Request::UndoMutation {
+            mutation_id: entry.clone(),
+        })
+        .await;
+    assert!(held.contains("being undone already"), "{held}");
+
+    assert_eq!(
+        super::super::job_recovery::release_undo_claims_of_dead_daemon(&fx.state).await,
+        1
+    );
+    assert!(matches!(
+        fx.send(Request::UndoMutation {
+            mutation_id: entry.clone(),
+        })
+        .await,
+        ResponseData::Ack
+    ));
+    for message in &msgs {
+        assert!(fx.in_inbox(&message.id).await);
+    }
+}
+
+/// Round 2's count gap: read-archive marks a message read, then the provider
+/// refuses the archive until the job gives up. The message may have changed,
+/// so the job counts it as failed, and its undo counts and restores it.
+#[tokio::test]
+async fn a_message_left_part_done_when_the_job_gives_up_is_counted_and_undone() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(1, "invoice").await;
+    let read_archive = MutationCommand::ReadAndArchive {
+        message_ids: Vec::new(),
+    };
+    let preview = fx.preview("invoice", &read_archive).await;
+    fx.fake.rate_limit_mutations_after(1, 10_000, 1);
+    let started = fx
+        .start("invoice", &preview.preview_token, &read_archive)
+        .await;
+    let job = fx.wait_for_job(&started.job_id).await;
+    assert_eq!(job.status, JobStatusData::Failed, "{job:?}");
+    assert!(
+        job.error
+            .as_deref()
+            .unwrap()
+            .contains("kept rate limiting it (0 succeeded, 0 skipped, 1 failed)"),
+        "{job:?}"
+    );
+    assert_eq!((job.progress.succeeded, job.progress.failed), (0, 1));
+    assert_eq!(job.result.as_ref().unwrap().accounts[0].failed, 1);
+    assert_eq!(job.failures.len(), 1);
+    assert!(job.failures[0].error.contains("may have changed"));
+    assert_eq!(job.undo_ids.len(), 1);
+
+    fx.fake.rate_limit_next_mutations(0, 0);
+    let undo = fx.undo(&job.job_id).await;
+    assert_eq!(
+        undo.progress.total, 1,
+        "the undo counts what the job counted"
+    );
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
+    assert_eq!(
+        (undo.progress.total, undo.progress.succeeded),
+        (1, 1),
+        "one restored out of one"
+    );
+    let envelope = fx
+        .state
+        .store
+        .get_envelope(&msgs[0].id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!envelope.flags.contains(MessageFlags::READ));
+    assert!(fx.in_inbox(&msgs[0].id).await);
 }
 
 // ---------------------------------------------------------------------------

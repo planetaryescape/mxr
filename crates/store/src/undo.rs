@@ -145,6 +145,38 @@ pub struct UndoEntry {
     pub expires_at: i64,
 }
 
+/// Where an undo entry stands, for saying why a claim on it failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoEntryState {
+    Available,
+    /// Another undo holds it.
+    Claimed,
+    Expired,
+    /// Never written, already undone, or pruned.
+    Missing,
+}
+
+fn undo_entry_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<UndoEntry, sqlx::Error> {
+    let kind_value: String = row.try_get("mutation_kind")?;
+    // Re-add quotes so serde can decode the kebab-case unit variant.
+    let kind: UndoableMutationKind =
+        super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
+    let snapshots_json: String = row.try_get("prior_state_json")?;
+    let snapshots: Vec<UndoEntrySnapshot> = super::decode_json(&snapshots_json)?;
+    let desk = row
+        .try_get::<Option<String>, _>("desk_state_json")?
+        .map(|json| super::decode_json::<DeskUndo>(&json))
+        .transpose()?;
+    Ok(UndoEntry {
+        mutation_id: row.try_get("mutation_id")?,
+        kind,
+        snapshots,
+        desk,
+        applied_at: row.try_get("applied_at")?,
+        expires_at: row.try_get("expires_at")?,
+    })
+}
+
 impl super::Store {
     /// Persist a batch undo entry. Idempotent on `mutation_id` — re-inserts
     /// of the same id replace the row (the caller controls id generation
@@ -189,26 +221,138 @@ impl super::Store {
         .bind(mutation_id)
         .fetch_optional(self.reader())
         .await?;
-        let Some(row) = row else { return Ok(None) };
+        row.map(|row| undo_entry_from_row(&row)).transpose()
+    }
 
-        let kind_value: String = row.try_get("mutation_kind")?;
-        // Re-add quotes so serde can decode the kebab-case unit variant.
-        let kind: UndoableMutationKind =
-            super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
-        let snapshots_json: String = row.try_get("prior_state_json")?;
-        let snapshots: Vec<UndoEntrySnapshot> = super::decode_json(&snapshots_json)?;
-        let desk = row
-            .try_get::<Option<String>, _>("desk_state_json")?
-            .map(|json| super::decode_json::<DeskUndo>(&json))
-            .transpose()?;
-        Ok(Some(UndoEntry {
-            mutation_id: row.try_get("mutation_id")?,
-            kind,
-            snapshots,
-            desk,
-            applied_at: row.try_get("applied_at")?,
-            expires_at: row.try_get("expires_at")?,
-        }))
+    /// Take an undo entry to restore it. One conditional UPDATE: it succeeds
+    /// only while nobody holds the entry and its window is open at `now`
+    /// (unix seconds), so of any number of undos reaching one entry (a chunk
+    /// undo and a whole-job undo) exactly one gets it. `None` when it is
+    /// held, expired or gone; [`Self::undo_entry_state`] says which.
+    ///
+    /// The holder ends the claim with [`Self::consume_undo_entry`] (done),
+    /// [`Self::release_undo_entry`] (left as it was) or
+    /// [`Self::release_undo_entry_keeping`] (part done).
+    pub async fn claim_undo_entry(
+        &self,
+        mutation_id: &str,
+        claimant: &str,
+        now: i64,
+    ) -> Result<Option<UndoEntry>, sqlx::Error> {
+        let row = sqlx::query(
+            "UPDATE mutation_undo_log SET claimed_by = ?
+             WHERE mutation_id = ? AND claimed_by IS NULL AND expires_at > ?
+             RETURNING mutation_id, mutation_kind, prior_state_json, desk_state_json,
+                       applied_at, expires_at",
+        )
+        .bind(claimant)
+        .bind(mutation_id)
+        .bind(now)
+        .fetch_optional(self.writer())
+        .await?;
+        row.map(|row| undo_entry_from_row(&row)).transpose()
+    }
+
+    /// Why an entry could not be claimed at `now`.
+    pub async fn undo_entry_state(
+        &self,
+        mutation_id: &str,
+        now: i64,
+    ) -> Result<UndoEntryState, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT claimed_by IS NOT NULL AS claimed, expires_at FROM mutation_undo_log
+             WHERE mutation_id = ?",
+        )
+        .bind(mutation_id)
+        .fetch_optional(self.reader())
+        .await?;
+        let Some(row) = row else {
+            return Ok(UndoEntryState::Missing);
+        };
+        if row.try_get::<i64, _>("expires_at")? <= now {
+            return Ok(UndoEntryState::Expired);
+        }
+        Ok(if row.try_get::<bool, _>("claimed")? {
+            UndoEntryState::Claimed
+        } else {
+            UndoEntryState::Available
+        })
+    }
+
+    /// The holder restored everything it could: drop the entry so it cannot
+    /// be replayed. Only the holder's claim is consumed.
+    pub async fn consume_undo_entry(
+        &self,
+        mutation_id: &str,
+        claimant: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM mutation_undo_log WHERE mutation_id = ? AND claimed_by = ?")
+            .bind(mutation_id)
+            .bind(claimant)
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    /// Give the entry back unchanged. A no-op once the holder consumed or
+    /// released it, so a caller can always end with it.
+    pub async fn release_undo_entry(
+        &self,
+        mutation_id: &str,
+        claimant: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE mutation_undo_log SET claimed_by = NULL
+             WHERE mutation_id = ? AND claimed_by = ?",
+        )
+        .bind(mutation_id)
+        .bind(claimant)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Give the entry back holding only `snapshots`: what a retry can still
+    /// restore. Desk state is dropped, since it is restored once and first.
+    pub async fn release_undo_entry_keeping(
+        &self,
+        mutation_id: &str,
+        claimant: &str,
+        snapshots: &[UndoEntrySnapshot],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE mutation_undo_log
+             SET claimed_by = NULL, prior_state_json = ?, desk_state_json = NULL
+             WHERE mutation_id = ? AND claimed_by = ?",
+        )
+        .bind(super::encode_json(&snapshots)?)
+        .bind(mutation_id)
+        .bind(claimant)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Release every entry `claimant` still holds, for an undo that ended
+    /// without finishing one.
+    pub async fn release_undo_claims_of(&self, claimant: &str) -> Result<u64, sqlx::Error> {
+        let result =
+            sqlx::query("UPDATE mutation_undo_log SET claimed_by = NULL WHERE claimed_by = ?")
+                .bind(claimant)
+                .execute(self.writer())
+                .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Release every claim. At daemon startup every holder is a process that
+    /// died, so nothing is restoring these entries any more.
+    pub async fn release_all_undo_claims(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE mutation_undo_log SET claimed_by = NULL WHERE claimed_by IS NOT NULL",
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Delete an undo entry by id. Used after a successful undo so the

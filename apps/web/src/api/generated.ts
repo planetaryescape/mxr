@@ -8068,16 +8068,40 @@ export interface components {
             | "internal";
         JobData: {
             error?: string | null;
+            /**
+             * @description The first messages that failed, with why (at most 50); the exact total
+             *     is in `progress.failed`.
+             */
+            failures?: components["schemas"]["JobFailureData"][];
             /** Format: int64 */
             finished_at?: number | null;
             job_id: string;
             kind: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds. Set while the job waits out a provider rate limit;
+             *     it resumes by itself.
+             */
+            paused_until?: number | null;
             progress: components["schemas"]["JobProgressData"];
             result?: components["schemas"]["MutationResultData"] | null;
+            selection?: components["schemas"]["SelectionData"] | null;
             /** Format: int64 */
             started_at: number;
             status: components["schemas"]["JobStatusData"];
+            /**
+             * Format: int64
+             * @description Unix milliseconds. `UndoJob` works until then; set when the job ends.
+             */
+            undo_expires_at?: number | null;
             undo_ids?: string[];
+            /** @description The job this one reverses (`UndoJob`). */
+            undo_of?: string | null;
+        };
+        /** @description A message a job could not change, with why. */
+        JobFailureData: {
+            error: string;
+            message_id: components["schemas"]["MessageId"];
         };
         JobProgressData: {
             /** Format: int32 */
@@ -11727,6 +11751,31 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "PreviewSelection";
+                  mutation: components["schemas"]["MutationCommand"];
+                  /**
+                   * Format: int32
+                   * @description Sample size; the daemon defaults to 20 and caps at 100.
+                   */
+                  sample_size?: number | null;
+                  selection: components["schemas"]["SelectionData"];
+              }
+            | {
+                  client_correlation_id?: string | null;
+                  /** @enum {string} */
+                  cmd: "StartSelectionJob";
+                  job_id: string;
+                  mutation: components["schemas"]["MutationCommand"];
+                  preview_token: string;
+                  selection: components["schemas"]["SelectionData"];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "UndoJob";
+                  job_id: string;
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "ListJobs";
               }
             | {
@@ -13696,6 +13745,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  kind: "SelectionPreview";
+                  preview: components["schemas"]["SelectionPreviewData"];
+              }
+            | {
+                  /** @enum {string} */
                   kind: "UnsubscribePurgeResult";
                   result: components["schemas"]["UnsubscribePurgeResultData"];
               }
@@ -14895,6 +14949,67 @@ export interface components {
             mode: components["schemas"]["SearchMode"];
             /** Format: float */
             score: number;
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @description How many messages of a selection one account holds. */
+        SelectionAccountData: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /** Format: int32 */
+            count: number;
+        };
+        /**
+         * @description What a bulk action covers. The daemon resolves it lexically, newest first,
+         *     with the same visibility and trash/spam rules as `Request::Search`.
+         */
+        SelectionData: {
+            account_id?: components["schemas"]["AccountId"] | null;
+            /** @enum {string} */
+            kind: "search";
+            query: string;
+        };
+        /**
+         * @description What a selection covers right now, and the token that starts a job over
+         *     exactly that set.
+         */
+        SelectionPreviewData: {
+            accounts: components["schemas"]["SelectionAccountData"][];
+            /**
+             * @description Always false: a selection is never cut to a cap. Present so one parser
+             *     reads both this shape and the capped one.
+             */
+            capped: boolean;
+            /**
+             * Format: int32
+             * @description Exact: messages the user can see, still in the store, after the same
+             *     filters `Request::Search` applies.
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description Unix milliseconds; the token stops working at this time.
+             */
+            expires_at: number;
+            /**
+             * @description Single use. `StartSelectionJob` acts on exactly the messages counted
+             *     here: mail that arrives later is left alone.
+             */
+            preview_token: string;
+            /** @description The newest messages, newest first. */
+            sample: components["schemas"]["SelectionSampleData"][];
+            /** Format: int32 */
+            sample_size: number;
+            /** Format: int32 */
+            threads: number;
+        };
+        /** @description One of the newest messages in a selection, for the confirmation table. */
+        SelectionSampleData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            date: string;
+            from: string;
+            message_id: components["schemas"]["MessageId"];
+            subject: string;
             thread_id: components["schemas"]["ThreadId"];
         };
         /** @enum {string} */

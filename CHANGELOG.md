@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.187](https://github.com/planetaryescape/mxr/compare/v0.6.186...v0.6.187) (2026-10-29)
+
+
+### Bug Fixes
+
+* list every account's labels and subscriptions under All accounts ([#790](https://github.com/planetaryescape/mxr/issues/790)) ([38f2fd6](https://github.com/planetaryescape/mxr/commit/38f2fd64c3003ddab9c154ce5f0a7d0486cd50df))
+
 ## [0.6.186](https://github.com/planetaryescape/mxr/compare/v0.6.185...v0.6.186) (2026-10-29)
 
 

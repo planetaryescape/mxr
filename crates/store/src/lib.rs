@@ -101,6 +101,7 @@ mod rules;
 mod scheduled_sends;
 mod screener;
 mod search;
+mod selection;
 mod search_fts_fallback;
 mod search_reindex_pending;
 mod semantic;

@@ -124,7 +124,7 @@ async fn run_search(
 
 /// Shown when the last rebuild failed. Clients render it in place of the
 /// generic notice for `index_stopped`.
-const INCOMPLETE_NOTICE: &str = "Search is limited because the last index rebuild failed. Run `mxr doctor --reindex` or restart the daemon to retry the rebuild.";
+pub(super) const INCOMPLETE_NOTICE: &str = "Search is limited because the last index rebuild failed. Run `mxr doctor --reindex` or restart the daemon to retry the rebuild.";
 
 async fn answer_incomplete(
     state: &AppState,
@@ -160,12 +160,23 @@ async fn answer_without_index(
     }
 }
 
-async fn execute_search_indexed(
-    state: &AppState,
-    query: &str,
-    options: &SearchExecutionOptions,
-) -> Result<SearchExecution, String> {
-    let (mut execution, needs_owed_filter) = match parse_query(query) {
+/// How a search string runs against the index. `execute_search_indexed` and
+/// the bulk-selection resolver both compile through here, so a selection
+/// matches the same messages the search that previewed it listed.
+pub(super) enum CompiledQuery {
+    /// Parsed, with label display names resolved to provider ids and
+    /// Trash/Spam excluded unless the query asks for them.
+    Structured {
+        ast: QueryNode,
+        needs_owed_filter: bool,
+    },
+    /// The structured parser rejected the query; the index's free-text parser
+    /// takes it instead.
+    TextFallback { parse_error: String },
+}
+
+pub(super) async fn compile_query(state: &AppState, query: &str) -> Result<CompiledQuery, String> {
+    match parse_query(query) {
         Ok(ast) => {
             // Resolve user-typed label display names (e.g.
             // `label:Notto`) to provider IDs (e.g. `Label_101`)
@@ -176,50 +187,71 @@ async fn execute_search_indexed(
             let label_index = build_label_name_index(&labels);
             let ast = exclude_trash_and_spam_by_default(resolve_label_names(ast, &label_index));
             let needs_owed_filter = ast_contains_owed_reply(&ast);
-            (
-                execute_search_ast(state, query, &ast, options).await?,
+            Ok(CompiledQuery::Structured {
+                ast,
                 needs_owed_filter,
-            )
+            })
         }
         Err(error) => {
             if should_fallback_to_tantivy(query, &error) {
-                let page = lexical_text_search(
-                    state,
-                    query,
-                    options.account_id.as_ref(),
-                    options.limit,
-                    options.offset,
-                    options.sort.clone(),
-                )
-                .await?;
-                let explain = options.explain.then(|| SearchExplain {
-                    requested_mode: options.mode,
-                    executed_mode: SearchMode::Lexical,
-                    semantic_query: None,
-                    lexical_window: options.limit as u32,
-                    dense_window: None,
-                    lexical_candidates: page.results.len() as u32,
-                    dense_candidates: 0,
-                    final_results: page.results.len() as u32,
-                    rrf_k: None,
-                    notes: vec![format!(
-                        "structured parser rejected query ({error}); used Tantivy fallback"
-                    )],
-                    results: super::build_explain_results(&page.results, &page.results, &[]),
-                });
-                let execution = SearchExecution {
-                    results: page.results,
-                    total: page.total,
-                    has_more: page.has_more,
-                    next_offset: page.next_offset,
-                    executed_mode: SearchMode::Lexical,
-                    explain,
-                    degraded: None,
-                };
-                (execution, false)
+                Ok(CompiledQuery::TextFallback {
+                    parse_error: error.to_string(),
+                })
             } else {
-                return Err(format!("Invalid search query: {error}"));
+                Err(format!("Invalid search query: {error}"))
             }
+        }
+    }
+}
+
+async fn execute_search_indexed(
+    state: &AppState,
+    query: &str,
+    options: &SearchExecutionOptions,
+) -> Result<SearchExecution, String> {
+    let (mut execution, needs_owed_filter) = match compile_query(state, query).await? {
+        CompiledQuery::Structured {
+            ast,
+            needs_owed_filter,
+        } => (
+            execute_search_ast(state, query, &ast, options).await?,
+            needs_owed_filter,
+        ),
+        CompiledQuery::TextFallback { parse_error } => {
+            let page = lexical_text_search(
+                state,
+                query,
+                options.account_id.as_ref(),
+                options.limit,
+                options.offset,
+                options.sort.clone(),
+            )
+            .await?;
+            let explain = options.explain.then(|| SearchExplain {
+                requested_mode: options.mode,
+                executed_mode: SearchMode::Lexical,
+                semantic_query: None,
+                lexical_window: options.limit as u32,
+                dense_window: None,
+                lexical_candidates: page.results.len() as u32,
+                dense_candidates: 0,
+                final_results: page.results.len() as u32,
+                rrf_k: None,
+                notes: vec![format!(
+                    "structured parser rejected query ({parse_error}); used Tantivy fallback"
+                )],
+                results: super::build_explain_results(&page.results, &page.results, &[]),
+            });
+            let execution = SearchExecution {
+                results: page.results,
+                total: page.total,
+                has_more: page.has_more,
+                next_offset: page.next_offset,
+                executed_mode: SearchMode::Lexical,
+                explain,
+                degraded: None,
+            };
+            (execution, false)
         }
     };
     filter_to_cached_mail_accounts(state, &mut execution).await?;
@@ -280,29 +312,13 @@ async fn filter_to_owed_threads(
     account_ids.sort();
     account_ids.dedup();
 
-    let mut owed_thread_ids: HashSet<String> = HashSet::new();
-    for account_id_str in account_ids {
-        let account_id = match mxr_core::AccountId::from_str(&account_id_str) {
-            Ok(id) => id,
-            Err(_) => continue,
-        };
-        match state
-            .store
-            .list_owed_replies(&account_id, None, None, OWED_REPLY_FETCH_CAP)
-            .await
-        {
-            Ok(rows) => {
-                for row in rows {
-                    owed_thread_ids.insert(row.thread_id.as_str().clone());
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    account_id = %account_id_str,
-                    "owed-reply filter: list_owed_replies failed: {e}"
-                );
-            }
-        }
+    let (owed_thread_ids, failures) =
+        owed_thread_ids(state, &account_ids, OWED_REPLY_FETCH_CAP).await;
+    for (account_id, error) in failures {
+        tracing::warn!(
+            account_id = %account_id,
+            "owed-reply filter: list_owed_replies failed: {error}"
+        );
     }
 
     execution
@@ -327,6 +343,37 @@ async fn filter_to_owed_threads(
         execution.next_offset = None;
     }
     Ok(())
+}
+
+/// The thread ids that are owed a reply right now in these accounts, at most
+/// `cap` per account, plus the accounts whose lookup failed (with why). A
+/// caller that must not act on a partial answer treats any failure as fatal.
+pub(super) async fn owed_thread_ids(
+    state: &AppState,
+    account_ids: &[String],
+    cap: u32,
+) -> (HashSet<String>, Vec<(String, String)>) {
+    let mut owed_thread_ids: HashSet<String> = HashSet::new();
+    let mut failures = Vec::new();
+    for account_id_str in account_ids {
+        let account_id = match mxr_core::AccountId::from_str(account_id_str) {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+        match state
+            .store
+            .list_owed_replies(&account_id, None, None, cap)
+            .await
+        {
+            Ok(rows) => {
+                for row in rows {
+                    owed_thread_ids.insert(row.thread_id.as_str().clone());
+                }
+            }
+            Err(e) => failures.push((account_id_str.clone(), e.to_string())),
+        }
+    }
+    (owed_thread_ids, failures)
 }
 
 /// Pull at most this many owed-reply rows per account when serving an

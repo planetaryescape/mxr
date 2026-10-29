@@ -18083,6 +18083,17 @@
           "started_at"
         ],
         "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MutationCommand",
+                "description": "What a selection job does to its messages, with `message_ids` empty.\nA repeated start under the same job id must name the same action."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "type": [
               "string",
@@ -18155,6 +18166,12 @@
             ],
             "format": "int64",
             "description": "Unix milliseconds. `UndoJob` works until then; set when the job ends."
+          },
+          "undo_id_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many undo ids the job holds. `undo_ids` carries at most the newest\n100 of them so a job over half a million messages stays small on the\nwire; a selection job is undone as a whole by its own id.",
+            "minimum": 0
           },
           "undo_ids": {
             "type": "array",

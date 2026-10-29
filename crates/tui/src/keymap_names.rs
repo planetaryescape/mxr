@@ -181,6 +181,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "SweepPlace" => Action::SweepPlace,
         "SwitchPane" => Action::SwitchPane,
         "TodoDismiss" => Action::TodoDismiss,
+        "TodoMightNeedYou" => Action::TodoMightNeedYou,
         "TodoDone" => Action::TodoDone,
         "TodoEdit" => Action::TodoEdit,
         "TodoOpenCatchup" => Action::TodoOpenCatchup,

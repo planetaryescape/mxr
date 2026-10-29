@@ -590,6 +590,12 @@ impl App {
             if !sending {
                 self.schedule_draft_cleanup(pending.draft_path);
             }
+            // Messages shows a conversation's unsent reply on its row, and
+            // `r` continues the draft the row names: a reply just saved or
+            // sent has to show there, or the next `r` starts another draft.
+            if self.mailbox.mailbox_view == MailboxView::People {
+                self.mailbox.messages_page.pending_refresh = true;
+            }
         }
     }
 

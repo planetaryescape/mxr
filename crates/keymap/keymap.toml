@@ -2474,6 +2474,26 @@ name = "TodoDismiss"
 keys = ["X"]
 contexts = ["todo"]
 
+# Asks the daemon wasn't sure were for you. The web lists them under the
+# runway; the TUI opens them from the palette. `m` is the mail verb Mark read
+# and archive, so To do doesn't borrow it (blueprint 35, rules 1 and 2).
+[[action]]
+id = "todo.might-need-you"
+label = "Review what might need you"
+group = "Triage"
+clients = ["tui"]
+palette_only = true
+note = "The web app lists these under the runway, with no key"
+
+[[action.tui]]
+name = "TodoMightNeedYou"
+keys = []
+contexts = ["todo"]
+[[action.moved]]
+key = "m"
+contexts = ["todo"]
+until = "0.6.225"
+
 [[action]]
 id = "todo.open-email"
 label = "Open the email it came from"
@@ -7567,8 +7587,12 @@ clients = ["tui"]
 note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
 [[action.tui]]
 name = "inline:add_cc"
-keys = ["Ctrl+a"]
+keys = ["c"]
 contexts = ["send-review"]
+[[action.moved]]
+key = "Ctrl+a"
+contexts = ["send-review"]
+until = "0.6.225"
 
 [[action]]
 id = "welcome.start"

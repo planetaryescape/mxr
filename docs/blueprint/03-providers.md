@@ -2,7 +2,7 @@
 
 ## Provider philosophy
 
-mxr ships with first-party Gmail sync/send, IMAP sync, and SMTP send support. Other providers are enabled through a stable adapter interface. The core project is designed to make third-party adapters straightforward to implement. First-party support is driven by actual maintainer usage, not checkbox coverage.
+mxr ships with first-party Gmail sync/send, Outlook sync/send (Microsoft OAuth over IMAP and SMTP), IMAP sync, and SMTP send support. Other providers are enabled through a stable adapter interface. The core project is designed to make third-party adapters straightforward to implement. First-party support is driven by actual maintainer usage, not checkbox coverage.
 
 ### What we considered and rejected
 
@@ -11,6 +11,7 @@ We initially considered:
 - **Single unified `EmailProvider` trait**: Rejected because it forces SMTP to implement sync methods it can't support. Split traits are more honest.
 - **IMAP as first adapter**: Considered because it's the open standard. Rejected for v1 because Gmail was the maintainer's immediate use case and Gmail's delta API was the fastest first path. IMAP was later promoted to first-party support in Phase 2.
 - **Generated Google API crate (`google-gmail1`)**: Rejected because it's bloated and awkward. Raw `reqwest` + serde gives full control with less code.
+- **Resend Inboxes as a hosted `@mxr.sh` mailbox** (October 2026): Rejected. Giving out addresses would make mxr a hosted mail service. The [Inboxes API](https://resend.com/docs/api-reference/inboxes/list-threads.md) also falls short as a sync source. It has no change cursor: threads page by thread ID in last-activity order, with no `updated_after` filter. Read, folder and label changes made elsewhere arrive only as webhooks, which a local daemon cannot receive. Messages expose HTML, text and `Message-ID`, but no source message and no `In-Reply-To` or `References`. Drafts cannot set the `Message-ID` that `reconcile_send` checks after an uncertain send. Resend's pricing lists 30-day data retention without saying whether it covers inbox threads. Resend Forge, launched the same week, is Resend's sending infrastructure, not a mailbox.
 
 ### Provider support levels
 

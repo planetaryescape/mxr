@@ -1795,7 +1795,8 @@ pub enum Command {
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
         message_ids: Vec<String>,
         /// Operate on the newest messages matching a search query, up to 1,000.
-        /// The command says before acting when more than 1,000 match.
+        /// The command says before acting when more than 1,000 match; add
+        /// --all to act on every match.
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
@@ -1809,6 +1810,8 @@ pub enum Command {
         /// Submit in the background; query the retained ID with `mxr archive-operation`.
         #[arg(long = "async")]
         async_job: bool,
+        #[command(flatten)]
+        bulk: BulkAllArgs,
         #[arg(
             long,
             hide_possible_values = true,
@@ -1844,6 +1847,8 @@ pub enum Command {
         /// Run as a daemon-side background job and poll with `mxr jobs`.
         #[arg(long = "async")]
         async_job: bool,
+        #[command(flatten)]
+        bulk: BulkAllArgs,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1995,6 +2000,8 @@ pub enum Command {
         /// Run as a daemon-side background job and poll with `mxr jobs`.
         #[arg(long = "async")]
         async_job: bool,
+        #[command(flatten)]
+        bulk: BulkAllArgs,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -2016,6 +2023,8 @@ pub enum Command {
         /// Run as a daemon-side background job and poll with `mxr jobs`.
         #[arg(long = "async")]
         async_job: bool,
+        #[command(flatten)]
+        bulk: BulkAllArgs,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -2042,10 +2051,16 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
 
-    /// Undo a recent destructive mutation by its id (~60s window).
+    /// Undo a recent destructive mutation by its id (~60s window), or a whole
+    /// `--all` run by its job id (for an hour after the job ends).
+    ///
     /// The mutation id is printed by `archive`, `trash`, `spam`,
     /// `mark-read`, `read-archive` and `desk done`; copy it from there.
+    /// `archive --all` and its siblings print a job id instead. Undoing a job
+    /// is a background job of its own: this command waits for it and says how
+    /// many messages came back, and how many it had to skip.
     Undo {
+        #[arg(value_name = "ID")]
         mutation_id: String,
         /// Show which undo would run without mutating state.
         #[arg(long)]
@@ -2057,7 +2072,10 @@ pub enum Command {
     /// List or inspect background jobs (large batch mutations, progress, undo ids).
     ///
     /// Job history is persisted locally and survives a daemon restart; the
-    /// most recent jobs are retained.
+    /// most recent jobs are retained. A job still running when the daemon
+    /// stops is marked failed ("interrupted") at the next start, with the
+    /// counts it had reached. An `--all` job shows its first failures, when
+    /// it is waiting out a provider rate limit, and the command that undoes it.
     Jobs {
         /// Optional job id to inspect. Omit to list recent jobs.
         job_id: Option<String>,
@@ -3601,6 +3619,36 @@ pub enum MarginaliaAction {
     Sync { item: Option<String> },
 }
 
+/// `--all` and what goes with it, shared by the commands that can act on every
+/// match of a `--search`: `archive`, `read-archive`, `label` and `unlabel`.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct BulkAllArgs {
+    /// Act on every message the search matches, not only the newest 1,000.
+    /// The daemon resolves the whole set, so the exact count is shown before
+    /// anything changes, and runs it as one background job that this command
+    /// waits for. `mxr undo <JOB_ID>` reverses the whole job for an hour after
+    /// it ends. Preview with --dry-run first.
+    #[arg(
+        long,
+        requires = "search",
+        conflicts_with_all = ["message_ids", "async_job"]
+    )]
+    pub all: bool,
+    /// With --all, return once the daemon has accepted the job instead of
+    /// waiting for it. Follow it with `mxr jobs <JOB_ID>`.
+    #[arg(long, requires = "all")]
+    pub no_wait: bool,
+    /// With --all, run exactly the messages an earlier `--all --dry-run`
+    /// counted (its `preview_token`; valid for 10 minutes, once).
+    #[arg(
+        long,
+        requires = "all",
+        conflicts_with = "dry_run",
+        value_name = "TOKEN"
+    )]
+    pub preview_token: Option<String>,
+}
+
 /// Listing options shared by `mxr reading` and `mxr paper-trail`.
 #[derive(Debug, Clone, clap::Args)]
 pub struct PlaceArgs {
@@ -4879,6 +4927,85 @@ mod tests {
                     other.map(|_| "command")
                 ),
             }
+        }
+    }
+
+    fn parses(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(args)
+    }
+
+    #[test]
+    fn all_needs_a_search_and_refuses_ids_and_async() {
+        let id = uuid::Uuid::now_v7().to_string();
+        let commands: [&[&str]; 4] = [
+            &["mxr", "archive"],
+            &["mxr", "read-archive"],
+            &["mxr", "label", "Work"],
+            &["mxr", "unlabel", "Work"],
+        ];
+        for command in commands {
+            let with = |extra: &[&str]| -> Vec<String> {
+                command
+                    .iter()
+                    .chain(extra)
+                    .map(ToString::to_string)
+                    .collect()
+            };
+            let parse = |extra: &[&str]| Cli::try_parse_from(with(extra));
+            // With a search it parses.
+            let cli = parse(&["--search", "from:x", "--all", "--dry-run"]).unwrap();
+            let bulk = match cli.command {
+                Some(
+                    Command::Archive { bulk, .. }
+                    | Command::ReadArchive { bulk, .. }
+                    | Command::Label { bulk, .. }
+                    | Command::Unlabel { bulk, .. },
+                ) => bulk,
+                other => panic!("unexpected command {:?}", other.map(|_| "command")),
+            };
+            assert!(bulk.all && !bulk.no_wait && bulk.preview_token.is_none());
+
+            let refused: [&[&str]; 7] = [
+                &["--all"],
+                &["--all", &id],
+                &["--search", "from:x", "--all", &id],
+                &["--search", "from:x", "--all", "--async"],
+                &["--search", "from:x", "--no-wait"],
+                &["--search", "from:x", "--preview-token", "t"],
+                &[
+                    "--search",
+                    "from:x",
+                    "--all",
+                    "--preview-token",
+                    "t",
+                    "--dry-run",
+                ],
+            ];
+            for extra in refused {
+                assert!(
+                    parse(extra).is_err(),
+                    "{command:?} {extra:?} should not parse"
+                );
+            }
+            // The flags that follow --all.
+            parse(&["--search", "from:x", "--all", "--yes", "--no-wait"]).unwrap();
+            parse(&["--search", "from:x", "--all", "--preview-token", "t"]).unwrap();
+        }
+    }
+
+    #[test]
+    fn commands_without_all_do_not_take_it() {
+        for command in [
+            "trash", "spam", "star", "unstar", "read", "unread", "snooze", "route",
+        ] {
+            let mut args = vec!["mxr", command, "--search", "from:x", "--all"];
+            if command == "snooze" {
+                args.extend(["--until", "tomorrow"]);
+            }
+            if command == "route" {
+                args.extend(["--to", "A", "--from-queue", "B"]);
+            }
+            assert!(parses(&args).is_err(), "{command} must not accept --all");
         }
     }
 

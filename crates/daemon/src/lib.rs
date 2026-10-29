@@ -1406,18 +1406,32 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
+            bulk,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::archive(
-                message_ids,
-                search,
-                account,
-                yes,
-                dry_run,
-                format,
-                async_job,
-            )
-            .await?;
+            if bulk.all {
+                commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
+                    commands::mutations::BulkAction::Archive,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    &bulk,
+                )?)
+                .await?;
+            } else {
+                commands::mutations::archive(
+                    message_ids,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    async_job,
+                )
+                .await?;
+            }
         }
         Some(Command::Undo {
             mutation_id,
@@ -1447,18 +1461,32 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
+            bulk,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::read_archive(
-                message_ids,
-                search,
-                account,
-                yes,
-                dry_run,
-                format,
-                async_job,
-            )
-            .await?;
+            if bulk.all {
+                commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
+                    commands::mutations::BulkAction::ReadArchive,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    &bulk,
+                )?)
+                .await?;
+            } else {
+                commands::mutations::read_archive(
+                    message_ids,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    async_job,
+                )
+                .await?;
+            }
         }
         Some(Command::Route {
             message_ids,
@@ -1620,19 +1648,33 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
+            bulk,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::label(
-                name,
-                message_ids,
-                search,
-                account,
-                yes,
-                dry_run,
-                format,
-                async_job,
-            )
-            .await?;
+            if bulk.all {
+                commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
+                    commands::mutations::BulkAction::Label(name),
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    &bulk,
+                )?)
+                .await?;
+            } else {
+                commands::mutations::label(
+                    name,
+                    message_ids,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    async_job,
+                )
+                .await?;
+            }
         }
         Some(Command::Unlabel {
             name,
@@ -1643,19 +1685,33 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
+            bulk,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unlabel(
-                name,
-                message_ids,
-                search,
-                account,
-                yes,
-                dry_run,
-                format,
-                async_job,
-            )
-            .await?;
+            if bulk.all {
+                commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
+                    commands::mutations::BulkAction::Unlabel(name),
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    &bulk,
+                )?)
+                .await?;
+            } else {
+                commands::mutations::unlabel(
+                    name,
+                    message_ids,
+                    search,
+                    account,
+                    yes,
+                    dry_run,
+                    format,
+                    async_job,
+                )
+                .await?;
+            }
         }
         Some(Command::MoveMsg {
             label,

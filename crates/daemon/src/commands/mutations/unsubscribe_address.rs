@@ -270,9 +270,7 @@ async fn address_selection(
                 },
         } => {
             crate::commands::selection::require_indexed_selection(degraded.as_ref())?;
-            capped = has_more.then_some(CappedSelection {
-                selected: results.len(),
-            });
+            capped = has_more.then_some(CappedSelection::new(results.len()));
             results
                 .into_iter()
                 .map(|result| result.message_id.as_str())

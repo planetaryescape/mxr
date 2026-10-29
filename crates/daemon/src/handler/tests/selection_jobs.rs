@@ -819,6 +819,85 @@ async fn a_label_job_applies_and_removes_the_named_labels() {
 }
 
 // ---------------------------------------------------------------------------
+// Trash and spam stay out of reach
+// ---------------------------------------------------------------------------
+
+fn add_labels(names: &[&str]) -> MutationCommand {
+    MutationCommand::ModifyLabels {
+        message_ids: Vec::new(),
+        add: names.iter().map(ToString::to_string).collect(),
+        remove: Vec::new(),
+    }
+}
+
+/// Adding `TRASH` or `SPAM` as a label trashes or spams the message at the
+/// provider, so a raw request cannot reach them through a label edit: not by
+/// the id in any case, and not by a display name that resolves to one.
+#[tokio::test]
+async fn a_label_edit_cannot_trash_or_spam_a_selection() {
+    let fx = Fixture::new().await;
+    fx.label(&fx.account, "TRASH", "Bin").await;
+    fx.label(&fx.account, "Label_work", "Work").await;
+    let msgs = fx.many(3, "invoice").await;
+    let refusal = "trash and spam are not available for --all yet";
+
+    for names in [
+        &["TRASH"][..],
+        &["trash"],
+        &["Spam"],
+        &[" SPAM "],
+        &["Work", "TRASH"],
+        // A display name the runner resolves to the provider id TRASH.
+        &["Bin"],
+        &["bin"],
+    ] {
+        let mutation = add_labels(names);
+        let preview = fx
+            .refused(Request::PreviewSelection {
+                selection: Fixture::selection("invoice", Some(&fx.account)),
+                mutation: mutation.clone(),
+                sample_size: None,
+            })
+            .await;
+        assert_eq!(preview, refusal, "preview of {names:?}");
+        // A token cannot be had for it, but a raw start is refused on its own.
+        let start = fx
+            .refused(fx.start_request(
+                &uuid::Uuid::now_v7().to_string(),
+                "invoice",
+                "any-token",
+                &mutation,
+            ))
+            .await;
+        assert_eq!(start, refusal, "start of {names:?}");
+    }
+    // Searching all accounts resolves display names in every account.
+    let all_accounts = fx
+        .refused(Request::PreviewSelection {
+            selection: Fixture::selection("invoice", None),
+            mutation: add_labels(&["Bin"]),
+            sample_size: None,
+        })
+        .await;
+    assert_eq!(all_accounts, refusal);
+
+    assert!(fx.fake.mutations().is_empty());
+    for message in &msgs {
+        assert!(fx.in_inbox(&message.id).await);
+    }
+
+    // An ordinary label still works, and removing TRASH or SPAM is allowed:
+    // it puts mail back.
+    assert_eq!(fx.preview("invoice", &add_labels(&["Work"])).await.count, 3);
+    let unlabel = MutationCommand::ModifyLabels {
+        message_ids: Vec::new(),
+        add: Vec::new(),
+        remove: vec!["TRASH".into(), "SPAM".into()],
+    };
+    assert_eq!(fx.preview("invoice", &unlabel).await.count, 3);
+}
+
+// ---------------------------------------------------------------------------
 // The token
 // ---------------------------------------------------------------------------
 

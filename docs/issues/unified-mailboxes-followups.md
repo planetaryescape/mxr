@@ -8,29 +8,6 @@ The change makes Inbox, Starred, Sent, Drafts, Spam, Trash and All Mail list
 every enabled account's mail when no account is chosen (web, TUI, `mxr threads
 --label`). These were left out on purpose.
 
-## User labels still show only the default account's
-
-The web sidebar and the TUI sidebar list user labels from `ListLabels` with no
-account, which resolves to the default account. A label that exists only on
-another account is not reachable from "All accounts". Same-name labels across
-accounts would need a decision first: merge them into one entry, or show them
-tagged by account. Counts for user labels are the default account's own.
-
-- Web: `crates/web/src/chrome.rs` (`build_bridge_chrome`, user-label items in
-  `build_sidebar_sections`).
-- TUI: `crates/tui/src/app/sidebar_helpers.rs`.
-
-## Categories and subscriptions without an account
-
-`ListCategories { account_id: None }` and `ListSubscriptions { account_id: None }`
-in `build_bridge_chrome` still resolve to the default account.
-
-## Admin chrome
-
-`crates/web/src/admin_handlers.rs` builds the bridge chrome with no account, so
-it now makes the extra `ListLabels { all_accounts: true }` call and throws the
-sums away. Harmless, and not worth a parameter until something else needs it.
-
 ## A thread id shared by two accounts lists once
 
 Legacy Gmail thread ids are not account-scoped, so one id can hold messages of
@@ -51,13 +28,6 @@ falling back to the whole thread, because a thread-level action on the whole
 thread could reach messages outside the mailbox. If label provider ids ever
 drift from the store, such rows disappear rather than act too widely. The
 account-scoped views keep the older whole-thread fallback.
-
-## Starred needs a label to navigate to
-
-Starred lists IMAP flags and Gmail labels together, but the web sidebar and the
-TUI reach it through a system label with the Starred role. An account set where
-no account has one (IMAP only, no `\Flagged` special-use folder) has no Starred
-item; the list and count are right once an item exists.
 
 ## Label role is derived by name
 

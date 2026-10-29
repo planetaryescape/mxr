@@ -314,6 +314,7 @@ pub(crate) async fn build_bridge_chrome(
         Request::ListSubscriptions {
             account_id: account_id.cloned(),
             limit: 8,
+            all_accounts: account_id.is_none(),
         },
     )
     .await?
@@ -463,6 +464,21 @@ pub(crate) fn build_sidebar_sections(
         let Some(title) = role.system_mailbox_title() else {
             continue;
         };
+        // Some accounts (IMAP without a \Flagged folder) have no Starred
+        // label. The role lens lists by the starred flag, so the item needs
+        // no label id.
+        if role == Role::Starred && label_for(role).is_none() {
+            let (unread, total) = counts_for(role, None).unwrap_or_default();
+            system_items.push(json!({
+                "id": slugify(title),
+                "label": title,
+                "unread": unread,
+                "total": total,
+                "active": active_lens.kind == MailboxLensKind::Starred,
+                "lens": { "kind": "starred" },
+            }));
+            continue;
+        }
         if let Some(label) = label_for(role) {
             let (unread, total) = counts_for(role, Some(label)).unwrap_or_default();
             let is_inbox = role == Role::Inbox;
@@ -494,24 +510,7 @@ pub(crate) fn build_sidebar_sections(
         "lens": { "kind": "all_mail" },
     }));
 
-    let user_labels = labels
-        .iter()
-        .filter(|label| !matches!(label.kind, LabelKind::System))
-        .map(|label| {
-            json!({
-                "id": slugify(&label.name),
-                "label": label.name,
-                "unread": label.unread_count,
-                "total": label.total_count,
-                "active": active_lens.kind == MailboxLensKind::Label
-                    && active_lens.label_id.as_deref() == Some(&label.id.to_string()),
-                "lens": {
-                    "kind": "label",
-                    "labelId": label.id.to_string(),
-                },
-            })
-        })
-        .collect::<Vec<_>>();
+    let user_labels = user_label_items(scope_labels, active_lens);
 
     let saved_search_items = sorted_saved_searches(searches.to_vec())
         .into_iter()
@@ -579,6 +578,57 @@ pub(crate) fn build_sidebar_sections(
     sections
 }
 
+/// User labels of every account in scope, grouped by name so the same name on
+/// two accounts sits together. Each keeps its own counts and carries its
+/// account, so the sidebar can mark it. A name held by more than one account
+/// gets its account in the id, which keeps the lens keys and URLs distinct.
+fn user_label_items(
+    scope_labels: &[Label],
+    active_lens: &MailboxLensRequest,
+) -> Vec<serde_json::Value> {
+    let mut user: Vec<&Label> = scope_labels
+        .iter()
+        .filter(|label| !matches!(label.kind, LabelKind::System))
+        .collect();
+    user.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.account_id.to_string().cmp(&b.account_id.to_string()))
+    });
+    let mut name_counts: HashMap<String, usize> = HashMap::new();
+    for label in &user {
+        *name_counts.entry(label.name.to_lowercase()).or_default() += 1;
+    }
+    user.into_iter()
+        .map(|label| {
+            let shared = name_counts
+                .get(&label.name.to_lowercase())
+                .copied()
+                .unwrap_or(0)
+                > 1;
+            let id = if shared {
+                format!("{}-{}", slugify(&label.name), label.account_id)
+            } else {
+                slugify(&label.name)
+            };
+            json!({
+                "id": id,
+                "label": label.name,
+                "accountId": label.account_id.to_string(),
+                "unread": label.unread_count,
+                "total": label.total_count,
+                "active": active_lens.kind == MailboxLensKind::Label
+                    && active_lens.label_id.as_deref() == Some(&label.id.to_string()),
+                "lens": {
+                    "kind": "label",
+                    "labelId": label.id.to_string(),
+                },
+            })
+        })
+        .collect()
+}
+
 pub(crate) async fn load_mailbox_selection(
     socket_path: &Path,
     chrome: &BridgeChrome,
@@ -624,6 +674,27 @@ pub(crate) async fn load_mailbox_selection(
             let counts = all_mail_counts(chrome);
             Ok(MailboxSelection {
                 lens_label: "All Mail".to_string(),
+                counts,
+                envelopes,
+                degraded: None,
+            })
+        }
+        MailboxLensKind::Starred => {
+            let envelopes = list_envelopes(
+                socket_path,
+                None,
+                account_id,
+                limit,
+                offset,
+                Role::Starred.system_mailbox_wire_name().map(str::to_string),
+            )
+            .await?;
+            let counts = chrome.role_counts(Role::Starred).map_or_else(
+                || derived_counts(&envelopes),
+                |(unread, total)| json!({ "unread": unread, "total": total }),
+            );
+            Ok(MailboxSelection {
+                lens_label: "Starred".to_string(),
                 counts,
                 envelopes,
                 degraded: None,

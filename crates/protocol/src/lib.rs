@@ -749,6 +749,7 @@ mod tests {
                 Request::ListSubscriptions {
                     account_id: None,
                     limit: 10,
+                    all_accounts: false,
                 },
                 IpcCategory::MxrPlatform,
             ),

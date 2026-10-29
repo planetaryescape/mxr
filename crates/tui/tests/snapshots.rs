@@ -299,6 +299,104 @@ fn send_confirm_snapshot() {
     insta::assert_snapshot!("send_confirm_snapshot", snapshot);
 }
 
+/// Two accounts, both with a "Work" label and one with "Travel": the sidebar
+/// lists every account's user labels, each with its account's chip, and
+/// Starred is listed by role because no account has a Starred label.
+#[test]
+fn sidebar_all_accounts_snapshot() {
+    use mxr_core::AccountColor;
+    use mxr_protocol::AccountIdentityData;
+    use mxr_tui::ui::account_mark::{AccountMarks, ChipDepth};
+
+    fn account(name: &str, color: AccountColor, tag: &str) -> AccountSummaryData {
+        AccountSummaryData {
+            identity: Some(AccountIdentityData {
+                color,
+                tag: tag.into(),
+            }),
+            account_id: AccountId::new(),
+            key: Some(name.to_lowercase()),
+            name: name.into(),
+            email: format!("{}@example.test", name.to_lowercase()),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled: true,
+            is_default: name == "Work",
+            source: AccountSourceData::Config,
+            editable: AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+        }
+    }
+    let work = account("Work", AccountColor::Sky, "W");
+    let personal = account("Personal", AccountColor::Amber, "P");
+    let accounts = [work.clone(), personal.clone()];
+    let mut labels = vec![
+        sample_label("INBOX", LabelKind::System, 4, 10),
+        sample_label("Projects", LabelKind::User, 1, 5),
+    ];
+    for (account_id, name, unread, total) in [
+        (&work.account_id, "Work", 2, 9),
+        (&personal.account_id, "Work", 0, 3),
+        (&personal.account_id, "Travel", 1, 2),
+    ] {
+        labels.push(Label {
+            id: mxr_core::id::LabelId::from_scoped_provider_id(account_id, "test", name),
+            account_id: account_id.clone(),
+            name: name.into(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: name.into(),
+            unread_count: unread,
+            total_count: total,
+            role: None,
+        });
+    }
+    let snapshot = render_to_string(40, 30, |frame| {
+        draw_sidebar(
+            frame,
+            Rect::new(0, 0, 40, 30),
+            &SidebarView {
+                labels: &labels,
+                active_pane: &ActivePane::Sidebar,
+                saved_searches: &[],
+                sidebar_selected: 0,
+                all_mail_active: false,
+                subscriptions_active: false,
+                subscription_count: 0,
+                now_active: false,
+                now_badge: None,
+                messages_active: false,
+                todo_active: false,
+                updates_active: false,
+                reading_active: false,
+                archive_active: false,
+                early_modes: Vec::new(),
+                owed_active: false,
+                owed_count: 0,
+                calendar_invites_active: false,
+                calendar_invites_count: 0,
+                accounts: Vec::new(),
+                accounts_expanded: false,
+                sync_throbber: None,
+                system_expanded: true,
+                user_expanded: true,
+                saved_searches_expanded: false,
+                active_label: None,
+                account_marks: AccountMarks::from_accounts(&accounts, false, ChipDepth::Plain),
+                starred_shown: true,
+                starred_active: false,
+            },
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    assert!(snapshot.contains("Starred"), "{snapshot}");
+    assert!(snapshot.contains("W"), "{snapshot}");
+    insta::assert_snapshot!("sidebar_all_accounts_snapshot", snapshot);
+}
+
 #[test]
 fn sidebar_snapshot() {
     let labels = vec![
@@ -354,6 +452,9 @@ fn sidebar_snapshot() {
                 user_expanded: true,
                 saved_searches_expanded: true,
                 active_label: Some(&labels[0].id),
+                account_marks: Default::default(),
+                starred_shown: false,
+                starred_active: false,
             },
             &mxr_tui::theme::Theme::default(),
         );

@@ -250,7 +250,7 @@ Below Inbox are four groups, each folded until you open it:
   Deliveries.
 - **Tools**: Search, Analytics, Rules, Accounts, Activity, Jobs, Diagnostics,
   Settings.
-- **Labels**: your labels, each with a small square in its colour.
+- **Labels**: your labels, each with a small square in its colour. With no account chosen and more than one account enabled, each label also carries its account's chip, and a name that two accounts share is listed once for each.
 
 From the keyboard (`h` from the list), `j` and `k` stop on each group's
 heading too: `Enter` there opens or folds the group, and `{` and `}` jump

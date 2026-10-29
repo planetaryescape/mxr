@@ -220,6 +220,8 @@ pub enum SidebarItem {
     Header(SidebarHeader),
     Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
+    /// Starred by the flag, when no account has a Starred label.
+    Starred,
     Subscriptions,
     /// The rail: Now, the five modes, then Inbox.
     Now,
@@ -244,6 +246,7 @@ pub(crate) enum SidebarSelectionKey {
     Header(SidebarHeader),
     Account(String),
     AllMail,
+    Starred,
     Subscriptions,
     Now,
     Messages,
@@ -693,6 +696,10 @@ pub struct MailboxState {
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
     pub pending_active_label: Option<mxr_core::LabelId>,
+    /// A system mailbox listed by role because no label names it (Starred on
+    /// an account set with no Starred label). Set when the list is requested.
+    pub active_role: Option<mxr_core::Role>,
+    pub pending_role_fetch: Option<mxr_core::Role>,
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
@@ -824,6 +831,8 @@ impl MailboxState {
             active_label: None,
             pending_label_fetch: None,
             pending_active_label: None,
+            active_role: None,
+            pending_role_fetch: None,
             pending_labels_refresh: false,
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,

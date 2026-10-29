@@ -1989,7 +1989,11 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(match all {
                         Ok(Response::Ok {
                             data: ResponseData::Labels { labels: all },
-                        }) => crate::client::with_unified_system_counts(labels, &all, &counts),
+                        }) => crate::client::sidebar_labels_across_accounts(
+                            labels,
+                            Some(&all),
+                            &counts,
+                        ),
                         _ => labels,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
@@ -2036,6 +2040,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::ListSubscriptions {
                         account_id: None,
                         limit: 500,
+                        all_accounts: false,
                     },
                 )
                 .await;
@@ -3002,6 +3007,34 @@ pub async fn run() -> anyhow::Result<()> {
                     operation: pending.operation,
                     result,
                 }
+            });
+        }
+
+        // A system mailbox no label names (Starred on an account set with no
+        // Starred label) lists by its role, across every enabled account.
+        if let Some(role) = app.mailbox.pending_role_fetch.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListEnvelopes {
+                        label_id: None,
+                        account_id: None,
+                        limit: 5000,
+                        offset: 0,
+                        label_role: role.system_mailbox_wire_name().map(str::to_string),
+                    },
+                )
+                .await;
+                let envelopes = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelopes { envelopes },
+                    }) => Ok(envelopes),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to ListEnvelopes".into())),
+                };
+                AsyncResult::LabelEnvelopes(envelopes)
             });
         }
 

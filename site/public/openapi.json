@@ -27538,6 +27538,10 @@
                   }
                 ]
               },
+              "all_accounts": {
+                "type": "boolean",
+                "description": "With no `account_id`, list every enabled account's senders instead\nof only the default account's. Ignored when `account_id` is set."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [

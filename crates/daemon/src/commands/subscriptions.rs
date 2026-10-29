@@ -101,7 +101,11 @@ pub async fn run(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = client
-        .request(Request::ListSubscriptions { account_id, limit })
+        .request(Request::ListSubscriptions {
+            account_id,
+            limit,
+            all_accounts: false,
+        })
         .await?;
 
     let fmt = resolve_format(format);

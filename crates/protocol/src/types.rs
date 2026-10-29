@@ -958,6 +958,10 @@ pub enum Request {
     ListSubscriptions {
         account_id: Option<AccountId>,
         limit: u32,
+        /// With no `account_id`, list every enabled account's senders instead
+        /// of only the default account's. Ignored when `account_id` is set.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        all_accounts: bool,
     },
     ListStorageBreakdown {
         account_id: Option<AccountId>,

@@ -1791,6 +1791,7 @@ async fn mailbox_endpoint_lists_envelopes() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -1903,6 +1904,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -2127,6 +2129,7 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -2338,6 +2341,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],

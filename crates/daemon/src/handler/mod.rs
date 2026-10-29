@@ -984,9 +984,11 @@ async fn dispatch(
         Request::ListSavedSearchUnreadCounts => {
             platform::list_saved_search_unread_counts(state).await
         }
-        Request::ListSubscriptions { account_id, limit } => {
-            platform::list_subscriptions(state, account_id.as_ref(), *limit).await
-        }
+        Request::ListSubscriptions {
+            account_id,
+            limit,
+            all_accounts,
+        } => platform::list_subscriptions(state, account_id.as_ref(), *limit, *all_accounts).await,
         Request::ListStorageBreakdown {
             account_id,
             group_by,

@@ -54,6 +54,8 @@ export interface NavEntry {
   shortcut?: string;
   /** A label's own colour, a validated hex, for the square before its name. */
   color?: string;
+  /** The account a label belongs to; its chip shows when rows are marked (blueprint 33). */
+  accountId?: string;
 }
 
 export interface NavSection {

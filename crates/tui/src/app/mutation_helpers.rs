@@ -194,6 +194,8 @@ impl App {
             MutationEffect::RefreshList => {
                 if let Some(label_id) = self.mailbox.active_label.clone() {
                     self.mailbox.pending_label_fetch = Some(label_id);
+                } else if let Some(role) = self.mailbox.active_role {
+                    self.mailbox.pending_role_fetch = Some(role);
                 }
                 // An undo of done here puts a thread back in its modes.
                 match self.mailbox.mailbox_view {

@@ -264,6 +264,7 @@ async fn mailbox(
         lens.kind,
         MailboxLensKind::Inbox
             | MailboxLensKind::AllMail
+            | MailboxLensKind::Starred
             | MailboxLensKind::Label
             | MailboxLensKind::Category
     ) || (lens.kind == MailboxLensKind::Subscription
@@ -4072,6 +4073,7 @@ async fn list_subscriptions(
     match ipc_request(
         &state.config.socket_path,
         Request::ListSubscriptions {
+            all_accounts: account_id.is_none(),
             account_id,
             limit: 100,
         },

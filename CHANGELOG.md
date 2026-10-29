@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.194](https://github.com/planetaryescape/mxr/compare/v0.6.193...v0.6.194) (2026-10-29)
+
+
+### Bug Fixes
+
+* rules read the reader's text, and malformed HTML can't exhaust memory ([#801](https://github.com/planetaryescape/mxr/issues/801)) ([3868e46](https://github.com/planetaryescape/mxr/commit/3868e46188c70372a8083a01012dacab0ccee8bf))
+
 ## [0.6.193](https://github.com/planetaryescape/mxr/compare/v0.6.192...v0.6.193) (2026-10-29)
 
 

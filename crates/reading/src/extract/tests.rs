@@ -272,3 +272,14 @@ fn buttons_are_not_digest_items() {
         assert!(!call_to_action(text), "{text}");
     }
 }
+
+#[test]
+fn an_over_budget_page_yields_no_paragraphs_or_anchors() {
+    let html = format!(
+        "<a href=\"https://example.test/x\">link</a>{}<p>text</p>",
+        "<br>".repeat(200_000)
+    );
+    let walked = walk_html(&html);
+    assert!(walked.paragraphs.is_empty());
+    assert!(walked.anchors.is_empty());
+}

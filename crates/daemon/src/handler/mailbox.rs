@@ -904,6 +904,11 @@ pub(super) async fn read_attachment_chunk(
 }
 
 fn collect_html_image_sources(html: &str) -> Vec<String> {
+    // Over the parser budget no image list is offered for the message; the
+    // document is not parsed.
+    if !mxr_reader::within_budget(html) {
+        return Vec::new();
+    }
     static IMG_SELECTOR: std::sync::OnceLock<Selector> = std::sync::OnceLock::new();
     let selector = IMG_SELECTOR.get_or_init(|| Selector::parse("img").expect("valid img selector"));
 
@@ -1660,5 +1665,28 @@ mod hydration_flag_tests {
         let mut fetched_plain = TestEnvelopeBuilder::new().build();
         keep_stored_sent_flag(&mut fetched_plain, &stored_received);
         assert!(!fetched_plain.flags.contains(MessageFlags::SENT));
+    }
+}
+
+#[cfg(test)]
+mod image_budget_tests {
+    use super::collect_html_image_sources;
+
+    #[test]
+    fn image_sources_are_not_collected_from_an_over_budget_document() {
+        let over = format!(
+            "<table>{}<img src=\"https://example.test/a.png\"></table>",
+            "<br>".repeat(200_000)
+        );
+        assert!(collect_html_image_sources(&over).is_empty());
+    }
+
+    #[test]
+    fn image_sources_are_collected_from_an_ordinary_document() {
+        let html = r#"<p><img src="https://example.test/a.png"></p>"#;
+        assert_eq!(
+            collect_html_image_sources(html),
+            vec!["https://example.test/a.png".to_string()]
+        );
     }
 }

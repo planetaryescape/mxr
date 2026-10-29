@@ -1,217 +1,338 @@
 //! Copy of `mxr_reader::html_limits`. mxr-outbound depends only on mxr-core,
-//! so the bounds are kept in step by hand: change both files together.
+//! so the budget is kept in step by hand: change both files together.
 //!
-//! Bounds on what html2text is given. html2text builds a full DOM, and its cost
-//! grows with depth (html5ever checks the open-element stack on every element)
-//! and with table width and span size (it pads each row to the column widths
-//! and creates placeholder cells for spans). Some inputs cost gigabytes, and an
-//! allocation failure aborts the process, which `catch_unwind` cannot catch. So
-//! the input is measured before the render, and documents over the caps get the
-//! tag-strip fallback instead.
+//! Budget for untrusted mail HTML, checked before any parser sees it.
 //!
-//! The measure is a single pass of html5ever's tokenizer, with no tree builder:
-//! the tokenizer knows about comments, CDATA, quoted attributes that contain
-//! `>`, and raw-text elements, so it agrees with the parser on what is markup.
-//! A regex over the bytes does not (a `<!-- </table> -->` comment fooled one).
+//! html5ever and html2text are super-linear on some inputs that pass a
+//! depth or structure check: a tag with 100,000 attributes costs the tokenizer
+//! quadratic time, a table full of `<br>` makes foster-parenting quadratic, and
+//! a table of `<td rowspan=…>` makes html2text allocate gigabytes. Measuring
+//! with a parser cannot bound a parser, so this module measures with a
+//! hand-written byte scan that is linear and does not build a tree.
+//!
+//! The scan counts a tag at every `<` followed by a letter, `/` or `!`. It
+//! over-counts markup inside comments, scripts and text, which can only cause a
+//! fallback. Attributes are the tokens of a tag split on whitespace and `/`
+//! (HTML also treats `/` between attributes as a separator), so quoted values
+//! with spaces over-count too. Every over-count errs toward the fallback.
+//!
+//! The budget bounds every super-linear path we know of. Each parser's
+//! quadratic work is at most about the square of the tag count, so with at most
+//! 20,000 tags it is about 4 × 10^8 cheap steps at worst. Depth is not capped
+//! separately: nesting needs tags, so the tag cap covers it.
 
-use html5ever::tendril::StrTendril;
-use html5ever::tokenizer::states::RawKind;
-use html5ever::tokenizer::{
-    BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
-};
-use html5ever::LocalName;
-use regex::{Captures, Regex};
 use std::borrow::Cow;
-use std::cell::RefCell;
 
-/// HTML larger than this skips html2text and gets the tag-strip fallback.
-/// Ordinary mail is tens of kilobytes; 2 MiB is a generous ceiling above that,
-/// and a judgement rather than a measured threshold.
+/// Documents larger than this are never parsed. Ordinary mail is tens of
+/// kilobytes; 2 MiB is a generous ceiling above that, and a judgement rather
+/// than a measured threshold.
 pub const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 
-/// Open elements at once. Real mail nests a few dozen levels at most; 256 is
-/// far beyond that and keeps html5ever's per-element ancestor checks short.
-pub const MAX_DEPTH: usize = 256;
+/// Tags in the document, counted as the scan defines them.
+pub const MAX_TAGS: usize = 20_000;
 
-/// `td` and `th` cells in the whole document. A 20,000-cell table is already
-/// past anything a reader can use; this bounds the total work.
+/// Attributes (tokens after the tag name) in any one tag.
+pub const MAX_ATTRS_PER_TAG: usize = 64;
+
+/// `td` and `th` cells in the document.
 pub const MAX_CELLS: usize = 20_000;
 
-/// Cells in the widest row. html2text clones the column widths into every row,
-/// so a row's width multiplies the cost of every row after it.
+/// Cells in the widest row, rows being delimited by `<tr` tags.
 pub const MAX_ROW_CELLS: usize = 64;
 
-/// Largest `rowspan` or `colspan` after clamping. html2text makes placeholder
-/// cells for spans, so a span's size costs memory in every row it crosses.
-pub const MAX_SPAN: u64 = 100;
-
-/// Grid slots in the document: the sum of colspan times rowspan over all cells.
-/// This is the cost html2text pays for spans, and it can exceed the cell count
-/// by the span factor. The limit is a judgement: an ordinary table has about one
-/// slot per cell.
+/// Grid slots: the sum over cells of colspan times rowspan, after clamping.
+/// html2text makes placeholder cells for spans, so this bounds the work that
+/// spans cost even when the cell count is small. It is a judgement: an ordinary
+/// table has about one slot per cell.
 pub const MAX_GRID_SLOTS: u64 = 200_000;
 
-/// Clamps `colspan` and `rowspan` attribute values to [`MAX_SPAN`]. Copy of
-/// `mxr_reader::clamp_table_spans`, which outbound cannot depend on.
-pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
-    static TABLE_SPAN_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-        Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-            .expect("table span regex should compile")
-    });
-    TABLE_SPAN_RE.replace_all(html, |caps: &Captures<'_>| {
-        let value = caps[3].parse::<u64>().map_or(MAX_SPAN, |n| n.min(MAX_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
-}
+/// Largest `colspan` or `rowspan` html2text is given. Spans above it are
+/// rewritten to this value, inside tags only.
+pub const MAX_SPAN: u64 = 100;
 
-/// The HTML to give html2text, or `None` when the document must not be rendered:
-/// over [`MAX_HTML_BYTES`], or over one of the structure caps. Spans are clamped
-/// to [`MAX_SPAN`] first, so a clamped table still renders.
+/// The HTML to hand to a parser, or `None` when the document is over budget and
+/// must not be parsed at all (callers use their fallback).
+///
+/// Spans inside tags are clamped to [`MAX_SPAN`]; text and attribute values
+/// other than colspan and rowspan are never changed. A document within budget
+/// with no spans to clamp comes back borrowed and unchanged.
 pub fn bounded_html(html: &str) -> Option<Cow<'_, str>> {
     if html.len() > MAX_HTML_BYTES {
         return None;
     }
-    let clamped = clamp_table_spans(html);
-    if exceeds_structure_caps(&clamped) {
-        return None;
-    }
-    Some(clamped)
+    let found = scan(html, true)?;
+    Some(apply_edits(html, &found.edits))
 }
 
-/// Elements that never hold children, so the tree builder never pushes them.
-const VOID_ELEMENTS: &[&str] = &[
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
-    "track", "wbr",
-];
-
-fn is_void(name: &str) -> bool {
-    VOID_ELEMENTS.contains(&name)
+/// True when the document is within budget and may be parsed. Callers that
+/// parse for a reason other than rendering (links, images, quotes, validation)
+/// check this before parsing.
+pub fn within_budget(html: &str) -> bool {
+    html.len() <= MAX_HTML_BYTES && scan(html, true).is_some()
 }
 
-/// The raw-text state html5ever's tree builder would put the tokenizer in for
-/// this start tag, so markup inside it is not read as tags. html2text parses
-/// with scripting disabled, so `noscript` is ordinary markup and not listed.
-fn raw_text_state(name: &str) -> Option<TokenSinkResult<()>> {
-    match name {
-        "script" => Some(TokenSinkResult::RawData(RawKind::ScriptData)),
-        "style" | "xmp" | "iframe" | "noembed" | "noframes" => {
-            Some(TokenSinkResult::RawData(RawKind::Rawtext))
-        }
-        "textarea" | "title" => Some(TokenSinkResult::RawData(RawKind::Rcdata)),
-        "plaintext" => Some(TokenSinkResult::Plaintext),
-        _ => None,
+/// `html` with every colspan and rowspan inside a tag clamped to [`MAX_SPAN`],
+/// whatever the document's size. Outbound's own tests use it; the send path only
+/// needs `bounded_html`.
+#[cfg(test)]
+pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
+    match scan(html, false) {
+        Some(found) => apply_edits(html, &found.edits),
+        None => Cow::Borrowed(html),
     }
+}
+
+/// A run of ASCII digits, inside a tag, to be replaced by [`MAX_SPAN`].
+struct Edit {
+    start: usize,
+    end: usize,
 }
 
 #[derive(Default)]
 struct Scan {
-    /// Open non-void elements, innermost last. An end tag closes back to its
-    /// nearest match, as the tree builder does for ordinary elements. Implicit
-    /// closes the tree builder performs are not modelled, so this can count
-    /// more open elements than html5ever holds: the caps are then a little
-    /// stricter than needed, never looser.
-    open: Vec<LocalName>,
+    edits: Vec<Edit>,
+}
+
+/// Scans the whole document in one pass. With `enforce`, the first budget
+/// breach returns `None`; without it the scan only gathers the span edits.
+fn scan(html: &str, enforce: bool) -> Option<Scan> {
+    let bytes = html.as_bytes();
+    let mut found = Scan::default();
+    let mut counts = Counts::default();
+    let mut pos = 0;
+    while let Some(offset) = bytes[pos..].iter().position(|&byte| byte == b'<') {
+        let open = pos + offset;
+        pos = open + 1;
+        let opens_tag = matches!(
+            bytes.get(open + 1),
+            Some(byte) if byte.is_ascii_alphabetic() || *byte == b'/' || *byte == b'!'
+        );
+        if !opens_tag {
+            continue;
+        }
+        let close = bytes[open + 1..]
+            .iter()
+            .position(|&byte| byte == b'>')
+            .map_or(bytes.len(), |offset| open + 1 + offset);
+        counts.tags += 1;
+        if enforce && counts.tags > MAX_TAGS {
+            return None;
+        }
+        inspect_tag(
+            html,
+            open + 1,
+            close,
+            enforce,
+            &mut counts,
+            &mut found.edits,
+        )?;
+        pos = close;
+    }
+    Some(found)
+}
+
+#[derive(Default)]
+struct Counts {
+    tags: usize,
     cells: usize,
     row_cells: usize,
-    widest_row: usize,
     grid_slots: u64,
-    /// Set at the first cap that is exceeded. Later tokens are then ignored.
-    over: bool,
 }
 
-impl Scan {
-    fn start(&mut self, tag: &Tag) {
-        let name: &str = &tag.name;
-        match name {
-            "tr" => self.row_cells = 0,
-            "td" | "th" => {
-                self.cells += 1;
-                self.row_cells += 1;
-                self.widest_row = self.widest_row.max(self.row_cells);
-                let colspan = span_attr(tag, "colspan");
-                let rowspan = span_attr(tag, "rowspan");
-                if colspan > MAX_SPAN || rowspan > MAX_SPAN {
-                    self.over = true;
-                }
-                self.grid_slots = self
-                    .grid_slots
-                    .saturating_add(colspan.saturating_mul(rowspan));
-            }
-            _ => {}
-        }
-        if !is_void(name) {
-            self.open.push(tag.name.clone());
-            if self.open.len() > MAX_DEPTH {
-                self.over = true;
-            }
-        }
-        if self.cells > MAX_CELLS
-            || self.widest_row > MAX_ROW_CELLS
-            || self.grid_slots > MAX_GRID_SLOTS
-        {
-            self.over = true;
-        }
-    }
-
-    fn end(&mut self, name: &LocalName) {
-        if is_void(name) {
-            return;
-        }
-        if let Some(position) = self.open.iter().rposition(|open| open == name) {
-            self.open.truncate(position);
-        }
-    }
-}
-
-/// A span attribute's value; 1 when absent or not a number, as the tree
-/// builder's consumers read it. A value too big for u64 saturates.
-fn span_attr(tag: &Tag, name: &str) -> u64 {
-    tag.attrs
+/// Inspects the tag whose contents are `html[start..end]`.
+fn inspect_tag(
+    html: &str,
+    start: usize,
+    end: usize,
+    enforce: bool,
+    counts: &mut Counts,
+    edits: &mut Vec<Edit>,
+) -> Option<()> {
+    let bytes = html.as_bytes();
+    let closing = bytes.get(start) == Some(&b'/');
+    let name_start = skip_separators(bytes, start, end);
+    let name_end = bytes[name_start..end]
         .iter()
-        .find(|attr| &*attr.name.local == name)
-        .and_then(|attr| attr.value.trim().parse::<u64>().ok())
-        .unwrap_or(1)
+        .position(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-')
+        .map_or(end, |offset| name_start + offset);
+    let name = html[name_start..name_end].to_ascii_lowercase();
+
+    let mut colspan = 1u64;
+    let mut rowspan = 1u64;
+    let mut attributes = 0usize;
+    // Quote parity over the bytes walked so far. A span-looking token is only
+    // trusted outside quotes, so the scan never rewrites another attribute's
+    // value.
+    let mut quoted = Quotes::default();
+    let mut walked = start;
+    let mut index = name_end;
+    loop {
+        index = skip_separators(bytes, index, end);
+        if index >= end {
+            break;
+        }
+        quoted.advance(&bytes[walked..index]);
+        walked = index;
+        let token_end = bytes[index..end]
+            .iter()
+            .position(|byte| byte.is_ascii_whitespace() || *byte == b'/')
+            .map_or(end, |offset| index + offset);
+        attributes += 1;
+        if enforce && attributes > MAX_ATTRS_PER_TAG {
+            return None;
+        }
+        match span_attribute(html, index, &quoted, enforce, edits)? {
+            Some(SpanKind::Col(value)) => colspan = value.min(MAX_SPAN),
+            Some(SpanKind::Row(value)) => rowspan = value.min(MAX_SPAN),
+            None => {}
+        }
+        index = token_end;
+    }
+
+    if !closing && name == "tr" {
+        counts.row_cells = 0;
+    }
+    if !closing && (name == "td" || name == "th") {
+        counts.cells += 1;
+        counts.row_cells += 1;
+        counts.grid_slots = counts
+            .grid_slots
+            .saturating_add(colspan.saturating_mul(rowspan));
+        if enforce
+            && (counts.cells > MAX_CELLS
+                || counts.row_cells > MAX_ROW_CELLS
+                || counts.grid_slots > MAX_GRID_SLOTS)
+        {
+            return None;
+        }
+    }
+    Some(())
 }
 
-struct ScanSink(RefCell<Scan>);
+/// Parity of double and single quotes walked so far. Odd means inside a
+/// quoted value, as far as a byte scan can tell.
+#[derive(Default)]
+struct Quotes {
+    double: bool,
+    single: bool,
+}
 
-impl TokenSink for ScanSink {
-    type Handle = ();
-
-    fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
-        let Token::TagToken(tag) = token else {
-            return TokenSinkResult::Continue;
-        };
-        let mut scan = self.0.borrow_mut();
-        if scan.over {
-            return TokenSinkResult::Continue;
-        }
-        match tag.kind {
-            TagKind::StartTag => {
-                scan.start(&tag);
-                raw_text_state(&tag.name).unwrap_or(TokenSinkResult::Continue)
-            }
-            TagKind::EndTag => {
-                scan.end(&tag.name);
-                TokenSinkResult::Continue
+impl Quotes {
+    fn advance(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            match byte {
+                b'"' => self.double = !self.double,
+                b'\'' => self.single = !self.single,
+                _ => {}
             }
         }
     }
+
+    fn inside(&self) -> bool {
+        self.double || self.single
+    }
 }
 
-/// True when the document is over a structure cap. One tokenizer pass; linear
-/// in the input, and the open-element stack is bounded by [`MAX_DEPTH`] + 1.
-fn exceeds_structure_caps(html: &str) -> bool {
-    let tokenizer = Tokenizer::new(
-        ScanSink(RefCell::new(Scan::default())),
-        TokenizerOpts::default(),
-    );
-    let input = BufferQueue::default();
-    input.push_back(StrTendril::from(html));
-    let _ = tokenizer.feed(&input);
-    tokenizer.end();
-    let over = tokenizer.sink.0.borrow().over;
-    over
+enum SpanKind {
+    Col(u64),
+    Row(u64),
+}
+
+/// If the token at `start` is a `colspan` or `rowspan` attribute outside quotes,
+/// its value, and the digit run to rewrite when it is over [`MAX_SPAN`].
+///
+/// A span whose value has an entity and no digits is over budget: the entity
+/// can decode to a large number this scan cannot see. A span-looking token
+/// inside quotes is over budget too, since the scan cannot tell whether it is
+/// an attribute. Without `enforce` both are simply ignored.
+fn span_attribute(
+    html: &str,
+    start: usize,
+    quoted: &Quotes,
+    enforce: bool,
+    edits: &mut Vec<Edit>,
+) -> Option<Option<SpanKind>> {
+    let bytes = html.as_bytes();
+    let kind_of = |name: &[u8]| {
+        if name.eq_ignore_ascii_case(b"colspan") {
+            Some(true)
+        } else if name.eq_ignore_ascii_case(b"rowspan") {
+            Some(false)
+        } else {
+            None
+        }
+    };
+    let Some(is_col) = bytes.get(start..start + 7).and_then(kind_of) else {
+        return Some(None);
+    };
+    if quoted.inside() {
+        return if enforce { None } else { Some(None) };
+    }
+    // The name is followed by optional whitespace, `=`, optional whitespace and
+    // an optional quote; the value is the digits after that.
+    let mut value_start = start + 7;
+    while value_start < bytes.len() && bytes[value_start].is_ascii_whitespace() {
+        value_start += 1;
+    }
+    if bytes.get(value_start) != Some(&b'=') {
+        return Some(None);
+    }
+    value_start += 1;
+    while value_start < bytes.len() && bytes[value_start].is_ascii_whitespace() {
+        value_start += 1;
+    }
+    if matches!(bytes.get(value_start), Some(b'"' | b'\'')) {
+        value_start += 1;
+    }
+    let digits_end = bytes[value_start..]
+        .iter()
+        .position(|byte| !byte.is_ascii_digit())
+        .map_or(bytes.len(), |offset| value_start + offset);
+    let value = if digits_end == value_start {
+        if enforce && bytes.get(value_start) == Some(&b'&') {
+            return None;
+        }
+        1
+    } else {
+        let value = html[value_start..digits_end]
+            .parse::<u64>()
+            .unwrap_or(u64::MAX);
+        if value > MAX_SPAN {
+            edits.push(Edit {
+                start: value_start,
+                end: digits_end,
+            });
+        }
+        value
+    };
+    Some(Some(if is_col {
+        SpanKind::Col(value)
+    } else {
+        SpanKind::Row(value)
+    }))
+}
+
+fn skip_separators(bytes: &[u8], mut index: usize, end: usize) -> usize {
+    while index < end && (bytes[index].is_ascii_whitespace() || bytes[index] == b'/') {
+        index += 1;
+    }
+    index
+}
+
+fn apply_edits<'a>(html: &'a str, edits: &[Edit]) -> Cow<'a, str> {
+    if edits.is_empty() {
+        return Cow::Borrowed(html);
+    }
+    let replacement = MAX_SPAN.to_string();
+    let mut out = String::with_capacity(html.len());
+    let mut position = 0;
+    for edit in edits {
+        out.push_str(&html[position..edit.start]);
+        out.push_str(&replacement);
+        position = edit.end;
+    }
+    out.push_str(&html[position..]);
+    Cow::Owned(out)
 }
 
 #[cfg(test)]
@@ -246,53 +367,86 @@ mod tests {
     }
 
     #[test]
-    fn a_wide_table_is_over_the_structure_caps() {
-        assert!(bounded_html(&wide_table()).is_none());
+    fn a_wide_table_is_over_budget() {
+        assert!(!within_budget(&wide_table()));
     }
 
     #[test]
-    fn a_comment_cannot_hide_a_wide_table_from_the_scan() {
-        // The tokenizer reads `<!-- ... -->` as a comment, so the `</table>`
-        // inside it is not a close and the wide table is still counted.
+    fn a_comment_cannot_hide_a_wide_table() {
         let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
-        assert!(bounded_html(&html).is_none());
+        assert!(!within_budget(&html));
     }
 
     #[test]
-    fn markup_inside_a_script_is_not_read_as_a_table() {
-        let html = "<script>var s = '<table><tr><td>x</td></tr>';</script><p>ok</p>";
-        assert!(bounded_html(html).is_some());
+    fn a_tag_with_100000_attributes_is_over_budget_without_parsing_it() {
+        let mut html = String::from("<td");
+        for n in 0..100_000 {
+            html.push_str(&format!(" a{n}"));
+        }
+        html.push_str(">x</td>");
+        assert!(!within_budget(&html));
     }
 
     #[test]
-    fn a_quoted_gt_in_an_attribute_does_not_end_the_tag() {
-        // The tokenizer reads the attribute value whole, so the span is 1.
-        let html = r#"<table><tr><td title="a>b" colspan="1">x</td></tr></table>"#;
-        assert!(bounded_html(html).is_some());
+    fn foster_parenting_table_of_brs_is_over_budget() {
+        let html = format!("<table>{}</table>", "<br>".repeat(200_000));
+        assert!(!within_budget(&html));
     }
 
     #[test]
-    fn a_deep_nest_is_over_the_depth_cap() {
-        let html = format!(
-            "{}{}",
-            "<div>".repeat(MAX_DEPTH + 1),
-            "</div>".repeat(MAX_DEPTH + 1)
+    fn a_100000_deep_div_nest_is_over_budget() {
+        let html = format!("{}x{}", "<div>".repeat(100_000), "</div>".repeat(100_000));
+        assert!(!within_budget(&html));
+    }
+
+    #[test]
+    fn a_list_with_optional_end_tags_is_within_budget() {
+        // Depth is not a budget: this list has 300 items and no unclosed depth
+        // cap trips.
+        let items = "<li>Item<br>details".repeat(300);
+        let html = format!("<ol>{items}</ol>");
+        assert!(within_budget(&html));
+    }
+
+    #[test]
+    fn rowspan_in_text_is_not_rewritten() {
+        let html = "use rowspan=365. for the rows";
+        assert_eq!(bounded_html(html).as_deref(), Some(html));
+    }
+
+    #[test]
+    fn rowspan_inside_a_tag_is_clamped() {
+        let html = "<td rowspan=365>x</td>";
+        assert_eq!(
+            bounded_html(html).as_deref(),
+            Some("<td rowspan=100>x</td>")
         );
-        assert!(bounded_html(&html).is_none());
     }
 
     #[test]
-    fn a_span_over_the_clamp_is_rejected_when_the_clamp_missed_it() {
-        // An entity-encoded value is not digits to the byte clamp, so the
-        // tokenizer sees its real value and the document falls back.
+    fn a_span_with_an_entity_and_no_digits_is_over_budget() {
+        // `&#53;` decodes to `5`, so the value is 50000 to the parser.
         let html = r#"<table><tr><td colspan="&#53;0000">x</td></tr></table>"#;
-        assert!(bounded_html(html).is_none());
+        assert!(!within_budget(html));
     }
 
     #[test]
-    fn an_oversized_document_gets_no_render() {
+    fn grid_slots_over_the_cap_are_over_budget() {
+        // 2,000 cells of rowspan 100 is 200,000 slots: exactly at the cap.
+        let at_cap: String = (0..2_000)
+            .map(|_| r#"<tr><td rowspan="100">x</td></tr>"#)
+            .collect();
+        assert!(within_budget(&format!("<table>{at_cap}</table>")));
+        let over: String = (0..2_001)
+            .map(|_| r#"<tr><td rowspan="100">x</td></tr>"#)
+            .collect();
+        assert!(!within_budget(&format!("<table>{over}</table>")));
+    }
+
+    #[test]
+    fn an_oversized_document_is_over_budget() {
         let html = format!("<p>{}</p>", "word ".repeat(MAX_HTML_BYTES / 5 + 1));
-        assert!(html.len() > MAX_HTML_BYTES);
         assert!(bounded_html(&html).is_none());
+        assert!(!within_budget(&html));
     }
 }

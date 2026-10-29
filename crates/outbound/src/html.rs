@@ -193,6 +193,9 @@ pub enum HtmlIssueKind {
     /// comments are real markup to Outlook, so a `<script>` in one is a live
     /// script, not inert text.
     ForbiddenElementInComment { tag: String },
+    /// The document is over the parser budget (size, tag count or table
+    /// shape), so it cannot be checked. An unchecked document is not sent.
+    TooComplexToCheck,
 }
 
 impl fmt::Display for HtmlIssue {
@@ -202,6 +205,10 @@ impl fmt::Display for HtmlIssue {
             None => String::new(),
         };
         match &self.kind {
+            HtmlIssueKind::TooComplexToCheck => write!(
+                f,
+                "HTML is too large or too deeply structured to check{where_}; it is not sent"
+            ),
             HtmlIssueKind::ForbiddenElement { tag } => {
                 write!(
                     f,
@@ -303,6 +310,18 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
+    // The budget is checked before any parse. The nested parses below run on
+    // parts of this same document, so they are within budget too.
+    if !crate::html_limits::within_budget(html) {
+        return Err(HtmlValidationError {
+            issues: vec![HtmlIssue {
+                kind: HtmlIssueKind::TooComplexToCheck,
+                line: None,
+                detail: String::new(),
+                origin: IssueOrigin::Document,
+            }],
+        });
+    }
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
     let mut comments_seen = 0;
@@ -1893,5 +1912,37 @@ mod tests {
             assert!(validate_html(&source).is_err(), "{source}");
             assert_eq!(source, before);
         }
+    }
+}
+
+#[cfg(test)]
+mod budget_validation_tests {
+    use super::*;
+
+    #[test]
+    fn a_document_over_the_parser_budget_is_refused_as_unchecked() {
+        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
+        let error = validate_html(&over).expect_err("over-budget HTML must be refused");
+        assert_eq!(error.issues.len(), 1);
+        assert_eq!(error.issues[0].kind, HtmlIssueKind::TooComplexToCheck);
+    }
+
+    #[test]
+    fn a_conditional_comment_inside_an_over_budget_document_is_refused_too() {
+        // The conditional comment is parsed only from a document that passed
+        // the whole-document check, so its nested parse is covered by the refusal.
+        let over = format!(
+            "{}<!--[if mso]><table><script>x</script></table><![endif]-->",
+            "<br>".repeat(200_000)
+        );
+        assert!(validate_html(&over).is_err());
+    }
+
+    #[test]
+    fn an_over_budget_text_alternative_is_the_tag_strip() {
+        let over = format!("<p>zzalt</p>{}", "<br>".repeat(200_000));
+        let text = generate_text_alternative(&over);
+        assert!(text.contains("zzalt"));
+        assert!(!text.contains('<'));
     }
 }

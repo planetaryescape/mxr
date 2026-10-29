@@ -471,6 +471,13 @@ static IMG: Lazy<scraper::Selector> =
     Lazy::new(|| scraper::Selector::parse("img").expect("img selector parses"));
 
 fn walk_html(html: &str) -> Walked {
+    // Over the parser budget the page yields no paragraphs or links.
+    if !mxr_reader::within_budget(html) {
+        return Walked {
+            paragraphs: Vec::new(),
+            anchors: Vec::new(),
+        };
+    }
     let document = Html::parse_document(html);
     let mut walker = Walker::default();
     walker.walk(document.tree.root());

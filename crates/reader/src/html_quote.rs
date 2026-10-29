@@ -101,6 +101,11 @@ fn split(html: &str, keep_signature: bool) -> HtmlParts {
         return unchanged();
     }
 
+    // Over budget, no parse: the message keeps its markup-free fallback text and
+    // no quote or signature is recognised.
+    if !crate::html_limits::within_budget(html) {
+        return unchanged();
+    }
     let mut doc = Html::parse_document(html);
     let mut has_signature = false;
     let mut has_quote = false;
@@ -314,5 +319,21 @@ mod tests {
         let parts = split_html_quote(html);
         assert_eq!(parts.main, html);
         assert!(!parts.has_quote && !parts.has_signature);
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn an_over_budget_document_is_not_parsed_for_quotes_or_signatures() {
+        let html = format!(
+            "<div class=\"gmail_quote\">quoted</div>{}",
+            "<br>".repeat(200_000)
+        );
+        let parts = split_html_quote(&html);
+        assert!(!parts.has_quote);
+        assert_eq!(parts.main, html);
     }
 }

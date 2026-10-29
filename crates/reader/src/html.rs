@@ -1,8 +1,7 @@
 use crate::html_limits::bounded_html;
 use crate::pipeline::ReaderConfig;
 use once_cell::sync::Lazy;
-use regex::{Captures, Regex};
-use std::borrow::Cow;
+use regex::Regex;
 use std::cell::Cell;
 use std::panic::AssertUnwindSafe;
 use std::process::Command;
@@ -38,29 +37,8 @@ fn builtin_to_plain_text(html: &str) -> String {
     html_to_plain_text(html, "reader")
 }
 
-/// Largest colspan/rowspan html2text is given. Real mail stays far below
-/// this; anything above it is a malformed or hostile table. See `html_limits`.
+/// Largest colspan/rowspan html2text is given. See `html_limits`.
 pub const MAX_TABLE_SPAN: u64 = crate::html_limits::MAX_SPAN;
-
-static TABLE_SPAN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-        .expect("table span regex should compile")
-});
-
-/// Clamps `colspan` and `rowspan` attribute values to `MAX_TABLE_SPAN`.
-///
-/// html2text 0.17.4 overflows its column arithmetic on huge spans (a colspan
-/// near `usize::MAX` panics), so clamping keeps the common case in the
-/// renderer itself. Values that don't fit a u64 are clamped too. Values at or
-/// under the cap come back as the same text.
-pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
-    TABLE_SPAN_RE.replace_all(html, |caps: &Captures<'_>| {
-        let value = caps[3]
-            .parse::<u64>()
-            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
-}
 
 thread_local! {
     // Set while a guarded html2text call runs on this thread. A panic hook
@@ -323,6 +301,7 @@ impl std::fmt::Display for HtmlRenderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::html_limits::clamp_table_spans;
 
     #[test]
     fn converts_basic_html_to_text() {
@@ -588,5 +567,39 @@ mod limit_render_tests {
         let text = html_to_plain_text(&html, "test");
         assert_bounded(&html, started, &text);
         assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn a_300_item_list_with_optional_end_tags_renders_as_html2text_renders_it() {
+        let html = format!("<ol>{}</ol>", "<li>Item<br>details".repeat(300));
+        assert_eq!(html_to_plain_text(&html, "test"), direct_render(&html));
+    }
+
+    #[test]
+    fn a_table_of_brs_is_bounded_and_quick() {
+        let html = format!("<table>{}end</table>", "<br>".repeat(200_000));
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("end"));
+    }
+
+    #[test]
+    fn a_tag_with_100000_attributes_is_bounded_and_quick() {
+        let mut html = String::from("<td");
+        for n in 0..100_000 {
+            html.push_str(&format!(" a{n}"));
+        }
+        html.push_str(">payload</td>");
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("payload"));
+    }
+
+    #[test]
+    fn rowspan_in_text_is_shown_unchanged() {
+        let text = html_to_plain_text("<p>use rowspan=365. for the rows</p>", "test");
+        assert!(text.contains("rowspan=365."), "got {text:?}");
     }
 }

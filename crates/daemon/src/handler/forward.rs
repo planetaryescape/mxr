@@ -53,17 +53,7 @@ pub(super) async fn prepare_source(
         .unwrap_or_else(|| format!("<pre>{}</pre>", htmlescape::encode_minimal(&original_text)));
     mxr_outbound::html::validate_html(&original_html)
         .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
-    {
-        let document = scraper::Html::parse_document(&original_html);
-        for node in document.tree.nodes() {
-            let Some(element) = node.value().as_element() else {
-                continue;
-            };
-            for (_, value) in element.attrs() {
-                validate_cid_reference(body, value)?;
-            }
-        }
-    }
+    validate_html_cid_references(body, &original_html)?;
     // CSS background images may reference related parts without an img/src.
     static CSS_URL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r#"(?i)url\(\s*['"]?(cid:[^'"\s)]+)"#).expect("static CSS CID URL regex")
@@ -166,6 +156,29 @@ pub(super) async fn prepare_source(
         content,
         attachments,
     })
+}
+
+/// Every `cid:` attribute in the original HTML must name a related part. Over
+/// the parser budget the HTML cannot be read, so the forward is refused rather
+/// than sent with its references unchecked.
+fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
+    if !mxr_reader::within_budget(html) {
+        return Err(HandlerError::Message(
+            "Cannot forward original HTML: the message HTML is too large or too deeply \
+             structured to check"
+                .to_string(),
+        ));
+    }
+    let document = scraper::Html::parse_document(html);
+    for node in document.tree.nodes() {
+        let Some(element) = node.value().as_element() else {
+            continue;
+        };
+        for (_, value) in element.attrs() {
+            validate_cid_reference(body, value)?;
+        }
+    }
+    Ok(())
 }
 
 fn validate_cid_reference(body: &MessageBody, value: &str) -> Result<(), HandlerError> {
@@ -271,4 +284,21 @@ pub(super) async fn sent_attachments(
         });
     }
     Ok(attachments)
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn a_forward_over_the_parser_budget_is_refused_not_sent_unchecked() {
+        let body = crate::test_fixtures::make_empty_body(&mxr_core::MessageId::new());
+        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
+        let error = validate_html_cid_references(&body, &over)
+            .expect_err("over-budget HTML must be refused");
+        assert!(
+            error.to_string().contains("too large or too deeply"),
+            "got {error}"
+        );
+    }
 }

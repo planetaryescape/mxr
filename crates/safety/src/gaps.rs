@@ -72,6 +72,11 @@ fn squash(text: &str) -> String {
 /// joined by a mark that is not whitespace, so the whitespace-blind scan never
 /// joins the end of one value to the start of the next.
 fn attribute_text(html: &str) -> String {
+    // Over the parser budget the raw markup stands in: attribute values stay
+    // inside it, so the scan still sees them, just unparsed.
+    if !mxr_reader::within_budget(html) {
+        return html.to_string();
+    }
     scraper::Html::parse_document(html)
         .tree
         .nodes()
@@ -85,6 +90,10 @@ fn attribute_text(html: &str) -> String {
 /// dropped, with no line wrapping (the reader's renderer wraps at 80 columns,
 /// which can split a marker in two).
 fn visible_text(html: &str) -> String {
+    // Over the parser budget, the linear tag strip stands in for the document.
+    if !mxr_reader::within_budget(html) {
+        return mxr_reader::strip_html_tags(html);
+    }
     scraper::Html::parse_document(html)
         .root_element()
         .text()
@@ -315,5 +324,24 @@ mod tests {
         assert_eq!(check(&draft("s", only_in_html)).len(), 1);
         let clean = DraftContent::html("<p>Hi</p>", Some("Hi".into()));
         assert!(check(&draft("s", clean)).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn an_over_budget_document_keeps_its_attribute_text_for_the_scan() {
+        let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
+        assert!(attribute_text(&html).contains("zzalt"));
+    }
+
+    #[test]
+    fn an_over_budget_document_keeps_its_visible_text_via_the_tag_strip() {
+        let html = format!("<p>zzvisible</p>{}", "<br>".repeat(200_000));
+        let text = visible_text(&html);
+        assert!(text.contains("zzvisible"));
+        assert!(!text.contains('<'));
     }
 }

@@ -117,10 +117,6 @@ fn s_pins_the_message_under_the_cursor_and_shows_it_at_once() {
         "receipts@shop.example",
         vec![receipt.clone(), message("Receipt 0", false)],
     )]);
-    // `p` pinned until K3 (blueprint 35); it says `s` does now.
-    press(&mut app, KeyCode::Char('p'));
-    assert!(queued(&app).is_empty());
-    assert_eq!(app.status_message.as_deref(), Some("Pin is now s"));
     press(&mut app, KeyCode::Char('s'));
     assert!(matches!(
         queued(&app).as_slice(),

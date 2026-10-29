@@ -940,12 +940,6 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
     app.modals.drafts.set_drafts(drafts);
     app.modals.drafts.select_next();
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
-    assert_eq!(action, None, "e retired as an alias of Enter");
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Edit draft is now Enter")
-    );
     let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalEdit));
     app.apply(action.unwrap());
@@ -990,9 +984,6 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
     app.modals.drafts.open_loading();
     app.modals.drafts.set_drafts(drafts);
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-    assert_eq!(action, None);
-    assert_eq!(app.status_message.as_deref(), Some("Delete draft is now #"));
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::StoredDraftsModalPreviewDelete));
     app.apply(action.unwrap());

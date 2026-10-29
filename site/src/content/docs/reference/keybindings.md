@@ -253,7 +253,9 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `a` | Reply all |
 | `f` | Forward |
 | `B` | Thread briefing |
+| `p` | Sender profile |
 | `L` | Links in this message |
+| `A` | Attachments |
 | `i a` | Accept invite |
 | `i m` | Maybe (invite) |
 | `i d` | Decline invite |
@@ -269,6 +271,7 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `* s` | Select starred |
 | `g f` | Filter this list |
 | `R` | Reader view, or back to plain |
+| `S` | Show or hide signatures |
 | `O` | Open original in a new tab |
 | `F` | Full-width reader |
 | `X` | Move to… |
@@ -283,8 +286,6 @@ Inbox, labels and saved searches.
 | `e` | Archive |
 | `s` | Star or unstar |
 | `D` | Unsubscribe… |
-| `p` | Sender profile |
-| `A` | Attachments |
 | `j`, `↓` | Next conversation |
 | `k`, `↑` | Previous conversation |
 | `Home`, `g g` | First conversation |
@@ -296,7 +297,6 @@ Inbox, labels and saved searches.
 | `w` | Wake: bring it back now |
 | `Esc` | Clear selection, then close |
 | `Ctrl+f` | Filter this list |
-| `S` | Show or hide signatures |
 | `P` | Send everything from this sender to… |
 | `q` | Quit view |
 
@@ -309,8 +309,6 @@ An open conversation.
 | `e` | Archive |
 | `s` | Star or unstar |
 | `D` | Unsubscribe… |
-| `p` | Sender profile |
-| `A` | Attachments |
 | `Ctrl+f` | Filter this list |
 | `↓`, `j` | Scroll down |
 | `↑`, `k` | Scroll up |
@@ -330,7 +328,6 @@ An open conversation.
 | `Esc`, `q` | Close conversation |
 | `H` | Formatted (HTML) view, or back to plain |
 | `M` | Load remote images |
-| `S` | Show or hide signatures |
 | `Q` | Show or hide quoted text |
 
 ### Sidebar
@@ -1659,7 +1656,7 @@ and `M`, and raw headers' `g H` retired; raw headers are in the palette. The
 assistant is `@` as well as `⌘.`, and Summarize folded into the briefing
 (`B`).
 
-The next wave moved these, each saying where it went until 0.6.185: Export
+The next wave moved these: Export
 (`E`, in the mail list and Archive) and Updates' sender sweep (`S`) are in the
 palette; Archive's mark checked (`v`) is in the `,` dialog; To do's details
 (`v`) is in the palette and on the row; Focus skips with `j` (was `s`); the

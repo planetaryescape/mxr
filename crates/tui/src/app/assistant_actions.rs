@@ -271,21 +271,14 @@ impl App {
             (KeyCode::Char('L'), _) => return Some(Action::OpenAssistantConversations),
             (KeyCode::Char('M'), _) => return Some(Action::OpenAssistantModels),
             (KeyCode::Char('T'), _) => return Some(Action::ToggleAssistantTrust),
-            // `#` deletes, after a preview (blueprint 35); `D` says so.
+            // `#` deletes, after a preview (blueprint 35).
             (KeyCode::Char('#'), _) => return Some(Action::DeleteAssistantConversation),
-            (KeyCode::Char('D'), _) => {
-                self.announce_moved("assistant", "D");
-            }
             _ => {}
         }
         None
     }
 
     fn assistant_list_key(&mut self, key: KeyEvent) {
-        if let KeyCode::Char(c @ ('d' | 'D')) = key.code {
-            self.announce_moved("assistant-history", &c.to_string());
-            return;
-        }
         let Some(list) = self.assistant.list.as_mut() else {
             return;
         };

@@ -668,11 +668,6 @@ impl App {
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
                 (KeyCode::Enter, _) => Some(Action::StoredDraftsModalEdit),
                 (KeyCode::Char('#'), _) => Some(Action::StoredDraftsModalPreviewDelete),
-                // Moved keys (blueprint 35): `#` deletes and Enter edits.
-                (KeyCode::Char(c @ ('d' | 'e')), KeyModifiers::NONE) => {
-                    self.announce_moved("drafts", &c.to_string());
-                    None
-                }
                 (KeyCode::Char('c'), _) => Some(Action::StoredDraftsModalPreviewCancelSchedule),
                 (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
@@ -1826,12 +1821,6 @@ impl App {
                 {
                     Some(Action::DeleteSavedSearch)
                 }
-                (KeyCode::Char('d'), KeyModifiers::NONE)
-                    if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
-                {
-                    self.announce_moved("saved-searches", "d");
-                    None
-                }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
@@ -1925,9 +1914,8 @@ impl App {
     /// Key handling for the calendar-invites lens (a list pane with inline
     /// RSVP). The `i` chords respond, as everywhere else (`i a`, `i m`,
     /// `i d`, and with a capital to add a comment); Enter opens the
-    /// underlying message. The bare letters they replaced say so until
-    /// 0.6.185. Unhandled keys fall through to the shared vim/chord input
-    /// so j/k/gg/G still navigate.
+    /// underlying message. Unhandled keys fall through to the shared
+    /// vim/chord input so j/k/gg/G still navigate.
     fn calendar_invites_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
@@ -1940,12 +1928,6 @@ impl App {
             }
             // Cancel a just-issued RSVP while it's still in its send window.
             (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
-            (KeyCode::Char(c @ ('a' | 't' | 'm' | 'd' | 'A' | 'T' | 'M' | 'D')), m)
-                if plain_or_shift(m) =>
-            {
-                self.announce_moved("invites", &c.to_string());
-                None
-            }
             _ => self.contextual_input_action(key),
         }
     }
@@ -2466,10 +2448,6 @@ impl App {
             (KeyCode::Char('#'), _) => Some(Action::DeleteRule),
             // c creates what this place holds (blueprint 35).
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenRuleFormNew),
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                self.announce_moved("rules", "n");
-                None
-            }
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenRuleFormEdit)
             }
@@ -2805,10 +2783,6 @@ impl App {
             // c creates what this place holds (blueprint 35); Edit Config,
             // which had c here, is in the palette.
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenAccountFormNew),
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                self.announce_moved("accounts", "n");
-                None
-            }
             (KeyCode::Char('r'), _) => {
                 // Phase 2.3: when the selected account is reporting an
                 // unhealthy sync, `r` repairs it instead of refreshing

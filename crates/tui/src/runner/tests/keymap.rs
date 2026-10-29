@@ -1313,66 +1313,11 @@ fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
 }
 
-/// The third wave of moves (blueprint 35's verb table): every old key says
-/// where its action went and runs nothing.
+/// The third wave of moves (blueprint 35's verb table): each action runs
+/// on its new key.
 #[test]
-fn third_wave_keys_name_their_new_keys() {
+fn third_wave_keys_run_their_actions() {
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    let palette = "has no key now; find it in the palette";
-    for (context, key, notice) in [
-        (
-            "list",
-            shifted('E'),
-            format!("Export as Markdown {palette}"),
-        ),
-        (
-            "reader",
-            shifted('E'),
-            format!("Export as Markdown {palette}"),
-        ),
-        (
-            "sidebar",
-            press_of('['),
-            "Collapse section is now Enter".into(),
-        ),
-        (
-            "sidebar",
-            press_of(']'),
-            "Expand section is now Enter".into(),
-        ),
-        ("sidebar", press_of('n'), "New saved search is now c".into()),
-        ("place", press_of('p'), "Pin is now s".into()),
-        ("place", shifted('K'), "Move sender to is now P".into()),
-        ("place", shifted('S'), format!("Sweep sender {palette}")),
-        ("place", shifted('A'), "Sweep all is now E".into()),
-        (
-            "place",
-            press_of('>'),
-            format!("More senders in this place {palette}"),
-        ),
-        (
-            "place",
-            press_of('+'),
-            format!("More from this sender {palette}"),
-        ),
-        ("archive", shifted('E'), format!("Export {palette}")),
-        ("archive", press_of('v'), "Checked is now ,".into()),
-        ("todo", press_of('v'), "Details is now ,".into()),
-        ("updates", shifted('S'), format!("Sweep sender {palette}")),
-    ] {
-        let mut app = app_in(context);
-        assert_eq!(
-            app.handle_key(key),
-            None,
-            "{key:?} in {context} ran something"
-        );
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some(notice.as_str()),
-            "{context}"
-        );
-    }
-
     for (context, keys, expected) in [
         ("place", vec![press_of('s')], Action::TogglePin),
         ("place", vec![shifted('P')], Action::OpenSenderKindMenu),
@@ -1419,37 +1364,15 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     );
 }
 
-/// Screens and overlays that still read their own keys say where a moved
-/// key went too.
+/// `c` creates what a tool screen holds (blueprint 35).
 #[test]
-fn tool_screen_keys_that_moved_say_so() {
-    for (screen, notice) in [
-        (Screen::Rules, "New rule is now c"),
-        (Screen::Accounts, "Add account is now c"),
-    ] {
-        let mut app = App::new();
-        app.screen = screen;
-        app.accounts.page.onboarding_required = false;
-        assert_eq!(press_char(&mut app, 'n'), None, "{screen:?}");
-        assert_eq!(app.status_message.as_deref(), Some(notice), "{screen:?}");
-    }
+fn tool_screens_create_with_c() {
     let mut app = App::new();
     app.screen = Screen::Rules;
     assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenRuleFormNew));
     let mut app = App::new();
     app.screen = Screen::Accounts;
     assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenAccountFormNew));
-
-    let mut app = app_in("list");
-    app.mailbox.mailbox_view = MailboxView::CalendarInvites;
-    for (key, notice) in [
-        ('a', "Accept invite is now i a"),
-        ('t', "Maybe (invite) is now i m"),
-        ('d', "Decline invite is now i d"),
-    ] {
-        assert_eq!(press_char(&mut app, key), None);
-        assert_eq!(app.status_message.as_deref(), Some(notice));
-    }
 }
 
 /// D171: an action with a key run from the palette names its key, once per

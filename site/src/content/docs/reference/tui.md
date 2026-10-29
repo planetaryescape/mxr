@@ -145,8 +145,8 @@ bundled by sender, each bundle with its "here because" line and no unread
 count. From a bundle, `s` pins a message, `P` moves the sender to another
 place and `E` sweeps the whole place; sweeping one sender's bundle and loading
 more senders, or more of one sender's messages, are in the palette (`:`).
-They were `p`, `K`, `A`, `S`, `>` and `+` until K3, and each old key says
-where it went until 0.6.185. Every sweep shows its preview first; the
+They were `p`, `K`, `A`, `S`, `>` and `+` until K3. Every sweep shows its
+preview first; the
 whole-place sweep opens on **Cancel**, so confirming it takes a deliberate
 extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
 star, trash) act on the message under the cursor. The keys are in the
@@ -187,8 +187,8 @@ not ask the model about every row. The CLI equivalent is
 
 ## Thread summaries
 
-Run `:` → **Summarize thread** from the mailbox, message, or thread view. Its
-old key, `y`, now points you at the thread briefing (`B`). The LLM request runs in the background, so navigation, body loads,
+Run `:` → **Summarize thread** from the mailbox, message, or thread view. The
+LLM request runs in the background, so navigation, body loads,
 and other mail actions keep working.
 
 Cached summaries appear above the message body when a thread opens. If a long

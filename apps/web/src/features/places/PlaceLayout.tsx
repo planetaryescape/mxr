@@ -10,6 +10,7 @@ import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { pickSearch } from "@/hooks/useSearchParam";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { ownsKeyboard } from "@/lib/keys/dispatcher";
+import { refocusPaneAfter } from "@/lib/keys/focusPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -69,10 +70,13 @@ export function PlaceLayout({
   );
   const close = useCallback(() => {
     setActivePane("mailbox");
-    void navigate({
-      to: basePath,
-      search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
-    } as never);
+    // The focused reader goes with the navigation; the mode's view takes the keys' focus.
+    void refocusPaneAfter(
+      navigate({
+        to: basePath,
+        search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
+      } as never),
+    );
   }, [basePath, keepSearch, navigate, setActivePane]);
 
   // Esc steps back from an open conversation. The reader's own scope handles

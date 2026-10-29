@@ -542,6 +542,64 @@ describe("installKeyDispatcher", () => {
     }
   });
 
+  test("Esc leaves the filters g f focused for the pane, before the page's own Esc", () => {
+    const escape = runAction("messages.escape", "Escape", { scopes: ["messages"] });
+    registry.define(escape.action);
+    scopes = ["messages", "global"];
+    document.body.innerHTML = `
+      <section data-mode-pane tabindex="-1"></section>
+      <div role="radiogroup"><button role="radio">Your turn</button></div>`;
+    const radio = document.querySelector("button")!;
+    radio.focus();
+
+    press({ key: "Escape" }, radio);
+    expect(document.activeElement).toBe(document.querySelector("[data-mode-pane]"));
+    expect(escape.run).not.toHaveBeenCalled();
+
+    press({ key: "Escape" }, document.activeElement!);
+    expect(escape.run).toHaveBeenCalledTimes(1);
+  });
+
+  test("q closes a mail dialog, which suspends the page's keys while it is open", () => {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    dialog.innerHTML = "<button>Not a to-do</button>";
+    document.body.append(dialog);
+    const escapes: EventTarget[] = [];
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escapes.push(event.target!);
+    };
+    document.addEventListener("keydown", onKey);
+    suspended = true;
+    try {
+      const button = dialog.querySelector("button")!;
+      press({ key: "q" }, button);
+      expect(escapes).toEqual([button]);
+    } finally {
+      document.removeEventListener("keydown", onKey);
+    }
+  });
+
+  test("q on the composer's toolbar leaves the half-written message open", () => {
+    const sheet = document.createElement("div");
+    sheet.setAttribute("role", "dialog");
+    sheet.innerHTML = "<div data-compose-surface><button>Attach</button></div>";
+    document.body.append(sheet);
+    const escapes: EventTarget[] = [];
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escapes.push(event.target!);
+    };
+    document.addEventListener("keydown", onKey);
+    suspended = true;
+    try {
+      press({ key: "q" }, sheet.querySelector("button")!);
+      expect(escapes).toEqual([]);
+    } finally {
+      document.removeEventListener("keydown", onKey);
+    }
+  });
+
   test("a retired key whose action has no key left names where to go instead", () => {
     const tab = runAction("nav.tab-mail", "", {
       label: "Mail",

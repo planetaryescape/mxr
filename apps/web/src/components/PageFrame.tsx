@@ -191,6 +191,7 @@ export function PageFrame({
           <div className="mt-auto flex h-8 shrink-0 items-end justify-between gap-4">
             <div
               className="min-w-0 flex-1 overflow-x-auto"
+              data-choice-controls
               onKeyDown={(event) => {
                 if (
                   event.defaultPrevented ||

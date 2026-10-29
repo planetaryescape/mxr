@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isComposingKey } from "@/lib/keys/composition";
+import { focusActivePane } from "@/lib/keys/focusPane";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { cn } from "@/lib/utils";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
@@ -23,6 +25,8 @@ export function SearchPalette() {
   const [debounced, setDebounced] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set when a result opens: the reader, not the list behind, gets the keys.
+  const openedConversation = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +75,10 @@ export function SearchPalette() {
   }
 
   function openRow(row: MessageRowView) {
+    // As Enter on a list row does: j, e and r now act on this conversation,
+    // not on whatever row the list behind the palette had lit.
+    openedConversation.current = true;
+    useMailboxPane.getState().setActivePane("reader");
     close();
     void navigate({
       to: "/m/$mailbox/$threadId",
@@ -120,6 +128,13 @@ export function SearchPalette() {
       <DialogContent
         className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-none border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]"
         onKeyDownCapture={handleKeyDown}
+        onCloseAutoFocus={(event) => {
+          if (!openedConversation.current) return;
+          // Radix would hand focus back to the list, and a focused list takes the keys back.
+          openedConversation.current = false;
+          event.preventDefault();
+          requestAnimationFrame(() => focusActivePane());
+        }}
       >
         <DialogTitle className="sr-only">Search mail</DialogTitle>
         <div className="flex items-center border-b border-border bg-muted/30 px-4">

@@ -44,6 +44,7 @@ export function MessagesFilterBar({
   return (
     <div
       data-testid="messages-filters"
+      data-choice-controls
       className="flex flex-wrap items-center gap-2 px-5 pb-2 pt-3"
     >
       <Segmented

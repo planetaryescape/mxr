@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   archiveMessagesRecoverably,
+  needsRecovery,
   previewArchive,
   queryArchive,
   retainedArchives,
@@ -191,5 +192,22 @@ describe("Archive consuming client recovery", () => {
     await expect(previewArchive(["message"])).rejects.toThrow("does not support");
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(retainedArchives()).toEqual([]);
+  });
+});
+
+describe("which retained Archives Archive recovery offers", () => {
+  test("a finished Archive is not offered; an unaccepted, running or unconfirmed one is", () => {
+    const withItems = (state: "completed" | "unknown"): ArchiveOperation => {
+      const op = operation();
+      op.accepted = true;
+      for (const item of op.items) item.state = state;
+      return op;
+    };
+    const finished = withItems("completed");
+    expect(needsRecovery(finished)).toBe(false);
+
+    expect(needsRecovery(operation())).toBe(true);
+    expect(needsRecovery({ ...finished, running: true })).toBe(true);
+    expect(needsRecovery(withItems("unknown"))).toBe(true);
   });
 });

@@ -12,3 +12,16 @@ export function focusActivePane(): void {
     document.querySelector<HTMLElement>("[data-page-pane]");
   pane?.focus({ preventScroll: true });
 }
+
+/**
+ * After `closing` (a promise that settles once the view that held focus is
+ * gone, such as a navigation), give the active pane focus if it fell to
+ * <body>. Closing a mode's reader removed the focused reader and left focus
+ * nowhere, where Inbox hands it back to the list.
+ */
+export async function refocusPaneAfter(closing: Promise<unknown>): Promise<void> {
+  await closing.catch(() => undefined);
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const active = document.activeElement;
+  if (!active || active === document.body || !active.isConnected) focusActivePane();
+}

@@ -89,6 +89,23 @@ describe("KeybindingsSection", () => {
     );
     await waitFor(() => expect(getRegistry().get("mail.archive")?.shortcut).toBe("%"));
     expect(useKeymapStore.getState().remapped).toEqual(["mail.archive"]);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getAllByLabelText("Change keys for Archive")[0]),
+    );
+  });
+
+  it("Esc cancels the editor and puts focus back on the pencil that opened it", async () => {
+    renderSection();
+    const pencil = screen.getAllByLabelText("Change keys for Archive")[0]!;
+    const { input } = editArchive();
+    fireEvent.change(input, { target: { value: "%" } });
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByLabelText(/Keys for Archive/)).toBeNull();
+    // Without this, a keyboard user starts again from the top of the page.
+    await waitFor(() => expect(document.activeElement).toBe(pencil));
+    expect(updateKeys).not.toHaveBeenCalledWith(expect.anything(), false);
   });
 
   it("names a conflict and keeps Save off", async () => {

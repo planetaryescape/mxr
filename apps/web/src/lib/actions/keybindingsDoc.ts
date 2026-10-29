@@ -7,7 +7,7 @@
 import { parseChord } from "@/lib/keys/chord";
 
 import "./catalog";
-import { isOverlayKey, type DefinedAction } from "./definition";
+import { definedShortcut, isOverlayKey, type DefinedAction } from "./definition";
 import keymap from "./keymap.generated.json";
 import { chordsOf, getRegistry, scopesOf } from "./registry";
 import type { Action, ActionScope } from "./types";
@@ -74,12 +74,13 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   {
     title: "To do: catch-up",
     intro:
-      "The first run's older undated tasks: keep each one, or let it go to the Expired list. `C` on To do opens it.",
+      // The tab keys come from the definition, so a moved tab can't leave this stale again.
+      `The first run's older undated tasks: keep each one, or let it go to the Expired list. \`${definedShortcut("todo.catchup")}\` on To do opens it.`,
     match: (action) => inScope(action, "catchup"),
   },
   {
     title: "To do: Expired list",
-    intro: "Tasks that expired or were let go. `E` on To do opens it.",
+    intro: `Tasks that expired or were let go. \`${definedShortcut("todo.expired")}\` on To do opens it.`,
     match: (action) => inScope(action, "expired"),
   },
   { title: "Updates", intro: "", match: (action) => inScope(action, "updates") },

@@ -65,6 +65,19 @@ export function retainedArchives(): ArchiveOperation[] {
   }
   return operations.toSorted((a, b) => a.started_at - b.started_at);
 }
+/**
+ * True while an operation may still need a person: not yet accepted, still
+ * running, or with an item whose outcome isn't confirmed. Every Archive stays
+ * in the journal, so a finished one can still be queried; only these are
+ * offered as Archive recovery.
+ */
+export function needsRecovery(operation: ArchiveOperation): boolean {
+  return (
+    !operation.accepted ||
+    operation.running ||
+    operation.items.some((item) => item.state !== "completed")
+  );
+}
 export function retainArchive(operation: ArchiveOperation): void {
   const key = `${journalPrefix(operation.binding?.target)}${operation.identity.operation_id}`;
   const prior = localStorage.getItem(key);

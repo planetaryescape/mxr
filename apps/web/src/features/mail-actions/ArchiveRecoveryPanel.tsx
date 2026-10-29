@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ARCHIVE_JOURNAL_CHANGED,
+  needsRecovery,
   queryArchive,
   retainedArchives,
   submitArchive,
@@ -15,7 +16,8 @@ export function ArchiveRecoveryPanel() {
   useEffect(() => {
     const refresh = () => {
       try {
-        setOperations(retainedArchives());
+        // A finished Archive is journalled too; the panel is for the ones that aren't.
+        setOperations(retainedArchives().filter(needsRecovery));
       } catch (caught) {
         setError(String(caught));
       }

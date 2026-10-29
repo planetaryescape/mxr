@@ -9,6 +9,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
@@ -501,9 +502,15 @@ test("a person Done took out of the list reopens on their own topic when undo br
   });
   await waitFor(() => expect(router.state.location.search).toMatchObject({ person: a.id }));
   expect(router.state.location.search.topic).not.toBe(b.id);
+  const success = vi.spyOn(toast, "success");
+  const info = vi.spyOn(toast, "info");
   await act(async () => {
     expect(await useUndo.getState().lastUndo?.()).toBe(true);
   });
+  // Already looking at a: the same "Undone" as when the undo itself reopens it,
+  // not a "Restored" toast offering to open what's on screen.
+  expect(success).toHaveBeenCalledWith("Undone");
+  expect(info).not.toHaveBeenCalled();
   await waitFor(() =>
     expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
   );

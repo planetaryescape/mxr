@@ -559,11 +559,13 @@ function MessagesBody({
             return nextSet;
           });
           const now = here.current;
+          // Back on the person already counts as staying: the list's own
+          // undo watcher can reopen them before this runs, depending on
+          // which list refresh lands first.
           const stayed =
             now.mounted &&
             useUiPrefs.getState().accountScope === account &&
-            now.person === landed.person &&
-            now.topic === landed.topic;
+            (now.person === from || (now.person === landed.person && now.topic === landed.topic));
           if (stayed) {
             advanceTo(from, thread);
             return;

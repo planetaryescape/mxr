@@ -1515,6 +1515,8 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: A sender that puts no reference in its mail still merges two accounts with the same due day; the not-sure path is the fallback.
 
+**Amended 2026-10-29: same email, same to-do.** The due period keeps next month's bill, which arrives in a new email, a new to-do. A rescan of the same email that moves the due date into another month (a corrected 31 October that becomes 1 November) now keeps that email's row: the row takes the new key with its id, state, snooze and edits, and shows the new due date unless the user edited the row. Before, the rescan made a second row with the new date; an untouched old row dropped out of the list, while a snoozed or edited one stayed open beside it with the old date. One email with two dated items keeps one row per item. The key format is unchanged, so existing rows need no migration (`Store::adopt_asks_same_source`, `docs/issues/todo-bill-key-crosses-month.md`).
+
 ## D181: The eval grades asks per kind and field on the positives
 
 **Chosen**: Label schema v2 lists every expected item with kind, verb, object, actor, direction, state, counterparty, amount and due words. `classify eval` reports per-kind precision and recall, field exact-match, duplicates, abstention, twin pair accuracy, slices by sender kind, locale, template family, zone, thread position and rule abstention, and held-out phrasings, template families and `--set mine` separately. A surface-only baseline must fail the twins. Model calls are recorded and replayed in CI. Accuracy is not reported.

@@ -719,3 +719,117 @@ async fn pending_legacy_catchup_keeps_history_until_source_reconciliation() {
     assert!(fx.store.list_catchup_todos(None).await.unwrap().is_empty());
     assert_eq!(fx.store.get_todo(&row.id).await.unwrap(), Some(row));
 }
+
+/// Current stored answers for `sources`, so asks writes pass their authority check.
+async fn saved_asks(
+    fx: &Fx,
+    sources: &[&(MessageId, ThreadId)],
+) -> Vec<mxr_core::asks::AskAssessment> {
+    use mxr_core::asks::*;
+    let answers: Vec<_> = sources
+        .iter()
+        .map(|source| AskAssessment {
+            message_id: source.0.clone(),
+            account_id: fx.account.clone(),
+            policy_version: ASKS_POLICY_VERSION.into(),
+            input_fingerprint: "stable".into(),
+            pending_body: false,
+            context_token: crate::asks_context_token().unwrap(),
+            calendar: None,
+            html: None,
+            facts: AskFacts {
+                zones: vec![],
+                recipient_role: RecipientRole::AloneTo,
+                owner_authored: false,
+                owner_names: vec![],
+                owner_addresses: vec![],
+                predecessor: None,
+                owner_replied_afterwards: false,
+                amounts: vec![],
+                dates: vec![],
+                references: vec![],
+                template_key: "x".into(),
+            },
+            units: vec![],
+        })
+        .collect();
+    let threads: Vec<_> = sources.iter().map(|source| source.1.clone()).collect();
+    let revisions = fx
+        .store
+        .assessment_thread_revisions(&fx.account, &threads)
+        .await
+        .unwrap();
+    fx.store
+        .save_asks_batch(&fx.account, &revisions, &answers)
+        .await
+        .unwrap();
+    answers
+}
+
+#[tokio::test]
+async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_another_emails() {
+    let fx = Fx::new().await;
+    let source = fx.message("bill", at(0)).await;
+    let next = fx.message("next-bill", at(1)).await;
+    let answers = saved_asks(&fx, &[&source, &next]).await;
+    let (ask, next_ask) = (&answers[0], &answers[1]);
+    let key = |period: &str| format!("asks|payment|fp|{period}");
+    let keyed = |id: &str, source: &(MessageId, ThreadId), period: &str| TodoRecord {
+        dedup_key: key(period),
+        rules_version: 2,
+        ..fx.record(id, source, at(0))
+    };
+    let key_of = |id: &'static str| {
+        let store = &fx.store;
+        async move { store.get_todo(id).await.unwrap().unwrap().dedup_key }
+    };
+    fx.store
+        .insert_todo(&keyed("october", &source, "due:2026-10"))
+        .await
+        .unwrap();
+    fx.store
+        .insert_todo(&keyed("theirs", &next, "due:2026-12"))
+        .await
+        .unwrap();
+    let november = keyed("rescan", &source, "due:2026-11");
+
+    // This email still has an item due in October: that row is its sibling.
+    fx.store
+        .adopt_asks_same_source(&november, ask, &[key("due:2026-10"), key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-10"));
+
+    // A stale answer moves nothing.
+    let mut stale = ask.clone();
+    stale.input_fingerprint = "older".into();
+    fx.store
+        .adopt_asks_same_source(&november, &stale, &[key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-10"));
+
+    fx.store
+        .adopt_asks_same_source(&november, ask, &[key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+    assert_eq!(key_of("theirs").await, key("due:2026-12"));
+
+    // Another email's row for the same item is next month's bill, not this one.
+    let next_rescan = keyed("next-rescan", &next, "due:2027-01");
+    fx.store
+        .adopt_asks_same_source(&next_rescan, next_ask, &[key("due:2027-01")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+    assert_eq!(key_of("theirs").await, key("due:2027-01"));
+
+    // A key some row already holds is never taken a second time.
+    let back = keyed("back", &source, "due:2027-01");
+    fx.store
+        .adopt_asks_same_source(&back, ask, &[key("due:2027-01")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+}

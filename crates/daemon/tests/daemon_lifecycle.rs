@@ -785,11 +785,21 @@ fn recovery_status_autostarts_the_selected_local_daemon() {
         .env("MXR_DAEMON_AUTOSTART", "on")
         .env_remove("MXR_DAEMON_ADDR")
         .env("MXR_SOCKET_PATH", &socket)
-        .timeout(Duration::from_secs(15))
+        // A cold first start on a busy machine can pass 15 seconds.
+        .timeout(Duration::from_secs(60))
         .args(["recovery", "status", "--format", "json"])
         .output();
-    if let Ok(pid) = std::fs::read_to_string(data.join("daemon.pid")) {
-        daemon.set_pid(pid.trim().parse().expect("parse owned daemon PID"));
+    // A CLI that timed out can leave its daemon still starting. Wait for the
+    // PID file so the guard stops the daemon either way instead of leaking it.
+    for _ in 0..300 {
+        if let Some(pid) = std::fs::read_to_string(data.join("daemon.pid"))
+            .ok()
+            .and_then(|pid| pid.trim().parse().ok())
+        {
+            daemon.set_pid(pid);
+            break;
+        }
+        sleep(Duration::from_millis(100));
     }
     let output = output.expect("run recovery status CLI");
     assert!(

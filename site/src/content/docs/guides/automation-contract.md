@@ -158,7 +158,7 @@ counts, a sample of the 20 newest messages, `capped: false` and a
 messages, waits for it with progress on stderr, and prints it; mail that
 arrives after the preview is left alone. `--no-wait` returns once the daemon has
 accepted the job (follow it with `mxr jobs JOB_ID`), and
-`--preview-token TOKEN` runs exactly what an earlier dry run counted. `label --all` refuses `TRASH` and `SPAM` (by id or by a label name that resolves to one): trashing and spamming are not available for `--all` yet. `unlabel --all` may remove them. The exit
+`--preview-token TOKEN` runs exactly what an earlier dry run counted. `label --all` and `unlabel --all` accept only labels you created in each account they reach: a system label such as `INBOX`, `TRASH` or `SPAM` (which move, trash or spam mail at the provider), a provider folder, an IMAP flag or a name that matches no label is refused. Trashing and spamming are not available for `--all` yet. The exit
 status is non-zero when the job ends `failed`, whatever it had done by then.
 `mxr undo JOB_ID` reverses the whole job for an hour after it ends, as a job of
 its own, and reports the messages it had to skip. A daemon restart ends a

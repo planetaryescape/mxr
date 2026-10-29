@@ -10,6 +10,7 @@ use super::diagnostics_impl::search_resolve::{resolve_search_selection, Resolved
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId};
+use mxr_core::types::LabelKind;
 use mxr_protocol::{
     AccountMutationResultData, ClientKind, JobData, MutationCommand, ResponseData,
     SelectionAccountData, SelectionData, SelectionPreviewData, SelectionSampleData,
@@ -31,7 +32,7 @@ const MAX_SAMPLE: u32 = 100;
 /// What a selection job needs of its mutation: archive, read-archive and label
 /// edits. Everything else (trash, spam, flags, move) is not offered for a whole
 /// selection yet, so a client cannot reach it by skipping the CLI; a label edit
-/// that would trash or spam is refused by [`refuse_trash_and_spam`].
+/// outside the user's own labels is refused by [`require_user_labels`].
 fn require_supported(mutation: &MutationCommand) -> Result<(), HandlerError> {
     let ids = match mutation {
         MutationCommand::Archive { message_ids }
@@ -105,6 +106,26 @@ impl SelectionPreviews {
 
     /// The preview behind `token` for this selection and action, once. A
     /// request for another selection or action leaves the token usable.
+    /// What the preview behind `token` covers, without using it up: the same
+    /// checks as [`Self::take`].
+    fn peek(
+        &self,
+        token: &str,
+        selection: &SelectionData,
+        action: &str,
+    ) -> Result<(u32, Vec<AccountMutationResultData>), HandlerError> {
+        let entries = self.entries.lock();
+        match entries.iter().find(|(held, _)| held == token) {
+            Some((_, entry)) if entry.created.elapsed() >= PREVIEW_TTL => {}
+            Some((_, entry)) if &entry.selection != selection || entry.action != action => {
+                return Err("the preview_token belongs to a different selection or action".into());
+            }
+            Some((_, entry)) => return Ok((entry.ids.len() as u32, entry.accounts.clone())),
+            None => {}
+        }
+        Err("that preview expired or was already used; preview again".into())
+    }
+
     fn take(
         &self,
         token: &str,
@@ -214,32 +235,29 @@ fn record(state: &AppState, activity: &JobActivity, job: &JobData, context: serd
     });
 }
 
-/// Trash and spam are not offered for a whole selection yet, and a label edit
-/// reaches them: the provider treats adding `TRASH` or `SPAM` as trashing or
-/// spamming the message. So a selection job refuses to add either, by its id
-/// (any case) or by a label name in scope that resolves to one. Removing them
-/// (unlabel) puts mail back and is allowed.
-async fn refuse_trash_and_spam(
+/// A label edit over a whole selection may only name labels the user created.
+///
+/// A provider acts on some labels rather than just tagging: adding `TRASH` or
+/// `SPAM` trashes or spams, IMAP maps a trash folder to an id of its own, and a
+/// name like `DELETED` becomes the IMAP `\Deleted` flag. Those mailbox
+/// actions are not offered for a selection yet, and a block-list would miss
+/// aliases, so this is an allow-list: each label named, added or removed, must
+/// be one the store holds for the account with kind `User`. System labels
+/// (INBOX, TRASH, SPAM, IMPORTANT, STARRED, UNREAD, DRAFT, SENT, anything with
+/// a role), provider folders and names that match no label are refused. The
+/// name is resolved the way the runner resolves it, and must resolve to a user
+/// label in every account the selection can reach.
+async fn require_user_labels(
     state: &AppState,
     selection: &SelectionData,
     mutation: &MutationCommand,
 ) -> Result<(), HandlerError> {
-    let MutationCommand::ModifyLabels { add, .. } = mutation else {
+    let MutationCommand::ModifyLabels { add, remove, .. } = mutation else {
         return Ok(());
     };
-    let is_trash_or_spam = |text: &str| {
-        let text = text.trim();
-        text.eq_ignore_ascii_case("trash") || text.eq_ignore_ascii_case("spam")
-    };
-    let refused = || -> HandlerError {
-        "trash and spam are not available for --all yet"
-            .to_string()
-            .into()
-    };
-    if add.iter().any(|label| is_trash_or_spam(label)) {
-        return Err(refused());
+    if add.is_empty() && remove.is_empty() {
+        return Err("name the label to add or remove".into());
     }
-    // A display name the runner would resolve to a provider id of TRASH/SPAM.
     let SelectionData::Search { account_id, .. } = selection;
     let accounts = match account_id {
         Some(account_id) => vec![account_id.clone()],
@@ -252,12 +270,27 @@ async fn refuse_trash_and_spam(
             .collect(),
     };
     for account in accounts {
-        for label in state.store.list_labels_by_account(&account).await? {
-            let named = add
-                .iter()
-                .any(|reference| reference.trim().eq_ignore_ascii_case(label.name.trim()));
-            if named && is_trash_or_spam(&label.provider_id) {
-                return Err(refused());
+        let labels = state.store.list_labels_by_account(&account).await?;
+        for reference in add.iter().chain(remove) {
+            match mutations::find_label(&labels, reference) {
+                Some(label) if label.kind == LabelKind::User => {}
+                Some(_) => {
+                    return Err(format!(
+                        "`{reference}` is a system label or folder; --all label edits only work on labels you created"
+                    )
+                    .into())
+                }
+                None => {
+                    let name = state
+                        .store
+                        .get_account(&account)
+                        .await?
+                        .map_or_else(|| account.to_string(), |found| found.name);
+                    return Err(format!(
+                        "`{reference}` is not a label you created in account {name}; --all label edits only work on labels you created"
+                    )
+                    .into());
+                }
             }
         }
     }
@@ -271,7 +304,7 @@ pub(super) async fn preview_selection(
     sample_size: Option<u32>,
 ) -> HandlerResult {
     require_supported(mutation)?;
-    refuse_trash_and_spam(state, selection, mutation).await?;
+    require_user_labels(state, selection, mutation).await?;
     let SelectionData::Search { query, account_id } = selection;
     if query.trim().is_empty() {
         return Err("a selection needs a non-empty search query".into());
@@ -381,7 +414,7 @@ pub(super) async fn start_selection_job(
     client_correlation_id: Option<&str>,
 ) -> HandlerResult {
     require_supported(mutation)?;
-    refuse_trash_and_spam(state, selection, mutation).await?;
+    require_user_labels(state, selection, mutation).await?;
     uuid::Uuid::parse_str(job_id).map_err(|_| {
         HandlerError::from("job_id must be a UUID chosen by the client".to_string())
     })?;
@@ -392,6 +425,31 @@ pub(super) async fn start_selection_job(
         return Ok(ResponseData::JobStarted { job });
     }
 
+    // Claim the id before spending the token or starting anything. The claim
+    // is an insert that only one of any number of concurrent requests with
+    // this id wins; the others get the winner's job (or an error if it is for
+    // something else). The token is only looked at here, so a loser leaves it
+    // for whoever it was meant for.
+    let (total, accounts) =
+        state
+            .selection_previews
+            .peek(preview_token, selection, &action_key(mutation))?;
+    let job = mutations::queued_job(
+        job_id.to_string(),
+        mutation,
+        total,
+        Some(selection),
+        &accounts,
+    );
+    if !mutations::claim_job(state, &job).await? {
+        return match existing_job(state, job_id, selection, mutation).await? {
+            Some(job) => Ok(ResponseData::JobStarted { job }),
+            None => Err(format!("job_id {job_id} could not be claimed; try again").into()),
+        };
+    }
+
+    // Now the token: two requests with different ids can hold the same one,
+    // and only one of them gets to use it.
     let previewed =
         match state
             .selection_previews
@@ -399,11 +457,7 @@ pub(super) async fn start_selection_job(
         {
             Ok(previewed) => previewed,
             Err(error) => {
-                // A concurrent request with the same id may have used the token a
-                // moment ago.
-                if let Some(job) = existing_job(state, job_id, selection, mutation).await? {
-                    return Ok(ResponseData::JobStarted { job });
-                }
+                mutations::release_job_claim(state, job_id).await;
                 return Err(error);
             }
         };
@@ -425,7 +479,7 @@ pub(super) async fn start_selection_job(
         query: Some(query.clone()),
         undo_of: None,
     });
-    mutations::start_job(state.clone(), spec).await
+    Ok(mutations::run_claimed_job(state.clone(), job, spec))
 }
 
 /// The job already started under `job_id`, if any. It must be the same
@@ -441,10 +495,10 @@ async fn existing_job(
     };
     let job: JobData =
         serde_json::from_str(&json).map_err(|e| HandlerError::from(e.to_string()))?;
-    if job.selection.as_ref() == Some(selection)
-        && job.kind == mutations::mutation_job_kind(mutation)
-    {
-        return Ok(Some(job));
+    // The whole action, not just its kind: `label Work` and `unlabel Work`
+    // under one id are different requests.
+    if job.selection.as_ref() == Some(selection) && job.action.as_ref() == Some(mutation) {
+        return Ok(Some(mutations::bound_for_wire(job)));
     }
     Err(format!("job_id {job_id} is already used by a different job").into())
 }

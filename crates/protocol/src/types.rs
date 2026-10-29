@@ -3395,7 +3395,7 @@ impl Request {
 }
 
 /// Mutation commands for modifying messages.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "mutation")]
 pub enum MutationCommand {
@@ -3555,6 +3555,19 @@ pub struct JobData {
     /// The job this one reverses (`UndoJob`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undo_of: Option<String>,
+    /// What a selection job does to its messages, with `message_ids` empty.
+    /// A repeated start under the same job id must name the same action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<MutationCommand>,
+    /// How many undo ids the job holds. `undo_ids` carries at most the newest
+    /// 100 of them so a job over half a million messages stays small on the
+    /// wire; a selection job is undone as a whole by its own id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub undo_id_count: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

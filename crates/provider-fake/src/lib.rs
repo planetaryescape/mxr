@@ -144,7 +144,7 @@ pub struct FakeProvider {
     /// fails part way: the messages before it change, the rest don't.
     failing_message: Mutex<Option<String>>,
     /// Mutations still to refuse as rate limited, and the wait each reports.
-    rate_limited_mutations: Mutex<(u32, u64)>,
+    rate_limited_mutations: Mutex<(u32, u32, u64)>,
     page_size: usize,
     /// `MXR_FAKE_SPOOL_DIR`: messages and failures an end-to-end test
     /// drops in from outside the daemon (`spool`).
@@ -323,7 +323,7 @@ impl FakeProvider {
             sends_fail_after_accepting: AtomicBool::new(false),
             mutations_fail_after_accepting: AtomicBool::new(false),
             failing_message: Mutex::new(None),
-            rate_limited_mutations: Mutex::new((0, 0)),
+            rate_limited_mutations: Mutex::new((0, 0, 0)),
             page_size: SYNC_PAGE_SIZE,
             spool: spool::Spool::from_env(),
         }
@@ -353,11 +353,17 @@ impl FakeProvider {
     /// `retry_after_secs` wait. A refused mutation is not recorded: the
     /// provider did nothing, as a real 429 does.
     pub fn rate_limit_next_mutations(&self, times: u32, retry_after_secs: u64) {
+        self.rate_limit_mutations_after(0, times, retry_after_secs);
+    }
+
+    /// Accept the next `skip` mutations, then refuse `times` as rate limited.
+    /// Lets a test stop a two-call mutation between its calls.
+    pub fn rate_limit_mutations_after(&self, skip: u32, times: u32, retry_after_secs: u64) {
         *self
             .rate_limited_mutations
             .lock()
             .expect("fake provider rate limit mutex should not be poisoned") =
-            (times, retry_after_secs);
+            (skip, times, retry_after_secs);
     }
 
     /// Make every subsequent send accept the mail and then fail, or stop.
@@ -575,8 +581,10 @@ impl MailSyncProvider for FakeProvider {
                 .expect("fake provider rate limit mutex should not be poisoned");
             if limited.0 > 0 {
                 limited.0 -= 1;
+            } else if limited.1 > 0 {
+                limited.1 -= 1;
                 return Err(MxrError::RateLimited {
-                    retry_after_secs: limited.1,
+                    retry_after_secs: limited.2,
                     detail: Some("fake".into()),
                 });
             }

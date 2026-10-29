@@ -9,38 +9,64 @@
 //! dropped silently.
 
 use super::mutations::{
-    persist_job, persist_job_checked, rate_limit_wait, restore_snapshots, LabelCountSchedule,
-    RestoreOutcome, MAX_CONSECUTIVE_RATE_LIMIT_WAITS, MAX_JOB_FAILURES,
+    bound_for_wire, persist_job, persist_job_checked, rate_limit_wait, restore_snapshots,
+    LabelCountSchedule, RestoreOutcome, MAX_CONSECUTIVE_RATE_LIMIT_WAITS, MAX_JOB_FAILURES,
 };
 use super::selection_jobs::{record_job_accepted, record_job_finished, JobActivity};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
+use mxr_core::AccountId;
 use mxr_protocol::{
     AccountMutationResultData, ClientKind, DaemonEvent, JobData, JobFailureData, JobProgressData,
     JobStatusData, MutationResultData, ResponseData,
 };
 use mxr_store::UndoEntry;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const UNDO_JOB_KIND: &str = "mutation.undo";
-/// Jobs looked at for one already undoing this job.
-const RECENT_JOBS: i64 = 100;
+
+/// Unix milliseconds. Injected so a test can move time under a running undo.
+pub(super) type UndoClock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
+fn real_clock() -> UndoClock {
+    Arc::new(|| chrono::Utc::now().timestamp_millis())
+}
 
 pub(super) async fn start_undo_job(
     state: &Arc<AppState>,
     source: ClientKind,
     job_id: &str,
 ) -> HandlerResult {
-    start_undo_job_at(state, source, job_id, chrono::Utc::now().timestamp_millis()).await
+    start_undo_job_with(
+        state,
+        source,
+        job_id,
+        chrono::Utc::now().timestamp_millis(),
+        real_clock(),
+    )
+    .await
 }
 
 /// [`start_undo_job`] as of `now_ms` (unix milliseconds), so a test can stand
 /// either side of the one-hour boundary.
+#[cfg(test)]
 pub(super) async fn start_undo_job_at(
     state: &Arc<AppState>,
     source: ClientKind,
     job_id: &str,
     now_ms: i64,
+) -> HandlerResult {
+    start_undo_job_with(state, source, job_id, now_ms, real_clock()).await
+}
+
+/// [`start_undo_job_at`] with the clock the running undo reads, too.
+pub(super) async fn start_undo_job_with(
+    state: &Arc<AppState>,
+    source: ClientKind,
+    job_id: &str,
+    now_ms: i64,
+    clock: UndoClock,
 ) -> HandlerResult {
     let job = load_job(state, job_id).await?;
     if job.undo_of.is_some() {
@@ -67,43 +93,34 @@ pub(super) async fn start_undo_job_at(
         .into());
     }
 
-    // An undo of this job is already running: it is the answer, not a second
-    // one racing it over the same entries.
-    for json in state.store.list_mutation_jobs(RECENT_JOBS).await? {
-        let Ok(running) = serde_json::from_str::<JobData>(&json) else {
-            continue;
-        };
-        if running.undo_of.as_deref() == Some(job_id)
-            && matches!(
-                running.status,
-                JobStatusData::Queued | JobStatusData::Running
-            )
-        {
-            return Ok(ResponseData::JobStarted { job: running });
-        }
-    }
-
     // Messages the job changed, or may have: the ones it applied and the one
     // per failed account whose undo snapshot is uncertain.
     let total = job.progress.succeeded + job.progress.failed;
-    let accounts = job
+    let original_accounts = job
         .result
         .as_ref()
-        .map(|result| {
-            result
-                .accounts
-                .iter()
-                .map(|account| AccountMutationResultData {
-                    account_id: account.account_id.clone(),
-                    account_name: account.account_name.clone(),
-                    succeeded: 0,
-                    skipped: 0,
-                    failed: 0,
-                    error: None,
-                })
-                .collect::<Vec<_>>()
-        })
+        .map(|result| result.accounts.clone())
         .unwrap_or_default();
+    let accounts: Vec<AccountMutationResultData> = original_accounts
+        .iter()
+        .map(|account| AccountMutationResultData {
+            account_id: account.account_id.clone(),
+            account_name: account.account_name.clone(),
+            succeeded: 0,
+            skipped: 0,
+            failed: 0,
+            error: None,
+        })
+        .collect();
+    let expected: HashMap<AccountId, u32> = original_accounts
+        .iter()
+        .map(|account| {
+            (
+                account.account_id.clone(),
+                account.succeeded + account.failed,
+            )
+        })
+        .collect();
     let undo = JobData {
         job_id: uuid::Uuid::now_v7().to_string(),
         kind: UNDO_JOB_KIND.to_string(),
@@ -133,10 +150,27 @@ pub(super) async fn start_undo_job_at(
         paused_until: None,
         undo_expires_at: None,
         undo_of: Some(job_id.to_string()),
+        action: None,
+        undo_id_count: 0,
     };
-    persist_job_checked(state, &undo)
-        .await
-        .map_err(|error| HandlerError::from(format!("could not record the undo job: {error}")))?;
+
+    // One undo of a job at a time. The claim is taken and the job saved under
+    // one lock, so of any number of concurrent requests exactly one starts an
+    // undo and the rest are handed it: two undos over the same snapshots would
+    // each restore, and each count, the same messages. A daemon runs these in
+    // one process, so a lock is a complete claim; it is dropped when the undo
+    // ends.
+    {
+        let mut claims = state.undo_claims.lock().await;
+        if let Some(running) = claims.get(job_id) {
+            let running = bound_for_wire(load_job(state, running).await?);
+            return Ok(ResponseData::JobStarted { job: running });
+        }
+        persist_job_checked(state, &undo).await.map_err(|error| {
+            HandlerError::from(format!("could not record the undo job: {error}"))
+        })?;
+        claims.insert(job_id.to_string(), undo.job_id.clone());
+    }
 
     let activity = JobActivity {
         source,
@@ -151,9 +185,15 @@ pub(super) async fn start_undo_job_at(
     let state = state.clone();
     let entry_ids = job.undo_ids;
     tokio::spawn(async move {
-        run_undo_job(state, undo, entry_ids, activity).await;
+        let original = job_id_of(&undo);
+        run_undo_job(state.clone(), undo, entry_ids, activity, expected, clock).await;
+        state.undo_claims.lock().await.remove(&original);
     });
     Ok(ResponseData::JobStarted { job: started })
+}
+
+fn job_id_of(undo: &JobData) -> String {
+    undo.undo_of.clone().unwrap_or_default()
 }
 
 async fn load_job(state: &AppState, job_id: &str) -> Result<JobData, HandlerError> {
@@ -171,6 +211,52 @@ struct Tally {
     failures: Vec<JobFailureData>,
     /// Label counts the restores left stale, refreshed on a schedule.
     label_counts: LabelCountSchedule,
+    /// Messages the original job changed, by account.
+    expected: HashMap<AccountId, u32>,
+    clock: UndoClock,
+}
+
+impl Tally {
+    fn now_secs(&self) -> i64 {
+        (self.clock)() / 1000
+    }
+
+    /// The account's row in the result, added if the original job never
+    /// named the account.
+    fn row(&mut self, account: &AccountId) -> &mut AccountMutationResultData {
+        let accounts = &mut self.aggregate.accounts;
+        let index = accounts
+            .iter()
+            .position(|row| &row.account_id == account)
+            .unwrap_or_else(|| {
+                accounts.push(AccountMutationResultData {
+                    account_id: account.clone(),
+                    account_name: account.to_string(),
+                    succeeded: 0,
+                    skipped: 0,
+                    failed: 0,
+                    error: None,
+                });
+                accounts.len() - 1
+            });
+        &mut accounts[index]
+    }
+
+    /// Count messages of one account, in the totals and in its row.
+    fn restored(&mut self, account: &AccountId, count: u32) {
+        self.aggregate.succeeded += count;
+        self.row(account).succeeded += count;
+    }
+
+    fn skipped(&mut self, account: &AccountId, count: u32) {
+        self.aggregate.skipped += count;
+        self.row(account).skipped += count;
+    }
+
+    fn failed(&mut self, account: &AccountId, count: u32) {
+        self.aggregate.failed += count;
+        self.row(account).failed += count;
+    }
 }
 
 async fn run_undo_job(
@@ -178,6 +264,8 @@ async fn run_undo_job(
     mut undo: JobData,
     entry_ids: Vec<String>,
     activity: JobActivity,
+    expected: HashMap<AccountId, u32>,
+    clock: UndoClock,
 ) {
     undo.status = JobStatusData::Running;
     persist_job(&state, &undo).await;
@@ -203,6 +291,8 @@ async fn run_undo_job(
         }),
         failures: Vec::new(),
         label_counts: LabelCountSchedule::new(),
+        expected,
+        clock,
     };
     let mut terminal_error: Option<String> = None;
 
@@ -218,12 +308,9 @@ async fn run_undo_job(
                 break;
             }
         };
-        if entry.expires_at <= chrono::Utc::now().timestamp() {
+        if entry.expires_at <= tally.now_secs() {
             // Past its window: skipped, and dropped like any expired entry.
-            tally.aggregate.skipped += entry.snapshots.len() as u32;
-            if let Err(error) = state.store.delete_undo_entry(&entry.mutation_id).await {
-                tracing::warn!(%error, "undo job: failed to delete an expired undo entry");
-            }
+            skip_expired(&state, &entry, &entry.snapshots, &mut tally).await;
         } else {
             restore_entry(&state, entry, &mut tally).await;
         }
@@ -251,10 +338,16 @@ async fn run_undo_job(
 
     tally.label_counts.refresh(&state).await;
 
-    // Messages the job changed whose snapshot is no longer there.
+    // Messages the job changed whose snapshot is no longer there, by the
+    // account the job changed them in.
+    let expected = std::mem::take(&mut tally.expected);
+    for (account, changed) in expected {
+        let row = tally.row(&account);
+        let accounted = row.succeeded + row.skipped + row.failed;
+        tally.skipped(&account, changed.saturating_sub(accounted));
+    }
     let accounted = tally.aggregate.succeeded + tally.aggregate.skipped + tally.aggregate.failed;
-    let unaccounted = undo.progress.total.saturating_sub(accounted);
-    tally.aggregate.skipped += unaccounted;
+    tally.aggregate.skipped += undo.progress.total.saturating_sub(accounted);
 
     let finished_at = chrono::Utc::now().timestamp_millis();
     let aggregate = &tally.aggregate;
@@ -333,9 +426,26 @@ fn progress_of(aggregate: &MutationResultData, total: u32) -> JobProgressData {
     }
 }
 
+/// Count an entry's snapshots as skipped (their window closed) and drop it.
+async fn skip_expired(
+    state: &AppState,
+    entry: &UndoEntry,
+    snapshots: &[mxr_store::UndoEntrySnapshot],
+    tally: &mut Tally,
+) {
+    for snapshot in snapshots {
+        tally.skipped(&snapshot.account_id, 1);
+    }
+    if let Err(error) = state.store.delete_undo_entry(&entry.mutation_id).await {
+        tracing::warn!(%error, "undo job: failed to delete an expired undo entry");
+    }
+}
+
 /// Put one chunk's messages back. A provider's request to wait is waited
-/// out; what a retry could still fix stays under the same entry id so
-/// undoing the job again retries just that.
+/// out, and the window is checked again after each wait: a snapshot that
+/// expired while waiting is skipped, not restored late. What a retry could
+/// still fix stays under the same entry id so undoing the job again retries
+/// just that.
 async fn restore_entry(state: &AppState, entry: UndoEntry, tally: &mut Tally) {
     let mut pending = entry.snapshots.clone();
     let mut waits_in_a_row = 0u32;
@@ -343,20 +453,26 @@ async fn restore_entry(state: &AppState, entry: UndoEntry, tally: &mut Tally) {
     loop {
         let RestoreOutcome {
             restored,
-            irreversible,
+            irreversible: _,
             retryable,
             reindex,
             last_error: error,
             rate_limited_secs,
             stale_label_counts,
+            restored_by_account,
+            irreversible_by_account,
         } = restore_snapshots(state, entry.kind, &pending, true).await;
         tally.label_counts.note(stale_label_counts);
         // One search commit per pass, as a single undo does.
         if let Err(error) = super::mutations::reindex_messages_in_search(state, &reindex).await {
             tracing::warn!(%error, "undo job: search reindex failed; the messages are marked for the next reindex");
         }
-        tally.aggregate.succeeded += restored;
-        tally.aggregate.skipped += irreversible;
+        for (account, count) in restored_by_account {
+            tally.restored(&account, count);
+        }
+        for (account, count) in irreversible_by_account {
+            tally.skipped(&account, count);
+        }
         if error.is_some() {
             last_error = error;
         }
@@ -372,6 +488,10 @@ async fn restore_entry(state: &AppState, entry: UndoEntry, tally: &mut Tally) {
             break;
         }
         tokio::time::sleep(rate_limit_wait(retry_after_secs)).await;
+        if entry.expires_at <= tally.now_secs() {
+            skip_expired(state, &entry, &pending, tally).await;
+            return;
+        }
     }
 
     if pending.is_empty() {
@@ -380,7 +500,9 @@ async fn restore_entry(state: &AppState, entry: UndoEntry, tally: &mut Tally) {
         }
         return;
     }
-    tally.aggregate.failed += pending.len() as u32;
+    for snapshot in &pending {
+        tally.failed(&snapshot.account_id, 1);
+    }
     let detail = last_error.unwrap_or_else(|| "the provider could not be reached".to_string());
     for snapshot in &pending {
         if tally.failures.len() < MAX_JOB_FAILURES {

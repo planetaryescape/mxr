@@ -49,6 +49,21 @@ impl Fixture {
         provider_id: &str,
         name: &str,
     ) -> LabelId {
+        let kind = if provider_id.starts_with("Label_") {
+            LabelKind::User
+        } else {
+            LabelKind::System
+        };
+        self.label_of(account, provider_id, name, kind).await
+    }
+
+    pub(super) async fn label_of(
+        &self,
+        account: &AccountId,
+        provider_id: &str,
+        name: &str,
+        kind: LabelKind,
+    ) -> LabelId {
         let id = LabelId::from_scoped_provider_id(account, "fake", provider_id);
         self.state
             .store
@@ -56,11 +71,7 @@ impl Fixture {
                 id: id.clone(),
                 account_id: account.clone(),
                 name: name.into(),
-                kind: if provider_id.starts_with("Label_") {
-                    LabelKind::User
-                } else {
-                    LabelKind::System
-                },
+                kind,
                 color: None,
                 provider_id: provider_id.into(),
                 unread_count: 0,
@@ -216,6 +227,20 @@ impl Fixture {
         match handle_request(&self.state, &msg).await.payload {
             IpcPayload::Response(Response::Ok { data }) => data,
             other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    /// The reply as it is, error or not.
+    pub(super) async fn send_raw(&self, request: Request) -> Response {
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(request),
+        };
+        match handle_request(&self.state, &msg).await.payload {
+            IpcPayload::Response(response) => response,
+            other => panic!("expected a response, got {other:?}"),
         }
     }
 
@@ -819,39 +844,64 @@ async fn a_label_job_applies_and_removes_the_named_labels() {
 }
 
 // ---------------------------------------------------------------------------
-// Trash and spam stay out of reach
+// Only the user's own labels
 // ---------------------------------------------------------------------------
 
-fn add_labels(names: &[&str]) -> MutationCommand {
+fn edit_labels(add: &[&str], remove: &[&str]) -> MutationCommand {
     MutationCommand::ModifyLabels {
         message_ids: Vec::new(),
-        add: names.iter().map(ToString::to_string).collect(),
-        remove: Vec::new(),
+        add: add.iter().map(ToString::to_string).collect(),
+        remove: remove.iter().map(ToString::to_string).collect(),
     }
 }
 
-/// Adding `TRASH` or `SPAM` as a label trashes or spams the message at the
-/// provider, so a raw request cannot reach them through a label edit: not by
-/// the id in any case, and not by a display name that resolves to one.
+/// A provider acts on some labels rather than tagging: adding `TRASH` or
+/// `SPAM` trashes or spams, an IMAP trash folder has an id of its own, and a
+/// name like `DELETED` becomes the `\Deleted` flag. A selection's label edit
+/// may name only labels the user created, however the name is spelled, added
+/// or removed, in a preview or in a raw start.
 #[tokio::test]
-async fn a_label_edit_cannot_trash_or_spam_a_selection() {
+async fn a_label_edit_may_only_name_the_users_own_labels() {
     let fx = Fixture::new().await;
-    fx.label(&fx.account, "TRASH", "Bin").await;
+    // An IMAP-style trash folder: displayed as TRASH, with an id of its own.
+    fx.label_of(&fx.account, "Deleted Items", "TRASH", LabelKind::System)
+        .await;
+    fx.label_of(&fx.account, "Clients", "Clients", LabelKind::Folder)
+        .await;
     fx.label(&fx.account, "Label_work", "Work").await;
     let msgs = fx.many(3, "invoice").await;
-    let refusal = "trash and spam are not available for --all yet";
 
-    for names in [
-        &["TRASH"][..],
-        &["trash"],
-        &["Spam"],
-        &[" SPAM "],
-        &["Work", "TRASH"],
-        // A display name the runner resolves to the provider id TRASH.
-        &["Bin"],
-        &["bin"],
+    let refused = |text: String| {
+        assert!(
+            text.contains("only work on labels you created")
+                || text.contains("name the label to add or remove"),
+            "{text}"
+        );
+        text
+    };
+    for (add, remove) in [
+        // System labels by id, by name and by the id a provider gave them.
+        (&["TRASH"][..], &[][..]),
+        (&["SPAM"], &[]),
+        (&["INBOX"], &[]),
+        (&["Inbox"], &[]),
+        (&["Deleted Items"], &[]),
+        (&["Work", "TRASH"], &[]),
+        // Names that are no label here: wrong case, IMAP flags, made up.
+        (&["trash"], &[]),
+        (&["DELETED"], &[]),
+        (&["\\Deleted"], &[]),
+        (&["Nope"], &[]),
+        // A provider folder is not a label the user created.
+        (&["Clients"], &[]),
+        // Removing is held to the same rule.
+        (&[], &["TRASH"]),
+        (&[], &["INBOX"]),
+        (&["Work"], &["Deleted Items"]),
+        // Nothing to do.
+        (&[], &[]),
     ] {
-        let mutation = add_labels(names);
+        let mutation = edit_labels(add, remove);
         let preview = fx
             .refused(Request::PreviewSelection {
                 selection: Fixture::selection("invoice", Some(&fx.account)),
@@ -859,8 +909,7 @@ async fn a_label_edit_cannot_trash_or_spam_a_selection() {
                 sample_size: None,
             })
             .await;
-        assert_eq!(preview, refusal, "preview of {names:?}");
-        // A token cannot be had for it, but a raw start is refused on its own.
+        refused(preview);
         let start = fx
             .refused(fx.start_request(
                 &uuid::Uuid::now_v7().to_string(),
@@ -869,32 +918,67 @@ async fn a_label_edit_cannot_trash_or_spam_a_selection() {
                 &mutation,
             ))
             .await;
-        assert_eq!(start, refusal, "start of {names:?}");
+        refused(start);
     }
-    // Searching all accounts resolves display names in every account.
-    let all_accounts = fx
-        .refused(Request::PreviewSelection {
-            selection: Fixture::selection("invoice", None),
-            mutation: add_labels(&["Bin"]),
-            sample_size: None,
-        })
-        .await;
-    assert_eq!(all_accounts, refusal);
-
     assert!(fx.fake.mutations().is_empty());
     for message in &msgs {
         assert!(fx.in_inbox(&message.id).await);
     }
 
-    // An ordinary label still works, and removing TRASH or SPAM is allowed:
-    // it puts mail back.
-    assert_eq!(fx.preview("invoice", &add_labels(&["Work"])).await.count, 3);
-    let unlabel = MutationCommand::ModifyLabels {
-        message_ids: Vec::new(),
-        add: Vec::new(),
-        remove: vec!["TRASH".into(), "SPAM".into()],
+    // A user label can be added and removed.
+    assert_eq!(
+        fx.preview("invoice", &edit_labels(&["Work"], &[]))
+            .await
+            .count,
+        3
+    );
+    assert_eq!(
+        fx.preview("invoice", &edit_labels(&[], &["Work"]))
+            .await
+            .count,
+        3
+    );
+    assert_eq!(
+        fx.preview("invoice", &edit_labels(&["Label_work"], &["Work"]))
+            .await
+            .count,
+        3
+    );
+}
+
+/// Across accounts a name must be the user's label in each of them, because
+/// each message is edited with its own account's label of that name.
+#[tokio::test]
+async fn a_label_edit_over_every_account_needs_the_label_in_each() {
+    let fx = Fixture::new().await;
+    let other = fx.other_account(true).await;
+    fx.label(&fx.account, "Label_work", "Work").await;
+    fx.many(2, "invoice").await;
+    fx.message(&other, "invoice elsewhere", 3).await;
+    let preview_all = |name: &str| Request::PreviewSelection {
+        selection: Fixture::selection("invoice", None),
+        mutation: edit_labels(&[name], &[]),
+        sample_size: None,
     };
-    assert_eq!(fx.preview("invoice", &unlabel).await.count, 3);
+
+    let missing = fx.refused(preview_all("Work")).await;
+    assert!(
+        missing.contains("not a label you created in account Other"),
+        "{missing}"
+    );
+    // Naming the account it exists in is fine.
+    assert_eq!(
+        fx.preview("invoice", &edit_labels(&["Work"], &[]))
+            .await
+            .count,
+        2
+    );
+
+    fx.label(&other, "Label_work_2", "Work").await;
+    let ResponseData::SelectionPreview { preview } = fx.send(preview_all("Work")).await else {
+        panic!("expected a preview");
+    };
+    assert_eq!(preview.count, 3);
 }
 
 // ---------------------------------------------------------------------------
@@ -904,6 +988,7 @@ async fn a_label_edit_cannot_trash_or_spam_a_selection() {
 #[tokio::test]
 async fn a_token_is_single_use_and_for_one_selection_and_action() {
     let fx = Fixture::new().await;
+    fx.label(&fx.account, "Label_work", "Work").await;
     fx.many(3, "note").await;
     let preview = fx.preview("note", &archive()).await;
     let token = preview.preview_token;
@@ -1284,6 +1369,19 @@ async fn undoing_a_job_puts_every_message_back_as_its_own_job() {
         ),
         (250, 0, 0)
     );
+
+    // The per-account rows keep step with the totals.
+    let rows = &undo.result.as_ref().unwrap().accounts;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (
+            rows[0].account_id.clone(),
+            rows[0].succeeded,
+            rows[0].skipped,
+            rows[0].failed
+        ),
+        (fx.account.clone(), 250, 0, 0)
+    );
     for message in &msgs {
         assert!(fx.in_inbox(&message.id).await);
     }
@@ -1368,6 +1466,14 @@ async fn an_undo_counts_the_messages_whose_snapshot_expired_or_is_missing() {
             .unwrap()
             .contains("200 message(s) were not restored"),
         "{undo:?}"
+    );
+    // Skipped for an expired snapshot and for a missing one are both
+    // attributed to the account the job changed them in.
+    let rows = &undo.result.as_ref().unwrap().accounts;
+    assert_eq!(
+        (rows[0].succeeded, rows[0].skipped, rows[0].failed),
+        (50, 200, 0),
+        "{rows:?}"
     );
     for restored in &msgs[200..] {
         assert!(fx.in_inbox(&restored.id).await);
@@ -1802,6 +1908,352 @@ async fn a_job_records_nothing_under_the_activity_kill_switch() {
     fx.many(2, "invoice").await;
     fx.archive_job("invoice").await;
     assert!(job_activity(&fx).await.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// One start per job id, one undo per job
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn concurrent_starts_under_one_job_id_run_one_job_and_keep_the_other_token() {
+    let fx = Fixture::new().await;
+    fx.many(150, "invoice").await;
+    let first = fx.preview("invoice", &archive()).await.preview_token;
+    let second = fx.preview("invoice", &archive()).await.preview_token;
+    let job_id = uuid::Uuid::now_v7().to_string();
+
+    let (a, b) = tokio::join!(
+        fx.send(fx.start_request(&job_id, "invoice", &first, &archive())),
+        fx.send(fx.start_request(&job_id, "invoice", &second, &archive())),
+    );
+    for reply in [a, b] {
+        let ResponseData::JobStarted { job } = reply else {
+            panic!("expected the job");
+        };
+        assert_eq!(job.job_id, job_id);
+    }
+    let job = fx.wait_for_job(&job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 150);
+
+    // One job ran, once: no message was sent to the provider twice.
+    let mut archived = fx.archived_provider_ids();
+    assert_eq!(archived.len(), 150);
+    archived.sort();
+    archived.dedup();
+    assert_eq!(archived.len(), 150);
+    let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
+        panic!("expected jobs");
+    };
+    assert_eq!(jobs.iter().filter(|job| job.job_id == job_id).count(), 1);
+
+    // The request that lost kept its token; the one that won used its own.
+    let mut usable = 0;
+    for token in [&first, &second] {
+        let reply = fx
+            .send_raw(fx.start_request(
+                &uuid::Uuid::now_v7().to_string(),
+                "invoice",
+                token,
+                &archive(),
+            ))
+            .await;
+        if matches!(reply, Response::Ok { .. }) {
+            usable += 1;
+        }
+    }
+    assert_eq!(usable, 1);
+}
+
+#[tokio::test]
+async fn a_job_id_is_for_one_action_whole() {
+    let fx = Fixture::new().await;
+    fx.label(&fx.account, "Label_work", "Work").await;
+    fx.many(3, "invoice").await;
+    let add = edit_labels(&["Work"], &[]);
+    let token = fx.preview("invoice", &add).await.preview_token;
+    let job_id = uuid::Uuid::now_v7().to_string();
+    let ResponseData::JobStarted { job } = fx
+        .send(fx.start_request(&job_id, "invoice", &token, &add))
+        .await
+    else {
+        panic!("expected a job");
+    };
+    assert_eq!(
+        job.action,
+        Some(add.clone()),
+        "the job remembers its action"
+    );
+    fx.wait_for_job(&job_id).await;
+
+    // Same kind of job, same selection, other label or other direction.
+    for other in [
+        edit_labels(&[], &["Work"]),
+        edit_labels(&["Label_work"], &[]),
+    ] {
+        let token = fx.preview("invoice", &other).await.preview_token;
+        let refusal = fx
+            .refused(fx.start_request(&job_id, "invoice", &token, &other))
+            .await;
+        assert!(
+            refusal.contains("already used by a different job"),
+            "{refusal}"
+        );
+    }
+    // The same action again is the same job.
+    let again = fx
+        .send(fx.start_request(&job_id, "invoice", "spent", &add))
+        .await;
+    assert!(matches!(again, ResponseData::JobStarted { job } if job.job_id == job_id));
+}
+
+#[tokio::test]
+async fn concurrent_undos_of_one_job_share_one_undo() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(150, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+
+    let request = || Request::UndoJob {
+        job_id: job.job_id.clone(),
+    };
+    let (a, b, c) = tokio::join!(fx.send(request()), fx.send(request()), fx.send(request()));
+    let mut undo_ids = Vec::new();
+    for reply in [a, b, c] {
+        let ResponseData::JobStarted { job } = reply else {
+            panic!("expected the undo job");
+        };
+        undo_ids.push(job.job_id);
+    }
+    undo_ids.dedup();
+    assert_eq!(undo_ids.len(), 1, "one undo, handed to every caller");
+
+    let undo = fx.wait_for_job(&undo_ids[0]).await;
+    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
+    assert_eq!(undo.progress.succeeded, 150);
+    assert_eq!(fx.restores(), 150, "each message restored once");
+    for message in &msgs {
+        assert!(fx.in_inbox(&message.id).await);
+    }
+    // Once it has ended, a later undo is its own.
+    let later = fx.undo(&job.job_id).await;
+    assert_ne!(later.job_id, undo_ids[0]);
+}
+
+// ---------------------------------------------------------------------------
+// A rate limit between the two calls of read-archive
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn undo_restores_the_unread_state_after_a_rate_limit_between_read_and_archive() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(3, "invoice").await;
+    let read_archive = MutationCommand::ReadAndArchive {
+        message_ids: Vec::new(),
+    };
+    let preview = fx.preview("invoice", &read_archive).await;
+    // The first message's mark-read goes through, its archive is refused once.
+    fx.fake.rate_limit_mutations_after(1, 1, 5);
+    let started = fx
+        .start("invoice", &preview.preview_token, &read_archive)
+        .await;
+    let job = fx.wait_for_job(&started.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 3);
+    let read = |id: &MessageId| {
+        let state = fx.state.clone();
+        let id = id.clone();
+        async move {
+            state
+                .store
+                .get_envelope(&id)
+                .await
+                .unwrap()
+                .unwrap()
+                .flags
+                .contains(MessageFlags::READ)
+        }
+    };
+    for message in &msgs {
+        assert!(read(&message.id).await);
+        assert!(!fx.in_inbox(&message.id).await);
+    }
+
+    let undo = fx.undo(&job.job_id).await;
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
+    for message in &msgs {
+        assert!(fx.in_inbox(&message.id).await);
+        assert!(
+            !read(&message.id).await,
+            "the message that was part done must come back unread too"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// What a job response carries
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_listing_of_retained_jobs_stays_under_the_frame_limit() {
+    let fx = Fixture::new().await;
+    // 100 retained jobs, each over half a million messages with 50 failures.
+    let template = |n: usize| {
+        let mut job = super::super::mutations::queued_job(
+            uuid::Uuid::now_v7().to_string(),
+            &archive(),
+            500_000,
+            Some(&Fixture::selection("invoice", None)),
+            &[],
+        );
+        job.status = JobStatusData::Failed;
+        job.started_at += n as i64;
+        job.undo_ids = (0..5_000)
+            .map(|_| uuid::Uuid::now_v7().to_string())
+            .collect();
+        job.failures = (0..50)
+            .map(|_| mxr_protocol::JobFailureData {
+                message_id: MessageId::new(),
+                error: "x".repeat(300),
+            })
+            .collect();
+        job
+    };
+    let mut unbounded = 0;
+    let mut first_id = String::new();
+    for n in 0..100 {
+        let job = template(n);
+        unbounded += serde_json::to_vec(&job).unwrap().len();
+        if n == 0 {
+            first_id = job.job_id.clone();
+        }
+        super::super::mutations::persist_job(&fx.state, &job).await;
+    }
+    assert!(
+        unbounded > 16 * 1024 * 1024,
+        "the setup is the worst case: {unbounded} bytes if every id were sent"
+    );
+
+    let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
+        panic!("expected jobs");
+    };
+    assert_eq!(jobs.len(), 100);
+    let wire = serde_json::to_vec(&ResponseData::Jobs { jobs: jobs.clone() }).unwrap();
+    assert!(wire.len() < 4 * 1024 * 1024, "{} bytes", wire.len());
+    for job in &jobs {
+        assert_eq!(job.undo_ids.len(), 100);
+        assert_eq!(job.undo_id_count, 5_000);
+    }
+    let one = fx.job(&first_id).await;
+    assert_eq!((one.undo_ids.len(), one.undo_id_count), (100, 5_000));
+}
+
+#[tokio::test]
+async fn a_small_job_still_lists_all_its_undo_ids() {
+    let fx = Fixture::new().await;
+    fx.many(250, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    assert_eq!(job.undo_ids.len(), 3);
+    assert_eq!(job.undo_id_count, 3);
+}
+
+#[tokio::test]
+async fn undo_works_from_the_stored_ids_whatever_the_response_carries() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(250, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    // Pretend the job had far more chunks than a response carries: 300
+    // entries that no longer exist ahead of the real three.
+    let mut stored: JobData = serde_json::from_str(
+        &fx.state
+            .store
+            .get_mutation_job(&job.job_id)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    let mut padded: Vec<String> = (0..300).map(|n| format!("gone-{n}")).collect();
+    padded.append(&mut stored.undo_ids);
+    stored.undo_ids = padded;
+    super::super::mutations::persist_job(&fx.state, &stored).await;
+    let seen = fx.job(&job.job_id).await;
+    assert_eq!((seen.undo_ids.len(), seen.undo_id_count), (100, 303));
+
+    let undo = fx.undo(&job.job_id).await;
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(undo.progress.succeeded, 250);
+    for message in &msgs {
+        assert!(fx.in_inbox(&message.id).await);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The window, checked again after a wait
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_snapshot_that_expires_while_the_undo_waits_out_a_rate_limit_is_skipped() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(50, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+    let closes = job.undo_expires_at.unwrap();
+    let calls_before = fx.fake.mutations().len();
+    // The first 10 restore, the 11th is refused: the undo waits, and by the
+    // time it looks again the window has closed.
+    fx.fake.rate_limit_mutations_after(10, 1, 5);
+    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let clock: super::super::job_undo::UndoClock = {
+        let reads = reads.clone();
+        Arc::new(move || {
+            if reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                closes - 60_000
+            } else {
+                closes + 1_000
+            }
+        })
+    };
+    let ResponseData::JobStarted { job: undo } = super::super::job_undo::start_undo_job_with(
+        &fx.state,
+        ::mxr_protocol::ClientKind::Cli,
+        &job.job_id,
+        closes - 60_000,
+        clock,
+    )
+    .await
+    .unwrap() else {
+        panic!("expected an undo job");
+    };
+    let undo = fx.wait_for_job(&undo.job_id).await;
+    assert_eq!(
+        (
+            undo.progress.succeeded,
+            undo.progress.skipped,
+            undo.progress.failed
+        ),
+        (10, 40, 0),
+        "{undo:?}"
+    );
+    assert_eq!(
+        fx.fake.mutations().len() - calls_before,
+        10,
+        "nothing restored late"
+    );
+    let mut restored = 0;
+    for message in &msgs {
+        if fx.in_inbox(&message.id).await {
+            restored += 1;
+        }
+    }
+    assert_eq!(restored, 10);
+    // The expired entry is gone, not left to be retried past its window.
+    assert!(fx
+        .state
+        .store
+        .read_undo_entry(&job.undo_ids[0])
+        .await
+        .unwrap()
+        .is_none());
 }
 
 // ---------------------------------------------------------------------------

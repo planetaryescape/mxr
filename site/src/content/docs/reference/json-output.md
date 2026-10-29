@@ -486,6 +486,12 @@ whose mail is gone, are counted under `progress.skipped` and named in
 `job.error`; messages a retry could still restore are `progress.failed`, and
 undoing the same job again retries just those.
 
+A job response carries at most the newest 100 `undo_ids`; `undo_id_count` says
+how many the job holds (a job over half a million messages has 5,000), and a
+selection job is undone as a whole with `mxr undo JOB_ID`. A selection job also
+carries `action`, the label edit or archive it applies, so a start repeated
+under the same job id with a different action is refused.
+
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address
 does. With `--format jsonl`, each dry-run line of a capped address carries

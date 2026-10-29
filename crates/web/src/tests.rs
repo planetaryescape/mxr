@@ -5912,6 +5912,8 @@ async fn parity_routes_dispatch_daemon_requests() {
                         paused_until: None,
                         undo_expires_at: None,
                         undo_of: None,
+                        action: None,
+                        undo_id_count: 0,
                     },
                 },
                 // Whois, send-time, archive-ask and (un)watch payloads are

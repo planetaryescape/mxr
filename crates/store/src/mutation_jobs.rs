@@ -43,6 +43,43 @@ impl super::Store {
         Ok(())
     }
 
+    /// Take a job id for a new job, if nobody holds it. The insert is the
+    /// claim: of any number of concurrent callers with one id, exactly one gets
+    /// `true`. The others find the job the winner is starting.
+    pub async fn claim_mutation_job(
+        &self,
+        job_id: &str,
+        kind: &str,
+        status: &str,
+        started_at: i64,
+        data_json: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"INSERT INTO mutation_jobs (job_id, kind, status, started_at, data_json)
+               VALUES (?1, ?2, ?3, ?4, ?5)
+               ON CONFLICT(job_id) DO NOTHING"#,
+        )
+        .bind(job_id)
+        .bind(kind)
+        .bind(status)
+        .bind(started_at)
+        .bind(data_json)
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Give up a claim whose job never started.
+    pub async fn delete_mutation_job(&self, job_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "DELETE FROM mutation_jobs WHERE job_id = ?1 AND kind != 'recoverable_archive'",
+        )
+        .bind(job_id)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
     /// Initialize the database identity once, including under concurrent first use.
     pub async fn archive_workspace(&self) -> Result<(String, String), sqlx::Error> {
         sqlx::query(

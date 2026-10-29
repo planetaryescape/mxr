@@ -145,7 +145,62 @@ impl super::Store {
             .fetch_optional(self.reader())
             .await
     }
+
+    /// Adds the message foreign key to a receipts table that lacks it.
+    ///
+    /// Migration 093 was edited in place before it shipped, so a developer
+    /// database that applied the earlier text has a table with no foreign key,
+    /// and deleting a message would leave its receipt behind. This runs on
+    /// every open: one catalogue read when the key is present. When it is
+    /// missing, the table is rebuilt in one transaction and receipts whose
+    /// message no longer exists are dropped. Nothing else references this
+    /// table, so the rebuild cannot cascade.
+    pub(crate) async fn repair_unsubscribe_receipts_foreign_key(&self) -> Result<(), sqlx::Error> {
+        let has_key: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM pragma_foreign_key_list('unsubscribe_receipts')
+             WHERE \"from\" = 'message_id' AND \"table\" = 'messages'",
+        )
+        .fetch_optional(self.writer())
+        .await?;
+        if has_key.is_some() {
+            return Ok(());
+        }
+
+        let mut tx = self.writer().begin().await?;
+        let orphans: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM unsubscribe_receipts
+             WHERE message_id NOT IN (SELECT id FROM messages)",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::raw_sql(UNSUBSCRIBE_RECEIPTS_FOREIGN_KEY_REBUILD_SQL)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        tracing::warn!(
+            orphans_dropped = orphans,
+            "rebuilt unsubscribe_receipts with its message foreign key"
+        );
+        Ok(())
+    }
 }
+
+/// Rebuilds the receipts table with the foreign key that migration 093 declares.
+/// The `WHERE` drops receipts whose message is gone.
+const UNSUBSCRIBE_RECEIPTS_FOREIGN_KEY_REBUILD_SQL: &str = r#"
+CREATE TABLE unsubscribe_receipts_rebuilt (
+    message_id  TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    account_id  TEXT NOT NULL,
+    method      TEXT NOT NULL,
+    sent_at     INTEGER NOT NULL
+);
+INSERT INTO unsubscribe_receipts_rebuilt (message_id, account_id, method, sent_at)
+SELECT message_id, account_id, method, sent_at
+FROM unsubscribe_receipts
+WHERE message_id IN (SELECT id FROM messages);
+DROP TABLE unsubscribe_receipts;
+ALTER TABLE unsubscribe_receipts_rebuilt RENAME TO unsubscribe_receipts;
+"#;
 
 #[cfg(test)]
 mod tests {
@@ -548,6 +603,76 @@ mod tests {
         let id = MessageId::new();
         insert_message(&store, &account.id, &id).await;
         assert!(store.confirm_unsubscribe(&id, "mailto", 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_receipts_table_without_the_message_key_is_rebuilt_on_open() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, kept) = fresh_message(&store).await;
+        store.claim_unsubscribe(&kept, &account, 1).await.unwrap();
+        store.confirm_unsubscribe(&kept, "mailto", 2).await.unwrap();
+
+        // The shape a developer database has when it applied 093 before the
+        // foreign key was added: same columns, no REFERENCES clause.
+        sqlx::raw_sql(
+            "DROP TABLE unsubscribe_receipts;
+             CREATE TABLE unsubscribe_receipts (
+                 message_id  TEXT PRIMARY KEY,
+                 account_id  TEXT NOT NULL,
+                 method      TEXT NOT NULL,
+                 sent_at     INTEGER NOT NULL
+             );",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO unsubscribe_receipts VALUES (?, ?, 'mailto', 2)")
+            .bind(kept.as_str())
+            .bind(account.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let orphan = MessageId::new();
+        sqlx::query("INSERT INTO unsubscribe_receipts VALUES (?, ?, 'mailto', 3)")
+            .bind(orphan.as_str())
+            .bind(account.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+        store
+            .repair_unsubscribe_receipts_foreign_key()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            receipts(&store).await,
+            vec![(
+                kept.as_str().clone(),
+                account.as_str().clone(),
+                "mailto".to_string(),
+                2
+            )],
+            "the orphan is dropped and the valid receipt kept"
+        );
+        let has_key: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM pragma_foreign_key_list('unsubscribe_receipts')
+             WHERE \"from\" = 'message_id' AND \"table\" = 'messages' AND on_delete = 'CASCADE'",
+        )
+        .fetch_optional(store.writer())
+        .await
+        .unwrap();
+        assert!(has_key.is_some(), "the rebuilt table declares the key");
+
+        // Deleting the message now takes its receipt with it.
+        store.delete_account(&account).await.unwrap();
+        assert!(receipts(&store).await.is_empty());
+
+        // A second open finds the key and changes nothing.
+        store
+            .repair_unsubscribe_receipts_foreign_key()
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

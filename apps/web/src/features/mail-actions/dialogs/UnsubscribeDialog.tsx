@@ -52,7 +52,7 @@ export function UnsubscribeDialog({
     onClose();
     unsubscribeFromSender({ messageId: target.primary.id, archive: false })
       .then(() => toast.success(`Unsubscribed from ${sender.name ?? address}`))
-      .catch((error: Error) => toast.error("Unsubscribe failed", { description: error.message }));
+      .catch((error: Error) => toast.error("Unsubscribe not finished", { description: error.message }));
   };
 
   const unsubscribeAndArchive = () => {
@@ -62,7 +62,7 @@ export function UnsubscribeDialog({
       .then((response) => {
         const outcome = response.result;
         if (!response.ok || !outcome) {
-          toast.error("Unsubscribe failed", {
+          toast.error("Unsubscribe not finished", {
             description: outcome?.error ?? "No result from the daemon",
           });
           return;
@@ -82,7 +82,7 @@ export function UnsubscribeDialog({
         });
         void invalidateMailQueries();
       })
-      .catch((error: Error) => toast.error("Unsubscribe failed", { description: error.message }));
+      .catch((error: Error) => toast.error("Unsubscribe not finished", { description: error.message }));
   };
 
   return (

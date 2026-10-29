@@ -2227,6 +2227,15 @@ impl AppState {
             .collect()
     }
 
+    /// Take an account's sync provider away, as disabling the account does.
+    #[cfg(test)]
+    pub fn remove_sync_provider_for_test(
+        &self,
+        account_id: &AccountId,
+    ) -> Option<Arc<dyn MailSyncProvider>> {
+        self.runtime.write().providers.remove(account_id)
+    }
+
     #[cfg(test)]
     pub fn add_sync_provider_for_test(&self, provider: Arc<dyn MailSyncProvider>) {
         self.runtime

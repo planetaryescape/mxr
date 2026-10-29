@@ -230,8 +230,9 @@ async fn preview(
 }
 
 /// Starts the job. If the connection drops before the reply arrives, the job
-/// may exist anyway: its id was chosen here, so ask for it. Found means it
-/// started; not found means nothing happened.
+/// may exist anyway, or appear shortly: the daemon keeps serving a request
+/// whose client went away. Its id was chosen here, so ask for it (see
+/// [`recover_lost_start`]).
 async fn start_job(
     client: &mut IpcClient,
     job_id: &str,
@@ -256,27 +257,53 @@ async fn start_job(
     }
 }
 
+/// How long a lost start is looked for before its outcome is called unknown.
+const LOST_START_WAIT: Duration = Duration::from_secs(10);
+
 async fn recover_lost_start(job_id: &str, error: &str) -> anyhow::Result<JobData> {
-    let lookup = async {
+    recover_lost_start_with(job_id, error, LOST_START_WAIT, POLL, || async {
         let mut client = IpcClient::connect().await?;
         client
             .request(Request::GetJob {
                 job_id: job_id.to_owned(),
             })
             .await
-    };
-    match lookup.await {
-        Ok(Response::Ok {
+    })
+    .await
+}
+
+/// Looks for the job under its chosen id for `wait`, every `every`. A missing
+/// job never means nothing started: the start may still be in the daemon
+/// (validating, recording) after the client stopped waiting. Found, it is the
+/// job. Still missing at the end, the outcome is unknown, and the error says
+/// so with the id and the command to check, rather than inviting a re-run that
+/// could start a second job.
+async fn recover_lost_start_with<F, Fut>(
+    job_id: &str,
+    error: &str,
+    wait: Duration,
+    every: Duration,
+    mut lookup: F,
+) -> anyhow::Result<JobData>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<Response>>,
+{
+    let deadline = Instant::now() + wait;
+    loop {
+        if let Ok(Response::Ok {
             data: ResponseData::Job { job },
-        }) => Ok(job),
-        Ok(Response::Error { message, .. }) if message.contains("job not found") => {
-            anyhow::bail!(
-                "The daemon did not receive the request ({error}); nothing was started. Run the command again."
-            )
+        }) = lookup().await
+        {
+            return Ok(job);
         }
-        _ => anyhow::bail!(
-            "Lost the connection to the daemon ({error}) before it replied; the job may have started. Check with: mxr jobs {job_id}"
-        ),
+        if Instant::now() >= deadline {
+            anyhow::bail!(
+                "Lost the connection to the daemon ({error}) before it replied, and job {job_id} has not appeared in {} seconds. Whether it started is unknown: check with `mxr jobs {job_id}` before running the command again.",
+                wait.as_secs()
+            );
+        }
+        tokio::time::sleep(every).await;
     }
 }
 
@@ -726,6 +753,79 @@ mod tests {
             undo_id_count: 0,
             failure_count: 0,
         }
+    }
+
+    fn not_found() -> anyhow::Result<Response> {
+        Ok(Response::Error {
+            message: "job not found: job-1".into(),
+            kind: mxr_protocol::IpcErrorKind::default(),
+            code: String::new(),
+            retryable: false,
+            details: None,
+        })
+    }
+
+    /// A start whose reply was lost may still be recorded after the client
+    /// first looks: the job found on a later look is the result.
+    #[tokio::test]
+    async fn a_lost_start_that_appears_later_is_the_job() {
+        let looks = std::cell::Cell::new(0);
+        let found = recover_lost_start_with(
+            "job-1",
+            "connection reset",
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+            || {
+                looks.set(looks.get() + 1);
+                let reply = if looks.get() < 3 {
+                    not_found()
+                } else {
+                    Ok(Response::Ok {
+                        data: ResponseData::Job {
+                            job: job(JobStatusData::Running),
+                        },
+                    })
+                };
+                async move { reply }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(found.job_id, "job-1");
+        assert_eq!(looks.get(), 3);
+    }
+
+    /// Still missing after the wait is unknown, never "nothing was started":
+    /// the error names the job and how to check it, and does not say to run
+    /// the command again.
+    #[tokio::test]
+    async fn a_lost_start_never_found_is_unknown_not_nothing() {
+        let error = recover_lost_start_with(
+            "job-1",
+            "connection reset",
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            || async { not_found() },
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("unknown"), "{error}");
+        assert!(error.contains("mxr jobs job-1"), "{error}");
+        assert!(!error.contains("nothing was started"), "{error}");
+        assert!(!error.contains("Run the command again"), "{error}");
+        // A daemon that cannot be reached at all is the same: unknown.
+        let error = recover_lost_start_with(
+            "job-1",
+            "connection reset",
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            || async { Err(anyhow::anyhow!("daemon unavailable")) },
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("job job-1"), "{error}");
     }
 
     #[test]

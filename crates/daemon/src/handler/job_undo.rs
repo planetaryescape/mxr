@@ -70,6 +70,11 @@ pub(super) async fn start_undo_job_with(
     now_ms: i64,
     clock: UndoClock,
 ) -> HandlerResult {
+    // Every job id is a UUID; anything longer would only be echoed back in
+    // the errors below.
+    if job_id.len() > 64 {
+        return Err("job_id is not a job id".into());
+    }
     let job = load_job(state, job_id).await?;
     if job.undo_of.is_some() {
         return Err(format!("job `{job_id}` is an undo; it cannot be undone").into());
@@ -184,7 +189,7 @@ pub(super) async fn start_undo_job_with(
     };
     record_job_accepted(state, &activity, &undo);
 
-    let started = undo.clone();
+    let started = job_detail(undo.clone());
     let state = state.clone();
     let entry_ids = job.undo_ids;
     tokio::spawn(async move {

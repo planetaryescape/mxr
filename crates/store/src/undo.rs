@@ -344,6 +344,21 @@ impl super::Store {
         Ok(result.rows_affected())
     }
 
+    /// Give every open-ended entry (`expires_at` at its maximum, as a running
+    /// selection job writes them) a deadline of `now`, so it can no longer be
+    /// claimed. At daemon startup, after interrupted jobs anchored their own
+    /// entries, an entry still open belongs to no running job: its job row
+    /// was pruned, or the workspace was restored from a backup.
+    pub async fn close_open_undo_entries(&self, now: i64) -> Result<u64, sqlx::Error> {
+        let result =
+            sqlx::query("UPDATE mutation_undo_log SET expires_at = ? WHERE expires_at = ?")
+                .bind(now)
+                .bind(i64::MAX)
+                .execute(self.writer())
+                .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Release every claim. At daemon startup every holder is a process that
     /// died, so nothing is restoring these entries any more.
     pub async fn release_all_undo_claims(&self) -> Result<u64, sqlx::Error> {

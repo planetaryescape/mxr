@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.196](https://github.com/planetaryescape/mxr/compare/v0.6.195...v0.6.196) (2026-10-29)
+
+
+### Bug Fixes
+
+* what a key-only triage of the web app found ([#815](https://github.com/planetaryescape/mxr/issues/815)) ([819517f](https://github.com/planetaryescape/mxr/commit/819517ff2f30531b8e52533c91116dc516e1ca39))
+
 ## [0.6.195](https://github.com/planetaryescape/mxr/compare/v0.6.194...v0.6.195) (2026-10-29)
 
 

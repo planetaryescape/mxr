@@ -28,9 +28,10 @@ const MAX_PREVIEW_IDS: usize = 2_000_000;
 const DEFAULT_SAMPLE: u32 = 20;
 const MAX_SAMPLE: u32 = 100;
 
-/// What a selection job needs of its mutation: the three that mutate labels.
-/// Everything else (trash, spam, flags, move) is not offered for a whole
-/// selection yet, so a client cannot reach it by skipping the CLI.
+/// What a selection job needs of its mutation: archive, read-archive and label
+/// edits. Everything else (trash, spam, flags, move) is not offered for a whole
+/// selection yet, so a client cannot reach it by skipping the CLI; a label edit
+/// that would trash or spam is refused by [`refuse_trash_and_spam`].
 fn require_supported(mutation: &MutationCommand) -> Result<(), HandlerError> {
     let ids = match mutation {
         MutationCommand::Archive { message_ids }
@@ -213,6 +214,56 @@ fn record(state: &AppState, activity: &JobActivity, job: &JobData, context: serd
     });
 }
 
+/// Trash and spam are not offered for a whole selection yet, and a label edit
+/// reaches them: the provider treats adding `TRASH` or `SPAM` as trashing or
+/// spamming the message. So a selection job refuses to add either, by its id
+/// (any case) or by a label name in scope that resolves to one. Removing them
+/// (unlabel) puts mail back and is allowed.
+async fn refuse_trash_and_spam(
+    state: &AppState,
+    selection: &SelectionData,
+    mutation: &MutationCommand,
+) -> Result<(), HandlerError> {
+    let MutationCommand::ModifyLabels { add, .. } = mutation else {
+        return Ok(());
+    };
+    let is_trash_or_spam = |text: &str| {
+        let text = text.trim();
+        text.eq_ignore_ascii_case("trash") || text.eq_ignore_ascii_case("spam")
+    };
+    let refused = || -> HandlerError {
+        "trash and spam are not available for --all yet"
+            .to_string()
+            .into()
+    };
+    if add.iter().any(|label| is_trash_or_spam(label)) {
+        return Err(refused());
+    }
+    // A display name the runner would resolve to a provider id of TRASH/SPAM.
+    let SelectionData::Search { account_id, .. } = selection;
+    let accounts = match account_id {
+        Some(account_id) => vec![account_id.clone()],
+        None => state
+            .store
+            .list_cached_mail_accounts()
+            .await?
+            .into_iter()
+            .map(|account| account.id)
+            .collect(),
+    };
+    for account in accounts {
+        for label in state.store.list_labels_by_account(&account).await? {
+            let named = add
+                .iter()
+                .any(|reference| reference.trim().eq_ignore_ascii_case(label.name.trim()));
+            if named && is_trash_or_spam(&label.provider_id) {
+                return Err(refused());
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) async fn preview_selection(
     state: &Arc<AppState>,
     selection: &SelectionData,
@@ -220,6 +271,7 @@ pub(super) async fn preview_selection(
     sample_size: Option<u32>,
 ) -> HandlerResult {
     require_supported(mutation)?;
+    refuse_trash_and_spam(state, selection, mutation).await?;
     let SelectionData::Search { query, account_id } = selection;
     if query.trim().is_empty() {
         return Err("a selection needs a non-empty search query".into());
@@ -329,6 +381,7 @@ pub(super) async fn start_selection_job(
     client_correlation_id: Option<&str>,
 ) -> HandlerResult {
     require_supported(mutation)?;
+    refuse_trash_and_spam(state, selection, mutation).await?;
     uuid::Uuid::parse_str(job_id).map_err(|_| {
         HandlerError::from("job_id must be a UUID chosen by the client".to_string())
     })?;

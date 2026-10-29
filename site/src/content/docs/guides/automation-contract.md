@@ -158,7 +158,7 @@ counts, a sample of the 20 newest messages, `capped: false` and a
 messages, waits for it with progress on stderr, and prints it; mail that
 arrives after the preview is left alone. `--no-wait` returns once the daemon has
 accepted the job (follow it with `mxr jobs JOB_ID`), and
-`--preview-token TOKEN` runs exactly what an earlier dry run counted. The exit
+`--preview-token TOKEN` runs exactly what an earlier dry run counted. `label --all` refuses `TRASH` and `SPAM` (by id or by a label name that resolves to one): trashing and spamming are not available for `--all` yet. `unlabel --all` may remove them. The exit
 status is non-zero when the job ends `failed`, whatever it had done by then.
 `mxr undo JOB_ID` reverses the whole job for an hour after it ends, as a job of
 its own, and reports the messages it had to skip. A daemon restart ends a

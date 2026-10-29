@@ -163,11 +163,17 @@ pub(super) async fn prepare_source(
 /// than sent with its references unchecked.
 fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
     if !mxr_reader::within_budget(html) {
-        return Err(HandlerError::Message(
-            "Cannot forward original HTML: the message HTML is too large or too deeply \
-             structured to check"
-                .to_string(),
-        ));
+        // Over the parser budget the forward still goes ahead, and the references
+        // are checked by a linear scan: each `cid:` in an attribute value or a CSS
+        // url must resolve to an attachment, the rule the parsed check applies.
+        static CID_REF_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(r#"(?i)(?:=\s*["']?|url\(\s*['"]?)(cid:[^\s"'<>)]+)"#)
+                .expect("cid reference regex should compile")
+        });
+        for capture in CID_REF_RE.captures_iter(html) {
+            validate_cid_reference(body, &capture[1])?;
+        }
+        return Ok(());
     }
     let document = scraper::Html::parse_document(html);
     for node in document.tree.nodes() {
@@ -290,15 +296,53 @@ pub(super) async fn sent_attachments(
 mod budget_tests {
     use super::*;
 
+    fn body_with_inline_part(cid: &str) -> MessageBody {
+        let mut body = crate::test_fixtures::make_empty_body(&mxr_core::MessageId::new());
+        body.attachments.push(mxr_core::AttachmentMeta {
+            id: mxr_core::AttachmentId::new(),
+            message_id: body.message_id.clone(),
+            filename: "logo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            disposition: mxr_core::AttachmentDisposition::Inline,
+            content_id: Some(cid.to_string()),
+            content_location: None,
+            size_bytes: 4,
+            local_path: None,
+            provider_id: String::new(),
+        });
+        body
+    }
+
+    fn over_budget_with(reference: &str) -> String {
+        format!(r#"<img src="{reference}">{}"#, "<br>".repeat(200_000))
+    }
+
     #[test]
-    fn a_forward_over_the_parser_budget_is_refused_not_sent_unchecked() {
-        let body = crate::test_fixtures::make_empty_body(&mxr_core::MessageId::new());
-        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
-        let error = validate_html_cid_references(&body, &over)
-            .expect_err("over-budget HTML must be refused");
+    fn an_over_budget_forward_with_a_resolving_cid_proceeds() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = over_budget_with("cid:logo@example.test");
+        assert!(validate_html_cid_references(&body, &html).is_ok());
+    }
+
+    #[test]
+    fn an_over_budget_forward_with_a_dangling_cid_is_still_refused() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = over_budget_with("cid:missing@example.test");
+        let error = validate_html_cid_references(&body, &html)
+            .expect_err("a dangling cid must still be refused");
         assert!(
-            error.to_string().contains("too large or too deeply"),
+            error.to_string().contains("missing inline attachment"),
             "got {error}"
         );
+    }
+
+    #[test]
+    fn an_over_budget_css_cid_url_is_checked_too() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = format!(
+            r#"<div style="background:url('cid:gone@example.test')"></div>{}"#,
+            "<br>".repeat(200_000)
+        );
+        assert!(validate_html_cid_references(&body, &html).is_err());
     }
 }

@@ -5,7 +5,8 @@
 //! every such job failed, with the counts the job had persisted after its
 //! last finished chunk, and starts the hour an `--all` job's undo stays open.
 //! Re-running the same search finishes what is left. Undo entries the dead
-//! daemon was restoring are released.
+//! daemon was restoring are released, and entries no job can anchor any more
+//! are closed.
 
 use super::mutations::{persist_job, SELECTION_UNDO_WINDOW_SECS};
 use super::selection_jobs::{record_job_finished, JobActivity};
@@ -72,26 +73,44 @@ pub(crate) async fn mark_interrupted_mutation_jobs(state: &AppState) -> usize {
     marked
 }
 
-/// Releases every undo entry claim. A claim belongs to an undo running in a
-/// daemon process; at startup every holder is a process that died, and its
-/// undo job was just marked interrupted, so the entries go back to whoever
-/// undoes them next.
-pub(crate) async fn release_undo_claims_of_dead_daemon(state: &AppState) -> u64 {
-    match state.store.release_all_undo_claims().await {
-        Ok(released) => {
-            if released > 0 {
-                tracing::warn!(
-                    entries = released,
-                    "released undo entries a previous daemon was restoring"
-                );
-            }
-            released
-        }
+/// Undo entries a previous daemon left in a state only it could end. Run
+/// after [`mark_interrupted_mutation_jobs`], which anchors the entries of the
+/// jobs it marks.
+///
+/// Every claim is released: a claim belongs to an undo running in a daemon
+/// process, and at startup every holder is a process that died (its undo job
+/// was just marked interrupted). Every entry still open-ended is closed: a
+/// running selection job writes its entries with no deadline and anchors
+/// them when it ends, so one still open now belongs to no job that could
+/// anchor it (its row was pruned, or the workspace came from a backup), and
+/// would otherwise stay claimable forever. Returns (released, closed).
+pub(crate) async fn recover_undo_entries_of_dead_daemon(state: &AppState) -> (u64, u64) {
+    let released = match state.store.release_all_undo_claims().await {
+        Ok(released) => released,
         Err(error) => {
             tracing::warn!(%error, "could not release undo claims a previous daemon held");
             0
         }
+    };
+    let closed = match state
+        .store
+        .close_open_undo_entries(chrono::Utc::now().timestamp())
+        .await
+    {
+        Ok(closed) => closed,
+        Err(error) => {
+            tracing::warn!(%error, "could not close undo entries no job can anchor");
+            0
+        }
+    };
+    if released > 0 || closed > 0 {
+        tracing::warn!(
+            released,
+            closed,
+            "recovered undo entries a previous daemon left open"
+        );
     }
+    (released, closed)
 }
 
 fn action_for_kind(kind: &str) -> &'static str {

@@ -7,7 +7,7 @@
 //! confirmed is what runs, and mail that arrives later is left alone.
 
 use super::diagnostics_impl::search_resolve::{resolve_search_selection, ResolvedSelection};
-use super::job_records::MAX_JOB_TEXT_BYTES;
+use super::job_records::{bounded_text, job_detail, MAX_ACCOUNT_NAME_BYTES, MAX_JOB_TEXT_BYTES};
 use super::mutations::{FrozenLabelEdits, ResolvedLabelEdit};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -36,6 +36,13 @@ const MAX_SAMPLE: u32 = 100;
 const MAX_SELECTION_QUERY_BYTES: usize = 2048;
 /// The most labels one selection label edit names, added and removed.
 const MAX_SELECTION_LABELS: usize = 8;
+/// The most bytes of a sample message's sender or subject a preview carries:
+/// stored mail can hold a subject of any size, and 100 of them would pass
+/// the frame limit.
+const MAX_SAMPLE_TEXT_BYTES: usize = 256;
+/// The longest `client_correlation_id` a start takes: the daemon echoes it in
+/// events about the job.
+const MAX_CORRELATION_ID_BYTES: usize = 128;
 
 /// What a selection job needs of its request: archive, read-archive and label
 /// edits, a query and labels of bounded size. Everything else (trash, spam,
@@ -346,6 +353,7 @@ async fn freeze_labels(
                     .get_account(account)
                     .await?
                     .map_or_else(|| account.to_string(), |found| found.name);
+                let name = bounded_text(&name, MAX_ACCOUNT_NAME_BYTES);
                 return Err(format!(
                     "`{error}` is not a label you created in account {name}; --all label edits only work on labels you created"
                 )
@@ -483,7 +491,7 @@ async fn describe(
             .map_or_else(|| account_id.to_string(), |account| account.name);
         accounts.push(SelectionAccountData {
             account_id: account_id.clone(),
-            account_name,
+            account_name: bounded_text(&account_name, MAX_ACCOUNT_NAME_BYTES),
             count: *count,
         });
     }
@@ -504,12 +512,15 @@ async fn describe(
             message_id: envelope.id,
             account_id: envelope.account_id,
             thread_id: envelope.thread_id,
-            from: envelope
-                .from
-                .name
-                .filter(|name| !name.is_empty())
-                .unwrap_or(envelope.from.email),
-            subject: envelope.subject,
+            from: bounded_text(
+                &envelope
+                    .from
+                    .name
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(envelope.from.email),
+                MAX_SAMPLE_TEXT_BYTES,
+            ),
+            subject: bounded_text(&envelope.subject, MAX_SAMPLE_TEXT_BYTES),
             date: envelope.date,
         })
         .collect();
@@ -539,6 +550,12 @@ pub(super) async fn start_selection_job(
     uuid::Uuid::parse_str(job_id).map_err(|_| {
         HandlerError::from("job_id must be a UUID chosen by the client".to_string())
     })?;
+    if client_correlation_id.is_some_and(|id| id.len() > MAX_CORRELATION_ID_BYTES) {
+        return Err(format!(
+            "client_correlation_id can be at most {MAX_CORRELATION_ID_BYTES} bytes"
+        )
+        .into());
+    }
 
     // A job with this id already exists: the first request got through and
     // its reply was lost. Hand the job back instead of starting another.
@@ -643,7 +660,7 @@ async fn existing_job(
     // The whole action, not just its kind: `label Work` and `unlabel Work`
     // under one id are different requests.
     if job.selection.as_ref() == Some(selection) && job.action.as_ref() == Some(mutation) {
-        return Ok(Some(super::job_records::job_detail(job)));
+        return Ok(Some(job_detail(job)));
     }
     Err(format!("job_id {job_id} is already used by a different job").into())
 }

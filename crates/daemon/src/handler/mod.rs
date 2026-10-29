@@ -3716,6 +3716,35 @@ async fn persist_local_label_changes_deferred(
     add: &[String],
     remove: &[String],
 ) -> Result<mxr_core::AccountId, sqlx::Error> {
+    persist_label_changes_matching(state, message_id, add, remove, LabelRefs::IdsOrNames).await
+}
+
+/// How a label edit names its labels when the local copy is brought in line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelRefs {
+    /// A provider id or a display name, whichever label matches first.
+    IdsOrNames,
+    /// Exactly the account's provider ids, never a name: a label *named*
+    /// like another label's provider id must not be picked instead.
+    ProviderIds,
+}
+
+impl LabelRefs {
+    fn matches(self, label: &mxr_core::types::Label, reference: &str) -> bool {
+        match self {
+            Self::IdsOrNames => label.provider_id == reference || label.name == reference,
+            Self::ProviderIds => label.provider_id == reference,
+        }
+    }
+}
+
+async fn persist_label_changes_matching(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+    refs: LabelRefs,
+) -> Result<mxr_core::AccountId, sqlx::Error> {
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3730,7 +3759,7 @@ async fn persist_local_label_changes_deferred(
     for label_ref in remove {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             label_ids.retain(|id| id != &label.id);
         }
@@ -3739,7 +3768,7 @@ async fn persist_local_label_changes_deferred(
     for label_ref in add {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             if !label_ids.iter().any(|id| id == &label.id) {
                 label_ids.push(label.id.clone());
@@ -3766,6 +3795,31 @@ pub(crate) async fn reconcile_label_mutation_deferred(
 ) -> Result<(), String> {
     if provider.capabilities().mutate.labels {
         persist_local_label_changes_deferred(state, message_id, add, remove)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+/// [`reconcile_label_mutation_deferred`] for edits that name labels by
+/// provider id only: a selection's frozen labels and an undo's snapshot. The
+/// local copy then gets exactly the labels the provider got.
+pub(crate) async fn reconcile_label_ids_deferred(
+    state: &AppState,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().mutate.labels {
+        persist_label_changes_matching(state, message_id, add, remove, LabelRefs::ProviderIds)
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())

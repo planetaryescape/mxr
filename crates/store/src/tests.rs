@@ -4511,6 +4511,31 @@ async fn releasing_a_claim_can_keep_only_the_rest() {
     assert_eq!(again.snapshots[0].provider_id, "p-1");
 }
 
+/// At startup an entry with no deadline belongs to no running job: it is
+/// closed, and entries with a deadline are left alone.
+#[tokio::test]
+async fn open_undo_entries_are_closed_and_dated_ones_kept() {
+    use crate::undo::UndoEntryState;
+    let store = Store::in_memory().await.unwrap();
+    store
+        .write_undo_entry(&claim_entry("open", i64::MAX))
+        .await
+        .unwrap();
+    store
+        .write_undo_entry(&claim_entry("dated", 1_000))
+        .await
+        .unwrap();
+    assert_eq!(store.close_open_undo_entries(500).await.unwrap(), 1);
+    assert_eq!(
+        store.undo_entry_state("open", 500).await.unwrap(),
+        UndoEntryState::Expired
+    );
+    assert_eq!(
+        store.undo_entry_state("dated", 500).await.unwrap(),
+        UndoEntryState::Available
+    );
+}
+
 /// A claim does not outlive its holder: an undo that ends releases what it
 /// still holds, and a daemon start releases everything.
 #[tokio::test]

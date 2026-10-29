@@ -1056,7 +1056,14 @@ async fn apply_mutation_batch_with(
         let provider = match state.get_provider(Some(&account_id)) {
             Ok(provider) => provider,
             Err(error) => {
-                account_result.skipped = envelopes.len() as u32;
+                let kept = keep_half_done(
+                    carried,
+                    &envelopes,
+                    &mut account_result,
+                    &mut failed_snapshots,
+                    &mut failures,
+                );
+                account_result.skipped = envelopes.len() as u32 - kept;
                 account_result.error = Some(format!("account unavailable: {error}"));
                 accounts.push(account_result);
                 continue;
@@ -1069,7 +1076,14 @@ async fn apply_mutation_batch_with(
             (Some(labels), MutationCommand::ModifyLabels { .. }) => match labels.get(&account_id) {
                 Some(edit) => Some(edit),
                 None => {
-                    account_result.skipped = envelopes.len() as u32;
+                    let kept = keep_half_done(
+                        carried,
+                        &envelopes,
+                        &mut account_result,
+                        &mut failed_snapshots,
+                        &mut failures,
+                    );
+                    account_result.skipped = envelopes.len() as u32 - kept;
                     account_result.error =
                         Some("the preview did not resolve labels for this account".into());
                     accounts.push(account_result);
@@ -1200,11 +1214,18 @@ async fn apply_mutation_batch_with(
                     let message = error.message().to_string();
                     if mode.is_job() {
                         account_result.failed += 1;
-                        account_result.skipped += (envelopes.len() - index - 1) as u32;
                         failures.push(JobFailureData {
                             message_id: envelope.id.clone(),
                             error: message.clone(),
                         });
+                        let kept = keep_half_done(
+                            carried,
+                            &envelopes[index + 1..],
+                            &mut account_result,
+                            &mut failed_snapshots,
+                            &mut failures,
+                        );
+                        account_result.skipped += (envelopes.len() - index - 1) as u32 - kept;
                     } else {
                         account_result.skipped += (envelopes.len() - index) as u32;
                     }
@@ -1254,6 +1275,42 @@ async fn apply_mutation_batch_with(
         rate_limit,
         stale_label_counts,
     })
+}
+
+/// Why a message counts as failed when an earlier attempt of the job left it
+/// half done and this one did not finish it.
+const PART_DONE: &str =
+    "stopped part way by the provider's rate limit; it may have changed (undo restores it)";
+
+/// Messages among `envelopes` that an earlier attempt of this job left half
+/// done (`carried`) and this batch will not try now (their account is gone,
+/// or an earlier message of the account failed). Each counts as failed, with
+/// its pre-run snapshot kept for this batch's undo entry: a carried snapshot
+/// is let go only once its message's mutation has fully succeeded. Returns
+/// how many there were, so the caller skips only the rest.
+fn keep_half_done(
+    carried: &CarriedSnapshots,
+    envelopes: &[Envelope],
+    account_result: &mut AccountMutationResultData,
+    failed_snapshots: &mut Vec<UndoEntrySnapshot>,
+    failures: &mut Vec<JobFailureData>,
+) -> u32 {
+    let mut kept = 0;
+    for envelope in envelopes {
+        if let Some(snapshot) = carried.get(&envelope.id) {
+            failed_snapshots.push(UndoEntrySnapshot {
+                uncertain: true,
+                ..snapshot.clone()
+            });
+            failures.push(JobFailureData {
+                message_id: envelope.id.clone(),
+                error: PART_DONE.to_string(),
+            });
+            kept += 1;
+        }
+    }
+    account_result.failed += kept;
+    kept
 }
 
 /// Whether one message's mutation takes two provider calls (mark read or
@@ -1464,7 +1521,7 @@ pub(super) fn run_claimed_job(state: Arc<AppState>, job: JobData, spec: JobSpec)
     if let Some(activity) = spec.activity.as_ref() {
         super::selection_jobs::record_job_accepted(&state, activity, &job);
     }
-    let started = job.clone();
+    let started = super::job_records::job_detail(job.clone());
     tokio::spawn(async move {
         run_mutation_job(state, job, spec).await;
     });
@@ -1558,6 +1615,8 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
     let mut waits_in_a_row = 0u32;
     let mut label_counts = LabelCountSchedule::new();
     let mut carried = CarriedSnapshots::new();
+    // Carried snapshots of messages the chunk guard later left out.
+    let mut stranded: Vec<UndoEntrySnapshot> = Vec::new();
 
     loop {
         let chunk_ids: Vec<mxr_core::MessageId> = if carry.is_empty() {
@@ -1571,13 +1630,24 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         } else {
             std::mem::take(&mut carry)
         };
-        let (ids, left_out, mut check) = match start_chunk(&state, &guard, &chunk_ids).await {
+        let (ids, mut left_out, mut check) = match start_chunk(&state, &guard, &chunk_ids).await {
             Ok(started) => started,
             Err(error) => {
                 terminal_error = Some(error);
                 break;
             }
         };
+        // A half-done message the guard now leaves out keeps its pre-run
+        // snapshot: it is saved and counted when the job ends, not skipped.
+        if !carried.is_empty() && ids.len() < chunk_ids.len() {
+            let kept: HashSet<&mxr_core::MessageId> = ids.iter().collect();
+            for id in chunk_ids.iter().filter(|id| !kept.contains(id)) {
+                if let Some(snapshot) = carried.remove(id) {
+                    stranded.push(snapshot);
+                    left_out -= 1;
+                }
+            }
+        }
         // Left out on purpose, so not a failure: counted as skipped without
         // stopping the job.
         aggregate.skipped += left_out;
@@ -1619,6 +1689,10 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         }
         // Messages a rate limit stopped part way keep their pre-run snapshot
         // for the retry; everything else is done with.
+        // Every carried message the chunk reached is in its undo entry now:
+        // done, failed, or kept by `keep_half_done`. Only one the provider
+        // held back again stays carried (a message gone from the store has
+        // nothing to undo).
         match &outcome.rate_limit {
             None => carried.clear(),
             Some(stop) => {
@@ -1680,11 +1754,12 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
     // has no entry yet; without one its undo would be lost. It may have
     // changed, so it counts as failed: every message the job keeps a
     // snapshot of is in its totals, and an undo of the job counts it too.
-    if let (false, Some(kind)) = (carried.is_empty(), undoable_kind(&cmd)) {
+    stranded.extend(carried.drain().map(|(_, snapshot)| snapshot));
+    if let (false, Some(kind)) = (stranded.is_empty(), undoable_kind(&cmd)) {
         let now = chrono::Utc::now().timestamp();
-        let snapshots: Vec<UndoEntrySnapshot> = carried
-            .drain()
-            .map(|(_, snapshot)| UndoEntrySnapshot {
+        let snapshots: Vec<UndoEntrySnapshot> = stranded
+            .drain(..)
+            .map(|snapshot| UndoEntrySnapshot {
                 uncertain: true,
                 ..snapshot
             })
@@ -1809,8 +1884,6 @@ fn count_part_done(
     job: &mut JobData,
     snapshot: &UndoEntrySnapshot,
 ) {
-    const PART_DONE: &str =
-        "stopped part way by the provider's rate limit; it may have changed (undo restores it)";
     aggregate.failed += 1;
     match aggregate
         .accounts
@@ -2120,16 +2193,20 @@ pub(super) async fn undo_mutation_with(
     result
 }
 
-/// Why `mutation_id` could not be claimed.
+/// Why `mutation_id` could not be claimed. The id is the caller's and echoed
+/// back, so it is bounded like any job text.
 async fn unclaimed(state: &AppState, mutation_id: &str, now: i64) -> Result<String, HandlerError> {
-    Ok(match state.store.undo_entry_state(mutation_id, now).await? {
+    let state_of = state.store.undo_entry_state(mutation_id, now).await?;
+    let delete_id = mutation_id;
+    let mutation_id = super::job_records::bounded_text(mutation_id, 64);
+    Ok(match state_of {
         mxr_store::UndoEntryState::Missing => {
             format!("undo: mutation `{mutation_id}` not found (expired or already undone)")
         }
         mxr_store::UndoEntryState::Expired => {
             log_non_fatal(
                 "undo: failed to delete expired undo entry",
-                state.store.delete_undo_entry(mutation_id).await,
+                state.store.delete_undo_entry(delete_id).await,
             );
             format!("undo: window expired for mutation `{mutation_id}`")
         }
@@ -2197,6 +2274,8 @@ async fn restore_claimed_entry(
     if retryable.is_empty() {
         if restored == 0 && expired == 0 {
             let detail = last_error.unwrap_or_else(|| "no messages restored".into());
+            let detail =
+                super::job_records::bounded_text(&detail, super::job_records::MAX_JOB_TEXT_BYTES);
             return Err(
                 format!("undo: irreversible ({irreversible} message(s)) — {detail}").into(),
             );
@@ -2226,7 +2305,10 @@ async fn restore_claimed_entry(
         .store
         .release_undo_entry_keeping(&mutation_id, claimant, &retryable)
         .await?;
-    let detail = last_error.unwrap_or_default();
+    let detail = super::job_records::bounded_text(
+        &last_error.unwrap_or_default(),
+        super::job_records::MAX_JOB_TEXT_BYTES,
+    );
     let cut_off = if expired > 0 {
         format!(", {expired} not restored because the window closed")
     } else {
@@ -2482,14 +2564,30 @@ async fn restore_snapshot(
         {
             tracing::warn!(%error, "undo failed to record dedup row");
         }
-        reconcile_label_mutation_deferred(
-            state,
-            provider,
-            &snapshot.message_id,
-            &to_add,
-            &to_remove,
-        )
-        .await
+        // A label edit's snapshot holds the account's provider ids: match
+        // them exactly, so a label named like another's provider id is not
+        // picked. Other kinds may name a system label by its role name
+        // (`TRASH`, which an IMAP trash folder carries as its name), so they
+        // match names too.
+        if kind == UndoableMutationKind::Labels {
+            super::reconcile_label_ids_deferred(
+                state,
+                provider,
+                &snapshot.message_id,
+                &to_add,
+                &to_remove,
+            )
+            .await
+        } else {
+            reconcile_label_mutation_deferred(
+                state,
+                provider,
+                &snapshot.message_id,
+                &to_add,
+                &to_remove,
+            )
+            .await
+        }
         .map_err(SnapshotError::Other)?;
     }
 
@@ -2695,8 +2793,8 @@ async fn apply_resolved_under_guard(
                 provider_guard,
                 mutation_id,
                 envelope,
-                &edit.add,
-                &edit.remove,
+                edit,
+                LabelEditRefs::Frozen,
             )
             .await
         }
@@ -2714,9 +2812,10 @@ async fn apply_label_edit(
     provider_guard: &tokio::sync::OwnedMutexGuard<()>,
     mutation_id: &str,
     envelope: &Envelope,
-    add: &[String],
-    remove: &[String],
+    edit: &ResolvedLabelEdit,
+    refs: LabelEditRefs,
 ) -> Result<(), ApplyError> {
+    let (add, remove) = (&edit.add, &edit.remove);
     let provider_id = &envelope.provider_id;
     apply_one_mutation(
         state,
@@ -2726,14 +2825,32 @@ async fn apply_label_edit(
         provider_id,
         mxr_core::Mutation::ModifyLabels {
             provider_message_id: provider_id.clone(),
-            add: add.to_vec(),
-            remove: remove.to_vec(),
+            add: add.clone(),
+            remove: remove.clone(),
         },
         &envelope.account_id,
     )
     .await?;
-    reconcile_label_mutation_deferred(state, provider, &envelope.id, add, remove).await?;
+    match refs {
+        LabelEditRefs::Frozen => {
+            super::reconcile_label_ids_deferred(state, provider, &envelope.id, add, remove).await?;
+        }
+        LabelEditRefs::Resolved => {
+            reconcile_label_mutation_deferred(state, provider, &envelope.id, add, remove).await?;
+        }
+    }
     Ok(())
+}
+
+/// Where a label edit's provider ids came from, which decides how the local
+/// copy finds the labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelEditRefs {
+    /// Frozen at a selection's preview: exact provider ids, never names.
+    Frozen,
+    /// Resolved from names just now; a name that matched no label passes
+    /// through as itself (a system label like `INBOX`).
+    Resolved,
 }
 
 /// `apply_mutation_to_envelope` with the account's provider guard already
@@ -2912,16 +3029,18 @@ async fn apply_mutation_under_guard(
                 .list_labels_by_account(&envelope.account_id)
                 .await
                 .map_err(|e| e.to_string())?;
-            let resolved_add = resolve_to_provider_ids(&labels, add);
-            let resolved_remove = resolve_to_provider_ids(&labels, remove);
+            let edit = ResolvedLabelEdit {
+                add: resolve_to_provider_ids(&labels, add),
+                remove: resolve_to_provider_ids(&labels, remove),
+            };
             apply_label_edit(
                 state,
                 provider,
                 provider_guard,
                 mutation_id,
                 envelope,
-                &resolved_add,
-                &resolved_remove,
+                &edit,
+                LabelEditRefs::Resolved,
             )
             .await?;
         }

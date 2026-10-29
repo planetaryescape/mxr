@@ -7,8 +7,8 @@
 //! when the row is written
 //! ([`encode_job_record`] is the only way a job row is serialised), and again
 //! when it is read, for rows an older daemon wrote. Lists are bounded on the
-//! way out: `GetJob` carries at most 100 undo ids and 50 failures, `ListJobs`
-//! neither, only their counts.
+//! way out: `GetJob` carries at most 50 failures and, for a selection job, the
+//! newest 100 undo ids; `ListJobs` carries neither, only their counts.
 
 use mxr_protocol::JobData;
 
@@ -17,13 +17,21 @@ pub(super) const MAX_JOB_TEXT_BYTES: usize = 512;
 
 /// The most bytes an account's name keeps in a job's per-account rows: a
 /// display name, repeated for every account a job touches.
-const MAX_ACCOUNT_NAME_BYTES: usize = 128;
+pub(super) const MAX_ACCOUNT_NAME_BYTES: usize = 128;
 
 /// Failure records a job keeps (the exact total is `progress.failed`).
 pub(super) const MAX_JOB_FAILURES: usize = 50;
 
-/// The most undo ids a `GetJob` response carries (the newest). The rest stay
-/// in the store: a job over half a million messages has 5,000.
+/// The most undo ids a selection job's `GetJob` response carries (the
+/// newest). The rest stay in the store: a job over half a million messages has
+/// 5,000, and it is undone as a whole by its own id (`UndoJob`).
+///
+/// Other jobs (sweeps, `StartMutationJob`) have no whole-job undo: clients
+/// undo them from the list, so they get all of it. One id per 100 messages
+/// at about 39 bytes of JSON each: a `StartMutationJob` is limited by its
+/// request frame to about 430,000 ids, so about 4,300 undo ids (170 KB); a
+/// sweep, by the size of the place, reaches the 16 MiB frame only past about
+/// 40 million messages.
 pub(super) const MAX_UNDO_IDS_ON_THE_WIRE: usize = 100;
 
 const ELLIPSIS: &str = "…";
@@ -78,13 +86,14 @@ pub(super) fn encode_job_record(job: &JobData) -> Result<String, String> {
     serde_json::to_string(&job).map_err(|error| error.to_string())
 }
 
-/// A job as `GetJob` (and a job start) sends it: the newest 100 undo ids and
-/// the kept failures, with how many of each the job holds.
+/// A job as `GetJob` (and a job start) sends it: the kept failures, and the
+/// undo ids (a selection job's newest 100, every other job's all), with how
+/// many of each the job holds.
 pub(super) fn job_detail(mut job: JobData) -> JobData {
     bound_record(&mut job);
     job.undo_id_count = job.undo_ids.len() as u32;
     job.failure_count = job.failures.len() as u32;
-    if job.undo_ids.len() > MAX_UNDO_IDS_ON_THE_WIRE {
+    if job.selection.is_some() && job.undo_ids.len() > MAX_UNDO_IDS_ON_THE_WIRE {
         let drop = job.undo_ids.len() - MAX_UNDO_IDS_ON_THE_WIRE;
         job.undo_ids.drain(..drop);
     }

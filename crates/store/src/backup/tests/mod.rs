@@ -271,6 +271,70 @@ async fn logical_bundle_omits_physical_activity_and_tokens_and_restores_held_byt
     }
 }
 
+/// A running selection job's undo entries have no deadline until the job
+/// ends. Restoring drops the job rows, so the restore closes such entries:
+/// a chunk of a job that ended elsewhere cannot be undone, now or later,
+/// while an entry with its own deadline keeps it.
+#[tokio::test]
+async fn restore_closes_undo_entries_no_job_can_anchor() {
+    use crate::undo::{UndoEntry, UndoEntryState, UndoableMutationKind};
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let far = chrono::Utc::now().timestamp() + 365 * 24 * 3600;
+    for (id, expires_at) in [("open", i64::MAX), ("dated", far)] {
+        store
+            .write_undo_entry(&UndoEntry {
+                mutation_id: id.into(),
+                kind: UndoableMutationKind::Archive,
+                snapshots: Vec::new(),
+                desk: None,
+                applied_at: 1,
+                expires_at,
+            })
+            .await
+            .unwrap();
+    }
+    store.writer().close().await;
+
+    write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    inspect(stage.path()).await.unwrap();
+    std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
+    retire_restored(&restored.path().join("mxr.db"))
+        .await
+        .unwrap();
+
+    let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
+    let now = chrono::Utc::now().timestamp();
+    let open = restored_store
+        .read_undo_entry("open")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(open.expires_at <= now, "{}", open.expires_at);
+    assert!(restored_store
+        .claim_undo_entry("open", "undo", now + 365 * 24 * 3600)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        restored_store.undo_entry_state("open", now).await.unwrap(),
+        UndoEntryState::Expired
+    );
+    let dated = restored_store
+        .read_undo_entry("dated")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(dated.expires_at, far, "an entry with a deadline keeps it");
+}
+
 #[tokio::test]
 async fn resolution_queue_round_trips_through_backup_and_restore() {
     let source = tempfile::tempdir().unwrap();

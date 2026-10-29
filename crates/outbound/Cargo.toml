@@ -27,6 +27,7 @@ regex = { workspace = true }
 lettre = { workspace = true }
 # Parses supplied HTML for validation only. The document is never rewritten.
 scraper = { workspace = true }
+html5ever = "0.40.1"
 tokio = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

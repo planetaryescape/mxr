@@ -985,9 +985,8 @@ fn render_html_blocks(
     // bounded input keeps html2text off adversarial tables (see mxr-reader's
     // `html_limits`).
     let rendered = mxr_reader::bounded_html(html).and_then(|bounded| {
-        let clamped = mxr_reader::clamp_table_spans(&bounded);
         mxr_reader::guard_html2text("tui html body", || {
-            let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
+            let render_tree = html2text::parse(bounded.as_bytes()).ok()?;
             html2text::config::rich()
                 .render_to_lines(render_tree, width)
                 .ok()
@@ -1504,6 +1503,43 @@ mod tests {
             "got {}",
             text.chars().take(200).collect::<String>()
         );
+    }
+
+    #[test]
+    fn a_table_hidden_by_a_comment_renders_bounded_and_quickly() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr><!-- </table> -->");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(
+            text.len() < 4 * html.len(),
+            "{} out for {} in",
+            text.len(),
+            html.len()
+        );
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn a_100000_deep_div_nest_renders_its_text_quickly() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("deepword"));
     }
 
     #[test]

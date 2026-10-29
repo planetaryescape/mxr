@@ -74,16 +74,49 @@ impl RebuildGuard {
 }
 
 // One word holds both the rebuilds in progress (low bits) and an epoch (high
-// bits), so a reader sees both from a single load. Ending a rebuild adds
-// `END_REBUILD`: epoch + 1 and rebuilds - 1 in one step.
+// bits), so a reader sees both from a single load. The epoch moves only when
+// the count leaves zero or returns to it: overlapping rebuilds share one epoch,
+// so one guard ending while another still runs does not move it.
 const REBUILD_BITS: u32 = 16;
 const REBUILD_MASK: u64 = (1 << REBUILD_BITS) - 1;
 const START_REBUILD: u64 = (1 << REBUILD_BITS) + 1;
 const END_REBUILD: u64 = (1 << REBUILD_BITS) - 1;
 
+/// Adds a rebuild, moving the epoch if none was running.
+fn add_rebuild(word: &AtomicU64) {
+    let mut current = word.load(Ordering::Acquire);
+    loop {
+        let next = if current & REBUILD_MASK == 0 {
+            current + START_REBUILD
+        } else {
+            current + 1
+        };
+        match word.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return,
+            Err(actual) => current = actual,
+        }
+    }
+}
+
+/// Removes a rebuild, moving the epoch if it was the last one running.
+fn remove_rebuild(word: &AtomicU64) {
+    let mut current = word.load(Ordering::Acquire);
+    loop {
+        let next = if current & REBUILD_MASK == 1 {
+            current + END_REBUILD
+        } else {
+            current - 1
+        };
+        match word.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return,
+            Err(actual) => current = actual,
+        }
+    }
+}
+
 impl Drop for RebuildGuard {
     fn drop(&mut self) {
-        self.rebuilds.fetch_add(END_REBUILD, Ordering::AcqRel);
+        remove_rebuild(&self.rebuilds);
     }
 }
 
@@ -148,10 +181,10 @@ impl SearchServiceHandle {
             // Newest live sequence applied per message, kept only while a
             // rebuild runs. Only the worker touches it, so no lock is needed.
             let mut live_record: HashMap<MessageId, u64> = HashMap::new();
-            // The rebuild epoch the record was built under. Every rebuild start
-            // and end changes the epoch, so a record from an earlier rebuild,
-            // whether it ended cleanly, failed or was cancelled, is cleared
-            // before anything is recorded or read under the new one.
+            // The rebuild epoch the record was built under. The record is
+            // cleared when no rebuild is running (the last guard was dropped) and
+            // when the epoch moved, which only happens at idle-to-rebuilding and
+            // back. Overlapping guards never clear it.
             let mut record_epoch: u64 = 0;
             while let Some(command) = rx.recv().await {
                 let state = worker_rebuilds.load(Ordering::Acquire);
@@ -285,7 +318,7 @@ impl SearchServiceHandle {
         // Set before the rebuild count, so a reader that sees the count also
         // sees the index as incomplete.
         self.incomplete.store(true, Ordering::Release);
-        self.rebuilds.fetch_add(START_REBUILD, Ordering::AcqRel);
+        add_rebuild(&self.rebuilds);
         RebuildGuard {
             rebuilds: Arc::clone(&self.rebuilds),
             incomplete: Arc::clone(&self.incomplete),

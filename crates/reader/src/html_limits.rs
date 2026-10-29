@@ -1,165 +1,208 @@
-//! Bounds on what html2text is given. Its cost grows with input size and,
-//! on wide tables, faster still: html2text 0.17.4 clones the whole column
-//! width vector into every row, so a table with a 20,000-cell row and 20,000
-//! single-cell rows costs gigabytes. An allocation failure aborts the process,
-//! which `catch_unwind` cannot catch, so the input is bounded before the render.
+//! Bounds on what html2text is given. html2text builds a full DOM, and its cost
+//! grows with depth (html5ever checks the open-element stack on every element)
+//! and with table width and span size (it pads each row to the column widths
+//! and creates placeholder cells for spans). Some inputs cost gigabytes, and an
+//! allocation failure aborts the process, which `catch_unwind` cannot catch. So
+//! the input is measured before the render, and documents over the caps get the
+//! tag-strip fallback instead.
+//!
+//! The measure is a single pass of html5ever's tokenizer, with no tree builder:
+//! the tokenizer knows about comments, CDATA, quoted attributes that contain
+//! `>`, and raw-text elements, so it agrees with the parser on what is markup.
+//! A regex over the bytes does not (a `<!-- </table> -->` comment fooled one).
 
-use regex::{Captures, Regex};
+use crate::html::clamp_table_spans;
+use html5ever::tendril::StrTendril;
+use html5ever::tokenizer::states::RawKind;
+use html5ever::tokenizer::{
+    BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+};
+use html5ever::LocalName;
 use std::borrow::Cow;
-use std::ops::Range;
+use std::cell::RefCell;
 
 /// HTML larger than this skips html2text and gets the tag-strip fallback.
 /// Ordinary mail is tens of kilobytes; 2 MiB is a generous ceiling above that,
 /// and a judgement rather than a measured threshold.
 pub const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 
-/// A table whose widest row has more cells than this is flattened. No readable
-/// email table is this wide, and the cost of a row grows with its width.
-pub const MAX_TABLE_COLUMNS: usize = 64;
+/// Open elements at once. Real mail nests a few dozen levels at most; 256 is
+/// far beyond that and keeps html5ever's per-element ancestor checks short.
+pub const MAX_DEPTH: usize = 256;
 
-/// A table whose rows times widest-row cell count exceeds this is flattened.
-/// It bounds the cells in a table of ordinary width (a long, narrow table is
-/// fine; a 3-column table of 20,000 rows is not).
-pub const MAX_TABLE_CELLS: usize = 50_000;
+/// `td` and `th` cells in the whole document. A 20,000-cell table is already
+/// past anything a reader can use; this bounds the total work.
+pub const MAX_CELLS: usize = 20_000;
 
-static TABLE_TAG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)<(/?)(table|tr|td|th)\b[^>]*>").expect("table tag regex should compile")
-});
+/// Cells in the widest row. html2text clones the column widths into every row,
+/// so a row's width multiplies the cost of every row after it.
+pub const MAX_ROW_CELLS: usize = 64;
 
-static FLATTEN_TAG_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-    Regex::new(r"(?i)<(/?)(tr|td|th|table|tbody|thead|tfoot|colgroup|col)\b[^>]*>")
-        .expect("table flatten regex should compile")
-});
+/// Largest `rowspan` or `colspan` after clamping. html2text makes placeholder
+/// cells for spans, so a span's size costs memory in every row it crosses.
+pub const MAX_SPAN: u64 = 100;
 
-/// The HTML to give html2text, or `None` when the document is over
-/// [`MAX_HTML_BYTES`] and the caller should use its tag-strip fallback.
-///
-/// Tables over the complexity limits are flattened to inline text (a row
-/// becomes a line break, a cell becomes text followed by a separator); normal
-/// tables, and documents with none, come back borrowed and unchanged.
+/// Grid slots in the document: the sum of colspan times rowspan over all cells.
+/// This is the cost html2text pays for spans, and it can exceed the cell count
+/// by the span factor. The limit is a judgement: an ordinary table has about one
+/// slot per cell.
+pub const MAX_GRID_SLOTS: u64 = 200_000;
+
+/// The HTML to give html2text, or `None` when the document must not be rendered:
+/// over [`MAX_HTML_BYTES`], or over one of the structure caps. Spans are clamped
+/// to [`MAX_SPAN`] first, so a clamped table still renders.
 pub fn bounded_html(html: &str) -> Option<Cow<'_, str>> {
     if html.len() > MAX_HTML_BYTES {
         return None;
     }
-    let ranges = oversized_table_ranges(html);
-    if ranges.is_empty() {
-        return Some(Cow::Borrowed(html));
+    let clamped = clamp_table_spans(html);
+    if exceeds_structure_caps(&clamped) {
+        return None;
     }
-    Some(Cow::Owned(flatten_ranges(html, &ranges)))
+    Some(clamped)
+}
+
+/// Elements that never hold children, so the tree builder never pushes them.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+
+fn is_void(name: &str) -> bool {
+    VOID_ELEMENTS.contains(&name)
+}
+
+/// The raw-text state html5ever's tree builder would put the tokenizer in for
+/// this start tag, so markup inside it is not read as tags. html2text parses
+/// with scripting disabled, so `noscript` is ordinary markup and not listed.
+fn raw_text_state(name: &str) -> Option<TokenSinkResult<()>> {
+    match name {
+        "script" => Some(TokenSinkResult::RawData(RawKind::ScriptData)),
+        "style" | "xmp" | "iframe" | "noembed" | "noframes" => {
+            Some(TokenSinkResult::RawData(RawKind::Rawtext))
+        }
+        "textarea" | "title" => Some(TokenSinkResult::RawData(RawKind::Rcdata)),
+        "plaintext" => Some(TokenSinkResult::Plaintext),
+        _ => None,
+    }
 }
 
 #[derive(Default)]
-struct OpenTable {
-    start: usize,
-    rows: usize,
-    cells_in_row: usize,
+struct Scan {
+    /// Open non-void elements, innermost last. An end tag closes back to its
+    /// nearest match, as the tree builder does for ordinary elements. Implicit
+    /// closes the tree builder performs are not modelled, so this can count
+    /// more open elements than html5ever holds: the caps are then a little
+    /// stricter than needed, never looser.
+    open: Vec<LocalName>,
+    cells: usize,
+    row_cells: usize,
     widest_row: usize,
+    grid_slots: u64,
+    /// Set at the first cap that is exceeded. Later tokens are then ignored.
+    over: bool,
 }
 
-impl OpenTable {
-    fn finish_row(&mut self) {
-        self.widest_row = self.widest_row.max(self.cells_in_row);
-        self.cells_in_row = 0;
-    }
-
-    fn is_oversized(&self) -> bool {
-        self.widest_row > MAX_TABLE_COLUMNS
-            || self.rows.saturating_mul(self.widest_row) > MAX_TABLE_CELLS
-    }
-}
-
-/// Byte ranges of the outermost tables over the limits. Cells count toward
-/// the innermost open table. An unclosed table runs to the end of the input,
-/// as html2text reads it.
-fn oversized_table_ranges(html: &str) -> Vec<Range<usize>> {
-    let mut open: Vec<OpenTable> = Vec::new();
-    let mut ranges: Vec<Range<usize>> = Vec::new();
-    let close = |table: OpenTable, end: usize, ranges: &mut Vec<Range<usize>>| {
-        let mut table = table;
-        table.finish_row();
-        if table.is_oversized() {
-            ranges.push(table.start..end);
-        }
-    };
-    for caps in TABLE_TAG_RE.captures_iter(html) {
-        let Some(whole) = caps.get(0) else { continue };
-        let closing = &caps[1] == "/";
-        match (caps[2].to_ascii_lowercase().as_str(), closing) {
-            ("table", false) => open.push(OpenTable {
-                start: whole.start(),
-                ..OpenTable::default()
-            }),
-            ("table", true) => {
-                if let Some(table) = open.pop() {
-                    close(table, whole.end(), &mut ranges);
+impl Scan {
+    fn start(&mut self, tag: &Tag) {
+        let name: &str = &tag.name;
+        match name {
+            "tr" => self.row_cells = 0,
+            "td" | "th" => {
+                self.cells += 1;
+                self.row_cells += 1;
+                self.widest_row = self.widest_row.max(self.row_cells);
+                let colspan = span_attr(tag, "colspan");
+                let rowspan = span_attr(tag, "rowspan");
+                if colspan > MAX_SPAN || rowspan > MAX_SPAN {
+                    self.over = true;
                 }
-            }
-            ("tr", false) => {
-                if let Some(table) = open.last_mut() {
-                    table.finish_row();
-                    table.rows += 1;
-                }
-            }
-            ("td" | "th", false) => {
-                if let Some(table) = open.last_mut() {
-                    table.cells_in_row += 1;
-                }
+                self.grid_slots = self
+                    .grid_slots
+                    .saturating_add(colspan.saturating_mul(rowspan));
             }
             _ => {}
         }
-    }
-    while let Some(table) = open.pop() {
-        close(table, html.len(), &mut ranges);
-    }
-    // Keep only the outermost flagged tables: a flattened outer table already
-    // covers the inner ones.
-    ranges.sort_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
-    let mut outermost: Vec<Range<usize>> = Vec::new();
-    for range in ranges {
-        match outermost.last() {
-            Some(last) if range.start < last.end => {}
-            _ => outermost.push(range),
+        if !is_void(name) {
+            self.open.push(tag.name.clone());
+            if self.open.len() > MAX_DEPTH {
+                self.over = true;
+            }
+        }
+        if self.cells > MAX_CELLS
+            || self.widest_row > MAX_ROW_CELLS
+            || self.grid_slots > MAX_GRID_SLOTS
+        {
+            self.over = true;
         }
     }
-    outermost
-}
 
-/// Replaces each range (sorted, non-overlapping) with its flattened text.
-fn flatten_ranges(html: &str, ranges: &[Range<usize>]) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut pos = 0;
-    for range in ranges {
-        out.push_str(&html[pos..range.start]);
-        out.push_str(&flatten_table(&html[range.clone()]));
-        pos = range.end;
+    fn end(&mut self, name: &LocalName) {
+        if is_void(name) {
+            return;
+        }
+        if let Some(position) = self.open.iter().rposition(|open| open == name) {
+            self.open.truncate(position);
+        }
     }
-    out.push_str(&html[pos..]);
-    out
 }
 
-/// A table's markup as inline text: each row becomes a line break, each cell
-/// its text followed by a separator, and the table's own wrapper tags go.
-fn flatten_table(segment: &str) -> String {
-    FLATTEN_TAG_RE
-        .replace_all(segment, |caps: &Captures<'_>| {
-            let closing = &caps[1] == "/";
-            match caps[2].to_ascii_lowercase().as_str() {
-                "tr" => "<br>".to_string(),
-                "td" | "th" if closing => " | ".to_string(),
-                "td" | "th" => " ".to_string(),
-                _ => String::new(),
+/// A span attribute's value; 1 when absent or not a number, as the tree
+/// builder's consumers read it. A value too big for u64 saturates.
+fn span_attr(tag: &Tag, name: &str) -> u64 {
+    tag.attrs
+        .iter()
+        .find(|attr| &*attr.name.local == name)
+        .and_then(|attr| attr.value.trim().parse::<u64>().ok())
+        .unwrap_or(1)
+}
+
+struct ScanSink(RefCell<Scan>);
+
+impl TokenSink for ScanSink {
+    type Handle = ();
+
+    fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+        let Token::TagToken(tag) = token else {
+            return TokenSinkResult::Continue;
+        };
+        let mut scan = self.0.borrow_mut();
+        if scan.over {
+            return TokenSinkResult::Continue;
+        }
+        match tag.kind {
+            TagKind::StartTag => {
+                scan.start(&tag);
+                raw_text_state(&tag.name).unwrap_or(TokenSinkResult::Continue)
             }
-        })
-        .into_owned()
+            TagKind::EndTag => {
+                scan.end(&tag.name);
+                TokenSinkResult::Continue
+            }
+        }
+    }
+}
+
+/// True when the document is over a structure cap. One tokenizer pass; linear
+/// in the input, and the open-element stack is bounded by [`MAX_DEPTH`] + 1.
+fn exceeds_structure_caps(html: &str) -> bool {
+    let tokenizer = Tokenizer::new(
+        ScanSink(RefCell::new(Scan::default())),
+        TokenizerOpts::default(),
+    );
+    let input = BufferQueue::default();
+    input.push_back(StrTendril::from(html));
+    let _ = tokenizer.feed(&input);
+    tokenizer.end();
+    let over = tokenizer.sink.0.borrow().over;
+    over
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The adversarial table from the wide-table report: one 20,000-cell row
-    /// then 20,000 single-cell rows, about 600 KB of input.
-    fn adversarial_table() -> String {
+    fn wide_table() -> String {
         let mut html = String::from("<table><tr>");
         for n in 0..20_000 {
             html.push_str(&format!("<td>c{n}</td>"));
@@ -187,31 +230,47 @@ mod tests {
     }
 
     #[test]
-    fn the_adversarial_table_is_flattened_to_bounded_text() {
-        let html = adversarial_table();
-        let started = std::time::Instant::now();
-        let bounded = bounded_html(&html).expect("under the size cap");
-        assert!(!bounded.contains("<table"), "table wrapper survived");
-        assert!(bounded.contains("c0") && bounded.contains("c19999"));
-        assert!(bounded.contains("r0") && bounded.contains("r19999"));
-        assert!(
-            bounded.len() < 4 * html.len(),
-            "{} bytes out for {} in",
-            bounded.len(),
-            html.len()
-        );
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    fn a_wide_table_is_over_the_structure_caps() {
+        assert!(bounded_html(&wide_table()).is_none());
     }
 
     #[test]
-    fn a_table_over_the_row_cell_limit_is_flattened_even_if_narrow() {
-        let mut html = String::from("<table>");
-        for n in 0..(MAX_TABLE_CELLS / 3 + 1) {
-            html.push_str(&format!("<tr><td>a{n}</td><td>b</td><td>c</td></tr>"));
-        }
-        html.push_str("</table>");
-        let bounded = bounded_html(&html).expect("under the size cap");
-        assert!(!bounded.contains("<table"));
+    fn a_comment_cannot_hide_a_wide_table_from_the_scan() {
+        // The tokenizer reads `<!-- ... -->` as a comment, so the `</table>`
+        // inside it is not a close and the wide table is still counted.
+        let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
+        assert!(bounded_html(&html).is_none());
+    }
+
+    #[test]
+    fn markup_inside_a_script_is_not_read_as_a_table() {
+        let html = "<script>var s = '<table><tr><td>x</td></tr>';</script><p>ok</p>";
+        assert!(bounded_html(html).is_some());
+    }
+
+    #[test]
+    fn a_quoted_gt_in_an_attribute_does_not_end_the_tag() {
+        // The tokenizer reads the attribute value whole, so the span is 1.
+        let html = r#"<table><tr><td title="a>b" colspan="1">x</td></tr></table>"#;
+        assert!(bounded_html(html).is_some());
+    }
+
+    #[test]
+    fn a_deep_nest_is_over_the_depth_cap() {
+        let html = format!(
+            "{}{}",
+            "<div>".repeat(MAX_DEPTH + 1),
+            "</div>".repeat(MAX_DEPTH + 1)
+        );
+        assert!(bounded_html(&html).is_none());
+    }
+
+    #[test]
+    fn a_span_over_the_clamp_is_rejected_when_the_clamp_missed_it() {
+        // An entity-encoded value is not digits to the byte clamp, so the
+        // tokenizer sees its real value and the document falls back.
+        let html = r#"<table><tr><td colspan="&#53;0000">x</td></tr></table>"#;
+        assert!(bounded_html(html).is_none());
     }
 
     #[test]
@@ -219,16 +278,5 @@ mod tests {
         let html = format!("<p>{}</p>", "word ".repeat(MAX_HTML_BYTES / 5 + 1));
         assert!(html.len() > MAX_HTML_BYTES);
         assert!(bounded_html(&html).is_none());
-    }
-
-    #[test]
-    fn a_flattened_table_keeps_its_cell_text_in_order() {
-        let html = "<table><tr><td>one</td><td>two</td></tr><tr><td>three</td></tr></table>";
-        let flat = flatten_table(html);
-        let one = flat.find("one").unwrap_or(usize::MAX);
-        let two = flat.find("two").unwrap_or(usize::MAX);
-        let three = flat.find("three").unwrap_or(usize::MAX);
-        assert!(one < two && two < three, "got {flat:?}");
-        assert!(flat.contains("<br>"));
     }
 }

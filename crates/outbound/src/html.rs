@@ -401,41 +401,20 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
     // Guarded like the reader's call (html2text panics on some malformed
-    // tables). mxr-outbound cannot depend on mxr-reader, so the span clamp and
-    // the fallback are local copies; keep them in step with
-    // `mxr_reader::clamp_table_spans`. A sent message always gets its text,
-    // even if it is rougher.
+    // tables). mxr-outbound cannot depend on mxr-reader, so the bounds, the span
+    // clamp and the fallback are local copies (`html_limits`). A sent message
+    // always gets its text, even if it is rougher.
     // Bounded input first: an adversarial table costs html2text gigabytes, and
     // an allocation failure aborts, so `catch_unwind` cannot protect against it.
     let Some(bounded) = crate::html_limits::bounded_html(html) else {
         return strip_tags_fallback(html);
     };
-    let clamped = clamp_table_spans(&bounded);
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
+        html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
     }))
     .ok()
     .and_then(Result::ok)
     .unwrap_or_else(|| strip_tags_fallback(html))
-}
-
-/// Largest colspan/rowspan html2text is given. Matches
-/// `mxr_reader::MAX_TABLE_SPAN`.
-const MAX_TABLE_SPAN: u64 = 1000;
-
-static TABLE_SPAN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-        .expect("table span regex should compile")
-});
-
-/// Copy of `mxr_reader::clamp_table_spans`; see `generate_text_alternative`.
-fn clamp_table_spans(html: &str) -> std::borrow::Cow<'_, str> {
-    TABLE_SPAN_RE.replace_all(html, |caps: &regex::Captures<'_>| {
-        let value = caps[3]
-            .parse::<u64>()
-            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
 }
 
 /// Tag-stripping fallback for `generate_text_alternative` when html2text
@@ -937,6 +916,7 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::html_limits::clamp_table_spans;
     #[test]
     fn text_alternative_bounds_an_adversarial_table_before_html2text() {
         let mut html = String::from("<table><tr>");
@@ -953,6 +933,38 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
         assert!(text.contains("c0") && text.contains("r19999"));
         assert!(text.len() < 4 * html.len());
+    }
+
+    #[test]
+    fn text_alternative_of_a_table_hidden_by_a_comment_is_bounded() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr><!-- </table> -->");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn text_alternative_of_a_100000_deep_div_nest_is_bounded() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("deepword"));
     }
 
     #[test]

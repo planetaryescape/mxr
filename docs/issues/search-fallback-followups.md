@@ -14,7 +14,6 @@ The index cleans HTML with the built-in converter even when `render.html_command
 
 A client that pages through results while the index stops or starts can get a page from SQLite and the next page from the index. Each page is internally consistent, and the degraded notice stays on every page after the switch, so the client can tell. A cursor that pins the source would fix the mixing, but it is a cross-client protocol change for a state that lasts only while the index is stopped or rebuilding, so paging keeps offset semantics.
 
-## Very wide tables lose their layout
+## Very large or deeply nested documents lose their layout
 
-html2text cost grows with table width: it clones the column widths into every row. So mxr flattens a table that has more than 64 columns in a row, or more than 50,000 cells (rows times widest row), into inline text: each row a line break, each cell its text followed by a separator. Documents over 2 MiB skip html2text and show the tag-stripped text. A legitimate wide table, such as a long financial statement, shows its cells in order without the grid. Both limits live in `crates/reader/src/html_limits.rs`, with a copy in `crates/outbound/src/html_limits.rs`.
-
+html2text is not given a document over 2 MiB, nested more than 256 elements deep, with more than 20,000 table cells, a row wider than 64 cells, or more than 200,000 grid slots (colspan times rowspan summed over the cells). Such a document shows its tag-stripped text, so its tables and lists lose their layout. Spans are clamped to 100 before the render. The structure is measured by one pass of html5ever's tokenizer (`crates/reader/src/html_limits.rs`, with a copy in `crates/outbound/src/html_limits.rs`). Ordinary mail is far under every cap; a legitimate very wide statement is the likely casualty.

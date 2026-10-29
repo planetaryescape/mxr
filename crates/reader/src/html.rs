@@ -39,8 +39,8 @@ fn builtin_to_plain_text(html: &str) -> String {
 }
 
 /// Largest colspan/rowspan html2text is given. Real mail stays far below
-/// this; anything above it is a malformed or hostile table.
-pub const MAX_TABLE_SPAN: u64 = 1000;
+/// this; anything above it is a malformed or hostile table. See `html_limits`.
+pub const MAX_TABLE_SPAN: u64 = crate::html_limits::MAX_SPAN;
 
 static TABLE_SPAN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
@@ -180,14 +180,14 @@ pub fn html_to_plain_text(html: &str, site: &'static str) -> String {
 /// the size cap the tag strip stands in without a render. Errors and panics
 /// also give the strip. The second value is true only for a panic.
 fn render_bounded(html: &str, site: &'static str) -> (String, bool) {
+    // `bounded_html` clamps the spans and refuses documents over the caps.
     let Some(bounded) = bounded_html(html) else {
         return (strip_html_tags(html), false);
     };
-    let clamped = clamp_table_spans(&bounded);
     // plain_no_decorate keeps the pre-0.17 behavior: no markdown-style
     // `**bold**` / `*italic*` markers in the reader's plain text.
     guarded_or_strip(html, site, || {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
+        html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
     })
 }
 
@@ -501,5 +501,92 @@ mod tests {
     fn empty_command_error() {
         let err = run_external_command("", "test").expect_err("empty commands should fail");
         assert!(matches!(err, HtmlRenderError::EmptyCommand));
+    }
+}
+
+#[cfg(test)]
+mod limit_render_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn direct_render(html: &str) -> String {
+        html2text::config::plain_no_decorate()
+            .string_from_read(html.as_bytes(), 80)
+            .expect("ordinary HTML renders")
+    }
+
+    fn wide_table() -> String {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        html
+    }
+
+    /// Fast and linear: finishes in the time bound and returns text no larger
+    /// than four times the input.
+    fn assert_bounded(html: &str, started: Instant, text: &str) {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            text.len() < 4 * html.len(),
+            "{} bytes out for {} in",
+            text.len(),
+            html.len()
+        );
+    }
+
+    #[test]
+    fn a_normal_email_renders_exactly_as_html2text_renders_it() {
+        let html = "<html><body><p>Hello team,</p>\
+            <table><tr><td>a</td><td>b</td><td>c</td></tr>\
+            <tr><td>d</td><td>e</td><td>f</td></tr>\
+            <tr><td>g</td><td>h</td><td>i</td></tr></table>\
+            <ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>\
+            <blockquote>quoted words</blockquote></body></html>";
+        assert_eq!(html_to_plain_text(html, "test"), direct_render(html));
+    }
+
+    #[test]
+    fn a_table_hidden_by_a_comment_is_bounded() {
+        let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn a_rowspan_table_is_bounded() {
+        let mut html = String::from("<table>");
+        for n in 0..50_000 {
+            html.push_str(&format!(r#"<tr><td rowspan="1000">x{n}</td></tr>"#));
+        }
+        html.push_str("</table>");
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("x0") && text.contains("x49999"));
+    }
+
+    #[test]
+    fn a_100000_deep_div_nest_is_bounded() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("deepword"));
     }
 }

@@ -546,6 +546,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_overlapping_guard_ending_keeps_the_record_a_running_rebuild_needs() {
+        // A startup hold and a reindex overlap. B ends first; A's page must still
+        // respect the delete a live sync applied during the overlap.
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let stored = stored_with_subject(&state, "deletedduringword").await;
+
+        let a = state.search.begin_rebuild();
+        let b = state.search.begin_rebuild();
+        // A reads its page at sequence 0, before the live delete.
+        let read_seq = state.search.read_seq();
+        let a_page = page_of(&stored);
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: Vec::new(),
+                removed_message_ids: vec![stored.id.clone()],
+            })
+            .await
+            .unwrap();
+        drop(b);
+        assert_eq!(state.search.live_record_len().await.unwrap(), 1);
+
+        state
+            .search
+            .apply_rebuild_batch(a_page, read_seq)
+            .await
+            .unwrap();
+        assert!(subject_hits(&state, "deletedduringword").await.is_empty());
+
+        drop(a);
+        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
     async fn a_finished_rebuild_leaves_no_live_record() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         stored_with_subject(&state, "recordword").await;

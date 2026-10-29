@@ -114,6 +114,66 @@ pub fn guard_html2text<T>(site: &'static str, render: impl FnOnce() -> T) -> Opt
     }
 }
 
+/// Column count the matching text is rendered at. html2text has no switch
+/// for "don't wrap", so the width is set past any line a message will have:
+/// a paragraph then never breaks where the reader's 80-column display does.
+/// Display-only wrapping must not decide what a rule or search matches.
+const MATCH_TEXT_WIDTH: usize = 1 << 20;
+
+/// Text for matching (rules and the search index) from HTML: the same
+/// conversion as the reader, rendered without display wrapping. Table spans are
+/// clamped and the render is guarded as in [`html_to_plain_text`]. Returns the
+/// converted text, and whether a panic in the conversion forced the tag-strip
+/// fallback.
+pub(crate) fn html_to_match_text(html: &str, site: &'static str) -> (String, bool) {
+    let clamped = clamp_table_spans(html);
+    guarded_or_strip(html, site, || {
+        html2text::config::plain_no_decorate()
+            .string_from_read(clamped.as_bytes(), MATCH_TEXT_WIDTH)
+    })
+}
+
+/// Runs a render under the guard. A render error is tag-stripped quietly; a
+/// panic is tag-stripped and reported, as the second value.
+fn guarded_or_strip<E>(
+    html: &str,
+    site: &'static str,
+    render: impl FnOnce() -> Result<String, E>,
+) -> (String, bool) {
+    match guard_html2text(site, render) {
+        Some(Ok(text)) => (text, false),
+        Some(Err(_)) => (strip_html_tags(html), false),
+        None => (strip_html_tags(html), true),
+    }
+}
+
+#[cfg(test)]
+mod match_text_tests {
+    use super::*;
+
+    #[test]
+    fn a_panicking_render_gives_the_tag_stripped_text_and_is_reported() {
+        let source = "<p>keepme</p><script>var hidden=1;</script><b>also</b>";
+        let (text, fell_back) = guarded_or_strip::<()>(source, "test", || {
+            std::panic::resume_unwind(Box::new("renderer failed"))
+        });
+        assert!(fell_back);
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn a_normal_render_is_not_reported_and_keeps_long_lines_whole() {
+        let line = "word ".repeat(40);
+        let html = format!("<p>{}</p>", line.trim_end());
+        let (text, fell_back) = html_to_match_text(&html, "test");
+        assert!(!fell_back);
+        assert!(text.contains(line.trim_end()), "got {text:?}");
+    }
+}
+
 /// Plain text for HTML mail at the reader's width, with the default
 /// (undecorated) renderer. Never panics: when html2text fails, the tag strip
 /// below stands in so the message still shows its text.

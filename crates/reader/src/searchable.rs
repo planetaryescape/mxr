@@ -1,7 +1,7 @@
-use crate::html::{guard_html2text, strip_html_tags};
-use crate::pipeline::{clean, ReaderConfig};
+use crate::html::{html_to_match_text, looks_like_html_document};
+use crate::pipeline::normalize_whitespace;
 
-/// The text of a message that search and rules match against.
+/// The text of a message that search and rules match against, joined.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SearchableText {
     pub text: String,
@@ -9,52 +9,54 @@ pub struct SearchableText {
     pub fallbacks: usize,
 }
 
-/// The reader's text for a message with every removal step off, so quoted
-/// replies, signatures and boilerplate stay in: each removal can drop words
-/// the reader shows. Markup, CSS and scripts are dropped by the conversion.
-/// The built-in converter is always used, never `render.html_command`.
-fn conversion_only_config() -> ReaderConfig {
-    ReaderConfig {
-        html_command: None,
-        collapse_quotes: false,
-        strip_signatures: false,
-        strip_boilerplate: false,
-        strip_tracking: false,
-    }
+/// The matchable parts of a message: `text_plain` as stored, and `text_html`
+/// converted to text. Each part is its own string, so a rule can match one
+/// part whole (`^invoice$`, exact equality) without the other part's words
+/// joining it. When both parts are identical, one copy is kept. A part that
+/// is itself an HTML document is converted rather than matched as markup.
+///
+/// Conversion renders without display wrapping (see `html_to_match_text`), so
+/// a line break in the reader's 80-column view is not a break in the words.
+pub fn searchable_parts(text_plain: Option<&str>, text_html: Option<&str>) -> Vec<String> {
+    searchable_parts_counted(text_plain, text_html).0
 }
 
-/// The text search indexes and rules match: `text_plain` as stored, and
-/// `text_html` converted to text, joined with newlines. A part that is itself
-/// an HTML document is converted rather than matched as markup. Both paths
-/// (index and rules preview or apply) call this, so they see the same words.
+/// The matchable parts joined with newlines, for the search index, plus the
+/// number of parts that fell back to tag stripping.
 pub fn searchable_text(text_plain: Option<&str>, text_html: Option<&str>) -> SearchableText {
-    let config = conversion_only_config();
-    let mut parts = Vec::with_capacity(2);
-    let mut fallbacks = 0;
-    if let Some(plain) = text_plain {
-        let (text, fell_back) =
-            convert_or_strip(plain, || clean(Some(plain), None, &config).content);
-        parts.push(text);
-        fallbacks += usize::from(fell_back);
-    }
-    if let Some(html) = text_html {
-        let (text, fell_back) = convert_or_strip(html, || clean(None, Some(html), &config).content);
-        parts.push(text);
-        fallbacks += usize::from(fell_back);
-    }
-    parts.retain(|part| !part.trim().is_empty());
+    let (parts, fallbacks) = searchable_parts_counted(text_plain, text_html);
     SearchableText {
         text: parts.join("\n"),
         fallbacks,
     }
 }
 
-/// Runs one conversion. A panic inside it (html2text panics on some malformed
-/// tables) gives the tag-stripped source instead, and reports the fallback.
-fn convert_or_strip(source: &str, convert: impl FnOnce() -> String) -> (String, bool) {
-    match guard_html2text("searchable_text", convert) {
-        Some(text) => (text, false),
-        None => (strip_html_tags(source), true),
+fn searchable_parts_counted(
+    text_plain: Option<&str>,
+    text_html: Option<&str>,
+) -> (Vec<String>, usize) {
+    let mut fallbacks = 0;
+    let mut parts: Vec<String> = Vec::with_capacity(2);
+    for (source, is_html) in [(text_plain, false), (text_html, true)] {
+        let Some(source) = source else { continue };
+        let (text, fell_back) = match_text(source, is_html);
+        fallbacks += usize::from(fell_back);
+        if text.trim().is_empty() || parts.contains(&text) {
+            continue;
+        }
+        parts.push(text);
+    }
+    (parts, fallbacks)
+}
+
+/// The matching text of one source. `is_html` marks the HTML part; a plain
+/// part that is itself an HTML document is converted the same way.
+fn match_text(source: &str, is_html: bool) -> (String, bool) {
+    if is_html || looks_like_html_document(source) {
+        let (text, fell_back) = html_to_match_text(source, "searchable_text");
+        (normalize_whitespace(&text), fell_back)
+    } else {
+        (normalize_whitespace(source), false)
     }
 }
 
@@ -94,23 +96,55 @@ mod tests {
     }
 
     #[test]
-    fn a_panicking_conversion_falls_back_to_tag_stripped_text_and_is_reported() {
-        let source = "<p>keepme</p><script>var hidden=1;</script><b>also</b>";
-        let (text, fell_back) = convert_or_strip(source, || {
-            std::panic::resume_unwind(Box::new("converter failed"))
-        });
-
-        assert!(fell_back);
-        assert!(text.contains("keepme"));
-        assert!(text.contains("also"));
-        assert!(!text.contains("hidden"));
-        assert!(!text.contains('<'));
+    fn long_html_paragraphs_are_not_broken_at_display_width() {
+        // Reproduces a rule on "payment overdue": at 80 columns the reader
+        // breaks before "overdue", which must not reach the matching text.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let parts = searchable_parts(None, Some(&html));
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].contains("payment overdue"), "got {:?}", parts[0]);
     }
 
     #[test]
-    fn a_normal_conversion_is_not_reported_as_a_fallback() {
-        let (text, fell_back) = convert_or_strip("<p>fine</p>", || "fine".to_string());
-        assert_eq!(text, "fine");
+    fn identical_plain_and_html_parts_are_kept_once() {
+        assert_eq!(
+            searchable_parts(Some("invoice"), Some("<p>invoice</p>")),
+            vec!["invoice".to_string()]
+        );
+    }
+
+    #[test]
+    fn differing_parts_stay_separate_and_joined_text_is_their_join() {
+        let parts = searchable_parts(Some("plain one"), Some("<p>html two</p>"));
+        assert_eq!(parts, vec!["plain one".to_string(), "html two".to_string()]);
+        assert_eq!(
+            searchable_text(Some("plain one"), Some("<p>html two</p>")).text,
+            "plain one\nhtml two"
+        );
+    }
+
+    #[test]
+    fn tables_render_at_the_match_width_without_padding_or_fallback() {
+        let (text, fell_back) = crate::html::html_to_match_text(
+            "<table><tr><td>one</td><td>two</td></tr></table>",
+            "test",
+        );
         assert!(!fell_back);
+        assert!(text.contains("one") && text.contains("two"), "got {text:?}");
+        assert!(
+            text.len() < 200,
+            "padded to the match width: {} bytes",
+            text.len()
+        );
+    }
+
+    #[test]
+    fn a_huge_colspan_still_renders_through_the_clamp() {
+        // Unclamped, html2text panics on this span and the parts fall back.
+        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
+        let (parts, fallbacks) = searchable_parts_counted(None, Some(html));
+        assert_eq!(fallbacks, 0);
+        let text = parts.join(" ");
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
     }
 }

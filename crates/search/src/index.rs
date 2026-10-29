@@ -855,6 +855,14 @@ mod reader_text_tests {
     }
 
     #[test]
+    fn a_long_html_paragraph_is_one_phrase_in_the_index() {
+        // The reader's 80-column view breaks before "overdue"; the index must not.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let (index, id) = index_one(None, Some(html.as_str()));
+        assert_eq!(search_ids(&index, "\"payment overdue\""), vec![id]);
+    }
+
+    #[test]
     fn script_words_match_no_prose_path_but_has_filters_still_read_raw_html() {
         let html = r#"<p>Watch</p><script>var zzscriptword = 1;</script><a href="https://youtube.com/x">clip</a>"#;
         let (index, id) = index_one(None, Some(html));

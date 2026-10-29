@@ -1798,9 +1798,9 @@ pub(crate) struct RuleMessage {
     body: Option<mxr_core::MessageBody>,
     to: Vec<String>,
     labels: Vec<String>,
-    /// The text rules match, built on first use. `None` when the body is
+    /// The parts rules match, built on first use. `None` when the body is
     /// absent or has no text part, so body rules report unknown.
-    searchable_body: std::sync::OnceLock<Option<String>>,
+    searchable_body: std::sync::OnceLock<Option<Vec<String>>>,
 }
 
 impl RuleMessage {
@@ -1897,8 +1897,8 @@ impl mxr_rules::MessageView for RuleMessage {
             mxr_core::types::UnsubscribeMethod::None
         )
     }
-    fn body_text(&self) -> Option<&str> {
-        // The same text the search index holds, so a rule and a search agree
+    fn body_parts(&self) -> Option<Vec<&str>> {
+        // The same parts the search index joins, so a rule and a search agree
         // on what a message says. Raw markup and style contents are not text.
         self.searchable_body
             .get_or_init(|| {
@@ -1906,15 +1906,13 @@ impl mxr_rules::MessageView for RuleMessage {
                 if body.text_plain.is_none() && body.text_html.is_none() {
                     return None;
                 }
-                Some(
-                    mxr_reader::searchable_text(
-                        body.text_plain.as_deref(),
-                        body.text_html.as_deref(),
-                    )
-                    .text,
-                )
+                Some(mxr_reader::searchable_parts(
+                    body.text_plain.as_deref(),
+                    body.text_html.as_deref(),
+                ))
             })
-            .as_deref()
+            .as_ref()
+            .map(|parts| parts.iter().map(String::as_str).collect())
     }
     fn link_density_inputs(&self) -> (u32, u32) {
         (self.envelope.link_count, self.envelope.body_word_count)
@@ -4290,12 +4288,32 @@ mod rule_message_text_tests {
     }
 
     #[test]
-    fn rule_body_text_is_the_search_text_and_is_stable_across_calls() {
+    fn rule_body_parts_are_the_search_parts_and_are_stable_across_calls() {
         let view = message(Some("plain words"), Some("<p>html words</p>"));
-        let expected =
-            mxr_reader::searchable_text(Some("plain words"), Some("<p>html words</p>")).text;
-        assert_eq!(view.body_text(), Some(expected.as_str()));
-        assert_eq!(view.body_text(), Some(expected.as_str()));
+        let expected = mxr_reader::searchable_parts(Some("plain words"), Some("<p>html words</p>"));
+        let parts = |view: &RuleMessage| -> Vec<String> {
+            view.body_parts()
+                .unwrap_or_default()
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(parts(&view), expected);
+        assert_eq!(parts(&view), expected);
+    }
+
+    #[test]
+    fn exact_and_anchored_rules_match_a_plain_and_html_duplicate() {
+        // The same word in both parts must still satisfy a whole-text rule.
+        let view = message(Some("invoice"), Some("<p>invoice</p>"));
+        let exact = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Exact("invoice".to_string()),
+        });
+        let anchored = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Regex("^invoice$".to_string()),
+        });
+        assert_eq!(exact.evaluate_known(&view), Some(true));
+        assert_eq!(anchored.evaluate_known(&view), Some(true));
     }
 
     #[test]
@@ -4308,5 +4326,17 @@ mod rule_message_text_tests {
         empty.text_plain = None;
         let no_text = RuleMessage::from_parts(envelope, Some(empty), Vec::new());
         assert_eq!(body_contains("anything").evaluate_known(&no_text), None);
+    }
+
+    #[test]
+    fn a_long_html_paragraph_matches_a_phrase_rule_across_its_display_wrap() {
+        // The reader breaks this paragraph at 80 columns; the rule must still
+        // see "payment overdue" as the words the sender wrote.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let view = message(None, Some(&html));
+        assert_eq!(
+            body_contains("payment overdue").evaluate_known(&view),
+            Some(true)
+        );
     }
 }

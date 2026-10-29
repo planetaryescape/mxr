@@ -57,6 +57,45 @@ pub(crate) fn startup_rebuild_needed(
     stale_content || (total_messages != 0 && indexed != u64::from(total_messages))
 }
 
+/// Submits one page read earlier. A live batch can commit a newer version of
+/// one of these messages between the read and this submit, and the page would
+/// then overwrite it. So after the submit, any message of the page that a live
+/// batch touched is reloaded from SQLite and written again.
+async fn submit_page(
+    search: &SearchServiceHandle,
+    store: &Store,
+    batch: SearchUpdateBatch,
+    page_ids: &[MessageId],
+) -> Result<(), MxrError> {
+    search.apply_rebuild_batch(batch).await?;
+    search
+        .recheck_page(page_ids, |ids| reread_page(store, ids))
+        .await
+}
+
+/// The current index entries for `ids`, read from SQLite. A message that no
+/// longer exists is removed from the index.
+async fn reread_page(store: &Store, ids: Vec<MessageId>) -> Result<SearchUpdateBatch, MxrError> {
+    let store_error = |e: sqlx::Error| MxrError::Store(e.to_string());
+    let mut bodies = store.bodies_for_messages(&ids).await.map_err(store_error)?;
+    let reply_later = store
+        .reply_later_message_ids(&ids)
+        .await
+        .map_err(store_error)?;
+    let mut batch = SearchUpdateBatch::default();
+    for id in ids {
+        match store.get_envelope(&id).await.map_err(store_error)? {
+            Some(envelope) => batch.entries.push(SearchIndexEntry {
+                body: bodies.remove(&id),
+                reply_later: reply_later.contains(&id),
+                envelope,
+            }),
+            None => batch.removed_message_ids.push(id),
+        }
+    }
+    Ok(batch)
+}
+
 /// Pages by primary key, not by offset. An offset page re-sorts the table and
 /// walks past every earlier row, so the rebuild got slower as it went. A key
 /// seek costs the same at the start and the end of the mailbox.
@@ -72,6 +111,7 @@ async fn reindex_in_batches(
     // Only a complete rebuild clears the incomplete state. A rebuild that fails
     // part way drops this guard unfinished, so search keeps answering from SQLite.
     let rebuilding = search.begin_rebuild();
+    search.reset_live_touches().await;
     // Count only the bodies this rebuild falls back on, not earlier syncs.
     search.take_clean_fallbacks();
     let total = store
@@ -119,10 +159,11 @@ async fn reindex_in_batches(
                 progress(ReindexProgress::Indexing { indexed, total });
             }
         }
-        search.apply_batch(batch).await?;
+        submit_page(search, store, batch, &ids).await?;
     }
 
     progress(ReindexProgress::Complete { indexed });
+    search.reset_live_touches().await;
 
     let clean_fallbacks = search.take_clean_fallbacks();
     if clean_fallbacks > 0 {
@@ -366,5 +407,68 @@ mod tests {
         // The retention predicate keeps the newest rebuilt row, so this reason
         // survives pruning for doctor and status to read.
         assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
+    }
+
+    #[tokio::test]
+    async fn a_live_update_between_a_page_read_and_its_submit_is_not_overwritten() {
+        use mxr_core::types::SortOrder;
+
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account = state.default_account_id();
+        let stored = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account)
+            .subject("stalepageword")
+            .build();
+        state.store.upsert_envelope(&stored).await.unwrap();
+        let ids = vec![stored.id.clone()];
+
+        let rebuild = state.search.begin_rebuild();
+        state.search.reset_live_touches().await;
+        // The page the rebuild read before the live update.
+        let read_page = SearchUpdateBatch {
+            entries: vec![SearchIndexEntry {
+                envelope: stored.clone(),
+                body: None,
+                reply_later: false,
+            }],
+            removed_message_ids: Vec::new(),
+        };
+        // A live sync commits a newer version and applies it to the index
+        // before the rebuild submits its older page.
+        let mut newer = stored.clone();
+        newer.subject = "freshpageword".to_string();
+        state.store.upsert_envelope(&newer).await.unwrap();
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: vec![SearchIndexEntry {
+                    envelope: newer.clone(),
+                    body: None,
+                    reply_later: false,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
+
+        submit_page(&state.search, &state.store, read_page, &ids)
+            .await
+            .unwrap();
+        state.search.reset_live_touches().await;
+        rebuild.finish();
+
+        let fresh = state
+            .search
+            .search("freshpageword", 10, 0, SortOrder::Relevance)
+            .await
+            .unwrap();
+        assert_eq!(fresh.results.len(), 1);
+        assert_eq!(fresh.results[0].message_id, stored.id.as_str());
+        let stale = state
+            .search
+            .search("stalepageword", 10, 0, SortOrder::Relevance)
+            .await
+            .unwrap();
+        assert!(stale.results.is_empty());
     }
 }

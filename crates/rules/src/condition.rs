@@ -142,7 +142,9 @@ pub trait MessageView {
     fn is_unread(&self) -> bool;
     fn is_starred(&self) -> bool;
     fn has_unsubscribe(&self) -> bool;
-    fn body_text(&self) -> Option<&str>;
+    /// The message's matchable body parts (plain and HTML, each its own
+    /// string), or `None` when there is no body text to match.
+    fn body_parts(&self) -> Option<Vec<&str>>;
     /// Computed link count and body word count for the message body. Default
     /// returns `(0, 0)` so existing implementations stay compatible — only
     /// MessageView impls that actually feed link-density rules need to
@@ -216,7 +218,7 @@ impl Conditions {
                     Some(false)
                 }
             }
-            Self::Field(FieldCondition::BodyContains { .. }) if msg.body_text().is_none() => None,
+            Self::Field(FieldCondition::BodyContains { .. }) if msg.body_parts().is_none() => None,
             _ => Some(self.evaluate(msg)),
         }
     }
@@ -248,7 +250,10 @@ impl FieldCondition {
             Self::IsStarred => msg.is_starred(),
             Self::HasUnsubscribe => msg.has_unsubscribe(),
             Self::BodyContains { pattern } => {
-                msg.body_text().is_some_and(|body| pattern.matches(body))
+                // Any part may satisfy the pattern: a rule anchored with
+                // `^...$` or an exact match is about one part's whole text.
+                msg.body_parts()
+                    .is_some_and(|parts| parts.iter().any(|part| pattern.matches(part)))
             }
             Self::LinkDensity { match_kind } => {
                 let (link_count, body_word_count) = msg.link_density_inputs();

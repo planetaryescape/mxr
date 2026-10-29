@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Inspect local/cloud LLM provider status
+
+Usage: mxr llm [OPTIONS] [COMMAND]
+
+Commands:
+  status  Show each AI feature's model, the providers it goes through and their health
+  key     Manage the Anthropic, OpenAI and OpenRouter API keys used for hosted models
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

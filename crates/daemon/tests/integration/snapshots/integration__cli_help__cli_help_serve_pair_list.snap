@@ -1,0 +1,9 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Usage: mxr serve pair list [OPTIONS]
+
+Options:
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

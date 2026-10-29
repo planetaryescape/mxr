@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Find promises you made in a message you sent, with their due times
+
+Usage: mxr commitments detect [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  The sent message to read
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

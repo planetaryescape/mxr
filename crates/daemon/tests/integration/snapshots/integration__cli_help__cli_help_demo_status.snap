@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Show whether demo mode is active and where its profile lives
+
+Usage: mxr demo status
+
+Options:
+  -h, --help  Print help

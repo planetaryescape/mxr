@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview activation, or activate after confirming the source owner is stopped
+
+Usage: mxr recovery activate [OPTIONS] --expected-workspace <JSON>
+
+Options:
+      --source-owner-stopped
+      --expected-workspace <JSON>  Owner JSON returned by `mxr recovery status` or its preview
+      --confirm
+      --format <FORMAT>            [possible values: table, json, jsonl, csv, ids]
+  -h, --help                       Print help

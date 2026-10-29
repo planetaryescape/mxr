@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview deletion, or confirm the exact preview with its token
+
+Usage: mxr categories delete [OPTIONS] [CATEGORY_ID]
+
+Arguments:
+  [CATEGORY_ID]
+
+Options:
+      --preview-token <PREVIEW_TOKEN>
+  -h, --help                           Print help

@@ -6,7 +6,7 @@
 git clone https://github.com/planetaryescape/mxr
 cd mxr
 cargo build -p mxr
-scripts/cargo-test -p mxr --test cli_help
+scripts/cargo-test -p mxr --test integration cli_help::
 ```
 
 If you need the docs site too:

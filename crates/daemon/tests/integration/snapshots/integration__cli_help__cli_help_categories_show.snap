@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Usage: mxr categories show [OPTIONS] <CATEGORY_ID>
+
+Arguments:
+  <CATEGORY_ID>
+
+Options:
+      --limit <LIMIT>    [default: 50]
+      --offset <OFFSET>  [default: 0]
+  -h, --help             Print help

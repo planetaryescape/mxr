@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Re-save account passwords into mxr's local credential stores
+
+Usage: mxr accounts repair [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+      --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

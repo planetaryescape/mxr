@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+assertion_line: 14
+expression: stdout
+---
+Add a contact to the watchlist
+
+Usage: mxr cadence watch [OPTIONS] <EMAIL>
+
+Arguments:
+  <EMAIL>
+
+Options:
+      --account <ACCOUNT>
+      --expected-days <EXPECTED_DAYS>
+      --every <EVERY>                  Expected cadence as a duration, e.g. `14d`, `2w`, or `30 days`
+      --note <NOTE>
+      --allow-list-sender              Watch the contact even if it looks like a list sender
+  -h, --help                           Print help

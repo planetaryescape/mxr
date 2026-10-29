@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Serve MCP over stdio
+
+Usage: mxr mcp serve
+
+Options:
+  -h, --help  Print help

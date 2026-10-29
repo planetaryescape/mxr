@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+List scoped default signatures
+
+Usage: mxr signatures defaults
+
+Options:
+  -h, --help  Print help

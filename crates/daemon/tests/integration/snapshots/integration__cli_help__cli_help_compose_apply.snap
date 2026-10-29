@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Write an accepted proposal into a stored draft. Refused if the draft's text has changed since the proposal was made. Signature and forward header stay as they are
+
+Usage: mxr compose apply [OPTIONS] --draft <DRAFT_ID> <PROPOSAL_ID>
+
+Arguments:
+  <PROPOSAL_ID>  Proposal id from `mxr compose assist`; proposals last 30 minutes
+
+Options:
+      --draft <DRAFT_ID>  The stored draft to write into
+      --format <FORMAT>   [possible values: table, json, jsonl, csv, ids]
+  -h, --help              Print help

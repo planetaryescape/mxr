@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Archive a message (remove from inbox)
+
+Usage: mxr archive [OPTIONS] [MESSAGE_ID]...
+
+Arguments:
+  [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
+
+Options:
+      --search <SEARCH>    Operate on the newest messages matching a search query, up to 1,000. The command says before acting when more than 1,000 match
+      --account <ACCOUNT>
+      --yes                Skip confirmation
+      --dry-run            Show what would happen
+      --async              Submit in the background; query the retained ID with `mxr archive-operation`
+      --format <FORMAT>    Output format: table, json, jsonl, ids
+  -h, --help               Print help

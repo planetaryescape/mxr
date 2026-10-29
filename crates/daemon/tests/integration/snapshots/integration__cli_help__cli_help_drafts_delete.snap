@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Permanently delete a draft and its linked provider draft, if present. `discard` remains as an alias for compatibility with earlier releases
+
+Usage: mxr drafts delete [OPTIONS] <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to delete
+
+Options:
+      --dry-run  Show the exact draft that would be deleted without deleting it
+  -h, --help     Print help

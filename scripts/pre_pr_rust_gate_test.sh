@@ -25,7 +25,7 @@ expect_map "root sources map to the mxr binary crate" "mxr" \
 expect_map "daemon sources belong to the root mxr crate (no crates/daemon manifest)" "mxr" \
   crates/daemon/src/handler/messages.rs
 expect_map "daemon tests and bins map to the root crate too" "mxr" \
-  crates/daemon/tests/cli_help.rs crates/daemon/src/bin/chime_player.rs
+  crates/daemon/tests/integration/cli_help.rs crates/daemon/src/bin/chime_player.rs
 expect_map "daemon and a crate together" "mxr,mxr-tui" \
   crates/daemon/src/lib.rs crates/tui/src/app.rs
 expect_map "workspace lock change must still build the shipped binary" "mxr" \

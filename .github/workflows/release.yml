@@ -74,7 +74,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Run release-blocking CLI tests
         if: needs.plan.outputs.cli_changed == 'true'
-        run: cargo nextest run -p mxr --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
+        run: cargo nextest run -p mxr --test integration cli_journey:: daemon_lifecycle:: reset_cli:: cli_help::
       - name: Run deterministic provider smoke suite
         if: needs.plan.outputs.cli_changed == 'true'
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
@@ -102,7 +102,7 @@ jobs:
             echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
             exit 0
           fi
-          cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+          cargo test -p mxr --test integration live_gmail_e2e:: -- --ignored --nocapture
       - name: Skip CLI smoke
         if: needs.plan.outputs.cli_changed != 'true'
         run: echo "CLI artifacts unchanged; skipping CLI smoke."

@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Put this sender in Reading (kept off the desk)
+
+Usage: mxr screener feed [OPTIONS] <SENDER_EMAIL>
+
+Arguments:
+  <SENDER_EMAIL>
+
+Options:
+      --label <LABEL>
+  -h, --help           Print help

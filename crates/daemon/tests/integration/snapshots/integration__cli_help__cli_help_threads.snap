@@ -1,0 +1,31 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+List threads in date-descending order. Each returned thread includes its constituent message IDs (date-ascending). Filter by account or label; paginate with --limit/--offset
+
+Usage: mxr threads [OPTIONS]
+
+Options:
+      --account <ACCOUNT>
+
+
+      --label <LABEL>
+
+
+      --limit <LIMIT>
+          [default: 50]
+
+      --offset <OFFSET>
+          [default: 0]
+
+      --sort <SORT>
+          Possible values:
+          - latest-desc: Latest message first (default)
+          - date-asc:    Oldest message first
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

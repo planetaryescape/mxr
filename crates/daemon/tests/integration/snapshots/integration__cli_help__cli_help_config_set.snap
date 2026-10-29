@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Set a config value
+
+Usage: mxr config set [OPTIONS] <KEY> <VALUE>
+
+Arguments:
+  <KEY>    Dotted key path (e.g. general.sync_interval, appearance.theme)
+  <VALUE>  Value to set
+
+Options:
+      --dry-run  Show the change without writing config.toml
+  -h, --help     Print help

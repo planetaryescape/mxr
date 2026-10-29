@@ -2,7 +2,7 @@
 /**
  * Generates per-command Markdown pages for the mxr CLI reference,
  * driven by the captured `--help` snapshots in
- * `crates/daemon/tests/snapshots/cli_help__*.snap`.
+ * `crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap`.
  *
  * Output: site/src/content/docs/reference/cli/<command>.md (+ index.md).
  * Each page is structured: synopsis, description, arguments, options,
@@ -19,9 +19,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
-const SNAPSHOT_DIR = join(REPO_ROOT, 'crates', 'daemon', 'tests', 'snapshots');
+const SNAPSHOT_DIR = join(REPO_ROOT, 'crates', 'daemon', 'tests', 'integration', 'snapshots');
 const OUT_DIR = join(REPO_ROOT, 'site', 'src', 'content', 'docs', 'reference', 'cli');
-const PREFIX = 'cli_help__cli_help_';
+const PREFIX = 'integration__cli_help__cli_help_';
 const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW`, `--operation-id OPERATION_ID_FROM_PREVIEW` and `--expected-workspace \'<OWNER_JSON_FROM_PREVIEW>\'`. Use that same quoted owner for `mxr send-outcome` and for scheduling with `--at TIME`.';
 
 const COMMAND_EXAMPLES = {
@@ -777,7 +777,7 @@ export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) 
         ? group?.own
         : group?.subs.find((sub) => sub.name === childPath.slice(1).join(' '))?.parsed;
       if (!help?.usage) {
-        throw new Error(`Missing help snapshot for mxr ${childPath.join(' ')}; add its --help case in crates/daemon/tests/cli_help.rs.`);
+        throw new Error(`Missing help snapshot for mxr ${childPath.join(' ')}; add its --help case in crates/daemon/tests/integration/cli_help.rs.`);
       }
       requireHelp(help, childPath);
     }
@@ -808,7 +808,7 @@ title: "mxr ${cmd.name}"
 description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
 ---
 
-> Generated from \`mxr ${cmd.name} --help\`. After editing \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test cli_help\`, then rebuild \`site/\`.
+> Generated from \`mxr ${cmd.name} --help\`. After editing \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test integration cli_help::\`, then rebuild \`site/\`.
 
 `;
 
@@ -844,7 +844,7 @@ title: CLI reference
 description: Every \`mxr\` subcommand. Generated from --help snapshots, so it matches the binary.
 ---
 
-> Generated from the captured \`--help\` snapshots at \`crates/daemon/tests/snapshots/cli_help__*.snap\`. After changing a clap definition in \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test cli_help\`, then rebuild the site. Missing command-help inputs fail generation.
+> Generated from the captured \`--help\` snapshots at \`crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap\`. After changing a clap definition in \`crates/daemon/src/cli/\`, update and review the snapshots with \`scripts/cargo-test -p mxr --test integration cli_help::\`, then rebuild the site. Missing command-help inputs fail generation.
 
 mxr is a single binary with subcommands. Running \`mxr\` with no arguments launches the TUI.
 

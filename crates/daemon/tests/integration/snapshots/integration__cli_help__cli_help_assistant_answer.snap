@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Answer a question the assistant asked. For one question, use --choose and/or --other; for several, --answers-json
+
+Usage: mxr assistant answer [OPTIONS] <CONVERSATION> <CALL_ID>
+
+Arguments:
+  <CONVERSATION>
+  <CALL_ID>
+
+Options:
+      --choose <CHOOSE>              An option's label (repeatable for multi-select questions)
+      --other <OTHER>                Your own answer
+      --answers-json <ANSWERS_JSON>  One answer per question: [{"selected": ["Work"], "other": null}, ...]
+      --no-wait
+      --format <FORMAT>              [possible values: table, json, jsonl, csv, ids]
+  -h, --help                         Print help

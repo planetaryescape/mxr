@@ -86,6 +86,14 @@ test("HTML mail renders in a sandbox without scripts, trackers stripped and remo
   expect(await page.evaluate(() => (window as { PWNED?: number }).PWNED)).toBeUndefined();
   const body = frame.contentFrame();
   await expect(body.getByText("visible body")).toBeVisible();
+  // Keys still reach the app after a click in the message. WebKit runs no
+  // listeners inside the script-less frame, so the page takes focus back.
+  await body.getByText("visible body").click();
+  await page.keyboard.press("?");
+  const help = page.getByRole("dialog", { name: "Help and keyboard shortcuts" });
+  await expect(help).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
   // Tracking pixels are stripped; other remote images wait for consent.
   await expect(body.getByAltText("tracking pixel")).toHaveCount(0);
   // A blocked image is a small inline note, not an empty box its size.

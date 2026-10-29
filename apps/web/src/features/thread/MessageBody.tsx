@@ -11,6 +11,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 import { ASK_MARK_ATTRIBUTE, markQuoteInDocument } from "./context/askQuote";
 import { LINK_MARK_ATTRIBUTE, markLinkInDocument } from "./linkHighlight";
+import { returnFocusFromFrame } from "./messageFrameFocus";
 
 interface MessageBodyProps {
   html: string;
@@ -79,6 +80,12 @@ export function MessageBody({
     [],
   );
 
+  useEffect(() => {
+    const frame = iframeRef.current;
+    if (!frame) return;
+    return returnFocusFromFrame(frame, () => onInteractRef.current?.());
+  }, []);
+
   function clearResizeTimeouts() {
     resizeTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
     resizeTimeoutsRef.current = [];
@@ -135,8 +142,9 @@ export function MessageBody({
         resizeObserverRef.current.observe(body);
       }
       doc?.addEventListener("click", handleLinkClick);
-      // Keys typed after clicking into a message still reach the app's
-      // dispatcher; the frame runs no scripts of its own.
+      // Keys typed while a link in the message has focus still reach the
+      // app's dispatcher; the frame runs no scripts of its own. WebKit runs
+      // none of these listeners: returnFocusFromFrame covers it.
       doc?.addEventListener("keydown", forwardKeydown);
       // A click in the message makes the reader the active pane, or keys
       // forwarded from here would act on the list.

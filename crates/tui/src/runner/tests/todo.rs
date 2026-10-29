@@ -742,8 +742,12 @@ fn a_failed_dismissal_brings_the_hint_back() {
 #[test]
 fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
     let mut app = todo_app(true);
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'Z');
-    assert_eq!(app.status_message.as_deref(), Some("Schedule is now b"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "Z", "Schedule is now b", before.as_deref())
+    );
     assert!(!app.modals.snooze_panel.visible);
     press(&mut app, KeyCode::Char('b'));
     assert_eq!(
@@ -949,12 +953,20 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
 #[test]
 fn the_digits_pick_to_dos_tabs_and_the_old_letters_say_so() {
     let mut app = todo_app(true);
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'C');
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
-    assert_eq!(app.status_message.as_deref(), Some("Catch-up is now 2"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "C", "Catch-up is now 2", before.as_deref())
+    );
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'E');
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
-    assert_eq!(app.status_message.as_deref(), Some("Expired is now 3"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "E", "Expired is now 3", before.as_deref())
+    );
     for (key, panel) in [
         ('3', TodoPanel::Expired),
         ('2', TodoPanel::Catchup),

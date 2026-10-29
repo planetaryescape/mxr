@@ -10,6 +10,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+import { mxrVersion } from "./scripts/mxr-version";
 import { pwaOptions } from "./src/lib/pwaConfig";
 
 /**
@@ -60,6 +61,9 @@ const BRIDGE_TARGET = resolveBridgeTarget();
 const BRIDGE_WS_TARGET = BRIDGE_TARGET.replace(/^http/, "ws");
 
 export default defineConfig({
+  define: {
+    MXR_BUILD_VERSION: JSON.stringify(mxrVersion()),
+  },
   plugins: [
     TanStackRouterVite({
       target: "react",

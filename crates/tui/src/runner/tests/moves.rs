@@ -378,8 +378,12 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
         other => panic!("expected a question, got {other:?}"),
     };
     // The old one-key answers say where answering went and move nothing.
+    let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('r'));
-    assert_eq!(app.status_message.as_deref(), Some("Move is now X"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("not-sure", "r", "Move is now X", before.as_deref())
+    );
     assert!(queued(&app).is_empty());
 
     press(&mut app, KeyCode::Char('X'));
@@ -474,8 +478,12 @@ fn the_move_picker_moves_its_highlight_with_j_and_closes_on_q() {
 #[test]
 fn pass_to_mode_and_its_old_key_point_at_x() {
     let mut app = inbox_app();
+    let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('T'));
-    assert_eq!(app.status_message.as_deref(), Some("Pass to is now X"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("list", "T", "Pass to is now X", before.as_deref())
+    );
     assert!(app.mailbox.records_page.pass_menu.is_none());
 }
 

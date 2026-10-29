@@ -397,7 +397,7 @@ The places that show keys stay as D130 set them: the lit row's actions, the stat
 
 1. **The prefix popup.** Described in "Prefixes show what can follow".
 2. **Next time.** When an action that has a key runs from the palette or a click, the toast adds "Next time: `e`". It shows once per action per profile and is stored with the hint seen-state (chapter 22's `SetHintSeen`). NN/g recommends introducing a shortcut after the user has done the action the standard way. Superhuman's palette shows the shortcut "for next time".
-3. **Moved keys.** For 30 patch releases after a key moves, pressing the old key does nothing except show where its action went: "Let go of all is now `E`". It never runs the old action, so an old habit cannot do something unexpected. Each move is an `[[action.moved]]` entry with an `until` version; the definition check fails once mxr reaches it, so the entry is deleted.
+3. **Moved keys.** For 30 patch releases after a key moves, pressing the old key does nothing except show where its action went: "Let go of all is now `E`". It never runs the old action, so an old habit cannot do something unexpected. Each move is an `[[action.moved]]` entry with an `until` version. From that release on both clients ignore the entry, so the old key does nothing and shows nothing; no release waits on deleting it. CI warns about expired entries, and a weekly workflow deletes them in one PR (D171, amended 2026-10-29).
 
 ## Keys work for everyone, on every keyboard
 

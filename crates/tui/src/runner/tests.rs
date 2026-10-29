@@ -132,6 +132,42 @@ fn set_active_inbox(app: &mut App) {
         .map(|label| label.id.clone());
 }
 
+/// The status line after pressing a moved key in `place`: its notice while
+/// the definition still announces the move, and the line as it was
+/// `before` once the move's `until` release is reached (blueprint 35,
+/// D171). Either way the key runs nothing.
+fn notice_while_announced<'a>(
+    place: &str,
+    keys: &str,
+    notice: &'a str,
+    before: Option<&'a str>,
+) -> Option<&'a str> {
+    match mxr_keymap::defaults().moved_entry(place, keys) {
+        Some(_) => Some(notice),
+        None => before,
+    }
+}
+
+/// `app` announcing `id`'s old `key` in `contexts` until `until`, whatever
+/// this release's definition still announces.
+fn with_move(app: &mut App, id: &str, key: &str, contexts: &[&str], until: &str) {
+    let mut keymap = app.keybindings.keymap().clone();
+    let action = keymap
+        .actions
+        .iter_mut()
+        .find(|action| action.id == id)
+        .unwrap_or_else(|| panic!("{id} is defined"));
+    action.moved.push(mxr_keymap::MovedKey {
+        key: key.to_string(),
+        contexts: contexts.iter().map(ToString::to_string).collect(),
+        until: until.to_string(),
+        to: None,
+        to_key: None,
+    });
+    app.keybindings
+        .set_keymap(keymap.live_at(mxr_keymap::VERSION));
+}
+
 // --- Navigation tests ---
 
 // --- Back navigation tests ---

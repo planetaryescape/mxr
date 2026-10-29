@@ -4,7 +4,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { definedShortcut } from "@/lib/actions/definition";
+import { definedShortcut, movedOverlayKey } from "@/lib/actions/definition";
 import { useKeyScope } from "@/state/keyScopeStore";
 
 import { openMovePicker, performMove } from "./moves";
@@ -143,11 +143,12 @@ function NotSureRow({
       });
       return;
     }
-    // The old one-key answers say where they went until 0.6.197. `u` is
-    // undo everywhere, so it can't be announced.
+    // The old one-key answers answer nothing, and say where they went while
+    // the definition still announces it (until 0.6.197, D171). `u` is undo
+    // everywhere, so it can't be announced.
     if (event.shiftKey || event.key === "u" || !modeForKey(event.key)) return;
     event.preventDefault();
-    useKeyScope.getState().showMoved("Move", MOVE_KEY);
+    if (movedOverlayKey("not-sure", event.key)) useKeyScope.getState().showMoved("Move", MOVE_KEY);
   };
   return (
     <div

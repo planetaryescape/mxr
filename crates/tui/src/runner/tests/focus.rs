@@ -233,11 +233,17 @@ fn send_and_next_moves_on_only_for_the_reply_written_here() {
 fn remind_and_d_open_the_reply_with_the_reminder_or_the_writing_model_after() {
     let (mut app, owed, _later) = focus_app();
     // w is Wake now: it says where Send, remind went and runs nothing.
+    let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('w'));
     assert!(!app.compose.remind_after_editor);
     assert_eq!(
         app.status_message.as_deref(),
-        Some("Send, remind has no key now; find it in the palette")
+        notice_while_announced(
+            "focus",
+            "w",
+            "Send, remind has no key now; find it in the palette",
+            before.as_deref()
+        )
     );
     app.apply(Action::FocusRemind);
     assert!(app.compose.remind_after_editor);

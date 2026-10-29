@@ -271,8 +271,12 @@ fn a_new_senders_question_is_answered_through_x() {
     // Iris, the third person, is new.
     app.mailbox.selected_index = 2;
     // The digits that answered moved into the X picker.
+    let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('2'));
-    assert_eq!(app.status_message.as_deref(), Some("New sender is now X"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("now", "2", "New sender is now X", before.as_deref())
+    );
     assert!(queued(&app).is_empty());
     let x = app
         .handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::SHIFT))

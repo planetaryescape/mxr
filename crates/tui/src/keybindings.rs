@@ -40,6 +40,13 @@ impl KeybindingConfig {
             .unwrap_or_else(|| mxr_keymap::defaults())
     }
 
+    /// Use `keymap` as the definition, so a test can choose which moves
+    /// are announced rather than depend on which this release still has.
+    #[cfg(test)]
+    pub(crate) fn set_keymap(&mut self, keymap: mxr_keymap::Keymap) {
+        self.remapped = Some(keymap);
+    }
+
     pub(crate) fn bindings(&self, context: ViewContext) -> &HashMap<KeyBinding, String> {
         match context {
             ViewContext::MailList => &self.mail_list,

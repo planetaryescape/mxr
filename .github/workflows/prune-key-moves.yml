@@ -1,0 +1,71 @@
+name: Prune expired key moves
+
+# A moved key's notice stops at its `until` release, and mxr ignores the
+# entry from then on (blueprint 35, D171 as amended 2026-10-29), so no
+# release waits on deleting it. This deletes the ignored entries from
+# crates/keymap/keymap.toml in one PR now and then.
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prune-key-moves
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      BRANCH: chore/prune-expired-key-moves
+    steps:
+      - name: Require release token
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::error ::RELEASE_PLEASE_TOKEN is required: a PR pushed with the default GITHUB_TOKEN runs no CI."
+            exit 1
+          fi
+      # The PAT pushes the branch and opens the PR, so CI runs on it as it
+      # does on the release PR.
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/prune_expired_key_moves
+      - name: Open or update the PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          # The definition and the files written from it, nothing else.
+          git add crates/keymap/keymap.toml \
+            apps/web/src/lib/actions/keymap.generated.json \
+            apps/raycast/src/keymap.generated.json \
+            site/src/content/docs/reference/keybindings.md
+          if git diff --cached --quiet; then
+            echo "No moved key has expired."
+            exit 0
+          fi
+          git config user.name "Bhekani Khumalo"
+          git config user.email "4772279+bhekanik@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git commit -m "chore: delete expired key-move notices"
+          git push --force origin "$BRANCH"
+          body="$(cat <<'EOF'
+          mxr already ignores these `[[action.moved]]` entries: each one's `until` release has passed, so its old key does nothing and shows no notice in either client (blueprint 35, D171). This deletes them from `crates/keymap/keymap.toml`, with any TUI action left with no binding, and regenerates the files written from the definition. It changes no behaviour, so it is a `chore:` and releases nothing.
+
+          Left for a human: a hand-written TUI `announce_moved` call site for one of these keys is dead code now. It already shows nothing, because `announce_moved` only announces a move the definition still has.
+
+          Opened by `.github/workflows/prune-key-moves.yml` (`scripts/prune_expired_key_moves`).
+          EOF
+          )"
+          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
+            gh pr create --base main --head "$BRANCH" --title "chore: delete expired key-move notices" --body "$body"
+          else
+            gh pr edit "$BRANCH" --body "$body"
+          fi

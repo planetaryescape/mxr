@@ -1231,14 +1231,19 @@ fn mail_list_remaps_stay_out_of_the_modes() {
 /// starts with a prefix.
 #[test]
 fn a_moved_key_names_its_new_key_and_runs_nothing() {
-    let mut app = app_in("todo");
+    let todo = |until| {
+        let mut app = app_in("todo");
+        with_move(&mut app, "todo.catchup", "C", &["todo"], until);
+        app
+    };
+    let mut app = todo("999.0.0");
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
     assert_eq!(app.handle_key(shifted('C')), None);
     let notice = app.status_message.clone().unwrap_or_default();
     assert!(notice.ends_with("is now 2"), "{notice}");
     assert_eq!(press_char(&mut app, '2'), Some(Action::TodoOpenCatchup));
 
-    let mut app = app_in("todo");
+    let mut app = todo("999.0.0");
     assert_eq!(press_char(&mut app, 'g'), None);
     assert_eq!(
         app.handle_key(shifted('C')),
@@ -1247,10 +1252,47 @@ fn a_moved_key_names_its_new_key_and_runs_nothing() {
     );
 
     let mut app = app_in("list");
+    with_move(
+        &mut app,
+        "mail.snooze",
+        "Z",
+        &["list", "reader", "place"],
+        "999.0.0",
+    );
     assert_eq!(app.handle_key(shifted('Z')), None);
     let notice = app.status_message.clone().unwrap_or_default();
     assert!(notice.ends_with("is now b"), "{notice}");
     assert_eq!(press_char(&mut app, 'b'), Some(Action::Snooze));
+}
+
+/// From its `until` release on, a move is ignored: the old key shows
+/// nothing and still runs nothing (D171).
+#[test]
+fn an_expired_moved_key_does_nothing() {
+    // `Q` is free in To do and no shipped move names it.
+    let mut app = app_in("todo");
+    with_move(
+        &mut app,
+        "todo.catchup",
+        "Q",
+        &["todo"],
+        mxr_keymap::VERSION,
+    );
+    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    let before = app.status_message.clone();
+    assert_eq!(app.handle_key(shifted('Q')), None);
+    assert_eq!(app.status_message, before, "no notice");
+    assert!(!app.input_pending());
+
+    // A moved sequence holds its first key only while it is announced.
+    for (until, waits) in [("999.0.0", true), ("0.0.1", false)] {
+        let mut app = app_in("todo");
+        with_move(&mut app, "todo.catchup", "y y", &["todo"], until);
+        assert_eq!(press_char(&mut app, 'y'), None);
+        assert_eq!(app.input_pending(), waits, "until {until}");
+    }
+    // And the clients start from the definition as this release uses it.
+    assert_eq!(app_in("list").keybindings.keymap(), mxr_keymap::defaults());
 }
 
 /// Blueprint 35's `g` table: tools take `g` and a capital, in the mailbox
@@ -1464,11 +1506,17 @@ fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
 fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
     let mut app = app_in("list");
     app.mailbox.envelopes = make_test_envelopes(3);
+    let before = app.status_message.clone();
     assert_eq!(press_char(&mut app, 'n'), None);
     assert_eq!(app.mailbox.selected_index, 0);
     assert_eq!(
         app.status_message.as_deref(),
-        Some("Next search result is now j")
+        notice_while_announced(
+            "list",
+            "n",
+            "Next search result is now j",
+            before.as_deref()
+        )
     );
 }
 
@@ -1560,32 +1608,11 @@ fn with_single_keys_off_e_does_nothing_and_the_palette_still_archives() {
 
 #[test]
 fn a_moved_key_names_the_key_the_person_gave_its_action() {
-    let keymap = mxr_keymap::defaults();
-    let (place, key, target) = keymap
-        .actions
-        .iter()
-        .filter(|action| {
-            action
-                .tui
-                .iter()
-                .any(|binding| binding.contexts.includes("todo") && !binding.keys.is_empty())
-        })
-        .find_map(|action| {
-            let moved = action.moved.iter().find(|moved| {
-                moved.to.is_none()
-                    && moved.to_key.is_none()
-                    && moved.contexts.iter().any(|c| c == "todo")
-            })?;
-            Some(("todo", moved.key.clone(), action.id.clone()))
-        })
-        .expect("a key moved within To do");
-    let mut app = remapped_app(place, &format!("[actions]\n\"{target}\" = \"%\"\n"));
-    press_char(&mut app, key.chars().next().unwrap());
-    if let Some(second) = key.split(' ').nth(1).and_then(|k| k.chars().next()) {
-        press_char(&mut app, second);
-    }
+    let mut app = remapped_app("todo", "[actions]\n\"todo.catchup\" = \"%\"\n");
+    with_move(&mut app, "todo.catchup", "C", &["todo"], "999.0.0");
+    app.handle_key(KeyEvent::new(KeyCode::Char('C'), KeyModifiers::SHIFT));
     let status = app.status_message.clone().unwrap_or_default();
-    assert!(status.ends_with("is now %"), "{key} in {place}: {status}");
+    assert!(status.ends_with("is now %"), "C in todo: {status}");
 }
 
 #[test]

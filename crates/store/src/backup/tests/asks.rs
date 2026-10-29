@@ -49,7 +49,7 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 105);
+    assert_eq!(manifest.schema_version, 106);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -146,6 +146,10 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .execute(&mut db)
             .await
             .unwrap();
+        sqlx::query("DROP INDEX IF EXISTS idx_accounts_identity_tag")
+            .execute(&mut db)
+            .await
+            .unwrap();
         sqlx::query("DELETE FROM schema_migrations WHERE version > ?")
             .bind(version)
             .execute(&mut db)
@@ -177,7 +181,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105]);
+            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105, 106]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

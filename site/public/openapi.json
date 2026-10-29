@@ -8367,6 +8367,10 @@
               }
             ]
           },
+          "saved": {
+            "type": "boolean",
+            "description": "True when the config change was written to disk even though `ok` is\nfalse, because a later phase (runtime reload, cached mail) failed. The\nchange is saved but not fully applied."
+          },
           "send": {
             "oneOf": [
               {

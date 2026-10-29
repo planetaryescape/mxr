@@ -2980,12 +2980,13 @@ fn request_is_draft_only(req: &Request) -> bool {
 
 /// Whether a response counts as success for the activity log. An account
 /// operation the daemon refused comes back as `Ok` with `ok: false`, and that
-/// is not a success.
+/// is not a success. One that saved its config and then failed a later phase
+/// still changed the config, so it is recorded.
 fn response_succeeded(response: &Response) -> bool {
     match response {
         Response::Ok {
             data: ResponseData::AccountOperation { result },
-        } => result.ok,
+        } => result.ok || result.saved,
         Response::Ok { .. } => true,
         _ => false,
     }
@@ -4906,6 +4907,7 @@ mod identity_activity_tests {
             data: ResponseData::AccountOperation {
                 result: AccountOperationResult {
                     ok,
+                    saved: false,
                     summary: String::new(),
                     save: None,
                     auth: None,
@@ -4922,6 +4924,26 @@ mod identity_activity_tests {
     fn a_refused_account_operation_is_not_a_success() {
         assert!(!response_succeeded(&operation(false)));
         assert!(response_succeeded(&operation(true)));
+    }
+
+    #[test]
+    fn an_operation_that_saved_before_a_later_phase_failed_is_recorded() {
+        let saved_then_failed = Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: AccountOperationResult {
+                    ok: false,
+                    saved: true,
+                    summary: String::new(),
+                    save: None,
+                    auth: None,
+                    sync: None,
+                    send: None,
+                    device_code_url: None,
+                    device_code_user_code: None,
+                },
+            },
+        };
+        assert!(response_succeeded(&saved_then_failed));
     }
 
     #[test]

@@ -5991,6 +5991,11 @@ pub struct AccountOperationStep {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountOperationResult {
     pub ok: bool,
+    /// True when the config change was written to disk even though `ok` is
+    /// false, because a later phase (runtime reload, cached mail) failed. The
+    /// change is saved but not fully applied.
+    #[serde(default)]
+    pub saved: bool,
     pub summary: String,
     pub save: Option<AccountOperationStep>,
     pub auth: Option<AccountOperationStep>,

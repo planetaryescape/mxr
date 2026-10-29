@@ -235,7 +235,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=105).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=106).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -294,6 +294,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     let expected = Store::in_memory().await?;
     if manifest.schema_version < 105 {
         sqlx::query("ALTER TABLE labels DROP COLUMN role")
+            .execute(expected.writer())
+            .await?;
+    }
+    if manifest.schema_version < 106 {
+        sqlx::raw_sql("DROP INDEX IF EXISTS idx_accounts_identity_tag;")
             .execute(expected.writer())
             .await?;
     }
@@ -535,6 +540,10 @@ async fn validate(db: &mut SqliteConnection) -> BackupResult<()> {
     Ok(())
 }
 
+/// The `identity_tag` a copied account keeps: its own tag, unless an older
+/// account in the source already holds it, in which case NULL.
+const ACCOUNT_TAG_KEEPING_OLDEST_HOLDER: &str = "CASE WHEN \"accounts\".\"identity_tag\" IS NOT NULL AND EXISTS (SELECT 1 FROM source.\"accounts\" AS holder WHERE holder.\"identity_tag\" = \"accounts\".\"identity_tag\" AND (holder.\"created_at\" < \"accounts\".\"created_at\" OR (holder.\"created_at\" = \"accounts\".\"created_at\" AND holder.\"id\" < \"accounts\".\"id\"))) THEN NULL ELSE \"accounts\".\"identity_tag\" END";
+
 /// Caller holds the source's exclusive lease until publication completes.
 pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifest> {
     let source = source.canonicalize()?;
@@ -565,7 +574,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=105).contains(&version) {
+    if !(80..=106).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -628,7 +637,30 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         } else {
             "rowid,"
         };
-        sqlx::query(AssertSqlSafe(format!("INSERT INTO main.\"{table}\" ({rowid}{columns}) SELECT {rowid}{columns} FROM source.\"{table}\""))).execute(&mut *connection).await.map_err(|e|format!("Copying durable table {table}: {e}"))?;
+        // Migration 106 makes identity_tag unique, and the staging schema has
+        // that index before any row is copied. A source from before 106 can
+        // hold a duplicate, so the copy keeps the oldest holder of each tag
+        // and copies the rest with NULL. The identity backfill derives new tags
+        // for those rows when the restored store opens.
+        let select_columns = if *table == "accounts"
+            && source_columns.contains("identity_tag")
+            && source_columns.contains("created_at")
+        {
+            columns
+                .split(',')
+                .map(|column| {
+                    if column == "\"identity_tag\"" {
+                        ACCOUNT_TAG_KEEPING_OLDEST_HOLDER
+                    } else {
+                        column
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        } else {
+            columns.clone()
+        };
+        sqlx::query(AssertSqlSafe(format!("INSERT INTO main.\"{table}\" ({rowid}{columns}) SELECT {rowid}{select_columns} FROM source.\"{table}\""))).execute(&mut *connection).await.map_err(|e|format!("Copying durable table {table}: {e}"))?;
     }
     let receipts_in_source: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM source.sqlite_schema WHERE type='table' AND name='unsubscribe_receipts')",
@@ -684,7 +716,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:105, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:106, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 

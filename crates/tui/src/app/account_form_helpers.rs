@@ -367,6 +367,7 @@ impl App {
         Some((
             mxr_protocol::AccountOperationResult {
                 ok: false,
+                saved: false,
                 summary: "Account form has problems. Fix the listed fields and try again.".into(),
                 save,
                 auth,

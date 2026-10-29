@@ -203,66 +203,120 @@ pub(super) async fn upsert_account_config(
             None,
         );
     }
+    let save_result = save_account_config(state, &account, reveal_holder).await;
+    match save_result {
+        Ok(save_detail) => match state.reload_accounts_from_disk().await {
+            Ok(()) => account_operation_result(
+                true,
+                format!("Saved account '{}' and reloaded runtime.", account.key),
+                Some(account_step(
+                    true,
+                    format!("{save_detail} Runtime reloaded."),
+                )),
+                None,
+                None,
+                None,
+            ),
+            Err(error) => saved_but_not_applied(
+                format!(
+                    "Saved account '{}' but failed to reload runtime.",
+                    account.key
+                ),
+                account_step(false, format!("{save_detail} Reload failed: {error}")),
+            ),
+        },
+        Err(error) => account_operation_result(
+            false,
+            format!("Failed to save account '{}'.", account.key),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        ),
+    }
+}
+
+/// Writes one account to config under the config file lock. The lock covers
+/// the tag clash check as well, so a tag another account claims between the
+/// check and the write is refused.
+/// Runs one config write as a synchronous section: the file lock is taken,
+/// the file is read as written, `apply` changes it, and the result is saved
+/// atomically. Nothing awaits while the file lock is held, so the blocking lock
+/// never parks a runtime worker on a task that cannot resume to release it.
+/// Callers hold `AppState::config_write` around it for in-process ordering.
+fn write_config_as_written<T>(
+    apply: impl FnOnce(&mut mxr_config::MxrConfig) -> Result<T, String>,
+) -> Result<T, String> {
+    let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
+    let mut config = mxr_config::load_config_as_written().map_err(|e| e.to_string())?;
+    let out = apply(&mut config)?;
+    mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// Changes `general.default_account` only when a request turns an account on
+/// as the default, or when no default exists at all. `effective_default` is
+/// the default the daemon runs with, including any `MXR_DEFAULT_ACCOUNT`
+/// override. Forms fill `is_default` from that same state, so an untouched
+/// toggle never writes the override into the file. Turning the default off
+/// does not clear it: another account is made default by turning it on, as
+/// before. CLI upserts send `false` for accounts they do not change, and those
+/// must not clear the default.
+fn apply_default_toggle(
+    config: &mut mxr_config::MxrConfig,
+    key: &str,
+    requested: bool,
+    effective_default: Option<&str>,
+) {
+    if requested && effective_default != Some(key) {
+        config.general.default_account = Some(key.to_string());
+    } else if effective_default.is_none() {
+        // No default anywhere: the first account saved becomes it.
+        config.general.default_account = Some(key.to_string());
+    }
+}
+
+async fn save_account_config(
+    state: &Arc<AppState>,
+    account: &AccountConfigData,
+    reveal_holder: bool,
+) -> Result<String, String> {
+    // In-process writers queue on this lock. The clash check reads the store
+    // while it is held; the file write after it is synchronous.
+    let _writing = state.config_write.lock().await;
+    let snapshot = mxr_config::load_config_as_written().map_err(|e| e.to_string())?;
+
     // A tag is refused when another account already shows it or stores it.
     // The account's own tag is not a clash.
-    let existing_id = mxr_config::load_config().ok().and_then(|config| {
-        config
+    if let Some(raw_tag) = account.tag.as_deref() {
+        let tag = mxr_core::parse_account_tag(raw_tag).map_err(|e| e.to_string())?;
+        let existing_id = snapshot
             .accounts
             .get(&account.key)
-            .map(|existing| config_account_id(&account.key, existing))
-    });
-    if let Some(raw_tag) = account.tag.as_deref() {
-        let tag = match mxr_core::parse_account_tag(raw_tag) {
-            Ok(tag) => tag,
-            Err(error) => {
-                return account_operation_result(
-                    false,
-                    format!("Failed to save account '{}'.", account.key),
-                    Some(account_step(false, error.to_string())),
-                    None,
-                    None,
-                    None,
-                );
-            }
-        };
-        let resolved = match crate::account_identity::resolve_for_state(state).await {
-            Ok(resolution) => resolution.resolved,
-            Err(error) => {
-                return account_operation_result(
-                    false,
-                    format!("Failed to save account '{}'.", account.key),
-                    Some(account_step(false, error)),
-                    None,
-                    None,
-                    None,
-                );
-            }
-        };
+            .map(|existing| config_account_id(&account.key, existing));
+        let resolved = crate::account_identity::resolve_from_store(&state.store, &snapshot)
+            .await?
+            .resolved;
         let others: Vec<_> = resolved
             .into_iter()
             .filter(|other| Some(&other.account_id) != existing_id.as_ref())
             .collect();
-        let configured = mxr_config::load_config()
-            .map(|config| crate::account_identity::configured_tags(&config, &account.key))
-            .unwrap_or_default();
+        let configured = crate::account_identity::configured_tags(&snapshot, &account.key);
         if let Some(holder) = crate::account_identity::tag_holder(&tag, &others, &configured) {
-            let message = crate::account_identity::clash_message(&tag, holder, reveal_holder);
-            return account_operation_result(
-                false,
-                format!("Failed to save account '{}'.", account.key),
-                Some(account_step(false, message)),
-                None,
-                None,
-                None,
-            );
+            return Err(crate::account_identity::clash_message(
+                &tag,
+                holder,
+                reveal_holder,
+            ));
         }
     }
 
-    let save_result = (|| -> Result<String, String> {
-        // Held from the read to the write, not past it.
-        let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
-        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        persist_account_passwords(&account).map_err(|e| e.to_string())?;
+    let effective_default = mxr_config::load_config()
+        .map_err(|e| e.to_string())?
+        .general
+        .default_account;
+    write_config_as_written(|config| {
+        persist_account_passwords(account).map_err(|e| e.to_string())?;
 
         // Omitted identity fields keep what config already has. The TUI and
         // web account forms do not send them.
@@ -291,50 +345,14 @@ pub(super) async fn upsert_account_config(
                 tag,
             },
         );
-        if account.is_default || config.general.default_account.is_none() {
-            config.general.default_account = Some(account.key.clone());
-        }
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        apply_default_toggle(
+            config,
+            &account.key,
+            account.is_default,
+            effective_default.as_deref(),
+        );
         Ok(format!("Saved account '{}' to config.", account.key))
-    })();
-
-    match save_result {
-        Ok(save_detail) => match state.reload_accounts_from_disk().await {
-            Ok(()) => account_operation_result(
-                true,
-                format!("Saved account '{}' and reloaded runtime.", account.key),
-                Some(account_step(
-                    true,
-                    format!("{save_detail} Runtime reloaded."),
-                )),
-                None,
-                None,
-                None,
-            ),
-            Err(error) => account_operation_result(
-                false,
-                format!(
-                    "Saved account '{}' but failed to reload runtime.",
-                    account.key
-                ),
-                Some(account_step(
-                    false,
-                    format!("{save_detail} Reload failed: {error}"),
-                )),
-                None,
-                None,
-                None,
-            ),
-        },
-        Err(error) => account_operation_result(
-            false,
-            format!("Failed to save account '{}'.", account.key),
-            Some(account_step(false, error)),
-            None,
-            None,
-            None,
-        ),
-    }
+    })
 }
 
 /// Sets one account's colour and tag override in config. Unlike the full
@@ -349,7 +367,7 @@ pub(super) async fn set_account_identity(
     dry_run: bool,
     reveal_holder: bool,
 ) -> AccountOperationResult {
-    let fail = |message: String| {
+    let failed = |message: String| {
         account_operation_result(
             false,
             format!("Failed to set identity for account '{key}'."),
@@ -361,51 +379,17 @@ pub(super) async fn set_account_identity(
     };
     let tag = match tag.map(mxr_core::parse_account_tag).transpose() {
         Ok(tag) => tag,
-        Err(error) => return fail(error.to_string()),
+        Err(error) => return failed(error.to_string()),
     };
-    let config = match mxr_config::load_config() {
+    let config = match mxr_config::load_config_as_written() {
         Ok(config) => config,
-        Err(error) => return fail(error.to_string()),
+        Err(error) => return failed(error.to_string()),
     };
-    let Some(account) = config.accounts.get(key) else {
-        return fail(format!("Account '{key}' not found"));
-    };
-    let account_id = config_account_id(key, account);
-    let resolution = match crate::account_identity::resolve_for_state(state).await {
-        Ok(resolution) => resolution,
-        Err(error) => return fail(error),
-    };
-    let Some(current) = resolution
-        .resolved
-        .iter()
-        .find(|resolved| resolved.account_id == account_id)
-    else {
-        return fail(format!("Account '{key}' has no identity yet"));
-    };
-    let others: Vec<_> = resolution
-        .resolved
-        .iter()
-        .filter(|resolved| resolved.account_id != account_id)
-        .cloned()
-        .collect();
-    let configured = mxr_config::load_config()
-        .map(|config| crate::account_identity::configured_tags(&config, key))
-        .unwrap_or_default();
-    let (before, after) = match crate::account_identity::plan_identity_change(
-        current,
-        color,
-        tag.as_deref(),
-        &others,
-        &configured,
-        reveal_holder,
-    ) {
-        Ok(plan) => plan,
-        Err(message) => return fail(message),
-    };
-    let change = format!(
-        "before: tag {}, colour {}; after: tag {}, colour {}",
-        before.tag, before.color, after.tag, after.color
-    );
+    let change =
+        match plan_identity(state, &config, key, color, tag.as_deref(), reveal_holder).await {
+            Ok(change) => change,
+            Err(message) => return failed(message),
+        };
     if dry_run {
         return account_operation_result(
             true,
@@ -417,15 +401,24 @@ pub(super) async fn set_account_identity(
         );
     }
 
-    let save_result = (|| -> Result<(), String> {
-        let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
-        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        crate::account_identity::set_identity_in_config(&mut config, key, color, tag.as_deref())?;
-        mxr_config::save_config(&config).map_err(|e| e.to_string())
-    })();
-    if let Err(error) = save_result {
-        return fail(error);
+    // The plan above was made before the lock. It is made again under the
+    // lock, against the file as it is now and the store as it is now, so a tag
+    // another account claimed in between is refused rather than saved.
+    let save_result = async {
+        let _writing = state.config_write.lock().await;
+        let snapshot = mxr_config::load_config_as_written().map_err(|e| e.to_string())?;
+        let change =
+            plan_identity(state, &snapshot, key, color, tag.as_deref(), reveal_holder).await?;
+        write_config_as_written(|config| {
+            crate::account_identity::set_identity_in_config(config, key, color, tag.as_deref())
+        })?;
+        Ok::<_, String>(change)
     }
+    .await;
+    let change = match save_result {
+        Ok(change) => change,
+        Err(error) => return failed(error),
+    };
     match state.reload_accounts_from_disk().await {
         Ok(()) => account_operation_result(
             true,
@@ -438,15 +431,54 @@ pub(super) async fn set_account_identity(
             None,
             None,
         ),
-        Err(error) => account_operation_result(
-            false,
+        Err(error) => saved_but_not_applied(
             format!("Saved identity for account '{key}' but failed to reload runtime."),
-            Some(account_step(false, error)),
-            None,
-            None,
-            None,
+            account_step(false, error),
         ),
     }
+}
+
+/// Checks a colour and tag change for one account against `config` (the file
+/// as written) and the store. Returns a description of the change, or the
+/// reason it is refused.
+async fn plan_identity(
+    state: &Arc<AppState>,
+    config: &mxr_config::MxrConfig,
+    key: &str,
+    color: Option<mxr_core::AccountColor>,
+    tag: Option<&str>,
+    reveal_holder: bool,
+) -> Result<String, String> {
+    let account = config
+        .accounts
+        .get(key)
+        .ok_or_else(|| format!("Account '{key}' not found"))?;
+    let account_id = config_account_id(key, account);
+    let resolution = crate::account_identity::resolve_from_store(&state.store, config).await?;
+    let current = resolution
+        .resolved
+        .iter()
+        .find(|resolved| resolved.account_id == account_id)
+        .ok_or_else(|| format!("Account '{key}' has no identity yet"))?;
+    let others: Vec<_> = resolution
+        .resolved
+        .iter()
+        .filter(|resolved| resolved.account_id != account_id)
+        .cloned()
+        .collect();
+    let configured = crate::account_identity::configured_tags(config, key);
+    let (before, after) = crate::account_identity::plan_identity_change(
+        current,
+        color,
+        tag,
+        &others,
+        &configured,
+        reveal_holder,
+    )?;
+    Ok(format!(
+        "before: tag {}, colour {}; after: tag {}, colour {}",
+        before.tag, before.color, after.tag, after.color
+    ))
 }
 
 pub(super) async fn set_default_account(
@@ -454,13 +486,14 @@ pub(super) async fn set_default_account(
     key: &str,
 ) -> Result<String, String> {
     {
-        let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
-        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        if !config.accounts.contains_key(key) {
-            return Err(format!("Account '{key}' cannot be set as default"));
-        }
-        config.general.default_account = Some(key.to_string());
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        let _writing = state.config_write.lock().await;
+        write_config_as_written(|config| {
+            if !config.accounts.contains_key(key) {
+                return Err(format!("Account '{key}' cannot be set as default"));
+            }
+            config.general.default_account = Some(key.to_string());
+            Ok(())
+        })?;
     }
     state.reload_accounts_from_disk().await?;
     Ok(format!("Default account set to '{key}'."))
@@ -528,11 +561,14 @@ pub(super) async fn remove_account_config(
 
     // The database work is done; the config change is one locked update that
     // loads the file inside the lock, not the copy read before those awaits.
-    let save_result = mxr_config::update_config(|config| {
-        config.accounts.remove(key);
-        refresh_default_account(config);
-        Ok::<_, mxr_config::ConfigError>(())
-    })
+    let save_result = {
+        let _writing = state.config_write.lock().await;
+        mxr_config::update_config(|config| {
+            config.accounts.remove(key);
+            refresh_default_account(config);
+            Ok::<_, mxr_config::ConfigError>(())
+        })
+    }
     .map_err(|e| e.to_string());
     if let Err(error) = save_result {
         return account_operation_result(
@@ -617,66 +653,35 @@ pub(super) async fn disable_account_config(
     state: &Arc<AppState>,
     key: &str,
 ) -> AccountOperationResult {
-    let file_lock = match mxr_config::lock_config_file() {
-        Ok(lock) => lock,
-        Err(error) => {
-            return account_operation_result(
-                false,
-                format!("Failed to disable account '{key}'."),
-                Some(account_step(false, error.to_string())),
-                None,
-                None,
-                None,
-            )
+    let account_id = {
+        let _writing = state.config_write.lock().await;
+        match write_config_as_written(|config| {
+            let account = config
+                .accounts
+                .get_mut(key)
+                .ok_or_else(|| format!("Account '{key}' not found."))?;
+            account.enabled = false;
+            let account_id = config_account_id(key, account);
+            refresh_default_account(config);
+            Ok(account_id)
+        }) {
+            Ok(account_id) => account_id,
+            Err(error) => {
+                return account_operation_result(
+                    false,
+                    format!("Failed to disable account '{key}'."),
+                    Some(account_step(false, error)),
+                    None,
+                    None,
+                    None,
+                )
+            }
         }
     };
-    let mut config = match mxr_config::load_config() {
-        Ok(config) => config,
-        Err(error) => {
-            return account_operation_result(
-                false,
-                format!("Failed to disable account '{key}'."),
-                Some(account_step(false, error.to_string())),
-                None,
-                None,
-                None,
-            )
-        }
-    };
-    let Some(account) = config.accounts.get_mut(key) else {
-        return account_operation_result(
-            false,
-            format!("Account '{key}' not found."),
-            Some(account_step(false, format!("Account '{key}' not found."))),
-            None,
-            None,
-            None,
-        );
-    };
-
-    account.enabled = false;
-    let account_id = config_account_id(key, account);
-    refresh_default_account(&mut config);
-    let saved = mxr_config::save_config(&config);
-    drop(file_lock);
-    if let Err(error) = saved {
-        return account_operation_result(
-            false,
-            format!("Failed to disable account '{key}'."),
-            Some(account_step(false, error.to_string())),
-            None,
-            None,
-            None,
-        );
-    }
     if let Err(error) = state.store.set_account_enabled(&account_id, false).await {
-        return account_operation_result(
-            false,
+        return saved_but_not_applied(
             format!("Disabled account '{key}' in config but failed to update cached mail."),
-            Some(account_step(false, error.to_string())),
-            None,
-            None,
-            None,
+            account_step(false, error.to_string()),
         );
     }
 
@@ -692,13 +697,9 @@ pub(super) async fn disable_account_config(
             None,
             None,
         ),
-        Err(error) => account_operation_result(
-            false,
+        Err(error) => saved_but_not_applied(
             format!("Disabled account '{key}' but failed to reload runtime."),
-            Some(account_step(false, error)),
-            None,
-            None,
-            None,
+            account_step(false, error),
         ),
     }
 }
@@ -874,6 +875,7 @@ pub(super) async fn authorize_account_config(
                 } else {
                     AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: "Outlook authorization complete.".into(),
                         save: None,
                         auth: Some(account_step(true, "Token stored successfully.".into())),
@@ -1368,6 +1370,17 @@ pub(super) fn account_step(ok: bool, detail: String) -> AccountOperationStep {
     AccountOperationStep { ok, detail }
 }
 
+/// A result for a change that reached the config file before a later phase
+/// failed. `saved` tells clients the change is on disk, though not applied.
+pub(super) fn saved_but_not_applied(
+    summary: String,
+    step: AccountOperationStep,
+) -> AccountOperationResult {
+    let mut result = account_operation_result(false, summary, Some(step), None, None, None);
+    result.saved = true;
+    result
+}
+
 pub(super) fn account_operation_result(
     ok: bool,
     summary: String,
@@ -1378,6 +1391,7 @@ pub(super) fn account_operation_result(
 ) -> AccountOperationResult {
     AccountOperationResult {
         ok,
+        saved: false,
         summary,
         save,
         auth,

@@ -364,25 +364,37 @@ impl super::Store {
     /// Fills in a colour and a tag for every account that lacks one, in
     /// creation order. Each takes the first colour no account holds and a tag
     /// derived against the tags already held. Runs on every open, so restored
-    /// bundles from before migration 094 are covered too.
+    /// bundles from before migration 094 are covered too; the query reads only
+    /// the rows that need a value, so a complete account is never written.
     pub(crate) async fn backfill_account_identity(&self) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let rows: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT id, name, identity_color, identity_tag FROM accounts ORDER BY created_at, id",
+        let missing: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT id, name, identity_color, identity_tag FROM accounts
+             WHERE identity_color IS NULL OR identity_tag IS NULL
+             ORDER BY created_at, id",
         )
         .fetch_all(&mut *tx)
         .await?;
-        let mut colors: Vec<AccountColor> = rows
+        if missing.is_empty() {
+            return tx.commit().await;
+        }
+        // The values already held decide what the new ones must avoid.
+        let held: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT identity_color, identity_tag FROM accounts
+             WHERE identity_color IS NOT NULL OR identity_tag IS NOT NULL",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut colors: Vec<AccountColor> = held
             .iter()
-            .filter_map(|(_, _, color, _)| color.as_deref()?.parse().ok())
+            .filter_map(|(color, _)| color.as_deref()?.parse().ok())
             .collect();
-        let mut tags: std::collections::HashSet<String> = rows
-            .iter()
-            .filter_map(|(_, _, _, tag)| tag.clone())
-            .collect();
-        for (index, (id, name, color, tag)) in rows.iter().enumerate() {
+        let mut tags: std::collections::HashSet<String> =
+            held.iter().filter_map(|(_, tag)| tag.clone()).collect();
+        let existing_accounts = held.len();
+        for (index, (id, name, color, tag)) in missing.iter().enumerate() {
             if color.is_none() {
-                let assigned = mxr_core::next_account_color(&colors, index);
+                let assigned = mxr_core::next_account_color(&colors, existing_accounts + index);
                 colors.push(assigned);
                 sqlx::query("UPDATE accounts SET identity_color = ?1 WHERE id = ?2")
                     .bind(assigned.as_str())
@@ -691,5 +703,103 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("WO"));
+    }
+
+    #[tokio::test]
+    async fn backfill_fills_only_the_account_that_lacks_identity() {
+        let store = Store::in_memory().await.unwrap();
+        let complete = account("Complete");
+        let bare = account("Bare");
+        store.insert_account(&complete).await.unwrap();
+        store.insert_account(&bare).await.unwrap();
+        sqlx::query("UPDATE accounts SET identity_color = NULL, identity_tag = NULL WHERE id = ?1")
+            .bind(bare.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        // A complete row must not be written again on open. Any UPDATE to it fails.
+        sqlx::query(
+            "CREATE TRIGGER refuse_complete_identity_write BEFORE UPDATE ON accounts
+             WHEN OLD.identity_color IS NOT NULL AND OLD.identity_tag IS NOT NULL
+             BEGIN SELECT RAISE(ABORT, 'complete account rewritten'); END",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        store.backfill_account_identity().await.unwrap();
+
+        assert!(colour_of(&store, &bare.id).await.is_some());
+        assert!(tag_of(&store, &bare.id).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn two_accounts_racing_for_one_tag_leave_one_holder() {
+        let store = Store::in_memory().await.unwrap();
+        let first = account("First");
+        let second = account("Second");
+        store.insert_account(&first).await.unwrap();
+        store.insert_account(&second).await.unwrap();
+        let taken = tag_of(&store, &first.id).await.unwrap();
+
+        let claim = |id: AccountId| {
+            let store = &store;
+            let taken = taken.clone();
+            async move {
+                sqlx::query("UPDATE accounts SET identity_tag = ?1 WHERE id = ?2")
+                    .bind(&taken)
+                    .bind(id.as_str())
+                    .execute(store.writer())
+                    .await
+            }
+        };
+        let (a, b) = tokio::join!(claim(first.id.clone()), claim(second.id.clone()));
+        let results = [a, b];
+        let failures = results.iter().filter(|result| result.is_err()).count();
+        assert_eq!(failures, 1, "exactly one claim must lose");
+        let message = results
+            .iter()
+            .find_map(|result| result.as_ref().err())
+            .unwrap()
+            .to_string();
+        assert!(message.contains("UNIQUE"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn migration_106_keeps_the_oldest_duplicate_and_derives_a_new_tag_for_the_rest() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("dup.db");
+        let older = account("Older");
+        let newer = account("Newer");
+        {
+            let store = Store::new(&path).await.unwrap();
+            store.insert_account(&older).await.unwrap();
+            store.insert_account(&newer).await.unwrap();
+            // Put the database back to before 106 with a duplicate tag in it.
+            sqlx::query("DROP INDEX idx_accounts_identity_tag")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            sqlx::query("UPDATE accounts SET identity_tag = 'DUP', created_at = CASE WHEN id = ?1 THEN 10 ELSE 20 END")
+                .bind(older.id.as_str())
+                .execute(store.writer())
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_migrations WHERE version = 106")
+                .execute(store.writer())
+                .await
+                .unwrap();
+        }
+
+        let store = Store::new(&path).await.unwrap();
+
+        assert_eq!(tag_of(&store, &older.id).await.as_deref(), Some("DUP"));
+        let newer_tag = tag_of(&store, &newer.id).await.unwrap();
+        assert_ne!(newer_tag, "DUP");
+        let refused = sqlx::query("UPDATE accounts SET identity_tag = 'DUP' WHERE id = ?1")
+            .bind(newer.id.as_str())
+            .execute(store.writer())
+            .await;
+        assert!(refused.is_err());
     }
 }

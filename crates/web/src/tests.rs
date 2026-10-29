@@ -7266,6 +7266,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                 data: ResponseData::AccountOperation {
                     result: mxr_protocol::AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: format!("{key} {color:?} {tag:?} dry_run={dry_run}"),
                         save: None,
                         auth: None,

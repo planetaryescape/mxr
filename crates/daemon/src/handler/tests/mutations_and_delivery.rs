@@ -4172,3 +4172,171 @@ async fn unsubscribe_preview_commit_preserves_explicit_archive_only_opt_in() {
     assert_eq!(result.archived_count, preview.message_count);
     assert!(fake.sent_drafts().is_empty());
 }
+
+#[test]
+fn identity_write_leaves_default_account_as_the_file_has_it_under_an_env_override() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_file = config_dir.join("config.toml");
+    std::fs::write(
+        &config_file,
+        "# kept comment\n[accounts.work]\nname = \"Work\"\nemail = \"work@example.com\"\nenabled = true\n",
+    )
+    .expect("write config");
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir)),
+            ("MXR_DATA_DIR", Some(data_dir)),
+            ("MXR_SOCKET_PATH", Some(socket_path)),
+            ("MXR_DEFAULT_ACCOUNT", Some("work".into())),
+        ],
+        || {
+            runtime.block_on(async {
+                let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                let result = crate::handler::account_config::set_account_identity(
+                    &state,
+                    "work",
+                    Some(mxr_core::AccountColor::Amber),
+                    None,
+                    false,
+                    true,
+                )
+                .await;
+                assert!(result.ok, "{}", result.summary);
+
+                let on_disk = std::fs::read_to_string(&config_file).expect("read config");
+                assert!(on_disk.contains("# kept comment"), "{on_disk}");
+                let written =
+                    mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+                assert_eq!(written.general.default_account, None, "{on_disk}");
+                assert_eq!(written.accounts["work"].color.as_deref(), Some("amber"));
+            });
+        },
+    );
+}
+
+fn config_account(key: &str, name: &str, is_default: bool) -> AccountConfigData {
+    AccountConfigData {
+        key: key.into(),
+        name: name.into(),
+        email: format!("{key}@example.com"),
+        enabled: true,
+        sync: None,
+        send: None,
+        is_default,
+        color: None,
+        tag: None,
+    }
+}
+
+const THREE_ACCOUNTS: &str = "[general]\ndefault_account = \"personal\"\n\
+[accounts.work]\nname = \"Work\"\nemail = \"work@example.com\"\nenabled = true\n\
+[accounts.personal]\nname = \"Personal\"\nemail = \"personal@example.com\"\nenabled = true\n\
+[accounts.side]\nname = \"Side\"\nemail = \"side@example.com\"\nenabled = true\n";
+
+/// Runs `body` against a daemon whose config dir is a temp dir holding `config`.
+fn with_config_file<F>(config: &str, env_default: Option<&str>, body: F)
+where
+    F: FnOnce(std::path::PathBuf) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>,
+{
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_file = config_dir.join("config.toml");
+    std::fs::write(&config_file, config).expect("write config");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir.into_os_string())),
+            ("MXR_DATA_DIR", Some(data_dir.into_os_string())),
+            ("MXR_SOCKET_PATH", Some(socket_path.into_os_string())),
+            (
+                "MXR_DEFAULT_ACCOUNT",
+                env_default.map(std::ffi::OsString::from),
+            ),
+        ],
+        || runtime.block_on(body(config_file)),
+    );
+}
+
+#[test]
+fn two_config_writes_on_one_worker_both_finish() {
+    with_config_file(THREE_ACCOUNTS, None, |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            let identity = crate::handler::account_config::set_account_identity(
+                &state,
+                "work",
+                Some(mxr_core::AccountColor::Amber),
+                None,
+                false,
+                true,
+            );
+            let upsert = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("personal", "Personal Mail", false),
+                true,
+            );
+            // A deadlock would park the only worker and never reach the timeout.
+            let (identity, upsert) =
+                tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                    tokio::join!(identity, upsert)
+                })
+                .await
+                .expect("two config writes on one worker must not deadlock");
+            assert!(identity.ok, "{}", identity.summary);
+            assert!(upsert.ok, "{}", upsert.summary);
+
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.accounts["work"].color.as_deref(), Some("amber"));
+            assert_eq!(written.accounts["personal"].name, "Personal Mail");
+        })
+    });
+}
+
+#[test]
+fn an_env_default_override_is_not_written_by_an_untouched_toggle() {
+    with_config_file(THREE_ACCOUNTS, Some("work"), |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            // The form for the effective default carries is_default = true.
+            let result = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("work", "Work Mail", true),
+                true,
+            )
+            .await;
+            assert!(result.ok, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.general.default_account.as_deref(), Some("personal"));
+
+            // Toggling a different account on still changes the file.
+            let result = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("side", "Side", true),
+                true,
+            )
+            .await;
+            assert!(result.ok, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.general.default_account.as_deref(), Some("side"));
+        })
+    });
+}

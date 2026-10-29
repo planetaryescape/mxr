@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.186](https://github.com/planetaryescape/mxr/compare/v0.6.185...v0.6.186) (2026-10-29)
+
+
+### Bug Fixes
+
+* a browser unsubscribe is a handoff, not a confirmed send ([#788](https://github.com/planetaryescape/mxr/issues/788)) ([28f1f92](https://github.com/planetaryescape/mxr/commit/28f1f92f56cc577828e038912a23b288917a9b6e))
+
 ## [0.6.185](https://github.com/planetaryescape/mxr/compare/v0.6.184...v0.6.185) (2026-10-29)
 
 

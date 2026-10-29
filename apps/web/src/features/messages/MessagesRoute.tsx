@@ -559,11 +559,13 @@ function MessagesBody({
             return nextSet;
           });
           const now = here.current;
+          // Back on the person already counts as staying: the list's own
+          // undo watcher can reopen them before this runs, depending on
+          // which list refresh lands first.
           const stayed =
             now.mounted &&
             useUiPrefs.getState().accountScope === account &&
-            now.person === landed.person &&
-            now.topic === landed.topic;
+            (now.person === from || (now.person === landed.person && now.topic === landed.topic));
           if (stayed) {
             advanceTo(from, thread);
             return;
@@ -962,7 +964,10 @@ function SelectionAdvance({
     selectedId,
     isPresent: (id) => present.has(id),
     presenceSource: present,
-    onAdvance,
+    // The hook's second argument is the row it moved off, not a topic.
+    // Passed on, `advanceTo` opened that row id as the topic, which the
+    // bridge refuses, and the page said it couldn't find the person.
+    onAdvance: (id) => onAdvance(id),
     onEmpty,
   });
   return null;

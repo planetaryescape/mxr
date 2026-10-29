@@ -153,20 +153,32 @@ const CHANGED: &str =
 async fn plan(
     state: &AppState,
     thread_id: &ThreadId,
+    named_account: Option<&AccountId>,
     dry_run: bool,
     now: DateTime<Utc>,
 ) -> Result<Prepared, HandlerError> {
-    let Some((account_id, _)) = threads_by_account(state, std::slice::from_ref(thread_id))
-        .await?
-        .into_iter()
-        .next()
-    else {
-        return Err(refuse(format!("No conversation {thread_id}.")));
+    // A row names its account. Without one, a legacy thread id held by two
+    // accounts goes to whichever the store reports first.
+    let account_id = match named_account {
+        Some(account_id) => account_id.clone(),
+        None => {
+            let Some((account_id, _)) = threads_by_account(state, std::slice::from_ref(thread_id))
+                .await?
+                .into_iter()
+                .next()
+            else {
+                return Err(refuse(format!("No conversation {thread_id}.")));
+            };
+            account_id
+        }
     };
     let messages = state
         .store
         .desk_messages_in_threads(&account_id, std::slice::from_ref(thread_id))
         .await?;
+    if messages.is_empty() {
+        return Err(refuse(format!("No conversation {thread_id}.")));
+    }
     let senders = Senders::load(state, &account_id, &messages).await?;
     let is_self = self_matcher(state, &account_id).await?;
     let current = current_messages(&messages, now);
@@ -441,6 +453,7 @@ pub(super) fn ack_html(text: &str) -> String {
 pub(super) async fn ack(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     dry_run: bool,
     expect_text: Option<&str>,
     preview_token: Option<&str>,
@@ -448,6 +461,7 @@ pub(super) async fn ack(
     ack_at(
         state,
         thread_id,
+        account_id,
         dry_run,
         preview_token,
         expect_text,
@@ -460,13 +474,14 @@ pub(super) async fn ack(
 pub(super) async fn ack_at(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     dry_run: bool,
     preview_token: Option<&str>,
     expect_text: Option<&str>,
     now: DateTime<Utc>,
 ) -> HandlerResult {
     if dry_run {
-        let prepared = plan(state, thread_id, true, now).await?;
+        let prepared = plan(state, thread_id, account_id, true, now).await?;
         return Ok(ResponseData::MessagesAck { ack: prepared.plan });
     }
     let (Some(token_in), Some(expected)) = (
@@ -487,7 +502,7 @@ pub(super) async fn ack_at(
             "That Got it preview is more than a minute old, so nothing was sent. Preview it again.",
         ));
     }
-    let prepared = plan(state, thread_id, false, now).await?;
+    let prepared = plan(state, thread_id, account_id, false, now).await?;
     if expected != prepared.plan.text
         || token(&prepared.plan, &prepared.headers.in_reply_to, issued) != token_in
     {

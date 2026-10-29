@@ -1,4 +1,3 @@
-use mxr_core::id::ThreadId;
 use mxr_core::ExportFormat;
 use std::path::PathBuf;
 
@@ -26,7 +25,7 @@ pub enum ExportDestination {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingExport {
-    pub thread_id: ThreadId,
+    pub thread: crate::app::ThreadKey,
     pub format: ExportFormat,
     pub destination: ExportDestination,
 }
@@ -34,7 +33,7 @@ pub struct PendingExport {
 #[derive(Debug, Clone, Default)]
 pub struct ExportModalState {
     pub visible: bool,
-    pub thread_id: Option<ThreadId>,
+    pub thread: Option<crate::app::ThreadKey>,
     pub stage: ExportStage,
     /// Highlighted row in the format stage, an index into `FORMAT_CHOICES`.
     pub selected: usize,
@@ -47,10 +46,10 @@ pub struct ExportModalState {
 }
 
 impl ExportModalState {
-    pub fn open(&mut self, thread_id: ThreadId) {
+    pub fn open(&mut self, thread: impl Into<crate::app::ThreadKey>) {
         *self = Self {
             visible: true,
-            thread_id: Some(thread_id),
+            thread: Some(thread.into()),
             ..Self::default()
         };
     }

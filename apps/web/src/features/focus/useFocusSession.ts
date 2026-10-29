@@ -22,6 +22,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import {
   buildFocusQueue,
   emptyFocusSession,
+  focusKey,
   focusProgress,
   focusReducer,
   type FocusItem,
@@ -109,13 +110,17 @@ export function useFocusSession(lane?: "owed", start?: string) {
   useEffect(() => {
     const wanted = startWith.current;
     if (!wanted || !session.loaded) return;
-    if (session.queue.includes(wanted)) {
+    // A link names the focus key; an older one names the bare thread id.
+    const key = session.queue.includes(wanted)
+      ? wanted
+      : session.queue.find((entry) => session.items[entry]?.threadId === wanted);
+    if (key) {
       startWith.current = undefined;
-      dispatch({ kind: "front", threadId: wanted });
+      dispatch({ kind: "front", key });
     } else if (!gathering) {
       startWith.current = undefined;
     }
-  }, [gathering, session.loaded, session.queue]);
+  }, [gathering, session.items, session.loaded, session.queue]);
 
   const currentId = session.queue[0];
   const current = currentId ? session.items[currentId] : undefined;
@@ -127,17 +132,17 @@ export function useFocusSession(lane?: "owed", start?: string) {
   useEffect(
     () =>
       onSendEvent((event) => {
-        const threadId = intentThreads.current.get(event.intentKey);
-        if (!threadId) return;
+        const key = intentThreads.current.get(event.intentKey);
+        if (!key) return;
         switch (event.kind) {
           case "queued":
             sendsInFlight.current += 1;
-            dispatch({ kind: "handled", threadId });
+            dispatch({ kind: "handled", key });
             break;
           case "cancelled":
           case "failed":
             sendsInFlight.current = Math.max(0, sendsInFlight.current - 1);
-            dispatch({ kind: "restore", threadId });
+            dispatch({ kind: "restore", key });
             break;
           case "sent":
             sendsInFlight.current = Math.max(0, sendsInFlight.current - 1);
@@ -168,7 +173,7 @@ export function useFocusSession(lane?: "owed", start?: string) {
       return;
     }
     const intent = focusReplyIntent(current);
-    intentThreads.current.set(intent.key, current.threadId);
+    intentThreads.current.set(intent.key, focusKey(current));
     if (useComposeUi.getState().intent?.key === intent.key) return;
     useComposeUi.getState().openCompose(intent, "inline");
   }, [current]);
@@ -184,15 +189,17 @@ export function useFocusSession(lane?: "owed", start?: string) {
 
   // The next conversation is usually a keypress away: have it ready.
   const queryClient = useQueryClient();
-  const nextId = session.queue[1];
+  const next = session.queue[1] ? session.items[session.queue[1]] : undefined;
+  const nextThread = next?.threadId;
+  const nextAccount = next?.accountId;
   useEffect(() => {
-    if (!nextId) return;
+    if (!nextThread) return;
     void queryClient.prefetchQuery({
-      queryKey: ["thread", nextId],
-      queryFn: () => fetchThread(nextId),
+      queryKey: ["thread", nextThread, nextAccount ?? null],
+      queryFn: () => fetchThread(nextThread, nextAccount),
     });
-    void queryClient.prefetchQuery(threadContextQuery(nextId));
-  }, [nextId, queryClient]);
+    void queryClient.prefetchQuery(threadContextQuery(nextThread, nextAccount));
+  }, [nextAccount, nextThread, queryClient]);
 
   return {
     current,
@@ -215,9 +222,9 @@ export function useFocusSession(lane?: "owed", start?: string) {
     },
     revisit: () => dispatch({ kind: "revisit" }),
     skip: () => dispatch({ kind: "skip" }),
-    markHandled: (threadId: string) => dispatch({ kind: "handled", threadId }),
+    markHandled: (key: string) => dispatch({ kind: "handled", key }),
     /** Back in front: its Done was undone or failed. */
-    restore: (threadId: string) => dispatch({ kind: "restore", threadId }),
+    restore: (key: string) => dispatch({ kind: "restore", key }),
     reopenReply: () => {
       if (current) useComposeUi.getState().openCompose(focusReplyIntent(current), "inline");
     },

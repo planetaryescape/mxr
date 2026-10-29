@@ -4884,6 +4884,8 @@ export interface components {
         };
         /** @description Body of `POST /api/v1/mail/people/ack`. */
         AckBody: {
+            /** @description The account the row belongs to, for a thread id two accounts hold. */
+            account_id?: string | null;
             /**
              * @description True by default: a preview of the exact plan with its token. Only an
              *     explicit `false`, with the preview's token and text, sends.
@@ -7169,6 +7171,12 @@ export interface components {
         DeskLaterBody: {
             /** @description Preview only; nothing changes. */
             dry_run?: boolean | null;
+            /**
+             * @description The same conversations with the account each row belongs to; a pair
+             *     acts on that account only.
+             */
+            thread_accounts?:
+                components["schemas"]["ThreadAccountRef"][] | null;
             thread_ids: string[];
             /**
              * @description The instant the client previewed, as RFC3339. Never a phrase: resolve
@@ -8911,8 +8919,13 @@ export interface components {
         ModeKindData: "messages" | "todo" | "updates" | "reading" | "archive";
         /** @description Body of `POST /api/v1/mail/modes/membership`. */
         ModeMembershipBody: {
+            /**
+             * @description The same conversations with the account each row belongs to; a pair
+             *     is answered for that account only.
+             */
+            thread_accounts?: components["schemas"]["ThreadAccountRef"][];
             /** @description At most 100 threads, answered in this order. */
-            thread_ids: string[];
+            thread_ids?: string[];
         };
         /** @description One mode holding a thread, and why. */
         ModeMembershipData: {
@@ -12007,6 +12020,7 @@ export interface components {
                   sender_email: string;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "SummarizeThread";
                   thread_id: components["schemas"]["ThreadId"];
@@ -12213,6 +12227,7 @@ export interface components {
                   limit?: number;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetThreadBriefing";
                   refresh?: boolean;
@@ -12337,6 +12352,7 @@ export interface components {
                   draft_id: components["schemas"]["DraftId"];
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "ExportThread";
                   format: components["schemas"]["ExportFormat"];
@@ -12463,11 +12479,13 @@ export interface components {
                   time_zone?: string | null;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetThreadContext";
                   thread_id: components["schemas"]["ThreadId"];
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetThreadGist";
                   refresh?: boolean;
@@ -12487,11 +12505,21 @@ export interface components {
                   /** @enum {string} */
                   cmd: "DismissDeskThreads";
                   dry_run?: boolean;
+                  /**
+                   * @description The same conversations as `thread_ids`, each with the account its row
+                   *     belongs to; a pair acts on that account only.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids: components["schemas"]["ThreadId"][];
               }
             | {
                   /** @enum {string} */
                   cmd: "RestoreDeskThreads";
+                  /**
+                   * @description The same conversations as `thread_ids`, each with the account its row
+                   *     belongs to; a pair acts on that account only.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids: components["schemas"]["ThreadId"][];
               }
             | {
@@ -12657,12 +12685,22 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetModeMembership";
                   message_id?: components["schemas"]["MessageId"] | null;
+                  /**
+                   * @description The same conversations as `thread_ids`, each with the account its row
+                   *     belongs to; a pair acts on that account only.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_id?: components["schemas"]["ThreadId"] | null;
                   thread_ids?: components["schemas"]["ThreadId"][];
               }
             | {
                   /** @enum {string} */
                   cmd: "GetThreadPreviews";
+                  /**
+                   * @description The same conversations as `thread_ids`, each with the account its row
+                   *     belongs to; a pair acts on that account only.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids: components["schemas"]["ThreadId"][];
               }
             | {
@@ -12749,6 +12787,7 @@ export interface components {
                   topic?: components["schemas"]["ThreadId"] | null;
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "AckMessage";
                   dry_run?: boolean;
@@ -13125,6 +13164,11 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetThreadGists";
                   generate?: boolean;
+                  /**
+                   * @description The same conversations as `thread_ids`, each with the account its row
+                   *     belongs to; a pair acts on that account only.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids: components["schemas"]["ThreadId"][];
               }
             | {
@@ -15488,6 +15532,7 @@ export interface components {
         };
         /** @description Returned by `Request::GetThreadGist`. */
         ThreadGistData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             ask?: components["schemas"]["ThreadAskData"] | null;
             from_cache: boolean;
             /** Format: date-time */
@@ -15502,6 +15547,7 @@ export interface components {
             thread_id: components["schemas"]["ThreadId"];
         };
         ThreadGistSkipData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             reason: components["schemas"]["ThreadGistSkipReasonData"];
             thread_id: components["schemas"]["ThreadId"];
         };
@@ -15521,6 +15567,9 @@ export interface components {
              *     `ThreadGistReady` event.
              */
             generate?: boolean | null;
+            /** @description The same conversations with the account each row belongs to. */
+            thread_accounts?:
+                components["schemas"]["ThreadAccountRef"][] | null;
             /** @description At most 100, in the order to write missing gists (visible rows first). */
             thread_ids: string[];
         };
@@ -15582,8 +15631,13 @@ export interface components {
         };
         /** @description Body of `POST /api/v1/mail/threads/previews`. */
         ThreadPreviewsBody: {
+            /**
+             * @description The same conversations with the account each row belongs to; a pair
+             *     is previewed for that account only.
+             */
+            thread_accounts?: components["schemas"]["ThreadAccountRef"][];
             /** @description At most 100 threads, answered in this order; unknown ids are left out. */
-            thread_ids: string[];
+            thread_ids?: string[];
         };
         /** @description An open promise in the thread and who made it. */
         ThreadPromiseData: {
@@ -20588,6 +20642,8 @@ export interface operations {
             query?: {
                 /** @description The thread */
                 thread_id?: string;
+                /** @description The account the row belongs to, for a thread id two accounts hold */
+                account_id?: string;
                 /** @description Or one of its messages */
                 message_id?: string;
             };
@@ -23250,9 +23306,15 @@ export interface operations {
     };
     mail_thread: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -23275,9 +23337,15 @@ export interface operations {
     };
     mail_thread_briefing: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -23300,9 +23368,15 @@ export interface operations {
     };
     mail_thread_context: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -23325,9 +23399,15 @@ export interface operations {
     };
     mail_thread_gist: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -23350,9 +23430,15 @@ export interface operations {
     };
     mail_thread_export: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -23375,9 +23461,15 @@ export interface operations {
     };
     thread_summarize: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The account the row belongs to. Needed only when two accounts hold the same thread id */
+                account_id?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                /** @description Thread id */
+                thread_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

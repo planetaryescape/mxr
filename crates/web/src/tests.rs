@@ -6192,7 +6192,7 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
         ));
         assert!(matches!(
             &seen[2],
-            Request::DismissDeskThreads { thread_ids, dry_run: true } if thread_ids == &vec![thread.clone()]
+            Request::DismissDeskThreads { thread_ids, dry_run: true, .. } if thread_ids == &vec![thread.clone()]
         ));
         assert!(matches!(&seen[3], Request::RestoreDeskThreads { .. }));
     }

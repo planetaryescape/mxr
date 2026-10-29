@@ -71,6 +71,7 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
             let resp = client
                 .request(Request::DismissDeskThreads {
                     thread_ids: parse_thread_ids(&thread_ids)?,
+                    thread_accounts: Vec::new(),
                     dry_run,
                 })
                 .await?;
@@ -127,6 +128,7 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
             let resp = client
                 .request(Request::RestoreDeskThreads {
                     thread_ids: parse_thread_ids(&thread_ids)?,
+                    thread_accounts: Vec::new(),
                 })
                 .await?;
             match resp {
@@ -552,6 +554,7 @@ mod tests {
     fn with_gists_the_ask_replaces_the_reason_and_the_gist_goes_under() {
         let owed = row(DeskLaneKind::Owed, 60, None);
         let gist = ThreadGistData {
+            account_id: None,
             thread_id: owed.thread_id.clone(),
             status: ThreadGistStatusData::Ready,
             gist: Some("Canary stays at 5% until the dashboard is quiet.".into()),

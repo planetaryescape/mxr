@@ -7,7 +7,7 @@ use super::gist_kind::style_of;
 use super::thread_gist::{cached_gist, thread_envelopes, GistPolicy, GistSetup};
 use super::HandlerError;
 use crate::state::AppState;
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{AttachmentDisposition, AttachmentMeta};
 use mxr_protocol::{MessageTextSourceData, TrimmedData};
 use mxr_reader::{new_text, plain_text, EarlierMessage};
@@ -205,11 +205,18 @@ pub(super) struct CachedAsk {
 /// Never calls a model.
 pub(super) async fn cached_ask(
     state: &AppState,
+    account_id: &AccountId,
     thread_id: &ThreadId,
 ) -> Result<Option<CachedAsk>, HandlerError> {
-    let envelopes = thread_envelopes(state, thread_id).await?;
+    let envelopes = thread_envelopes(state, thread_id, Some(account_id)).await?;
     let style = style_of(state, thread_id, &envelopes).await?;
-    let Some(setup) = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes, style) else {
+    let Some(setup) = GistSetup::new(
+        &GistPolicy::pin(state),
+        thread_id,
+        Some(account_id),
+        &envelopes,
+        style,
+    ) else {
         return Ok(None);
     };
     let Some(gist) = cached_gist(state, thread_id, &setup).await? else {

@@ -9,7 +9,7 @@
 //! back unless their Done is undone; the one on screen stays put even if a
 //! refetch drops it (you may be halfway through the reply).
 
-use crate::app::MutationId;
+use crate::app::{MutationId, ThreadKey};
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -22,6 +22,8 @@ pub enum FocusSource {
     ReplyLater,
 }
 
+/// A thread id can be held by two accounts, so the queue is keyed by
+/// (account, thread).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusItem {
     pub thread_id: ThreadId,
@@ -35,10 +37,16 @@ pub struct FocusItem {
     pub source: FocusSource,
 }
 
+impl FocusItem {
+    pub fn key(&self) -> ThreadKey {
+        ThreadKey::new(self.account_id.clone(), self.thread_id.clone())
+    }
+}
+
 /// The reply the page opened, so only its own send moves the queue on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusReply {
-    pub thread_id: ThreadId,
+    pub thread: ThreadKey,
     /// Its compose file, once the editor opens. A source message without a
     /// Message-ID header gives nothing else to match the send on.
     pub draft: Option<PathBuf>,
@@ -59,13 +67,13 @@ pub struct FocusReturn {
 #[derive(Debug, Default)]
 pub struct FocusPageState {
     /// Every conversation seen this session, by thread.
-    pub items: HashMap<ThreadId, FocusItem>,
+    pub items: HashMap<ThreadKey, FocusItem>,
     /// Still to do, in order; the first is on screen.
-    pub queue: Vec<ThreadId>,
+    pub queue: Vec<ThreadKey>,
     /// Sent or put away, in the order handled.
-    pub handled: Vec<ThreadId>,
+    pub handled: Vec<ThreadKey>,
     /// Skipped when nothing else was left: set aside until you come back.
-    pub deferred: Vec<ThreadId>,
+    pub deferred: Vec<ThreadKey>,
     /// The sources have answered at least once.
     pub loaded: bool,
     /// Opened from the desk: its You owe lane only, as the web's desk
@@ -80,15 +88,15 @@ pub struct FocusPageState {
     pub pending_refresh: bool,
     /// The conversation to put on screen once it is in the queue (the reply
     /// queue's `F` names one).
-    pub start_at: Option<ThreadId>,
+    pub start_at: Option<ThreadKey>,
     pub reply: Option<FocusReply>,
     /// The newest message's text for the one on screen, reader-cleaned
     /// once when it arrives (cleaning HTML can run an external command).
     pub body: Option<(MessageId, String)>,
     /// Done requests in flight, so a failure puts the conversation back.
-    pub pending_done: HashMap<MutationId, ThreadId>,
+    pub pending_done: HashMap<MutationId, ThreadKey>,
     /// The last conversation put away with Done, while `u` can undo it.
-    pub undoable_done: Option<ThreadId>,
+    pub undoable_done: Option<ThreadKey>,
     pub return_to: Option<FocusReturn>,
 }
 
@@ -104,7 +112,7 @@ pub struct FocusProgress {
 impl FocusPageState {
     /// A fresh session: what an earlier visit handled can come back.
     pub fn start(
-        start_at: Option<ThreadId>,
+        start_at: Option<ThreadKey>,
         owed_only: bool,
         return_to: Option<FocusReturn>,
     ) -> Self {
@@ -135,18 +143,19 @@ impl FocusPageState {
     /// drop what left the sources except the one on screen.
     pub fn sync(&mut self, items: Vec<FocusItem>) {
         let current = self.queue.first().cloned();
-        let in_source: std::collections::HashSet<ThreadId> =
-            items.iter().map(|item| item.thread_id.clone()).collect();
+        let in_source: std::collections::HashSet<ThreadKey> =
+            items.iter().map(FocusItem::key).collect();
         self.queue
             .retain(|id| Some(id) == current.as_ref() || in_source.contains(id));
         for item in items {
-            let known = self.queue.contains(&item.thread_id)
-                || self.handled.contains(&item.thread_id)
-                || self.deferred.contains(&item.thread_id);
+            let key = item.key();
+            let known = self.queue.contains(&key)
+                || self.handled.contains(&key)
+                || self.deferred.contains(&key);
             if !known {
-                self.queue.push(item.thread_id.clone());
+                self.queue.push(key.clone());
             }
-            self.items.insert(item.thread_id.clone(), item);
+            self.items.insert(key, item);
         }
         self.loaded = true;
         if let Some(wanted) = self.start_at.take() {
@@ -173,7 +182,7 @@ impl FocusPageState {
         self.queue.append(&mut self.deferred);
     }
 
-    pub fn handled(&mut self, thread_id: &ThreadId) {
+    pub fn handled(&mut self, thread_id: &ThreadKey) {
         if let Some(index) = self.queue.iter().position(|id| id == thread_id) {
             let id = self.queue.remove(index);
             self.handled.push(id);
@@ -181,7 +190,7 @@ impl FocusPageState {
     }
 
     /// Back in front: its Done was undone or failed.
-    pub fn restore(&mut self, thread_id: &ThreadId) {
+    pub fn restore(&mut self, thread_id: &ThreadKey) {
         if let Some(index) = self.handled.iter().position(|id| id == thread_id) {
             let id = self.handled.remove(index);
             self.queue.insert(0, id);
@@ -189,7 +198,7 @@ impl FocusPageState {
     }
 
     /// Put a queued conversation on screen.
-    pub fn front(&mut self, thread_id: &ThreadId) {
+    pub fn front(&mut self, thread_id: &ThreadKey) {
         if let Some(index) = self.queue.iter().position(|id| id == thread_id) {
             let id = self.queue.remove(index);
             self.queue.insert(0, id);
@@ -225,10 +234,10 @@ mod tests {
         let mut page = loaded(&items);
         page.skip();
         assert_eq!(page.current(), Some(&items[1]));
-        page.handled(&items[1].thread_id);
+        page.handled(&items[1].key());
         page.skip();
         assert_eq!(page.current(), None);
-        assert_eq!(page.deferred, vec![items[0].thread_id.clone()]);
+        assert_eq!(page.deferred, vec![items[0].key()]);
         page.revisit();
         assert_eq!(page.current(), Some(&items[0]));
     }
@@ -237,18 +246,14 @@ mod tests {
     fn a_refetch_keeps_the_order_and_never_brings_back_what_was_handled() {
         let items = [item(1), item(2), item(3)];
         let mut page = loaded(&items);
-        page.handled(&items[0].thread_id);
+        page.handled(&items[0].key());
         let arrival = item(4);
         // The source still lists the handled one (it hasn't caught up) and
         // no longer lists the one on screen.
         page.sync(vec![items[0].clone(), items[2].clone(), arrival.clone()]);
         assert_eq!(
             page.queue,
-            vec![
-                items[1].thread_id.clone(),
-                items[2].thread_id.clone(),
-                arrival.thread_id.clone()
-            ]
+            vec![items[1].key(), items[2].key(), arrival.key()]
         );
         assert_eq!(
             page.progress(),
@@ -263,12 +268,12 @@ mod tests {
     #[test]
     fn restore_puts_it_back_in_front_and_start_at_picks_the_first() {
         let items = [item(1), item(2), item(3)];
-        let mut page = FocusPageState::start(Some(items[2].thread_id.clone()), false, None);
+        let mut page = FocusPageState::start(Some(items[2].key()), false, None);
         page.sync(items.to_vec());
         assert_eq!(page.current(), Some(&items[2]));
-        page.handled(&items[2].thread_id);
+        page.handled(&items[2].key());
         assert_eq!(page.current(), Some(&items[0]));
-        page.restore(&items[2].thread_id);
+        page.restore(&items[2].key());
         assert_eq!(page.current(), Some(&items[2]));
         assert!(page.handled.is_empty());
     }

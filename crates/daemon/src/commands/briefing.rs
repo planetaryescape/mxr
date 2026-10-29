@@ -31,6 +31,7 @@ pub async fn run(action: BriefingAction) -> anyhow::Result<()> {
                 .request(Request::GetThreadBriefing {
                     thread_id: id,
                     refresh,
+                    account_id: None,
                 })
                 .await?;
             print(resp, resolve_format(format), true)

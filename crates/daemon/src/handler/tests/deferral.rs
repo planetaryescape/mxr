@@ -446,6 +446,7 @@ async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_diff
         let ResponseData::ModeMembership { threads } = request(
             &fx,
             Request::GetModeMembership {
+                thread_accounts: Vec::new(),
                 message_id: Some(acknowledgement.id),
                 thread_id: None,
                 thread_ids: vec![],

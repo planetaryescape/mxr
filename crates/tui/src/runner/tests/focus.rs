@@ -66,6 +66,7 @@ fn focus_app() -> (App, Vec<DeskRowData>, Vec<Envelope>) {
     let owed = vec![owed_row("Nora"), owed_row("Sam")];
     let mut later = make_test_envelopes(2);
     later[1].thread_id = owed[1].thread_id.clone();
+    later[1].account_id = owed[1].account_id.clone();
     app.set_focus_sources(
         Ok((
             DeskLaneData {
@@ -103,9 +104,9 @@ fn g_capital_f_opens_the_webs_queue_in_its_order() {
     assert_eq!(
         page.queue,
         vec![
-            owed[0].thread_id.clone(),
-            owed[1].thread_id.clone(),
-            later[0].thread_id.clone()
+            crate::app::ThreadKey::new(owed[0].account_id.clone(), owed[0].thread_id.clone()),
+            crate::app::ThreadKey::new(owed[1].account_id.clone(), owed[1].thread_id.clone()),
+            crate::app::ThreadKey::of_envelope(&later[0]),
         ],
         "You owe first, then reply later, each conversation once"
     );
@@ -130,7 +131,10 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
     assert_eq!(current_thread(&app), Some(owed[1].thread_id.clone()));
     assert_eq!(
         app.mailbox.focus_page.queue.last(),
-        Some(&owed[0].thread_id)
+        Some(&crate::app::ThreadKey::new(
+            owed[0].account_id.clone(),
+            owed[0].thread_id.clone()
+        ))
     );
 
     press(&mut app, KeyCode::Char('e'));
@@ -140,7 +144,7 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
         [Request::ResolveDeskItems { items, dry_run: false }]
             if items == &[DeskDoneItemData {
                 thread_id: owed[1].thread_id.clone(),
-                account_id: None,
+                account_id: Some(owed[1].account_id.clone()),
                 lane: Some(DeskLaneKind::Owed),
                 commitment_id: None,
             }]
@@ -183,7 +187,7 @@ fn a_reply_later_done_lets_the_daemon_pick_the_lane_and_a_failure_puts_it_back()
         Request::ResolveDeskItems { items, dry_run: false }
             if items == &[DeskDoneItemData {
                 thread_id: later[0].thread_id.clone(),
-                account_id: None,
+                account_id: Some(later[0].account_id.clone()),
                 lane: None,
                 commitment_id: None,
             }]

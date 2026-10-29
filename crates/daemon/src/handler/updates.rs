@@ -502,7 +502,7 @@ where
     let chosen: HashSet<MessageId> = selection.message_ids.iter().cloned().collect();
     let done = Box::pin(mode_done::let_go_updates(
         state,
-        &selection.thread_ids,
+        &selection.thread_accounts,
         &chosen,
         dry_run,
     ))

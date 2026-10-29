@@ -187,6 +187,7 @@ async fn ack(
         client
             .request(Request::AckMessage {
                 thread_id: thread_id.clone(),
+                account_id: None,
                 dry_run,
                 expect_text,
                 preview_token,

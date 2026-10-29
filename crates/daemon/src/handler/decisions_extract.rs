@@ -67,7 +67,7 @@ pub(crate) async fn extract_thread(
 ) -> Result<usize, String> {
     let envelopes = state
         .store
-        .get_thread_envelopes_for_model(thread_id)
+        .get_thread_envelopes_for_model_in(thread_id, Some(account_id))
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {

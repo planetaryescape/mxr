@@ -29,12 +29,21 @@ pub(crate) enum ReplaceableRequestKey {
     DiagnosticsActivity,
 }
 
+/// Open-thread fetch for a list row: the row's account rides along, because
+/// two accounts can hold the same legacy thread id.
+pub(crate) fn get_thread_request(key: &crate::app::ThreadKey) -> Request {
+    Request::GetThread {
+        thread_id: key.thread_id.clone(),
+        account_id: key.account_id.clone(),
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum ReplaceableRequest {
     Search(app::PendingSearchRequest),
     SearchCount(app::PendingSearchCountRequest),
     Thread {
-        thread_id: mxr_core::ThreadId,
+        key: crate::app::ThreadKey,
         request_id: u64,
         enqueued_at: Instant,
     },
@@ -199,7 +208,7 @@ async fn execute_replaceable_request(
             Some(AsyncResult::SearchCount { session_id, result })
         }
         ReplaceableRequest::Thread {
-            thread_id,
+            key,
             request_id,
             enqueued_at,
         } => {
@@ -208,15 +217,7 @@ async fn execute_replaceable_request(
                 queue_wait_ms = enqueued_at.elapsed().as_secs_f64() * 1000.0,
                 "tui thread fetch dequeued"
             );
-            let result = match ipc_call(
-                bg,
-                Request::GetThread {
-                    thread_id: thread_id.clone(),
-                    account_id: None,
-                },
-            )
-            .await
-            {
+            let result = match ipc_call(bg, get_thread_request(&key)).await {
                 Ok(Response::Ok {
                     data:
                         ResponseData::Thread {
@@ -230,7 +231,7 @@ async fn execute_replaceable_request(
                 _ => Err(MxrError::Ipc("unexpected response to GetThread".into())),
             };
             Some(AsyncResult::Thread {
-                thread_id,
+                key,
                 request_id,
                 result,
             })

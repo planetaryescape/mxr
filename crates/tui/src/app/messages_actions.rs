@@ -29,6 +29,12 @@ pub(crate) struct MessagesTopic {
     pub who: String,
 }
 
+impl MessagesTopic {
+    pub(crate) fn key(&self) -> ThreadKey {
+        ThreadKey::new(self.account_id.clone(), self.thread_id.clone())
+    }
+}
+
 impl App {
     pub(super) fn apply_messages_action(&mut self, action: Action) {
         match action {
@@ -350,8 +356,8 @@ impl App {
         };
         let page = &mut self.mailbox.messages_page;
         page.ack = None;
-        page.ack_requested = Some(topic.thread_id.clone());
-        page.pending_ack_preview = Some(topic.thread_id);
+        page.ack_requested = Some(topic.key());
+        page.pending_ack_preview = Some(topic.key());
         self.status_message = Some("Preparing got it…".into());
     }
 
@@ -361,9 +367,8 @@ impl App {
     /// moved on is dropped.
     pub(crate) fn show_messages_ack(&mut self, plan: AckPlanData, now: std::time::Instant) {
         let asked = self.mailbox.messages_page.ack_requested.take();
-        if asked.as_ref() != Some(&plan.thread_id)
-            || !self.messages_ack_still_wanted(&plan.thread_id)
-        {
+        let plan_key = ThreadKey::new(plan.account_id.clone(), plan.thread_id.clone());
+        if asked.as_ref() != Some(&plan_key) || !self.messages_ack_still_wanted(&plan_key) {
             return;
         }
         self.status_message = None;
@@ -393,13 +398,15 @@ impl App {
         // Sends only if you are still looking at the conversation it
         // answers: any other path away from it has already cancelled it,
         // and this check catches one that didn't.
-        if !self.messages_ack_still_wanted(&ack.plan.thread_id) {
+        let ack_key = ThreadKey::new(ack.plan.account_id.clone(), ack.plan.thread_id.clone());
+        if !self.messages_ack_still_wanted(&ack_key) {
             return;
         }
-        self.mailbox.messages_page.mark_done(&ack.plan.thread_id);
+        self.mailbox.messages_page.mark_done(&ack_key);
         self.queue_mutation(
             Request::AckMessage {
                 thread_id: ack.plan.thread_id.clone(),
+                account_id: Some(ack.plan.account_id.clone()),
                 dry_run: false,
                 expect_text: Some(ack.plan.text.clone()),
                 preview_token: ack.plan.preview_token.clone(),
@@ -423,7 +430,7 @@ impl App {
     /// Whether a Got it for `thread_id` may still start or send: the app
     /// is running, the Messages lens has the keys, and the conversation on
     /// it (including one about to load) is that thread.
-    fn messages_ack_still_wanted(&self, thread_id: &ThreadId) -> bool {
+    fn messages_ack_still_wanted(&self, key: &ThreadKey) -> bool {
         if self.should_quit
             || !self.messages_list_focused()
             || self.modals.messages_filter.is_some()
@@ -435,12 +442,12 @@ impl App {
             return false;
         };
         if let Some((row_id, topic)) = &page.pending_person {
-            if *row_id != row.id || topic.as_ref().is_some_and(|t| t != thread_id) {
+            if *row_id != row.id || topic.as_ref().is_some_and(|t| t != &key.thread_id) {
                 return false;
             }
         }
         self.selected_messages_topic()
-            .is_some_and(|topic| &topic.thread_id == thread_id)
+            .is_some_and(|topic| topic.key() == *key)
     }
 
     /// Cancel a Got it, waiting or counting down, once the lens has left
@@ -451,7 +458,7 @@ impl App {
         let thread = page
             .ack
             .as_ref()
-            .map(|ack| ack.plan.thread_id.clone())
+            .map(|ack| ThreadKey::new(ack.plan.account_id.clone(), ack.plan.thread_id.clone()))
             .or_else(|| page.ack_requested.clone());
         if let Some(thread) = thread {
             if !self.messages_ack_still_wanted(&thread) {
@@ -471,7 +478,8 @@ impl App {
         // Until the page it moved to is on screen, `e` would act on the
         // page left behind (or a row's first topic), not the one shown next.
         let page = &self.mailbox.messages_page;
-        if page.is_done_here(&topic.thread_id) || !page.target_shown() {
+        let topic_key = topic.key();
+        if page.is_done_here(&topic_key) || !page.target_shown() {
             return;
         }
         let Some(row) = self.selected_messages_row() else {
@@ -490,27 +498,32 @@ impl App {
             .or_else(|| {
                 topics
                     .iter()
-                    .find(|t| t.thread_id == topic.thread_id)
+                    .find(|t| {
+                        ThreadKey::new(t.account_id.clone(), t.thread_id.clone()) == topic_key
+                    })
                     .map(|t| t.subject.clone())
             })
             .unwrap_or_default();
         // Left with them: the row's own topics not done here, as the web
         // counts them; history and group rows on the page don't count.
-        let open: std::collections::HashSet<&ThreadId> = row
+        let topic_key_of = |t: &mxr_protocol::MessagesTopicData| {
+            ThreadKey::new(t.account_id.clone(), t.thread_id.clone())
+        };
+        let open: std::collections::HashSet<ThreadKey> = row
             .topics
             .iter()
             .filter(|t| t.state != mxr_protocol::TopicStateData::Done)
-            .map(|t| &t.thread_id)
+            .map(topic_key_of)
             .collect();
-        let still_open = |id: &ThreadId| *id != topic.thread_id && open.contains(&id);
-        let ids: Vec<ThreadId> = topics.iter().map(|t| t.thread_id.clone()).collect();
-        let next_topic = next_after_removal(&ids, &topic.thread_id, still_open)
+        let still_open = |id: &ThreadKey| *id != topic_key && open.contains(id);
+        let ids: Vec<ThreadKey> = topics.iter().map(topic_key_of).collect();
+        let next_topic = next_after_removal(&ids, &topic_key, still_open)
             .or_else(|| ids.iter().find(|id| still_open(id)))
-            .and_then(|id| topics.iter().find(|t| &t.thread_id == id))
+            .and_then(|id| topics.iter().find(|t| topic_key_of(t) == *id))
             .map(|t| (t.thread_id.clone(), topic_label(t)));
         let before_rows = page.row_keys();
 
-        self.mailbox.messages_page.mark_done_here(&topic.thread_id);
+        self.mailbox.messages_page.mark_done_here(&topic_key);
         let note = if let Some((thread, label)) = next_topic {
             // They still have topics here: stay on them, on the next one.
             let page = &mut self.mailbox.messages_page;
@@ -540,7 +553,7 @@ impl App {
                 next: next_title,
             }
         };
-        let mutation = self.queue_mode_done(ModeKindData::Messages, topic.thread_id);
+        let mutation = self.queue_mode_done(ModeKindData::Messages, topic_key);
         self.mailbox.messages_page.done_notes.insert(mutation, note);
         // After queueing, which sets its own progress line.
         self.explain_done_here_once();
@@ -616,7 +629,11 @@ impl App {
         let current = page
             .conversation
             .as_ref()
-            .and_then(|c| topics.iter().position(|t| t.thread_id == c.thread_id))
+            .and_then(|c| {
+                topics
+                    .iter()
+                    .position(|t| t.thread_id == c.thread_id && t.account_id == c.account_id)
+            })
             .unwrap_or(0);
         let next = if forward {
             (current + 1) % topics.len()

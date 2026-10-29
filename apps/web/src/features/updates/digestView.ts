@@ -221,6 +221,12 @@ export function gistThread(line: UpdateLine): string | null {
   return line.latest_thread_id;
 }
 
+/** The conversation `gistThread` names, with the line's account (two accounts can share a thread id). */
+export function gistRef(line: UpdateLine): { thread_id: string; account_id: string } | null {
+  const threadId = gistThread(line);
+  return threadId ? { thread_id: threadId, account_id: line.account_id } : null;
+}
+
 /** The sending host the daemon may append to a Needs a look name, lowercased. */
 function senderHost(line: UpdateLine): string | null {
   const host = line.sender_email?.split("@")[1]?.trim().toLowerCase();

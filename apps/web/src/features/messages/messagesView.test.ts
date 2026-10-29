@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { conversationKey } from "@/features/mailbox/rowKey";
 import type { ConversationMessage, MessagesData, MessagesRow, MessagesTopic } from "./api";
 import {
   afterDone,
@@ -314,5 +315,30 @@ describe("done here moves on", () => {
         hidden: new Set(["launch", "t-person:jon", "t-person:iris"]),
       }),
     ).toEqual({ kind: "none" });
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  const inA = row("person:a", {
+    account_id: "A",
+    topics: [topic("shared", { account_id: "A", state: "your_turn" })],
+  });
+  const inB = row("person:b", {
+    account_id: "B",
+    topics: [topic("shared", { account_id: "B", state: "your_turn" })],
+  });
+  const both = data({ your_turn: [inA, inB] });
+
+  test("a link opens the row of the account it names", () => {
+    expect(rowForThread(both, "shared", "B")).toBe(inB);
+    expect(rowForThread(both, "shared", "A")).toBe(inA);
+    // An older link with no account takes the first, as it always did.
+    expect(rowForThread(both, "shared")).toBe(inA);
+  });
+
+  test("done in flight on A's topic leaves B's open", () => {
+    const hidden = new Set([conversationKey("shared", "A")]);
+    expect([...openThreads(inA, hidden)]).toEqual([]);
+    expect([...openThreads(inB, hidden)]).toEqual(["shared"]);
   });
 });

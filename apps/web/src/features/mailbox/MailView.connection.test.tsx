@@ -49,6 +49,7 @@ vi.mock("@/hooks/useSplitPane", () => ({
 vi.mock("@/hooks/useAdvanceOnRemoval", () => ({
   useAdvanceOnRemoval: vi.fn<() => void>(),
   useRouteStillShows: () => () => true,
+  useRouteAccount: () => null,
 }));
 vi.mock("@/lib/keys/focusPane", () => ({ focusActivePane: vi.fn<() => void>() }));
 vi.mock("@/components/ModeFrame", () => {

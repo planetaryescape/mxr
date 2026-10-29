@@ -1753,6 +1753,7 @@ mod scoped_events {
     fn gist(thread_id: &ThreadId, text: &str) -> DaemonEvent {
         DaemonEvent::ThreadGistReady {
             gist: ThreadGistData {
+                account_id: None,
                 thread_id: thread_id.clone(),
                 status: ThreadGistStatusData::Ready,
                 gist: Some(text.into()),

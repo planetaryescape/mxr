@@ -44,9 +44,9 @@ impl App {
             return Some(NotNowTarget::Mail { message_id });
         }
         if self.messages_list_focused() || self.desk_list_focused() {
-            let (thread_id, message_id, waiting) = self.reply_later_target()?;
+            let (thread, message_id, waiting) = self.reply_later_target()?;
             return Some(NotNowTarget::Conversation {
-                thread_id,
+                thread,
                 message_id,
                 waiting,
             });
@@ -196,14 +196,14 @@ impl App {
                     "Snoozing...".into(),
                 );
             }
-            NotNowTarget::Conversation { thread_id, .. } => {
+            NotNowTarget::Conversation { thread, .. } => {
                 // Off the desk at once; the answer says what was set, and a
                 // failure refetches the desk.
-                self.remove_desk_thread(&thread_id);
+                self.remove_desk_thread(&thread);
                 self.queue_mutation(
                     Request::DeferThreads {
-                        thread_ids: vec![thread_id],
-                        thread_accounts: Vec::new(),
+                        thread_ids: vec![thread.thread_id.clone()],
+                        thread_accounts: thread_accounts(std::slice::from_ref(&thread)),
                         until: at,
                         dry_run: false,
                     },

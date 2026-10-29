@@ -63,10 +63,10 @@ pub struct MessagesPageState {
     /// the person an assistant link opened.
     pub select_row: Option<String>,
     /// Ask the daemon for a Got it preview on this thread.
-    pub pending_ack_preview: Option<ThreadId>,
+    pub pending_ack_preview: Option<crate::app::ThreadKey>,
     /// The thread `.` asked a preview for: only its preview may start a
     /// countdown, and only while the lens is still on it.
-    pub ack_requested: Option<ThreadId>,
+    pub ack_requested: Option<crate::app::ThreadKey>,
     pub ack: Option<AckCountdown>,
     /// What each done here moved to, by its mutation, for its toast:
     /// "Done: Invoice." and "Next: Pricing.", joined with the daemon's copy.
@@ -166,7 +166,7 @@ impl MessagesPageState {
 
     /// Whether done here already took this thread (a second `e` before
     /// the next topic's page arrives must not send it again).
-    pub fn is_done_here(&self, thread_id: &ThreadId) -> bool {
+    pub fn is_done_here(&self, key: &crate::app::ThreadKey) -> bool {
         self.messages.as_ref().is_some_and(|m| {
             m.your_turn
                 .iter()
@@ -174,7 +174,10 @@ impl MessagesPageState {
                 .chain(&m.recent)
                 .chain(&m.quiet)
                 .flat_map(|row| &row.topics)
-                .any(|t| &t.thread_id == thread_id && t.state == TopicStateData::Done)
+                .any(|t| {
+                    key.matches_ids(&t.thread_id, Some(&t.account_id))
+                        && t.state == TopicStateData::Done
+                })
         })
     }
 
@@ -206,7 +209,7 @@ impl MessagesPageState {
     /// Done here before the daemon answers: the topic is done, and a row
     /// leaves Your turn only once nothing of it is left, so a person with
     /// topics still open keeps their place.
-    pub fn mark_done_here(&mut self, thread_id: &ThreadId) {
+    pub fn mark_done_here(&mut self, key: &crate::app::ThreadKey) {
         let Some(messages) = self.messages.as_mut() else {
             return;
         };
@@ -217,7 +220,11 @@ impl MessagesPageState {
             .chain(messages.recent.iter_mut())
             .chain(messages.quiet.iter_mut())
         {
-            for topic in row.topics.iter_mut().filter(|t| &t.thread_id == thread_id) {
+            for topic in row
+                .topics
+                .iter_mut()
+                .filter(|t| key.matches_ids(&t.thread_id, Some(&t.account_id)))
+            {
                 topic.state = TopicStateData::Done;
             }
         }
@@ -229,7 +236,7 @@ impl MessagesPageState {
     }
 
     /// Take a thread's topic out of Your turn before the daemon answers.
-    pub fn mark_done(&mut self, thread_id: &ThreadId) {
+    pub fn mark_done(&mut self, key: &crate::app::ThreadKey) {
         let Some(messages) = self.messages.as_mut() else {
             return;
         };
@@ -239,7 +246,11 @@ impl MessagesPageState {
             .chain(messages.pinned.iter_mut())
             .chain(messages.recent.iter_mut())
         {
-            for topic in row.topics.iter_mut().filter(|t| &t.thread_id == thread_id) {
+            for topic in row
+                .topics
+                .iter_mut()
+                .filter(|t| key.matches_ids(&t.thread_id, Some(&t.account_id)))
+            {
                 topic.state = TopicStateData::Done;
             }
         }

@@ -76,6 +76,10 @@ pub struct OwedReplyHereData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadGistData {
     pub thread_id: ThreadId,
+    /// The account the gist is for. A legacy thread id can be held by two
+    /// accounts, so a client that lists both matches a gist by the pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<mxr_core::id::AccountId>,
     pub status: ThreadGistStatusData,
     /// One plain-text sentence, at most 240 characters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,6 +158,8 @@ pub enum GistModelData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadGistSkipData {
     pub thread_id: ThreadId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<mxr_core::id::AccountId>,
     pub reason: ThreadGistSkipReasonData,
 }
 

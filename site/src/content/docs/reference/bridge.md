@@ -126,7 +126,7 @@ SMTP send failures are not yet aggregated into doctor diagnostics.
 | `GET` | `/mail/mailbox` | Browse the inbox or any lens |
 | `GET` | `/mail/search` | Run a Tantivy search |
 | `GET` | `/mail/threads/{id}` | Full thread payload (messages + bodies). `?account_id=` returns only that account's messages; a thread id held by two accounts needs it to name one (list rows pass their own) |
-| `GET` | `/mail/threads/{id}/export` | Markdown / JSON export |
+| `GET` | `/mail/threads/{id}/export` | Markdown / JSON export (`?account_id=` exports that account's copy of a thread id two accounts hold) |
 | `GET` | `/mail/drafts` | List drafts |
 | `GET` | `/mail/messages/{message_id}/body` | Fetch one message body |
 | `GET` | `/mail/messages/{message_id}/html-images` | HTML-linked image asset list |
@@ -250,14 +250,14 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `GET` | `/mail/corrections` | Every move, sender mode and Not-sure answer, newest first (`?account=&limit=50`) |
 | `GET` | `/mail/people` | Messages defaults to actionable topics only. `?turn=all` explicitly includes history; `mine` and `theirs` select a side's turn. `unread=true`, `pace=true`, `limit=` and `account=` narrow the selected view. `row_count` and `thread_count` describe attention; `matched` counts the selected view's rows |
 | `GET` | `/mail/people/page` | A person's page with the selected topic as new text (`?person=&topic=`) |
-| `POST` | `/mail/people/ack` | Got it: `{thread_id}` previews (dry run by default) and returns a `preview_token`; a send needs `dry_run: false`, the token (within a minute) and the previewed `expect_text`, and is refused if anything changed or it was already acknowledged |
+| `POST` | `/mail/people/ack` | Got it: `{thread_id, account_id?}` previews (dry run by default) and returns a `preview_token`; a send needs `dry_run: false`, the token (within a minute) and the previewed `expect_text`, and is refused if anything changed or it was already acknowledged |
 | `POST` | `/mail/people/merge` | Merge addresses into one person by hand (`dry_run` previews) |
 | `POST` | `/mail/people/split` | Take an address back out of its person (`dry_run` previews) |
 | `GET` | `/mail/people/merge-suggestions` | Merges mxr suggests: same name, written to both |
 | `GET` | `/mail/rail` | Now, the five modes and Inbox with keys, counts and early-version notes (Messages also carries `quiet`), plus More |
-| `POST` | `/mail/threads/previews` | Subject, latest sender, date, snippet, message and unread counts and an attachment flag for up to 100 threads, with no bodies (`{thread_ids}`; unknown ids are left out) |
-| `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`) |
-| `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids}`) |
+| `POST` | `/mail/threads/previews` | Subject, latest sender, date, snippet, message and unread counts and an attachment flag for up to 100 threads, with no bodies (`{thread_ids, thread_accounts?}`; unknown ids are left out; a bare id held by two accounts is previewed once per account) |
+| `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`; `?account_id=` names the account for a thread id two accounts hold) |
+| `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids, thread_accounts?}`) |
 | `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, thread_accounts?, dry_run, todo_ids?, sender?}`): `thread_accounts` (`[{thread_id, account_id}]`) acts on each row's own account, for a thread id held by two accounts; `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
 | `GET` | `/mail/modes/guide` | How a mode explains itself (`?mode=now`) |
 | `POST` | `/mail/hints/{hint}` | Dismiss a hint in every client, or show it again (`{seen}`) |
@@ -443,7 +443,7 @@ emails from sender" and deep-link directly into the matching thread.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/mail/threads/{thread_id}/summarize` | Concise Markdown thread summary + next steps |
+| `POST` | `/mail/threads/{thread_id}/summarize` | Concise Markdown thread summary + next steps (`?account_id=` summarizes that account's copy of a thread id two accounts hold; the context, gist and briefing routes take it too) |
 | `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body plus model/humanizer/voice metadata |
 | `POST` | `/mail/drafts/new` | Start an LLM-backed draft from a prompt |
 | `POST` | `/mail/drafts/refine` | Refine draft body with model knobs |

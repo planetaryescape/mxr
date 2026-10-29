@@ -18,9 +18,12 @@ import type { ConversationMessage } from "./api";
 
 export function MessageInfoDialog({
   threadId,
+  accountId,
   message,
 }: {
   threadId: string;
+  /** The conversation's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
   message: ConversationMessage;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,21 +39,25 @@ export function MessageInfoDialog({
           Message info
         </button>
       </DialogTrigger>
-      {open ? <MessageInfoContent threadId={threadId} message={message} /> : null}
+      {open ? (
+        <MessageInfoContent threadId={threadId} accountId={accountId} message={message} />
+      ) : null}
     </Dialog>
   );
 }
 
 function MessageInfoContent({
   threadId,
+  accountId,
   message,
 }: {
   threadId: string;
+  accountId?: string | null;
   message: ConversationMessage;
 }) {
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId ?? null],
+    queryFn: () => fetchThread(threadId, accountId),
     staleTime: 60_000,
   });
   const details = thread.data?.messages.find((candidate) => candidate.id === message.message_id);

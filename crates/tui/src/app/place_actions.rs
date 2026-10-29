@@ -94,20 +94,20 @@ impl App {
         let MailboxView::Place(place) = self.mailbox.mailbox_view else {
             return false;
         };
-        let Some((_, message)) = self.selected_place_row() else {
+        let Some((bundle, message)) = self.selected_place_row() else {
             return false;
         };
-        let thread_id = message.thread_id.clone();
+        let thread = ThreadKey::new(bundle.account_id.clone(), message.thread_id.clone());
         let mode = match place {
             MailPlaceData::Reading => mxr_protocol::ModeKindData::Reading,
             MailPlaceData::PaperTrail => mxr_protocol::ModeKindData::Updates,
         };
-        self.mailbox.place_page.remove_thread(&thread_id);
+        self.mailbox.place_page.remove_thread(&thread);
         self.mailbox.selected_index = self
             .mailbox
             .selected_index
             .min(self.mailbox.place_page.row_count().saturating_sub(1));
-        self.queue_mode_done(mode, thread_id);
+        self.queue_mode_done(mode, thread);
         true
     }
 

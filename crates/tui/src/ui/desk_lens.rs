@@ -89,7 +89,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
             if selected {
                 selected_line = lines.len();
             }
-            let gist = view.row_gists.get(&row.thread_id);
+            let gist = crate::app::gist_for(view.row_gists, &row.account_id, &row.thread_id);
             let chip = view.account_marks.row_cell(&row.account_id, theme);
             let row_width = width.saturating_sub(view.account_marks.column_width());
             lines.push(row_line(*kind, row, gist, selected, row_width, theme, chip));
@@ -357,7 +357,7 @@ mod tests {
         let owed = row(DeskLaneKind::Owed, "Maya", 3_600, None);
         let waiting = row(DeskLaneKind::Owed, "Nora", 7_200, None);
         let gists = RowGists::from([(
-            owed.thread_id.clone(),
+            owed.thread_id.clone().into(),
             RowGist::new(
                 "Canary stays at 5% until the dashboard is quiet.".into(),
                 Some("confirm the owner".into()),

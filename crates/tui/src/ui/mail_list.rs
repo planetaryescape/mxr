@@ -251,9 +251,7 @@ fn build_row<'a>(
         .map(|wake_at| format!("Back {}", format_wake_long(&wake_at)));
     let snippet = match &wake_line {
         Some(line) => line.as_str(),
-        None => view
-            .row_gists
-            .get(&row.thread_id)
+        None => crate::app::gist_for(view.row_gists, &env.account_id, &row.thread_id)
             .map_or(env.snippet.as_str(), crate::app::RowGist::line),
     };
     let safe_snippet = strip_control_chars(snippet);
@@ -1157,7 +1155,7 @@ mod tests {
         row.representative.subject = "Status update".into();
         row.representative.snippet = "Shipping plan ready for review".into();
         let gists = RowGists::from([(
-            row.thread_id.clone(),
+            row.thread_id.clone().into(),
             crate::app::RowGist::new(
                 "Canary stays at 5%.".into(),
                 Some("confirm the owner".into()),

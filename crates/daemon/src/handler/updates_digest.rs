@@ -142,6 +142,10 @@ struct Scored<'a> {
 /// What letting go of a digest acts on.
 pub(super) struct Selection {
     pub thread_ids: Vec<ThreadId>,
+    /// The same conversations with the account each belongs to: a legacy
+    /// thread id can be held by two accounts, and letting go acts on each
+    /// account's copy.
+    pub thread_accounts: Vec<(ThreadId, AccountId)>,
     pub message_ids: Vec<MessageId>,
     pub token: String,
     pub source_count: usize,
@@ -183,7 +187,7 @@ fn select(
     scope: &Scope,
     cut_at: DateTime<Utc>,
     shown: &HashSet<&MessageId>,
-    todo_threads: &HashSet<&ThreadId>,
+    todo_threads: &HashSet<(&AccountId, &ThreadId)>,
 ) -> Selection {
     let picked: Vec<&Item> = items
         .iter()
@@ -197,6 +201,13 @@ fn select(
         .filter(|thread| seen.insert(*thread))
         .cloned()
         .collect();
+    let mut seen_pairs = HashSet::new();
+    let thread_accounts: Vec<(ThreadId, AccountId)> = picked
+        .iter()
+        .map(|item| (&item.message.thread_id, &item.message.account_id))
+        .filter(|pair| seen_pairs.insert(*pair))
+        .map(|(thread, account)| (thread.clone(), account.clone()))
+        .collect();
     let sources: HashSet<(&AccountId, &str)> = picked
         .iter()
         .map(|item| (&item.message.account_id, item.fact.source_key.as_str()))
@@ -204,13 +215,14 @@ fn select(
     Selection {
         token: token(&ids, cut_at),
         hidden: ids.iter().filter(|id| !shown.contains(*id)).count(),
-        in_todo: thread_ids
+        in_todo: thread_accounts
             .iter()
-            .filter(|t| todo_threads.contains(t))
+            .filter(|(thread, account)| todo_threads.contains(&(account, thread)))
             .count(),
         message_ids: ids.into_iter().cloned().collect(),
         source_count: sources.len(),
         thread_ids,
+        thread_accounts,
     }
 }
 
@@ -351,7 +363,7 @@ struct LineContext<'a, Tz: TimeZone> {
     inputs: &'a DigestInputs<'a, Tz>,
     /// "08:00" for the digest, the next cut for what arrives after it.
     digest_label: &'a str,
-    todo_by_thread: &'a HashMap<&'a ThreadId, &'a TodoRecord>,
+    todo_by_thread: &'a HashMap<(&'a AccountId, &'a ThreadId), &'a TodoRecord>,
 }
 
 fn source_line<Tz: TimeZone>(
@@ -398,9 +410,14 @@ where
             thread_ids.push(member.item.message.thread_id.clone());
         }
     }
-    let todo = thread_ids
+    let todo = members
         .iter()
-        .find_map(|thread| ctx.todo_by_thread.get(thread))
+        .find_map(|member| {
+            ctx.todo_by_thread.get(&(
+                &member.item.message.account_id,
+                &member.item.message.thread_id,
+            ))
+        })
         .map(|todo| todo.id.clone());
     // A suggestion, never a to-do: `t` is the user's to press.
     let todo_suggestion = if todo.is_some() {
@@ -1023,10 +1040,16 @@ where
     let window = inputs.cuts.window(reference, tz);
     let cut_label = time_label(window.at, tz);
     let next_label = time_label(window.next, tz);
-    let todo_by_thread: HashMap<&ThreadId, &TodoRecord> = inputs
+    // Keyed by the account too: a thread id two accounts hold is two
+    // conversations, each with its own to-dos.
+    let todo_by_thread: HashMap<(&AccountId, &ThreadId), &TodoRecord> = inputs
         .todos
         .iter()
-        .filter_map(|todo| todo.thread_id.as_ref().map(|thread| (thread, todo)))
+        .filter_map(|todo| {
+            todo.thread_id
+                .as_ref()
+                .map(|thread| ((&todo.account_id, thread), todo))
+        })
         .collect();
 
     let mut digest_scored = Vec::new();

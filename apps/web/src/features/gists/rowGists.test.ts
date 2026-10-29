@@ -26,8 +26,15 @@ vi.mock("@/lib/ws", () => ({
   },
 }));
 
-const { getRowGist, putGist, requestRowGists, resetRowGistsForTest, STATE_CAP, toRowGist } =
-  await import("./rowGists");
+const {
+  forgetGists,
+  getRowGist,
+  putGist,
+  requestRowGists,
+  resetRowGistsForTest,
+  STATE_CAP,
+  toRowGist,
+} = await import("./rowGists");
 
 function gist(threadId: string, ask: string | null = "confirm the owner") {
   return {
@@ -229,5 +236,60 @@ describe("row gists", () => {
       expect(getRowGist(id)?.about).toContain("Canary");
     }
     expect(getRowGist("hasOwnProperty")).toBeUndefined();
+  });
+});
+
+describe("row gists for a thread id held by two accounts", () => {
+  const inAccount = (account: string, about: string) => ({
+    ...gist("shared"),
+    account_id: account,
+    gist: about,
+  });
+
+  test("asks about each account's row and keeps their lines apart", async () => {
+    apiFetch.mockResolvedValue(
+      answer([inAccount("A", "A's line"), inAccount("B", "B's line")] as never),
+    );
+    await requestRowGists(
+      [
+        { thread_id: "shared", account_id: "A" },
+        { thread_id: "shared", account_id: "B" },
+      ],
+      1_000,
+    );
+    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({
+      body: {
+        thread_ids: ["shared"],
+        thread_accounts: [
+          { thread_id: "shared", account_id: "A" },
+          { thread_id: "shared", account_id: "B" },
+        ],
+      },
+    });
+    expect(getRowGist("shared", "A")?.about).toBe("A's line");
+    expect(getRowGist("shared", "B")?.about).toBe("B's line");
+  });
+
+  test("new mail in A's thread drops A's line only", () => {
+    putGist(inAccount("A", "A's line") as never);
+    putGist(inAccount("B", "B's line") as never);
+    forgetGists([{ thread_id: "shared", account_id: "A" }]);
+    expect(getRowGist("shared", "A")).toBeUndefined();
+    expect(getRowGist("shared", "B")?.about).toBe("B's line");
+  });
+
+  test("a NewMessages event names the account of each envelope", async () => {
+    // Asking once starts the store listening to the daemon's events.
+    apiFetch.mockResolvedValue(answer([]));
+    await requestRowGists(["other"], 1_000);
+    putGist(inAccount("A", "A's line") as never);
+    putGist(inAccount("B", "B's line") as never);
+    emit({
+      type: "NewMessages",
+      envelopes: [{ thread_id: "shared", account_id: "B" }],
+      total: 1,
+    } as unknown as DaemonEvent);
+    expect(getRowGist("shared", "A")?.about).toBe("A's line");
+    expect(getRowGist("shared", "B")).toBeUndefined();
   });
 });

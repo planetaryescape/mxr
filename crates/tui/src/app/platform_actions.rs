@@ -20,7 +20,7 @@ impl App {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                self.modals.draft_options.open(env.thread_id.clone());
+                self.modals.draft_options.open(ThreadKey::of_envelope(env));
             }
             Action::DraftNewForSender => {
                 let Some(env) = self.context_envelope() else {
@@ -114,7 +114,7 @@ impl App {
     /// Confirm the Draft Options modal: draft a reply to the stored thread
     /// using the chosen tone/length overrides (or auto when left unset).
     pub(crate) fn submit_draft_options_modal(&mut self) {
-        let Some(thread_id) = self.modals.draft_options.thread_id.clone() else {
+        let Some(thread) = self.modals.draft_options.thread.clone() else {
             self.modals.draft_options.close();
             return;
         };
@@ -124,11 +124,11 @@ impl App {
         self.modals.draft_options.close();
         self.queue_platform_request(
             Request::DraftCompose {
-                account_id: None,
+                account_id: thread.account_id.clone(),
                 to: None,
                 instruction,
                 source_message_id: None,
-                thread_id: Some(thread_id),
+                thread_id: Some(thread.thread_id.clone()),
                 register,
                 length_hint: length,
             },

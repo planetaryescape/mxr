@@ -70,9 +70,17 @@ export function mailNotNow(
   hooks: { onSnoozed?: () => void; onLater?: () => void; onDesk?: boolean } = {},
 ): NotNowPicker {
   const messageId = target.conversations === 1 ? target.primary?.id : undefined;
-  const waiting = target.threadId ? deskLaneOf(target.threadId) === "waiting" : false;
+  const waiting = target.threadId
+    ? deskLaneOf(target.threadId, target.accountId) === "waiting"
+    : false;
   if (hooks.onDesk && target.threadId && target.conversations === 1) {
-    return conversationNotNow({ threadId: target.threadId, messageId, subject, waiting });
+    return conversationNotNow({
+      threadId: target.threadId,
+      accountId: target.accountId,
+      messageId,
+      subject,
+      waiting,
+    });
   }
   return messageNotNow({
     messageIds: target.messageIds,
@@ -125,11 +133,14 @@ export function messageNotNow({
  */
 export function conversationNotNow({
   threadId,
+  accountId,
   messageId,
   subject,
   waiting,
 }: {
   threadId: string;
+  /** The row's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
   messageId?: string;
   subject: string;
   waiting: boolean;
@@ -142,7 +153,7 @@ export function conversationNotNow({
     later:
       !waiting && messageId ? { ...REPLY_LATER, run: () => replyLaterNow(messageId) } : undefined,
     timeVerb: "Set",
-    at: (until, label) => deferThreadsAt([threadId], until, label),
+    at: (until, label) => deferThreadsAt([threadId], until, label, accountId),
   };
 }
 

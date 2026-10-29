@@ -8,6 +8,8 @@ export interface TodoThreadSearch {
   mid?: string;
   title?: string;
   domain?: string;
+  /** The row's account: a thread id can be held by two accounts. */
+  account?: string;
 }
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
@@ -18,6 +20,7 @@ export const Route = createFileRoute("/todo/$threadId")({
     mid: text(search.mid),
     title: text(search.title),
     domain: text(search.domain),
+    account: text(search.account),
   }),
   component: OpenThread,
 });

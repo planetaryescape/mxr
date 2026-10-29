@@ -135,28 +135,25 @@ impl App {
 
     /// The open thread's context lines, empty until the daemon answers.
     fn thread_context_lines(&self) -> Vec<ratatui::text::Line<'static>> {
-        let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
+        let Some(key) = self.context_envelope().map(ThreadKey::of_envelope) else {
             return Vec::new();
         };
         let context = self
             .mailbox
             .thread_context
             .as_ref()
-            .filter(|context| context.thread_id == thread_id);
+            .filter(|context| key.matches_ids(&context.thread_id, Some(&context.account_id)));
         let gist = self
             .mailbox
             .thread_gist
             .as_ref()
-            .filter(|gist| gist.thread_id == thread_id);
+            .filter(|gist| key.matches_ids(&gist.thread_id, gist.account_id.as_ref()));
         ui::thread_context_view::context_lines(context, gist, &self.theme, chrono::Utc::now())
     }
 
     fn thread_summary_block(&self) -> Option<ui::message_view::ThreadSummaryBlock> {
-        let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
-        let loading = self
-            .mailbox
-            .thread_summary_in_flight
-            .contains(&current_thread_id);
+        let current_key = self.context_envelope().map(ThreadKey::of_envelope)?;
+        let loading = self.mailbox.thread_summary_in_flight.contains(&current_key);
         let text = self
             .mailbox
             .thread_summary

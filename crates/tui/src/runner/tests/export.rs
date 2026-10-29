@@ -62,7 +62,7 @@ fn format_key_then_save_queues_the_chosen_format_at_the_prefilled_path() {
     assert_eq!(
         app.mailbox.pending_export,
         Some(PendingExport {
-            thread_id,
+            thread: crate::app::ThreadKey::of_envelope(&app.mailbox.envelopes[0]),
             format: ExportFormat::Mbox,
             destination: ExportDestination::Save {
                 path,

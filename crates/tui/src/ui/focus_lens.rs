@@ -235,7 +235,7 @@ mod tests {
         let first = item("Nora");
         let mut page = FocusPageState::start(None, false, None);
         page.sync(vec![first.clone()]);
-        page.handled(&first.thread_id);
+        page.handled(&first.key());
         page.others = 2;
         let rendered = render(&page, None);
         assert!(rendered.contains("Low tide. That's everyone you write with."));

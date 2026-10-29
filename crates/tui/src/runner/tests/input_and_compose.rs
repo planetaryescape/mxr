@@ -604,7 +604,10 @@ fn b_on_a_waiting_row_asks_when_to_bring_it_back() {
     assert_eq!(
         app.modals.snooze_panel.target,
         Some(crate::app::NotNowTarget::Conversation {
-            thread_id: waiting.thread_id.clone(),
+            thread: crate::app::ThreadKey::new(
+                waiting.account_id.clone(),
+                waiting.thread_id.clone(),
+            ),
             message_id: waiting.message_id.clone(),
             waiting: true,
         })

@@ -1090,9 +1090,12 @@ impl super::Store {
         .collect()
     }
 
-    /// The records filed from these threads, not dismissed.
+    /// The account's records filed from these threads, not dismissed. A
+    /// legacy thread id can be held by two accounts; the other account's
+    /// records on it are not this account's.
     pub async fn archive_records_for_threads(
         &self,
+        account_id: &AccountId,
         thread_ids: &[ThreadId],
     ) -> Result<Vec<(ThreadId, ArchiveRecord)>, sqlx::Error> {
         let ids: Vec<String> = thread_ids.iter().map(ThreadId::as_str).collect();
@@ -1115,6 +1118,11 @@ impl super::Store {
                     decode_id(&row.try_get::<String, _>("source_thread")?)?,
                     row_to_record(row)?,
                 ))
+            })
+            .filter(|found: &Result<(ThreadId, ArchiveRecord), sqlx::Error>| {
+                found
+                    .as_ref()
+                    .map_or(true, |(_, record)| &record.account_id == account_id)
             })
             .collect()
     }

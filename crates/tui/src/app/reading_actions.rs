@@ -8,7 +8,6 @@
 use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{ReadingConfirm, ReadingRow, ReadingUnsubscribeTarget, ReadingView};
-use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, ReadingFetchData, ReadingItemDetailData};
 
 /// The mode id Reading's guide and its card are kept under.
@@ -17,7 +16,7 @@ pub(crate) const READING_MODE: &str = mxr_protocol::READING_GUIDE.mode;
 /// What a row refers to, copied out so the page can change.
 struct Target {
     key: String,
-    thread_id: ThreadId,
+    thread: ThreadKey,
     message_id: MessageId,
     account_id: mxr_core::AccountId,
     sender_email: String,
@@ -30,7 +29,7 @@ impl From<ReadingRow<'_>> for Target {
         let issue = row.issue();
         Self {
             key: row.key().to_string(),
-            thread_id: issue.thread_id.clone(),
+            thread: ThreadKey::new(issue.account_id.clone(), issue.thread_id.clone()),
             message_id: issue.message_id.clone(),
             account_id: issue.account_id.clone(),
             sender_email: issue.sender_email.clone(),
@@ -331,15 +330,15 @@ impl App {
         let Some(target) = self.reading_target() else {
             return;
         };
-        self.mailbox.reading_page.remove_thread(&target.thread_id);
+        self.mailbox.reading_page.remove_thread(&target.thread);
         self.mailbox.selected_index = self
             .mailbox
             .selected_index
             .min(self.mailbox.reading_page.row_count().saturating_sub(1));
         self.queue_mutation(
             Request::SetModeDone {
-                thread_ids: vec![target.thread_id],
-                thread_accounts: Vec::new(),
+                thread_ids: vec![target.thread.thread_id.clone()],
+                thread_accounts: thread_accounts(std::slice::from_ref(&target.thread)),
                 mode: ModeKindData::Reading,
                 dry_run: false,
                 todo_ids: Vec::new(),
@@ -367,15 +366,18 @@ impl App {
     /// with that preview on screen, Enter lets go of exactly those.
     fn reading_let_go_all(&mut self) {
         let page = &mut self.mailbox.reading_page;
-        if let Some(ReadingConfirm::LetGoAll { thread_ids, .. }) = page.confirm.take() {
-            for thread in &thread_ids {
+        if let Some(ReadingConfirm::LetGoAll { threads, .. }) = page.confirm.take() {
+            for thread in &threads {
                 page.remove_thread(thread);
             }
             self.mailbox.selected_index = 0;
             self.queue_mutation(
                 Request::SetModeDone {
-                    thread_ids,
-                    thread_accounts: Vec::new(),
+                    thread_ids: threads
+                        .iter()
+                        .map(|thread| thread.thread_id.clone())
+                        .collect(),
+                    thread_accounts: thread_accounts(&threads),
                     mode: ModeKindData::Reading,
                     dry_run: false,
                     todo_ids: Vec::new(),
@@ -390,33 +392,40 @@ impl App {
             self.status_message = Some("Later never fades: b takes one thing off".into());
             return;
         }
-        let thread_ids = page.thread_ids();
-        if thread_ids.is_empty() {
+        let threads = page.threads();
+        if threads.is_empty() {
             self.status_message = Some("Nothing in the edition to let go of".into());
             return;
         }
-        page.pending_let_go_preview = Some(thread_ids);
+        page.pending_let_go_preview = Some(threads);
         self.status_message = Some("Checking what letting go would change\u{2026}".into());
     }
 
     /// The daemon's dry run of letting go of everything shown.
     pub(crate) fn show_reading_let_go_preview(
         &mut self,
-        thread_ids: &[ThreadId],
+        asked: &[ThreadKey],
         items: Vec<ModeDoneOutcomeData>,
     ) {
         self.status_message = None;
-        let thread_ids: Vec<ThreadId> = items
+        // Keep the asked threads the daemon will let go of. An outcome
+        // names its account when the daemon knows it; an older one matches
+        // on the thread id alone.
+        let threads: Vec<ThreadKey> = asked
             .iter()
-            .filter(|item| item.error.is_none())
-            .map(|item| item.thread_id.clone())
-            .filter(|thread| thread_ids.contains(thread))
+            .filter(|thread| {
+                items.iter().any(|item| {
+                    item.error.is_none()
+                        && thread.matches_ids(&item.thread_id, item.account_id.as_ref())
+                })
+            })
+            .cloned()
             .collect();
-        if thread_ids.is_empty() {
+        if threads.is_empty() {
             self.push_toast(Toast::success("Nothing left to let go of"));
             return;
         }
-        self.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll { thread_ids, items });
+        self.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll { threads, items });
     }
 
     /// The unsubscribe preview on screen, taken off it. None when the

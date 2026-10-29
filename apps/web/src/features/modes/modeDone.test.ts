@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { resetLeaving } from "@/lib/leaving";
 import { useUndo } from "@/state/undoStore";
 
+import { conversationKey } from "@/features/mailbox/rowKey";
 import { doneToast, markModeDone, useModeDone, type ModeDoneOutcome } from "./modeDone";
 
 const fetchMock = vi.hoisted(() => vi.fn<(path: string, opts?: unknown) => Promise<unknown>>());
@@ -131,5 +132,70 @@ describe("done here when nothing was done", () => {
       method: "POST",
       body: { thread_ids: ["t1"], dry_run: false, todo_ids: ["todo-a"] },
     });
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  const answer = {
+    kind: "ModeDone",
+    dry_run: false,
+    items: [
+      { thread_id: "shared", account_id: "A", mode: "messages", provider: "Gmail", copy: "Done." },
+    ],
+  };
+  const keyA = conversationKey("shared", "A");
+  const keyB = conversationKey("shared", "B");
+
+  test("done on A's row sends the pair, hides and folds only A's row", async () => {
+    resetLeaving();
+    const seen: { hidden: boolean[]; folding: boolean[] } = { hidden: [], folding: [] };
+    fetchMock.mockImplementationOnce((_path: string, opts?: unknown) => {
+      const state = useModeDone.getState();
+      seen.hidden = [state.hidden.messages.has(keyA), state.hidden.messages.has(keyB)];
+      seen.folding = [state.folding.messages.has(keyA), state.folding.messages.has(keyB)];
+      expect((opts as { body: Record<string, unknown> }).body).toMatchObject({
+        thread_ids: ["shared"],
+        thread_accounts: [{ thread_id: "shared", account_id: "A" }],
+      });
+      return Promise.resolve(answer);
+    });
+    await markModeDone("messages", [{ thread_id: "shared", account_id: "A" }], { via: "pointer" });
+    expect(seen).toEqual({ hidden: [true, false], folding: [true, false] });
+    expect(useModeDone.getState().hidden.messages.size).toBe(0);
+    expect(useModeDone.getState().folding.messages.size).toBe(0);
+  });
+
+  test("both accounts' rows in one done are two conversations, each named", async () => {
+    resetLeaving();
+    fetchMock.mockResolvedValueOnce({ ...answer, items: [] });
+    await markModeDone("reading", [
+      { thread_id: "shared", account_id: "A" },
+      { thread_id: "shared", account_id: "B" },
+    ]);
+    const lastCall = fetchMock.mock.calls.at(-1) ?? [];
+    const body = (lastCall[1] as { body: Record<string, unknown> }).body;
+    expect(body.thread_accounts).toEqual([
+      { thread_id: "shared", account_id: "A" },
+      { thread_id: "shared", account_id: "B" },
+    ]);
+  });
+
+  test("a second press on A's row while B's is in flight still goes", async () => {
+    resetLeaving();
+    useModeDone.getState().hide("todo", [keyB]);
+    fetchMock.mockResolvedValueOnce({ ...answer, items: [] });
+    const before = fetchMock.mock.calls.length;
+    await markModeDone("todo", [{ thread_id: "shared", account_id: "A" }]);
+    expect(fetchMock.mock.calls.length).toBe(before + 1);
+    useModeDone.getState().show("todo", [keyB]);
+  });
+
+  test("a caller with no account keeps the bare request", async () => {
+    resetLeaving();
+    fetchMock.mockResolvedValueOnce({ ...answer, items: [] });
+    await markModeDone("messages", ["old"]);
+    const lastCall = fetchMock.mock.calls.at(-1) ?? [];
+    const body = (lastCall[1] as { body: Record<string, unknown> }).body;
+    expect(body).not.toHaveProperty("thread_accounts");
   });
 });

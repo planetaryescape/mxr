@@ -144,9 +144,11 @@ pub(super) enum GistCall {
 pub(super) async fn get_thread_gist(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     refresh: bool,
 ) -> HandlerResult {
-    let (gist, _) = load_and_write_gist(state, thread_id, refresh, GistCall::Foreground).await?;
+    let (gist, _) =
+        load_and_write_gist(state, thread_id, account_id, refresh, GistCall::Foreground).await?;
     Ok(ResponseData::ThreadGist { gist })
 }
 
@@ -155,25 +157,35 @@ pub(super) async fn get_thread_gist(
 pub(super) async fn load_and_write_gist(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     refresh: bool,
     call: GistCall,
 ) -> Result<(ThreadGistData, String), HandlerError> {
-    let envelopes = thread_envelopes(state, thread_id).await?;
+    let envelopes = thread_envelopes(state, thread_id, account_id).await?;
     let style = style_of(state, thread_id, &envelopes).await?;
-    let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes, style)
-        .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
+    let setup = GistSetup::new(
+        &GistPolicy::pin(state),
+        thread_id,
+        account_id,
+        &envelopes,
+        style,
+    )
+    .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
     let gist = thread_gist(state, thread_id, &envelopes, &setup, refresh, call).await?;
     Ok((gist, setup.content_hash))
 }
 
 /// The conversation's messages, oldest first; empty for an unknown thread.
+/// A row's account keeps a thread id that two accounts hold to that
+/// account's own messages.
 pub(super) async fn thread_envelopes(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
 ) -> Result<Vec<Envelope>, HandlerError> {
     let mut envelopes = state
         .store
-        .get_thread_envelopes_for_model(thread_id)
+        .get_thread_envelopes_for_model_in(thread_id, account_id)
         .await?;
     envelopes.sort_by_key(|envelope| envelope.date);
     Ok(envelopes)
@@ -214,6 +226,9 @@ pub(super) struct GistSetup {
     policy: GistPolicy,
     style: GistStyle,
     account_id: AccountId,
+    /// The account the request named, if it did: what "the newest message
+    /// now" is read within.
+    scope: Option<AccountId>,
     pub content_hash: String,
     key: String,
     /// The conversation's newest message: what the gist answers for.
@@ -229,6 +244,7 @@ impl GistSetup {
     pub fn new(
         policy: &GistPolicy,
         thread_id: &ThreadId,
+        scope: Option<&AccountId>,
         envelopes: &[Envelope],
         style: GistStyle,
     ) -> Option<Self> {
@@ -238,6 +254,7 @@ impl GistSetup {
             policy: policy.clone(),
             style,
             account_id: newest.account_id.clone(),
+            scope: scope.cloned(),
             key: cache_key(thread_id),
             newest: newest.id.clone(),
             sources: envelopes
@@ -399,7 +416,11 @@ async fn thread_gist(
     // A message arrived while the model was writing: this gist answers for
     // the conversation as it was. Return it (it says which message it
     // answers for) but don't cache it over whatever the newer state gets.
-    if newest_message_id(state, thread_id).await?.as_ref() != Some(&setup.newest) {
+    if newest_message_id(state, thread_id, setup.scope.as_ref())
+        .await?
+        .as_ref()
+        != Some(&setup.newest)
+    {
         tracing::debug!(%thread_id, "thread gist: a newer message arrived; not cached");
         return Ok(ready(thread_id, setup, payload, generated_at, false));
     }
@@ -435,8 +456,9 @@ async fn thread_gist(
 pub(super) async fn newest_message_id(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
 ) -> Result<Option<MessageId>, HandlerError> {
-    Ok(thread_envelopes(state, thread_id)
+    Ok(thread_envelopes(state, thread_id, account_id)
         .await?
         .last()
         .map(|newest| newest.id.clone()))
@@ -451,6 +473,7 @@ fn ready(
 ) -> ThreadGistData {
     ThreadGistData {
         thread_id: thread_id.clone(),
+        account_id: Some(setup.account_id.clone()),
         status: ThreadGistStatusData::Ready,
         gist: Some(payload.gist),
         ask: payload.ask,
@@ -465,6 +488,7 @@ fn ready(
 fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str) -> ThreadGistData {
     ThreadGistData {
         thread_id: thread_id.clone(),
+        account_id: None,
         status,
         gist: None,
         ask: None,
@@ -987,7 +1011,11 @@ mod tests {
         let llm = ScriptedLlm::new(answer_for(&message_id));
         state.llm.replace(llm.clone());
 
-        let first = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let first = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert_eq!(first.status, ThreadGistStatusData::Ready);
         assert!(!first.from_cache);
         let ask = first.ask.clone().unwrap();
@@ -1002,7 +1030,11 @@ mod tests {
         assert_eq!(provenance.model, "qwen2.5:7b");
         assert_eq!(provenance.locality, AiLocalityData::Local);
 
-        let second = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let second = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(second.from_cache);
         assert_eq!(second.gist, first.gist);
         assert_eq!(llm.calls.load(Ordering::SeqCst), 1, "second read is cached");
@@ -1020,12 +1052,20 @@ mod tests {
             .upsert_envelope_with_direction(&reply, MessageDirection::Inbound)
             .await
             .unwrap();
-        let third = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let third = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(!third.from_cache);
         assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
 
         // refresh skips the cache.
-        gist(get_thread_gist(&state, &thread_id, true).await.unwrap());
+        gist(
+            get_thread_gist(&state, &thread_id, None, true)
+                .await
+                .unwrap(),
+        );
         assert_eq!(llm.calls.load(Ordering::SeqCst), 3);
     }
 
@@ -1035,7 +1075,9 @@ mod tests {
         let (thread_id, message_id) = seed_thread(&state).await;
         let llm = ScriptedLlm::new(answer_for(&message_id));
         state.llm.replace(llm.clone());
-        get_thread_gist(&state, &thread_id, false).await.unwrap();
+        get_thread_gist(&state, &thread_id, None, false)
+            .await
+            .unwrap();
         let prompt = llm.prompts.lock().unwrap()[0].clone();
         assert!(prompt.contains(mxr_llm::UNTRUSTED_MAIL_GUARD));
         // The guard in the system prompt names the markers too; look in the
@@ -1062,7 +1104,11 @@ mod tests {
         );
         state.llm.replace(llm.clone());
 
-        let cloud = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let cloud = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         let provenance = cloud.provenance.unwrap();
         assert_eq!(provenance.locality, AiLocalityData::Cloud);
         assert_eq!(provenance.sources, vec![AiSourceData::ThisThread]);
@@ -1072,7 +1118,11 @@ mod tests {
         config.llm.allow_cloud_relationship_data = true;
         state.set_config_for_test(config).await;
         state.llm.replace(llm.clone());
-        let shared = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let shared = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(
             !shared.from_cache,
             "the privacy setting is part of the cache key"
@@ -1103,8 +1153,16 @@ mod tests {
         let llm = ScriptedLlm::new(answer_for(&envelope.id));
         state.llm.replace(llm.clone());
 
-        gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
-        let again = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
+        let again = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(again.from_cache, "no body yet: the snippet gist stands");
         assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
 
@@ -1120,7 +1178,11 @@ mod tests {
             })
             .await
             .unwrap();
-        let fresh = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let fresh = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(!fresh.from_cache, "the body arrived: regenerate");
         assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
         assert_eq!(
@@ -1139,7 +1201,11 @@ mod tests {
         let (thread_id, message_id) = seed_thread(&state).await;
         let local = ScriptedLlm::at(answer_for(&message_id), Some("http://localhost:11434/v1"));
         state.llm.replace(local.clone());
-        let first = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let first = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert_eq!(first.provenance.unwrap().locality, AiLocalityData::Local);
 
         // Config untouched (local by default, no cloud opt-in); the runtime
@@ -1149,7 +1215,11 @@ mod tests {
             Some("https://api.example-cloud.com/v1"),
         );
         state.llm.replace(cloud.clone());
-        let second = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let second = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert!(!second.from_cache, "the endpoint is part of the cache key");
         let provenance = second.provenance.unwrap();
         assert_eq!(provenance.locality, AiLocalityData::Cloud);
@@ -1161,7 +1231,11 @@ mod tests {
     async fn no_model_is_a_status_not_an_error() {
         let state = AppState::in_memory().await.unwrap();
         let (thread_id, _) = seed_thread(&state).await;
-        let answer = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let answer = gist(
+            get_thread_gist(&state, &thread_id, None, false)
+                .await
+                .unwrap(),
+        );
         assert_eq!(answer.status, ThreadGistStatusData::Disabled);
         assert_eq!(answer.gist, None);
     }

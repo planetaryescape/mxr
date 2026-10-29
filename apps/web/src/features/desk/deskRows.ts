@@ -11,6 +11,7 @@ import {
   type LensIdentity,
   type PendingMailOp,
 } from "@/features/mail-actions/pendingMailOps";
+import { holdsThread, conversationKey } from "@/features/mailbox/rowKey";
 import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
 
 /** Rows each lane shows on the desk itself; the rest are one link away. */
@@ -46,6 +47,22 @@ export function toMessageRow(row: DeskRow): MessageRowView {
 }
 
 /**
+ * The desk row a list row (or an open conversation) stands for. A thread id
+ * can be held by two accounts, so the account picks the row; a caller with
+ * no account gets the first row of that thread.
+ */
+export function deskRowOf(
+  byThread: ReadonlyMap<string, DeskRow>,
+  threadId: string,
+  accountId?: string | null,
+): DeskRow | undefined {
+  const exact = byThread.get(conversationKey(threadId, accountId));
+  if (exact || accountId) return exact;
+  for (const row of byThread.values()) if (row.thread_id === threadId) return row;
+  return undefined;
+}
+
+/**
  * Archive, snooze, trash and moves take owed and new-from-people rows off
  * the desk, as they leave the inbox. A promise stays until it is resolved,
  * whatever happens to its thread, so due rows only leave for trash and spam.
@@ -63,7 +80,7 @@ export const FOCUS_OWED_HREF = `/focus?lane=owed&from=${encodeURIComponent("/des
 export interface DeskGroups {
   groups: MessageGroupView[];
   index: DeskRowIndex;
-  /** The same rows by conversation, for verbs that start from a thread. */
+  /** The same rows by conversation (`conversationKey`: thread within its account), for verbs that start from a thread. */
   byThread: Map<string, DeskRow>;
 }
 
@@ -76,7 +93,7 @@ export function deskGroups(
   desk: Desk | undefined,
   ops: readonly PendingMailOp[],
   only?: DeskLaneKind,
-  /** Conversations leaving optimistically (Done in flight). */
+  /** Conversations leaving optimistically (Done in flight), as thread row keys. */
   hidden: ReadonlySet<string> = new Set(),
   /** Where a lane's own page lives: the desk, or Messages built on it. */
   basePath = "/desk",
@@ -90,14 +107,14 @@ export function deskGroups(
     const data = desk[lane];
     const rows = data.rows.map(toMessageRow);
     const visible = projectRows(rows, ops, laneLens(lane)).filter(
-      (row) => !hidden.has(row.thread_id),
+      (row) => !holdsThread(hidden, row.thread_id, row.account_id),
     );
     const total = Math.max(0, data.total - (rows.length - visible.length));
     if (visible.length === 0) continue;
     const shown = only ? visible : visible.slice(0, DESK_LANE_CAP);
     for (const row of data.rows) {
       index.set(row.message_id, row);
-      byThread.set(row.thread_id, row);
+      byThread.set(conversationKey(row.thread_id, row.account_id), row);
     }
     groups.push({
       id: lane,

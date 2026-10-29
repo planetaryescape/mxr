@@ -4,9 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { LIST_PANE_SIZE } from "./listPane";
 import { MailboxList, type MailboxListProps } from "./MailboxList";
-import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
+import {
+  useAdvanceOnRemoval,
+  useRouteAccount,
+  useRouteStillShows,
+} from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
+import { conversationKey, selectedKey, type ThreadRef } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { DaemonUnavailableError } from "@/api/client";
 import { ModeFrame } from "@/components/ModeFrame";
@@ -103,6 +108,7 @@ export function ListWithReader({
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { threadId?: string };
   const threadId = params.threadId;
+  const routeAccount = useRouteAccount();
   const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
   const readerLayout = useUiPrefs((s) => s.readerLayout);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
@@ -143,14 +149,20 @@ export function ListWithReader({
     if (!threadOpen && useMailboxPane.getState().activePane === "reader") setActivePane("mailbox");
   }, [setActivePane, threadOpen]);
 
+  const loadedRefsRef = useRef(new Map<string, ThreadRef>());
   const open = useCallback(
     (id: string, options?: { focusReader?: boolean; accountId?: string | null }) => {
       setActivePane(options?.focusReader === false ? "mailbox" : "reader");
-      const accountId = options?.accountId ?? rowAccountsRef.current.get(id) ?? null;
+      // A caller that names no account gets the first loaded row's with that id.
+      const accountId =
+        options?.accountId ??
+        [...loadedRefsRef.current.values()].find((ref) => ref.thread_id === id)?.account_id ??
+        null;
       void navigate({
         to: `${basePath}/${encodeURIComponent(id)}`,
         search: (previous: Record<string, unknown>) => ({
-          ...(preserveSearch ? previous : {}),
+          // The previous conversation's account must not carry over to this one.
+          ...(preserveSearch ? { ...previous, account: undefined } : {}),
           ...(accountId ? { account: accountId } : {}),
         }),
       });
@@ -172,45 +184,61 @@ export function ListWithReader({
   // The open conversation left the list from somewhere other than the
   // reader (the list's own archive, sync): open its neighbour. The list
   // as loaded, not as filtered, so typing a filter never moves the reader.
-  const loadedIds = useMemo(
-    () => [...new Set(groups.flatMap((group) => group.rows.map((row) => row.thread_id)))],
-    [groups],
-  );
-  const loadedIdsRef = useRef(loadedIds);
-  loadedIdsRef.current = loadedIds;
-  // Account of each loaded conversation, so a neighbour the keyboard opens
-  // keeps its account. The first row wins when two accounts share an id.
-  const rowAccounts = useMemo(() => {
-    const accounts = new Map<string, string | null>();
+  // A conversation is its thread within its account: two accounts can hold
+  // one thread id, and each is its own row to advance to and from.
+  const loadedRefs = useMemo(() => {
+    const refs = new Map<string, ThreadRef>();
     for (const group of groups) {
       for (const row of group.rows) {
-        if (!accounts.has(row.thread_id)) accounts.set(row.thread_id, row.account_id ?? null);
+        const key = conversationKey(row.thread_id, row.account_id);
+        if (!refs.has(key)) refs.set(key, { thread_id: row.thread_id, account_id: row.account_id });
       }
     }
-    return accounts;
+    return refs;
   }, [groups]);
-  const rowAccountsRef = useRef(rowAccounts);
-  rowAccountsRef.current = rowAccounts;
-  const isListed = useCallback((id: string) => loadedIdsRef.current.includes(id), []);
+  const loadedKeys = useMemo(() => [...loadedRefs.keys()], [loadedRefs]);
+  loadedRefsRef.current = loadedRefs;
+  // Rows that left the list are gone from `loadedRefs`; their refs are still needed to read their key back.
+  const knownRefs = useRef(new Map<string, ThreadRef>());
+  for (const [key, ref] of loadedRefs) knownRefs.current.set(key, ref);
+  const refOf = (key: string): ThreadRef => knownRefs.current.get(key) ?? { thread_id: key };
+  const isListed = useCallback(
+    (id: string, accountId?: string | null) =>
+      loadedRefsRef.current.has(conversationKey(id, accountId)),
+    [],
+  );
   const stillShows = useRouteStillShows();
-  const expectRemoval = useAdvanceOnRemoval({
-    ids: loadedIds,
+  const advance = useAdvanceOnRemoval({
+    ids: loadedKeys,
     ready: !status.isLoading,
-    selectedId: threadId ?? null,
+    selectedId: threadId ? selectedKey(loadedRefs.values(), threadId, routeAccount) : null,
     onAdvance: (next, from) => {
-      if (from !== null && !stillShows(from)) return;
-      open(next, { focusReader: useMailboxPane.getState().activePane === "reader" });
+      if (from !== null) {
+        const gone = refOf(from);
+        if (!stillShows(gone.thread_id, gone.account_id)) return;
+      }
+      const to = refOf(next);
+      open(to.thread_id, {
+        focusReader: useMailboxPane.getState().activePane === "reader",
+        accountId: to.account_id,
+      });
     },
     onEmpty: (removed) => {
-      if (stillShows(removed)) close();
+      const gone = refOf(removed);
+      if (stillShows(gone.thread_id, gone.account_id)) close();
     },
   });
+  const expectRemoval = useCallback<NonNullable<ReaderNav["expectRemoval"]>>(
+    (id, direction, accountId) => advance(conversationKey(id, accountId), direction),
+    [advance],
+  );
   const nav = useMemo<ReaderNav>(
     () => ({
       // Step through what the list shows, so n/N respect the filter.
-      threadIds: () => [
-        ...new Set(visibleGroups.flatMap((group) => group.rows.map((row) => row.thread_id))),
-      ],
+      threads: () =>
+        visibleGroups.flatMap((group) =>
+          group.rows.map((row) => ({ thread_id: row.thread_id, account_id: row.account_id })),
+        ),
       open,
       close,
       expectRemoval,

@@ -13,16 +13,19 @@ import { CopyableAddress } from "./AddressDisclosure";
 
 export function ConversationPeople({
   threadId,
+  accountId,
   trailing,
 }: {
   threadId: string;
+  /** The conversation's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
   trailing?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId ?? null],
+    queryFn: () => fetchThread(threadId, accountId),
     enabled: open,
     staleTime: 60_000,
   });

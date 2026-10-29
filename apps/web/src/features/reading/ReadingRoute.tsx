@@ -27,6 +27,7 @@ import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
 import { definedShortcut, stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
+import { conversationKey, type ThreadRef } from "@/features/mailbox/rowKey";
 import { useThreadModesMap } from "@/features/modes/membership";
 import type { LampVia } from "@/components/Row";
 
@@ -102,15 +103,18 @@ export function sourceOf(edition: ReadingEdition | undefined, item: ReadingItem)
 export function ReadingRoute({ view }: { view?: "later" }) {
   const params = useParams({ strict: false }) as { itemKey?: string; threadId?: string };
   const edition = useEdition();
-  const threadIds = useCallback(
-    () => edition.data?.bands.flatMap((band) => band.items.map((item) => item.thread_id)) ?? [],
+  const threads = useCallback(
+    () =>
+      edition.data?.bands.flatMap((band) =>
+        band.items.map((item) => ({ thread_id: item.thread_id, account_id: item.account_id })),
+      ) ?? [],
     [edition.data],
   );
   return (
     <PlaceLayout
       basePath="/reading"
       label="Reading"
-      threadIds={threadIds}
+      threads={threads}
       keepSearch={READING_LIST_SEARCH}
       wideReader
     >
@@ -125,7 +129,7 @@ const itemOf = (entry: EditionEntry | undefined) =>
 
 type Dialog =
   | { kind: "unsubscribe"; source: ReadingSource }
-  | { kind: "let-go-all"; threadIds: string[]; titles: string[] }
+  | { kind: "let-go-all"; threads: ThreadRef[]; titles: string[] }
   | null;
 
 function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view?: "later" }) {
@@ -174,7 +178,7 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
       ) : null}
       {dialog?.kind === "let-go-all" ? (
         <LetGoAllDialog
-          threadIds={dialog.threadIds}
+          threads={dialog.threads}
           titles={dialog.titles}
           onClose={() => setDialog(null)}
         />
@@ -186,7 +190,9 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
 function openLetGoAll(edition: ReadingEdition, setDialog: (dialog: Dialog) => void) {
   const hidden = useModeDone.getState().hidden.reading;
   const plan = letGoAllPlan(visibleBands(edition, hidden));
-  if (plan.threadIds.length > 0) setDialog({ kind: "let-go-all", ...plan });
+  if (plan.threads.length > 0) {
+    setDialog({ kind: "let-go-all", threads: plan.threads, titles: plan.titles });
+  }
 }
 
 function EditionHeader({
@@ -358,7 +364,7 @@ function Bands({
   const letGoItem = useCallback(
     (item: ReadingItem) => {
       if (view === "later") void answerLater(item.item_key, false);
-      else void letGo([item.thread_id]);
+      else void letGo([{ thread_id: item.thread_id, account_id: item.account_id }]);
     },
     [view],
   );
@@ -437,9 +443,18 @@ function Bands({
   const memberThreads = useMemo(
     () =>
       [
-        ...new Set(
-          entries.flatMap((entry) => (entry.kind === "item" ? [entry.item.thread_id] : [])),
-        ),
+        ...new Map(
+          entries.flatMap((entry) =>
+            entry.kind === "item"
+              ? [
+                  [
+                    conversationKey(entry.item.thread_id, entry.item.account_id),
+                    { thread_id: entry.item.thread_id, account_id: entry.item.account_id },
+                  ] as const,
+                ]
+              : [],
+          ),
+        ).values(),
       ].slice(0, 100),
     [entries],
   );
@@ -519,7 +534,11 @@ function Bands({
       const item = itemOf(current);
       if (!item) return;
       setActivePane("reader");
-      void navigate({ to: "/reading/$threadId", params: { threadId: item.thread_id } });
+      void navigate({
+        to: "/reading/$threadId",
+        params: { threadId: item.thread_id },
+        search: { account: item.account_id } as never,
+      });
     },
     moveSender: () => {
       const item = itemOf(current);
@@ -644,7 +663,7 @@ function Bands({
                       via={via.current}
                       fading={band.band === "fading"}
                       shelf={view === "later"}
-                      modes={memberships?.get(item.thread_id)}
+                      modes={memberships?.get(conversationKey(item.thread_id, item.account_id))}
                       handlers={handlers}
                     />
                     {shown.map((link) => (

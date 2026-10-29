@@ -88,7 +88,10 @@ describe("ArrivalsRoute keys", () => {
 
     fireEvent.keyDown(window, { key: "k" });
     fireEvent.keyDown(window, { key: "Enter" });
-    expect(navigate).toHaveBeenCalledWith({ to: "/m/archive/thread-a" });
+    expect(navigate).toHaveBeenCalledWith({
+      to: "/m/archive/thread-a",
+      search: { account: expect.any(String) },
+    });
   });
 
   test("a focused row keeps the global keys working", () => {

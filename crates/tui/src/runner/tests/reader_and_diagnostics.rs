@@ -1134,7 +1134,7 @@ fn thread_summary_response_clears_loading_after_user_navigates_away() {
         .with_from_address("Bob", "bob@example.com")
         .subject("B")
         .build();
-    let thread_a = envelope_a.thread_id.clone();
+    let thread_a = crate::app::ThreadKey::of_envelope(&envelope_a);
     // User is now focused on thread B; response will arrive for A.
     app.mailbox.envelopes = vec![envelope_b];
     app.mailbox
@@ -1161,7 +1161,7 @@ fn summarize_action_starts_background_request_without_modal() {
         .with_from_address("Sender", "sender@example.com")
         .subject("Quarterly plan")
         .build();
-    let thread_id = envelope.thread_id.clone();
+    let thread_id = crate::app::ThreadKey::of_envelope(&envelope);
     app.mailbox.envelopes = vec![envelope];
 
     app.apply(Action::SummarizeCurrentThread);
@@ -1184,7 +1184,7 @@ fn summarize_action_deduplicates_in_flight_thread_after_view_clears() {
         .with_from_address("Sender", "sender@example.com")
         .subject("Quarterly plan")
         .build();
-    let thread_id = envelope.thread_id.clone();
+    let thread_id = crate::app::ThreadKey::of_envelope(&envelope);
     app.mailbox.envelopes = vec![envelope];
 
     app.apply(Action::SummarizeCurrentThread);
@@ -2082,15 +2082,16 @@ async fn opened_thread_shows_its_context_above_the_messages() {
         message_ids: vec![env.id.clone()],
     };
     app.resolve_thread_success(thread, vec![env.clone()], None);
-    assert_eq!(app.pending_thread_context.as_ref(), Some(&env.thread_id));
+    let key = crate::app::ThreadKey::of_envelope(&env);
+    assert_eq!(app.pending_thread_context.as_ref(), Some(&key));
     assert!(matches!(
         &app.pending_gist_debounce,
-        Some((thread_id, _)) if thread_id == &env.thread_id
+        Some((pending, _)) if pending == &key
     ));
 
     crate::daemon_events::apply_thread_context_loaded(
         &mut app,
-        &env.thread_id,
+        &key,
         Ok(Box::new(mxr_protocol::ThreadContextData {
             thread_id: env.thread_id.clone(),
             account_id: env.account_id.clone(),
@@ -2112,9 +2113,10 @@ async fn opened_thread_shows_its_context_above_the_messages() {
     );
     crate::daemon_events::apply_thread_gist_loaded(
         &mut app,
-        &env.thread_id,
+        &key,
         Ok(Box::new(mxr_protocol::ThreadGistData {
             thread_id: env.thread_id.clone(),
+            account_id: Some(env.account_id.clone()),
             status: mxr_protocol::ThreadGistStatusData::Ready,
             gist: Some("Maya wants the deck.".into()),
             ask: None,

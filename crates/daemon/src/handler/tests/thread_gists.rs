@@ -162,6 +162,7 @@ async fn gists_for(
     match request(
         fx,
         Request::GetThreadGists {
+            thread_accounts: Vec::new(),
             thread_ids: thread_ids.to_vec(),
             generate,
             automated,
@@ -218,6 +219,7 @@ async fn cached_gists_come_back_at_once_without_a_model_call() {
     request(
         &fx,
         Request::GetThreadGist {
+            account_id: None,
             thread_id: thread.clone(),
             refresh: false,
         },
@@ -397,6 +399,7 @@ async fn a_gist_with_a_number_the_mail_does_not_write_is_dropped_not_cached() {
         match request(
             &fx,
             Request::GetThreadGist {
+                account_id: None,
                 thread_id: thread.clone(),
                 refresh: false,
             },
@@ -569,6 +572,7 @@ async fn a_batch_is_capped() {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThreadGists {
+            thread_accounts: Vec::new(),
             thread_ids: ids,
             generate: false,
             automated: false,

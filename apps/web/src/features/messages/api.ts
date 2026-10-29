@@ -148,10 +148,15 @@ export function usePersonQuery(person: string | null, topic: string | null) {
  * Got it's preview: the exact text and a token for sending it. `signal`
  * lets a view that goes away drop the answer.
  */
-export async function previewAck(threadId: string, signal?: AbortSignal): Promise<AckPlan> {
+export async function previewAck(
+  threadId: string,
+  signal?: AbortSignal,
+  /** The conversation's account: a thread id can be held by two accounts. */
+  accountId?: string | null,
+): Promise<AckPlan> {
   const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
     method: "POST",
-    body: { thread_id: threadId, dry_run: true },
+    body: { thread_id: threadId, ...(accountId ? { account_id: accountId } : {}), dry_run: true },
     signal,
   });
   return answer.ack;
@@ -161,11 +166,12 @@ export async function previewAck(threadId: string, signal?: AbortSignal): Promis
  * Send exactly what `plan` previewed. The daemon refuses a send without
  * the preview's token and text, or after the token's minute is up.
  */
-export async function sendAck(plan: AckPlan): Promise<AckPlan> {
+export async function sendAck(plan: AckPlan, accountId?: string | null): Promise<AckPlan> {
   const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
     method: "POST",
     body: {
       thread_id: plan.thread_id,
+      ...(accountId ? { account_id: accountId } : {}),
       dry_run: false,
       expect_text: plan.text,
       preview_token: plan.preview_token,

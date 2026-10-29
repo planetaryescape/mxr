@@ -63,7 +63,11 @@ pub(crate) async fn find(
             continue;
         }
         let thread_id = envs[0].thread_id.clone();
-        let mut full = match state.store.get_thread_envelopes(&thread_id).await {
+        let mut full = match state
+            .store
+            .get_thread_envelopes_in(&thread_id, Some(&envs[0].account_id))
+            .await
+        {
             Ok(rows) => rows,
             Err(_) => {
                 envs.sort_by_key(|env| env.date);

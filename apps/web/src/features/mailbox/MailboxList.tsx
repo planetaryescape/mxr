@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow, type RowAction, type RowQuickAction } from "./MailboxRow";
-import { rowKey } from "./rowKey";
+import { rowKey, type ThreadRef } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { ModeChipReason, ModeChipScope } from "@/features/arrivals/ModeChip";
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
@@ -141,11 +141,12 @@ export function gistOrder(
   visible: { startIndex: number; endIndex: number },
   overscanStart: number,
   lookahead = GIST_LOOKAHEAD,
-): string[] {
-  const ids: string[] = [];
+): ThreadRef[] {
+  const ids: ThreadRef[] = [];
   const take = (index: number) => {
     const item = flat[index];
-    if (item?.kind === "row") ids.push(item.row.thread_id);
+    if (item?.kind === "row")
+      ids.push({ thread_id: item.row.thread_id, account_id: item.row.account_id });
   };
   const last = Math.min(flat.length - 1, visible.endIndex + lookahead);
   for (let index = visible.startIndex; index <= last; index += 1) take(index);

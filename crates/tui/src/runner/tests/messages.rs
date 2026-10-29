@@ -131,7 +131,8 @@ fn got_it_previews_counts_down_and_sends_exactly_that_text() {
         .take()
         .expect("Got it asks for the preview first");
     let preview = plan(&app);
-    assert_eq!(thread, preview.thread_id);
+    assert_eq!(thread.thread_id, preview.thread_id);
+    assert_eq!(thread.account_id, Some(preview.account_id.clone()));
     let start = std::time::Instant::now();
     app.show_messages_ack(preview.clone(), start);
     assert!(

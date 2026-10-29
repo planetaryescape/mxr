@@ -2,7 +2,9 @@
  * List-row gists: one line per conversation saying what it is about and
  * what it asks of you, so a row can be triaged without opening it.
  *
- * A small store outside React, keyed by thread id. Lists ask for the rows
+ * A small store outside React, keyed by the conversation (`conversationKey`:
+ * thread id within its account, since two accounts can hold one thread id;
+ * data without an account uses the bare thread id). Lists ask for the rows
  * on screen (`requestRowGists`); the daemon answers with the gists it has
  * cached for each conversation as it is now, and queues the rest,
  * announcing each as a `ThreadGistReady` event (never one that went stale
@@ -24,6 +26,7 @@ import {
   type ThreadGist,
   type ThreadGistBatch,
 } from "@/features/thread/context/api";
+import { conversationKey, type ThreadRef } from "@/features/mailbox/rowKey";
 import { provenanceLabel } from "@/features/thread/context/contextFormat";
 import { isDaemonDown } from "@/lib/daemonAvailability";
 import { daemonEvents } from "@/lib/ws";
@@ -57,12 +60,22 @@ const gists = new Map<string, RowGist>();
  * moment later is a different question.
  */
 const requestedAt = new Map<string, number>();
-const askedKey = (threadId: string, automated: boolean) =>
-  `${automated ? "automated" : "people"}:${threadId}`;
-function forgetAsked(threadId: string): void {
-  requestedAt.delete(askedKey(threadId, false));
-  requestedAt.delete(askedKey(threadId, true));
+const askedKey = (key: string, automated: boolean) =>
+  `${automated ? "automated" : "people"}:${key}`;
+function forgetAsked(key: string): void {
+  requestedAt.delete(askedKey(key, false));
+  requestedAt.delete(askedKey(key, true));
 }
+/** Whether a conversation key (bare, or `thread-<account>:<thread>`) is for this thread id. */
+const isThreadKey = (key: string, threadId: string) =>
+  key === threadId || key.endsWith(`:${threadId}`);
+const asRef = (thread: string | ThreadRef): ThreadRef =>
+  typeof thread === "string" ? { thread_id: thread } : thread;
+/** Keys a conversation may be stored or watched under: its own, and the bare one. */
+const keysOf = (ref: ThreadRef): string[] =>
+  ref.account_id
+    ? [conversationKey(ref.thread_id, ref.account_id), ref.thread_id]
+    : [ref.thread_id];
 const listeners = new Map<string, Set<() => void>>();
 let epoch = 0;
 const epochListeners = new Set<() => void>();
@@ -87,8 +100,8 @@ export function toRowGist(data: ThreadGist): RowGist | null {
   };
 }
 
-function notify(threadId: string): void {
-  for (const listener of listeners.get(threadId) ?? []) listener();
+function notify(key: string): void {
+  for (const listener of listeners.get(key) ?? []) listener();
 }
 
 /** Set as the newest entry, dropping the oldest past the cap. */
@@ -109,15 +122,19 @@ function remember<T>(map: Map<string, T>, key: string, value: T): string[] {
 export function putGist(data: ThreadGist): void {
   const gist = toRowGist(data);
   if (!gist) return;
-  const shown = gists.get(data.thread_id);
+  // A gist the daemon could not tie to an account is stored bare.
+  const key = conversationKey(data.thread_id, (data as { account_id?: string | null }).account_id);
+  const shown = gists.get(key);
   const same =
     shown?.about === gist.about &&
     shown.ask === gist.ask &&
     shown.source === gist.source &&
     shown.newest === gist.newest;
-  for (const evicted of remember(gists, data.thread_id, same ? shown : gist)) notify(evicted);
+  for (const evicted of remember(gists, key, same ? shown : gist)) {
+    notify(evicted);
+  }
   // Same words: nothing to redraw.
-  if (!same) notify(data.thread_id);
+  if (!same) notify(key);
 }
 
 function bumpEpoch(): void {
@@ -126,10 +143,25 @@ function bumpEpoch(): void {
 }
 
 /** New messages changed these conversations: drop their lines; ask again. */
-export function forgetGists(threadIds: Iterable<string>): void {
-  for (const threadId of threadIds) {
-    forgetAsked(threadId);
-    if (gists.delete(threadId)) notify(threadId);
+export function forgetGists(threads: Iterable<string | ThreadRef>): void {
+  for (const thread of threads) {
+    const ref = asRef(thread);
+    // An id without an account forgets every account's copy of the thread.
+    const keys = ref.account_id
+      ? keysOf(ref)
+      : [
+          ...new Set(
+            [
+              ...gists.keys(),
+              ...[...requestedAt.keys()].map((asked) => asked.split(":").slice(1).join(":")),
+            ].filter((key) => isThreadKey(key, ref.thread_id)),
+          ),
+          ref.thread_id,
+        ];
+    for (const key of keys) {
+      forgetAsked(key);
+      if (gists.delete(key)) notify(key);
+    }
   }
   bumpEpoch();
 }
@@ -142,7 +174,7 @@ export function invalidateRowGists(): void {
   requestedAt.clear();
   const shown = [...gists.keys()];
   gists.clear();
-  for (const threadId of shown) notify(threadId);
+  for (const key of shown) notify(key);
   bumpEpoch();
 }
 
@@ -180,30 +212,37 @@ export function useGistModel(): GistModel | undefined {
   );
 }
 
-export function getRowGist(threadId: string): RowGist | undefined {
-  return gists.get(threadId);
+/** A row's gist: its own account's, or the bare one when the daemon named no account. */
+export function getRowGist(threadId: string, accountId?: string | null): RowGist | undefined {
+  return gists.get(conversationKey(threadId, accountId)) ?? gists.get(threadId);
 }
 
-function subscribe(threadId: string, listener: () => void): () => void {
-  let set = listeners.get(threadId);
-  if (!set) {
-    set = new Set();
-    listeners.set(threadId, set);
+function subscribe(keys: readonly string[], listener: () => void): () => void {
+  for (const key of keys) {
+    let set = listeners.get(key);
+    if (!set) {
+      set = new Set();
+      listeners.set(key, set);
+    }
+    set.add(listener);
   }
-  set.add(listener);
   return () => {
-    set.delete(listener);
-    if (set.size === 0) listeners.delete(threadId);
+    for (const key of keys) {
+      const set = listeners.get(key);
+      set?.delete(listener);
+      if (set?.size === 0) listeners.delete(key);
+    }
   };
 }
 
 /** The row's gist, re-rendering only this row when it arrives or goes. */
-export function useRowGist(threadId: string): RowGist | undefined {
+export function useRowGist(threadId: string, accountId?: string | null): RowGist | undefined {
   const subscribeToRow = useCallback(
-    (listener: () => void) => subscribe(threadId, listener),
-    [threadId],
+    (listener: () => void) =>
+      subscribe(keysOf({ thread_id: threadId, account_id: accountId }), listener),
+    [threadId, accountId],
   );
-  const read = useCallback(() => getRowGist(threadId), [threadId]);
+  const read = useCallback(() => getRowGist(threadId, accountId), [threadId, accountId]);
   return useSyncExternalStore(subscribeToRow, read, read);
 }
 
@@ -215,7 +254,7 @@ function onDaemonEvent(event: DaemonEvent): void {
       break;
     case "NewMessages": {
       const { envelopes = [], total = 0 } = event as {
-        envelopes?: Array<{ thread_id?: unknown }>;
+        envelopes?: Array<{ thread_id?: unknown; account_id?: unknown }>;
         total?: number;
       };
       // A capped event is only a sample: any conversation may have changed.
@@ -225,7 +264,14 @@ function onDaemonEvent(event: DaemonEvent): void {
       }
       forgetGists(
         envelopes.flatMap((envelope) =>
-          typeof envelope.thread_id === "string" ? [envelope.thread_id] : [],
+          typeof envelope.thread_id === "string"
+            ? [
+                {
+                  thread_id: envelope.thread_id,
+                  account_id: typeof envelope.account_id === "string" ? envelope.account_id : null,
+                },
+              ]
+            : [],
         ),
       );
       break;
@@ -276,7 +322,7 @@ function listen(): void {
  * senders' mail (receipts, alerts), which Updates shows.
  */
 export async function requestRowGists(
-  threadIds: readonly string[],
+  threads: readonly (string | ThreadRef)[],
   now = Date.now(),
   { automated = false }: { automated?: boolean } = {},
 ): Promise<void> {
@@ -284,30 +330,38 @@ export async function requestRowGists(
   listen();
   // Nothing to ask while the daemon is down; reconnecting re-asks.
   if (isDaemonDown()) return;
-  const wanted: string[] = [];
-  for (const threadId of new Set(threadIds)) {
-    const asked =
-      now - (requestedAt.get(askedKey(threadId, automated)) ?? -Infinity) < REQUEST_TTL_MS;
-    if (gists.has(threadId) || asked) continue;
-    wanted.push(threadId);
+  const wanted: { ref: ThreadRef; key: string }[] = [];
+  const seen = new Set<string>();
+  for (const thread of threads) {
+    const ref = asRef(thread);
+    const key = conversationKey(ref.thread_id, ref.account_id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const asked = now - (requestedAt.get(askedKey(key, automated)) ?? -Infinity) < REQUEST_TTL_MS;
+    if (getRowGist(ref.thread_id, ref.account_id) || asked) continue;
+    wanted.push({ ref, key });
     if (wanted.length === MAX_BATCH) break;
   }
   if (wanted.length === 0) return;
-  for (const threadId of wanted) remember(requestedAt, askedKey(threadId, automated), now);
+  for (const { key } of wanted) remember(requestedAt, askedKey(key, automated), now);
   const sentIn = epoch;
 
   let batch: ThreadGistBatch;
   try {
-    batch = await fetchThreadGists(wanted, true, automated);
+    batch = await fetchThreadGists(
+      wanted.map(({ ref }) => ref),
+      true,
+      automated,
+    );
   } catch {
     // Quiet: rows keep their snippets, and the next scroll asks again.
-    for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
+    for (const { key } of wanted) requestedAt.delete(askedKey(key, automated));
     return;
   }
   if (sentIn !== epoch) {
     // Invalidated while the request was out: this answer may be stale.
     // The list asks again for what is still on screen.
-    for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
+    for (const { key } of wanted) requestedAt.delete(askedKey(key, automated));
     return;
   }
   setModel(batch.model);

@@ -8,6 +8,8 @@ use crate::test_fixtures::*;
 use chrono::{Duration, TimeZone};
 use mxr_core::*;
 
+mod shared_thread_id;
+
 fn test_envelope(account_id: &AccountId) -> Envelope {
     TestEnvelopeBuilder::new()
         .account_id(account_id.clone())

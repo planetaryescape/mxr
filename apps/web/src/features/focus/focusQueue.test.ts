@@ -6,6 +6,7 @@ import type { ReplyQueueMessage } from "@/features/reply-queue/api";
 import {
   buildFocusQueue,
   emptyFocusSession,
+  focusKey,
   focusProgress,
   focusReducer,
   type FocusEvent,
@@ -113,10 +114,10 @@ describe("focusReducer", () => {
   test("a linked conversation comes to the front; one not queued changes nothing", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b"), item("c")] },
-      { kind: "front", threadId: "c" },
+      { kind: "front", key: "c" },
     );
     expect(session.queue).toEqual(["c", "a", "b"]);
-    expect(focusReducer(session, { kind: "front", threadId: "gone" })).toBe(session);
+    expect(focusReducer(session, { kind: "front", key: "gone" })).toBe(session);
   });
 
   test("skip moves the current conversation to the end and keeps it", () => {
@@ -131,7 +132,7 @@ describe("focusReducer", () => {
   test("handled conversations count as progress and never come back from a refetch", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b")] },
-      { kind: "handled", threadId: "a" },
+      { kind: "handled", key: "a" },
       { kind: "sync", items: [item("a"), item("b")] },
     );
     expect(session.queue).toEqual(["b"]);
@@ -141,8 +142,8 @@ describe("focusReducer", () => {
   test("an undone send puts the conversation back in front", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b"), item("c")] },
-      { kind: "handled", threadId: "a" },
-      { kind: "restore", threadId: "a" },
+      { kind: "handled", key: "a" },
+      { kind: "restore", key: "a" },
     );
     expect(session.queue).toEqual(["a", "b", "c"]);
     expect(focusProgress(session).done).toBe(0);
@@ -151,7 +152,7 @@ describe("focusReducer", () => {
   test("skipping the last one sets it aside until you come back to it", () => {
     const skipped = run(
       { kind: "sync", items: [item("a"), item("b")] },
-      { kind: "handled", threadId: "a" },
+      { kind: "handled", key: "a" },
       { kind: "skip" },
     );
     expect(skipped.queue).toEqual([]);
@@ -164,8 +165,22 @@ describe("focusReducer", () => {
   });
 
   test("finishing leaves an empty queue with everything handled", () => {
-    const session = run({ kind: "sync", items: [item("a")] }, { kind: "handled", threadId: "a" });
+    const session = run({ kind: "sync", items: [item("a")] }, { kind: "handled", key: "a" });
     expect(session.queue).toEqual([]);
     expect(focusProgress(session)).toEqual({ position: 1, total: 1, done: 1 });
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  test("both accounts' conversations are in the queue, each handled on its own", () => {
+    const queue = buildFocusQueue(
+      [owed("shared", { account_id: "A" }), owed("shared", { account_id: "B" })],
+      [],
+      null,
+    );
+    expect(queue.map((entry) => entry.accountId)).toEqual(["A", "B"]);
+    const [first, second] = queue.map(focusKey);
+    const session = run({ kind: "sync", items: queue }, { kind: "handled", key: first! });
+    expect(session.queue).toEqual([second]);
   });
 });

@@ -26,17 +26,18 @@ pub struct ThreadPreviewRecord {
 
 impl super::Store {
     /// Previews for the named threads in one read, no bodies. Ids with no
-    /// messages are left out; order is not kept.
+    /// messages are left out; order is not kept. A legacy thread id can be
+    /// held by two accounts: each account's copy is previewed on its own, from
+    /// its own messages, and a target that names an account gets that
+    /// account's only.
     pub async fn thread_previews(
         &self,
-        thread_ids: &[ThreadId],
+        targets: &[crate::desk::ThreadTarget],
     ) -> Result<Vec<ThreadPreviewRecord>, sqlx::Error> {
-        if thread_ids.is_empty() {
+        if targets.is_empty() {
             return Ok(Vec::new());
         }
-        let wanted =
-            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
-                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let wanted = crate::desk::thread_targets_json(targets)?;
         let started_at = std::time::Instant::now();
         // A bad Date: header in the future would otherwise pin the thread's
         // "latest" message; it counts as undated, as in `get_threads_batch`.
@@ -45,16 +46,21 @@ impl super::Store {
                 SELECT thread_id, account_id, subject, from_name, from_email, snippet,
                        CASE WHEN date > ?1 THEN 0 ELSE date END AS dated,
                        ROW_NUMBER() OVER (
-                           PARTITION BY thread_id
+                           PARTITION BY thread_id, account_id
                            ORDER BY CASE WHEN date > ?1 THEN 0 ELSE date END DESC, id DESC
                        ) AS recency,
-                       COUNT(*) OVER (PARTITION BY thread_id) AS message_count,
+                       COUNT(*) OVER (PARTITION BY thread_id, account_id) AS message_count,
                        SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END)
-                           OVER (PARTITION BY thread_id) AS unread_count,
-                       MAX(has_attachments) OVER (PARTITION BY thread_id) AS any_attachment,
-                       MIN(subject) OVER (PARTITION BY thread_id) AS thread_subject
+                           OVER (PARTITION BY thread_id, account_id) AS unread_count,
+                       MAX(has_attachments)
+                           OVER (PARTITION BY thread_id, account_id) AS any_attachment,
+                       MIN(subject) OVER (PARTITION BY thread_id, account_id) AS thread_subject
                 FROM messages
-                WHERE thread_id IN (SELECT value FROM json_each(?2))
+                WHERE thread_id IN (SELECT json_extract(value, '$[0]') FROM json_each(?2))
+                  AND EXISTS (SELECT 1 FROM json_each(?2) wanted
+                              WHERE json_extract(wanted.value, '$[0]') = messages.thread_id
+                                AND (json_extract(wanted.value, '$[1]') IS NULL
+                                     OR json_extract(wanted.value, '$[1]') = messages.account_id))
              )
              SELECT thread_id, account_id, thread_subject, from_name, from_email, snippet,
                     dated, message_count, unread_count, any_attachment
@@ -126,7 +132,7 @@ mod tests {
         let _ = first;
 
         let previews = store
-            .thread_previews(&[thread.clone(), ThreadId::new()])
+            .thread_previews(&[(thread.clone(), None), (ThreadId::new(), None)])
             .await
             .unwrap();
         assert_eq!(previews.len(), 1, "unknown ids are omitted");

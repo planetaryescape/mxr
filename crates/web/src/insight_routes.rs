@@ -89,13 +89,17 @@ async fn desk(
 
 #[derive(Debug, Deserialize)]
 struct DeskThreadsBody {
+    #[serde(default)]
     thread_ids: Vec<ThreadId>,
+    /// The same conversations with the account each row belongs to.
+    #[serde(default)]
+    thread_accounts: Vec<mxr_protocol::ThreadAccountRef>,
     #[serde(default)]
     dry_run: bool,
 }
 
 fn require_threads(body: &DeskThreadsBody) -> Result<(), BridgeError> {
-    if body.thread_ids.is_empty() {
+    if body.thread_ids.is_empty() && body.thread_accounts.is_empty() {
         return Err(BridgeError::BadRequest(
             "thread_ids must not be empty".into(),
         ));
@@ -114,6 +118,7 @@ async fn desk_dismiss(
         &state.config.socket_path,
         Request::DismissDeskThreads {
             thread_ids: body.thread_ids,
+            thread_accounts: body.thread_accounts,
             dry_run: body.dry_run,
         },
     )
@@ -132,6 +137,7 @@ async fn desk_restore(
         &state.config.socket_path,
         Request::RestoreDeskThreads {
             thread_ids: body.thread_ids,
+            thread_accounts: body.thread_accounts,
         },
     )
     .await?;

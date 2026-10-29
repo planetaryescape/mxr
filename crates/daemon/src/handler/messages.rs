@@ -827,7 +827,7 @@ async fn fill_preview(
         return Ok(());
     };
     if topic.state == TopicStateData::YourTurn {
-        if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
+        if let Some(ask) = cached_ask(state, &g.account_id, &topic.thread_id).await? {
             row.preview = Some(MessagesPreviewData {
                 kind: MessagesPreviewKindData::Ask,
                 text: preview_text(&ask.quote),
@@ -1171,7 +1171,7 @@ async fn conversation(
         },
     )
     .await?;
-    let ask = cached_ask(state, &topic.thread_id).await?;
+    let ask = cached_ask(state, &g.account_id, &topic.thread_id).await?;
     let messages = shown
         .iter()
         .map(|message| {

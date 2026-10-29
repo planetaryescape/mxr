@@ -50,7 +50,7 @@ export function useGotIt(scope: string, onSent?: (plan: AckPlan) => void) {
     undoEntry.current = null;
   }, []);
 
-  const send = useCallback(async (plan: AckPlan, mine: number) => {
+  const send = useCallback(async (plan: AckPlan, mine: number, accountId?: string | null) => {
     if (mine !== generation.current) return;
     const entry = undoEntry.current;
     if (entry) useUndo.getState().clearPendingSendCancel(entry);
@@ -58,7 +58,7 @@ export function useGotIt(scope: string, onSent?: (plan: AckPlan) => void) {
     timer.current = null;
     setPending(null);
     try {
-      await sendAck(plan);
+      await sendAck(plan, accountId);
       const to = plan.to[0]?.name ?? plan.to[0]?.email ?? "them";
       toast.success(`Got it sent to ${to}.`);
       onSentRef.current?.(plan);
@@ -72,7 +72,7 @@ export function useGotIt(scope: string, onSent?: (plan: AckPlan) => void) {
   }, []);
 
   const start = useCallback(
-    async (threadId: string) => {
+    async (threadId: string, accountId?: string | null) => {
       if (loading || refuseWhileDaemonDown("send Got it")) return;
       stopAll();
       setPending(null);
@@ -82,7 +82,7 @@ export function useGotIt(scope: string, onSent?: (plan: AckPlan) => void) {
       setLoading(true);
       let plan: AckPlan;
       try {
-        plan = await previewAck(threadId, controller.signal);
+        plan = await previewAck(threadId, controller.signal, accountId);
       } catch (error) {
         if (mine === generation.current && !controller.signal.aborted) {
           toast.error("Couldn't prepare Got it", {
@@ -112,7 +112,7 @@ export function useGotIt(scope: string, onSent?: (plan: AckPlan) => void) {
       undoEntry.current = cancel;
       useUndo.getState().setPendingSendCancel(cancel);
       setPending({ plan, endsAt });
-      timer.current = setTimeout(() => void send(plan, mine), endsAt - Date.now());
+      timer.current = setTimeout(() => void send(plan, mine, accountId), endsAt - Date.now());
     },
     [loading, send, stopAll],
   );

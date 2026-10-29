@@ -317,11 +317,13 @@ impl super::Store {
             "DELETE FROM desk_dismissals WHERE account_id = ?1
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)
                AND NOT EXISTS (
-                   SELECT 1 FROM messages WHERE messages.thread_id = desk_dismissals.thread_id)",
+                   SELECT 1 FROM messages WHERE messages.account_id = desk_dismissals.account_id
+                     AND messages.thread_id = desk_dismissals.thread_id)",
             "DELETE FROM mode_done WHERE account_id = ?1
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)
                AND NOT EXISTS (
-                   SELECT 1 FROM messages WHERE messages.thread_id = mode_done.thread_id)",
+                   SELECT 1 FROM messages WHERE messages.account_id = mode_done.account_id
+                     AND messages.thread_id = mode_done.thread_id)",
             "DROP TABLE temp.mxr_deleting",
             "DROP TABLE temp.mxr_deleting_people",
             "DROP TABLE temp.mxr_deleting_deliveries",

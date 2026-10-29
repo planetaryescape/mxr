@@ -20,6 +20,7 @@ pub async fn run(
     let context = match client
         .request(Request::GetThreadContext {
             thread_id: thread_id.clone(),
+            account_id: None,
         })
         .await?
     {
@@ -31,7 +32,11 @@ pub async fn run(
     };
     let gist = if with_ai {
         match client
-            .request(Request::GetThreadGist { thread_id, refresh })
+            .request(Request::GetThreadGist {
+                thread_id,
+                refresh,
+                account_id: None,
+            })
             .await?
         {
             Response::Ok {
@@ -101,6 +106,7 @@ mod tests {
     fn rows_print_as_aligned_labelled_lines() {
         let context = facts();
         let gist = ThreadGistData {
+            account_id: None,
             thread_id: context.thread_id.clone(),
             status: ThreadGistStatusData::Ready,
             gist: Some("Canary stays at 5%.".into()),

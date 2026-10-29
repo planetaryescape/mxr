@@ -200,6 +200,7 @@ async fn expiry_is_done_in_reading_and_never_archives_at_the_provider() {
     let membership = request(
         &fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: None,
             thread_id: Some(old.1.clone()),
             thread_ids: vec![],

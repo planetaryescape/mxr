@@ -113,6 +113,7 @@ async fn summarize_one(
     let resp = client
         .request(Request::SummarizeThread {
             thread_id: thread_id.clone(),
+            account_id: None,
         })
         .await?;
     match resp {

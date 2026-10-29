@@ -3,6 +3,14 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
 
+/// One account for every fixture envelope that doesn't name its own, so
+/// envelopes sharing a thread id are one conversation, as in a one-account
+/// mailbox. Tests about several accounts call `.account_id(..)`.
+fn default_account_id() -> AccountId {
+    static DEFAULT: std::sync::OnceLock<AccountId> = std::sync::OnceLock::new();
+    DEFAULT.get_or_init(AccountId::new).clone()
+}
+
 pub(crate) struct TestEnvelopeBuilder {
     id: MessageId,
     account_id: AccountId,
@@ -31,7 +39,7 @@ impl TestEnvelopeBuilder {
     pub(crate) fn new() -> Self {
         Self {
             id: MessageId::new(),
-            account_id: AccountId::new(),
+            account_id: default_account_id(),
             provider_id: "fake-1".to_string(),
             thread_id: ThreadId::new(),
             message_id_header: Some("<test@example.com>".to_string()),

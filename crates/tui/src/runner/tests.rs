@@ -202,6 +202,7 @@ mod reading;
 mod records;
 mod screen_keys;
 mod semantic_and_connection;
+mod shared_thread_id;
 mod snoozed;
 mod todo;
 mod unified_mailboxes;

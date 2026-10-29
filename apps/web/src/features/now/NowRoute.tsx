@@ -14,6 +14,7 @@ import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { NEW_SENDER_NOTE } from "@/features/modes/NewSenderChips";
 import { doneToast, markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
@@ -189,11 +190,16 @@ function NowBody({ now }: { now: Now }) {
 
   // The mode marks on each row, from the daemon's membership. Keyed on every
   // row, hidden or not, so a done in flight doesn't refetch it.
-  const threadIds = useMemo(
-    () => everyItem.flatMap((item) => ("threadId" in item && item.threadId ? [item.threadId] : [])),
+  const threads = useMemo(
+    () =>
+      everyItem.flatMap((item) =>
+        "threadId" in item && item.threadId
+          ? [{ thread_id: item.threadId, account_id: item.accountId }]
+          : [],
+      ),
     [everyItem],
   );
-  const memberships = useThreadModesMap(threadIds).data;
+  const memberships = useThreadModesMap(threads).data;
 
   // "Each row comes from a mode" sits under the first row; letting go of the
   // digest is explained when the cursor reaches its card.
@@ -222,13 +228,17 @@ function NowBody({ now }: { now: Now }) {
       if (how === "pointer" && item.kind !== "updates") fold(item.key);
       switch (item.kind) {
         case "person":
-          void markModeDone("messages", [item.threadId], { message: withDoneHereHint(doneToast) });
+          void markModeDone(
+            "messages",
+            [{ thread_id: item.threadId, account_id: item.accountId }],
+            { message: withDoneHereHint(doneToast) },
+          );
           return;
         case "todo":
           void tickOff(item.todo.todo);
           return;
         case "reading":
-          void markModeDone("reading", [item.threadId]);
+          void markModeDone("reading", [{ thread_id: item.threadId, account_id: item.accountId }]);
           return;
         case "updates":
           dismissLetGo();
@@ -394,7 +404,7 @@ function NowBody({ now }: { now: Now }) {
                     <PersonRow
                       key={item.key}
                       item={item}
-                      modes={memberships?.get(item.threadId)}
+                      modes={memberships?.get(conversationKey(item.threadId, item.accountId))}
                       onReply={reply}
                       {...rowState(item)}
                     />
@@ -420,7 +430,11 @@ function NowBody({ now }: { now: Now }) {
                     <TodoRow
                       key={item.key}
                       item={item}
-                      modes={item.threadId ? memberships?.get(item.threadId) : undefined}
+                      modes={
+                        item.threadId
+                          ? memberships?.get(conversationKey(item.threadId, item.accountId))
+                          : undefined
+                      }
                       {...rowState(item)}
                     />
                   ))}
@@ -447,7 +461,7 @@ function NowBody({ now }: { now: Now }) {
                 <ul className="grid grid-cols-[minmax(0,1fr)]">
                   <ReadingRow
                     item={pick}
-                    modes={memberships?.get(pick.threadId)}
+                    modes={memberships?.get(conversationKey(pick.threadId, pick.accountId))}
                     {...rowState(pick)}
                   />
                 </ul>

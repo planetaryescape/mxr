@@ -21,7 +21,7 @@ pub struct ArchiveStep {
     /// The messages the archive acts on, so a bulk confirm adopts the step
     /// only for this archive.
     pub message_ids: Vec<MessageId>,
-    pub thread_id: mxr_core::ThreadId,
+    pub thread: crate::app::ThreadKey,
     pub forward: bool,
     /// The row to open afterwards, by its representative message; `None`
     /// when the conversation was the last (or first) one.
@@ -337,10 +337,11 @@ impl DeskPageState {
 
     /// Take a conversation's row off the desk at once (Done); the next
     /// fetch has the daemon's word on it.
-    pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
+    pub fn remove_thread(&mut self, thread: &crate::app::ThreadKey) {
         for (_, lane) in &mut self.lanes {
             let before = lane.rows.len();
-            lane.rows.retain(|row| &row.thread_id != thread_id);
+            lane.rows
+                .retain(|row| !thread.matches_ids(&row.thread_id, Some(&row.account_id)));
             let removed = (before - lane.rows.len()) as u32;
             lane.total = lane.total.saturating_sub(removed);
         }
@@ -415,11 +416,12 @@ impl PlacePageState {
     /// refetch lands.
     /// Take a thread's messages off the place at once (done here); the
     /// next fetch has the daemon's word on it.
-    pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
+    pub fn remove_thread(&mut self, thread: &crate::app::ThreadKey) {
         for bundle in &mut self.bundles {
+            let account_id = bundle.account_id.clone();
             bundle
                 .messages
-                .retain(|message| &message.thread_id != thread_id);
+                .retain(|message| !thread.matches_ids(&message.thread_id, Some(&account_id)));
         }
         self.bundles.retain(|bundle| !bundle.messages.is_empty());
     }
@@ -649,7 +651,7 @@ pub struct MailboxState {
     pub viewed_thread: Option<Thread>,
     pub viewed_thread_messages: Vec<Envelope>,
     pub thread_summary: Option<ThreadSummaryPreview>,
-    pub thread_summary_in_flight: HashSet<mxr_core::ThreadId>,
+    pub thread_summary_in_flight: HashSet<crate::app::ThreadKey>,
     pub thread_summary_error: Option<String>,
     /// Facts for the open thread (`GetThreadContext`), shown above it.
     pub thread_context: Option<mxr_protocol::ThreadContextData>,
@@ -661,8 +663,8 @@ pub struct MailboxState {
     pub priority_body_fetches: Vec<MessageId>,
     pub queued_body_fetches: Vec<MessageId>,
     pub in_flight_body_requests: HashSet<MessageId>,
-    pub pending_thread_fetch: Option<mxr_core::ThreadId>,
-    pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
+    pub pending_thread_fetch: Option<crate::app::ThreadKey>,
+    pub in_flight_thread_fetch: Option<crate::app::ThreadKey>,
     pub thread_request_id: u64,
     pub pending_browser_open: Option<PendingBrowserOpen>,
     pub pending_browser_open_after_load: Option<MessageId>,

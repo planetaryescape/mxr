@@ -15,7 +15,10 @@ pub async fn run(thread_ids: Vec<String>, format: Option<OutputFormat>) -> anyho
     let thread_ids = parse_thread_ids(&thread_ids)?;
     let mut client = IpcClient::connect().await?;
     let previews = match client
-        .request(Request::GetThreadPreviews { thread_ids })
+        .request(Request::GetThreadPreviews {
+            thread_ids,
+            thread_accounts: Vec::new(),
+        })
         .await?
     {
         Response::Ok {

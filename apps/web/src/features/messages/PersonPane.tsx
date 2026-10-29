@@ -80,7 +80,7 @@ export function PersonPane(props: PersonPaneProps) {
   const composeOpenForConversation = useComposeUi((s) =>
     Boolean(conversation && s.intent?.contextThreadId === conversation.thread_id),
   );
-  const modes = useThreadModes(conversation?.thread_id).data;
+  const modes = useThreadModes(conversation?.thread_id, conversation?.account_id).data;
   const readingArea = useRef<HTMLDivElement>(null);
   const scrolledThread = useRef<string | null>(null);
   useEffect(() => {
@@ -155,6 +155,7 @@ export function PersonPane(props: PersonPaneProps) {
           <ConversationPeople
             key={conversation.thread_id}
             threadId={conversation.thread_id}
+            accountId={conversation.account_id}
             trailing={<ModeMarks modes={otherModes(modes, "messages")} />}
           />
         </ModeFrame>

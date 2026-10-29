@@ -59,7 +59,7 @@ export const DeskRow = memo(function DeskRow({
   const age = { ...rowAge(desk), label: useClockLabel((now) => rowAge(desk, now).label) };
   const subject = desk.subject.trim();
   // This row's own gist: when it lands, only this row re-renders.
-  const gist = useRowGist(desk.thread_id);
+  const gist = useRowGist(desk.thread_id, desk.account_id);
   // A row a time brought back keeps its reason: that is why it's here.
   const ask = gist?.ask && ASK_LANES.has(desk.lane) && !desk.back_at ? gist.ask : null;
   const askTitle = ask && gist ? gistTitle(gist) : undefined;

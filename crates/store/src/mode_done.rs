@@ -177,18 +177,20 @@ impl super::Store {
     /// many were cleared.
     pub async fn clear_mode_done(
         &self,
-        thread_ids: &[ThreadId],
+        targets: &[crate::desk::ThreadTarget],
         mode: &str,
     ) -> Result<u64, sqlx::Error> {
-        if thread_ids.is_empty() {
+        if targets.is_empty() {
             return Ok(0);
         }
-        let wanted =
-            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
-                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let wanted = crate::desk::thread_targets_json(targets)?;
         let result = sqlx::query(
             "DELETE FROM mode_done
-             WHERE mode = ?2 AND thread_id IN (SELECT value FROM json_each(?1))",
+             WHERE mode = ?2 AND EXISTS (
+                 SELECT 1 FROM json_each(?1) wanted
+                 WHERE json_extract(wanted.value, '$[0]') = mode_done.thread_id
+                   AND (json_extract(wanted.value, '$[1]') IS NULL
+                        OR json_extract(wanted.value, '$[1]') = mode_done.account_id))",
         )
         .bind(wanted)
         .bind(mode)

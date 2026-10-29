@@ -675,11 +675,16 @@ impl SyncEngine {
             // tombstones — we synthesise an empty-`message_ids` Thread
             // so clients can drop their cached metadata.
             let touched_vec: Vec<ThreadId> = touched_threads.iter().cloned().collect();
-            let live_threads = self
+            // A legacy thread id can be held by another account too; this
+            // sync reports only its own account's copy.
+            let live_threads: Vec<Thread> = self
                 .store
                 .get_threads_batch(&touched_vec)
                 .await
-                .map_err(|e| MxrError::Store(e.to_string()))?;
+                .map_err(|e| MxrError::Store(e.to_string()))?
+                .into_iter()
+                .filter(|thread| thread.account_id == *account_id)
+                .collect();
             let live_ids: HashSet<ThreadId> = live_threads.iter().map(|t| t.id.clone()).collect();
             let mut threads_changed = live_threads;
             for id in &touched_vec {

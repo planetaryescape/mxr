@@ -98,6 +98,10 @@ async fn person(
 pub(crate) struct AckBody {
     #[schema(value_type = String)]
     thread_id: ThreadId,
+    /// The account the row belongs to, for a thread id two accounts hold.
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    account_id: Option<AccountId>,
     /// True by default: a preview of the exact plan with its token. Only an
     /// explicit `false`, with the preview's token and text, sends.
     #[serde(default = "preview_by_default")]
@@ -125,6 +129,7 @@ async fn ack(
         None,
         Request::AckMessage {
             thread_id: body.thread_id,
+            account_id: body.account_id,
             dry_run: body.dry_run,
             expect_text: body.expect_text,
             preview_token: body.preview_token,

@@ -89,6 +89,7 @@ async fn membership(fx: &Fixture, thread: &ThreadId) -> ThreadModesData {
     match request(
         fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: None,
             thread_id: Some(thread.clone()),
             thread_ids: Vec::new(),
@@ -205,6 +206,7 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
     let ResponseData::ModeMembership { threads } = request(
         &fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: Some(ask.id.clone()),
             thread_id: None,
             thread_ids: vec![thread.clone()],
@@ -655,6 +657,7 @@ async fn restoring_on_the_desk_brings_back_a_thread_done_in_messages() {
     let ResponseData::DeskThreadsRestored { restored } = request(
         &fx,
         Request::RestoreDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
         },
     )

@@ -51,7 +51,7 @@ import {
   canPinSource,
   canSweepSource,
   canTune,
-  gistThread,
+  gistRef,
   type SuggestedSetting,
 } from "./digestView";
 import { LetGoAllDialog, TuneDialog } from "./UpdatesDialogs";
@@ -77,17 +77,21 @@ const UPDATES_LIST_SEARCH = ["row", "peek"] as const;
  */
 export function UpdatesRoute() {
   const digest = useDigest();
-  const threadIds = useCallback(() => {
+  const threads = useCallback(() => {
     const data = digest.data;
     if (!data) return [];
     const lines = [...data.needs_a_look, ...data.changed, ...data.routine];
-    return lines.flatMap((line) => (line.latest_thread_id ? [line.latest_thread_id] : []));
+    return lines.flatMap((line) =>
+      line.latest_thread_id
+        ? [{ thread_id: line.latest_thread_id, account_id: line.account_id }]
+        : [],
+    );
   }, [digest.data]);
   return (
     <PlaceLayout
       basePath="/updates"
       label="Updates"
-      threadIds={threadIds}
+      threads={threads}
       keepSearch={UPDATES_LIST_SEARCH}
     >
       <Briefing status={digest} />
@@ -158,7 +162,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   // Lines that show only their subject ask the daemon for the email's gist.
   // Bumped only when every gist was dropped (missed events, a reconnect).
   const gistEpoch = useGistEpoch();
-  const gistThreads = useMemo(() => rows.flatMap((row) => gistThread(row.line) ?? []), [rows]);
+  const gistThreads = useMemo(() => rows.flatMap((row) => gistRef(row.line) ?? []), [rows]);
   useEffect(() => {
     if (gistThreads.length === 0) return;
     const handle = window.setTimeout(() => {
@@ -235,7 +239,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   );
   const openEmail = useCallback(
     (line: UpdateLine) => {
-      if (line.latest_thread_id) nav?.open(line.latest_thread_id);
+      if (line.latest_thread_id) nav?.open(line.latest_thread_id, { accountId: line.account_id });
     },
     [nav],
   );
@@ -282,7 +286,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
           );
         if (next?.line.latest_thread_id) {
           setCursorId(next.line.id);
-          nav?.open(next.line.latest_thread_id);
+          nav?.open(next.line.latest_thread_id, { accountId: next.line.account_id });
         }
       }
       return;

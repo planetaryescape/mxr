@@ -792,10 +792,10 @@ impl App {
                     }
                     PatternKind::Thread => {
                         if let Some(env) = self.context_envelope() {
-                            let tid = env.thread_id.clone();
+                            let key = ThreadKey::of_envelope(env);
                             self.mailbox.selected_set = envelopes
                                 .iter()
-                                .filter(|e| e.thread_id == tid)
+                                .filter(|e| key.matches_envelope(e))
                                 .map(|e| e.id.clone())
                                 .collect();
                         }

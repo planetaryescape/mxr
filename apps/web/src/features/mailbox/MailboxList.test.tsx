@@ -413,13 +413,19 @@ describe("gistOrder", () => {
       { kind: "header" as const, id: "h", group: {} as never },
       ...rowItems(["a", "b", "c", "d", "e", "f", "g"]),
     ];
-    expect(gistOrder(flat, { startIndex: 3, endIndex: 4 }, 1, 2)).toEqual([
-      "c",
-      "d",
-      "e",
-      "f",
-      "b",
-      "a",
+    expect(gistOrder(flat, { startIndex: 3, endIndex: 4 }, 1, 2)).toEqual(
+      ["c", "d", "e", "f", "b", "a"].map((thread_id) => ({ thread_id })),
+    );
+  });
+
+  test("names each row's account, so a thread id held by two accounts is asked twice", () => {
+    const flat = [
+      { kind: "row" as const, row: { thread_id: "t", account_id: "A" } as MessageRowView },
+      { kind: "row" as const, row: { thread_id: "t", account_id: "B" } as MessageRowView },
+    ];
+    expect(gistOrder(flat, { startIndex: 0, endIndex: 1 }, 0, 0)).toEqual([
+      { thread_id: "t", account_id: "A" },
+      { thread_id: "t", account_id: "B" },
     ]);
   });
 });

@@ -164,7 +164,9 @@ pub use contacts_refresh_handle::ContactsRefreshHandle;
 pub use context_briefings::{new_briefing_id, BriefingKind, ContextBriefing};
 pub use decision_log::{decision_id, source_hash as decision_source_hash, DecisionLogEntry};
 pub use deliveries::{Delivery, DeliveryItem, DeliveryListFilter};
-pub use desk::{DeskContact, DeskDismissal, DeskLatestExchange, DeskMessage, DeskReplyLatency};
+pub use desk::{
+    DeskContact, DeskDismissal, DeskLatestExchange, DeskMessage, DeskReplyLatency, ThreadTarget,
+};
 pub use desk_done::{DeskDismissalMark, DeskDismissalPrior, DeskDismissalRow};
 pub use diagnostics::StoreRecordCounts;
 pub use draft::SentDraftReceipt;

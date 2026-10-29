@@ -12,6 +12,7 @@ import { create } from "zustand";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { soundFor, VERB_FEEDBACK } from "@/features/mail-actions/verbFeedback";
@@ -27,20 +28,20 @@ export type DeskDoneItem = Schemas["DeskDoneItemData"];
 type DeskDoneResponse = Extract<Schemas["ResponseData"], { kind: "DeskItemsResolved" }>;
 
 interface DeskDoneState {
-  /** Conversations hidden while their Done is in flight. */
+  /** Conversations hidden while their Done is in flight, as `conversationKey`s. */
   hidden: ReadonlySet<string>;
-  hide: (threadIds: string[]) => void;
-  show: (threadIds: string[]) => void;
+  hide: (keys: string[]) => void;
+  show: (keys: string[]) => void;
 }
 
 export const useDeskDone = create<DeskDoneState>((set) => ({
   hidden: new Set(),
-  hide: (threadIds) => set((s) => ({ hidden: new Set([...s.hidden, ...threadIds]) })),
+  hide: (keys) => set((s) => ({ hidden: new Set([...s.hidden, ...keys]) })),
   // Unchanged state when none of them were hidden, so nothing re-renders.
-  show: (threadIds) =>
+  show: (keys) =>
     set((s) =>
-      threadIds.some((id) => s.hidden.has(id))
-        ? { hidden: new Set([...s.hidden].filter((id) => !threadIds.includes(id))) }
+      keys.some((key) => s.hidden.has(key))
+        ? { hidden: new Set([...s.hidden].filter((key) => !keys.includes(key))) }
         : s,
     ),
 }));
@@ -69,10 +70,15 @@ export async function markDeskDone(
   items: readonly DeskDoneItem[],
   options: DeskDoneOptions = {},
 ): Promise<boolean> {
-  const unique = [...new Map(items.map((item) => [item.thread_id, item])).values()];
+  // Keyed by account too: a thread id held by two accounts is two conversations.
+  const unique = [
+    ...new Map(
+      items.map((item) => [conversationKey(item.thread_id, item.account_id), item]),
+    ).values(),
+  ];
   if (unique.length === 0 || refuseWhileDaemonDown("mark it done")) return false;
-  const threadIds = unique.map((item) => item.thread_id);
-  useDeskDone.getState().hide(threadIds);
+  const keys = unique.map((item) => conversationKey(item.thread_id, item.account_id));
+  useDeskDone.getState().hide(keys);
   if (useSelection.getState().ids.size > 0) useSelection.getState().clear();
   // The row is gone at once, so `u` may come before the daemon answers:
   // hold the undo slot now, as every mail verb does.
@@ -101,7 +107,7 @@ export async function markDeskDone(
         offerUndo(
           "desk-done",
           done === 1 ? past : `${past} with ${plural(done, "conversation")}`,
-          `desk-done-${mutationId ?? threadIds.join(",")}`,
+          `desk-done-${mutationId ?? keys.join(",")}`,
           reverse,
           claim.run,
           mutationId ?? undefined,
@@ -126,6 +132,6 @@ export async function markDeskDone(
     return false;
   } finally {
     // The refetched desk now agrees (or a failure put the row back).
-    useDeskDone.getState().show(threadIds);
+    useDeskDone.getState().show(keys);
   }
 }

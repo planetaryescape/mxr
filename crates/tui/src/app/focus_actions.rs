@@ -10,7 +10,6 @@
 use super::*;
 use crate::app::state::{FocusItem, FocusPageState, FocusReply, FocusReturn, FocusSource};
 use mxr_core::types::{DraftIntent, Envelope};
-use mxr_core::ThreadId;
 use mxr_protocol::{DeskLaneData, DeskLaneKind, DeskRowData, PeopleSplitData};
 use std::path::Path;
 
@@ -41,10 +40,12 @@ enum AfterEditor {
 /// reply-later queue in its order, each conversation once.
 pub(crate) fn build_focus_queue(owed: &[DeskRowData], reply_later: &[Envelope]) -> Vec<FocusItem> {
     let mut items: Vec<FocusItem> = Vec::new();
-    let listed =
-        |items: &[FocusItem], thread: &ThreadId| items.iter().any(|i| &i.thread_id == thread);
+    let listed = |items: &[FocusItem], thread: &ThreadKey| items.iter().any(|i| i.key() == *thread);
     for row in owed {
-        if listed(&items, &row.thread_id) {
+        if listed(
+            &items,
+            &ThreadKey::new(row.account_id.clone(), row.thread_id.clone()),
+        ) {
             continue;
         }
         let name = row
@@ -63,7 +64,7 @@ pub(crate) fn build_focus_queue(owed: &[DeskRowData], reply_later: &[Envelope]) 
         });
     }
     for message in reply_later {
-        if listed(&items, &message.thread_id) {
+        if listed(&items, &ThreadKey::of_envelope(message)) {
             continue;
         }
         let name = message
@@ -130,7 +131,7 @@ impl App {
     /// Open Focus & reply, with `start_at` on screen first when it is in
     /// the queue. Every visit is a new session, as on the web: what an
     /// earlier one skipped or set aside is back.
-    pub(crate) fn open_focus(&mut self, start_at: Option<ThreadId>) {
+    pub(crate) fn open_focus(&mut self, start_at: Option<ThreadKey>) {
         if self.focus_page_focused() && start_at.is_none() {
             return;
         }
@@ -162,7 +163,7 @@ impl App {
         let start = queue
             .messages
             .get(queue.selected_index)
-            .map(|message| message.thread_id.clone());
+            .map(ThreadKey::of_envelope);
         self.modals.reply_queue.close();
         self.open_focus(start);
     }
@@ -310,21 +311,21 @@ impl App {
         let request = Request::ResolveDeskItems {
             items: vec![mxr_protocol::DeskDoneItemData {
                 thread_id: item.thread_id.clone(),
-                account_id: None,
+                account_id: Some(item.account_id.clone()),
                 lane: (item.source == FocusSource::Owed).then_some(DeskLaneKind::Owed),
                 commitment_id: None,
             }],
             dry_run: false,
         };
-        self.mailbox.focus_page.handled(&item.thread_id);
+        self.mailbox.focus_page.handled(&item.key());
         let id = self.queue_mutation(
             request,
             MutationEffect::RefreshPlaces("Done. Press u to undo".into()),
             "Putting it away...".into(),
         );
         let page = &mut self.mailbox.focus_page;
-        page.pending_done.insert(id, item.thread_id.clone());
-        page.undoable_done = Some(item.thread_id);
+        page.pending_done.insert(id, item.key());
+        page.undoable_done = Some(item.key());
         self.focus_load_current();
     }
 
@@ -346,12 +347,12 @@ impl App {
         if self.mailbox.mailbox_view != MailboxView::Focus || verb_past != "Done" {
             return None;
         }
-        let thread_id = self.mailbox.focus_page.undoable_done.take()?;
-        Some(MutationEffect::FocusRestore { thread_id })
+        let thread = self.mailbox.focus_page.undoable_done.take()?;
+        Some(MutationEffect::FocusRestore { thread })
     }
 
-    pub(super) fn focus_restore(&mut self, thread_id: &ThreadId) {
-        self.mailbox.focus_page.restore(thread_id);
+    pub(super) fn focus_restore(&mut self, thread: &ThreadKey) {
+        self.mailbox.focus_page.restore(thread);
         self.focus_load_current();
     }
 
@@ -365,7 +366,7 @@ impl App {
             .focus_page
             .current()
             .filter(|item| &item.message_id == message_id)
-            .map(|item| item.thread_id.clone())
+            .map(FocusItem::key)
         else {
             return;
         };
@@ -393,7 +394,7 @@ impl App {
             return;
         };
         self.mailbox.focus_page.reply = Some(FocusReply {
-            thread_id: item.thread_id.clone(),
+            thread: item.key(),
             draft: None,
         });
         match after {
@@ -425,7 +426,7 @@ impl App {
         if draft_path.is_none() || reply.draft.as_deref() != draft_path {
             return;
         }
-        let thread_id = reply.thread_id.clone();
+        let thread_id = reply.thread.clone();
         page.reply = None;
         page.undoable_done = None;
         page.handled(&thread_id);

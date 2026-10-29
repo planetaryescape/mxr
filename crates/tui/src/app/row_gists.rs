@@ -4,8 +4,8 @@
 //! rows on screen are asked for, cached gists come back at once, and the
 //! rest arrive as `ThreadGistReady` events.
 
-use super::{App, MailboxView};
-use mxr_core::id::ThreadId;
+use super::{App, MailboxView, ThreadKey};
+use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::LabelKind;
 use mxr_protocol::{
     GistModelData, ThreadGistBatchData, ThreadGistData, ThreadGistStatusData,
@@ -66,7 +66,21 @@ impl RowGist {
     }
 }
 
-pub type RowGists = HashMap<ThreadId, RowGist>;
+/// Keyed by conversation as a row names it: two accounts can hold the same
+/// thread id, and each row shows its own account's gist. A gist the daemon
+/// sent without an account is stored under the bare id.
+pub type RowGists = HashMap<ThreadKey, RowGist>;
+
+/// The gist for the row of `thread_id` in `account_id`.
+pub fn gist_for<'a>(
+    gists: &'a RowGists,
+    account_id: &AccountId,
+    thread_id: &ThreadId,
+) -> Option<&'a RowGist> {
+    gists
+        .get(&ThreadKey::new(account_id.clone(), thread_id.clone()))
+        .or_else(|| gists.get(&ThreadKey::bare(thread_id.clone())))
+}
 
 /// Most rows remembered, shown or asked about; the oldest go first.
 const STATE_CAP: usize = 500;
@@ -78,9 +92,9 @@ pub struct RowGistState {
     /// per row only when it is `Available`.
     pub model: Option<GistModelData>,
     /// When each gist was stored, for dropping the oldest past the cap.
-    stored: HashMap<ThreadId, u64>,
+    stored: HashMap<ThreadKey, u64>,
     stored_seq: u64,
-    requested: HashMap<ThreadId, Instant>,
+    requested: HashMap<ThreadKey, Instant>,
     /// Bumped whenever shown gists may no longer hold: a request answered
     /// from an older epoch is dropped, so it can't put back what an
     /// invalidation took away.
@@ -115,9 +129,9 @@ impl RowGistState {
     /// new or it is too soon. Marks them asked.
     pub fn take_request(
         &mut self,
-        candidates: impl IntoIterator<Item = ThreadId>,
+        candidates: impl IntoIterator<Item = ThreadKey>,
         now: Instant,
-    ) -> Option<Vec<ThreadId>> {
+    ) -> Option<Vec<ThreadKey>> {
         if !self.due(now) {
             return None;
         }
@@ -132,7 +146,11 @@ impl RowGistState {
                 .requested
                 .get(&id)
                 .is_some_and(|at| now.duration_since(*at) < REQUEST_TTL);
-            if self.gists.contains_key(&id) || asked || !seen.insert(id.clone()) {
+            let shown = self.gists.contains_key(&id)
+                || self
+                    .gists
+                    .contains_key(&ThreadKey::bare(id.thread_id.clone()));
+            if shown || asked || !seen.insert(id.clone()) {
                 continue;
             }
             wanted.push(id);
@@ -161,7 +179,7 @@ impl RowGistState {
     /// an invalidation is dropped, and its rows may be asked about again.
     pub fn apply_batch(
         &mut self,
-        ids: &[ThreadId],
+        ids: &[ThreadKey],
         epoch: u64,
         batch: &ThreadGistBatchData,
         now: Instant,
@@ -181,7 +199,7 @@ impl RowGistState {
     }
 
     /// A failed request: let the rows be asked about again.
-    pub fn request_failed(&mut self, ids: &[ThreadId]) {
+    pub fn request_failed(&mut self, ids: &[ThreadKey]) {
         for id in ids {
             self.requested.remove(id);
         }
@@ -194,8 +212,12 @@ impl RowGistState {
             return;
         };
         self.stored_seq += 1;
-        self.stored.insert(data.thread_id.clone(), self.stored_seq);
-        self.gists.insert(data.thread_id.clone(), gist);
+        let key = ThreadKey {
+            account_id: data.account_id.clone(),
+            thread_id: data.thread_id.clone(),
+        };
+        self.stored.insert(key.clone(), self.stored_seq);
+        self.gists.insert(key, gist);
         while self.gists.len() > STATE_CAP {
             let Some(oldest) = self
                 .stored
@@ -212,12 +234,16 @@ impl RowGistState {
 
     /// New messages changed these conversations: drop their gists and let
     /// their rows ask again. Answers already on their way are dropped.
-    pub fn changed<'a>(&mut self, ids: impl IntoIterator<Item = &'a ThreadId>) {
+    pub fn changed<'a>(&mut self, ids: impl IntoIterator<Item = &'a ThreadKey>) {
         self.epoch += 1;
         for id in ids {
-            self.gists.remove(id);
-            self.stored.remove(id);
-            self.requested.remove(id);
+            // A gist stored without an account stands for every account.
+            let bare = ThreadKey::bare(id.thread_id.clone());
+            for key in [id, &bare] {
+                self.gists.remove(key);
+                self.stored.remove(key);
+                self.requested.remove(key);
+            }
         }
     }
 
@@ -232,21 +258,25 @@ impl RowGistState {
 }
 
 impl App {
-    /// Thread ids of the rows around the cursor, cursor first, when the
+    /// Conversations of the rows around the cursor, cursor first, when the
     /// current screen is a triage list (the desk, the inbox, a label).
-    pub(crate) fn row_gist_candidates(&self) -> Vec<ThreadId> {
-        let ids: Vec<ThreadId> = match self.mailbox.mailbox_view {
+    pub(crate) fn row_gist_candidates(&self) -> Vec<ThreadKey> {
+        let ids: Vec<ThreadKey> = match self.mailbox.mailbox_view {
             MailboxView::Desk => self
                 .mailbox
                 .desk_page
                 .lanes
                 .iter()
-                .flat_map(|(_, lane)| lane.rows.iter().map(|row| row.thread_id.clone()))
+                .flat_map(|(_, lane)| {
+                    lane.rows
+                        .iter()
+                        .map(|row| ThreadKey::new(row.account_id.clone(), row.thread_id.clone()))
+                })
                 .collect(),
             MailboxView::Messages if self.triage_label_active() => self
                 .mail_list_rows()
                 .into_iter()
-                .map(|row| row.thread_id)
+                .map(|row| ThreadKey::of_envelope(&row.representative))
                 .collect(),
             _ => return Vec::new(),
         };
@@ -266,7 +296,7 @@ impl App {
 }
 
 /// From the cursor down, then just above it.
-fn around(ids: &[ThreadId], cursor: usize) -> Vec<ThreadId> {
+fn around(ids: &[ThreadKey], cursor: usize) -> Vec<ThreadKey> {
     let cursor = cursor.min(ids.len());
     let below = ids.iter().skip(cursor).take(LOOKAHEAD);
     let above = ids[cursor.saturating_sub(LOOKBEHIND)..cursor].iter().rev();
@@ -278,9 +308,14 @@ mod tests {
     use super::*;
     use mxr_protocol::ThreadAskData;
 
-    fn ready(id: &ThreadId, ask: Option<&str>) -> ThreadGistData {
+    fn key() -> ThreadKey {
+        ThreadKey::bare(ThreadId::new())
+    }
+
+    fn ready(id: &ThreadKey, ask: Option<&str>) -> ThreadGistData {
         ThreadGistData {
-            thread_id: id.clone(),
+            thread_id: id.thread_id.clone(),
+            account_id: id.account_id.clone(),
             status: ThreadGistStatusData::Ready,
             gist: Some("Canary stays at 5%.".into()),
             ask: ask.map(|summary| ThreadAskData {
@@ -297,7 +332,7 @@ mod tests {
 
     #[test]
     fn asks_once_per_row_and_not_too_often() {
-        let (a, b) = (ThreadId::new(), ThreadId::new());
+        let (a, b) = (key(), key());
         let mut state = RowGistState::default();
         let start = Instant::now();
         assert_eq!(
@@ -305,11 +340,7 @@ mod tests {
             Some(vec![a.clone(), b.clone()])
         );
         let soon = start + Duration::from_millis(100);
-        assert_eq!(
-            state.take_request([ThreadId::new()], soon),
-            None,
-            "rate limited"
-        );
+        assert_eq!(state.take_request([key()], soon), None, "rate limited");
         let later = start + Duration::from_secs(1);
         assert_eq!(
             state.take_request([a.clone(), b.clone()], later),
@@ -333,7 +364,7 @@ mod tests {
     fn no_model_stops_the_asking() {
         let mut state = RowGistState::default();
         let start = Instant::now();
-        let ids = state.take_request([ThreadId::new()], start).unwrap();
+        let ids = state.take_request([key()], start).unwrap();
         state.apply_batch(
             &ids,
             state.epoch(),
@@ -347,7 +378,7 @@ mod tests {
             start,
         );
         assert_eq!(
-            state.take_request([ThreadId::new()], start + Duration::from_secs(2)),
+            state.take_request([key()], start + Duration::from_secs(2)),
             None
         );
         assert_eq!(state.model, Some(GistModelData::Disabled));
@@ -355,7 +386,7 @@ mod tests {
 
     #[test]
     fn rows_around_the_cursor_come_cursor_first() {
-        let ids: Vec<ThreadId> = (0..5).map(|_| ThreadId::new()).collect();
+        let ids: Vec<ThreadKey> = (0..5).map(|_| key()).collect();
         let order = around(&ids, 2);
         assert_eq!(
             order,
@@ -371,7 +402,7 @@ mod tests {
 
     #[test]
     fn an_answer_from_before_an_invalidation_is_dropped() {
-        let (a, b) = (ThreadId::new(), ThreadId::new());
+        let (a, b) = (key(), key());
         let mut state = RowGistState::default();
         let start = Instant::now();
         let ids = state.take_request([a.clone(), b.clone()], start).unwrap();
@@ -406,7 +437,7 @@ mod tests {
     #[test]
     fn state_is_capped_oldest_first() {
         let mut state = RowGistState::default();
-        let ids: Vec<ThreadId> = (0..STATE_CAP + 5).map(|_| ThreadId::new()).collect();
+        let ids: Vec<ThreadKey> = (0..STATE_CAP + 5).map(|_| key()).collect();
         for id in &ids {
             state.put(&ready(id, None));
         }
@@ -422,5 +453,33 @@ mod tests {
             state.take_request(chunk.iter().cloned(), at);
         }
         assert_eq!(state.requested.len(), STATE_CAP);
+    }
+
+    #[test]
+    fn a_thread_id_shared_by_two_accounts_keeps_one_gist_per_account() {
+        let thread_id = ThreadId::new();
+        let (account_a, account_b) = (AccountId::new(), AccountId::new());
+        let a = ThreadKey::new(account_a.clone(), thread_id.clone());
+        let b = ThreadKey::new(account_b.clone(), thread_id.clone());
+        let mut state = RowGistState::default();
+        let mut for_a = ready(&a, None);
+        for_a.gist = Some("A's conversation".into());
+        let mut for_b = ready(&b, None);
+        for_b.gist = Some("B's conversation".into());
+        state.put(&for_a);
+        state.put(&for_b);
+        assert_eq!(state.gists.len(), 2);
+        assert_eq!(
+            gist_for(&state.gists, &account_a, &thread_id).map(RowGist::line),
+            Some("A's conversation")
+        );
+        assert_eq!(
+            gist_for(&state.gists, &account_b, &thread_id).map(RowGist::line),
+            Some("B's conversation")
+        );
+        // New mail in A's thread drops A's gist only.
+        state.changed([&a]);
+        assert!(gist_for(&state.gists, &account_a, &thread_id).is_none());
+        assert!(gist_for(&state.gists, &account_b, &thread_id).is_some());
     }
 }

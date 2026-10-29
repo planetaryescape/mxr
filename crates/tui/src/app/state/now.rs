@@ -3,7 +3,6 @@
 //! owns every cap, count and line; this state only holds what came back
 //! and what the user is doing with it.
 
-use mxr_core::id::ThreadId;
 use mxr_protocol::{
     ArrivalsData, ModeGuideData, NotSureData, NowData, NowPersonData, NowReadingPickData,
     NowTodoData, NowUpdatesCardData, UpdatesLetGoData,
@@ -109,20 +108,24 @@ impl NowPageState {
     }
 
     /// Take a thread off Now before the daemon answers.
-    pub fn remove_thread(&mut self, thread_id: &ThreadId) {
+    pub fn remove_thread(&mut self, thread: &crate::app::ThreadKey) {
         let Some(now) = self.now.as_mut() else {
             return;
         };
-        now.people
-            .rows
-            .retain(|person| &person.row.thread_id != thread_id);
-        now.due_soon
-            .todos
-            .retain(|todo| todo.todo.thread_id.as_ref() != Some(thread_id));
+        now.people.rows.retain(|person| {
+            !thread.matches_ids(&person.row.thread_id, Some(&person.row.account_id))
+        });
+        now.due_soon.todos.retain(|todo| {
+            !todo
+                .todo
+                .thread_id
+                .as_ref()
+                .is_some_and(|id| thread.matches_ids(id, Some(&todo.todo.account_id)))
+        });
         if now
             .reading
             .as_ref()
-            .is_some_and(|pick| &pick.thread_id == thread_id)
+            .is_some_and(|pick| thread.matches_ids(&pick.thread_id, Some(&pick.account_id)))
         {
             now.reading = None;
         }

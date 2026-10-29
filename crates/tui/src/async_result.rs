@@ -2,7 +2,7 @@ use crate::app::{self, AttachmentOperation};
 use crate::terminal_images::HtmlImageKey;
 use image::DynamicImage;
 use mxr_core::types::SubscriptionSummary;
-use mxr_core::{Draft, Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
+use mxr_core::{Draft, Envelope, Label, MessageBody, MessageId, MxrError, Thread};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, AuthSessionData,
     BodyFailure, DaemonEvent, DeliveryData, ReplyContext, Response, RuleFormData,
@@ -161,7 +161,7 @@ pub(crate) enum AsyncResult {
     ReadingArticle(String, Result<mxr_protocol::ReadingFetchData, MxrError>),
     /// The dry run of letting go of everything shown.
     ReadingLetGoPreview(
-        Vec<mxr_core::id::ThreadId>,
+        Vec<crate::app::ThreadKey>,
         Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
     ),
     /// The dry run of unsubscribing from a source.
@@ -265,7 +265,7 @@ pub(crate) enum AsyncResult {
         result: Result<ResizeResponse, MxrError>,
     },
     Thread {
-        thread_id: ThreadId,
+        key: crate::app::ThreadKey,
         request_id: u64,
         result: Result<(Thread, Vec<Envelope>, Option<ThreadSummaryData>), MxrError>,
     },
@@ -406,12 +406,12 @@ pub(crate) enum AsyncResult {
     /// Late responses for a previously-focused thread are filtered at
     /// the dispatcher.
     ThreadSummaryLoaded {
-        thread_id: mxr_core::ThreadId,
+        key: crate::app::ThreadKey,
         result: Result<(String, String), MxrError>,
     },
     /// Context facts for a thread (`GetThreadContext`).
     ThreadContextLoaded {
-        thread_id: mxr_core::ThreadId,
+        key: crate::app::ThreadKey,
         result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
     },
     /// Promises found in a message just sent (`DetectPromises`).
@@ -421,14 +421,14 @@ pub(crate) enum AsyncResult {
     },
     /// List-row gists (`GetThreadGists`) for the rows around the cursor.
     RowGistsLoaded {
-        thread_ids: Vec<mxr_core::ThreadId>,
+        keys: Vec<crate::app::ThreadKey>,
         /// `RowGistState::epoch` when the request went out.
         epoch: u64,
         result: Result<Box<mxr_protocol::ThreadGistBatchData>, MxrError>,
     },
     /// The model's gist and ask for a thread (`GetThreadGist`).
     ThreadGistLoaded {
-        thread_id: mxr_core::ThreadId,
+        key: crate::app::ThreadKey,
         result: Result<Box<mxr_protocol::ThreadGistData>, MxrError>,
     },
     /// Snapshot of the user's locally-stored drafts (all accounts, most

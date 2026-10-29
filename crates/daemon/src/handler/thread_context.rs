@@ -13,17 +13,25 @@ use mxr_protocol::{
 };
 use std::collections::{BTreeSet, HashMap};
 
-pub(super) async fn get_thread_context(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
+pub(super) async fn get_thread_context(
+    state: &AppState,
+    thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     Ok(ResponseData::ThreadContext {
-        context: load_thread_context(state, thread_id).await?,
+        context: load_thread_context(state, thread_id, account_id).await?,
     })
 }
 
 pub(super) async fn load_thread_context(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
 ) -> Result<ThreadContextData, HandlerError> {
-    let envelopes = state.store.get_thread_envelopes(thread_id).await?;
+    let envelopes = state
+        .store
+        .get_thread_envelopes_in(thread_id, account_id)
+        .await?;
     let Some(first) = envelopes.first() else {
         return Err(format!("thread {thread_id} not found").into());
     };
@@ -57,7 +65,9 @@ pub(super) async fn build_thread_context(
     };
     let account_id = first.account_id.clone();
     let (directions, commitments) = tokio::try_join!(
-        state.store.thread_message_directions(thread_id),
+        state
+            .store
+            .thread_message_directions(&account_id, thread_id),
         state
             .store
             .list_open_thread_commitments(&account_id, thread_id),
@@ -325,7 +335,7 @@ mod tests {
                 .unwrap();
         }
 
-        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let facts = context(get_thread_context(&state, &here, None).await.unwrap());
         assert!(
             state
                 .store
@@ -421,7 +431,7 @@ mod tests {
                 .unwrap();
         }
 
-        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let facts = context(get_thread_context(&state, &here, None).await.unwrap());
         assert!(
             state
                 .store
@@ -494,7 +504,7 @@ mod tests {
             .unwrap();
         assert!(state.store.try_create_reply_pair(&answered).await.unwrap());
 
-        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let facts = context(get_thread_context(&state, &here, None).await.unwrap());
         assert!(
             state
                 .store
@@ -546,7 +556,7 @@ mod tests {
         )
         .await;
 
-        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let facts = context(get_thread_context(&state, &here, None).await.unwrap());
         assert!(
             state
                 .store
@@ -591,7 +601,7 @@ mod tests {
             .await
             .unwrap();
 
-        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let facts = context(get_thread_context(&state, &here, None).await.unwrap());
         assert!(
             state
                 .store

@@ -68,7 +68,9 @@ export function ReadoutRows({
   const threadIds = useMemo(
     () =>
       shown.flatMap((row) =>
-        isRich(row) && row.link?.kind === "thread" ? [row.link.thread_id] : [],
+        isRich(row) && row.link?.kind === "thread"
+          ? [{ thread_id: row.link.thread_id, account_id: row.account_id }]
+          : [],
       ),
     [shown],
   );
@@ -151,7 +153,7 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
   // A thread row's title is the subject and its detail the sender; a person's is the other way round.
   const who = thread ? (row.sender ?? row.detail ?? row.title) : row.title;
   const under = [row.sender, row.snippet].filter(Boolean).join(" · ") || row.detail;
-  const Glyph = thread && rich ? threadGlyph(link.thread_id, modes) : null;
+  const Glyph = thread && rich ? threadGlyph(link.thread_id, modes, row.account_id) : null;
   const marks =
     row.attachment || Glyph ? (
       <>

@@ -14,7 +14,7 @@ use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
     AuthSessionId, ClientKind, DaemonEvent, JobData, MutationCommand, PromiseSourceData, Request,
-    ResponseData, ThreadSummaryData,
+    ResponseData, ThreadAccountRef, ThreadSummaryData,
 };
 use mxr_store::SignatureScope;
 use std::sync::Arc;
@@ -52,6 +52,11 @@ enum ScopeTarget<'a> {
     CategoryIn(&'a CategoryId, &'a AccountId),
     Message(&'a MessageId),
     Thread(&'a ThreadId),
+    /// A thread as one account's row names it (only the account matters:
+    /// nothing is looked up, see `resolve_targets`). A legacy thread id can be
+    /// held by two accounts, so a request that names the pair touches that
+    /// account only; a bare `Thread` touches every account holding the id.
+    ThreadIn(&'a AccountId),
     Draft(&'a DraftId),
     /// A draft sent by value: its own `account_id`, plus the stored draft
     /// with the same id when there is one, so a write can't overwrite
@@ -93,8 +98,36 @@ fn messages(message_ids: &[MessageId]) -> RequestScope<'_> {
     Targets(message_ids.iter().map(T::Message).collect())
 }
 
-fn threads(thread_ids: &[ThreadId]) -> RequestScope<'_> {
-    Targets(thread_ids.iter().map(T::Thread).collect())
+/// The targets of a request that names threads bare, by pair, or both. A pair
+/// takes over its bare id, as `thread_targets` does when the handler runs, so
+/// the accounts checked are the accounts acted on.
+fn thread_targets<'a>(
+    thread_ids: &'a [ThreadId],
+    pairs: &'a [ThreadAccountRef],
+) -> Vec<ScopeTarget<'a>> {
+    let mut targets: Vec<_> = pairs
+        .iter()
+        .map(|pair| T::ThreadIn(&pair.account_id))
+        .collect();
+    targets.extend(
+        thread_ids
+            .iter()
+            .filter(|id| pairs.iter().all(|pair| pair.thread_id != **id))
+            .map(T::Thread),
+    );
+    targets
+}
+
+fn threads<'a>(thread_ids: &'a [ThreadId], pairs: &'a [ThreadAccountRef]) -> RequestScope<'a> {
+    Targets(thread_targets(thread_ids, pairs))
+}
+
+/// One thread, with the account its row names when the client sent one.
+fn thread_in<'a>(thread_id: &'a ThreadId, account_id: Option<&'a AccountId>) -> RequestScope<'a> {
+    Targets(vec![account_id
+        .map_or(T::Thread(thread_id), |account_id| {
+            T::ThreadIn(account_id)
+        })])
 }
 
 fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
@@ -214,6 +247,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             None => AllAccounts,
             Some(account_id) => {
                 let mut targets = vec![T::Account(account_id)];
+                // The topic is a thread of that account's person page, and
+                // naming your own account must not open another's thread.
                 targets.extend(topic.as_ref().map(T::Thread));
                 Targets(targets)
             }
@@ -341,27 +376,30 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         },
 
         // ----- Named by thread -----
-        Request::GetThread { thread_id, account_id } => {
-            let mut targets = vec![T::Thread(thread_id)];
-            targets.extend(account_id.as_ref().map(T::Account));
-            Targets(targets)
+        Request::GetThread { thread_id, account_id }
+        | Request::SummarizeThread { thread_id, account_id }
+        | Request::GetThreadBriefing { thread_id, account_id, .. }
+        | Request::ExportThread { thread_id, account_id, .. }
+        | Request::GetThreadContext { thread_id, account_id }
+        | Request::GetThreadGist { thread_id, account_id, .. }
+        | Request::AckMessage { thread_id, account_id, .. } => {
+            thread_in(thread_id, account_id.as_ref())
         }
-        Request::SummarizeThread { thread_id }
-        | Request::GetThreadBriefing { thread_id, .. }
-        | Request::ExportThread { thread_id, .. }
-        | Request::GetThreadContext { thread_id }
-        | Request::GetThreadGist { thread_id, .. }
-        | Request::AckMessage { thread_id, .. } => Targets(vec![T::Thread(thread_id)]),
-        Request::DismissDeskThreads { thread_ids, .. }
-        | Request::RestoreDeskThreads { thread_ids }
-        | Request::GetThreadGists { thread_ids, .. }
-        | Request::GetThreadPreviews { thread_ids }
-        | Request::DeferThreads { thread_ids, .. } => threads(thread_ids),
+        Request::DismissDeskThreads { thread_ids, thread_accounts, .. }
+        | Request::RestoreDeskThreads { thread_ids, thread_accounts }
+        | Request::GetThreadGists { thread_ids, thread_accounts, .. }
+        | Request::GetThreadPreviews { thread_ids, thread_accounts }
+        | Request::DeferThreads { thread_ids, thread_accounts, .. } => {
+            threads(thread_ids, thread_accounts)
+        }
         Request::ResolveDeskItems { items, .. } => Targets(
             items
                 .iter()
                 .flat_map(|item| {
-                    std::iter::once(T::Thread(&item.thread_id))
+                    std::iter::once(item.account_id.as_ref().map_or(
+                        T::Thread(&item.thread_id),
+                        T::ThreadIn,
+                    ))
                         .chain(item.commitment_id.as_deref().map(T::Commitment))
                 })
                 .collect(),
@@ -393,19 +431,26 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             message_id,
             thread_id,
             thread_ids,
+            thread_accounts,
         } => {
-            let mut targets: Vec<_> = thread_ids.iter().map(T::Thread).collect();
-            targets.extend(thread_id.as_ref().map(T::Thread));
+            let mut targets = thread_targets(thread_ids, thread_accounts);
+            targets.extend(
+                thread_id
+                    .as_ref()
+                    .filter(|id| thread_accounts.iter().all(|pair| pair.thread_id != **id))
+                    .map(T::Thread),
+            );
             targets.extend(message_id.as_ref().map(T::Message));
             Targets(targets)
         }
         Request::SetModeDone {
             thread_ids,
+            thread_accounts,
             todo_ids,
             sender,
             ..
         } => {
-            let mut targets: Vec<_> = thread_ids.iter().map(T::Thread).collect();
+            let mut targets = thread_targets(thread_ids, thread_accounts);
             targets.extend(todo_ids.iter().map(|id| T::Todo(id)));
             targets.extend(sender.as_ref().map(|sender| T::Account(&sender.account_id)));
             Targets(targets)
@@ -420,7 +465,11 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         } => {
             let mut targets: Vec<_> = account_id.iter().map(T::Account).collect();
             targets.extend(source_message_id.as_ref().map(T::Message));
-            targets.extend(thread_id.as_ref().map(T::Thread));
+            targets.extend(thread_id.as_ref().map(|thread_id| {
+                account_id.as_ref().map_or(T::Thread(thread_id), |account_id| {
+                    T::ThreadIn(account_id)
+                })
+            }));
             // A new message with no account falls back to the default
             // account, which a scoped agent did not name.
             if targets.is_empty() {
@@ -713,6 +762,11 @@ async fn resolve_targets(
                 resolved.push(highlight.account_id);
             }
             T::Thread(thread_id) => thread_ids.push((*thread_id).clone()),
+            // The pair's account is the one acted on. Nothing is looked up:
+            // a thread that account lacks is reported by the handler, and
+            // checking here would tell a scoped caller whether another
+            // account holds the id.
+            T::ThreadIn(account_id) => resolved.push((*account_id).clone()),
             T::Draft(draft_id) => {
                 let draft = state
                     .store

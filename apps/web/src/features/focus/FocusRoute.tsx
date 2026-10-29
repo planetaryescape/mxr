@@ -28,6 +28,7 @@ import { ownsKeyboard } from "@/lib/keys/dispatcher";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import { FocusFinish } from "./FocusFinish";
+import { focusKey } from "./focusQueue";
 import { FocusThread } from "./FocusThread";
 import { focusReplyIntent, useFocusSession } from "./useFocusSession";
 
@@ -38,7 +39,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   // The conversation on screen is in the URL, so a copied link (or a
   // reload) comes back to it.
   const replaceSearch = useReplaceSearch();
-  const shownId = current?.threadId;
+  const shownId = current ? focusKey(current) : undefined;
   useEffect(() => {
     if (shownId) replaceSearch({ at: shownId });
     else if (!focus.loading) replaceSearch({ at: undefined });
@@ -62,14 +63,15 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
     const thread = getActiveQueryClient()?.getQueryData<ThreadResponse>([
       "thread",
       current.threadId,
+      current.accountId ?? null,
     ]);
     if (!thread) return;
-    const threadId = current.threadId;
+    const key = focusKey(current);
     openMailDialog({
       kind: "snooze",
       target: targetFromThread(thread),
-      onDone: () => focus.markHandled(threadId),
-      onLater: () => focus.markHandled(threadId),
+      onDone: () => focus.markHandled(key),
+      onLater: () => focus.markHandled(key),
     });
   };
   const focusReply = () =>
@@ -86,13 +88,19 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   // puts it back in front.
   const done = () => {
     if (!current || (replyOpen && !replyCommands())) return;
-    const threadId = current.threadId;
-    focus.markHandled(threadId);
+    const key = focusKey(current);
+    focus.markHandled(key);
     void markDeskDone(
-      [{ thread_id: threadId, ...(current.source === "owed" ? { lane: "owed" as const } : {}) }],
-      { onUndone: () => focus.restore(threadId) },
+      [
+        {
+          thread_id: current.threadId,
+          ...(current.accountId ? { account_id: current.accountId } : {}),
+          ...(current.source === "owed" ? { lane: "owed" as const } : {}),
+        },
+      ],
+      { onUndone: () => focus.restore(key) },
     ).then((ok) => {
-      if (!ok) focus.restore(threadId);
+      if (!ok) focus.restore(key);
     });
   };
   useEffect(() => {
@@ -234,7 +242,11 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
                   </h2>
                   <p className="type-meta mt-0.5 text-text-3">{current.reason}</p>
                 </div>
-                <FocusThread key={current.threadId} threadId={current.threadId} />
+                <FocusThread
+                  key={focusKey(current)}
+                  threadId={current.threadId}
+                  accountId={current.accountId}
+                />
               </>
             ) : (
               <div className="h-40 animate-pulse" aria-busy="true" />

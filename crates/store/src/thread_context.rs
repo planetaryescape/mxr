@@ -25,12 +25,15 @@ impl super::Store {
     /// Direction of each message in a thread, oldest first.
     pub async fn thread_message_directions(
         &self,
+        account_id: &AccountId,
         thread_id: &ThreadId,
     ) -> Result<Vec<(MessageId, MessageDirection)>, sqlx::Error> {
         let started_at = Instant::now();
         let rows = sqlx::query(
-            "SELECT id, direction FROM messages WHERE thread_id = ? ORDER BY date ASC, id ASC",
+            "SELECT id, direction FROM messages
+             WHERE account_id = ? AND thread_id = ? ORDER BY date ASC, id ASC",
         )
+        .bind(account_id.as_str())
         .bind(thread_id.as_str())
         .fetch_all(self.reader())
         .await?;
@@ -350,7 +353,10 @@ mod tests {
         assert_eq!(days_ago, 29, "latest message outside this thread");
         assert!(!exchange.list_sender);
 
-        let directions = store.thread_message_directions(&earlier).await.unwrap();
+        let directions = store
+            .thread_message_directions(&account_id, &earlier)
+            .await
+            .unwrap();
         assert_eq!(
             directions.iter().map(|(_, d)| *d).collect::<Vec<_>>(),
             vec![Inbound, Outbound]

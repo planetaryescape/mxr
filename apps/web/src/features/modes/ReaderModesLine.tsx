@@ -28,9 +28,16 @@ export function modeOfPath(path: string): ModeKind | null {
  * other modes holding this conversation, from `GetModeMembership`. In the
  * Inbox, a lens over every mode, it names every mode that holds it.
  */
-export function ReaderModesLine({ threadId }: { threadId: string }) {
+export function ReaderModesLine({
+  threadId,
+  accountId,
+}: {
+  threadId: string;
+  /** The conversation's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
+}) {
   const path = useRouterState({ select: (state) => state.location.pathname });
-  const modes = useThreadModes(threadId).data;
+  const modes = useThreadModes(threadId, accountId).data;
   return (
     <AlsoInLine
       modes={modes}

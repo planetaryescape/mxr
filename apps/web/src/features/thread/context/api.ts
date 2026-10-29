@@ -7,6 +7,7 @@
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
+import { threadAccounts, type ThreadRef } from "@/features/mailbox/rowKey";
 
 type Schemas = components["schemas"];
 export type ThreadContext = Schemas["ThreadContextData"];
@@ -27,9 +28,18 @@ type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
  * Keyed under ["thread", id] so every invalidation of the thread (a sent
  * reply, a mutation) refreshes its context too.
  */
-export const threadContextKey = (threadId: string) => ["thread", threadId, "context"] as const;
-export const threadGistKey = (threadId: string, policy: string) =>
-  ["thread", threadId, "gist", policy] as const;
+export const threadContextKey = (threadId: string, accountId?: string | null) =>
+  ["thread", threadId, "context", accountId ?? null] as const;
+export const threadGistKey = (threadId: string, policy: string, accountId?: string | null) =>
+  ["thread", threadId, "gist", policy, accountId ?? null] as const;
+
+/** `?account_id=` for a thread id that two accounts can hold; empty without an account. */
+function accountQuery(accountId?: string | null, extra: Record<string, string> = {}): string {
+  const query = new URLSearchParams(extra);
+  if (accountId) query.set("account_id", accountId);
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
 
 /** Every cached gist, for invalidation when LLM settings change. */
 export const isGistQuery = (query: { queryKey: readonly unknown[] }) =>
@@ -42,10 +52,10 @@ export const isGistQuery = (query: { queryKey: readonly unknown[] }) =>
  * its loading state and unmount the reader again. A thread without its
  * facts beats one held up by backoff.
  */
-export function threadContextQuery(threadId: string) {
+export function threadContextQuery(threadId: string, accountId?: string | null) {
   return {
-    queryKey: threadContextKey(threadId),
-    queryFn: () => fetchThreadContext(threadId),
+    queryKey: threadContextKey(threadId, accountId),
+    queryFn: () => fetchThreadContext(threadId, accountId),
     staleTime: 30_000,
     retry: false,
     retryOnMount: false,
@@ -53,24 +63,31 @@ export function threadContextQuery(threadId: string) {
 }
 
 /** The gist: cached by the daemon per newest message, so no retries here. */
-export function threadGistQuery(threadId: string, policy: string) {
+export function threadGistQuery(threadId: string, policy: string, accountId?: string | null) {
   return {
-    queryKey: threadGistKey(threadId, policy),
-    queryFn: () => fetchThreadGist(threadId),
+    queryKey: threadGistKey(threadId, policy, accountId),
+    queryFn: () => fetchThreadGist(threadId, false, accountId),
     staleTime: 5 * 60_000,
     retry: false,
   };
 }
 
-export async function fetchThreadContext(threadId: string): Promise<ThreadContext> {
+export async function fetchThreadContext(
+  threadId: string,
+  accountId?: string | null,
+): Promise<ThreadContext> {
   const response = await apiFetch<ContextResponse>(
-    `/api/v1/mail/threads/${encodeURIComponent(threadId)}/context`,
+    `/api/v1/mail/threads/${encodeURIComponent(threadId)}/context${accountQuery(accountId)}`,
   );
   return response.context;
 }
 
-export async function fetchThreadGist(threadId: string, refresh = false): Promise<ThreadGist> {
-  const query = refresh ? "?refresh=true" : "";
+export async function fetchThreadGist(
+  threadId: string,
+  refresh = false,
+  accountId?: string | null,
+): Promise<ThreadGist> {
+  const query = accountQuery(accountId, refresh ? { refresh: "true" } : {});
   const response = await apiFetch<GistResponse>(
     `/api/v1/mail/threads/${encodeURIComponent(threadId)}/context/gist${query}`,
   );
@@ -84,14 +101,19 @@ export async function fetchThreadGist(threadId: string, refresh = false): Promis
  * events. At most 100 ids (the daemon's `THREAD_GISTS_MAX_BATCH`).
  */
 export async function fetchThreadGists(
-  threadIds: string[],
+  threads: readonly ThreadRef[],
   generate: boolean,
   automated = false,
 ): Promise<ThreadGistBatch> {
   const response = await apiFetch<GistBatchResponse>("/api/v1/mail/gists", {
     method: "POST",
     // Omitted when false: the request every list sends today stays as it was.
-    body: { thread_ids: threadIds, generate, ...(automated ? { automated } : {}) },
+    body: {
+      thread_ids: [...new Set(threads.map((thread) => thread.thread_id))],
+      ...(threadAccounts(threads).length > 0 ? { thread_accounts: threadAccounts(threads) } : {}),
+      generate,
+      ...(automated ? { automated } : {}),
+    },
   });
   return response.batch;
 }

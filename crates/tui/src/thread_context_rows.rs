@@ -302,6 +302,7 @@ mod tests {
     fn gist(status: ThreadGistStatusData) -> ThreadGistData {
         ThreadGistData {
             thread_id: ThreadId::new(),
+            account_id: None,
             status,
             gist: Some("Canary stays at 5%.".into()),
             ask: Some(ThreadAskData {

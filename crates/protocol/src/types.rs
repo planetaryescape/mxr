@@ -1571,6 +1571,10 @@ pub enum Request {
     /// `LlmDisabled` when LLM is not configured.
     SummarizeThread {
         thread_id: ThreadId,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     /// Return per-message triage verdicts for a search query. Cached
     /// messages are returned without an LLM call; uncached messages use
@@ -1803,6 +1807,10 @@ pub enum Request {
         thread_id: ThreadId,
         #[serde(default)]
         refresh: bool,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     /// Render a recipient briefing for compose-time context.
     GetRecipientBriefing {
@@ -1935,6 +1943,10 @@ pub enum Request {
     ExportThread {
         thread_id: ThreadId,
         format: ExportFormat,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     ExportSearch {
         query: String,
@@ -2053,6 +2065,10 @@ pub enum Request {
     /// model; read-only. Returns `ResponseData::ThreadContext`.
     GetThreadContext {
         thread_id: ThreadId,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     /// One-sentence gist and the ask, from the configured model, cached per
     /// thread and latest message. Read-only. Returns
@@ -2062,6 +2078,10 @@ pub enum Request {
         thread_id: ThreadId,
         #[serde(default)]
         refresh: bool,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     /// The desk: what needs you rather than what arrived. Replies you owe,
     /// promises coming due, threads waiting on someone, and new mail from
@@ -2080,12 +2100,20 @@ pub enum Request {
     /// selection without writing.
     DismissDeskThreads {
         thread_ids: Vec<ThreadId>,
+        /// The same conversations as `thread_ids`, each with the account its row
+        /// belongs to; a pair acts on that account only.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
         #[serde(default)]
         dry_run: bool,
     },
     /// Undo `DismissDeskThreads`: the threads wait again.
     RestoreDeskThreads {
         thread_ids: Vec<ThreadId>,
+        /// The same conversations as `thread_ids`, each with the account its row
+        /// belongs to; a pair acts on that account only.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
     },
 
     // ----- Promises on send -----
@@ -2307,6 +2335,10 @@ pub enum Request {
         thread_id: Option<ThreadId>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         thread_ids: Vec<ThreadId>,
+        /// The same conversations as `thread_ids`, each with the account its row
+        /// belongs to; a pair acts on that account only.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
     },
     /// One preview per thread in `thread_ids` (at most 100): subject, the
     /// latest sender, date and snippet, counts and an attachment flag, with
@@ -2314,6 +2346,10 @@ pub enum Request {
     /// `ResponseData::ThreadPreviews`.
     GetThreadPreviews {
         thread_ids: Vec<ThreadId>,
+        /// The same conversations as `thread_ids`, each with the account its row
+        /// belongs to; a pair acts on that account only.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
     },
     /// Now's arrivals line (D119): every inbound email first seen since Now
     /// was last opened (at most 24 hours back), counted once by where it
@@ -2454,6 +2490,10 @@ pub enum Request {
     /// `ResponseData::MessagesAck`.
     AckMessage {
         thread_id: ThreadId,
+        /// The account the row belongs to. A legacy thread id can be held by
+        /// two accounts; without this the daemon reads every account's copy.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
         #[serde(default = "default_true")]
         dry_run: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2961,6 +3001,10 @@ pub enum Request {
     /// most 100 ids. Returns `ResponseData::ThreadGists`.
     GetThreadGists {
         thread_ids: Vec<ThreadId>,
+        /// The same conversations as `thread_ids`, each with the account its row
+        /// belongs to; a pair acts on that account only.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
         #[serde(default)]
         generate: bool,
         #[serde(default)]

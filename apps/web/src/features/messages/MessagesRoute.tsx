@@ -29,7 +29,8 @@ import { useLitReason } from "@/state/litReasonStore";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
-import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
+import { conversationKey, holdsThread } from "@/features/mailbox/rowKey";
+import { useAdvanceOnRemoval, useRouteAccount } from "@/hooks/useAdvanceOnRemoval";
 import { moveCommands } from "@/features/arrivals/moveSubjects";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -109,6 +110,7 @@ export function MessagesRoute({
   threadId?: string;
 }) {
   const navigate = useNavigate();
+  const routeAccount = useRouteAccount();
   const messages = useMessagesQuery(filterOf(search));
   // The view shortcut belongs to the route, not its result. It remains live
   // while a different view is loading, or the queue is empty or unavailable.
@@ -117,7 +119,9 @@ export function MessagesRoute({
     cycleFilter: () => {
       const person =
         search.person ??
-        (threadId && messages.data ? rowForThread(messages.data, threadId)?.id : undefined);
+        (threadId && messages.data
+          ? rowForThread(messages.data, threadId, routeAccount)?.id
+          : undefined);
       const nextSearch = (previous: MessagesSearch): MessagesSearch => ({
         person: previous.person ?? person,
         topic: previous.topic ?? threadId,
@@ -197,7 +201,8 @@ function MessagesHeader({
 /** The keys the Messages foot line shows, in the mode's own words. */
 /** The thread whose membership a row's marks and new-sender question read. */
 function firstThread(row: MessagesRow | undefined): string {
-  return row?.topics[0]?.thread_id ?? "";
+  const topic = row?.topics[0];
+  return topic ? conversationKey(topic.thread_id, topic.account_id) : "";
 }
 
 function MessagesBody({
@@ -233,14 +238,19 @@ function MessagesBody({
   const firstTopics = useMemo(
     () =>
       [...data.your_turn, ...data.recent]
-        .flatMap((row) => (row.topics[0] ? [row.topics[0].thread_id] : []))
+        .flatMap((row) =>
+          row.topics[0]
+            ? [{ thread_id: row.topics[0].thread_id, account_id: row.topics[0].account_id }]
+            : [],
+        )
         .slice(0, 100),
     [data],
   );
   const memberships = useThreadModesMap(firstTopics).data;
 
   // Opening Messages alone never selects or fetches a conversation.
-  const linked = threadId ? rowForThread(data, threadId) : undefined;
+  const routeAccount = useRouteAccount();
+  const linked = threadId ? rowForThread(data, threadId, routeAccount) : undefined;
   const allRows = useMemo(
     () => [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet],
     [data],
@@ -381,7 +391,9 @@ function MessagesBody({
     if (settled.size === 0) return;
     const stillPresent = new Set(
       allRows.flatMap((row) =>
-        row.topics.filter((t) => t.state !== "done").map((t) => t.thread_id),
+        row.topics
+          .filter((t) => t.state !== "done")
+          .map((t) => conversationKey(t.thread_id, t.account_id)),
       ),
     );
     const obsolete = [...settled].filter((id) => !stillPresent.has(id));
@@ -401,7 +413,7 @@ function MessagesBody({
       !selectedId ||
       !topic ||
       !selected ||
-      excludedDone.has(topic) ||
+      holdsThread(excludedDone, topic, selected.account_id) ||
       previous.person !== selectedId ||
       previous.topic !== topic ||
       !previous.open ||
@@ -458,7 +470,7 @@ function MessagesBody({
     if (!conversation) return;
     // The daemon dismisses it too once the note is sent, from any client.
     dismissGotItHint();
-    void gotIt.start(conversation.thread_id);
+    void gotIt.start(conversation.thread_id, conversation.account_id);
   };
 
   // A reply sent from this page's composer (its own ⌘Enter or Send) moves
@@ -550,6 +562,8 @@ function MessagesBody({
     (how: LeaveVia = "key") => {
       if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
       const thread = conversation.thread_id;
+      // A thread id can be held by two accounts: the hidden and settled sets name the account too.
+      const threadKey = conversationKey(thread, conversation.account_id);
       if (page.row.id !== selectedId || (topic && topic !== thread) || !stillOpen.has(thread))
         return;
       const next = afterDone({
@@ -563,12 +577,12 @@ function MessagesBody({
       const what =
         next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
       const from = selectedId;
-      setSettled((prev) => (prev.has(thread) ? prev : new Set([...prev, thread])));
+      setSettled((prev) => (prev.has(threadKey) ? prev : new Set([...prev, threadKey])));
       const nextTopic =
         next.kind === "topic"
           ? next.topic.thread_id
           : next.kind === "person"
-            ? openThreads(next.row, new Set([...excludedDone, thread]))
+            ? openThreads(next.row, new Set([...excludedDone, threadKey]))
                 .values()
                 .next().value
             : undefined;
@@ -584,14 +598,14 @@ function MessagesBody({
       else clearSelection();
       const account = useUiPrefs.getState().accountScope;
       const label = "subject" in what ? what.subject : what.person;
-      void markModeDone("messages", [thread], {
+      void markModeDone("messages", [{ thread_id: thread, account_id: conversation.account_id }], {
         via: how,
         message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
         onUndone: () => {
           setSettled((prev) => {
-            if (!prev.has(thread)) return prev;
+            if (!prev.has(threadKey)) return prev;
             const nextSet = new Set(prev);
-            nextSet.delete(thread);
+            nextSet.delete(threadKey);
             return nextSet;
           });
           const now = here.current;
@@ -625,9 +639,9 @@ function MessagesBody({
       }).then((succeeded) => {
         if (!succeeded) {
           setSettled((prev) => {
-            if (!prev.has(thread)) return prev;
+            if (!prev.has(threadKey)) return prev;
             const nextSet = new Set(prev);
-            nextSet.delete(thread);
+            nextSet.delete(threadKey);
             return nextSet;
           });
         }
@@ -651,7 +665,7 @@ function MessagesBody({
   const target = useCallback(async () => {
     if (!conversation) return null;
     try {
-      return targetFromThread(await ensureThread(conversation.thread_id));
+      return targetFromThread(await ensureThread(conversation.thread_id, conversation.account_id));
     } catch (error) {
       toast.error("Couldn't open the conversation", {
         description: error instanceof Error ? error.message : String(error),
@@ -680,6 +694,7 @@ function MessagesBody({
       kind: "not-now",
       picker: conversationNotNow({
         threadId: found.threadId,
+        accountId: found.accountId,
         messageId: found.primary?.id,
         subject: describeTarget(found),
         waiting: false,

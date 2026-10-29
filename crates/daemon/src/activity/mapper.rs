@@ -268,18 +268,25 @@ pub fn map_request(
         // ----- desk -----
         Request::DismissDeskThreads {
             thread_ids,
+            thread_accounts,
             dry_run,
         } => (
             "desk.done_waiting",
             Some("thread"),
-            thread_ids.first().map(|id| id.as_str().clone()),
-            Some(serde_json::json!({ "count": thread_ids.len(), "dry_run": dry_run })),
+            named_thread(thread_ids, thread_accounts),
+            Some(serde_json::json!({
+                "count": named_thread_count(thread_ids, thread_accounts),
+                "dry_run": dry_run
+            })),
         ),
-        Request::RestoreDeskThreads { thread_ids } => (
+        Request::RestoreDeskThreads {
+            thread_ids,
+            thread_accounts,
+        } => (
             "desk.waiting_again",
             Some("thread"),
-            thread_ids.first().map(|id| id.as_str().clone()),
-            Some(serde_json::json!({ "count": thread_ids.len() })),
+            named_thread(thread_ids, thread_accounts),
+            Some(serde_json::json!({ "count": named_thread_count(thread_ids, thread_accounts) })),
         ),
         Request::ResolveDeskItems { items, dry_run } => (
             "desk.done",
@@ -1210,6 +1217,30 @@ pub fn map_request(
         tier: tier_for(action),
         context,
     })
+}
+
+/// The first conversation a request names, by pair or bare id.
+fn named_thread(
+    thread_ids: &[mxr_core::id::ThreadId],
+    pairs: &[mxr_protocol::ThreadAccountRef],
+) -> Option<String> {
+    pairs
+        .first()
+        .map(|pair| pair.thread_id.as_str().clone())
+        .or_else(|| thread_ids.first().map(|id| id.as_str().clone()))
+}
+
+/// How many conversations a request names: each pair, plus the bare ids no
+/// pair covers.
+fn named_thread_count(
+    thread_ids: &[mxr_core::id::ThreadId],
+    pairs: &[mxr_protocol::ThreadAccountRef],
+) -> usize {
+    pairs.len()
+        + thread_ids
+            .iter()
+            .filter(|id| pairs.iter().all(|pair| pair.thread_id != **id))
+            .count()
 }
 
 #[cfg(test)]

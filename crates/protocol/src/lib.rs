@@ -1082,6 +1082,7 @@ mod tests {
                 Request::ExportThread {
                     thread_id: ThreadId::new(),
                     format: ExportFormat::Markdown,
+                    account_id: None,
                 },
                 IpcCategory::CoreMail,
             ),
@@ -2417,11 +2418,12 @@ mod tests {
             let req = Request::GetThreadBriefing {
                 thread_id: thread_id.clone(),
                 refresh,
+                account_id: None,
             };
             let json = serde_json::to_string(&req)?;
             let parsed: Request = serde_json::from_str(&json)?;
             match parsed {
-                Request::GetThreadBriefing { thread_id: t, refresh: r } => {
+                Request::GetThreadBriefing { thread_id: t, refresh: r, .. } => {
                     prop_assert_eq!(t, thread_id);
                     prop_assert_eq!(r, refresh);
                 }

@@ -669,7 +669,7 @@ describe("UpdateLineRow's gist", () => {
     );
     // Text, never markup.
     expect(preview.querySelector("img")).toBeNull();
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/threads/t1");
+    expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/threads/t1?account_id=acc");
   });
 
   test("a cloud model is named as cloud, and the email is the only thing it read", () => {

@@ -79,9 +79,18 @@ TIE-BREAKERS:
 The verdict line must stand alone and be machine-parseable: one token, one em
 dash, one clause. No hedging ("possibly", "might be"), no second sentence."#;
 
-pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
-    let summary =
-        summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id).await?;
+pub(super) async fn summarize_thread(
+    state: &AppState,
+    thread_id: &ThreadId,
+    account_id: Option<&mxr_core::AccountId>,
+) -> HandlerResult {
+    let summary = summarize_thread_cached(
+        state.store.clone(),
+        state.llm.clone(),
+        thread_id,
+        account_id,
+    )
+    .await?;
     Ok(ResponseData::ThreadSummary {
         text: summary.text,
         model: summary.model,
@@ -90,12 +99,16 @@ pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> 
 
 pub(crate) async fn valid_cached_summary(
     store: &Store,
+    named_account: Option<&mxr_core::AccountId>,
     thread_id: &ThreadId,
     envelopes: &[Envelope],
 ) -> Option<ThreadSummaryData> {
     // The writer summarizes for the thread's account, so the check must read the
     // same one. A failed read is a miss, not an empty owner set.
-    let account_id = store.get_thread(thread_id).await.ok().flatten()?.account_id;
+    let account_id = match named_account {
+        Some(account_id) => account_id.clone(),
+        None => store.get_thread(thread_id).await.ok().flatten()?.account_id,
+    };
     let owned_addresses = owned_addresses_for(store, &account_id).await.ok()?;
     let relationship_hash =
         relationship_context_for_summary(store, &account_id, &owned_addresses, envelopes)
@@ -109,7 +122,11 @@ pub(crate) async fn valid_cached_summary(
         "{}:{relationship_hash}:{owned_revision}:{SUMMARY_PROMPT_VERSION}",
         thread_summary_content_hash(envelopes)
     );
-    let record = store.get_thread_summary(thread_id).await.ok().flatten()?;
+    let record = store
+        .get_thread_summary(&account_id, thread_id)
+        .await
+        .ok()
+        .flatten()?;
     (record.content_hash == content_hash).then_some(ThreadSummaryData {
         text: record.text,
         model: record.model,
@@ -121,10 +138,11 @@ pub(crate) async fn summarize_thread_cached(
     store: Arc<Store>,
     llm: Arc<LlmRuntime>,
     thread_id: &ThreadId,
+    account_id: Option<&mxr_core::AccountId>,
 ) -> Result<ThreadSummaryData, String> {
-    let context = load_summary_context(&store, thread_id).await?;
+    let context = load_summary_context(&store, thread_id, account_id).await?;
     if let Some(record) = store
-        .get_thread_summary(thread_id)
+        .get_thread_summary(&context.account_id, thread_id)
         .await
         .map_err(|e| e.to_string())?
     {
@@ -202,14 +220,27 @@ struct SummaryContext {
 async fn load_summary_context(
     store: &Store,
     thread_id: &ThreadId,
+    account_id: Option<&mxr_core::AccountId>,
 ) -> Result<SummaryContext, String> {
-    let thread = store
-        .get_thread(thread_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Thread {thread_id} not found"))?;
+    // A row names its account, so the summary reads that account's messages
+    // only. Without one, a thread id two accounts hold is read as before.
+    let thread = match account_id {
+        Some(account_id) => store
+            .hydrate_threads_in_accounts(
+                std::slice::from_ref(thread_id),
+                std::slice::from_ref(account_id),
+            )
+            .await
+            .map_err(|e| e.to_string())?
+            .pop(),
+        None => store
+            .get_thread(thread_id)
+            .await
+            .map_err(|e| e.to_string())?,
+    }
+    .ok_or_else(|| format!("Thread {thread_id} not found"))?;
     let envelopes = store
-        .get_thread_envelopes_for_model(thread_id)
+        .get_thread_envelopes_for_model_in(thread_id, account_id)
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {
@@ -533,7 +564,7 @@ mod tests {
             .await
             .unwrap();
 
-        let response = summarize_thread(&state, &thread_id).await.unwrap();
+        let response = summarize_thread(&state, &thread_id, None).await.unwrap();
         let ResponseData::ThreadSummary { text, .. } = response else {
             unreachable!("summarize_thread returns a thread summary")
         };
@@ -608,8 +639,8 @@ mod tests {
             .await
             .unwrap();
 
-        summarize_thread(&state, &thread_id).await.unwrap();
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         assert_eq!(llm.requests.lock().expect("requests").len(), 1);
 
         let second = TestEnvelopeBuilder::new()
@@ -624,7 +655,7 @@ mod tests {
             .await
             .unwrap();
 
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         assert_eq!(llm.requests.lock().expect("requests").len(), 2);
     }
 
@@ -664,8 +695,8 @@ mod tests {
             .await
             .unwrap();
 
-        summarize_thread(&state, &thread_id).await.unwrap();
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         {
             let requests = llm.requests.lock().expect("requests");
             assert_eq!(requests.len(), 1);
@@ -694,9 +725,11 @@ mod tests {
             );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
-            .await
-            .is_some());
+        assert!(
+            valid_cached_summary(&state.store, None, &thread_id, &envelopes)
+                .await
+                .is_some()
+        );
 
         state
             .store
@@ -712,11 +745,13 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
-            .await
-            .is_none());
+        assert!(
+            valid_cached_summary(&state.store, None, &thread_id, &envelopes)
+                .await
+                .is_none()
+        );
 
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         let requests = llm.requests.lock().expect("requests");
         assert_eq!(requests.len(), 2);
         assert!(requests[1].messages[1]
@@ -778,14 +813,91 @@ mod tests {
             "the summary is written for the thread's account"
         );
 
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
         assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes)
+            valid_cached_summary(&state.store, None, &thread_id, &envelopes)
                 .await
                 .is_some(),
             "a summary must validate against the account it was written for"
         );
+    }
+
+    #[tokio::test]
+    async fn a_row_of_a_shared_thread_id_is_summarized_from_its_own_accounts_mail() {
+        use mxr_core::types::Account;
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_a = state.default_account_id();
+        let account_b = mxr_core::AccountId::new();
+        state
+            .store
+            .insert_account(&Account {
+                id: account_b.clone(),
+                name: "second".into(),
+                email: "second-owner@example.com".into(),
+                sync_backend: None,
+                send_backend: None,
+                enabled: true,
+            })
+            .await
+            .unwrap();
+        let thread_id = mxr_core::ThreadId::new();
+        for (account, provider, text) in [
+            (&account_a, "a-1", "Alpha-only budget figures."),
+            (&account_b, "b-1", "Bravo-only hiring plan."),
+        ] {
+            let envelope = TestEnvelopeBuilder::new()
+                .account_id(account.clone())
+                .thread_id(thread_id.clone())
+                .provider_id(provider)
+                .build();
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            state
+                .store
+                .insert_body(&body(envelope.id.clone(), text))
+                .await
+                .unwrap();
+        }
+
+        summarize_thread(&state, &thread_id, Some(&account_b))
+            .await
+            .unwrap();
+        {
+            let requests = llm.requests.lock().expect("requests");
+            let prompt = &requests[0].messages[1].content;
+            assert!(prompt.contains("Bravo-only hiring plan."));
+            assert!(
+                !prompt.contains("Alpha-only budget figures."),
+                "the other account's mail never reaches the model"
+            );
+        }
+        // Stored under B's pair; A has no summary of its own yet.
+        assert!(state
+            .store
+            .get_thread_summary(&account_b, &thread_id)
+            .await
+            .unwrap()
+            .is_some());
+        assert!(state
+            .store
+            .get_thread_summary(&account_a, &thread_id)
+            .await
+            .unwrap()
+            .is_none());
+
+        summarize_thread(&state, &thread_id, Some(&account_a))
+            .await
+            .unwrap();
+        let requests = llm.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 2, "A's row is its own summary, not B's");
+        assert!(requests[1].messages[1]
+            .content
+            .contains("Alpha-only budget figures."));
+        assert!(!requests[1].messages[1]
+            .content
+            .contains("Bravo-only hiring plan."));
     }
 
     #[tokio::test]
@@ -810,11 +922,13 @@ mod tests {
             .await
             .unwrap();
 
-        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id, None).await.unwrap();
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
-            .await
-            .is_some());
+        assert!(
+            valid_cached_summary(&state.store, None, &thread_id, &envelopes)
+                .await
+                .is_some()
+        );
 
         // The summary prompt names the owner's addresses, so a summary written
         // before this alias existed may describe the wrong ownership.
@@ -823,8 +937,10 @@ mod tests {
             .add_account_address(&account_id, "new-alias@example.com", false)
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
-            .await
-            .is_none());
+        assert!(
+            valid_cached_summary(&state.store, None, &thread_id, &envelopes)
+                .await
+                .is_none()
+        );
     }
 }

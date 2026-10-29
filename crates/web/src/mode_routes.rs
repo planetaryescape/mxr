@@ -90,6 +90,9 @@ struct MembershipQuery {
     thread_id: Option<ThreadId>,
     #[serde(default)]
     message_id: Option<MessageId>,
+    /// The account the row belongs to, for a `thread_id` two accounts hold.
+    #[serde(default)]
+    account_id: Option<mxr_core::id::AccountId>,
 }
 
 async fn get_membership(
@@ -108,6 +111,15 @@ async fn get_membership(
         query.token.as_deref(),
         Request::GetModeMembership {
             message_id: query.message_id,
+            thread_accounts: query
+                .thread_id
+                .iter()
+                .zip(query.account_id.iter())
+                .map(|(thread_id, account_id)| mxr_protocol::ThreadAccountRef {
+                    thread_id: thread_id.clone(),
+                    account_id: account_id.clone(),
+                })
+                .collect(),
             thread_id: query.thread_id,
             thread_ids: Vec::new(),
         },
@@ -120,8 +132,13 @@ async fn get_membership(
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct ModeMembershipBody {
     /// At most 100 threads, answered in this order.
+    #[serde(default)]
     #[schema(value_type = Vec<String>)]
     thread_ids: Vec<ThreadId>,
+    /// The same conversations with the account each row belongs to; a pair
+    /// is answered for that account only.
+    #[serde(default)]
+    thread_accounts: Vec<mxr_protocol::ThreadAccountRef>,
 }
 
 async fn post_membership(
@@ -129,7 +146,7 @@ async fn post_membership(
     headers: HeaderMap,
     Json(body): Json<ModeMembershipBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    if body.thread_ids.is_empty() {
+    if body.thread_ids.is_empty() && body.thread_accounts.is_empty() {
         return Err(BridgeError::BadRequest(
             "thread_ids must not be empty".into(),
         ));
@@ -142,6 +159,7 @@ async fn post_membership(
             message_id: None,
             thread_id: None,
             thread_ids: body.thread_ids,
+            thread_accounts: body.thread_accounts,
         },
     )
     .await?;

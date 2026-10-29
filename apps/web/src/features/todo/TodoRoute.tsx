@@ -10,6 +10,7 @@ import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
@@ -81,15 +82,15 @@ const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
  */
 export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
   const { runway, expiredOnOpen } = useRunway();
-  const threadIds = useCallback(() => {
+  const threads = useCallback(() => {
     const data = runway.data;
     if (!data) return [];
-    return runwayItems(data, { whenever: true, done: false })
-      .map((item) => item.todo.thread_id)
-      .filter((id): id is string => Boolean(id));
+    return runwayItems(data, { whenever: true, done: false }).flatMap(({ todo }) =>
+      todo.thread_id ? [{ thread_id: todo.thread_id, account_id: todo.account_id }] : [],
+    );
   }, [runway.data]);
   return (
-    <PlaceLayout basePath="/todo" label="To do" threadIds={threadIds} keepSearch={TODO_LIST_SEARCH}>
+    <PlaceLayout basePath="/todo" label="To do" threads={threads} keepSearch={TODO_LIST_SEARCH}>
       {view === "catchup" ? (
         <TodoCatchupView runway={runway.data} />
       ) : view === "expired" ? (
@@ -248,7 +249,12 @@ function Bands({
   }, [currentId]);
   // The mode marks on each row, from the daemon's membership.
   const markedThreads = useMemo(
-    () => items.flatMap((item) => (item.todo.thread_id ? [item.todo.thread_id] : [])),
+    () =>
+      items.flatMap((item) =>
+        item.todo.thread_id
+          ? [{ thread_id: item.todo.thread_id, account_id: item.todo.account_id }]
+          : [],
+      ),
     [items],
   );
   const memberships = useThreadModesMap(markedThreads).data;
@@ -269,7 +275,7 @@ function Bands({
     (todo: Todo) => {
       // The hint names `e` and `o`; doing either is what it asked for.
       dismissRunwayHint();
-      if (todo.thread_id) nav?.open(todo.thread_id);
+      if (todo.thread_id) nav?.open(todo.thread_id, { accountId: todo.account_id });
     },
     [dismissRunwayHint, nav],
   );
@@ -281,6 +287,7 @@ function Bands({
         params: { threadId },
         search: (prev) => ({
           ...pickSearch(prev, TODO_LIST_SEARCH),
+          account: todo.account_id,
           mid: messageId,
           title: todo.title,
         }),
@@ -307,6 +314,7 @@ function Bands({
           params: { threadId: todo.thread_id },
           search: (prev) => ({
             ...pickSearch(prev, TODO_LIST_SEARCH),
+            account: todo.account_id,
             link: action.url,
             mid: action.messageId,
             title: todo.title,
@@ -420,7 +428,11 @@ function Bands({
         lit={item.todo.id === current?.todo.id}
         via={via.current}
         details={expandedId === item.todo.id}
-        modes={item.todo.thread_id ? memberships?.get(item.todo.thread_id) : undefined}
+        modes={
+          item.todo.thread_id
+            ? memberships?.get(conversationKey(item.todo.thread_id, item.todo.account_id))
+            : undefined
+        }
         onSelect={select}
         onDone={done}
         onRestore={restore}

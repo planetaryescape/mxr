@@ -35,6 +35,7 @@ pub(crate) async fn fetch(
     match client
         .request(Request::GetThreadGists {
             thread_ids,
+            thread_accounts: Vec::new(),
             generate,
             automated,
         })
@@ -164,6 +165,7 @@ mod tests {
 
     fn gist(thread_id: &ThreadId, ask: bool) -> ThreadGistData {
         ThreadGistData {
+            account_id: None,
             thread_id: thread_id.clone(),
             status: ThreadGistStatusData::Ready,
             gist: Some("Canary stays at 5% until the dashboard is quiet.".into()),
@@ -197,6 +199,7 @@ mod tests {
             queued: vec![c.clone()],
             in_flight: vec![],
             skipped: vec![ThreadGistSkipData {
+                account_id: None,
                 thread_id: d.clone(),
                 reason: ThreadGistSkipReasonData::NotPeople,
             }],

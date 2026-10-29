@@ -37,8 +37,8 @@ function Details({
 }) {
   const arrived = useReceived(todo.source_date);
   const thread = useQuery({
-    queryKey: ["thread", todo.thread_id ?? ""],
-    queryFn: () => fetchThread(todo.thread_id ?? ""),
+    queryKey: ["thread", todo.thread_id ?? "", todo.account_id],
+    queryFn: () => fetchThread(todo.thread_id ?? "", todo.account_id),
     enabled: Boolean(todo.thread_id),
     staleTime: 60_000,
   });

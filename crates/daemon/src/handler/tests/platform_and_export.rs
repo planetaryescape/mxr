@@ -2138,6 +2138,7 @@ async fn dispatch_export_thread_markdown() {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportThread {
+            account_id: None,
             thread_id,
             format: mxr_core::types::ExportFormat::Markdown,
         }),
@@ -2214,6 +2215,7 @@ async fn dispatch_export_thread_json_is_valid() {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ExportThread {
+            account_id: None,
             thread_id,
             format: mxr_core::types::ExportFormat::Json,
         }),

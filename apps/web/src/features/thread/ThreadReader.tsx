@@ -149,17 +149,18 @@ export function ThreadReader({
   }, [data.thread.id, readerFocused]);
 
   const threadId = data.thread.id;
+  const accountId = data.thread.account_id;
   const queryClient = useQueryClient();
-  const context = useQuery(threadContextQuery(threadId));
+  const context = useQuery(threadContextQuery(threadId, accountId));
   const policy = llmPolicyKey(llm.data?.status);
   // Still fetched for short threads: the ask's highlight in the body needs it.
-  const gist = useQuery({ ...threadGistQuery(threadId, policy), enabled: llm.enabled });
+  const gist = useQuery({ ...threadGistQuery(threadId, policy, accountId), enabled: llm.enabled });
   const longThread = useMemo(() => isLongThread(data), [data]);
   const resolve = useMutation({
     mutationFn: resolveCommitment,
     onSuccess: () => {
       toast.success("Promise marked done");
-      void queryClient.invalidateQueries({ queryKey: threadContextKey(threadId) });
+      void queryClient.invalidateQueries({ queryKey: threadContextKey(threadId, accountId) });
     },
     onError: (error) => toast.error("Couldn't mark it done", { description: error.message }),
   });
@@ -243,7 +244,7 @@ export function ThreadReader({
     // Only after the view switch that revealAsk asked for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
-  const { position, step, leave } = useThreadSiblings(data.thread.id, nav);
+  const { position, step, leave } = useThreadSiblings(data.thread.id, nav, data.thread.account_id);
 
   const target = () => targetFromThread(data, messages);
   const archiveAndAdvance = (
@@ -253,13 +254,14 @@ export function ThreadReader({
   ) => {
     if (archivePending.current) return;
     archivePending.current = true;
-    const release = nav?.expectRemoval?.(data.thread.id, direction);
+    const release = nav?.expectRemoval?.(data.thread.id, direction, data.thread.account_id);
     void run()
       .then((outcome) => {
         const changed = outcome.ok || (outcome.response?.result?.succeeded ?? 0) > 0;
         release?.(changed);
-        const remainsInList = nav?.isListed?.(data.thread.id) ?? true;
-        if (outcome.ok && remainsInList && routeStillShows(data.thread.id)) leave(direction);
+        const remainsInList = nav?.isListed?.(data.thread.id, data.thread.account_id) ?? true;
+        if (outcome.ok && remainsInList && routeStillShows(data.thread.id, data.thread.account_id))
+          leave(direction);
       })
       .finally(() => {
         archivePending.current = false;
@@ -446,7 +448,7 @@ export function ThreadReader({
         position={position}
       />
       <OtherAccountLine accountId={data.thread.account_id} />
-      <ReaderModesLine threadId={threadId} />
+      <ReaderModesLine threadId={threadId} accountId={accountId} />
       <div
         ref={scrollRef}
         tabIndex={-1}
@@ -464,8 +466,8 @@ export function ThreadReader({
               error: gist.error?.message ?? null,
               retry: () =>
                 void queryClient.fetchQuery({
-                  queryKey: threadGistKey(threadId, policy),
-                  queryFn: () => fetchThreadGist(threadId, true),
+                  queryKey: threadGistKey(threadId, policy, accountId),
+                  queryFn: () => fetchThreadGist(threadId, true, accountId),
                   staleTime: 0,
                 }),
             }}

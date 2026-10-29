@@ -16,6 +16,7 @@ import { Avatar, AvatarGlyph } from "@/components/Avatar";
 import { ModeMarks, NewMark } from "@/components/ModeMark";
 import { modelMarkTitle } from "@/components/ModelMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
+import { holdsThread, conversationKey } from "@/features/mailbox/rowKey";
 import { useModeDone } from "@/features/modes/modeDone";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
 import { NewSenderChips } from "@/features/modes/NewSenderChips";
@@ -324,15 +325,22 @@ const PersonRow = memo(function PersonRow({
   measure?: (element: Element | null) => void;
 }) {
   const preview = row.preview;
-  const modes = memberships?.get(row.topics[0]?.thread_id ?? "");
+  const first = row.topics[0];
+  const modes = first
+    ? memberships?.get(conversationKey(first.thread_id, first.account_id))
+    : undefined;
   const topicCount = row.topics.filter(
-    (topic) => topic.state !== "done" && !hidden.has(topic.thread_id),
+    (topic) => topic.state !== "done" && !holdsThread(hidden, topic.thread_id, topic.account_id),
   ).length;
   // Every topic done: the row is leaving. It folds if the done asked for that, else it is gone.
   const allGone =
-    row.topics.some((topic) => hidden.has(topic.thread_id)) &&
-    row.topics.every((topic) => topic.state === "done" || hidden.has(topic.thread_id));
-  const folding = useModeDone((s) => row.topics.some((t) => s.folding.messages.has(t.thread_id)));
+    row.topics.some((topic) => holdsThread(hidden, topic.thread_id, topic.account_id)) &&
+    row.topics.every(
+      (topic) => topic.state === "done" || holdsThread(hidden, topic.thread_id, topic.account_id),
+    );
+  const folding = useModeDone((s) =>
+    row.topics.some((t) => holdsThread(s.folding.messages, t.thread_id, t.account_id)),
+  );
   const settle = useModeDone((s) => s.settle);
   const landIds = useMemo(
     () => row.topics.flatMap((topic) => [topic.thread_id, ...topic.message_ids.slice(-20)]),

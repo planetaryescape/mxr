@@ -2,7 +2,7 @@ use super::super::MutationEffect;
 use super::export_modal::ExportModalState;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use crate::ui::personal_category_picker::PersonalCategoryPicker;
-use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId};
 use mxr_core::{Draft, Envelope};
 use mxr_protocol::{
     DraftLengthHintData, Request, ScreenerQueueEntryData, SenderProfileData, SnippetData,
@@ -48,7 +48,7 @@ pub enum NotNowTarget {
     /// reply later; a time takes it off until then (`DeferThreads`). On
     /// Waiting on there is no Later, because it needs a time.
     Conversation {
-        thread_id: ThreadId,
+        thread: crate::app::ThreadKey,
         message_id: MessageId,
         waiting: bool,
     },
@@ -115,7 +115,7 @@ pub struct ReplyLaterPromptState {
     pub input: String,
     pub time: crate::ui::time_preview::TimePreview,
     pub error: Option<String>,
-    pub thread_id: ThreadId,
+    pub thread: crate::app::ThreadKey,
     /// The message `b` was pressed on, for the untimed flag.
     pub message_id: MessageId,
     /// Pressed on a Waiting on row: the copy says so. The daemon decides
@@ -124,12 +124,16 @@ pub struct ReplyLaterPromptState {
 }
 
 impl ReplyLaterPromptState {
-    pub fn new(thread_id: ThreadId, message_id: MessageId, waiting: bool) -> Self {
+    pub fn new(
+        thread: impl Into<crate::app::ThreadKey>,
+        message_id: MessageId,
+        waiting: bool,
+    ) -> Self {
         Self {
             input: String::new(),
             time: crate::ui::time_preview::TimePreview::default(),
             error: None,
-            thread_id,
+            thread: thread.into(),
             message_id,
             waiting,
         }
@@ -359,7 +363,7 @@ pub enum DraftOptionsField {
 #[derive(Debug, Clone, Default)]
 pub struct DraftOptionsModalState {
     pub visible: bool,
-    pub thread_id: Option<ThreadId>,
+    pub thread: Option<crate::app::ThreadKey>,
     pub active: DraftOptionsField,
     /// 0=Auto, 1=Casual, 2=Neutral, 3=Formal
     pub register_idx: usize,
@@ -372,9 +376,9 @@ impl DraftOptionsModalState {
     pub const REGISTER_OPTIONS: [&'static str; 4] = ["Auto", "Casual", "Neutral", "Formal"];
     pub const LENGTH_OPTIONS: [&'static str; 4] = ["Auto", "Short", "Medium", "Long"];
 
-    pub fn open(&mut self, thread_id: ThreadId) {
+    pub fn open(&mut self, thread: impl Into<crate::app::ThreadKey>) {
         self.visible = true;
-        self.thread_id = Some(thread_id);
+        self.thread = Some(thread.into());
         self.active = DraftOptionsField::Instruction;
         self.register_idx = 0;
         self.length_idx = 0;
@@ -383,7 +387,7 @@ impl DraftOptionsModalState {
 
     pub fn close(&mut self) {
         self.visible = false;
-        self.thread_id = None;
+        self.thread = None;
     }
 
     pub fn next_field(&mut self) {
@@ -505,7 +509,7 @@ pub struct SenderProfileModalState {
     /// the title bar can read it back even when the response is still
     /// pending.
     pub email: Option<String>,
-    pub current_thread_id: Option<mxr_core::ThreadId>,
+    pub current_thread: Option<crate::app::ThreadKey>,
     pub profile: Option<SenderProfileData>,
     pub active_tab: SenderProfileTab,
     pub selected_recent_index: usize,
@@ -513,11 +517,11 @@ pub struct SenderProfileModalState {
 }
 
 impl SenderProfileModalState {
-    pub fn open_loading(&mut self, email: String, current_thread_id: Option<mxr_core::ThreadId>) {
+    pub fn open_loading(&mut self, email: String, current_thread: Option<crate::app::ThreadKey>) {
         self.visible = true;
         self.loading = true;
         self.email = Some(email);
-        self.current_thread_id = current_thread_id;
+        self.current_thread = current_thread;
         self.profile = None;
         self.active_tab = SenderProfileTab::Overview;
         self.selected_recent_index = 0;
@@ -528,7 +532,7 @@ impl SenderProfileModalState {
         self.visible = false;
         self.loading = false;
         self.email = None;
-        self.current_thread_id = None;
+        self.current_thread = None;
         self.profile = None;
         self.active_tab = SenderProfileTab::Overview;
         self.selected_recent_index = 0;
@@ -560,9 +564,10 @@ impl SenderProfileModalState {
                     .recent_messages
                     .iter()
                     .filter(|message| {
-                        self.current_thread_id
-                            .as_ref()
-                            .is_none_or(|thread_id| &message.thread_id != thread_id)
+                        // The profile's messages are all one account's.
+                        self.current_thread.as_ref().is_none_or(|thread| {
+                            !thread.matches_ids(&message.thread_id, Some(&profile.account_id))
+                        })
                     })
                     .collect()
             })

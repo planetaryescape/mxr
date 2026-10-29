@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { commitUnsubscribePreview, unsubscribeAndClearSender } from "@/features/mailbox/api";
+import { threadAccounts, conversationKey, type ThreadRef } from "@/features/mailbox/rowKey";
 import { doneModeRequest } from "@/features/modes/modeDone";
 import { plural } from "@/lib/format";
 
@@ -194,17 +195,28 @@ export function ReadingUnsubscribeDialog({
  * exactly the conversations; confirming sends those same ids.
  */
 export function LetGoAllDialog({
-  threadIds,
+  threads,
   titles,
   onClose,
 }: {
-  threadIds: readonly string[];
+  threads: readonly ThreadRef[];
   titles: readonly string[];
   onClose: () => void;
 }) {
   const preview = useQuery({
-    queryKey: ["reading", "let-go-all", ...threadIds],
-    queryFn: () => doneModeRequest("reading", threadIds, true),
+    queryKey: [
+      "reading",
+      "let-go-all",
+      ...threads.map((t) => conversationKey(t.thread_id, t.account_id)),
+    ],
+    // The same pairs the confirm sends, so the preview and the mutation name the same conversations.
+    queryFn: () =>
+      doneModeRequest(
+        "reading",
+        threads.map((t) => t.thread_id),
+        true,
+        { accounts: threadAccounts(threads) },
+      ),
     staleTime: 0,
   });
   const items = preview.data?.items ?? [];
@@ -218,7 +230,7 @@ export function LetGoAllDialog({
         data-testid="reading-let-go-all"
       >
         <DialogHeader>
-          <DialogTitle>Let go of {plural(threadIds.length, "item")}?</DialogTitle>
+          <DialogTitle>Let go of {plural(threads.length, "item")}?</DialogTitle>
           <DialogDescription>
             They leave Reading. Anything on Later stays there.
             {archived > 0
@@ -235,10 +247,18 @@ export function LetGoAllDialog({
             data-testid="let-go-all-preview"
             className="max-h-64 overflow-y-auto text-sm text-foreground/90"
           >
-            {threadIds.map((id, index) => {
-              const outcome = items.find((item) => item.thread_id === id);
+            {threads.map((thread, index) => {
+              const outcome = items.find(
+                (item) =>
+                  item.thread_id === thread.thread_id &&
+                  (!item.account_id || !thread.account_id || item.account_id === thread.account_id),
+              );
               return (
-                <li key={id} data-thread={id} className="truncate py-0.5">
+                <li
+                  key={conversationKey(thread.thread_id, thread.account_id)}
+                  data-thread={thread.thread_id}
+                  className="truncate py-0.5"
+                >
                   {titles[index]}
                   {outcome?.error ? (
                     <span className="text-muted-foreground"> ({outcome.error})</span>
@@ -257,7 +277,9 @@ export function LetGoAllDialog({
             disabled={preview.isLoading || ready.length === 0}
             onClick={() => {
               onClose();
-              void letGo(ready.map((item) => item.thread_id));
+              void letGo(
+                ready.map((item) => ({ thread_id: item.thread_id, account_id: item.account_id })),
+              );
             }}
           >
             Let go of {plural(ready.length, "item")}

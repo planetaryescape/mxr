@@ -741,7 +741,7 @@ fn draw_confirm(
         return;
     };
     let height = match confirm {
-        ReadingConfirm::LetGoAll { thread_ids, .. } => u16::try_from(thread_ids.len())
+        ReadingConfirm::LetGoAll { threads, .. } => u16::try_from(threads.len())
             .unwrap_or(u16::MAX)
             .saturating_add(8),
         ReadingConfirm::Unsubscribe { .. } => 15,
@@ -749,12 +749,16 @@ fn draw_confirm(
     let popup = super::centered_rect_fixed_height(70, height.min(area.height), area);
     frame.render_widget(Clear, popup);
     let (title, lines) = match confirm {
-        ReadingConfirm::LetGoAll { thread_ids, items } => {
+        ReadingConfirm::LetGoAll { threads, items } => {
             let titles: Vec<String> = page
                 .rows()
                 .iter()
                 .filter_map(|row| match row {
-                    ReadingRow::Item(item) if thread_ids.contains(&item.thread_id) => {
+                    ReadingRow::Item(item)
+                        if threads.iter().any(|thread| {
+                            thread.matches_ids(&item.thread_id, Some(&item.account_id))
+                        }) =>
+                    {
                         Some(one_line(&item.title))
                     }
                     _ => None,
@@ -762,7 +766,7 @@ fn draw_confirm(
                 .collect();
             let archived = items.iter().filter(|item| item.archived > 0).count();
             let mut lines = vec![Line::from(Span::styled(
-                format!("Let go of {} in Reading?", thread_ids.len()),
+                format!("Let go of {} in Reading?", threads.len()),
                 Style::default().fg(theme.text_primary),
             ))];
             lines.push(Line::from(""));

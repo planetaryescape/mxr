@@ -288,8 +288,8 @@ impl App {
                     self.push_toast(Toast::success(msg));
                 }
             }
-            MutationEffect::FocusRestore { thread_id } => {
-                self.focus_restore(&thread_id);
+            MutationEffect::FocusRestore { thread } => {
+                self.focus_restore(&thread);
                 self.refresh_places();
                 if show_completion_status {
                     self.push_toast(Toast::success("Back in the queue"));
@@ -899,10 +899,11 @@ impl App {
         } else {
             self.mailbox_list_envelopes()
         };
-        let tid = env.thread_id.clone();
+        // Thread and account: another account may hold the same thread id.
+        let key = ThreadKey::of_envelope(env);
         let mut ids: Vec<MessageId> = source
             .iter()
-            .filter(|candidate| candidate.thread_id == tid)
+            .filter(|candidate| key.matches_envelope(candidate))
             .map(|candidate| candidate.id.clone())
             .collect();
         if ids.is_empty() {
@@ -1000,9 +1001,10 @@ impl App {
             MailListMode::Threads => rows[start..=end]
                 .iter()
                 .flat_map(|row| {
+                    let key = row.thread_key();
                     source
                         .iter()
-                        .filter(move |env| env.thread_id == row.thread_id)
+                        .filter(move |env| key.matches_envelope(env))
                         .map(|env| env.id.clone())
                 })
                 .collect(),

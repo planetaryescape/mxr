@@ -150,6 +150,7 @@ async fn observe(
     let ResponseData::ModeMembership { threads } = request(
         fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: None,
             thread_id: Some(mail.thread_id.clone()),
             thread_ids: vec![],

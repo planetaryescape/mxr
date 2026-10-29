@@ -24,6 +24,7 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 
 import type { ModeKind } from "./membership";
 import { MESSAGES_KEY } from "@/features/messages/api";
+import { threadAccounts, conversationKey, type ThreadRef } from "@/features/mailbox/rowKey";
 
 type Schemas = components["schemas"];
 export type ModeDoneOutcome = Schemas["ModeDoneOutcomeData"];
@@ -32,7 +33,11 @@ type ModeDoneResponse = Extract<Schemas["ResponseData"], { kind: "ModeDone" }>;
 /** Modes that have a done: Archive keeps its records. */
 export type DoneMode = Exclude<ModeKind, "archive">;
 
-/** Threads hidden while their done is in flight, per mode. */
+/**
+ * Threads hidden while their done is in flight, per mode, as thread row keys
+ * (`conversationKey`): a thread id held by two accounts hides only the chosen
+ * account's row. Read them with `holdsThread`.
+ */
 export type HiddenByMode = Record<DoneMode, ReadonlySet<string>>;
 
 export const NONE_HIDDEN: HiddenByMode = {
@@ -50,42 +55,38 @@ interface ModeDoneState {
    * its fold ends, and drops out.
    */
   folding: HiddenByMode;
-  hide: (mode: DoneMode, threadIds: readonly string[]) => void;
-  show: (mode: DoneMode, threadIds: readonly string[]) => void;
-  fold: (mode: DoneMode, threadIds: readonly string[]) => void;
-  settle: (mode: DoneMode, threadIds: readonly string[]) => void;
+  hide: (mode: DoneMode, keys: readonly string[]) => void;
+  show: (mode: DoneMode, keys: readonly string[]) => void;
+  fold: (mode: DoneMode, keys: readonly string[]) => void;
+  settle: (mode: DoneMode, keys: readonly string[]) => void;
 }
 
 export const useModeDone = create<ModeDoneState>((set) => ({
   hidden: NONE_HIDDEN,
   folding: NONE_HIDDEN,
-  fold: (mode, threadIds) =>
-    set((s) => ({
-      folding: { ...s.folding, [mode]: new Set([...s.folding[mode], ...threadIds]) },
-    })),
-  settle: (mode, threadIds) =>
+  fold: (mode, keys) =>
+    set((s) => ({ folding: { ...s.folding, [mode]: new Set([...s.folding[mode], ...keys]) } })),
+  settle: (mode, keys) =>
     set((s) =>
-      threadIds.some((id) => s.folding[mode].has(id))
+      keys.some((id) => s.folding[mode].has(id))
         ? {
             folding: {
               ...s.folding,
-              [mode]: new Set([...s.folding[mode]].filter((id) => !threadIds.includes(id))),
+              [mode]: new Set([...s.folding[mode]].filter((id) => !keys.includes(id))),
             },
           }
         : s,
     ),
-  hide: (mode, threadIds) =>
-    set((s) => ({
-      hidden: { ...s.hidden, [mode]: new Set([...s.hidden[mode], ...threadIds]) },
-    })),
+  hide: (mode, keys) =>
+    set((s) => ({ hidden: { ...s.hidden, [mode]: new Set([...s.hidden[mode], ...keys]) } })),
   // Unchanged state when none of them were hidden, so nothing re-renders.
-  show: (mode, threadIds) =>
+  show: (mode, keys) =>
     set((s) =>
-      threadIds.some((id) => s.hidden[mode].has(id))
+      keys.some((id) => s.hidden[mode].has(id))
         ? {
             hidden: {
               ...s.hidden,
-              [mode]: new Set([...s.hidden[mode]].filter((id) => !threadIds.includes(id))),
+              [mode]: new Set([...s.hidden[mode]].filter((id) => !keys.includes(id))),
             },
           }
         : s,
@@ -172,25 +173,34 @@ export interface ModeDoneOptions extends DoneScope {
  */
 export async function markModeDone(
   mode: DoneMode,
-  threadIds: readonly string[],
+  /** Conversations as their rows name them; a bare id is for data without an account. */
+  threads: readonly (string | ThreadRef)[],
   options: ModeDoneOptions = {},
 ): Promise<boolean> {
-  const unique = [...new Set(threadIds)];
+  const refs: ThreadRef[] = threads.map((t) => (typeof t === "string" ? { thread_id: t } : t));
+  // Keyed by account too: two accounts' rows can share a thread id.
+  const uniqueRefs = [
+    ...new Map(refs.map((ref) => [conversationKey(ref.thread_id, ref.account_id), ref])).values(),
+  ];
+  const unique = uniqueRefs.map((ref) => ref.thread_id);
+  const keys = uniqueRefs.map((ref) => conversationKey(ref.thread_id, ref.account_id));
+  const accounts = [...threadAccounts(uniqueRefs), ...(options.accounts ?? [])];
+  const scope: DoneScope = { ...options, ...(accounts.length > 0 ? { accounts } : {}) };
   if ((unique.length === 0 && !options.sender) || refuseWhileDaemonDown("mark it done")) {
     return false;
   }
   // A second press while the first is on its way: one request, one toast.
   // Named to-dos are their own rows, so another one on the thread still goes.
   const inFlight = useModeDone.getState().hidden[mode];
-  if (!options.todoIds?.length && unique.length > 0 && unique.every((id) => inFlight.has(id))) {
+  if (!options.todoIds?.length && keys.length > 0 && keys.every((key) => inFlight.has(key))) {
     return false;
   }
-  useModeDone.getState().hide(mode, unique);
-  if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, unique);
+  useModeDone.getState().hide(mode, keys);
+  if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, keys);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
-    const result = await doneModeRequest(mode, unique, false, options);
+    const result = await doneModeRequest(mode, unique, false, scope);
     const failed = result.items.filter((item) => item.error);
     const done = result.items.filter((item) => !item.error);
     const mutationId = result.mutation_id ?? null;
@@ -211,7 +221,7 @@ export async function markModeDone(
         offerUndo(
           "mode-done",
           (options.message ?? doneToast)(done),
-          `mode-done-${mutationId ?? `${mode}-${unique.join(",")}`}`,
+          `mode-done-${mutationId ?? `${mode}-${keys.join(",")}`}`,
           reverse,
           claim.run,
           mutationId ?? undefined,
@@ -242,8 +252,8 @@ export async function markModeDone(
     });
     return false;
   } finally {
-    useModeDone.getState().show(mode, unique);
-    useModeDone.getState().settle(mode, unique);
+    useModeDone.getState().show(mode, keys);
+    useModeDone.getState().settle(mode, keys);
   }
 }
 

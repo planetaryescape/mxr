@@ -723,6 +723,7 @@ async fn membership(fx: &Fixture, thread: &ThreadId) -> ThreadModesData {
     match request(
         fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: None,
             thread_id: Some(thread.clone()),
             thread_ids: Vec::new(),

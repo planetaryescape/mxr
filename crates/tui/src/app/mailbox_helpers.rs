@@ -75,19 +75,20 @@ impl App {
                 })
                 .collect(),
             MailListMode::Threads => {
-                let mut order: Vec<mxr_core::ThreadId> = Vec::new();
-                let mut rows: HashMap<mxr_core::ThreadId, MailListRow> = HashMap::new();
-                let mut participants: HashMap<
-                    mxr_core::ThreadId,
-                    std::collections::HashSet<String>,
-                > = HashMap::new();
+                // A row is a conversation in one account: a legacy thread id
+                // can be held by two accounts, and their messages never merge.
+                let mut order: Vec<ThreadKey> = Vec::new();
+                let mut rows: HashMap<ThreadKey, MailListRow> = HashMap::new();
+                let mut participants: HashMap<ThreadKey, std::collections::HashSet<String>> =
+                    HashMap::new();
                 for envelope in envelopes {
+                    let key = ThreadKey::of_envelope(envelope);
                     ingest_participants_from_envelope(
                         envelope,
-                        participants.entry(envelope.thread_id.clone()).or_default(),
+                        participants.entry(key.clone()).or_default(),
                     );
-                    let entry = rows.entry(envelope.thread_id.clone()).or_insert_with(|| {
-                        order.push(envelope.thread_id.clone());
+                    let entry = rows.entry(key.clone()).or_insert_with(|| {
+                        order.push(key.clone());
                         MailListRow {
                             thread_id: envelope.thread_id.clone(),
                             representative: envelope.clone(),
@@ -114,12 +115,12 @@ impl App {
                 }
                 let mut collected: Vec<MailListRow> = order
                     .into_iter()
-                    .filter_map(|thread_id| rows.remove(&thread_id))
+                    .filter_map(|key| rows.remove(&key))
                     .collect();
                 for row in &mut collected {
                     let primary = normalized_email(&row.representative.from);
                     row.other_participant_count = participants
-                        .get(&row.thread_id)
+                        .get(&ThreadKey::of_envelope(&row.representative))
                         .map_or(0, |set| set.iter().filter(|e| *e != &primary).count());
                 }
                 collected
@@ -464,7 +465,9 @@ impl App {
                 .mailbox
                 .viewing_envelope
                 .as_ref()
-                .is_some_and(|envelope| envelope.thread_id == row.thread_id);
+                .is_some_and(|envelope| {
+                    envelope.thread_id == row.thread_id && envelope.account_id == row.account_id
+                });
         if !in_context {
             return false;
         }
@@ -472,8 +475,8 @@ impl App {
         // handoff copy. A promise under Due keeps the desk's own Done,
         // which keeps the promise.
         if row.lane != mxr_protocol::DeskLaneKind::Due {
-            let thread_id = row.thread_id.clone();
-            self.queue_mode_done(mxr_protocol::ModeKindData::Messages, thread_id);
+            let thread = ThreadKey::new(row.account_id.clone(), row.thread_id.clone());
+            self.queue_mode_done(mxr_protocol::ModeKindData::Messages, thread);
             return true;
         }
         let item = mxr_protocol::DeskDoneItemData {
@@ -482,7 +485,10 @@ impl App {
             lane: Some(row.lane),
             commitment_id: row.commitment_id.clone(),
         };
-        self.remove_desk_thread(&item.thread_id);
+        self.remove_desk_thread(&ThreadKey::new(
+            row.account_id.clone(),
+            item.thread_id.clone(),
+        ));
         self.queue_mutation(
             Request::ResolveDeskItems {
                 items: vec![item],
@@ -496,8 +502,8 @@ impl App {
 
     /// Take a conversation off the desk at once (the daemon's answer, or a
     /// refetch on failure, settles it), keeping the cursor in range.
-    pub(super) fn remove_desk_thread(&mut self, thread_id: &mxr_core::ThreadId) {
-        self.mailbox.desk_page.remove_thread(thread_id);
+    pub(super) fn remove_desk_thread(&mut self, thread: &ThreadKey) {
+        self.mailbox.desk_page.remove_thread(thread);
         // The cursor is the desk's only on the desk: a done from Now or
         // Messages clamping to the desk's rows sent their cursor to the top.
         if self.mailbox.mailbox_view == MailboxView::Desk {
@@ -541,7 +547,7 @@ impl App {
         if let Some(index) = self
             .mail_list_rows()
             .iter()
-            .position(|row| row.thread_id == env.thread_id)
+            .position(|row| row.thread_key() == ThreadKey::of_envelope(&env))
         {
             self.mailbox.selected_index = index;
         }
@@ -581,7 +587,13 @@ impl App {
         self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.mailbox.thread_summary = None;
         self.mailbox.thread_summary_error = None;
-        if self.mailbox.thread_context.as_ref().map(|c| &c.thread_id) != Some(&env.thread_id) {
+        let env_key = ThreadKey::of_envelope(&env);
+        if !self
+            .mailbox
+            .thread_context
+            .as_ref()
+            .is_some_and(|c| env_key.matches_ids(&c.thread_id, Some(&c.account_id)))
+        {
             self.mailbox.thread_context = None;
             self.mailbox.thread_gist = None;
         }
@@ -593,7 +605,7 @@ impl App {
         for message in self.mailbox.viewed_thread_messages.clone() {
             self.queue_body_fetch(message.id);
         }
-        self.queue_thread_fetch(env.thread_id.clone());
+        self.queue_thread_fetch(env_key);
         self.queue_html_assets_for_current_view();
         self.mailbox.message_scroll_offset = 0;
         self.ensure_current_body_state();
@@ -604,7 +616,7 @@ impl App {
             .mailbox
             .all_envelopes
             .iter()
-            .filter(|candidate| candidate.thread_id == env.thread_id)
+            .filter(|candidate| ThreadKey::of_envelope(env).matches_envelope(candidate))
             .cloned()
             .collect();
         if messages.is_empty() {
@@ -796,24 +808,20 @@ impl App {
         self.mailbox.priority_body_fetches.push(message_id);
     }
 
-    pub(super) fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
-        if self.mailbox.pending_thread_fetch.as_ref() == Some(&thread_id)
-            || self.mailbox.in_flight_thread_fetch.as_ref() == Some(&thread_id)
+    pub(super) fn queue_thread_fetch(&mut self, key: ThreadKey) {
+        if self.mailbox.pending_thread_fetch.as_ref() == Some(&key)
+            || self.mailbox.in_flight_thread_fetch.as_ref() == Some(&key)
         {
             return;
         }
-        self.mailbox.pending_thread_fetch = Some(thread_id);
+        self.mailbox.pending_thread_fetch = Some(key);
     }
 
-    pub(crate) fn queue_thread_summary(&mut self, thread_id: mxr_core::ThreadId) -> bool {
-        if !self
-            .mailbox
-            .thread_summary_in_flight
-            .insert(thread_id.clone())
-        {
+    pub(crate) fn queue_thread_summary(&mut self, key: ThreadKey) -> bool {
+        if !self.mailbox.thread_summary_in_flight.insert(key.clone()) {
             return false;
         }
-        self.pending_summary_requests.push_back(thread_id);
+        self.pending_summary_requests.push_back(key);
         true
     }
 
@@ -841,7 +849,7 @@ impl App {
         mut messages: Vec<Envelope>,
         summary: Option<mxr_protocol::ThreadSummaryData>,
     ) {
-        let thread_id = thread.id.clone();
+        let key = ThreadKey::of_thread(&thread);
         self.mailbox.in_flight_thread_fetch = None;
         messages.sort_by_key(|message| message.date);
 
@@ -849,8 +857,7 @@ impl App {
             .mailbox
             .viewing_envelope
             .as_ref()
-            .map(|env| env.thread_id.clone())
-            == Some(thread_id.clone())
+            .is_some_and(|env| key.matches_envelope(env))
         {
             let focused_message_id = self.focused_thread_envelope().map(|env| env.id.clone());
             for message in &messages {
@@ -866,9 +873,9 @@ impl App {
             self.mailbox.thread_summary_error = None;
             // Context facts are cheap local reads: fetch them now. The gist
             // asks a model, so it waits out the same debounce as the summary.
-            self.pending_thread_context = Some(thread_id.clone());
+            self.pending_thread_context = Some(key.clone());
             self.pending_gist_debounce = Some((
-                thread_id.clone(),
+                key.clone(),
                 tokio::time::Instant::now() + std::time::Duration::from_millis(250),
             ));
             // Lazy summary backfill: if the daemon didn't have a cached
@@ -882,14 +889,14 @@ impl App {
             // The request goes on a dedicated IPC connection so it
             // doesn't block body fetches or other navigation.
             if !summary_was_cached
-                && !self.mailbox.thread_summary_in_flight.contains(&thread_id)
+                && !self.mailbox.thread_summary_in_flight.contains(&key)
                 && !self
                     .pending_summary_requests
                     .iter()
-                    .any(|pending| pending == &thread_id)
+                    .any(|pending| pending == &key)
             {
                 let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(250);
-                self.pending_summary_debounce = Some((thread_id.clone(), deadline));
+                self.pending_summary_debounce = Some((key.clone(), deadline));
             }
             self.mailbox.thread_selected_index = focused_message_id
                 .and_then(|message_id| {
@@ -904,8 +911,8 @@ impl App {
         }
     }
 
-    pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
-        if self.mailbox.in_flight_thread_fetch.as_ref() == Some(thread_id) {
+    pub fn resolve_thread_fetch_error(&mut self, key: &ThreadKey) {
+        if self.mailbox.in_flight_thread_fetch.as_ref() == Some(key) {
             self.mailbox.in_flight_thread_fetch = None;
         }
     }

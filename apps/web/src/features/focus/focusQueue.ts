@@ -14,10 +14,16 @@
 
 import type { DeskRow } from "@/features/desk/api";
 import { rowAge } from "@/features/desk/deskCopy";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import type { ReplyQueueMessage } from "@/features/reply-queue/api";
 
 export interface FocusItem {
   threadId: string;
+  /**
+   * The account the conversation is in. A thread id can be held by two
+   * accounts, so with it the queue tells the two apart (`focusKey`).
+   */
+  accountId?: string;
   /** The message a reply answers: the newest from them. */
   messageId: string;
   sender: string;
@@ -27,6 +33,14 @@ export interface FocusItem {
   source: "owed" | "reply-later";
 }
 
+/**
+ * What names a conversation in the session: its thread within its account,
+ * or the bare thread id for data that has no account.
+ */
+export function focusKey(item: Pick<FocusItem, "threadId" | "accountId">): string {
+  return conversationKey(item.threadId, item.accountId);
+}
+
 export function buildFocusQueue(
   owed: readonly DeskRow[],
   replyLater: readonly ReplyQueueMessage[],
@@ -34,11 +48,16 @@ export function buildFocusQueue(
 ): FocusItem[] {
   const items: FocusItem[] = [];
   const seen = new Set<string>();
+  // Threads listed by an account-less entry: another entry of the thread would be the same one.
+  const seenThreads = new Set<string>();
   for (const row of owed) {
-    if (seen.has(row.thread_id)) continue;
-    seen.add(row.thread_id);
+    const key = focusKey({ threadId: row.thread_id, accountId: row.account_id });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    seenThreads.add(row.thread_id);
     items.push({
       threadId: row.thread_id,
+      accountId: row.account_id,
       messageId: row.message_id,
       sender: row.counterparty_name?.trim() || row.counterparty_email,
       subject: row.subject,
@@ -49,10 +68,12 @@ export function buildFocusQueue(
   for (const message of replyLater) {
     // The reply-later list isn't account scoped on the wire; scope it here.
     if (accountScope && message.account_id && message.account_id !== accountScope) continue;
-    if (seen.has(message.thread_id)) continue;
-    seen.add(message.thread_id);
+    const key = focusKey({ threadId: message.thread_id, accountId: message.account_id });
+    if (seen.has(key) || (!message.account_id && seenThreads.has(message.thread_id))) continue;
+    seen.add(key);
     items.push({
       threadId: message.thread_id,
+      accountId: message.account_id,
       messageId: message.id,
       sender: message.from?.name?.trim() || message.from?.email || "Unknown sender",
       subject: message.subject,
@@ -64,7 +85,7 @@ export function buildFocusQueue(
 }
 
 export interface FocusSession {
-  /** Every conversation seen this session, by thread id. */
+  /** Every conversation seen this session, by `focusKey`. */
   items: Record<string, FocusItem>;
   /** Still to do, in order; the first is on screen. */
   queue: string[];
@@ -79,10 +100,10 @@ export interface FocusSession {
 export type FocusEvent =
   | { kind: "sync"; items: FocusItem[] }
   | { kind: "skip" }
-  | { kind: "handled"; threadId: string }
-  | { kind: "restore"; threadId: string }
+  | { kind: "handled"; key: string }
+  | { kind: "restore"; key: string }
   /** Put a queued conversation on screen: a link that named it. */
-  | { kind: "front"; threadId: string }
+  | { kind: "front"; key: string }
   /** Bring the set-aside conversations back into the queue. */
   | { kind: "revisit" };
 
@@ -100,20 +121,20 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
       const items = { ...session.items };
       const inSource = new Set<string>();
       for (const item of event.items) {
-        items[item.threadId] = item;
-        inSource.add(item.threadId);
+        items[focusKey(item)] = item;
+        inSource.add(focusKey(item));
       }
       const current = session.queue[0];
       const kept = session.queue.filter((id) => id === current || inSource.has(id));
       const known = new Set([...kept, ...session.handled, ...session.deferred]);
-      const arrivals = event.items.map((item) => item.threadId).filter((id) => !known.has(id));
+      const arrivals = event.items.map(focusKey).filter((id) => !known.has(id));
       const queue = [...kept, ...arrivals];
       // A refetch that changes nothing keeps the same session, so the page
       // and the conversation on screen don't re-render.
       if (
         session.loaded &&
         sameIds(queue, session.queue) &&
-        event.items.every((item) => sameItem(session.items[item.threadId], item))
+        event.items.every((item) => sameItem(session.items[focusKey(item)], item))
       ) {
         return session;
       }
@@ -132,27 +153,23 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
       return { ...session, queue: [...session.queue, ...session.deferred], deferred: [] };
     }
     case "handled": {
-      if (!session.queue.includes(event.threadId)) return session;
+      if (!session.queue.includes(event.key)) return session;
       return {
         ...session,
-        queue: session.queue.filter((id) => id !== event.threadId),
-        handled: [...session.handled, event.threadId],
+        queue: session.queue.filter((id) => id !== event.key),
+        handled: [...session.handled, event.key],
       };
     }
     case "front": {
-      if (!session.queue.includes(event.threadId) || session.queue[0] === event.threadId)
-        return session;
-      return {
-        ...session,
-        queue: [event.threadId, ...session.queue.filter((id) => id !== event.threadId)],
-      };
+      if (!session.queue.includes(event.key) || session.queue[0] === event.key) return session;
+      return { ...session, queue: [event.key, ...session.queue.filter((id) => id !== event.key)] };
     }
     case "restore": {
-      if (!session.handled.includes(event.threadId)) return session;
+      if (!session.handled.includes(event.key)) return session;
       return {
         ...session,
-        queue: [event.threadId, ...session.queue],
-        handled: session.handled.filter((id) => id !== event.threadId),
+        queue: [event.key, ...session.queue],
+        handled: session.handled.filter((id) => id !== event.key),
       };
     }
   }

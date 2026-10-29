@@ -17,9 +17,7 @@
 //! state plus the marks, rows and promises as they were.
 
 use super::mode_rules::{due_detail, handoff_copy, provider_name, Handoff, StillIn};
-use super::modes::{
-    mark_name, place_threads, thread_targets, threads_by_account, without_done, Placement,
-};
+use super::modes::{mark_name, place_threads, thread_targets, without_done, Placement};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
 use super::places::placed_inbox;
 use super::{HandlerError, HandlerResult};
@@ -158,27 +156,39 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
 /// never archived at the provider.
 pub(super) async fn let_go_updates(
     state: &AppState,
-    thread_ids: &[ThreadId],
+    thread_accounts: &[(ThreadId, AccountId)],
     ids: &HashSet<MessageId>,
     dry_run: bool,
 ) -> HandlerResult {
+    // Each conversation is let go for the account its mail is in: a thread
+    // id two accounts hold is two conversations here.
+    let mut by_account: Vec<(AccountId, Vec<ThreadId>)> = Vec::new();
+    for (thread, account) in thread_accounts {
+        match by_account.iter_mut().find(|(owner, _)| owner == account) {
+            Some((_, threads)) => threads.push(thread.clone()),
+            None => by_account.push((account.clone(), vec![thread.clone()])),
+        }
+    }
     let mut prior = HashMap::new();
-    for (account, threads) in threads_by_account(state, thread_ids).await? {
-        for ((thread, mode), mark) in state
-            .store
-            .mode_done_for_threads(&account, &threads)
-            .await?
-        {
+    for (account, threads) in &by_account {
+        for ((thread, mode), mark) in state.store.mode_done_for_threads(account, threads).await? {
             if Some(mode.as_str()) == mark_name(ModeKindData::Updates) {
-                prior.insert(thread, mark);
+                prior.insert((account.clone(), thread), mark);
             }
         }
     }
     let exact = Exact { ids, prior };
+    let pinned: Vec<mxr_protocol::ThreadAccountRef> = thread_accounts
+        .iter()
+        .map(|(thread_id, account_id)| mxr_protocol::ThreadAccountRef {
+            thread_id: thread_id.clone(),
+            account_id: account_id.clone(),
+        })
+        .collect();
     let plans = plan(
         state,
-        thread_ids,
         &[],
+        &pinned,
         ModeKindData::Updates,
         &[],
         Some(&exact),
@@ -191,15 +201,15 @@ pub(super) async fn let_go_updates(
 /// The exact messages a let go covers, with each thread's earlier mark.
 struct Exact<'a> {
     ids: &'a HashSet<MessageId>,
-    prior: HashMap<ThreadId, DeskDismissal>,
+    prior: HashMap<(AccountId, ThreadId), DeskDismissal>,
 }
 
 impl Exact<'_> {
-    fn covers(&self, message: &mxr_store::DeskMessage) -> bool {
+    fn covers(&self, account_id: &AccountId, message: &mxr_store::DeskMessage) -> bool {
         self.ids.contains(&message.id)
             || self
                 .prior
-                .get(&message.thread_id)
+                .get(&(account_id.clone(), message.thread_id.clone()))
                 .is_some_and(|mark| mark.saw(message.date, &message.id))
     }
 }
@@ -369,12 +379,9 @@ fn plan_one(
     // The watermark of the messages this plan read: anything stored after
     // it brings the thread back to this mode.
     let mark = mark_name(mode)
-        .zip(DeskDismissal::through(
-            placement
-                .messages
-                .iter()
-                .filter(|m| exact.is_none_or(|exact| exact.covers(m))),
-        ))
+        .zip(DeskDismissal::through(placement.messages.iter().filter(
+            |m| exact.is_none_or(|exact| exact.covers(&data.account_id, m)),
+        )))
         .map(|(name, through)| ModeDoneMark {
             account_id: data.account_id.clone(),
             thread_id: data.thread_id.clone(),

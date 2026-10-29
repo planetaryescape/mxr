@@ -24,7 +24,7 @@ import {
   canPinSource,
   canSweepSource,
   canTune,
-  gistThread,
+  gistRef,
   openableLink,
   displaySourceName,
   splitSourceName,
@@ -113,8 +113,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   // The model's one-line gist stands in for a subject-only fact once it has
   // arrived, and only for the email the line is about. Until then (or with no
   // model) the subject shows exactly as it did.
-  const gistThreadId = gistThread(line);
-  const stored = useRowGist(gistThreadId ?? "");
+  const gistTarget = gistRef(line);
+  const stored = useRowGist(gistTarget?.thread_id ?? "", gistTarget?.account_id);
   const gist =
     stored && stored.newest !== null && stored.newest === line.latest_message_id
       ? stored
@@ -546,8 +546,8 @@ function EmailSource({ gist }: { gist: RowGist }) {
 function EmailPreview({ line }: { line: UpdateLine }) {
   const threadId = line.latest_thread_id;
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId ?? ""),
+    queryKey: ["thread", threadId, line.account_id],
+    queryFn: () => fetchThread(threadId ?? "", line.account_id),
     enabled: Boolean(threadId),
     staleTime: 60_000,
     retry: false,

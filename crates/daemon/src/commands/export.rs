@@ -54,6 +54,7 @@ pub async fn run(
                 .request(Request::ExportThread {
                     thread_id: parse_thread_id(&thread_id)?,
                     format,
+                    account_id,
                 })
                 .await?
         }

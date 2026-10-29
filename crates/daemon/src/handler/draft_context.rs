@@ -224,7 +224,7 @@ pub(crate) async fn resolve_thread_envelopes(
     };
     let mut envelopes = state
         .store
-        .get_thread_envelopes_for_model(&envelope.thread_id)
+        .get_thread_envelopes_for_model_in(&envelope.thread_id, Some(&envelope.account_id))
         .await
         .unwrap_or_default();
     // The message being answered stays in even when it is in Trash or Spam:

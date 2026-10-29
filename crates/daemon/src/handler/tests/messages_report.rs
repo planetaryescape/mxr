@@ -121,6 +121,7 @@ async fn messages_report() {
             let result = crate::handler::messages_ack::ack(
                 &state,
                 &conversation.thread_id,
+                None,
                 true,
                 None,
                 None,

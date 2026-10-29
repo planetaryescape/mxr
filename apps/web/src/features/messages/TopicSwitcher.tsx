@@ -1,3 +1,4 @@
+import { holdsThread } from "@/features/mailbox/rowKey";
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
@@ -80,7 +81,7 @@ export function TopicSwitcher({
             >
               {topics.map((topic) => {
                 const active = topic.thread_id === selected;
-                const leaving = hidden.has(topic.thread_id);
+                const leaving = holdsThread(hidden, topic.thread_id, topic.account_id);
                 const arrived = arrival ? (arrival.thread ?? selected) === topic.thread_id : false;
                 return (
                   <li

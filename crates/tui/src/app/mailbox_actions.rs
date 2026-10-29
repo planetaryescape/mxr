@@ -572,7 +572,7 @@ impl App {
                 let account_id = env.account_id.clone();
                 self.modals
                     .sender_profile
-                    .open_loading(email.clone(), Some(env.thread_id.clone()));
+                    .open_loading(email.clone(), Some(ThreadKey::of_envelope(env)));
                 self.pending_sender_profile_request = Some((account_id, email));
             }
             Action::CloseSenderViewModal => {
@@ -605,7 +605,7 @@ impl App {
                     .envelopes
                     .iter()
                     .chain(self.search.page.results.iter())
-                    .find(|env| env.thread_id == message.thread_id)
+                    .find(|env| env.thread_id == message.thread_id && env.account_id == account_id)
                     .cloned()
                     .unwrap_or_else(|| Envelope {
                         id: message.message_id.clone(),
@@ -638,7 +638,7 @@ impl App {
                 if let Some(index) = self
                     .mail_list_rows()
                     .iter()
-                    .position(|row| row.thread_id == env.thread_id)
+                    .position(|row| row.thread_key() == ThreadKey::of_envelope(&env))
                 {
                     self.mailbox.selected_index = index;
                     self.ensure_visible();
@@ -653,8 +653,8 @@ impl App {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                let thread_id = env.thread_id.clone();
-                if !self.queue_thread_summary(thread_id) {
+                let key = ThreadKey::of_envelope(env);
+                if !self.queue_thread_summary(key) {
                     self.status_message = Some("Summary already running".into());
                     return;
                 }
@@ -669,9 +669,11 @@ impl App {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                let thread_id = env.thread_id.clone();
-                self.modals.briefing.open_thread_loading(thread_id.clone());
-                self.pending_briefing_request = Some(BriefingRequest::Thread(thread_id));
+                let key = ThreadKey::of_envelope(env);
+                self.modals
+                    .briefing
+                    .open_thread_loading(key.thread_id.clone());
+                self.pending_briefing_request = Some(BriefingRequest::Thread(key));
                 self.status_message = Some("Loading briefing...".into());
             }
             Action::OpenRecipientBriefing => {

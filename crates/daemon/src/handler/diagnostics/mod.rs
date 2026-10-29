@@ -1882,9 +1882,10 @@ pub(crate) fn emit_operation_event(state: &AppState, event: DaemonEvent) {
 pub(crate) async fn export_thread(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     format: &ExportFormat,
 ) -> HandlerResult {
-    match handle_export_thread(state, thread_id, format).await {
+    match handle_export_thread(state, thread_id, account_id, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
         mxr_protocol::Response::Error { message, .. } => {
             Err(crate::handler::HandlerError::Message(message))

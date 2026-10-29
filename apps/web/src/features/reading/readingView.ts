@@ -5,6 +5,7 @@
  * so the rules are tested on their own.
  */
 
+import { holdsThread, conversationKey, type ThreadRef } from "@/features/mailbox/rowKey";
 import type { components } from "@/api/generated";
 import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type {
@@ -41,12 +42,15 @@ export function shownLinks(links: readonly ReadingLink[], expanded: boolean) {
 /** The bands with items let go of (in flight) left out, and empty bands dropped. */
 export function visibleBands(
   edition: ReadingEdition,
+  /** Thread row keys (`conversationKey`): an item hides only its own account's copy. */
   hiddenThreads: ReadonlySet<string>,
 ): ReadingBand[] {
   return edition.bands
     .map((band) => ({
       ...band,
-      items: band.items.filter((item) => !hiddenThreads.has(item.thread_id)),
+      items: band.items.filter(
+        (item) => !holdsThread(hiddenThreads, item.thread_id, item.account_id),
+      ),
     }))
     .filter((band) => band.items.length > 0);
 }
@@ -233,15 +237,21 @@ export const isOwnHighlight = (h: { origin?: string | null }) => (h.origin ?? "m
 /** What "let go of all" covers: every conversation the edition shows, once. */
 export function letGoAllPlan(bands: readonly ReadingBand[]) {
   const threadIds: string[] = [];
+  const threads: ThreadRef[] = [];
   const titles: string[] = [];
+  const seen = new Set<string>();
   for (const band of bands) {
     for (const item of band.items) {
-      if (threadIds.includes(item.thread_id)) continue;
+      // Two accounts can hold one thread id; each is its own conversation.
+      const key = conversationKey(item.thread_id, item.account_id);
+      if (seen.has(key)) continue;
+      seen.add(key);
       threadIds.push(item.thread_id);
+      threads.push({ thread_id: item.thread_id, account_id: item.account_id });
       titles.push(item.title);
     }
   }
-  return { threadIds, titles };
+  return { threadIds, threads, titles };
 }
 
 /** "14 min", "under a minute" for nothing left to say. */

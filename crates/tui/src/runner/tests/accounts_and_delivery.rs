@@ -2196,10 +2196,11 @@ fn deliveries_screen_does_not_trap_global_navigation() {
 fn deliveries_o_opens_source_thread() {
     let mut app = App::new();
     let thread_id = ThreadId::new();
+    let account_id = AccountId::new();
     let now = chrono::Utc::now();
     app.deliveries.rows = vec![mxr_protocol::DeliveryData {
         id: DeliveryId::new(),
-        account_id: AccountId::new(),
+        account_id: account_id.clone(),
         merchant: Some("Bamboocut".into()),
         carrier: Some("dhl".into()),
         tracking_number: None,
@@ -2224,7 +2225,11 @@ fn deliveries_o_opens_source_thread() {
     app.screen = Screen::Deliveries;
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
-    assert_eq!(app.pending_delivery_open, Some(thread_id));
+    assert_eq!(
+        app.pending_delivery_open,
+        Some(crate::app::ThreadKey::new(account_id, thread_id)),
+        "the fetch names the delivery's own account"
+    );
 }
 
 /// Opening a delivery's source thread shows it inline in the split preview

@@ -676,12 +676,14 @@ async fn mode_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::GetModeMembership {
+        thread_accounts: Vec::new(),
         message_id: None,
         thread_id: Some(o.thread.clone()),
         thread_ids: vec![],
     })
     .await;
     assert_scoped(&s, |o| Request::GetModeMembership {
+        thread_accounts: Vec::new(),
         message_id: Some(o.message.clone()),
         thread_id: None,
         thread_ids: vec![],
@@ -739,6 +741,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::AckMessage {
+        account_id: None,
         thread_id: o.thread.clone(),
         dry_run: true,
         expect_text: None,
@@ -813,21 +816,25 @@ async fn arrivals_requests_stay_in_the_agents_accounts() {
 async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     let s = scoped().await;
     assert_scoped(&s, |o| Request::GetThreadContext {
+        account_id: None,
         thread_id: o.thread.clone(),
     })
     .await;
     assert_scoped(&s, |o| Request::GetThreadGist {
+        account_id: None,
         thread_id: o.thread.clone(),
         refresh: false,
     })
     .await;
     assert_scoped(&s, |o| Request::GetThreadGists {
+        thread_accounts: Vec::new(),
         thread_ids: vec![o.thread.clone()],
         generate: false,
         automated: false,
     })
     .await;
     assert_scoped(&s, |o| Request::GetThreadBriefing {
+        account_id: None,
         thread_id: o.thread.clone(),
         refresh: false,
     })
@@ -840,6 +847,7 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::DismissDeskThreads {
+        thread_accounts: Vec::new(),
         thread_ids: vec![o.thread.clone()],
         dry_run: true,
     })
@@ -1480,14 +1488,17 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
             account_id: None,
         },
         Request::GetThreadContext {
+            account_id: None,
             thread_id: shared.clone(),
         },
         Request::GetThreadGists {
+            thread_accounts: Vec::new(),
             thread_ids: vec![shared.clone()],
             generate: false,
             automated: false,
         },
         Request::ExportThread {
+            account_id: None,
             thread_id: shared.clone(),
             format: ExportFormat::Json,
         },
@@ -2194,4 +2205,166 @@ async fn correction_and_undo_resolve_the_todos_account_for_scoped_agents() {
         dry_run: true,
     })
     .await;
+}
+
+fn pair(o: &Owned) -> mxr_protocol::ThreadAccountRef {
+    mxr_protocol::ThreadAccountRef {
+        thread_id: o.thread.clone(),
+        account_id: o.account.clone(),
+    }
+}
+
+/// A request that names rows by (thread, account) pair, with no bare thread
+/// id, still touches the account in the pair: a scoped agent may not name
+/// another account's row this way.
+#[tokio::test]
+async fn requests_that_name_thread_account_pairs_stay_in_the_agents_accounts() {
+    let s = scoped().await;
+    assert_scoped(&s, |o| Request::SetModeDone {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+        mode: ModeKindData::Updates,
+        dry_run: true,
+        todo_ids: vec![],
+        sender: None,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::DeferThreads {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+        until: Utc::now() + Duration::days(1),
+        dry_run: true,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::DismissDeskThreads {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+        dry_run: true,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::RestoreDeskThreads {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+    })
+    .await;
+    assert_scoped(&s, |o| Request::GetThreadPreviews {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+    })
+    .await;
+    assert_scoped(&s, |o| Request::GetThreadGists {
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+        generate: false,
+        automated: false,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::GetModeMembership {
+        message_id: None,
+        thread_id: None,
+        thread_ids: vec![],
+        thread_accounts: vec![pair(o)],
+    })
+    .await;
+    assert_scoped(&s, |o| Request::ResolveDeskItems {
+        items: vec![DeskDoneItemData {
+            account_id: Some(o.account.clone()),
+            thread_id: o.thread.clone(),
+            lane: None,
+            commitment_id: None,
+        }],
+        dry_run: true,
+    })
+    .await;
+    // The single-thread requests take the account beside the thread.
+    assert_scoped(&s, |o| Request::GetThread {
+        thread_id: o.thread.clone(),
+        account_id: Some(o.account.clone()),
+    })
+    .await;
+    assert_scoped(&s, |o| Request::SummarizeThread {
+        thread_id: o.thread.clone(),
+        account_id: Some(o.account.clone()),
+    })
+    .await;
+    assert_scoped(&s, |o| Request::GetThreadContext {
+        thread_id: o.thread.clone(),
+        account_id: Some(o.account.clone()),
+    })
+    .await;
+    assert_scoped(&s, |o| Request::ExportThread {
+        thread_id: o.thread.clone(),
+        format: ExportFormat::Json,
+        account_id: Some(o.account.clone()),
+    })
+    .await;
+    assert_scoped(&s, |o| Request::AckMessage {
+        thread_id: o.thread.clone(),
+        account_id: Some(o.account.clone()),
+        dry_run: true,
+        expect_text: None,
+        preview_token: None,
+    })
+    .await;
+    // Another account's pair next to the agent's own thread is still out.
+    assert_denied(
+        &s,
+        &Request::SetModeDone {
+            thread_ids: vec![s.own.thread.clone()],
+            thread_accounts: vec![mxr_protocol::ThreadAccountRef {
+                thread_id: s.own.thread.clone(),
+                account_id: s.other.account.clone(),
+            }],
+            mode: ModeKindData::Updates,
+            dry_run: true,
+            todo_ids: vec![],
+            sender: None,
+        },
+    )
+    .await;
+}
+
+/// The agent's own row of a thread id another account also holds is usable
+/// when it names its account, and refused when it does not.
+#[tokio::test]
+async fn a_pair_for_the_agents_own_row_of_a_shared_thread_id_is_allowed() {
+    let s = scoped().await;
+    let shared = ThreadId::new();
+    for (account, tag) in [(&s.own.account, "own"), (&s.other.account, "foreign")] {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .thread_id(shared.clone())
+            .provider_id(format!("scope-pair-{tag}"))
+            .date(Utc::now())
+            .build();
+        s.fx.state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+    }
+    let own_pair = |account: &mxr_core::AccountId| mxr_protocol::ThreadAccountRef {
+        thread_id: shared.clone(),
+        account_id: account.clone(),
+    };
+    let request = |pairs: Vec<mxr_protocol::ThreadAccountRef>, bare: Vec<ThreadId>| {
+        Request::DismissDeskThreads {
+            thread_ids: bare,
+            thread_accounts: pairs,
+            dry_run: true,
+        }
+    };
+    check(&s, &request(vec![own_pair(&s.own.account)], vec![]))
+        .await
+        .expect("the agent's own row is in scope");
+    assert_denied(&s, &request(vec![own_pair(&s.other.account)], vec![])).await;
+    assert_denied(&s, &request(vec![], vec![shared.clone()])).await;
+    // A pair takes over its bare id, as the handler does, so naming the
+    // agent's row beside the bare id acts on that row only.
+    check(
+        &s,
+        &request(vec![own_pair(&s.own.account)], vec![shared.clone()]),
+    )
+    .await
+    .expect("the pair replaces the bare id");
 }

@@ -16,7 +16,14 @@ export interface SnoozePreset {
 }
 
 export interface MailboxLensParams {
-  lens_kind: "inbox" | "all_mail" | "starred" | "label" | "category" | "saved_search" | "subscription";
+  lens_kind:
+    | "inbox"
+    | "all_mail"
+    | "starred"
+    | "label"
+    | "category"
+    | "saved_search"
+    | "subscription";
   label_id?: string;
   category_id?: string;
   saved_search?: string;
@@ -66,16 +73,18 @@ export function fetchThread(threadId: string, accountId?: string | null): Promis
 
 const SUMMARY_TIMEOUT_MS = 125_000;
 
-export async function summarizeThread(threadId: string): Promise<unknown> {
+export async function summarizeThread(
+  threadId: string,
+  accountId?: string | null,
+): Promise<unknown> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), SUMMARY_TIMEOUT_MS);
   try {
     return await apiFetch<unknown>(
-      `/api/v1/mail/threads/${encodeURIComponent(threadId)}/summarize`,
-      {
-        method: "POST",
-        signal: controller.signal,
-      },
+      `/api/v1/mail/threads/${encodeURIComponent(threadId)}/summarize${
+        accountId ? `?account_id=${encodeURIComponent(accountId)}` : ""
+      }`,
+      { method: "POST", signal: controller.signal },
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -130,11 +139,16 @@ export interface ThreadBriefing {
 
 export function getThreadBriefing(input: {
   threadId: string;
+  /** The row's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
   refresh?: boolean;
 }): Promise<{ briefing: ThreadBriefing }> {
-  const query = input.refresh ? "?refresh=true" : "";
+  const query = new URLSearchParams();
+  if (input.refresh) query.set("refresh", "true");
+  if (input.accountId) query.set("account_id", input.accountId);
+  const text = query.toString();
   return apiFetch<{ briefing: ThreadBriefing }>(
-    `/api/v1/mail/threads/${encodeURIComponent(input.threadId)}/briefing${query}`,
+    `/api/v1/mail/threads/${encodeURIComponent(input.threadId)}/briefing${text ? `?${text}` : ""}`,
   );
 }
 

@@ -197,7 +197,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
       openMailDialog({
         kind: "reply-later",
         target,
-        waiting: deskLaneOf(target.threadId) === "waiting",
+        waiting: deskLaneOf(target.threadId, target.accountId) === "waiting",
       });
     },
     makeTodo: () => {
@@ -245,7 +245,9 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
       const target = single(hooks.getTarget(), "Export");
       if (!target?.threadId) return;
       apiFetch<{ content: string }>(
-        `/api/v1/mail/threads/${encodeURIComponent(target.threadId)}/export`,
+        `/api/v1/mail/threads/${encodeURIComponent(target.threadId)}/export${
+          target.accountId ? `?account_id=${encodeURIComponent(target.accountId)}` : ""
+        }`,
       )
         .then(({ content }) => {
           downloadText(`${slug(target.primary?.subject ?? "thread")}.md`, content, "text/markdown");
@@ -257,7 +259,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
       const target = single(hooks.getTarget(), "Briefing");
       if (!target?.threadId) return;
       const toastId = toast.loading("Preparing briefing…");
-      getThreadBriefing({ threadId: target.threadId, refresh: false })
+      getThreadBriefing({ threadId: target.threadId, accountId: target.accountId, refresh: false })
         .then((result) => {
           toast.dismiss(toastId);
           useModals.getState().openRightRail("thread-briefing", result.briefing);

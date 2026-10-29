@@ -9,7 +9,15 @@ use mxr_core::types::MessageDirection;
 use mxr_protocol::{ThreadPreviewData, THREAD_PREVIEWS_MAX};
 
 async fn previews(fx: &Fixture, thread_ids: Vec<ThreadId>) -> Vec<ThreadPreviewData> {
-    match request(fx, Request::GetThreadPreviews { thread_ids }).await {
+    match request(
+        fx,
+        Request::GetThreadPreviews {
+            thread_accounts: Vec::new(),
+            thread_ids,
+        },
+    )
+    .await
+    {
         ResponseData::ThreadPreviews { previews } => previews,
         other => panic!("expected previews, got {other:?}"),
     }
@@ -20,7 +28,10 @@ async fn error_for(fx: &Fixture, thread_ids: Vec<ThreadId>) -> String {
         expected_workspace: None,
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetThreadPreviews { thread_ids }),
+        payload: IpcPayload::Request(Request::GetThreadPreviews {
+            thread_accounts: Vec::new(),
+            thread_ids,
+        }),
     };
     match handle_request(&fx.state, &msg).await.payload {
         IpcPayload::Response(Response::Error { message, .. }) => message,

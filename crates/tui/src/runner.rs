@@ -606,11 +606,11 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        if let Some(thread_id) = app.mailbox.pending_thread_fetch.take() {
-            app.mailbox.in_flight_thread_fetch = Some(thread_id.clone());
+        if let Some(key) = app.mailbox.pending_thread_fetch.take() {
+            app.mailbox.in_flight_thread_fetch = Some(key.clone());
             app.mailbox.thread_request_id = app.mailbox.thread_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::Thread {
-                thread_id,
+                key,
                 request_id: app.mailbox.thread_request_id,
                 enqueued_at: Instant::now(),
             });
@@ -967,14 +967,14 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(thread_id) = app.pending_delivery_open.take() {
+        if let Some(key) = app.pending_delivery_open.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::GetThread {
-                        thread_id,
-                        account_id: None,
+                        thread_id: key.thread_id,
+                        account_id: key.account_id,
                     },
                 )
                 .await;
@@ -1135,38 +1135,36 @@ pub async fn run() -> anyhow::Result<()> {
         // daemon. In-flight requests fired by an earlier debounce are
         // not cancelled — they complete and the daemon caches the
         // result for when the user comes back.
-        if let Some((thread_id, deadline)) = app.pending_summary_debounce.as_ref() {
+        if let Some((key, deadline)) = app.pending_summary_debounce.as_ref() {
             if tokio::time::Instant::now() >= *deadline {
-                let thread_id = thread_id.clone();
+                let key = key.clone();
                 app.pending_summary_debounce = None;
                 // Only schedule the auto-summary if the thread is worth
                 // summarizing. The user can still force a summary by
                 // pressing `y` (Action::SummarizeCurrentThread bypasses
                 // this gate entirely).
-                let eligible = app
-                    .mailbox
-                    .viewed_thread
-                    .as_ref()
-                    .is_some_and(|thread| thread.id == thread_id)
-                    && crate::app::auto_summary_eligible(
+                let eligible =
+                    app.mailbox.viewed_thread.as_ref().is_some_and(|thread| {
+                        key.matches_ids(&thread.id, Some(&thread.account_id))
+                    }) && crate::app::auto_summary_eligible(
                         &app.mailbox.viewed_thread_messages,
                         &app.mailbox.body_cache,
                     );
                 if eligible
-                    && !app.mailbox.thread_summary_in_flight.contains(&thread_id)
+                    && !app.mailbox.thread_summary_in_flight.contains(&key)
                     && !app
                         .pending_summary_requests
                         .iter()
-                        .any(|pending| pending == &thread_id)
+                        .any(|pending| pending == &key)
                 {
-                    let _ = app.queue_thread_summary(thread_id);
+                    let _ = app.queue_thread_summary(key);
                 }
             }
         }
 
-        if let Some(thread_id) = app.pending_summary_requests.pop_front() {
+        if let Some(key) = app.pending_summary_requests.pop_front() {
             let session = session.clone();
-            let captured_id = thread_id.clone();
+            let captured_id = key.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
                 let resp = tokio::time::timeout(
@@ -1174,7 +1172,8 @@ pub async fn run() -> anyhow::Result<()> {
                     ipc_call_dedicated(
                         &session,
                         Request::SummarizeThread {
-                            thread_id: thread_id.clone(),
+                            thread_id: key.thread_id.clone(),
+                            account_id: key.account_id.clone(),
                         },
                     ),
                 )
@@ -1194,7 +1193,7 @@ pub async fn run() -> anyhow::Result<()> {
                     ))),
                 };
                 let _ = result_tx.send(AsyncResult::ThreadSummaryLoaded {
-                    thread_id: captured_id,
+                    key: captured_id,
                     result,
                 });
             });
@@ -1230,14 +1229,15 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(thread_id) = app.pending_thread_context.take() {
+        if let Some(key) = app.pending_thread_context.take() {
             let session = session.clone();
             let result_tx = result_tx.clone();
             tokio::spawn(async move {
                 let resp = ipc_call_dedicated(
                     &session,
                     Request::GetThreadContext {
-                        thread_id: thread_id.clone(),
+                        thread_id: key.thread_id.clone(),
+                        account_id: key.account_id.clone(),
                     },
                 )
                 .await;
@@ -1251,13 +1251,13 @@ pub async fn run() -> anyhow::Result<()> {
                     )),
                     Err(e) => Err(e),
                 };
-                let _ = result_tx.send(AsyncResult::ThreadContextLoaded { thread_id, result });
+                let _ = result_tx.send(AsyncResult::ThreadContextLoaded { key, result });
             });
         }
 
-        if let Some((thread_id, deadline)) = app.pending_gist_debounce.as_ref() {
+        if let Some((key, deadline)) = app.pending_gist_debounce.as_ref() {
             if tokio::time::Instant::now() >= *deadline {
-                let thread_id = thread_id.clone();
+                let key = key.clone();
                 app.pending_gist_debounce = None;
                 let session = session.clone();
                 let result_tx = result_tx.clone();
@@ -1267,8 +1267,9 @@ pub async fn run() -> anyhow::Result<()> {
                         ipc_call_dedicated(
                             &session,
                             Request::GetThreadGist {
-                                thread_id: thread_id.clone(),
+                                thread_id: key.thread_id.clone(),
                                 refresh: false,
+                                account_id: key.account_id.clone(),
                             },
                         ),
                     )
@@ -1284,7 +1285,7 @@ pub async fn run() -> anyhow::Result<()> {
                         Ok(Err(e)) => Err(e),
                         Err(_) => Err(MxrError::Ipc("gist request timed out".into())),
                     };
-                    let _ = result_tx.send(AsyncResult::ThreadGistLoaded { thread_id, result });
+                    let _ = result_tx.send(AsyncResult::ThreadGistLoaded { key, result });
                 });
             }
         }
@@ -1294,7 +1295,7 @@ pub async fn run() -> anyhow::Result<()> {
         let now = std::time::Instant::now();
         if app.row_gists.due(now) {
             let candidates = app.row_gist_candidates();
-            if let Some(thread_ids) = app.row_gists.take_request(candidates, now) {
+            if let Some(keys) = app.row_gists.take_request(candidates, now) {
                 let epoch = app.row_gists.epoch();
                 let session = session.clone();
                 let result_tx = result_tx.clone();
@@ -1302,7 +1303,8 @@ pub async fn run() -> anyhow::Result<()> {
                     let resp = ipc_call_dedicated(
                         &session,
                         Request::GetThreadGists {
-                            thread_ids: thread_ids.clone(),
+                            thread_ids: keys.iter().map(|key| key.thread_id.clone()).collect(),
+                            thread_accounts: crate::app::thread_accounts(&keys),
                             generate: true,
                             automated: false,
                         },
@@ -1319,7 +1321,7 @@ pub async fn run() -> anyhow::Result<()> {
                         Err(e) => Err(e),
                     };
                     let _ = result_tx.send(AsyncResult::RowGistsLoaded {
-                        thread_ids,
+                        keys,
                         epoch,
                         result,
                     });
@@ -2140,9 +2142,10 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let request = match briefing_req {
-                    crate::app::BriefingRequest::Thread(thread_id) => Request::GetThreadBriefing {
-                        thread_id,
+                    crate::app::BriefingRequest::Thread(key) => Request::GetThreadBriefing {
+                        thread_id: key.thread_id,
                         refresh: false,
+                        account_id: key.account_id,
                     },
                     crate::app::BriefingRequest::Recipient { email } => {
                         // Account id resolved daemon-side; the briefing
@@ -2368,13 +2371,14 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(thread_id) = app.mailbox.messages_page.pending_ack_preview.take() {
+        if let Some(key) = app.mailbox.messages_page.pending_ack_preview.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::AckMessage {
-                        thread_id,
+                        thread_id: key.thread_id,
+                        account_id: key.account_id,
                         dry_run: true,
                         expect_text: None,
                         preview_token: None,
@@ -4069,11 +4073,11 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                             }
                         }
-                        AsyncResult::ThreadSummaryLoaded { thread_id, result } => {
-                            apply_thread_summary_loaded(&mut app, thread_id, result);
+                        AsyncResult::ThreadSummaryLoaded { key, result } => {
+                            apply_thread_summary_loaded(&mut app, key, result);
                         }
-                        AsyncResult::ThreadContextLoaded { thread_id, result } => {
-                            apply_thread_context_loaded(&mut app, &thread_id, result);
+                        AsyncResult::ThreadContextLoaded { key, result } => {
+                            apply_thread_context_loaded(&mut app, &key, result);
                         }
                         AsyncResult::PromisesDetected { message_id, result } => {
                             // A promise check never interrupts: failures are
@@ -4085,16 +4089,16 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                             }
                         }
-                        AsyncResult::ThreadGistLoaded { thread_id, result } => {
-                            apply_thread_gist_loaded(&mut app, &thread_id, result);
+                        AsyncResult::ThreadGistLoaded { key, result } => {
+                            apply_thread_gist_loaded(&mut app, &key, result);
                         }
                         AsyncResult::RowGistsLoaded {
-                            thread_ids,
+                            keys,
                             epoch,
                             result,
                         } => match result {
                             Ok(batch) => app.row_gists.apply_batch(
-                                &thread_ids,
+                                &keys,
                                 epoch,
                                 &batch,
                                 std::time::Instant::now(),
@@ -4103,7 +4107,7 @@ pub async fn run() -> anyhow::Result<()> {
                             // about again.
                             Err(error) => {
                                 tracing::debug!(%error, "row gists request failed");
-                                app.row_gists.request_failed(&thread_ids);
+                                app.row_gists.request_failed(&keys);
                             }
                         },
                         AsyncResult::RuleDetail {
@@ -4537,7 +4541,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.resolve_html_image_failure(&key, error.to_string());
                         }
                         AsyncResult::Thread {
-                            thread_id,
+                            key: _,
                             request_id,
                             result: Ok((thread, messages, summary)),
                         } => {
@@ -4546,10 +4550,9 @@ pub async fn run() -> anyhow::Result<()> {
                                 continue;
                             }
                             app.resolve_thread_success(thread, messages, summary);
-                            let _ = thread_id;
                         }
                         AsyncResult::Thread {
-                            thread_id,
+                            key,
                             request_id,
                             result: Err(e),
                         } => {
@@ -4557,7 +4560,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 tracing::trace!(request_id, current_id = app.mailbox.thread_request_id, "tui stale thread dropped");
                                 continue;
                             }
-                            app.resolve_thread_fetch_error(&thread_id);
+                            app.resolve_thread_fetch_error(&key);
                             app.status_message = Some(format!("Thread load failed: {e}"));
                         }
                         AsyncResult::MutationResult {
@@ -6199,14 +6202,17 @@ fn spawn_reading_fetches(
             AsyncResult::ReadingArticle(key, result)
         });
     }
-    if let Some(thread_ids) = app.mailbox.reading_page.pending_let_go_preview.take() {
+    if let Some(threads) = app.mailbox.reading_page.pending_let_go_preview.take() {
         let bg = bg.clone();
         let _ = submit_task(queued, async move {
             let resp = ipc_call(
                 &bg,
                 Request::SetModeDone {
-                    thread_ids: thread_ids.clone(),
-                    thread_accounts: Vec::new(),
+                    thread_ids: threads
+                        .iter()
+                        .map(|thread| thread.thread_id.clone())
+                        .collect(),
+                    thread_accounts: crate::app::thread_accounts(&threads),
                     mode: mxr_protocol::ModeKindData::Reading,
                     dry_run: true,
                     todo_ids: Vec::new(),
@@ -6222,7 +6228,7 @@ fn spawn_reading_fetches(
                 Err(e) => Err(e),
                 _ => Err(MxrError::Ipc("unexpected response to SetModeDone".into())),
             };
-            AsyncResult::ReadingLetGoPreview(thread_ids, result)
+            AsyncResult::ReadingLetGoPreview(threads, result)
         });
     }
     if let Some(target) = app.mailbox.reading_page.pending_unsubscribe_preview.take() {

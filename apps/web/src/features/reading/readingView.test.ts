@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { components } from "@/api/generated";
+import { conversationKey } from "@/features/mailbox/rowKey";
 
 import type { ReadingBand, ReadingEdition, ReadingItem, ReadingLink } from "./api";
 
@@ -114,6 +115,10 @@ describe("let go of all", () => {
     ];
     expect(letGoAllPlan(bands)).toEqual({
       threadIds: ["t1", "t3"],
+      threads: [
+        { thread_id: "t1", account_id: expect.any(String) },
+        { thread_id: "t3", account_id: expect.any(String) },
+      ],
       titles: ["Title e", "Title f"],
     });
   });
@@ -273,6 +278,30 @@ describe("marksForView", () => {
   test("drops the anchor from a Marginalia highlight, numbered in Marginalia's copy", () => {
     expect(marksForView([made("issue", "marginalia", 3)], "issue")).toEqual([
       { quote: "same words", paragraph: null },
+    ]);
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  const edition = {
+    bands: [
+      band("since_last_visit", [
+        item("e", "shared", { account_id: "A" }),
+        item("f", "shared", { account_id: "B" }),
+      ]),
+    ],
+  } as ReadingEdition;
+
+  test("letting go of A's item leaves B's in the band", () => {
+    const bands = visibleBands(edition, new Set([conversationKey("shared", "A")]));
+    expect(bands[0]!.items.map((entry) => entry.account_id)).toEqual(["B"]);
+  });
+
+  test("let go of all names both conversations", () => {
+    const plan = letGoAllPlan(edition.bands);
+    expect(plan.threads).toEqual([
+      { thread_id: "shared", account_id: "A" },
+      { thread_id: "shared", account_id: "B" },
     ]);
   });
 });

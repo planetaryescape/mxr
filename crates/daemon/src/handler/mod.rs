@@ -1353,9 +1353,11 @@ async fn dispatch(
             };
             diagnostics_impl::sync_all(state, allowed.as_deref()).await
         }
-        Request::ExportThread { thread_id, format } => {
-            runtime::export_thread(state, thread_id, format).await
-        }
+        Request::ExportThread {
+            thread_id,
+            format,
+            account_id,
+        } => runtime::export_thread(state, thread_id, account_id.as_ref(), format).await,
         Request::ExportSearch {
             query,
             account_id,
@@ -1549,11 +1551,13 @@ async fn dispatch(
         } => desk::get_desk(state, account_id.as_ref(), *lane_limit).await,
         Request::DismissDeskThreads {
             thread_ids,
+            thread_accounts,
             dry_run,
-        } => desk::dismiss_threads(state, thread_ids, *dry_run).await,
-        Request::RestoreDeskThreads { thread_ids } => {
-            desk::restore_threads(state, thread_ids).await
-        }
+        } => desk::dismiss_threads(state, thread_ids, thread_accounts, *dry_run).await,
+        Request::RestoreDeskThreads {
+            thread_ids,
+            thread_accounts,
+        } => desk::restore_threads(state, thread_ids, thread_accounts).await,
         Request::ResolveDeskItems { items, dry_run } => {
             desk_done::resolve_desk_items(state, items, *dry_run).await
         }
@@ -1634,23 +1638,39 @@ async fn dispatch(
             recipients,
             proposed_at,
         } => send_time_recommendation(state, account_id, recipients, *proposed_at).await,
-        Request::GetThreadBriefing { thread_id, refresh } => {
-            briefing::get_thread_briefing(state, thread_id, *refresh).await
-        }
-        Request::GetThreadContext { thread_id } => {
-            thread_context::get_thread_context(state, thread_id).await
-        }
-        Request::GetThreadPreviews { thread_ids } => {
-            thread_previews::get_thread_previews(state, thread_ids).await
-        }
-        Request::GetThreadGist { thread_id, refresh } => {
-            thread_gist::get_thread_gist(state, thread_id, *refresh).await
-        }
+        Request::GetThreadBriefing {
+            thread_id,
+            refresh,
+            account_id,
+        } => briefing::get_thread_briefing(state, thread_id, account_id.as_ref(), *refresh).await,
+        Request::GetThreadContext {
+            thread_id,
+            account_id,
+        } => thread_context::get_thread_context(state, thread_id, account_id.as_ref()).await,
+        Request::GetThreadPreviews {
+            thread_ids,
+            thread_accounts,
+        } => thread_previews::get_thread_previews(state, thread_ids, thread_accounts).await,
+        Request::GetThreadGist {
+            thread_id,
+            refresh,
+            account_id,
+        } => thread_gist::get_thread_gist(state, thread_id, account_id.as_ref(), *refresh).await,
         Request::GetThreadGists {
             thread_ids,
+            thread_accounts,
             generate,
             automated,
-        } => thread_gists::get_thread_gists(state, thread_ids, *generate, *automated).await,
+        } => {
+            thread_gists::get_thread_gists(
+                state,
+                thread_ids,
+                thread_accounts,
+                *generate,
+                *automated,
+            )
+            .await
+        }
         Request::DetectPromises {
             source,
             now,
@@ -1904,6 +1924,7 @@ async fn dispatch(
         }
         Request::AckMessage {
             thread_id,
+            account_id,
             dry_run,
             expect_text,
             preview_token,
@@ -1911,6 +1932,7 @@ async fn dispatch(
             messages_ack::ack(
                 state,
                 thread_id,
+                account_id.as_ref(),
                 *dry_run,
                 expect_text.as_deref(),
                 preview_token.as_deref(),
@@ -1935,8 +1957,16 @@ async fn dispatch(
             message_id,
             thread_id,
             thread_ids,
+            thread_accounts,
         } => {
-            modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
+            modes::get_membership(
+                state,
+                message_id.as_ref(),
+                thread_id.as_ref(),
+                thread_ids,
+                thread_accounts,
+            )
+            .await
         }
         // One boxed call for all of Reading: its arms inline make
         // `dispatch`'s poll frame big enough to overflow a debug build's
@@ -2110,9 +2140,10 @@ async fn dispatch(
             account_id,
             sender_email,
         } => screener::clear_decision(state, account_id, sender_email).await,
-        Request::SummarizeThread { thread_id } => {
-            summarize::summarize_thread(state, thread_id).await
-        }
+        Request::SummarizeThread {
+            thread_id,
+            account_id,
+        } => summarize::summarize_thread(state, thread_id, account_id.as_ref()).await,
         Request::TriageSearch {
             query,
             limit,
@@ -3483,17 +3514,29 @@ fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
 async fn build_export_thread(
     state: &AppState,
     thread_id: &mxr_core::ThreadId,
+    account_id: Option<&mxr_core::AccountId>,
 ) -> Result<ExportThread, String> {
-    let thread = state
-        .store
-        .get_thread(thread_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
+    let thread = match account_id {
+        Some(account_id) => state
+            .store
+            .hydrate_threads_in_accounts(
+                std::slice::from_ref(thread_id),
+                std::slice::from_ref(account_id),
+            )
+            .await
+            .map_err(|e| e.to_string())?
+            .pop(),
+        None => state
+            .store
+            .get_thread(thread_id)
+            .await
+            .map_err(|e| e.to_string())?,
+    }
+    .ok_or_else(|| format!("Thread not found: {thread_id}"))?;
 
     let envelopes = state
         .store
-        .get_thread_envelopes(thread_id)
+        .get_thread_envelopes_in(thread_id, account_id)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -4342,9 +4385,10 @@ fn string_match_to_query(field: &str, pattern: &StringMatch) -> Result<String, S
 async fn handle_export_thread(
     state: &AppState,
     thread_id: &mxr_core::ThreadId,
+    account_id: Option<&mxr_core::AccountId>,
     format: &ExportFormat,
 ) -> Response {
-    match build_export_thread(state, thread_id).await {
+    match build_export_thread(state, thread_id, account_id).await {
         Ok(export_thread) => {
             let reader_config = ReaderConfig::default();
             let content = mxr_export::export(&export_thread, format, &reader_config);
@@ -4390,16 +4434,18 @@ async fn handle_export_search(
         }
     };
 
-    // Collect unique thread IDs from search results
-    let thread_ids: Vec<mxr_core::ThreadId> = {
+    // Collect unique conversations from search results. A legacy thread id
+    // can be held by two accounts, so a hit exports its own account's copy.
+    let thread_ids: Vec<(mxr_core::ThreadId, Option<mxr_core::AccountId>)> = {
         let mut seen = std::collections::HashSet::new();
         search_results
             .results
             .iter()
             .filter_map(|r| {
                 let tid = mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
-                if seen.insert(tid.clone()) {
-                    Some(tid)
+                let account = r.account_id.parse::<mxr_core::AccountId>().ok();
+                if seen.insert((tid.clone(), account.clone())) {
+                    Some((tid, account))
                 } else {
                     None
                 }
@@ -4410,8 +4456,8 @@ async fn handle_export_search(
     let reader_config = ReaderConfig::default();
     let mut all_content = String::new();
 
-    for tid in &thread_ids {
-        match build_export_thread(state, tid).await {
+    for (tid, account) in &thread_ids {
+        match build_export_thread(state, tid, account.as_ref()).await {
             Ok(export_thread) => {
                 all_content.push_str(&mxr_export::export(&export_thread, format, &reader_config));
                 all_content.push('\n');

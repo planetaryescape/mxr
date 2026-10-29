@@ -195,6 +195,32 @@ macro_rules! endpoint {
     };
 }
 
+/// A route on one thread. A legacy thread id can be held by two accounts, so a
+/// list row passes its own account.
+macro_rules! thread_endpoint {
+    ($method:ident $name:ident $path:literal, $summary:literal) => {
+        #[utoipa::path(
+                            $method,
+                            path = $path,
+                            summary = $summary,
+                            params(
+                                ("thread_id" = String, Path, description = "Thread id"),
+                                (
+                                    "account_id" = Option<String>,
+                                    Query,
+                                    description = "The account the row belongs to. Needed only when two accounts hold the same thread id"
+                                )
+                            ),
+                            responses(
+                                (status = 200, description = "OK"),
+                                (status = 401, description = "Missing or invalid bridge token")
+                            )
+                        )]
+        #[allow(dead_code)]
+        fn $name() {}
+    };
+}
+
 /// The one route `router::app` serves outside the bearer-auth layer, so its
 /// operation overrides the document-level security requirement.
 #[utoipa::path(
@@ -226,8 +252,8 @@ endpoint!(post admin_shutdown "/api/v1/admin/shutdown", "Request daemon shutdown
 endpoint!(get mail_mailbox "/api/v1/mail/mailbox", "Mailbox view");
 endpoint!(get mail_search "/api/v1/mail/search", "Run a mail search");
 endpoint!(get mail_search_groups "/api/v1/mail/search/groups", "Group a mail search result set");
-endpoint!(get mail_thread "/api/v1/mail/threads/{thread_id}", "Read a thread");
-endpoint!(get mail_thread_export "/api/v1/mail/threads/{thread_id}/export", "Export a thread");
+thread_endpoint!(get mail_thread "/api/v1/mail/threads/{thread_id}", "Read a thread");
+thread_endpoint!(get mail_thread_export "/api/v1/mail/threads/{thread_id}/export", "Export a thread");
 endpoint!(get mail_drafts "/api/v1/mail/drafts", "List drafts");
 endpoint!(get mail_snoozed "/api/v1/mail/snoozed", "List snoozed messages");
 endpoint!(get mail_count "/api/v1/mail/count", "Count matching messages");
@@ -530,7 +556,7 @@ endpoint!(get screener_queue "/api/v1/mail/screener/queue", "List screener queue
 endpoint!(get screener_decisions_list "/api/v1/mail/screener/decisions", "List screener decisions");
 endpoint!(post screener_decisions_set "/api/v1/mail/screener/decisions", "Set screener decision");
 endpoint!(delete screener_decisions_clear "/api/v1/mail/screener/decisions", "Clear screener decision");
-endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
+thread_endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
 endpoint!(post mail_draft_compose "/api/v1/mail/drafts/compose", "Generate an LLM draft (new message or reply)");
 endpoint!(post mail_draft_refine "/api/v1/mail/drafts/refine", "Refine draft text with LLM");
 #[utoipa::path(
@@ -565,7 +591,7 @@ endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationsh
 endpoint!(post mail_relationship_rebuild "/api/v1/mail/relationship/rebuild", "Rebuild relationship analytics");
 endpoint!(get mail_commitments_list "/api/v1/mail/commitments", "List detected commitments");
 endpoint!(post mail_commitments_resolve "/api/v1/mail/commitments/{commitment_id}/resolve", "Resolve a commitment");
-endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", "Briefing for a dormant thread");
+thread_endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", "Briefing for a dormant thread");
 endpoint!(get mail_contacts_briefing "/api/v1/mail/contacts/briefing", "Recipient briefing for compose context");
 endpoint!(get mail_contacts_expert "/api/v1/mail/contacts/expert", "Find experts who answered similar questions");
 endpoint!(get mail_owed "/api/v1/mail/owed", "List threads that owe a reply");
@@ -605,6 +631,9 @@ fn mail_desk_done() {}
 #[allow(dead_code)]
 struct DeskLaterBody {
     thread_ids: Vec<String>,
+    /// The same conversations with the account each row belongs to; a pair
+    /// acts on that account only.
+    thread_accounts: Option<Vec<mxr_protocol::ThreadAccountRef>>,
     /// The instant the client previewed, as RFC3339. Never a phrase: resolve
     /// it with `/api/v1/mail/time/resolve` and send the chosen `at`.
     until: String,
@@ -694,8 +723,8 @@ fn compose_session_promises() {}
 )]
 #[allow(dead_code)]
 fn mail_commitments_record() {}
-endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
-endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
+thread_endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
+thread_endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
 
 /// Body of `POST /api/v1/mail/gists`.
 #[derive(utoipa::ToSchema)]
@@ -703,6 +732,8 @@ endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", 
 struct ThreadGistsBody {
     /// At most 100, in the order to write missing gists (visible rows first).
     thread_ids: Vec<String>,
+    /// The same conversations with the account each row belongs to.
+    thread_accounts: Option<Vec<mxr_protocol::ThreadAccountRef>>,
     /// Queue missing gists for people's conversations; each arrives as a
     /// `ThreadGistReady` event.
     generate: Option<bool>,
@@ -1082,6 +1113,7 @@ fn mail_freshness() {}
     summary = "Which modes hold one thread and why, named by the thread or one of its messages",
     params(
         ("thread_id" = Option<String>, Query, description = "The thread"),
+        ("account_id" = Option<String>, Query, description = "The account the row belongs to, for a thread id two accounts hold"),
         ("message_id" = Option<String>, Query, description = "Or one of its messages"),
     ),
     responses(

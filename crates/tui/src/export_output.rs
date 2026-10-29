@@ -58,8 +58,9 @@ pub fn default_export_path(thread_id: &ThreadId, format: &ExportFormat) -> Strin
 
 fn export_request(pending: &PendingExport) -> Request {
     Request::ExportThread {
-        thread_id: pending.thread_id.clone(),
+        thread_id: pending.thread.thread_id.clone(),
         format: pending.format.clone(),
+        account_id: pending.thread.account_id.clone(),
     }
 }
 
@@ -253,8 +254,9 @@ mod tests {
     fn every_format_is_sent_in_the_request() {
         let thread_id = ThreadId::new();
         for format in FORMAT_CHOICES {
+            let account_id = mxr_core::AccountId::new();
             let pending = PendingExport {
-                thread_id: thread_id.clone(),
+                thread: crate::app::ThreadKey::new(account_id.clone(), thread_id.clone()),
                 format: format.clone(),
                 destination: ExportDestination::Clipboard,
             };
@@ -262,8 +264,10 @@ mod tests {
                 Request::ExportThread {
                     thread_id: sent_id,
                     format: sent_format,
+                    account_id: sent_account,
                 } => {
                     assert_eq!(sent_id, thread_id);
+                    assert_eq!(sent_account, Some(account_id));
                     assert_eq!(sent_format, format);
                 }
                 other => panic!("unexpected request {other:?}"),

@@ -6,34 +6,39 @@
 
 use super::*;
 use crate::app::state::ReplyLaterPromptState;
-use mxr_core::id::ThreadId;
 use mxr_protocol::DeskLaneKind;
 
 impl App {
     /// The conversation `b` acts on: the desk row under the cursor, or the
     /// message in context elsewhere (a desk row's reader included).
-    pub(super) fn reply_later_target(&self) -> Option<(ThreadId, MessageId, bool)> {
+    pub(super) fn reply_later_target(&self) -> Option<(ThreadKey, MessageId, bool)> {
         let desk_row = (self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::Desk)
             .then(|| self.selected_desk_row())
             .flatten();
         if self.messages_list_focused() {
             let topic = self.selected_messages_topic()?;
-            return Some((topic.thread_id, topic.reply_to, false));
+            return Some((topic.key(), topic.reply_to, false));
         }
         if self.desk_list_focused() {
             let row = desk_row?;
             return Some((
-                row.thread_id.clone(),
+                ThreadKey::new(row.account_id.clone(), row.thread_id.clone()),
                 row.message_id.clone(),
                 row.lane == DeskLaneKind::Waiting,
             ));
         }
         let envelope = self.context_envelope()?;
         let waiting = desk_row.is_some_and(|row| {
-            row.thread_id == envelope.thread_id && row.lane == DeskLaneKind::Waiting
+            row.thread_id == envelope.thread_id
+                && row.account_id == envelope.account_id
+                && row.lane == DeskLaneKind::Waiting
         });
-        Some((envelope.thread_id.clone(), envelope.id.clone(), waiting))
+        Some((
+            ThreadKey::of_envelope(envelope),
+            envelope.id.clone(),
+            waiting,
+        ))
     }
 
     /// Keys while the prompt is open. Returns the action Enter confirms.
@@ -92,17 +97,17 @@ impl App {
                 return;
             }
         };
-        let Some(ReplyLaterPromptState { thread_id, .. }) = self.modals.reply_later_prompt.take()
+        let Some(ReplyLaterPromptState { thread, .. }) = self.modals.reply_later_prompt.take()
         else {
             return;
         };
         // Off the desk at once; the answer says what was set, and a failure
         // refetches the desk.
-        self.remove_desk_thread(&thread_id);
+        self.remove_desk_thread(&thread);
         self.queue_mutation(
             Request::DeferThreads {
-                thread_ids: vec![thread_id],
-                thread_accounts: Vec::new(),
+                thread_ids: vec![thread.thread_id.clone()],
+                thread_accounts: thread_accounts(std::slice::from_ref(&thread)),
                 until,
                 dry_run: false,
             },

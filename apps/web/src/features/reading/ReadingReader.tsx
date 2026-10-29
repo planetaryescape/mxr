@@ -292,7 +292,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
         }),
       }),
     letGo: () => {
-      void letGo([item.thread_id]);
+      void letGo([{ thread_id: item.thread_id, account_id: item.account_id }]);
       next();
     },
     makeTodo: () => {
@@ -309,7 +309,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     highlight,
     unsubscribe: () => setUnsubscribing(true),
     openEmail: () =>
-      void navigate({ to: "/reading/$threadId", params: { threadId: item.thread_id } }),
+      void navigate({
+        to: "/reading/$threadId",
+        params: { threadId: item.thread_id },
+        search: { account: item.account_id } as never,
+      }),
     marginalia: openMarginalia,
     back,
   });
@@ -374,7 +378,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               keys="e"
               icon={Check}
               onClick={() => {
-                void letGo([item.thread_id]);
+                void letGo([{ thread_id: item.thread_id, account_id: item.account_id }]);
                 next();
               }}
             />
@@ -458,6 +462,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
         {original && view === "issue" ? (
           <OriginalLayout
             threadId={item.thread_id}
+            accountId={item.account_id}
             messageId={item.message_id}
             sender={item.sender_email}
           />
@@ -817,17 +822,19 @@ function IssueLinks({ detail }: { detail: ReadingDetail }) {
 /** The sender's own layout: the email's HTML through the reader's sandboxed frame. */
 function OriginalLayout({
   threadId,
+  accountId,
   messageId,
   sender,
 }: {
   threadId: string;
+  accountId: string;
   messageId: string;
   sender: string;
 }) {
   const [remoteAllowed, setRemoteAllowed] = useState(false);
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId],
+    queryFn: () => fetchThread(threadId, accountId),
     staleTime: 60_000,
   });
   const body = thread.data?.bodies.find((candidate) => candidate.message_id === messageId);

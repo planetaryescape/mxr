@@ -147,6 +147,7 @@ async fn thread_owes(fx: &Fixture, thread: &ThreadId) -> bool {
     match request(
         fx,
         Request::GetThreadContext {
+            account_id: None,
             thread_id: thread.clone(),
         },
     )

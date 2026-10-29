@@ -176,6 +176,7 @@ async fn why(
                 message_id,
                 thread_id,
                 thread_ids: Vec::new(),
+                thread_accounts: Vec::new(),
             })
             .await?,
         |response| match response {

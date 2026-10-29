@@ -36,11 +36,12 @@ struct LlmCite {
 pub(crate) async fn get_thread_briefing(
     state: &AppState,
     thread_id: &ThreadId,
+    named_account: Option<&AccountId>,
     refresh: bool,
 ) -> super::HandlerResult {
     let envelopes = state
         .store
-        .get_thread_envelopes_for_model(thread_id)
+        .get_thread_envelopes_for_model_in(thread_id, named_account)
         .await?;
     if envelopes.is_empty() {
         return Err(format!("thread {thread_id} not found").into());
@@ -485,7 +486,9 @@ mod tests {
             .build();
         state.store.upsert_envelope(&env).await.unwrap();
 
-        get_thread_briefing(&state, &thread_id, true).await.unwrap();
+        get_thread_briefing(&state, &thread_id, None, true)
+            .await
+            .unwrap();
 
         let msgs = cap.msgs.lock().unwrap();
         assert!(

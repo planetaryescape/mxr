@@ -303,7 +303,7 @@ async fn build_safety_context(
     if let Some(thread_id) = context.thread_id.as_ref() {
         let envelopes = state
             .store
-            .get_thread_envelopes(thread_id)
+            .get_thread_envelopes_in(thread_id, Some(&draft.account_id))
             .await
             .map_err(|e| e.to_string())?;
         let mut seen = HashSet::new();
@@ -4664,11 +4664,13 @@ async fn ingest_sent_message(
         let summary_store = state.store.clone();
         let summary_llm = state.llm.clone();
         let summary_thread_id = thread_id.clone();
+        let summary_account = draft.account_id.clone();
         tokio::spawn(async move {
             if let Err(error) = crate::handler::summarize::summarize_thread_cached(
                 summary_store,
                 summary_llm,
                 &summary_thread_id,
+                Some(&summary_account),
             )
             .await
             {

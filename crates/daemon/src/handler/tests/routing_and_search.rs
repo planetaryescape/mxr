@@ -32,6 +32,7 @@ fn request_lane_routes_llm_and_network_requests_to_bulk() {
     // test instead of silently re-introducing head-of-line blocking
     // on fast user-initiated commands.
     let llm = Request::SummarizeThread {
+        account_id: None,
         thread_id: mxr_core::ThreadId::new(),
     };
     assert_eq!(request_lane(&llm), IpcLane::Bulk);

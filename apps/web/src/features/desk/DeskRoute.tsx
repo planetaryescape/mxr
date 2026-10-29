@@ -13,7 +13,7 @@ import { deskHeadline, LANE_TITLES } from "./deskCopy";
 import { deskDoneItem, markDeskDone, useDeskDone } from "./deskDone";
 import type { DeskRow as DeskRowData } from "./api";
 import { elsewhereLinks } from "./deskLinks";
-import { deskGroups, partialLane } from "./deskRows";
+import { deskGroups, deskRowOf, partialLane } from "./deskRows";
 import { DeskRow } from "./DeskRow";
 import { useGistModel } from "@/features/gists/rowGists";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
@@ -28,6 +28,7 @@ import { targetFromRows, type MailTarget } from "@/features/mail-actions/target"
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { dueDay, useNextPromise } from "@/features/promises/useNextPromise";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import type { MessageRowView } from "@/features/mailbox/types";
 import type { SwipeMap } from "@/features/swipe/swipeRules";
 import { movedOverlayKey } from "@/lib/actions/definition";
@@ -67,7 +68,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     [basePath, desk.data, hidden, ops, lane],
   );
   // "Also in To do: …" and a new sender's question on each row (Messages).
-  const memberships = useThreadModesMap(messages ? [...byThread.keys()] : []).data;
+  const memberships = useThreadModesMap(messages ? [...byThread.values()] : []).data;
   // Only the whole desk has a low tide; a lane's page is just a list.
   const hasWork = groups.some((group) => group.rows.length > 0);
   const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork, { daily: true });
@@ -92,13 +93,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
       if (viaMode.length > 0)
         void markModeDone(
           "messages",
-          viaMode.map((row) => row.thread_id),
-          {
-            accounts: viaMode.map((row) => ({
-              thread_id: row.thread_id,
-              account_id: row.account_id,
-            })),
-          },
+          viaMode.map((row) => ({ thread_id: row.thread_id, account_id: row.account_id })),
         );
     },
     [messages],
@@ -107,14 +102,26 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
   const interceptVerb = useCallback(
     (action: MailAction, target: MailTarget): InterceptedVerb => {
       if (action !== "archive" && action !== "read-and-archive") return { rest: target };
-      const threadIds = new Set(target.rows.map((row) => row.thread_id));
-      if (target.threadId) threadIds.add(target.threadId);
-      const onDesk = [...threadIds].flatMap((id) => {
-        const row = rowsByThread.current.get(id);
-        return row ? [row] : [];
-      });
+      // A thread id can be held by two accounts, so a conversation is its row key.
+      const conversations = target.rows.map((row) => ({
+        threadId: row.thread_id,
+        accountId: row.account_id,
+      }));
+      if (target.threadId) {
+        conversations.push({ threadId: target.threadId, accountId: target.accountId });
+      }
+      const onDesk = [
+        ...new Set(
+          conversations.flatMap(({ threadId, accountId }) => {
+            const row = deskRowOf(rowsByThread.current, threadId, accountId);
+            return row ? [row] : [];
+          }),
+        ),
+      ];
       if (onDesk.length === 0) return { rest: target };
-      const rest = target.rows.filter((row) => !rowsByThread.current.has(row.thread_id));
+      const rest = target.rows.filter(
+        (row) => !deskRowOf(rowsByThread.current, row.thread_id, row.account_id),
+      );
       return {
         rest: rest.length > 0 ? targetFromRows(rest, target.source) : null,
         commit: () => putAway(onDesk),
@@ -125,7 +132,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
 
   const doneRow = useCallback(
     (row: MessageRowView) => {
-      const source = rowsByThread.current.get(row.thread_id);
+      const source = deskRowOf(rowsByThread.current, row.thread_id, row.account_id);
       if (source) putAway([source]);
     },
     [putAway],
@@ -157,7 +164,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
           desk={source}
           onDone={doneRow}
           gistLine={gistLine}
-          modes={memberships?.get(source.thread_id)}
+          modes={memberships?.get(conversationKey(source.thread_id, source.account_id))}
           {...state}
         />
       ) : null;

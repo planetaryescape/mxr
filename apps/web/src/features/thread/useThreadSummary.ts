@@ -17,7 +17,7 @@ export function useThreadSummary(data: ThreadResponse) {
   );
 
   const summarize = useMutation({
-    mutationFn: () => summarizeThread(data.thread.id),
+    mutationFn: () => summarizeThread(data.thread.id, data.thread.account_id),
     onSuccess: (result) => {
       const next = normalizeThreadSummary(result);
       if (next) setSummary(next);

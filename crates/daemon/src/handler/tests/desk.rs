@@ -445,6 +445,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     let preview = request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: true,
         },
@@ -460,6 +461,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },
@@ -471,6 +473,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     let restored = request(
         &fx,
         Request::RestoreDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
         },
     )
@@ -483,6 +486,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },
@@ -511,6 +515,7 @@ async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },
@@ -605,6 +610,7 @@ async fn a_watched_contacts_thread_obeys_done_waiting_and_covers_the_thread() {
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },
@@ -656,6 +662,7 @@ async fn a_delayed_message_with_an_old_date_ends_done_waiting() {
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },

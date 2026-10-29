@@ -100,16 +100,16 @@ const ARCHIVE_LIST_SEARCH: readonly (keyof ArchiveSearch)[] = [
  * is a record (an order's three emails are one row), never an email.
  */
 export function ArchiveRoute() {
-  const ids = useRef<string[]>([]);
-  const threadIds = useCallback(() => ids.current, []);
+  const listed = useRef<{ thread_id: string; account_id: string }[]>([]);
+  const threads = useCallback(() => listed.current, []);
   return (
     <PlaceLayout
       basePath="/archive"
       label="Archive"
-      threadIds={threadIds}
+      threads={threads}
       keepSearch={ARCHIVE_LIST_SEARCH}
     >
-      <ArchiveView onThreads={(next) => (ids.current = next)} />
+      <ArchiveView onThreads={(next) => (listed.current = next)} />
     </PlaceLayout>
   );
 }
@@ -123,7 +123,11 @@ function useDebounced(value: string, ms: number): string {
   return debounced;
 }
 
-function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
+function ArchiveView({
+  onThreads,
+}: {
+  onThreads: (threads: { thread_id: string; account_id: string }[]) => void;
+}) {
   const account = useUiPrefs((s) => s.accountScope);
   // The filter, section and question live in the URL, so a copied link
   // reopens the same view.
@@ -166,7 +170,11 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const list = answerList(shownAnswer);
   const records = useMemo(() => list?.records ?? ledger.data?.records ?? [], [list, ledger.data]);
   useEffect(() => {
-    onThreads(records.map((record) => record.thread_id).filter((id): id is string => Boolean(id)));
+    onThreads(
+      records.flatMap((record) =>
+        record.thread_id ? [{ thread_id: record.thread_id, account_id: record.account_id }] : [],
+      ),
+    );
   }, [onThreads, records]);
 
   return (
@@ -397,7 +405,7 @@ function Ledger({
   const openEmail = useCallback(
     (record?: RecordData) => {
       dismissRecordHint();
-      if (record?.thread_id) nav?.open(record.thread_id);
+      if (record?.thread_id) nav?.open(record.thread_id, { accountId: record.account_id });
     },
     [dismissRecordHint, nav],
   );
@@ -410,7 +418,7 @@ function Ledger({
   );
   const openSubscriptionEmail = useCallback(
     (row?: RecordSubscription) => {
-      if (row?.thread_id) nav?.open(row.thread_id);
+      if (row?.thread_id) nav?.open(row.thread_id, { accountId: row.account_id });
     },
     [nav],
   );

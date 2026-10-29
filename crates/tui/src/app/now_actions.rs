@@ -5,7 +5,6 @@
 
 use super::*;
 use crate::app::state::NowRow;
-use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, NowData};
 
 /// The mode id `GetModeGuide` takes for Now.
@@ -20,17 +19,17 @@ enum NowTarget {
         message_id: MessageId,
     },
     Person {
-        thread_id: ThreadId,
+        thread: ThreadKey,
         message_id: MessageId,
     },
     Todo {
         todo_id: String,
-        thread_id: Option<ThreadId>,
+        thread: Option<ThreadKey>,
         message_id: Option<MessageId>,
     },
     Updates,
     Reading {
-        thread_id: ThreadId,
+        thread: ThreadKey,
         message_id: MessageId,
     },
 }
@@ -43,17 +42,21 @@ impl From<NowRow<'_>> for NowTarget {
                 message_id: question.message_id.clone(),
             },
             NowRow::Person(person) => Self::Person {
-                thread_id: person.row.thread_id.clone(),
+                thread: ThreadKey::new(person.row.account_id.clone(), person.row.thread_id.clone()),
                 message_id: person.row.message_id.clone(),
             },
             NowRow::Todo(todo) => Self::Todo {
                 todo_id: todo.todo.id.clone(),
-                thread_id: todo.todo.thread_id.clone(),
+                thread: todo
+                    .todo
+                    .thread_id
+                    .clone()
+                    .map(|thread_id| ThreadKey::new(todo.todo.account_id.clone(), thread_id)),
                 message_id: todo.todo.source_message_id.clone(),
             },
             NowRow::Updates(_) => Self::Updates,
             NowRow::Reading(pick) => Self::Reading {
-                thread_id: pick.thread_id.clone(),
+                thread: ThreadKey::new(pick.account_id.clone(), pick.thread_id.clone()),
                 message_id: pick.message_id.clone(),
             },
         }
@@ -217,21 +220,21 @@ impl App {
                     "Answer with m Messages, x To do, u Updates, r Reading or e Archive".into(),
                 );
             }
-            NowTarget::Person { thread_id, .. } => {
-                self.queue_mode_done(ModeKindData::Messages, thread_id);
+            NowTarget::Person { thread, .. } => {
+                self.queue_mode_done(ModeKindData::Messages, thread);
                 // After queueing, which sets its own progress line.
                 self.explain_done_here_once();
             }
-            NowTarget::Reading { thread_id, .. } => {
-                self.queue_mode_done(ModeKindData::Reading, thread_id);
+            NowTarget::Reading { thread, .. } => {
+                self.queue_mode_done(ModeKindData::Reading, thread);
             }
             // Only this to-do: another one on the same email stays open.
             NowTarget::Todo {
-                thread_id: Some(thread_id),
+                thread: Some(thread),
                 todo_id,
                 ..
             } => {
-                self.queue_done(ModeKindData::Todo, thread_id, vec![todo_id]);
+                self.queue_done(ModeKindData::Todo, thread, vec![todo_id]);
             }
             // A to-do you made with no email behind it: tick it off.
             NowTarget::Todo { todo_id, .. } => {
@@ -258,33 +261,29 @@ impl App {
 
     /// Done in `mode` for one thread, taking it off Now and the desk at
     /// once.
-    pub(crate) fn queue_mode_done(
-        &mut self,
-        mode: ModeKindData,
-        thread_id: ThreadId,
-    ) -> MutationId {
-        self.queue_done(mode, thread_id, Vec::new())
+    pub(crate) fn queue_mode_done(&mut self, mode: ModeKindData, thread: ThreadKey) -> MutationId {
+        self.queue_done(mode, thread, Vec::new())
     }
 
     /// `queue_mode_done`, naming the to-dos to tick off in To do.
     fn queue_done(
         &mut self,
         mode: ModeKindData,
-        thread_id: ThreadId,
+        thread: ThreadKey,
         todo_ids: Vec<String>,
     ) -> MutationId {
-        self.mailbox.now_page.remove_thread(&thread_id);
+        self.mailbox.now_page.remove_thread(&thread);
         if self.mailbox.mailbox_view == MailboxView::Now {
             self.mailbox.selected_index = self
                 .mailbox
                 .selected_index
                 .min(self.mailbox.now_page.row_count().saturating_sub(1));
         }
-        self.remove_desk_thread(&thread_id);
+        self.remove_desk_thread(&thread);
         self.queue_mutation(
             Request::SetModeDone {
-                thread_ids: vec![thread_id],
-                thread_accounts: Vec::new(),
+                thread_ids: vec![thread.thread_id.clone()],
+                thread_accounts: thread_accounts(std::slice::from_ref(&thread)),
                 mode,
                 dry_run: false,
                 todo_ids,

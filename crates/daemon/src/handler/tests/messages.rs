@@ -678,6 +678,7 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
     match request(
         &fx,
         Request::GetModeMembership {
+            thread_accounts: Vec::new(),
             message_id: None,
             thread_id: Some(copied.clone()),
             thread_ids: vec![],
@@ -1153,6 +1154,7 @@ async fn ack_at(
     crate::handler::messages_ack::ack_at(
         &fx.state,
         thread,
+        None,
         dry_run,
         proof.map(|p| p.0),
         proof.map(|p| p.1),

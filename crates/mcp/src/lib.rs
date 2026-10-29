@@ -1210,7 +1210,7 @@ impl MxrMcpServer {
     ) -> Result<McpJson<Value>, ErrorData> {
         self.daemon_json(Request::GetThread {
             thread_id: parse_id(&input.thread_id)?,
-            account_id: None,
+            account_id: input.account_id.as_deref().map(parse_id).transpose()?,
         })
         .await
     }
@@ -1224,9 +1224,11 @@ impl MxrMcpServer {
         Parameters(input): Parameters<ThreadContextInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
         let thread_id: ThreadId = parse_id(&input.thread_id)?;
+        let account_id = input.account_id.as_deref().map(parse_id).transpose()?;
         let context = self
             .daemon_json(Request::GetThreadContext {
                 thread_id: thread_id.clone(),
+                account_id: account_id.clone(),
             })
             .await?
             .0;
@@ -1234,6 +1236,7 @@ impl MxrMcpServer {
             self.daemon_json(Request::GetThreadGist {
                 thread_id,
                 refresh: false,
+                account_id,
             })
             .await?
             .0
@@ -1256,8 +1259,11 @@ impl MxrMcpServer {
             .iter()
             .map(|id| parse_id(id))
             .collect::<Result<Vec<ThreadId>, _>>()?;
-        self.daemon_json(Request::GetThreadPreviews { thread_ids })
-            .await
+        self.daemon_json(Request::GetThreadPreviews {
+            thread_ids,
+            thread_accounts: Vec::new(),
+        })
+        .await
     }
 
     #[tool(
@@ -1275,6 +1281,7 @@ impl MxrMcpServer {
             .collect::<Result<Vec<ThreadId>, _>>()?;
         self.daemon_json(Request::GetThreadGists {
             thread_ids,
+            thread_accounts: Vec::new(),
             generate: input.generate.unwrap_or(false),
             automated: input.automated.unwrap_or(false),
         })
@@ -2140,6 +2147,7 @@ impl MxrMcpServer {
         }
         self.daemon_json(Request::AckMessage {
             thread_id,
+            account_id: input.account_id.as_deref().map(parse_id).transpose()?,
             dry_run: !confirmed,
             expect_text: input.expect_text,
             preview_token: input.preview_token,
@@ -2472,11 +2480,19 @@ pub struct WhyInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadThreadInput {
     pub thread_id: String,
+    /// The account the conversation is in. Needed only when two accounts
+    /// hold the same thread id; list rows carry it.
+    #[serde(default)]
+    pub account_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ThreadContextInput {
     pub thread_id: String,
+    /// The account the conversation is in. Needed only when two accounts
+    /// hold the same thread id; list rows carry it.
+    #[serde(default)]
+    pub account_id: Option<String>,
     /// Also ask the configured model for the gist and the ask (cached per
     /// newest message). Off by default: the facts need no model.
     #[serde(default)]
@@ -2780,6 +2796,10 @@ pub struct PersonInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GotItInput {
     pub thread_id: String,
+    /// The account the conversation is in. Needed only when two accounts
+    /// hold the same thread id; list rows carry it.
+    #[serde(default)]
+    pub account_id: Option<String>,
     /// Send. Without it, only the preview is returned.
     #[serde(default)]
     pub confirm: Option<bool>,
@@ -3622,7 +3642,7 @@ mod tests {
         let requests = requester.requests.lock().expect("requests lock");
         assert!(matches!(
             &requests[0],
-            Request::GetThreadPreviews { thread_ids } if *thread_ids == vec![first.clone(), second.clone()]
+            Request::GetThreadPreviews { thread_ids, .. } if *thread_ids == vec![first.clone(), second.clone()]
         ));
         assert_eq!(value["kind"], "ThreadPreviews");
         let preview = &value["previews"][0];
@@ -3783,6 +3803,7 @@ mod tests {
         server
             .got_it(Parameters(GotItInput {
                 thread_id: thread.as_str(),
+                account_id: None,
                 confirm: None,
                 expect_text: None,
                 preview_token: None,
@@ -3792,6 +3813,7 @@ mod tests {
         let blocked = server
             .got_it(Parameters(GotItInput {
                 thread_id: thread.as_str(),
+                account_id: None,
                 confirm: Some(true),
                 expect_text: None,
                 preview_token: None,

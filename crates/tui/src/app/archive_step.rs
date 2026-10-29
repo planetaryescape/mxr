@@ -22,11 +22,11 @@ fn same_messages(left: &[MessageId], right: &[MessageId]) -> bool {
 
 impl App {
     pub(super) fn archive_and_step(&mut self, forward: bool) {
-        let Some(thread_id) = self
+        let Some(thread) = self
             .mailbox
             .viewing_envelope
             .as_ref()
-            .map(|env| env.thread_id.clone())
+            .map(ThreadKey::of_envelope)
         else {
             return;
         };
@@ -50,7 +50,7 @@ impl App {
 
         let mut step = ArchiveStep {
             message_ids,
-            thread_id,
+            thread,
             forward,
             neighbour,
             mutation: None,
@@ -98,7 +98,7 @@ impl App {
             .mailbox
             .viewing_envelope
             .as_ref()
-            .is_some_and(|env| env.thread_id == step.thread_id);
+            .is_some_and(|env| step.thread.matches_envelope(env));
         Some((step, reader_on_it))
     }
 

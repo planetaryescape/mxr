@@ -780,6 +780,7 @@ mod routing_and_search;
 mod search_fallback;
 mod send_outcomes;
 mod sent_assessments;
+mod shared_thread_id;
 mod stars;
 mod system_mailboxes;
 mod thread_gists;

@@ -462,6 +462,7 @@ async fn export_thread(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
+    Query(scope): Query<ThreadScopeQuery>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
@@ -470,6 +471,11 @@ async fn export_thread(
         Request::ExportThread {
             thread_id: parse_thread_id(&thread_id)?,
             format: mxr_core::types::ExportFormat::Markdown,
+            account_id: scope
+                .account_id
+                .as_deref()
+                .map(parse_account_id)
+                .transpose()?,
         },
     )
     .await?

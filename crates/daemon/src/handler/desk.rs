@@ -869,11 +869,15 @@ async fn count_pending_invites(
 pub(super) async fn dismiss_threads(
     state: &AppState,
     thread_ids: &[mxr_core::id::ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
     dry_run: bool,
 ) -> HandlerResult {
+    // A pair dismisses that account's copy only; a bare id, every account
+    // holding it, as before clients sent pairs.
+    let targets = super::modes::request_thread_targets(thread_ids, thread_accounts);
     let threads = state
         .store
-        .dismiss_desk_threads(thread_ids, dry_run)
+        .dismiss_desk_threads(&targets, dry_run)
         .await?
         .into_iter()
         .map(|(account_id, thread_id)| mxr_protocol::DeskThreadRefData {
@@ -887,10 +891,12 @@ pub(super) async fn dismiss_threads(
 pub(super) async fn restore_threads(
     state: &AppState,
     thread_ids: &[mxr_core::id::ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
 ) -> HandlerResult {
+    let targets = super::modes::request_thread_targets(thread_ids, thread_accounts);
     // The desk reads done-in-Messages marks as dismissals too, so restoring
     // clears both, or a thread done in Messages would stay hidden.
-    let restored = state.store.restore_desk_threads(thread_ids).await?
-        + state.store.clear_mode_done(thread_ids, "messages").await?;
+    let restored = state.store.restore_desk_threads(&targets).await?
+        + state.store.clear_mode_done(&targets, "messages").await?;
     Ok(ResponseData::DeskThreadsRestored { restored })
 }

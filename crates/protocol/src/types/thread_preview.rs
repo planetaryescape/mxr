@@ -45,13 +45,14 @@ mod tests {
         let thread = ThreadId::new();
         let request = crate::Request::GetThreadPreviews {
             thread_ids: vec![thread.clone()],
+            thread_accounts: Vec::new(),
         };
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["cmd"], "GetThreadPreviews");
         let back: crate::Request = serde_json::from_value(json).unwrap();
         assert!(matches!(
             back,
-            crate::Request::GetThreadPreviews { thread_ids } if thread_ids == vec![thread.clone()]
+            crate::Request::GetThreadPreviews { thread_ids, .. } if thread_ids == vec![thread.clone()]
         ));
 
         let preview = ThreadPreviewData {
@@ -77,5 +78,54 @@ mod tests {
             back,
             crate::ResponseData::ThreadPreviews { previews } if previews == vec![preview]
         ));
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "tests unwrap fixtures to keep failures direct"
+)]
+mod account_fields {
+    use crate::Request;
+    use mxr_core::id::{AccountId, ThreadId};
+
+    /// The account fields are additive: a client that never sends them is
+    /// read as before, and one that does gets them back.
+    #[test]
+    fn requests_without_account_fields_still_decode_and_pairs_round_trip() {
+        let thread = ThreadId::new();
+        let old = serde_json::json!({ "cmd": "GetThreadPreviews", "thread_ids": [thread] });
+        let Request::GetThreadPreviews {
+            thread_accounts, ..
+        } = serde_json::from_value(old).unwrap()
+        else {
+            std::panic::resume_unwind(Box::new("wrong variant"))
+        };
+        assert!(thread_accounts.is_empty());
+
+        let account = AccountId::new();
+        let request = Request::DismissDeskThreads {
+            thread_ids: vec![],
+            thread_accounts: vec![crate::ThreadAccountRef {
+                thread_id: thread.clone(),
+                account_id: account.clone(),
+            }],
+            dry_run: true,
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json["thread_accounts"][0]["account_id"],
+            account.to_string()
+        );
+        let back = serde_json::from_value::<Request>(json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(back).unwrap(), json);
+
+        let bare = serde_json::to_value(Request::SummarizeThread {
+            thread_id: thread,
+            account_id: None,
+        })
+        .unwrap();
+        assert!(bare.get("account_id").is_none(), "absent when unset");
     }
 }

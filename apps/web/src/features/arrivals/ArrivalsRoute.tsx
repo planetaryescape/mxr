@@ -89,7 +89,7 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
     up: () => setCursor(Math.max(0, at - 1)),
     open: () => {
       const item = items[at];
-      if (item) void navigate({ to: threadPath(item) });
+      if (item) void navigate(threadTarget(item));
     },
     ...moveCommands(() => {
       const item = items[at];
@@ -113,7 +113,7 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
               index === at && "bg-accent/40",
             )}
           >
-            <Link to={threadPath(item)} className="min-w-0">
+            <Link {...threadTarget(item)} className="min-w-0">
               <span className={cn("block truncate text-sm", item.unread && "font-semibold")}>
                 {item.sender_name || item.sender_email}
               </span>
@@ -146,9 +146,13 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
   );
 }
 
-function threadPath(item: ArrivalItem): string {
-  // All mail holds an arrival wherever it went since.
-  return `/m/archive/${encodeURIComponent(item.thread_id)}`;
+function threadTarget(item: ArrivalItem) {
+  // All mail holds an arrival wherever it went since. The account tells apart
+  // two accounts that hold the same thread id.
+  return {
+    to: `/m/archive/${encodeURIComponent(item.thread_id)}`,
+    search: { account: item.account_id },
+  } as { to: string };
 }
 
 function subjectOf(item: ArrivalItem) {

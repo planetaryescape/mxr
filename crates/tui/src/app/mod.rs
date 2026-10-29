@@ -67,6 +67,7 @@ mod semantic_actions;
 mod sidebar_helpers;
 mod snoozed_actions;
 mod state;
+mod thread_key;
 mod todo_actions;
 mod updates_actions;
 mod visual_count;
@@ -107,9 +108,10 @@ pub use promises::PromisePrompt;
 pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 pub(crate) use reading_actions::READING_MODE;
 pub(crate) use records_actions::ARCHIVE_MODE;
-pub use row_gists::{RowGist, RowGistState, RowGists};
+pub use row_gists::{gist_for, RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;
+pub(crate) use thread_key::{thread_accounts, ThreadKey};
 pub(crate) use todo_actions::TODO_MODE;
 pub(crate) use updates_actions::{TUNE_CHOICES, UPDATES_MODE};
 
@@ -185,7 +187,7 @@ pub enum MutationEffect {
     /// An undone Done in Focus & reply: the conversation is back in
     /// front of the queue.
     FocusRestore {
-        thread_id: mxr_core::ThreadId,
+        thread: ThreadKey,
     },
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
@@ -204,7 +206,7 @@ pub enum MutationEffect {
 /// Slice 5.1/5.2 (C2.6): which briefing the runtime should fetch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BriefingRequest {
-    Thread(mxr_core::ThreadId),
+    Thread(ThreadKey),
     Recipient { email: String },
 }
 
@@ -472,7 +474,7 @@ pub struct App {
     /// Set when the user opens a delivery's source thread (`o`/Enter on the
     /// Deliveries screen). The runtime fetches the thread by id and opens it
     /// in the mailbox message view.
-    pub pending_delivery_open: Option<mxr_core::ThreadId>,
+    pub pending_delivery_open: Option<ThreadKey>,
     /// Set when a link in the assistant's reply names an email. The
     /// runtime fetches the thread and opens its latest message.
     pub pending_assistant_thread_open: Option<mxr_core::ThreadId>,
@@ -487,7 +489,7 @@ pub struct App {
     pub pending_sender_profile_request: Option<(mxr_core::AccountId, String)>,
     /// Pending thread-summary requests. Drained by the runtime into
     /// `Request::SummarizeThread` calls.
-    pub pending_summary_requests: VecDeque<mxr_core::ThreadId>,
+    pub pending_summary_requests: VecDeque<ThreadKey>,
     /// Trailing-edge debounce for the lazy on-thread-open summary fire.
     /// Scrolling through the mail list opens a thread per row, which
     /// would otherwise fire an LLM request for every keypress. We park
@@ -495,13 +497,13 @@ pub struct App {
     /// without being replaced does it move to `pending_summary_requests`
     /// and actually go to the daemon. In-flight requests already fired
     /// are not cancelled — they complete and the daemon caches them.
-    pub pending_summary_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
+    pub pending_summary_debounce: Option<(ThreadKey, tokio::time::Instant)>,
     /// Thread whose context facts (`GetThreadContext`) the runtime should
     /// fetch; set when a thread resolves.
-    pub pending_thread_context: Option<mxr_core::ThreadId>,
+    pub pending_thread_context: Option<ThreadKey>,
     /// Debounced gist fetch (`GetThreadGist`), like the summary: only the
     /// thread the user lands on goes to the model.
-    pub pending_gist_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
+    pub pending_gist_debounce: Option<(ThreadKey, tokio::time::Instant)>,
     /// List-row gists (`GetThreadGists`) for the desk and triage lists.
     pub row_gists: RowGistState,
     /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the

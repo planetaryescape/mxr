@@ -47,7 +47,7 @@ impl GistStyle {
 pub(super) async fn thread_kinds(
     state: &AppState,
     threads: &[(&ThreadId, &[Envelope])],
-) -> Result<HashMap<ThreadId, SenderKind>, HandlerError> {
+) -> Result<HashMap<(AccountId, ThreadId), SenderKind>, HandlerError> {
     let mut by_account: HashMap<&AccountId, Vec<(&ThreadId, &[Envelope])>> = HashMap::new();
     for (thread_id, envelopes) in threads {
         if let Some(newest) = envelopes.last() {
@@ -75,11 +75,17 @@ pub(super) async fn thread_kinds(
                 .rev()
                 .find(|envelope| !kinds.is_self(&envelope.from.email));
             let Some(theirs) = theirs else {
-                out.insert((*thread_id).clone(), SenderKind::Person);
+                out.insert(
+                    (account_id.clone(), (*thread_id).clone()),
+                    SenderKind::Person,
+                );
                 continue;
             };
             if let Some(message) = messages.get(&theirs.id) {
-                out.insert((*thread_id).clone(), kinds.classification(message).kind);
+                out.insert(
+                    (account_id.clone(), (*thread_id).clone()),
+                    kinds.classification(message).kind,
+                );
             }
         }
     }
@@ -94,8 +100,11 @@ pub(super) async fn style_of(
     envelopes: &[Envelope],
 ) -> Result<GistStyle, HandlerError> {
     let kinds = thread_kinds(state, &[(thread_id, envelopes)]).await?;
+    let Some(newest) = envelopes.last() else {
+        return Ok(GistStyle::Conversation);
+    };
     Ok(kinds
-        .get(thread_id)
+        .get(&(newest.account_id.clone(), thread_id.clone()))
         .copied()
         .map_or(GistStyle::Conversation, GistStyle::of))
 }

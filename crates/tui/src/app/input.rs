@@ -2068,7 +2068,8 @@ impl App {
             (KeyCode::Char('o') | KeyCode::Enter | KeyCode::Right, _) => {
                 if let Some(row) = self.deliveries.selected_row() {
                     if let Some(thread_id) = row.thread_id.clone() {
-                        self.pending_delivery_open = Some(thread_id);
+                        self.pending_delivery_open =
+                            Some(ThreadKey::new(row.account_id.clone(), thread_id));
                         self.mailbox.message_scroll_offset = 0;
                         self.status_message = Some("Opening source email…".into());
                     } else {

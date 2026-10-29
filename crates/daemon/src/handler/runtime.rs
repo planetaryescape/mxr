@@ -53,9 +53,10 @@ pub(super) async fn sync_now(
 pub(super) async fn export_thread(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
     format: &ExportFormat,
 ) -> HandlerResult {
-    diagnostics_impl::export_thread(state, thread_id, format).await
+    diagnostics_impl::export_thread(state, thread_id, account_id, format).await
 }
 
 pub(super) async fn export_search(

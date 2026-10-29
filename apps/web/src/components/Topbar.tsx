@@ -14,6 +14,7 @@ import { fetchThread } from "@/features/mailbox/api";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { definedShortcut } from "@/lib/actions/definition";
 import { formatChord } from "@/lib/keys/chord";
+import { useRouteAccount } from "@/hooks/useAdvanceOnRemoval";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 import { usePageTitleStore } from "@/state/pageTitleStore";
@@ -88,10 +89,12 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     .filter(Boolean)
     .map((part) => decodeURIComponent(part));
   const openThreadId = threadIdInPath(parts);
+  // A thread id can be held by two accounts: the row put its account in the URL.
+  const routeAccount = useRouteAccount();
   // Passive observer: the reader fetches; the crumb updates when it lands.
   const thread = useQuery({
-    queryKey: ["thread", openThreadId ?? ""],
-    queryFn: () => fetchThread(openThreadId ?? ""),
+    queryKey: ["thread", openThreadId ?? "", routeAccount],
+    queryFn: () => fetchThread(openThreadId ?? "", routeAccount),
     enabled: false,
   });
   if (unmatched) return [{ label: "Not found" }];

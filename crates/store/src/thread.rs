@@ -3,7 +3,9 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
-use crate::message::{envelope_record, future_date_cutoff_timestamp, record_to_envelope};
+use crate::message::{
+    envelope_record, future_date_cutoff_timestamp, record_to_envelope, sqlite_row_to_envelope,
+};
 
 impl super::Store {
     pub async fn get_thread(&self, thread_id: &ThreadId) -> Result<Option<Thread>, sqlx::Error> {
@@ -293,7 +295,17 @@ impl super::Store {
         &self,
         thread_id: &ThreadId,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
-        let envelopes = self.get_thread_envelopes(thread_id).await?;
+        self.get_thread_envelopes_for_model_in(thread_id, None)
+            .await
+    }
+
+    /// `get_thread_envelopes_for_model`, in one account when a row names it.
+    pub async fn get_thread_envelopes_for_model_in(
+        &self,
+        thread_id: &ThreadId,
+        account_id: Option<&AccountId>,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let envelopes = self.get_thread_envelopes_in(thread_id, account_id).await?;
         if envelopes.iter().all(Envelope::is_trash_or_spam) {
             return Ok(envelopes);
         }
@@ -301,6 +313,59 @@ impl super::Store {
             .into_iter()
             .filter(|envelope| !envelope.is_trash_or_spam())
             .collect())
+    }
+
+    /// The thread's messages, in one account when a row names it. Without an
+    /// account, a legacy thread id held by two accounts reads both.
+    pub async fn get_thread_envelopes_in(
+        &self,
+        thread_id: &ThreadId,
+        account_id: Option<&AccountId>,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        match account_id {
+            Some(account_id) => {
+                self.get_account_thread_envelopes(account_id, thread_id)
+                    .await
+            }
+            None => self.get_thread_envelopes(thread_id).await,
+        }
+    }
+
+    /// The thread's messages in one account, oldest first, as
+    /// `get_thread_envelopes` returns them.
+    pub async fn get_account_thread_envelopes(
+        &self,
+        account_id: &AccountId,
+        thread_id: &ThreadId,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        let rows = sqlx::query(
+            "SELECT
+                id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
+                reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
+                subject, date, flags, snippet, has_attachments, size_bytes,
+                unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') AS label_provider_ids
+             FROM messages
+             WHERE account_id = ?1 AND thread_id = ?2
+             ORDER BY CASE WHEN date > ?3 THEN 0 ELSE date END ASC, id ASC",
+        )
+        .bind(account_id.as_str())
+        .bind(thread_id.as_str())
+        .bind(future_date_cutoff_timestamp())
+        .fetch_all(self.reader())
+        .await?;
+        trace_query(
+            "thread.get_account_thread_envelopes",
+            started_at,
+            rows.len(),
+        );
+        rows.iter().map(sqlite_row_to_envelope).collect()
     }
 
     pub async fn get_thread_envelopes(

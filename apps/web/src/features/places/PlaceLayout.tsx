@@ -5,7 +5,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { FramePanesContext, READER_TOOLBAR_HEIGHT } from "@/components/PageFrame";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
-import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
+import { conversationKey, selectedKey, type ThreadRef } from "@/features/mailbox/rowKey";
+import {
+  useAdvanceOnRemoval,
+  useRouteAccount,
+  useRouteStillShows,
+} from "@/hooks/useAdvanceOnRemoval";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { pickSearch } from "@/hooks/useSearchParam";
 import { useSplitPane } from "@/hooks/useSplitPane";
@@ -27,21 +32,22 @@ const NO_KEYS: readonly string[] = [];
 export function PlaceLayout({
   basePath,
   label,
-  threadIds,
+  threads,
   wideReader = false,
   keepSearch = NO_KEYS,
   children,
 }: {
   basePath: "/reading" | "/updates" | "/todo" | "/archive";
   label: string;
-  /** Conversations in the order the place shows them. */
-  threadIds: () => string[];
+  /** Conversations in the order the place shows them, each with its account when it has one. */
+  threads: () => ThreadRef[];
   wideReader?: boolean;
   keepSearch?: readonly string[];
   children: ReactNode;
 }) {
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { threadId?: string };
+  const routeAccount = useRouteAccount();
   const threadOpen = Boolean(params.threadId);
   const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
   const readerLayout = useUiPrefs((s) => s.readerLayout);
@@ -57,12 +63,21 @@ export function PlaceLayout({
     if (!threadOpen && useMailboxPane.getState().activePane === "reader") setActivePane("mailbox");
   }, [setActivePane, threadOpen]);
 
+  const refsRef = useRef<ThreadRef[]>([]);
   const open = useCallback(
-    (threadId: string, options?: { focusReader?: boolean }) => {
+    (threadId: string, options?: { focusReader?: boolean; accountId?: string | null }) => {
       setActivePane(options?.focusReader === false ? "mailbox" : "reader");
+      // A caller that names no account gets the first listed row's with that id.
+      const accountId =
+        options?.accountId ??
+        refsRef.current.find((ref) => ref.thread_id === threadId)?.account_id ??
+        null;
       void navigate({
         to: `${basePath}/${encodeURIComponent(threadId)}`,
-        search: (prev: Record<string, unknown>) => pickSearch(prev, keepSearch),
+        search: (prev: Record<string, unknown>) => ({
+          ...pickSearch(prev, keepSearch),
+          ...(accountId ? { account: accountId } : {}),
+        }),
       } as never);
     },
     [basePath, keepSearch, navigate, setActivePane],
@@ -95,25 +110,52 @@ export function PlaceLayout({
 
   // The open conversation left the place (done from the list, sync): open
   // its neighbour, keeping the keys where they were.
-  const ids = useMemo(() => threadIds(), [threadIds]);
-  const idsRef = useRef(ids);
-  idsRef.current = ids;
-  const isListed = useCallback((id: string) => idsRef.current.includes(id), []);
+  // A conversation is its thread within its account: two accounts can hold one thread id.
+  const refs = useMemo(() => threads(), [threads]);
+  refsRef.current = refs;
+  const keys = useMemo(
+    () => [...new Set(refs.map((ref) => conversationKey(ref.thread_id, ref.account_id)))],
+    [refs],
+  );
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
+  // Rows that left the place are gone from `refs`; their refs are still needed to read their key back.
+  const knownRefs = useRef(new Map<string, ThreadRef>());
+  for (const ref of refs)
+    knownRefs.current.set(conversationKey(ref.thread_id, ref.account_id), ref);
+  const refOf = (key: string): ThreadRef => knownRefs.current.get(key) ?? { thread_id: key };
+  const isListed = useCallback(
+    (id: string, accountId?: string | null) =>
+      keysRef.current.includes(conversationKey(id, accountId)),
+    [],
+  );
   const stillShows = useRouteStillShows();
-  const expectRemoval = useAdvanceOnRemoval({
-    ids,
-    selectedId: params.threadId ?? null,
+  const advance = useAdvanceOnRemoval({
+    ids: keys,
+    selectedId: params.threadId ? selectedKey(refs, params.threadId, routeAccount) : null,
     onAdvance: (next, from) => {
-      if (from !== null && !stillShows(from)) return;
-      open(next, { focusReader: useMailboxPane.getState().activePane === "reader" });
+      if (from !== null) {
+        const gone = refOf(from);
+        if (!stillShows(gone.thread_id, gone.account_id)) return;
+      }
+      const to = refOf(next);
+      open(to.thread_id, {
+        focusReader: useMailboxPane.getState().activePane === "reader",
+        accountId: to.account_id,
+      });
     },
     onEmpty: (removed) => {
-      if (stillShows(removed)) close();
+      const gone = refOf(removed);
+      if (stillShows(gone.thread_id, gone.account_id)) close();
     },
   });
+  const expectRemoval = useCallback<NonNullable<ReaderNav["expectRemoval"]>>(
+    (id, direction, accountId) => advance(conversationKey(id, accountId), direction),
+    [advance],
+  );
   const nav = useMemo<ReaderNav>(
-    () => ({ threadIds, open, close, expectRemoval, isListed }),
-    [close, expectRemoval, isListed, open, threadIds],
+    () => ({ threads, open, close, expectRemoval, isListed }),
+    [close, expectRemoval, isListed, open, threads],
   );
 
   return (

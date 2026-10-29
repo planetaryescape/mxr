@@ -81,7 +81,7 @@ async fn replay(
     };
     let envelopes: Vec<_> = match state
         .store
-        .get_thread_envelopes_for_model(&sample.thread_id)
+        .get_thread_envelopes_for_model_in(&sample.thread_id, Some(account_id))
         .await
     {
         Ok(envelopes) => envelopes

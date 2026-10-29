@@ -8,6 +8,7 @@
 import { toast } from "sonner";
 
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
+import type { ThreadRef } from "@/features/mailbox/rowKey";
 import { markModeDone } from "@/features/modes/modeDone";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -138,8 +139,8 @@ export async function answerLater(itemKey: string, keep: boolean): Promise<void>
 }
 
 /** `e`: let go of the issue in Reading (its links on Later stay). */
-export async function letGo(threadIds: readonly string[]): Promise<boolean> {
-  const done = await markModeDone("reading", threadIds, { onUndone: () => void refreshReading() });
+export async function letGo(threads: readonly (string | ThreadRef)[]): Promise<boolean> {
+  const done = await markModeDone("reading", threads, { onUndone: () => void refreshReading() });
   await refreshReading();
   return done;
 }

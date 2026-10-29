@@ -12,12 +12,13 @@ import type { ThreadResponse } from "@/features/mailbox/types";
 import type { ThreadModes } from "@/features/modes/membership";
 
 const mailbox = vi.hoisted(() => ({
-  fetchThread: vi.fn<(id: string) => Promise<ThreadResponse>>(),
+  fetchThread: vi.fn<(id: string, accountId?: string | null) => Promise<ThreadResponse>>(),
 }));
 const membership = vi.hoisted(() => ({
-  fetch: vi.fn<() => Promise<{ threads: ThreadModes[] }>>(),
+  fetch: vi.fn<(path?: string) => Promise<{ threads: ThreadModes[] }>>(),
 }));
 const context = vi.hoisted(() => ({ fetch: vi.fn<() => Promise<null>>() }));
+const route = vi.hoisted(() => ({ search: {} as Record<string, unknown> }));
 
 vi.mock("./ThreadReader", () => ({ ThreadReader: () => <article>Ready to read</article> }));
 vi.mock("@/api/client", async (original) => ({
@@ -30,7 +31,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/m/inbox">{children}</a>,
   // The reader reads its account from the URL; these tests mount it without a router.
   useSearch: ({ select }: { select?: (search: Record<string, unknown>) => unknown } = {}) =>
-    select ? select({}) : {},
+    select ? select(route.search) : route.search,
 }));
 
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({
@@ -53,6 +54,38 @@ vi.mock("@/features/llm/useLlmStatus", () => ({
 }));
 
 describe("ThreadPane", () => {
+  test("opening a row of a thread id held by two accounts fetches that account's copy", async () => {
+    route.search = { account: "B" };
+    mailbox.fetchThread.mockClear();
+    membership.fetch.mockClear();
+    mailbox.fetchThread.mockResolvedValue({
+      thread: {
+        id: "shared",
+        account_id: "B",
+        latest_date: "2026-10-20T10:00:00Z",
+        message_count: 0,
+        participants: [],
+        snippet: "",
+        subject: "Test",
+        unread_count: 0,
+      },
+      messages: [],
+      bodies: [],
+    });
+    context.fetch.mockResolvedValue(null);
+    membership.fetch.mockResolvedValue({ threads: [] });
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <ThreadPane threadId="shared" />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Ready to read")).toBeTruthy();
+    expect(mailbox.fetchThread).toHaveBeenCalledWith("shared", "B");
+    // The mode line asks about B's copy too, not whichever account holds the id first.
+    expect(membership.fetch.mock.calls[0]?.[0]).toContain("account_id=B");
+    route.search = {};
+  });
+
   test("the messages wait for their mode line, so its late arrival cannot move them", async () => {
     const thread: ThreadResponse = {
       thread: {

@@ -43,16 +43,16 @@ export function ThreadPane({
   // Wait for both local context reads, so their lines are in place before
   // the first message paints. A failed read just leaves its line out. The
   // model status is never waited for: reading must not depend on it.
-  const context = useQuery(threadContextQuery(threadId));
-  const modes = useThreadModes(threadId);
+  const context = useQuery(threadContextQuery(threadId, accountId));
+  const modes = useThreadModes(threadId, accountId);
   const llm = useLlmStatus();
   const policy = llmPolicyKey(llm.data?.status);
   // Ask for the gist as soon as the thread is known, not after the reader
   // mounts: the model is the slow part.
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId, policy));
-  }, [llm.enabled, policy, queryClient, threadId]);
+    if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId, policy, accountId));
+  }, [accountId, llm.enabled, policy, queryClient, threadId]);
   // The thread's error shows at once; only a load waits on the skeleton rule.
   const phase = useDelayedPending(
     !query.isError && (query.isLoading || context.isLoading || modes.isLoading),

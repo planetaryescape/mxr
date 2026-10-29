@@ -1491,12 +1491,37 @@ pub(super) async fn get_thread(
         .into_iter()
         .filter(|message| accounts.contains(&message.account_id))
         .collect::<Vec<_>>();
-    let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
+    // Messages from two accounts are not one conversation to summarize.
+    let summary_account = match account_id {
+        Some(account_id) => Some(account_id),
+        None => thread_account(&messages),
+    };
+    let summary = match summary_account {
+        Some(account_id) => {
+            super::summarize::valid_cached_summary(
+                &state.store,
+                Some(account_id),
+                thread_id,
+                &messages,
+            )
+            .await
+        }
+        None => None,
+    };
     Ok(ResponseData::Thread {
         thread,
         messages,
         summary,
     })
+}
+
+/// The one account every message belongs to; `None` when they span accounts.
+fn thread_account(messages: &[mxr_core::types::Envelope]) -> Option<&AccountId> {
+    let first = messages.first()?;
+    messages
+        .iter()
+        .all(|message| message.account_id == first.account_id)
+        .then_some(&first.account_id)
 }
 
 pub(super) async fn list_threads(

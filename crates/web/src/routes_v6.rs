@@ -1741,6 +1741,9 @@ struct ThreadBriefingQuery {
     token: Option<String>,
     #[serde(default)]
     refresh: bool,
+    /// The account the row belongs to, for a thread id two accounts hold.
+    #[serde(default)]
+    account_id: Option<String>,
 }
 
 /// Render a thread briefing for someone returning to a dormant thread.
@@ -1760,6 +1763,11 @@ async fn get_thread_briefing(
         Request::GetThreadBriefing {
             thread_id: id,
             refresh: query.refresh,
+            account_id: query
+                .account_id
+                .as_deref()
+                .map(parse_account_id)
+                .transpose()?,
         },
     )
     .await?;
@@ -1957,6 +1965,7 @@ async fn summarize_thread(
     headers: HeaderMap,
     Path(thread_id): Path<String>,
     Query(auth): Query<AuthQuery>,
+    Query(scope): Query<SummarizeScopeQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = ThreadId::from_str(&thread_id)
         .map_err(|err| BridgeError::BadRequest(format!("invalid thread_id: {err}")))?;
@@ -1964,10 +1973,24 @@ async fn summarize_thread(
         &state,
         &headers,
         auth.token.as_deref(),
-        Request::SummarizeThread { thread_id: id },
+        Request::SummarizeThread {
+            thread_id: id,
+            account_id: scope
+                .account_id
+                .as_deref()
+                .map(parse_account_id)
+                .transpose()?,
+        },
     )
     .await?;
     passthrough(response)
+}
+
+/// The account whose copy of a thread to summarize.
+#[derive(Debug, Default, Deserialize)]
+struct SummarizeScopeQuery {
+    #[serde(default)]
+    account_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

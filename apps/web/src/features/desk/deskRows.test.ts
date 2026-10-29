@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import type { Desk, DeskRow } from "./api";
-import { DESK_LANE_CAP, deskGroups, partialLane } from "./deskRows";
+import { DESK_LANE_CAP, deskGroups, deskRowOf, partialLane } from "./deskRows";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import type { PendingMailOp } from "@/features/mail-actions/pendingMailOps";
 
 function row(lane: DeskRow["lane"], id: string): DeskRow {
@@ -99,5 +100,37 @@ describe("desk groups", () => {
     expect(partialLane(desk(), "owed")).toEqual({ shown: 7, total: 9 });
     expect(partialLane(desk(), "due")).toBeNull();
     expect(partialLane(desk(), undefined)).toBeNull();
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  const a = { ...row("owed", "x"), account_id: "A", thread_id: "shared", message_id: "ma" };
+  const b = { ...row("owed", "y"), account_id: "B", thread_id: "shared", message_id: "mb" };
+  const shared: Desk = {
+    ...desk(),
+    owed: { rows: [a, b], total: 2 },
+    due: { rows: [], total: 0 },
+    people_new: { rows: [], total: 0 },
+  };
+
+  test("each row resolves to its own account, so Done on A's row never sends B's", () => {
+    const { byThread } = deskGroups(shared, []);
+    expect(byThread.size).toBe(2);
+    expect(deskRowOf(byThread, "shared", "A")?.account_id).toBe("A");
+    expect(deskRowOf(byThread, "shared", "B")?.account_id).toBe("B");
+    expect(deskRowOf(byThread, "shared", "C")).toBeUndefined();
+    // A caller with no account (older data) gets the first row, as it always did.
+    expect(deskRowOf(byThread, "shared")?.account_id).toBe("A");
+  });
+
+  test("Done in flight on A's row hides A's row only", () => {
+    const hidden = new Set([conversationKey("shared", "A")]);
+    const { groups } = deskGroups(shared, [], undefined, hidden);
+    expect(groups[0]!.rows.map((r) => r.account_id)).toEqual(["B"]);
+  });
+
+  test("a bare hidden thread (a caller with no account) hides both", () => {
+    const { groups } = deskGroups(shared, [], undefined, new Set(["shared"]));
+    expect(groups).toEqual([]);
   });
 });

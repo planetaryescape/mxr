@@ -57,10 +57,20 @@ pub(super) async fn draft_compose(
 
     // Reply to an explicit thread (reader / quick-reply).
     if let Some(thread_id) = thread_id.as_ref() {
-        let envelopes = state
+        // `account_id` is the account to draft from. When it holds this thread
+        // id, the reply reads that account's copy only (a thread id two
+        // accounts hold is two conversations). When it does not, the
+        // thread's own account is read and refused below.
+        let mut envelopes = state
             .store
-            .get_thread_envelopes_for_model(thread_id)
+            .get_thread_envelopes_for_model_in(thread_id, account_id)
             .await?;
+        if envelopes.is_empty() && account_id.is_some() {
+            envelopes = state
+                .store
+                .get_thread_envelopes_for_model_in(thread_id, None)
+                .await?;
+        }
         if envelopes.is_empty() {
             return Err(format!("Thread {thread_id} has no messages to reply to").into());
         }

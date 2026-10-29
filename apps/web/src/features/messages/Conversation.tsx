@@ -46,6 +46,7 @@ export function ConversationView({
           message={message}
           latest={index === conversation.messages.length - 1}
           threadId={conversation.thread_id}
+          accountId={conversation.account_id}
           asSent={asSent === message.message_id}
           disclosuresEnabled={disclosuresEnabled}
           onToggleAsSent={() => onToggleAsSent(message.message_id)}
@@ -64,6 +65,7 @@ function MessageItem({
   message,
   latest,
   threadId,
+  accountId,
   asSent,
   disclosuresEnabled,
   onToggleAsSent,
@@ -71,6 +73,7 @@ function MessageItem({
   message: ConversationMessage;
   latest: boolean;
   threadId: string;
+  accountId?: string;
   asSent: boolean;
   disclosuresEnabled: boolean;
   onToggleAsSent: () => void;
@@ -108,11 +111,14 @@ function MessageItem({
         </span>
         <span aria-hidden>·</span>
         <Received value={message.date} />
-        {disclosuresEnabled ? <MessageInfoDialog threadId={threadId} message={message} /> : null}
+        {disclosuresEnabled ? (
+          <MessageInfoDialog threadId={threadId} accountId={accountId} message={message} />
+        ) : null}
       </div>
       {asSent ? (
         <AsSent
           threadId={threadId}
+          accountId={accountId}
           messageId={message.message_id}
           senderEmail={message.from.email}
         />
@@ -195,10 +201,12 @@ function MessageItem({
 /** The message as it arrived: its HTML, else its plain text. */
 function AsSent({
   threadId,
+  accountId,
   messageId,
   senderEmail,
 }: {
   threadId: string;
+  accountId?: string;
   messageId: string;
   senderEmail: string;
 }) {
@@ -206,8 +214,8 @@ function AsSent({
   const senderOverrides = useUiPrefs((state) => state.emailHtmlSenderOverrides);
   const theme = emailHtmlThemeForSender(senderOverrides, senderEmail) ?? globalTheme;
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId ?? null],
+    queryFn: () => fetchThread(threadId, accountId),
     staleTime: 60_000,
   });
   const body = thread.data?.bodies.find((candidate) => candidate.message_id === messageId);

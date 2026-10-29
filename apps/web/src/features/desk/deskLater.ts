@@ -12,6 +12,7 @@ import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
+import { conversationKey } from "@/features/mailbox/rowKey";
 import { describeChoice, type TimeChoice } from "@/features/time/api";
 import { plural } from "@/lib/format";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -40,12 +41,18 @@ function deferredMessageAt(kinds: readonly DeferKind[], when: string): string {
  * dialog can say what its time will do. Unknown off the desk; the daemon
  * decides either way.
  */
-export function deskLaneOf(threadId: string): DeskLaneKind | undefined {
+export function deskLaneOf(threadId: string, accountId?: string | null): DeskLaneKind | undefined {
   const queries = getActiveQueryClient()?.getQueriesData<Desk>({ queryKey: ["desk"] }) ?? [];
   for (const [, desk] of queries) {
     if (!desk) continue;
     for (const lane of ["owed", "due", "waiting", "people_new"] as const) {
-      if (desk[lane].rows.some((row) => row.thread_id === threadId)) return lane;
+      if (
+        desk[lane].rows.some(
+          (row) => row.thread_id === threadId && (!accountId || row.account_id === accountId),
+        )
+      ) {
+        return lane;
+      }
     }
   }
   return undefined;
@@ -71,7 +78,8 @@ export async function deferThreadsAt(
   const unique = [...new Set(threadIds)];
   if (unique.length === 0) return false;
   // Off the desk while the request runs (the hidden set Done uses).
-  useDeskDone.getState().hide(unique);
+  const keys = unique.map((id) => conversationKey(id, accountId));
+  useDeskDone.getState().hide(keys);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
@@ -118,6 +126,6 @@ export async function deferThreadsAt(
     });
     return false;
   } finally {
-    useDeskDone.getState().show(unique);
+    useDeskDone.getState().show(keys);
   }
 }

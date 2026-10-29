@@ -7,17 +7,24 @@
 import { createContext, useContext } from "react";
 
 import type { MailVerbHooks } from "@/features/mail-actions/mailVerbs";
-import type { ExpectRemoval } from "@/hooks/useAdvanceOnRemoval";
+import type { ThreadRef } from "./rowKey";
 
 export interface ReaderNav {
-  /** Thread ids in list order, after pending actions are applied. */
-  threadIds: () => string[];
-  open: (threadId: string, options?: { focusReader?: boolean }) => void;
+  /**
+   * Conversations in list order, after pending actions are applied. Each
+   * names its account: two accounts can hold the same thread id.
+   */
+  threads: () => ThreadRef[];
+  open: (threadId: string, options?: { focusReader?: boolean; accountId?: string | null }) => void;
   close: () => void;
   /** Advance in this direction only if this reader's row actually leaves. */
-  expectRemoval?: ExpectRemoval;
+  expectRemoval?: (
+    threadId: string,
+    direction: 1 | -1,
+    accountId?: string | null,
+  ) => (keepForRemoval?: boolean) => void;
   /** Read current list membership after the Archive refetch settles. */
-  isListed?: (threadId: string) => boolean;
+  isListed?: (threadId: string, accountId?: string | null) => boolean;
   /** Queue label of the originating lens, for "route out of queue". */
   queueLabel?: string;
   /** The list's own handling of a verb (the desk's Done), for the reader too. */

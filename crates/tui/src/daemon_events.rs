@@ -248,8 +248,12 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if total > envelopes.len() {
                 app.row_gists.invalidate_all();
             } else {
-                app.row_gists
-                    .changed(envelopes.iter().map(|envelope| &envelope.thread_id));
+                app.row_gists.changed(
+                    &envelopes
+                        .iter()
+                        .map(app::ThreadKey::of_envelope)
+                        .collect::<Vec<_>>(),
+                );
             }
         }
         DaemonEvent::EventsLagged { skipped } => {
@@ -415,16 +419,20 @@ fn settle_user_sync_pending(app: &mut App) {
 /// read leaves the reader as it was: the facts are extra, not required.
 pub(super) fn apply_thread_context_loaded(
     app: &mut App,
-    thread_id: &mxr_core::ThreadId,
+    key: &app::ThreadKey,
     result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
 ) {
     let open = app
         .context_envelope()
-        .is_some_and(|env| &env.thread_id == thread_id);
+        .is_some_and(|env| key.matches_envelope(env));
     match result {
-        Ok(context) if open => app.mailbox.thread_context = Some(*context),
+        Ok(context) if open && key.matches_ids(&context.thread_id, Some(&context.account_id)) => {
+            app.mailbox.thread_context = Some(*context);
+        }
         Ok(_) => {}
-        Err(error) => tracing::debug!(%thread_id, %error, "thread context unavailable"),
+        Err(error) => {
+            tracing::debug!(thread_id = %key.thread_id, %error, "thread context unavailable");
+        }
     }
 }
 
@@ -432,16 +440,21 @@ pub(super) fn apply_thread_context_loaded(
 /// failed one, simply shows no gist: the reader never nags about it.
 pub(super) fn apply_thread_gist_loaded(
     app: &mut App,
-    thread_id: &mxr_core::ThreadId,
+    key: &app::ThreadKey,
     result: Result<Box<mxr_protocol::ThreadGistData>, MxrError>,
 ) {
     let open = app
         .context_envelope()
-        .is_some_and(|env| &env.thread_id == thread_id);
+        .is_some_and(|env| key.matches_envelope(env));
     match result {
-        Ok(gist) if open => app.mailbox.thread_gist = Some(*gist),
+        // A gist the daemon labels with another account is not this row's.
+        Ok(gist) if open && key.matches_ids(&gist.thread_id, gist.account_id.as_ref()) => {
+            app.mailbox.thread_gist = Some(*gist);
+        }
         Ok(_) => {}
-        Err(error) => tracing::debug!(%thread_id, %error, "thread gist unavailable"),
+        Err(error) => {
+            tracing::debug!(thread_id = %key.thread_id, %error, "thread gist unavailable");
+        }
     }
 }
 
@@ -454,13 +467,13 @@ pub(super) fn apply_thread_gist_loaded(
 /// the user's current view.
 pub(super) fn apply_thread_summary_loaded(
     app: &mut App,
-    thread_id: mxr_core::ThreadId,
+    key: app::ThreadKey,
     result: Result<(String, String), MxrError>,
 ) {
-    app.mailbox.thread_summary_in_flight.remove(&thread_id);
+    app.mailbox.thread_summary_in_flight.remove(&key);
     let still_relevant = app
         .context_envelope()
-        .is_some_and(|env| env.thread_id == thread_id);
+        .is_some_and(|env| key.matches_envelope(env));
     if !still_relevant {
         return;
     }

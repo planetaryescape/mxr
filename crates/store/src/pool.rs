@@ -313,7 +313,57 @@ impl Store {
     async fn apply_label_role_migration(&self) -> Result<(), sqlx::Error> {
         self.add_column_if_missing("labels", "role", "ALTER TABLE labels ADD COLUMN role TEXT")
             .await?;
+        self.key_thread_summaries_by_account().await?;
         self.backfill_label_roles_from_names().await
+    }
+
+    /// A legacy thread id can be held by two accounts, so a summary belongs to
+    /// the pair. The table was keyed by thread id alone, which let one
+    /// account's summary replace the other's. The column order is kept, because
+    /// a backup restore copies the table positionally.
+    async fn key_thread_summaries_by_account(&self) -> Result<(), sqlx::Error> {
+        let key: Vec<(String, i64)> = sqlx::query_as::<_, (String, i64)>(
+            "SELECT name, pk FROM pragma_table_info('thread_summaries') WHERE pk > 0",
+        )
+        .fetch_all(&self.writer)
+        .await?;
+        // No table (a partial database) or already keyed by the pair.
+        if key.len() != 1 {
+            return Ok(());
+        }
+        // Copied through a temp table rather than renamed into place: a
+        // rename re-reads every trigger in the schema.
+        let rebuilt = sqlx::raw_sql(
+            "BEGIN;
+             CREATE TEMP TABLE thread_summaries_before AS SELECT * FROM thread_summaries;
+             DROP TABLE thread_summaries;
+             CREATE TABLE thread_summaries (
+                 thread_id     TEXT NOT NULL,
+                 account_id    TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                 content_hash  TEXT NOT NULL,
+                 text          TEXT NOT NULL,
+                 model         TEXT NOT NULL,
+                 generated_at  INTEGER NOT NULL,
+                 updated_at    INTEGER NOT NULL,
+                 PRIMARY KEY (account_id, thread_id)
+             );
+             INSERT INTO thread_summaries
+                 SELECT thread_id, account_id, content_hash, text, model, generated_at, updated_at
+                 FROM temp.thread_summaries_before;
+             DROP TABLE temp.thread_summaries_before;
+             CREATE INDEX IF NOT EXISTS idx_thread_summaries_account
+                 ON thread_summaries(account_id, updated_at DESC);
+             COMMIT;",
+        )
+        .execute(&self.writer)
+        .await;
+        if let Err(error) = rebuilt {
+            // A statement that failed after BEGIN leaves the transaction open
+            // on the writer's connection.
+            let _ = sqlx::raw_sql("ROLLBACK").execute(&self.writer).await;
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Sets `role` on System labels that have none, from their names. Migration

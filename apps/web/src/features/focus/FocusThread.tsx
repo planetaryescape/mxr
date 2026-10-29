@@ -31,15 +31,22 @@ import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 /** Earlier messages shown folded above the newest; the rest are counted. */
 const EARLIER_SHOWN = 1;
 
-export function FocusThread({ threadId }: { threadId: string }) {
+export function FocusThread({
+  threadId,
+  accountId,
+}: {
+  threadId: string;
+  /** The conversation's account: a thread id can be held by two accounts. */
+  accountId?: string | null;
+}) {
   const thread = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId ?? null],
+    queryFn: () => fetchThread(threadId, accountId),
   });
-  const context = useQuery(threadContextQuery(threadId));
+  const context = useQuery(threadContextQuery(threadId, accountId));
   const llm = useLlmStatus();
   const policy = llmPolicyKey(llm.data?.status);
-  const gist = useQuery({ ...threadGistQuery(threadId, policy), enabled: llm.enabled });
+  const gist = useQuery({ ...threadGistQuery(threadId, policy, accountId), enabled: llm.enabled });
   const queryClient = useQueryClient();
   const defaultView = useUiPrefs((s) => s.readerView);
   const [view, setView] = useState<ReaderView>(defaultView);
@@ -51,7 +58,7 @@ export function FocusThread({ threadId }: { threadId: string }) {
     mutationFn: resolveCommitment,
     onSuccess: () => {
       toast.success("Promise marked done");
-      void queryClient.invalidateQueries({ queryKey: threadContextKey(threadId) });
+      void queryClient.invalidateQueries({ queryKey: threadContextKey(threadId, accountId) });
     },
     onError: (error) => toast.error("Couldn't mark it done", { description: error.message }),
   });
@@ -89,8 +96,8 @@ export function FocusThread({ threadId }: { threadId: string }) {
           error: gist.error?.message ?? null,
           retry: () =>
             void queryClient.fetchQuery({
-              queryKey: threadGistKey(threadId, policy),
-              queryFn: () => fetchThreadGist(threadId, true),
+              queryKey: threadGistKey(threadId, policy, accountId),
+              queryFn: () => fetchThreadGist(threadId, true, accountId),
               staleTime: 0,
             }),
         }}

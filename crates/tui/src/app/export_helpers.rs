@@ -7,11 +7,11 @@ impl App {
     /// `E` on a thread. Opens the picker; nothing is written until a
     /// destination is confirmed.
     pub fn open_export_modal(&mut self) {
-        let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
+        let Some(thread) = self.context_envelope().map(ThreadKey::of_envelope) else {
             self.status_message = Some("No message selected".into());
             return;
         };
-        self.modals.export.open(thread_id);
+        self.modals.export.open(thread);
     }
 
     /// Arrow keys in the format stage. `j`/`k` are not used here because
@@ -40,11 +40,10 @@ impl App {
     /// Moves to the path stage with the default path for the chosen format.
     pub fn export_modal_choose_save(&mut self) {
         let state = &mut self.modals.export;
-        let (Some(thread_id), Some(format)) = (state.thread_id.as_ref(), state.format.as_ref())
-        else {
+        let (Some(thread), Some(format)) = (state.thread.as_ref(), state.format.as_ref()) else {
             return;
         };
-        state.input = default_export_path(thread_id, format);
+        state.input = default_export_path(&thread.thread_id, format);
         state.error = None;
         state.awaiting_overwrite_confirm = false;
         state.stage = ExportStage::Path;
@@ -99,9 +98,9 @@ impl App {
     /// real destination.
     fn queue_export(&mut self, destination: ExportDestination) {
         let export = std::mem::take(&mut self.modals.export);
-        if let (Some(thread_id), Some(format)) = (export.thread_id, export.format) {
+        if let (Some(thread), Some(format)) = (export.thread, export.format) {
             self.mailbox.pending_export = Some(PendingExport {
-                thread_id,
+                thread,
                 format,
                 destination,
             });
@@ -196,7 +195,7 @@ mod tests {
         assert_eq!(
             app.mailbox.pending_export,
             Some(PendingExport {
-                thread_id,
+                thread: thread_id.into(),
                 format: ExportFormat::Markdown,
                 destination: ExportDestination::Save {
                     path,
@@ -274,7 +273,7 @@ mod tests {
         assert_eq!(
             app.mailbox.pending_export,
             Some(PendingExport {
-                thread_id,
+                thread: thread_id.into(),
                 format: ExportFormat::Markdown,
                 destination: ExportDestination::Clipboard,
             })

@@ -254,7 +254,7 @@ async fn sender_questions(
     state: &AppState,
     snapshot: &NowSnapshot,
     now: DateTime<Utc>,
-) -> Result<HashMap<ThreadId, ScreenerQuestionData>, HandlerError> {
+) -> Result<HashMap<(AccountId, ThreadId), ScreenerQuestionData>, HandlerError> {
     let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
     for row in snapshot.turn.rows.iter().take(NOW_SECTION_CAP) {
         by_account
@@ -266,7 +266,7 @@ async fn sender_questions(
     for (account, threads) in by_account {
         for placement in place_threads(state, &account, &threads, now).await? {
             if let Some(question) = placement.data.new_sender {
-                asks.insert(placement.data.thread_id, question);
+                asks.insert((account.clone(), placement.data.thread_id), question);
             }
         }
     }
@@ -275,7 +275,7 @@ async fn sender_questions(
 
 fn people_section<Tz: TimeZone>(
     snapshot: &NowSnapshot,
-    asks: &HashMap<ThreadId, ScreenerQuestionData>,
+    asks: &HashMap<(AccountId, ThreadId), ScreenerQuestionData>,
     now: DateTime<Utc>,
     tz: &Tz,
 ) -> NowPeopleData
@@ -289,7 +289,9 @@ where
         .iter()
         .take(NOW_SECTION_CAP)
         .map(|row| {
-            let new_sender = asks.get(&row.thread_id).cloned();
+            let new_sender = asks
+                .get(&(row.account_id.clone(), row.thread_id.clone()))
+                .cloned();
             NowPersonData {
                 why: person_reason(row, new_sender.is_some(), now, tz),
                 row: row.clone(),

@@ -43,7 +43,7 @@ impl App {
         let selected = self
             .selected_mail_row()
             .filter(|_| self.mailbox.mailbox_view == MailboxView::Snoozed)
-            .map(|row| row.thread_id);
+            .map(|row| row.thread_key());
         let wake_at: HashMap<MessageId, chrono::DateTime<chrono::Utc>> = snoozed
             .into_iter()
             .map(|entry| (entry.message_id, entry.wake_at))
@@ -62,7 +62,7 @@ impl App {
         }
         let rows = self.mail_list_rows();
         self.mailbox.selected_index = selected
-            .and_then(|thread_id| rows.iter().position(|row| row.thread_id == thread_id))
+            .and_then(|key| rows.iter().position(|row| row.thread_key() == key))
             .unwrap_or(self.mailbox.selected_index)
             .min(rows.len().saturating_sub(1));
         if self.status_message.is_none() && rows.is_empty() {
@@ -93,7 +93,7 @@ impl App {
             .envelopes
             .iter()
             .filter(|envelope| match self.mailbox.mail_list_mode {
-                MailListMode::Threads => envelope.thread_id == row.thread_id,
+                MailListMode::Threads => row.thread_key().matches_envelope(envelope),
                 MailListMode::Messages => envelope.id == row.representative.id,
             })
             .map(|envelope| envelope.id.clone())

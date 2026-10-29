@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { useSelection } from "@/state/selectionStore";
 
-import { rowKey } from "./rowKey";
+import { conversationKey, holdsThread, rowKey, selectedKey, threadAccounts } from "./rowKey";
 import type { MessageRowView } from "./types";
 
 function row(patch: Partial<MessageRowView>): MessageRowView {
@@ -47,5 +47,45 @@ describe("row identity", () => {
     expect(useSelection.getState().has(rowKey(first))).toBe(true);
     expect(useSelection.getState().has(rowKey(second))).toBe(false);
     useSelection.getState().clear();
+  });
+});
+
+describe("a thread id held by two accounts", () => {
+  test("names each account's conversation apart, and a bare id for data with no account", () => {
+    expect(conversationKey("t", "A")).not.toBe(conversationKey("t", "B"));
+    expect(conversationKey("t")).toBe("t");
+  });
+
+  test("a qualified entry covers only its own account; a bare one covers both", () => {
+    const onlyA = new Set([conversationKey("t", "A")]);
+    expect(holdsThread(onlyA, "t", "A")).toBe(true);
+    expect(holdsThread(onlyA, "t", "B")).toBe(false);
+    const bare = new Set(["t"]);
+    expect(holdsThread(bare, "t", "A")).toBe(true);
+    expect(holdsThread(bare, "t", "B")).toBe(true);
+  });
+
+  test("the URL's account picks the listed copy; an older link without one takes the first", () => {
+    const listed = [
+      { thread_id: "t", account_id: "A" },
+      { thread_id: "t", account_id: "B" },
+    ];
+    expect(selectedKey(listed, "t", "B")).toBe(conversationKey("t", "B"));
+    expect(selectedKey(listed, "t", null)).toBe(conversationKey("t", "A"));
+    expect(selectedKey([], "t", null)).toBe("t");
+  });
+
+  test("thread_accounts pairs name both accounts and leave out rows with no account", () => {
+    expect(
+      threadAccounts([
+        { thread_id: "t", account_id: "A" },
+        { thread_id: "t", account_id: "B" },
+        { thread_id: "t", account_id: "A" },
+        { thread_id: "old" },
+      ]),
+    ).toEqual([
+      { thread_id: "t", account_id: "A" },
+      { thread_id: "t", account_id: "B" },
+    ]);
   });
 });

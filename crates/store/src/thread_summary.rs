@@ -17,16 +17,20 @@ pub struct ThreadSummaryRecord {
 }
 
 impl super::Store {
+    /// One account's summary of a thread. Keyed by the pair, so two accounts
+    /// holding the same legacy thread id keep separate summaries.
     pub async fn get_thread_summary(
         &self,
+        account_id: &AccountId,
         thread_id: &ThreadId,
     ) -> Result<Option<ThreadSummaryRecord>, sqlx::Error> {
         let started_at = Instant::now();
         let row = sqlx::query(
             r#"SELECT thread_id, account_id, content_hash, text, model, generated_at
                FROM thread_summaries
-               WHERE thread_id = ?"#,
+               WHERE account_id = ? AND thread_id = ?"#,
         )
+        .bind(account_id.as_str())
         .bind(thread_id.as_str())
         .fetch_optional(self.reader())
         .await?;
@@ -43,8 +47,7 @@ impl super::Store {
             r#"INSERT INTO thread_summaries
                (thread_id, account_id, content_hash, text, model, generated_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(thread_id) DO UPDATE SET
-                   account_id = excluded.account_id,
+               ON CONFLICT(account_id, thread_id) DO UPDATE SET
                    content_hash = excluded.content_hash,
                    text = excluded.text,
                    model = excluded.model,
@@ -76,8 +79,7 @@ impl super::Store {
                (thread_id, account_id, content_hash, text, model, generated_at, updated_at)
                SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
                WHERE {sources_exist}
-               ON CONFLICT(thread_id) DO UPDATE SET
-                   account_id = excluded.account_id,
+               ON CONFLICT(account_id, thread_id) DO UPDATE SET
                    content_hash = excluded.content_hash,
                    text = excluded.text,
                    model = excluded.model,
@@ -208,7 +210,7 @@ mod tests {
         store.upsert_thread_summary(&record).await.unwrap();
 
         let stored = store
-            .get_thread_summary(&thread_id)
+            .get_thread_summary(&account.id, &thread_id)
             .await
             .unwrap()
             .expect("summary");
@@ -224,7 +226,7 @@ mod tests {
         store.upsert_thread_summary(&updated).await.unwrap();
 
         let stored = store
-            .get_thread_summary(&thread_id)
+            .get_thread_summary(&account.id, &thread_id)
             .await
             .unwrap()
             .expect("summary");

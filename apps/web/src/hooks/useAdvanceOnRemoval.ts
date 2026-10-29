@@ -9,7 +9,7 @@
  * then only remembers the move for undo.
  */
 
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { nextAfterRemoval } from "@/lib/listAdvance";
@@ -186,11 +186,25 @@ export function useAdvanceOnRemoval({
  * navigation already on its way counts: the reader's archive-and-advance
  * moves first, and a list's follow-up must not override where it went.
  */
-export function useRouteStillShows(): (threadId: string) => boolean {
+export function useRouteStillShows(): (threadId: string, accountId?: string | null) => boolean {
   const router = useRouter();
   return useCallback(
-    (threadId: string) =>
-      router.history.location.pathname.endsWith(`/${encodeURIComponent(threadId)}`),
+    (threadId: string, accountId?: string | null) => {
+      const { pathname, search } = router.history.location;
+      if (!pathname.endsWith(`/${encodeURIComponent(threadId)}`)) return false;
+      // A thread id held by two accounts has one path: the account tells the copies apart.
+      const shown = new URLSearchParams(search).get("account")?.replace(/^"|"$/g, "");
+      return !accountId || !shown || shown === accountId;
+    },
     [router],
   );
+}
+
+/** The account the open conversation's row put in the URL (`account`), if any. */
+export function useRouteAccount(): string | null {
+  return useSearch({
+    strict: false,
+    select: (search: Record<string, unknown>) =>
+      typeof search.account === "string" ? search.account : null,
+  } as never) as string | null;
 }

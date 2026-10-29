@@ -186,7 +186,9 @@ export async function tickOff(todo: Todo, how: LeaveVia = "pointer"): Promise<vo
   try {
     // Only this row: another to-do on the same email stays open, and the
     // email stays in the inbox while it does.
-    await markModeDone("todo", [threadId], { todoIds: [todo.id] });
+    await markModeDone("todo", [{ thread_id: threadId, account_id: todo.account_id }], {
+      todoIds: [todo.id],
+    });
   } finally {
     await refreshTodos({ guide: true });
     useTodoHidden.getState().show([todo.id]);

@@ -6,14 +6,33 @@
  */
 
 import type { HiddenByMode } from "@/features/modes/modeDone";
+import { holdsThread, conversationKey } from "@/features/mailbox/rowKey";
 import { formatTime } from "@/lib/format";
 
 import type { Now, NowPerson, NowReadingPick, NowTodo, NowUpdatesCard } from "./api";
 
-export type PersonItem = { kind: "person"; key: string; threadId: string; person: NowPerson };
-export type TodoItem = { kind: "todo"; key: string; threadId: string | null; todo: NowTodo };
+export type PersonItem = {
+  kind: "person";
+  key: string;
+  threadId: string;
+  accountId: string;
+  person: NowPerson;
+};
+export type TodoItem = {
+  kind: "todo";
+  key: string;
+  threadId: string | null;
+  accountId: string;
+  todo: NowTodo;
+};
 export type CardItem = { kind: "updates"; key: string; card: NowUpdatesCard };
-export type PickItem = { kind: "reading"; key: string; threadId: string; pick: NowReadingPick };
+export type PickItem = {
+  kind: "reading";
+  key: string;
+  threadId: string;
+  accountId: string;
+  pick: NowReadingPick;
+};
 export type NowItem = PersonItem | TodoItem | CardItem | PickItem;
 
 export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] {
@@ -21,25 +40,42 @@ export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] 
   const items: NowItem[] = [];
   for (const person of now.people.rows) {
     const threadId = person.row.thread_id;
-    if (hidden.messages.has(threadId)) continue;
-    items.push({ kind: "person", key: `person:${threadId}`, threadId, person });
+    const accountId = person.row.account_id;
+    if (holdsThread(hidden.messages, threadId, accountId)) continue;
+    // Keyed by account too: two accounts can hold one thread id.
+    items.push({
+      kind: "person",
+      key: `person:${conversationKey(threadId, accountId)}`,
+      threadId,
+      accountId,
+      person,
+    });
   }
   for (const todo of now.due_soon.todos) {
     const threadId = todo.todo.thread_id ?? null;
-    if (threadId && hidden.todo.has(threadId)) continue;
-    items.push({ kind: "todo", key: `todo:${todo.todo.id}`, threadId, todo });
+    const accountId = todo.todo.account_id;
+    if (threadId && holdsThread(hidden.todo, threadId, accountId)) continue;
+    items.push({ kind: "todo", key: `todo:${todo.todo.id}`, threadId, accountId, todo });
   }
   const card = now.updates;
   if (
     card &&
-    (card.thread_ids.length === 0 || !card.thread_ids.every((id) => hidden.updates.has(id)))
+    (card.thread_ids.length === 0 ||
+      !card.thread_ids.every((id) => holdsThread(hidden.updates, id)))
   ) {
     items.push({ kind: "updates", key: "updates", card });
   }
   if (now.reading) {
     const threadId = now.reading.thread_id;
-    if (!hidden.reading.has(threadId)) {
-      items.push({ kind: "reading", key: `reading:${threadId}`, threadId, pick: now.reading });
+    const accountId = now.reading.account_id;
+    if (!holdsThread(hidden.reading, threadId, accountId)) {
+      items.push({
+        kind: "reading",
+        key: `reading:${conversationKey(threadId, accountId)}`,
+        threadId,
+        accountId,
+        pick: now.reading,
+      });
     }
   }
   return items;
@@ -61,7 +97,7 @@ export function litIndex(items: readonly { key: string }[], key: string | null):
 
 export interface ItemTarget {
   to: string;
-  search?: { row: string };
+  search?: { row?: string; account?: string };
 }
 
 /**
@@ -72,11 +108,17 @@ export interface ItemTarget {
 export function itemTarget(item: NowItem, { email = false } = {}): ItemTarget {
   switch (item.kind) {
     case "person":
-      return { to: `/messages/${encodeURIComponent(item.threadId)}` };
+      return {
+        to: `/messages/${encodeURIComponent(item.threadId)}`,
+        search: { account: item.accountId },
+      };
     case "todo": {
       const row = { row: item.todo.todo.id };
       return item.threadId
-        ? { to: `/todo/${encodeURIComponent(item.threadId)}`, search: row }
+        ? {
+            to: `/todo/${encodeURIComponent(item.threadId)}`,
+            search: { ...row, account: item.accountId },
+          }
         : { to: "/todo", search: row };
     }
     case "updates": {
@@ -84,7 +126,12 @@ export function itemTarget(item: NowItem, { email = false } = {}): ItemTarget {
       return first ? { to: "/updates", search: { row: first.id } } : { to: "/updates" };
     }
     case "reading": {
-      if (email) return { to: `/reading/${encodeURIComponent(item.threadId)}` };
+      if (email) {
+        return {
+          to: `/reading/${encodeURIComponent(item.threadId)}`,
+          search: { account: item.accountId },
+        };
+      }
       const key = issueItemKey(item.pick.message_id);
       return { to: `/reading/item/${encodeURIComponent(key)}`, search: { row: key } };
     }

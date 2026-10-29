@@ -3670,6 +3670,15 @@
             }
           },
           {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to, for a thread id two accounts hold",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "message_id",
             "in": "query",
             "description": "Or one of its messages",
@@ -6221,6 +6230,26 @@
         "tags": [],
         "summary": "Read a thread",
         "operationId": "mail_thread",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6236,6 +6265,26 @@
         "tags": [],
         "summary": "Briefing for a dormant thread",
         "operationId": "mail_thread_briefing",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6251,6 +6300,26 @@
         "tags": [],
         "summary": "Store facts for the reader's context block",
         "operationId": "mail_thread_context",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6266,6 +6335,26 @@
         "tags": [],
         "summary": "Model-written gist and ask for a conversation, cached per newest message",
         "operationId": "mail_thread_gist",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6281,6 +6370,26 @@
         "tags": [],
         "summary": "Export a thread",
         "operationId": "mail_thread_export",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6296,6 +6405,26 @@
         "tags": [],
         "summary": "Summarize a thread",
         "operationId": "thread_summarize",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "description": "Thread id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "description": "The account the row belongs to. Needed only when two accounts hold the same thread id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -8953,6 +9082,13 @@
           "thread_id"
         ],
         "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the row belongs to, for a thread id two accounts hold."
+          },
           "dry_run": {
             "type": "boolean",
             "description": "True by default: a preview of the exact plan with its token. Only an\nexplicit `false`, with the preview's token and text, sends."
@@ -15601,6 +15737,16 @@
             ],
             "description": "Preview only; nothing changes."
           },
+          "thread_accounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ThreadAccountRef"
+            },
+            "description": "The same conversations with the account each row belongs to; a pair\nacts on that account only."
+          },
           "thread_ids": {
             "type": "array",
             "items": {
@@ -20506,10 +20652,14 @@
       "ModeMembershipBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/modes/membership`.",
-        "required": [
-          "thread_ids"
-        ],
         "properties": {
+          "thread_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadAccountRef"
+            },
+            "description": "The same conversations with the account each row belongs to; a pair\nis answered for that account only."
+          },
           "thread_ids": {
             "type": "array",
             "items": {
@@ -30374,6 +30524,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -31160,6 +31321,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -31622,6 +31794,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -32072,6 +32255,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -32091,6 +32285,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -32153,6 +32358,13 @@
               "dry_run": {
                 "type": "boolean"
               },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to; a pair acts on that account only."
+              },
               "thread_ids": {
                 "type": "array",
                 "items": {
@@ -32174,6 +32386,13 @@
                 "enum": [
                   "RestoreDeskThreads"
                 ]
+              },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to; a pair acts on that account only."
               },
               "thread_ids": {
                 "type": "array",
@@ -32861,6 +33080,13 @@
                   }
                 ]
               },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to; a pair acts on that account only."
+              },
               "thread_id": {
                 "oneOf": [
                   {
@@ -32892,6 +33118,13 @@
                 "enum": [
                   "GetThreadPreviews"
                 ]
+              },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to; a pair acts on that account only."
               },
               "thread_ids": {
                 "type": "array",
@@ -33242,6 +33475,17 @@
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId",
+                    "description": "The account the row belongs to. A legacy thread id can be held by\ntwo accounts; without this the daemon reads every account's copy."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -34650,6 +34894,13 @@
               },
               "generate": {
                 "type": "boolean"
+              },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to; a pair acts on that account only."
               },
               "thread_ids": {
                 "type": "array",
@@ -42765,6 +43016,17 @@
           "from_cache"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the gist is for. A legacy thread id can be held by two\naccounts, so a client that lists both matches a gist by the pair."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ask": {
             "oneOf": [
               {
@@ -42836,6 +43098,16 @@
           "reason"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "$ref": "#/components/schemas/ThreadGistSkipReasonData"
           },
@@ -42876,6 +43148,16 @@
               "null"
             ],
             "description": "Queue missing gists for people's conversations; each arrives as a\n`ThreadGistReady` event."
+          },
+          "thread_accounts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ThreadAccountRef"
+            },
+            "description": "The same conversations with the account each row belongs to."
           },
           "thread_ids": {
             "type": "array",
@@ -43040,10 +43322,14 @@
       "ThreadPreviewsBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/threads/previews`.",
-        "required": [
-          "thread_ids"
-        ],
         "properties": {
+          "thread_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadAccountRef"
+            },
+            "description": "The same conversations with the account each row belongs to; a pair\nis previewed for that account only."
+          },
           "thread_ids": {
             "type": "array",
             "items": {

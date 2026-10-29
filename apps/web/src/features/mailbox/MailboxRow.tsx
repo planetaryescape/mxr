@@ -75,7 +75,7 @@ export const MailboxRow = memo(function MailboxRow({
       : null;
   const who = displaySender(row);
   // This row's own line: when it lands, only this row re-renders.
-  const gist = useRowGist(row.thread_id);
+  const gist = useRowGist(row.thread_id, row.account_id);
   const when = useWhen(row.date);
   const mark = useRowAccountMark(row.account_id);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);

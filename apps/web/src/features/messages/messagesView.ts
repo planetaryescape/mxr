@@ -6,6 +6,7 @@
  * words; nothing here reorders or rewrites them.
  */
 
+import { holdsThread } from "@/features/mailbox/rowKey";
 import { nextAfterRemoval } from "@/lib/listAdvance";
 
 import type { ConversationMessage, MessagesData, MessagesRow, MessagesTopic } from "./api";
@@ -50,9 +51,18 @@ export function cursorRows(data: MessagesData, quietOpen: boolean): MessagesRow[
 }
 
 /** The row holding a conversation, for links that name a thread. */
-export function rowForThread(data: MessagesData, threadId: string): MessagesRow | undefined {
+export function rowForThread(
+  data: MessagesData,
+  threadId: string,
+  /** The linked row's account: two accounts can hold one thread id. */
+  accountId?: string | null,
+): MessagesRow | undefined {
   const all = [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet];
-  return all.find((row) => row.topics.some((topic) => topic.thread_id === threadId));
+  return all.find((row) =>
+    row.topics.some(
+      (topic) => topic.thread_id === threadId && (!accountId || topic.account_id === accountId),
+    ),
+  );
 }
 
 /** "16h", "3d", "now": how long Your turn has waited. */
@@ -197,7 +207,7 @@ export function newTopicAddress(row: MessagesRow): string | null {
 
 /**
  * A row's topics still in Messages: those not done here, less those whose
- * done is on its way to the daemon. What "left with them" counts, and
+ * done is on its way to the daemon (`hidden` holds thread row keys). What "left with them" counts, and
  * what keeps the row in view.
  */
 export function openThreads(
@@ -206,7 +216,10 @@ export function openThreads(
 ): Set<string> {
   return new Set(
     (row?.topics ?? [])
-      .filter((topic) => topic.state !== "done" && !hidden.has(topic.thread_id))
+      .filter(
+        (topic) =>
+          topic.state !== "done" && !holdsThread(hidden, topic.thread_id, topic.account_id),
+      )
       .map((topic) => topic.thread_id),
   );
 }

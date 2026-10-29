@@ -46,7 +46,7 @@ impl App {
                     .envelopes
                     .iter()
                     .filter(|env| match self.mailbox.mail_list_mode {
-                        MailListMode::Threads => env.thread_id == row.thread_id,
+                        MailListMode::Threads => row.thread_key().matches_envelope(env),
                         MailListMode::Messages => env.id == row.representative.id,
                     })
                     .filter_map(|env| wakes.get(&env.id).copied())
@@ -91,8 +91,8 @@ impl App {
         // dominates the per-frame budget and turns scroll into a
         // queue-and-drain experience.
         let pending_ids = self.pending_mutation_message_ids();
-        let mut pending_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
-        let mut reply_later_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
+        let mut pending_threads: HashSet<ThreadKey> = HashSet::new();
+        let mut reply_later_threads: HashSet<ThreadKey> = HashSet::new();
         if !pending_ids.is_empty() || !self.mailbox.reply_later_message_ids.is_empty() {
             for envelope in self
                 .mailbox_list_envelopes()
@@ -100,10 +100,10 @@ impl App {
                 .chain(self.search.page.results.iter())
             {
                 if pending_ids.contains(&envelope.id) {
-                    pending_thread_ids.insert(envelope.thread_id.clone());
+                    pending_threads.insert(ThreadKey::of_envelope(envelope));
                 }
                 if self.mailbox.reply_later_message_ids.contains(&envelope.id) {
-                    reply_later_thread_ids.insert(envelope.thread_id.clone());
+                    reply_later_threads.insert(ThreadKey::of_envelope(envelope));
                 }
             }
         }
@@ -114,8 +114,9 @@ impl App {
                 .get(&(row.representative.account_id.clone(), row.thread_id.clone()))
                 .copied()
                 .unwrap_or(0);
-            row.pending_mutation = pending_thread_ids.contains(&row.thread_id);
-            row.reply_later = reply_later_thread_ids.contains(&row.thread_id);
+            let key = row.thread_key();
+            row.pending_mutation = pending_threads.contains(&key);
+            row.reply_later = reply_later_threads.contains(&key);
         }
         rows
     }
@@ -228,7 +229,7 @@ impl App {
                 .and_then(|env| {
                     self.search_mail_list_rows()
                         .iter()
-                        .position(|row| row.thread_id == env.thread_id)
+                        .position(|row| row.thread_key() == ThreadKey::of_envelope(env))
                 }),
         }
     }

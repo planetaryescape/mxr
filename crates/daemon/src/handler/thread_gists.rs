@@ -22,7 +22,7 @@ use super::thread_gist::{
 };
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::ThreadId;
+use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::Envelope;
 use mxr_protocol::{
     DaemonEvent, GistModelData, ResponseData, ThreadGistBatchData, ThreadGistData,
@@ -49,6 +49,11 @@ const FAILED_CAP: usize = 1024;
 const STALE_RETRIES: u32 = 2;
 const STALE_BACKOFF: Duration = Duration::from_secs(60);
 
+/// A conversation the queue holds: the thread, and the account its row named.
+/// A legacy thread id can be held by two accounts, so the id alone would let
+/// one row's gist stand in for the other's.
+type GistKey = (ThreadId, Option<AccountId>);
+
 /// What happened to one conversation a request asked to queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Enqueued {
@@ -66,16 +71,16 @@ pub(crate) struct GistQueue {
 
 #[derive(Default)]
 struct QueueState {
-    pending: VecDeque<ThreadId>,
-    in_flight: HashSet<ThreadId>,
+    pending: VecDeque<GistKey>,
+    in_flight: HashSet<GistKey>,
     /// Writers running now; each exits when the queue is empty.
     writers: usize,
     /// Conversations backing off, until when: the model failed on this
     /// content (`Some(hash)`), or its gists kept going stale (`None`, any
     /// content).
-    failed: HashMap<ThreadId, (Option<String>, Instant)>,
+    failed: HashMap<GistKey, (Option<String>, Instant)>,
     /// Times each conversation's gist went stale mid-call in a row.
-    stale_attempts: HashMap<ThreadId, u32>,
+    stale_attempts: HashMap<GistKey, u32>,
 }
 
 impl GistQueue {
@@ -83,9 +88,9 @@ impl GistQueue {
     /// already being written; drop the oldest requests past the cap. Says
     /// what happened to each id, and how many writers to start so that up
     /// to `writers` run.
-    fn enqueue(&self, ids: &[ThreadId], writers: usize) -> (Vec<Enqueued>, usize) {
+    fn enqueue(&self, ids: &[GistKey], writers: usize) -> (Vec<Enqueued>, usize) {
         let mut state = self.inner.lock();
-        let fresh: Vec<ThreadId> = ids
+        let fresh: Vec<GistKey> = ids
             .iter()
             .filter(|id| !state.in_flight.contains(*id))
             .cloned()
@@ -117,7 +122,7 @@ impl GistQueue {
     /// Its gist went stale while the model was writing: back of the queue
     /// for another go, or, after `STALE_RETRIES`, a backoff. Never the
     /// front, so a busy conversation can't starve the rest.
-    fn went_stale(&self, id: &ThreadId, now: Instant) {
+    fn went_stale(&self, id: &GistKey, now: Instant) {
         let mut state = self.inner.lock();
         state.in_flight.remove(id);
         if state.stale_attempts.len() >= FAILED_CAP {
@@ -137,7 +142,7 @@ impl GistQueue {
 
     /// The next conversation to write, now marked in flight. `None` retires
     /// the calling writer.
-    fn next(&self) -> Option<ThreadId> {
+    fn next(&self) -> Option<GistKey> {
         let mut state = self.inner.lock();
         match state.pending.pop_front() {
             Some(id) => {
@@ -153,11 +158,11 @@ impl GistQueue {
 
     /// A writer is done with `id`; `failed_at` is the content hash the
     /// model failed on, if it did.
-    fn finish(&self, id: &ThreadId, failed_at: Option<String>) {
+    fn finish(&self, id: &GistKey, failed_at: Option<String>) {
         self.finish_at(id, failed_at, Instant::now());
     }
 
-    fn finish_at(&self, id: &ThreadId, failed_at: Option<String>, now: Instant) {
+    fn finish_at(&self, id: &GistKey, failed_at: Option<String>, now: Instant) {
         let mut state = self.inner.lock();
         state.in_flight.remove(id);
         state.stale_attempts.remove(id);
@@ -185,7 +190,7 @@ impl GistQueue {
 
     /// Backing off: the model failed on this content a moment ago, or the
     /// conversation's gists kept going stale.
-    fn recently_failed(&self, id: &ThreadId, content_hash: &str) -> bool {
+    fn recently_failed(&self, id: &GistKey, content_hash: &str) -> bool {
         let now = Instant::now();
         self.inner
             .lock()
@@ -205,8 +210,16 @@ impl GistQueue {
     pub(crate) fn snapshot(&self) -> (Vec<ThreadId>, Vec<ThreadId>, usize) {
         let state = self.inner.lock();
         (
-            state.pending.iter().cloned().collect(),
-            state.in_flight.iter().cloned().collect(),
+            state
+                .pending
+                .iter()
+                .map(|(thread, _)| thread.clone())
+                .collect(),
+            state
+                .in_flight
+                .iter()
+                .map(|(thread, _)| thread.clone())
+                .collect(),
             state.writers,
         )
     }
@@ -214,7 +227,7 @@ impl GistQueue {
 
 /// Remember a backoff, bounded: expired entries go on every insert, then
 /// the soonest to expire while the map is full.
-fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: Instant) {
+fn back_off(state: &mut QueueState, id: &GistKey, hash: Option<String>, until: Instant) {
     let now = Instant::now();
     state.failed.retain(|_, (_, at)| *at > now);
     while state.failed.len() >= FAILED_CAP && !state.failed.contains_key(id) {
@@ -234,13 +247,16 @@ fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: 
 pub(super) async fn get_thread_gists(
     state: &Arc<AppState>,
     thread_ids: &[ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
     generate: bool,
     automated: bool,
 ) -> HandlerResult {
-    if thread_ids.len() > THREAD_GISTS_MAX_BATCH {
+    // A pair names the account its row belongs to and takes over its bare id.
+    let wanted_keys = super::modes::request_thread_targets(thread_ids, thread_accounts);
+    if wanted_keys.len() > THREAD_GISTS_MAX_BATCH {
         return Err(HandlerError::from(format!(
             "at most {THREAD_GISTS_MAX_BATCH} conversations per request, got {}",
-            thread_ids.len()
+            wanted_keys.len()
         )));
     }
     let policy = GistPolicy::pin(state);
@@ -266,18 +282,22 @@ pub(super) async fn get_thread_gists(
     state.gist_queue.prune_failed();
     let mut seen = HashSet::new();
     let mut found: Vec<Candidate> = Vec::new();
-    for thread_id in thread_ids {
-        if !seen.insert(thread_id) {
+    for key in &wanted_keys {
+        if !seen.insert(key) {
             continue;
         }
-        let envelopes = thread_envelopes(state, thread_id).await?;
+        let (thread_id, account_id) = key;
+        let envelopes = thread_envelopes(state, thread_id, account_id.as_ref()).await?;
         if envelopes.is_empty() {
-            batch
-                .skipped
-                .push(skip(thread_id, ThreadGistSkipReasonData::NotFound));
+            batch.skipped.push(skip(
+                thread_id,
+                account_id.as_ref(),
+                ThreadGistSkipReasonData::NotFound,
+            ));
         } else {
             found.push(Candidate {
                 thread_id: thread_id.clone(),
+                scope: account_id.clone(),
                 envelopes,
             });
         }
@@ -295,9 +315,15 @@ pub(super) async fn get_thread_gists(
     let mut missing: Vec<(Candidate, SenderKind)> = Vec::new();
     for candidate in found {
         // Absent from the map: the message is gone (trashed since).
-        let Some(kind) = kinds.get(&candidate.thread_id).copied() else {
+        let kind = candidate.envelopes.last().and_then(|newest| {
+            kinds
+                .get(&(newest.account_id.clone(), candidate.thread_id.clone()))
+                .copied()
+        });
+        let Some(kind) = kind else {
             batch.skipped.push(skip(
                 &candidate.thread_id,
+                candidate.scope.as_ref(),
                 ThreadGistSkipReasonData::NotFound,
             ));
             continue;
@@ -305,6 +331,7 @@ pub(super) async fn get_thread_gists(
         let Some(setup) = GistSetup::new(
             &policy,
             &candidate.thread_id,
+            candidate.scope.as_ref(),
             &candidate.envelopes,
             GistStyle::of(kind),
         ) else {
@@ -315,14 +342,16 @@ pub(super) async fn get_thread_gists(
         } else if !generate || model != GistModelData::Available {
             batch.skipped.push(skip(
                 &candidate.thread_id,
+                candidate.scope.as_ref(),
                 ThreadGistSkipReasonData::NotGenerated,
             ));
         } else if state
             .gist_queue
-            .recently_failed(&candidate.thread_id, &setup.content_hash)
+            .recently_failed(&candidate.key(), &setup.content_hash)
         {
             batch.skipped.push(skip(
                 &candidate.thread_id,
+                candidate.scope.as_ref(),
                 ThreadGistSkipReasonData::RecentlyFailed,
             ));
         } else {
@@ -331,16 +360,17 @@ pub(super) async fn get_thread_gists(
     }
 
     if !missing.is_empty() {
-        let mut wanted = Vec::new();
+        let mut wanted: Vec<GistKey> = Vec::new();
         for (candidate, kind) in missing {
             // People's conversations; Updates' notifications too when the
             // client is showing Updates. Lists, screened-out senders and
             // the rest stay as they are.
             if kind == SenderKind::Person || (automated && kind == SenderKind::Automated) {
-                wanted.push(candidate.thread_id);
+                wanted.push(candidate.key());
             } else {
                 batch.skipped.push(skip(
                     &candidate.thread_id,
+                    candidate.scope.as_ref(),
                     ThreadGistSkipReasonData::NotPeople,
                 ));
             }
@@ -351,13 +381,15 @@ pub(super) async fn get_thread_gists(
             .gist_concurrency
             .clamp(1, MAX_WRITERS);
         let (outcomes, start) = state.gist_queue.enqueue(&wanted, writers);
-        for (thread_id, outcome) in wanted.into_iter().zip(outcomes) {
+        for (key, outcome) in wanted.into_iter().zip(outcomes) {
             match outcome {
-                Enqueued::Queued => batch.queued.push(thread_id),
-                Enqueued::InFlight => batch.in_flight.push(thread_id),
-                Enqueued::Dropped => batch
-                    .skipped
-                    .push(skip(&thread_id, ThreadGistSkipReasonData::QueueFull)),
+                Enqueued::Queued => batch.queued.push(key.0),
+                Enqueued::InFlight => batch.in_flight.push(key.0),
+                Enqueued::Dropped => batch.skipped.push(skip(
+                    &key.0,
+                    key.1.as_ref(),
+                    ThreadGistSkipReasonData::QueueFull,
+                )),
             }
         }
         for _ in 0..start {
@@ -370,12 +402,25 @@ pub(super) async fn get_thread_gists(
 
 struct Candidate {
     thread_id: ThreadId,
+    /// The account the row named, if it did.
+    scope: Option<AccountId>,
     envelopes: Vec<Envelope>,
 }
 
-fn skip(thread_id: &ThreadId, reason: ThreadGistSkipReasonData) -> ThreadGistSkipData {
+impl Candidate {
+    fn key(&self) -> GistKey {
+        (self.thread_id.clone(), self.scope.clone())
+    }
+}
+
+fn skip(
+    thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
+    reason: ThreadGistSkipReasonData,
+) -> ThreadGistSkipData {
     ThreadGistSkipData {
         thread_id: thread_id.clone(),
+        account_id: account_id.cloned(),
         reason,
     }
 }
@@ -383,14 +428,15 @@ fn skip(thread_id: &ThreadId, reason: ThreadGistSkipReasonData) -> ThreadGistSki
 /// Drain the queue one conversation at a time, then exit.
 async fn run_writer(state: Arc<AppState>) {
     let shutdown = state.shutdown_receiver();
-    while let Some(thread_id) = state.gist_queue.next() {
+    while let Some(key) = state.gist_queue.next() {
+        let (thread_id, account_id) = &key;
         if *shutdown.borrow() {
-            state.gist_queue.finish(&thread_id, None);
+            state.gist_queue.finish(&key, None);
             state.gist_queue.clear_pending();
             continue;
         }
         let started = Instant::now();
-        let outcome = write_one(&state, &thread_id).await;
+        let outcome = write_one(&state, thread_id, account_id.as_ref()).await;
         let elapsed_ms = started.elapsed().as_millis();
         match outcome {
             Ok((gist, content_hash)) => {
@@ -407,29 +453,32 @@ async fn run_writer(state: Arc<AppState>) {
                         // is now: a message that landed during the call
                         // makes it stale, and the conversation goes back
                         // to the front for another go.
-                        let now = newest_message_id(&state, &thread_id).await.ok().flatten();
+                        let now = newest_message_id(&state, thread_id, account_id.as_ref())
+                            .await
+                            .ok()
+                            .flatten();
                         if now.is_some() && now == gist.newest_message_id {
-                            state.gist_queue.finish(&thread_id, None);
+                            state.gist_queue.finish(&key, None);
                             announce(&state, gist);
                         } else {
                             tracing::info!(%thread_id, "list gist went stale mid-call");
-                            state.gist_queue.went_stale(&thread_id, Instant::now());
+                            state.gist_queue.went_stale(&key, Instant::now());
                         }
                     }
                     ThreadGistStatusData::Failed => {
-                        state.gist_queue.finish(&thread_id, Some(content_hash));
+                        state.gist_queue.finish(&key, Some(content_hash));
                     }
                     // The model went away or privacy now blocks it: the
                     // rest of the queue would fail the same way.
                     ThreadGistStatusData::Disabled | ThreadGistStatusData::Blocked => {
-                        state.gist_queue.finish(&thread_id, None);
+                        state.gist_queue.finish(&key, None);
                         state.gist_queue.clear_pending();
                     }
                 }
             }
             Err(error) => {
                 tracing::warn!(%thread_id, elapsed_ms, %error, "list gist failed");
-                state.gist_queue.finish(&thread_id, None);
+                state.gist_queue.finish(&key, None);
             }
         }
     }
@@ -440,8 +489,9 @@ async fn run_writer(state: Arc<AppState>) {
 async fn write_one(
     state: &AppState,
     thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
 ) -> Result<(ThreadGistData, String), HandlerError> {
-    load_and_write_gist(state, thread_id, false, GistCall::Background).await
+    load_and_write_gist(state, thread_id, account_id, false, GistCall::Background).await
 }
 
 fn announce(state: &AppState, gist: ThreadGistData) {
@@ -457,7 +507,9 @@ mod tests {
         let queue = GistQueue::default();
         let start = Instant::now();
         std::thread::sleep(Duration::from_millis(5));
-        let ids: Vec<ThreadId> = (0..FAILED_CAP + 6).map(|_| ThreadId::new()).collect();
+        let ids: Vec<GistKey> = (0..FAILED_CAP + 6)
+            .map(|_| (ThreadId::new(), None))
+            .collect();
         for (offset, id) in ids.iter().enumerate() {
             let at = start + Duration::from_millis(offset as u64);
             queue.finish_at(id, Some("hash".into()), at);
@@ -476,14 +528,20 @@ mod tests {
             .failed
             .values_mut()
             .for_each(|(_, until)| *until = start);
-        queue.finish_at(&ThreadId::new(), Some("hash".into()), Instant::now());
+        queue.finish_at(
+            &(ThreadId::new(), None),
+            Some("hash".into()),
+            Instant::now(),
+        );
         assert_eq!(queue.failed_len(), 1);
     }
 
     #[test]
     fn enqueue_says_what_happened_to_each_conversation() {
         let queue = GistQueue::default();
-        let ids: Vec<ThreadId> = (0..PENDING_CAP + 2).map(|_| ThreadId::new()).collect();
+        let ids: Vec<GistKey> = (0..PENDING_CAP + 2)
+            .map(|_| (ThreadId::new(), None))
+            .collect();
         let (outcomes, start) = queue.enqueue(&ids, 1);
         assert_eq!(start, 1);
         assert_eq!(

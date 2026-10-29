@@ -16,6 +16,22 @@ use sqlx::Row;
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// A conversation a request names: the thread, and the account its row
+/// belongs to when the client sent one. `None` is a bare id from an older
+/// client, which acts on every account holding it.
+pub type ThreadTarget = (ThreadId, Option<AccountId>);
+
+/// The targets as `[[thread, account|null], ...]` for a statement to unpack.
+pub(crate) fn thread_targets_json(targets: &[ThreadTarget]) -> Result<String, sqlx::Error> {
+    serde_json::to_string(
+        &targets
+            .iter()
+            .map(|(thread, account)| (thread.as_str(), account.as_ref().map(AccountId::as_str)))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|e| sqlx::Error::Encode(Box::new(e)))
+}
+
 pub(crate) const CONVERSATION_THREADS: &str = "SELECT thread_id FROM messages
              WHERE account_id = ?1 AND direction != 'inbound' AND date >= ?3 AND date <= ?4
              UNION SELECT m.thread_id FROM mail_assessments home
@@ -561,15 +577,13 @@ impl super::Store {
     /// is written and the same selection is returned, so a preview matches.
     pub async fn dismiss_desk_threads(
         &self,
-        thread_ids: &[ThreadId],
+        targets: &[ThreadTarget],
         dry_run: bool,
     ) -> Result<Vec<(AccountId, ThreadId)>, sqlx::Error> {
-        if thread_ids.is_empty() {
+        if targets.is_empty() {
             return Ok(Vec::new());
         }
-        let wanted =
-            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
-                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let wanted = thread_targets_json(targets)?;
         // One selection for the preview and the write, so they agree. The
         // watermark is the newest message by (date, id) plus the count, as
         // `DeskDismissal` reads it.
@@ -584,7 +598,11 @@ impl super::Store {
                FROM (SELECT account_id, thread_id, COUNT(*) AS through_count,
                             json_group_array(id) AS covered_ids
                      FROM messages
-                     WHERE thread_id IN (SELECT value FROM json_each(?1))
+                     WHERE thread_id IN (SELECT json_extract(value, '$[0]') FROM json_each(?1))
+                       AND EXISTS (SELECT 1 FROM json_each(?1) wanted
+                                   WHERE json_extract(wanted.value, '$[0]') = messages.thread_id
+                                     AND (json_extract(wanted.value, '$[1]') IS NULL
+                                          OR json_extract(wanted.value, '$[1]') = messages.account_id))
                      GROUP BY account_id, thread_id) t"#;
         let rows = if dry_run {
             sqlx::query(SELECTION)
@@ -627,15 +645,17 @@ impl super::Store {
     }
 
     /// Undo "done waiting": the threads show under Waiting again.
-    pub async fn restore_desk_threads(&self, thread_ids: &[ThreadId]) -> Result<u64, sqlx::Error> {
-        if thread_ids.is_empty() {
+    pub async fn restore_desk_threads(&self, targets: &[ThreadTarget]) -> Result<u64, sqlx::Error> {
+        if targets.is_empty() {
             return Ok(0);
         }
-        let wanted =
-            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
-                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let wanted = thread_targets_json(targets)?;
         let result = sqlx::query(
-            "DELETE FROM desk_dismissals WHERE thread_id IN (SELECT value FROM json_each(?1))",
+            "DELETE FROM desk_dismissals WHERE EXISTS (
+                 SELECT 1 FROM json_each(?1) wanted
+                 WHERE json_extract(wanted.value, '$[0]') = desk_dismissals.thread_id
+                   AND (json_extract(wanted.value, '$[1]') IS NULL
+                        OR json_extract(wanted.value, '$[1]') = desk_dismissals.account_id))",
         )
         .bind(wanted)
         .execute(self.writer())
@@ -1126,14 +1146,14 @@ mod tests {
             .unwrap();
 
         let preview = store
-            .dismiss_desk_threads(std::slice::from_ref(&thread), true)
+            .dismiss_desk_threads(&[(thread.clone(), None)], true)
             .await
             .unwrap();
         assert_eq!(preview, vec![(account.id.clone(), thread.clone())]);
         assert!(store.desk_dismissals(&account.id).await.unwrap().is_empty());
 
         let done = store
-            .dismiss_desk_threads(&[thread.clone(), ThreadId::new()], false)
+            .dismiss_desk_threads(&[(thread.clone(), None), (ThreadId::new(), None)], false)
             .await
             .unwrap();
         assert_eq!(done, preview, "unknown threads are skipped");
@@ -1146,12 +1166,12 @@ mod tests {
 
         // Dismissing again is an upsert, and restoring clears it.
         store
-            .dismiss_desk_threads(std::slice::from_ref(&thread), false)
+            .dismiss_desk_threads(&[(thread.clone(), None)], false)
             .await
             .unwrap();
         assert_eq!(
             store
-                .restore_desk_threads(std::slice::from_ref(&thread))
+                .restore_desk_threads(&[(thread.clone(), None)])
                 .await
                 .unwrap(),
             1
@@ -1161,7 +1181,7 @@ mod tests {
         // A message stored later ends a dismissal, even with a Date older
         // than the rest of the thread (a delayed delivery).
         store
-            .dismiss_desk_threads(std::slice::from_ref(&thread), false)
+            .dismiss_desk_threads(&[(thread.clone(), None)], false)
             .await
             .unwrap();
         let late = envelope(

@@ -178,8 +178,14 @@ fn let_go_of_everything_previews_then_commits_the_same_threads() {
     );
     assert_eq!(asked.len(), 4);
     // The daemon previews three of them (one went meanwhile).
-    let previewed: Vec<ThreadId> = asked[..3].to_vec();
-    app.show_reading_let_go_preview(&asked, previewed.iter().cloned().map(outcome).collect());
+    let previewed: Vec<crate::app::ThreadKey> = asked[..3].to_vec();
+    app.show_reading_let_go_preview(
+        &asked,
+        previewed
+            .iter()
+            .map(|thread| outcome(thread.thread_id.clone()))
+            .collect(),
+    );
     assert!(matches!(
         app.mailbox.reading_page.confirm,
         Some(ReadingConfirm::LetGoAll { .. })
@@ -190,7 +196,7 @@ fn let_go_of_everything_previews_then_commits_the_same_threads() {
         matches!(
             requests.as_slice(),
             [Request::SetModeDone { thread_ids, mode: ModeKindData::Reading, dry_run: false, .. }]
-                if *thread_ids == previewed
+                if *thread_ids == previewed.iter().map(|thread| thread.thread_id.clone()).collect::<Vec<_>>()
         ),
         "{requests:?}"
     );
@@ -200,7 +206,7 @@ fn let_go_of_everything_previews_then_commits_the_same_threads() {
 fn esc_on_a_preview_changes_nothing() {
     let mut app = reading_app();
     app.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll {
-        thread_ids: vec![ThreadId::new()],
+        threads: vec![crate::app::ThreadKey::bare(ThreadId::new())],
         items: Vec::new(),
     });
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
@@ -369,7 +375,12 @@ fn e_lets_go_of_the_issue_at_once() {
         queued(&app).as_slice(),
         [Request::SetModeDone { thread_ids, mode: ModeKindData::Reading, .. }] if *thread_ids == [thread.clone()]
     ));
-    assert!(!app.mailbox.reading_page.thread_ids().contains(&thread));
+    assert!(!app
+        .mailbox
+        .reading_page
+        .threads()
+        .iter()
+        .any(|key| key.thread_id == thread));
 }
 
 #[test]

@@ -8,6 +8,8 @@ import { fetchThread } from "@/features/mailbox/api";
 import type { MessageLabelView, MessageRowView, ThreadResponse } from "@/features/mailbox/types";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
+import { conversationKey } from "@/features/mailbox/rowKey";
+
 import { rowMessageIds } from "./pendingMailOps";
 
 export interface MailTarget {
@@ -36,7 +38,8 @@ export interface MailTarget {
 }
 
 export function targetFromRows(rows: MessageRowView[], source: MailTarget["source"]): MailTarget {
-  const threadIds = new Set(rows.map((row) => row.thread_id));
+  // Two accounts can hold the same thread id, so a conversation is its row key.
+  const threadIds = new Set(rows.map((row) => conversationKey(row.thread_id, row.account_id)));
   const single = threadIds.size === 1 ? rows[0] : undefined;
   const messageIds = [...new Set(rows.flatMap(rowMessageIds))];
   return {

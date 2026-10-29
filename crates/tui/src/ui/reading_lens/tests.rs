@@ -348,9 +348,9 @@ fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() 
 #[test]
 fn the_let_go_preview_lists_exactly_the_previewed_issues() {
     let mut confirm = page();
-    let thread_ids = confirm.thread_ids();
+    let threads = confirm.threads();
     confirm.confirm = Some(ReadingConfirm::LetGoAll {
-        thread_ids: thread_ids[..2].to_vec(),
+        threads: threads[..2].to_vec(),
         items: Vec::new(),
     });
     let rendered = render(&confirm, 0, 120);

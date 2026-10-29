@@ -222,6 +222,7 @@ async fn done_on_waiting_marks_read_without_archiving_and_undo_restores_the_prio
     request(
         &fx,
         Request::DismissDeskThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             dry_run: false,
         },

@@ -4,7 +4,7 @@
 //! shown, unsubscribe). The daemon owns every band, rank and line; this
 //! state only holds what came back and what the user is doing with it.
 
-use mxr_core::id::{AccountId, ThreadId};
+use mxr_core::id::AccountId;
 use mxr_protocol::{
     ModeDoneOutcomeData, ModeGuideData, ReadingEditionData, ReadingItemData, ReadingItemDetailData,
     ReadingLinkData, ReadingUnsubscribeData,
@@ -75,7 +75,7 @@ pub enum ReadingConfirm {
     /// `A`: the daemon's dry run of letting go of these threads. Enter
     /// lets go of exactly these.
     LetGoAll {
-        thread_ids: Vec<ThreadId>,
+        threads: Vec<crate::app::ThreadKey>,
         items: Vec<ModeDoneOutcomeData>,
     },
     /// `D`: the daemon's dry run of unsubscribing from a source.
@@ -127,7 +127,7 @@ pub struct ReadingPageState {
     /// Ask the runtime to fetch this item's article (`refresh`).
     pub pending_fetch: Option<(String, bool)>,
     /// Ask the daemon what letting go of these threads would do.
-    pub pending_let_go_preview: Option<Vec<ThreadId>>,
+    pub pending_let_go_preview: Option<Vec<crate::app::ThreadKey>>,
     /// Ask the daemon what unsubscribing would do.
     pub pending_unsubscribe_preview: Option<ReadingUnsubscribeTarget>,
     pub confirm: Option<ReadingConfirm>,
@@ -178,12 +178,14 @@ impl ReadingPageState {
     }
 
     /// Every thread in the edition, once each, in order: what `A` lets go.
-    pub fn thread_ids(&self) -> Vec<ThreadId> {
-        let mut out: Vec<ThreadId> = Vec::new();
+    pub fn threads(&self) -> Vec<crate::app::ThreadKey> {
+        let mut out: Vec<crate::app::ThreadKey> = Vec::new();
         for row in self.rows() {
-            let thread = &row.issue().thread_id;
-            if !out.contains(thread) {
-                out.push(thread.clone());
+            let issue = row.issue();
+            let thread =
+                crate::app::ThreadKey::new(issue.account_id.clone(), issue.thread_id.clone());
+            if !out.contains(&thread) {
+                out.push(thread);
             }
         }
         out
@@ -211,18 +213,17 @@ impl ReadingPageState {
     }
 
     /// Take a thread out of the edition before the daemon answers.
-    pub fn remove_thread(&mut self, thread_id: &ThreadId) {
+    pub fn remove_thread(&mut self, thread: &crate::app::ThreadKey) {
         if let Some(edition) = self.edition.as_mut() {
             for band in &mut edition.bands {
-                band.items.retain(|item| &item.thread_id != thread_id);
+                band.items
+                    .retain(|item| !thread.matches_ids(&item.thread_id, Some(&item.account_id)));
             }
             edition.bands.retain(|band| !band.items.is_empty());
         }
-        if self
-            .reader
-            .as_ref()
-            .is_some_and(|reader| &reader.item.thread_id == thread_id)
-        {
+        if self.reader.as_ref().is_some_and(|reader| {
+            thread.matches_ids(&reader.item.thread_id, Some(&reader.item.account_id))
+        }) {
             self.reader = None;
             self.reader_focused = false;
         }

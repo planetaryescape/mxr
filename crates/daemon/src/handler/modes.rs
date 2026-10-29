@@ -208,7 +208,10 @@ async fn place_threads_with_evidence(
     }
     let marks = store.mode_done_for_threads(account_id, thread_ids).await?;
     let mut records: HashMap<ThreadId, ArchiveRecord> = HashMap::new();
-    for (thread, record) in store.archive_records_for_threads(thread_ids).await? {
+    for (thread, record) in store
+        .archive_records_for_threads(account_id, thread_ids)
+        .await?
+    {
         records.entry(thread).or_insert(record);
     }
     // Who you have ever written to, among the senders a new-sender
@@ -555,6 +558,31 @@ pub(super) async fn threads_by_account(
     Ok(grouped)
 }
 
+/// What a request names, with no lookup: each pair with its account, then each
+/// bare id a pair does not cover with none. A bare id keeps acting on every
+/// account holding it, as it did before clients sent pairs.
+pub(super) fn request_thread_targets(
+    thread_ids: &[ThreadId],
+    pinned: &[mxr_protocol::ThreadAccountRef],
+) -> Vec<(ThreadId, Option<AccountId>)> {
+    let mut targets: Vec<(ThreadId, Option<AccountId>)> = Vec::new();
+    for (thread, account) in pinned
+        .iter()
+        .map(|pair| (pair.thread_id.clone(), Some(pair.account_id.clone())))
+        .chain(
+            thread_ids
+                .iter()
+                .filter(|id| pinned.iter().all(|pair| pair.thread_id != **id))
+                .map(|id| (id.clone(), None)),
+        )
+    {
+        if !targets.contains(&(thread.clone(), account.clone())) {
+            targets.push((thread, account));
+        }
+    }
+    targets
+}
+
 /// What a thread request acts on: each conversation with the account it is
 /// acted on for. A pair from the client names that account. A bare thread id
 /// takes the account the store reports, which is one of the accounts holding
@@ -595,19 +623,26 @@ pub(super) async fn get_membership(
     message_id: Option<&MessageId>,
     thread_id: Option<&ThreadId>,
     thread_ids: &[ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
 ) -> HandlerResult {
-    let mut wanted: Vec<ThreadId> = thread_ids.to_vec();
-    wanted.extend(thread_id.cloned());
+    let mut wanted_ids: Vec<ThreadId> = thread_ids.to_vec();
+    wanted_ids.extend(thread_id.cloned());
+    let mut pinned = thread_accounts.to_vec();
     if let Some(message_id) = message_id {
         let envelope = state
             .store
             .get_envelope(message_id)
             .await?
             .ok_or_else(|| HandlerError::from(format!("Message not found: {message_id}")))?;
-        wanted.push(envelope.thread_id);
+        // The message names its own account, so the thread is read there.
+        pinned.push(mxr_protocol::ThreadAccountRef {
+            thread_id: envelope.thread_id,
+            account_id: envelope.account_id,
+        });
     }
+    let mut wanted = thread_targets(state, &wanted_ids, &pinned).await?;
     let mut seen = HashSet::new();
-    wanted.retain(|thread| seen.insert(thread.clone()));
+    wanted.retain(|target| seen.insert(target.clone()));
     if wanted.is_empty() {
         return Err(HandlerError::InvalidRequest(
             "name a thread_id, a message_id or thread_ids".into(),
@@ -619,16 +654,27 @@ pub(super) async fn get_membership(
         )));
     }
     let now = Utc::now();
-    let mut placed: HashMap<ThreadId, ThreadModesData> = HashMap::new();
-    for (account, threads) in threads_by_account(state, &wanted).await? {
+    let mut by_account: Vec<(AccountId, Vec<ThreadId>)> = Vec::new();
+    for (thread, account) in &wanted {
+        let Some(account) = account else { continue };
+        match by_account.iter_mut().find(|(owner, _)| owner == account) {
+            Some((_, threads)) => threads.push(thread.clone()),
+            None => by_account.push((account.clone(), vec![thread.clone()])),
+        }
+    }
+    let mut placed: HashMap<(AccountId, ThreadId), ThreadModesData> = HashMap::new();
+    for (account, threads) in by_account {
         for placement in place_threads(state, &account, &threads, now).await? {
-            placed.insert(placement.data.thread_id.clone(), placement.data);
+            placed.insert(
+                (account.clone(), placement.data.thread_id.clone()),
+                placement.data,
+            );
         }
     }
     Ok(ResponseData::ModeMembership {
         threads: wanted
-            .iter()
-            .filter_map(|thread| placed.remove(thread))
+            .into_iter()
+            .filter_map(|(thread, account)| placed.remove(&(account?, thread)))
             .collect(),
     })
 }

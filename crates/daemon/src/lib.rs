@@ -19,6 +19,7 @@ pub mod commands;
 #[doc(hidden)]
 pub mod handler;
 pub(crate) mod history_text;
+pub(crate) mod idle_exit;
 pub mod ipc_client;
 pub(crate) mod llm_keys;
 #[cfg(feature = "langfuse")]

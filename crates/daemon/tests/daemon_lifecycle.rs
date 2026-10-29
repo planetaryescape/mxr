@@ -146,6 +146,57 @@ fn status_autostarted_daemon_stays_resident() {
     );
 }
 
+/// A test or demo daemon has no real account to sync, so once its harness
+/// stops talking to it, it must exit instead of running forever.
+#[test]
+fn autostarted_daemon_without_real_accounts_exits_when_idle() {
+    let _guard = daemon_lifecycle_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name("mxr-test-idle");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+
+    let mut daemon = TestDaemon::new(socket_path, pid_path);
+
+    let output = Command::cargo_bin("mxr")
+        .expect("mxr bin")
+        .env("MXR_INSTANCE", &instance)
+        .env("MXR_DATA_DIR", &data_dir)
+        .env("MXR_CONFIG_DIR", &config_dir)
+        .env("MXR_IDLE_EXIT_SECS", "2")
+        .args(["status", "--format", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let status = parse_status(&String::from_utf8(output.stdout).expect("utf8 stdout"));
+    let pid = status["daemon_pid"].as_u64().expect("daemon pid present");
+    daemon.set_pid(pid);
+
+    let alive = || {
+        StdCommand::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("kill -0")
+            .success()
+    };
+    let mut waited = Duration::ZERO;
+    while alive() && waited < Duration::from_secs(30) {
+        sleep(Duration::from_millis(200));
+        waited += Duration::from_millis(200);
+    }
+    assert!(
+        !alive(),
+        "daemon {pid} with no real account was still running {waited:?} after its last client left"
+    );
+    daemon.clear_pid();
+}
+
 /// Locks in the property that the demo daemon (`mxr demo`) cannot poison the
 /// real daemon's state. The real demo flow sets `MXR_INSTANCE=mxr-demo` plus
 /// `MXR_DATA_DIR` / `MXR_CONFIG_DIR` pointing at demo-only paths, and the

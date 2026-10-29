@@ -1970,7 +1970,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 
 ### To do: catch-up
 
-The first run's older undated tasks: keep each one, or let it go to the Expired list. `C` on To do opens it.
+The first run's older undated tasks: keep each one, or let it go to the Expired list. `2` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -1990,7 +1990,7 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 
 ### To do: Expired list
 
-Tasks that expired or were let go. `E` on To do opens it.
+Tasks that expired or were let go. `3` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -2466,5 +2466,6 @@ A topic list, the people in a conversation, Search's filters, a link preview or 
 its keys: the new keys are checked as you type, any action already on them is
 named, and **Save** writes `keys.toml` through the daemon, so the TUI uses them
 too. **Use the default keys** puts an action back. The **Single-key shortcuts**
-switch turns every single-character shortcut off; `?` then says so, and `⌘K`
-or `Ctrl+K` still opens the palette. The web app reads your keys when it loads.
+switch turns every single-character shortcut off, `?` included: `⌘K` or
+`Ctrl+K` still opens the palette, and its **Keyboard help** says the switch is
+off. The web app reads your keys when it loads.

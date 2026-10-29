@@ -403,7 +403,7 @@ The places that show keys stay as D130 set them: the lit row's actions, the stat
 
 ### Accessibility
 
-- **Single-key shortcuts can be turned off.** The web settings get an off switch, as GitHub's "Character keys" setting works. Modifier chords and the palette keep working, and `?` says the switch is off. Together with remapping through `keys.toml`, this meets WCAG 2.1.4.
+- **Single-key shortcuts can be turned off.** The web settings get an off switch, as GitHub's "Character keys" setting works. Modifier chords and the palette keep working, and help, opened from the palette since `?` is a single key too, says the switch is off. Together with remapping through `keys.toml`, this meets WCAG 2.1.4.
 - **Keys never fire while typing.** One helper (`isTypingTarget(event)`) checks `isComposing`, `keyCode === 229`, editable targets and closing dialogs. The dispatcher and every Enter-to-submit field use it.
 - **Every key has a path without the keyboard**, as Primer requires: a visible control or a palette entry.
 

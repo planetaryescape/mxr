@@ -3,9 +3,10 @@
 //!
 //! The single-label queries (`list_threads`, `list_envelopes_by_label`) stay
 //! the path for an explicit label id. These match labels by role instead:
-//! every System label in the account set whose name maps to the role through
-//! `Role::system_label_names`. They are unchecked queries so they need no
-//! `.sqlx` cache entry.
+//! every System label in the account set whose stored `labels.role` (what the
+//! provider reported at sync) is the role. A System label with no stored role
+//! falls back to its name through `Role::system_label_names`. They are
+//! unchecked queries so they need no `.sqlx` cache entry.
 
 use crate::message::{future_date_cutoff_timestamp, sqlite_row_to_envelope};
 use crate::{decode_id, decode_timestamp, trace_query};
@@ -27,8 +28,12 @@ fn account_ids_json(account_ids: &[AccountId]) -> Result<String, sqlx::Error> {
     json_array(account_ids.iter().map(AccountId::as_str))
 }
 
-fn label_names_json(role: Role) -> Result<String, sqlx::Error> {
-    json_array(role.system_label_names().iter().copied())
+/// The keys a label is matched against (`?2`): the role's stored name, then
+/// the names of the fallback. The two never overlap with another role's.
+fn role_keys_json(role: Role) -> Result<String, sqlx::Error> {
+    json_array(
+        std::iter::once(role.storage_name()).chain(role.system_label_names().iter().copied()),
+    )
 }
 
 /// How a role selects messages (`?3`): by System label (0), every message
@@ -46,8 +51,9 @@ fn role_mode(role: Role) -> i64 {
 }
 
 /// Messages that belong to the role in one of the accounts (`?1` accounts,
-/// `?2` label names, `?3` the mode above). A macro so the final SQL stays a
-/// literal.
+/// `?2` the role keys above, `?3` the mode above). A macro so the final SQL
+/// stays a literal. The stored role decides; the name is read only for a label
+/// that carries none.
 macro_rules! role_filter {
     () => {
         "(?3 = 1 OR (?3 = 2 AND (m.flags & 2) != 0) OR (?3 = 0 AND m.id IN (
@@ -55,7 +61,8 @@ macro_rules! role_filter {
             JOIN labels l ON l.id = ml.label_id
             WHERE l.kind = 'system'
               AND l.account_id IN (SELECT value FROM json_each(?1))
-              AND lower(l.name) IN (SELECT value FROM json_each(?2))
+              AND (l.role IN (SELECT value FROM json_each(?2))
+                   OR (l.role IS NULL AND lower(l.name) IN (SELECT value FROM json_each(?2))))
         )))"
     };
 }
@@ -198,7 +205,7 @@ impl super::Store {
             std::collections::HashMap::new();
 
         let labels = sqlx::query(
-            "SELECT name, unread_count, total_count FROM labels
+            "SELECT name, role, unread_count, total_count FROM labels
              WHERE kind = 'system'
                AND account_id IN (SELECT value FROM json_each(?1))",
         )
@@ -206,11 +213,18 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
         for row in labels {
+            let stored: Option<String> = row.get("role");
             let name: String = row.get("name");
-            let Some(role) = Role::from_system_label_name(&name) else {
+            let role = match stored.as_deref() {
+                Some(stored) => Role::from_storage_name(stored),
+                None => Role::from_system_label_name(&name),
+            };
+            let Some(role) = role else {
                 continue;
             };
-            if matches!(role, Role::AllMail | Role::Starred) {
+            if role.system_mailbox_wire_name().is_none()
+                || matches!(role, Role::AllMail | Role::Starred)
+            {
                 continue;
             }
             let entry = counts.entry(role).or_default();
@@ -229,7 +243,7 @@ impl super::Store {
                 role_filter!()
             ))
             .bind(&accounts_json)
-            .bind(label_names_json(role)?)
+            .bind(role_keys_json(role)?)
             .bind(role_mode(role))
             .fetch_one(self.reader())
             .await?;
@@ -272,7 +286,7 @@ impl super::Store {
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(sql)
             .bind(account_ids_json(account_ids)?)
-            .bind(label_names_json(role)?)
+            .bind(role_keys_json(role)?)
             .bind(role_mode(role))
             .bind(future_date_cutoff_timestamp())
             .bind(i64::from(limit))
@@ -335,7 +349,7 @@ impl super::Store {
              LIMIT ?5 OFFSET ?6"
         ))
         .bind(account_ids_json(account_ids)?)
-        .bind(label_names_json(role)?)
+        .bind(role_keys_json(role)?)
         .bind(role_mode(role))
         .bind(future_date_cutoff_timestamp())
         .bind(i64::from(limit))
@@ -378,7 +392,12 @@ mod tests {
         account
     }
 
+    /// A label as a provider reports it: a System label carries the role its
+    /// name stands for.
     async fn label(store: &Store, account_id: &AccountId, name: &str, kind: LabelKind) -> Label {
+        let role = (kind == LabelKind::System)
+            .then(|| Role::from_system_label_name(name))
+            .flatten();
         let label = Label {
             id: LabelId::new(),
             account_id: account_id.clone(),
@@ -388,7 +407,7 @@ mod tests {
             provider_id: name.to_string(),
             unread_count: 0,
             total_count: 0,
-            role: None,
+            role,
         };
         store.upsert_label(&label).await.unwrap();
         label
@@ -648,9 +667,10 @@ mod tests {
     #[tokio::test]
     async fn a_thread_id_shared_across_accounts_is_listed_once() {
         let t = two_accounts().await;
-        // Legacy Gmail thread ids are not account-scoped, so two accounts can
-        // hold the same id. `get_threads_batch` keys on it, so the listing
-        // returns the thread once rather than twice.
+        // Legacy Gmail thread ids (before 0.4.52) are not account-scoped, so
+        // two accounts can hold the same id. `get_threads_batch` keys on it, so
+        // the listing returns the thread once rather than twice. Pinned so a
+        // change is deliberate; see docs/blueprint/02-data-model.md.
         let shared = ThreadId::new();
         message(&t.store, &t.a.id, 10, &[&t.a_inbox], Some(shared.clone())).await;
         message(&t.store, &t.b.id, 20, &[&t.b_inbox], Some(shared.clone())).await;
@@ -662,6 +682,81 @@ mod tests {
             .unwrap();
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, shared);
+    }
+
+    #[tokio::test]
+    async fn a_system_label_joins_the_role_it_is_stored_with_not_its_name() {
+        let store = Store::in_memory().await.unwrap();
+        let acct = account(&store).await;
+        // An IMAP folder named in German with the \Sent special-use: the
+        // provider reports Sent, so the name is not what places it.
+        let sent = Label {
+            id: LabelId::new(),
+            account_id: acct.id.clone(),
+            name: "Gesendete Elemente".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "Gesendete Elemente".to_string(),
+            unread_count: 0,
+            total_count: 0,
+            role: Some(Role::Sent),
+        };
+        store.upsert_label(&sent).await.unwrap();
+        let (thread, _) = message(&store, &acct.id, 10, &[&sent], None).await;
+
+        let listed = store
+            .list_threads_by_role(
+                std::slice::from_ref(&acct.id),
+                Role::Sent,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            listed.iter().map(|t| t.id.clone()).collect::<Vec<_>>(),
+            vec![thread]
+        );
+        let stored = store
+            .list_labels_by_account(&acct.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|label| label.name == "Gesendete Elemente")
+            .unwrap();
+        assert_eq!(stored.role, Some(Role::Sent));
+    }
+
+    #[tokio::test]
+    async fn a_system_label_with_no_stored_role_is_placed_by_its_name() {
+        let store = Store::in_memory().await.unwrap();
+        let acct = account(&store).await;
+        let inbox = Label {
+            id: LabelId::new(),
+            account_id: acct.id.clone(),
+            name: "INBOX".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "INBOX".to_string(),
+            unread_count: 0,
+            total_count: 0,
+            role: None,
+        };
+        store.upsert_label(&inbox).await.unwrap();
+        let (thread, _) = message(&store, &acct.id, 10, &[&inbox], None).await;
+        let listed = store
+            .list_threads_by_role(
+                std::slice::from_ref(&acct.id),
+                Role::Inbox,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, thread);
     }
 
     /// A message with `flags`, in `account_id`, carrying `labels`.

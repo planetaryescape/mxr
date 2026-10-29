@@ -340,6 +340,7 @@ expression: summary
     "MessagesPreviewData",
     "MessagesPreviewKindData",
     "MessagesRowData",
+    "MessagesRowDraftData",
     "MessagesRowKindData",
     "MessagesTopicData",
     "MessagesTurnData",

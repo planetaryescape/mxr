@@ -391,7 +391,13 @@ const PersonRow = memo(function PersonRow({
         </>
       }
       secondary={
-        secondary ? (
+        row.draft ? (
+          // Your unsent reply replaces the preview, as a chat app shows it. The
+          // label is a word, not only a colour.
+          <span data-testid="row-preview" data-kind="draft">
+            <span className="font-medium text-signal">Draft:</span> {row.draft.text}
+          </span>
+        ) : secondary ? (
           <span
             data-testid="row-preview"
             data-kind={preview?.kind}

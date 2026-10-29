@@ -69,6 +69,7 @@ mod mail_kind;
 mod mailbox;
 pub(crate) mod messages;
 mod messages_ack;
+mod messages_drafts;
 mod messages_text;
 mod messages_view;
 pub(crate) mod microsoft_todo;

@@ -54,7 +54,7 @@ Now and the Messages header count attention, not history.
 |---|---|---|
 | Your turn | A directed request to you is unanswered, or your reply-later timer has returned | Closest first, then whoever has waited longest past your usual pace with them |
 | Pinned | Up to nine people you pinned with `s`; only actionable people in the default view | Most recent first, with a dot when it's your turn |
-| Recent | Other recent conversations, or conversations where you wrote last | Most recent first; "You: ..." when you wrote last |
+| Recent | Other recent conversations, or conversations where you wrote last | Most recent first; "You: ..." when you wrote last, "Draft: ..." over either when you left a reply unsent |
 | Quiet | Done here, or a turn nobody took | Collapsed; a new message brings them back |
 
 Closeness comes from your own history with them, counted on your machine:
@@ -219,8 +219,25 @@ and Bcc fields, From address and sending account from the draft. An empty To
 field offers an add-recipient action. Choose `Edit` to open the existing fields
 and `Done` to fold them again; edits stay in the draft and appear in the compact
 header immediately. The reply uses the selected message's prepared recipients,
-including its Reply-To when present. If you switch topics, the reply docks with
-its source subject in the title and returns to that topic.
+including its Reply-To when present.
+
+## Unsent replies
+
+In the web app, leaving a conversation with a reply open saves the reply and
+closes it. This covers Back to the people on a phone, choosing another person,
+and switching topics. The person's row then shows `Draft:` in the accent colour, followed by
+the start of your reply, in place of the usual preview. The reply box under
+the conversation shows the same line. Click or tap the row, or press `Enter`
+on it, and the conversation opens with your reply under it and the cursor in
+the text. Moving through the list with `j` and `k` shows the person's page
+without opening the reply, so the keys stay with the list. `r` and `a` also
+continue the reply already started on that conversation. A reply that can't
+save, for example while mxr is stopped, stays open in a sheet with its text
+until it saves or you close it.
+
+The TUI's list and `mxr messages` show the same `Draft:` line, with the label
+in the accent colour in the TUI. A reply you opened but left empty is not
+shown as a draft.
 
 Topic labels show the state and recency for your turn, waiting and done topics.
 Quiet topics show only recency; the separate Quiet band for people remains.
@@ -292,7 +309,9 @@ mxr messages split samir.p@home.example
 ## For scripts and agents
 
 `mxr messages --format json` returns every band with each row's topics,
-preview, closeness and why line. `mxr messages person ID --format json`
+preview, closeness and why line. A row with an unsent reply also has `draft`,
+with its `draft_id`, `thread_id`, `text` (the start of the reply on one line),
+`reply_all` and `updated_at`; CSV output adds a `draft` column. `mxr messages person ID --format json`
 returns the page with each message's text, `trimmed` flags, `source`
 (`stored_body` or `provider_snippet`; omitted by older daemons), and
 `has_preserved_context`.

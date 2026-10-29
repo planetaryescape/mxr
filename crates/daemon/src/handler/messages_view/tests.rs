@@ -141,6 +141,7 @@ fn your_turn_ranks_closeness_first_then_how_late() {
         last_at: now(),
         turn_since: Some(now() - Duration::hours(hours)),
         preview: None,
+        draft: None,
         topics: vec![],
         usual_reply_seconds: None,
         pace_label: None,

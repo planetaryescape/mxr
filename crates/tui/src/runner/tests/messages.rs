@@ -267,6 +267,36 @@ fn r_replies_to_the_open_topic_and_help_leads_with_messages() {
     );
 }
 
+#[test]
+fn a_reply_left_unsent_shows_as_a_draft_on_its_row() {
+    let mut app = messages_app(true);
+    let mut data = populated();
+    let jon = &mut data.your_turn[1];
+    jon.draft = Some(mxr_protocol::MessagesRowDraftData {
+        draft_id: mxr_core::id::DraftId::new(),
+        thread_id: jon.topics[0].thread_id.clone(),
+        text: "Reads right, one tweak to the second line".into(),
+        reply_all: false,
+        updated_at: chrono::Utc::now(),
+    });
+    app.set_messages(data, None);
+
+    let backend = ratatui::backend::TestBackend::new(140, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let screen: String = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(screen.contains("Draft: Reads right, one tweak"), "{screen}");
+    assert!(!screen.contains("Does the pricing copy"), "{screen}");
+}
+
 /// `.` pressed and its preview shown: a Got it counting down from `start`.
 fn counting_down(app: &mut App, start: std::time::Instant) -> AckPlanData {
     press(app, KeyCode::Char('.'));

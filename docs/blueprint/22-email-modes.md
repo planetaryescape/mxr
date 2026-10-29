@@ -669,8 +669,9 @@ shape, not the medium: three lines or fewer render compactly like chat, longer
 ones as a letter block with "Read all N paragraphs". Removed text is marked
 ("trimmed: quote, sig") with the original on `o`. Reply and Reply all are
 explicit mode choices. The active draft shows its exact To, Cc, Bcc, From and
-account; editing opens the compose fields. An inline reply stays bound to its
-source topic, names that subject while docked, and returns when you come back.
+account; editing opens the compose fields. Leaving the conversation saves an
+inline reply and closes it; the person's row shows `Draft:` with the start of
+the reply, and opening them resumes it (D187).
 Got it (`.`) shows the exact To and From
 from its preview plan before the countdown sends. Archive, label and move are
 not on the surface.

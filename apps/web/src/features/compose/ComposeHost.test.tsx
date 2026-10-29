@@ -612,7 +612,7 @@ test("sheet and fullscreen reply dialogs include the source subject in their acc
   expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
 });
 
-test("a docked reply names its source and restores edited recipients and body after another topic opens", async () => {
+test("a reply left by switching topic saves, closes, and comes back with its recipients and body", async () => {
   const stored = new Map<string, ComposeSessionResponse>();
   const makeReply = (messageId: string) =>
     session({
@@ -697,38 +697,19 @@ test("a docked reply names its source and restores edited recipients and body af
   });
 
   fireEvent.click(screen.getByRole("button", { name: "Switch topic" }));
-  expect(
-    await screen.findByRole("dialog", { name: "Reply · Contract renewal" }),
-  ).toBeInTheDocument();
-  act(() =>
-    useComposeUi.getState().openCompose(
-      {
-        key: "compose:reply:m2",
-        title: "Reply",
-        kind: "reply",
-        messageId: "m2",
-        contextThreadId: "thread-2",
-        contextTitle: "Launch checklist",
-        quiet: true,
-      },
-      "inline",
-    ),
-  );
-  await waitFor(() => {
-    expect(api.updateComposeSession.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        draftPath: "/tmp/m1.md",
-        frontmatter: expect.objectContaining({
-          to: "reply-to@example.net",
-          cc: "copy@example.net",
-        }),
-        body: "Edited body kept for the original topic",
+  await waitFor(() => expect(useComposeUi.getState().intent).toBeNull());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(api.updateComposeSession.mock.calls[0]?.[0]).toEqual(
+    expect.objectContaining({
+      draftPath: "/tmp/m1.md",
+      frontmatter: expect.objectContaining({
+        to: "reply-to@example.net",
+        cc: "copy@example.net",
       }),
-    );
-  });
+      body: "Edited body kept for the original topic",
+    }),
+  );
 
-  fireEvent.click(await screen.findByRole("button", { name: /close composer/i }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: "Return to original topic" }));
   act(() => useComposeUi.getState().openCompose(firstIntent, "inline"));
   const restoredSlot = screen.getByTestId("thread-1-slot");
@@ -1430,34 +1411,59 @@ describe("saved draft discard preview", () => {
 });
 
 describe("ComposeHost when an inline conversation slot disappears", () => {
-  test("moves the same reply into its sheet and keeps typed text", async () => {
-    function Route() {
-      const [visible, setVisible] = useState(true);
-      return (
-        <>
-          {visible ? <div id="inline-composer-slot-thread-1" /> : null}
-          <button type="button" onClick={() => setVisible(false)}>
-            Leave conversation
-          </button>
-          <ComposeHost />
-        </>
-      );
-    }
+  function Route() {
+    const [visible, setVisible] = useState(true);
+    return (
+      <>
+        {visible ? <div id="inline-composer-slot-thread-1" /> : null}
+        <button type="button" onClick={() => setVisible(false)}>
+          Leave conversation
+        </button>
+        <ComposeHost />
+      </>
+    );
+  }
+
+  async function typeAndLeave(text: string) {
     renderHost(<Route />);
     act(() =>
       useComposeUi
         .getState()
         .openCompose({ ...replyIntent("m-1", "single"), contextThreadId: "thread-1" }, "inline"),
     );
-
     const editor = await screen.findByRole("textbox", { name: "Message body" });
-    fireEvent.change(editor, { target: { value: "Keep this reply" } });
+    fireEvent.change(editor, { target: { value: text } });
     fireEvent.click(screen.getByRole("button", { name: "Leave conversation" }));
+  }
+
+  test("saves the typed text and closes the reply, with no sheet over the list", async () => {
+    api.updateComposeSession.mockImplementation(async (input) => {
+      const { frontmatter, body } = input as {
+        frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+        body: string;
+      };
+      return session({ frontmatter, bodyMarkdown: body, kind: "reply" });
+    });
+    await typeAndLeave("Keep this reply");
+
+    await waitFor(() => expect(useComposeUi.getState().intent).toBeNull());
+    expect(api.updateComposeSession.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ body: "Keep this reply" }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Message body" })).not.toBeInTheDocument();
+  });
+
+  test("a reply that can't save stays open in its sheet with the text", async () => {
+    api.updateComposeSession.mockRejectedValue(new Error("daemon unavailable"));
+    await typeAndLeave("Do not lose me");
 
     const sheet = await screen.findByRole("dialog", { name: "Reply" });
     expect(within(sheet).getByRole("textbox", { name: "Message body" })).toHaveValue(
-      "Keep this reply",
+      "Do not lose me",
     );
-    expect(within(sheet).getByRole("button", { name: "Fullscreen (⇧⌘F)" })).toBeInTheDocument();
+    expect(toasts.error).toHaveBeenCalledWith("Draft not saved, composer kept open", {
+      description: "daemon unavailable",
+    });
   });
 });

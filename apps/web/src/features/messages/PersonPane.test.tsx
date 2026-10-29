@@ -273,6 +273,44 @@ test("keeps this topic replyable while a different topic's reply is docked", () 
   expect(screen.getByRole("group", { name: "Reply mode" })).toBeInTheDocument();
 });
 
+test("the reply box shows the reply left on this conversation, and Reply resumes it", () => {
+  const onReply = vi.fn<() => void>();
+  const draft = {
+    draft_id: "draft-1",
+    thread_id: conversation.thread_id,
+    text: "Looks right, one change to clause 4",
+    reply_all: false,
+    updated_at: message.date,
+  };
+  const { rerender } = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PersonPane
+        {...props(false, "thread-1")}
+        page={{ ...page, row: { ...row, draft } }}
+        onReply={onReply}
+      />
+    </QueryClientProvider>,
+  );
+
+  const box = screen.getByTestId("composer");
+  expect(box).toHaveTextContent("Draft: Looks right, one change to clause 4");
+  expect(within(box).getByText("Draft:")).toHaveClass("text-signal");
+  fireEvent.click(box);
+  expect(onReply).toHaveBeenCalled();
+
+  // A reply left on another of their conversations isn't this one's.
+  rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <PersonPane
+        {...props(false, "thread-1")}
+        page={{ ...page, row: { ...row, draft: { ...draft, thread_id: "thread-9" } } }}
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByTestId("composer")).toHaveTextContent("Reply");
+  expect(screen.getByTestId("composer")).not.toHaveTextContent("Draft:");
+});
+
 test("positions the latest message start once, including after StrictMode cancels an effect", async () => {
   const callbacks = new Map<number, FrameRequestCallback>();
   const cancelled: number[] = [];

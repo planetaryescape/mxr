@@ -8661,6 +8661,7 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             band: components["schemas"]["MessagesBandData"];
             closeness: components["schemas"]["ClosenessData"];
+            draft?: components["schemas"]["MessagesRowDraftData"] | null;
             /** @description `person:<email>` or `group:<thread_id>`: what `GetPerson` takes. */
             id: string;
             kind: components["schemas"]["MessagesRowKindData"];
@@ -8700,6 +8701,21 @@ export interface components {
             why: string;
             /** @description A topic needs attention: an unanswered request or due explicit return. */
             your_turn: boolean;
+        };
+        /**
+         * @description Your unsent reply in one of a row's conversations: the line clients show
+         *     as "Draft: ..." in place of the preview, and what opening the row resumes.
+         */
+        MessagesRowDraftData: {
+            draft_id: components["schemas"]["DraftId"];
+            /** @description The reply goes to everyone on the conversation. */
+            reply_all: boolean;
+            /** @description The start of the reply's text, on one line. */
+            text: string;
+            /** @description The conversation the reply answers: one of the row's topics. */
+            thread_id: components["schemas"]["ThreadId"];
+            /** Format: date-time */
+            updated_at: string;
         };
         /** @enum {string} */
         MessagesRowKindData: "person" | "group";
@@ -11240,6 +11256,11 @@ export interface components {
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
+                  /**
+                   * @description With no `account_id`, list every enabled account's senders instead
+                   *     of only the default account's. Ignored when `account_id` is set.
+                   */
+                  all_accounts?: boolean;
                   /** @enum {string} */
                   cmd: "ListSubscriptions";
                   /** Format: int32 */

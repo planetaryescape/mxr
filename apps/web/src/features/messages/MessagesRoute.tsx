@@ -490,6 +490,42 @@ function MessagesBody({
     [conversation],
   );
 
+  // Opening a row with an unsent reply opens the conversation it answers and
+  // brings the reply back inline, focused, as a chat app does. Only an
+  // explicit open does: moving the lamp with j and k never takes the keys.
+  const [resume, setResume] = useState<{
+    person: string;
+    thread: string;
+    replyAll: boolean;
+  } | null>(null);
+  const openRow = useCallback(
+    (id: string) => {
+      const draft = allRows.find((row) => row.id === id)?.draft;
+      setResume(draft ? { person: id, thread: draft.thread_id, replyAll: draft.reply_all } : null);
+      select(id, { open: true, topic: draft?.thread_id });
+    },
+    [allRows, select],
+  );
+  const pageReady = Boolean(page && page.row.id === selectedId && !person.isPlaceholderData);
+  // The URL reaches the person a render after the open; leaving them after
+  // that drops the resume, so a later return by j or k never fires it.
+  const resumeReached = useRef(false);
+  useEffect(() => {
+    if (!resume) {
+      resumeReached.current = false;
+      return;
+    }
+    if (selectedId !== resume.person) {
+      if (resumeReached.current) setResume(null);
+      return;
+    }
+    resumeReached.current = true;
+    if (!pageReady || conversation?.thread_id !== resume.thread) return;
+    setResume(null);
+    if (useComposeUi.getState().intent?.contextThreadId === resume.thread) return;
+    openReply(resume.replyAll);
+  }, [conversation?.thread_id, openReply, pageReady, resume, selectedId]);
+
   // Where the page is now, read when an undo lands (after any later move).
   const here = useRef({
     mounted: true,
@@ -712,7 +748,7 @@ function MessagesBody({
       setPageOpen(false);
       setFilterFocusRequest((request) => request + 1);
     },
-    open: () => selectedId && select(selectedId, { open: true }),
+    open: () => selectedId && openRow(selectedId),
     personPage: () => {
       setPageOpen(true);
       requestAnimationFrame(() => {
@@ -766,11 +802,11 @@ function MessagesBody({
   });
 
   // Stable for the memoised rows: the handlers read the latest closure through a ref.
-  const latest = useRef({ select, openReply, done, replyAll });
-  latest.current = { select, openReply, done, replyAll };
+  const latest = useRef({ openRow, openReply, done, replyAll });
+  latest.current = { openRow, openReply, done, replyAll };
   const onSelectRow = useCallback((id: string) => {
     via.current = "pointer";
-    latest.current.select(id, { open: true });
+    latest.current.openRow(id);
   }, []);
   const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
   const onDoneRow = useCallback(() => latest.current.done("pointer"), []);

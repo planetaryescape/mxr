@@ -288,18 +288,20 @@ fn render_list(
         }
         OutputFormat::Csv => {
             use super::owed::csv_escape;
-            let mut out = String::from("band,id,title,your_turn,last_at,preview\n");
+            let mut out = String::from("band,id,title,your_turn,last_at,preview,draft\n");
             for (band, rows) in bands(messages) {
                 for row in rows {
                     let preview = row.preview.as_ref().map_or("", |p| p.text.as_str());
+                    let draft = row.draft.as_ref().map_or("", |d| d.text.as_str());
                     let _ = writeln!(
                         out,
-                        "{band},{},{},{},{},{}",
+                        "{band},{},{},{},{},{},{}",
                         row.id,
                         csv_escape(&row.title),
                         row.your_turn,
                         row.last_at.to_rfc3339(),
-                        csv_escape(preview)
+                        csv_escape(preview),
+                        csv_escape(draft)
                     );
                 }
             }
@@ -393,7 +395,10 @@ fn row_lines(out: &mut String, row: &MessagesRowData, marks: &AccountMarks) {
         age(when),
         facts.join(" · ")
     );
-    if let Some(preview) = &row.preview {
+    // Your unsent reply takes the preview's place, as in the TUI and web.
+    if let Some(draft) = &row.draft {
+        let _ = writeln!(out, "    Draft: {}", terminal_text(&draft.text));
+    } else if let Some(preview) = &row.preview {
         let text = match preview.kind {
             mxr_protocol::MessagesPreviewKindData::Ask => format!("\"{}\"", preview.text),
             _ => preview.text.clone(),

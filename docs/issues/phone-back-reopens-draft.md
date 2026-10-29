@@ -1,6 +1,8 @@
 # On a phone, Back from a person with a reply open shows the draft, not the people
 
-Status: open. Found 2026-10-28 on fix/ci-health while fixing `resizable-panes.spec.ts` "a reply drafted on a phone survives going back to the people and reopening", which had failed on main since b2ea14e8b.
+Status: fixed 2026-10-29 on fix/phone-back-closes-draft, following BK's decision (D187). When the inline reply's slot goes away, `ComposeHost` saves the reply and closes it instead of opening the sheet; only a failed save keeps it open, in the sheet. The daemon puts the conversation's unsent reply on its Messages row (`MessagesRowData.draft`), the web, TUI and CLI show it as `Draft: …`, and opening the row in the web app resumes the reply inline with focus in the editor. `messages.spec.ts` covers the phone journey.
+
+Found 2026-10-28 on fix/ci-health while fixing `resizable-panes.spec.ts` "a reply drafted on a phone survives going back to the people and reopening", which had failed on main since b2ea14e8b.
 
 ## What happens
 

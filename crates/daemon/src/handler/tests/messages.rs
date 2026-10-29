@@ -2314,3 +2314,60 @@ async fn one_correspondent_in_two_accounts_is_two_rows_and_matched_counts_both()
         "no filter matches every row, once per account"
     );
 }
+
+#[tokio::test]
+async fn an_unsent_reply_shows_on_its_row_and_page_until_it_leaves() {
+    let fx = Fixture::new().await;
+    let (thread, theirs) = deck_thread(&fx).await;
+    let samir = |messages: &MessagesData| {
+        rows(messages)
+            .into_iter()
+            .find(|row| row.id == format!("person:{SAMIR}"))
+            .cloned()
+            .expect("Samir's row")
+    };
+    // Opening Reply and leaving it empty is not a draft to the user.
+    let draft = match request(
+        &fx,
+        Request::EnsureReplyDraft {
+            message_id: theirs.id.clone(),
+            reply_all: false,
+            dry_run: false,
+        },
+    )
+    .await
+    {
+        ResponseData::Draft { draft } => draft,
+        other => panic!("expected a reply draft, got {other:?}"),
+    };
+    assert_eq!(samir(&list(&fx).await).draft, None);
+
+    let mut typed = draft.clone();
+    typed.content =
+        mxr_core::types::DraftContent::markdown("Glad it landed.\n\nI'll send the numbers Friday.");
+    request(&fx, Request::UpdateDraft { draft: typed }).await;
+
+    let row = samir(&list(&fx).await);
+    let shown = row.draft.expect("the unsent reply is on the row");
+    assert_eq!(shown.draft_id, draft.id);
+    assert_eq!(shown.thread_id, thread);
+    assert_eq!(shown.text, "Glad it landed. I'll send the numbers Friday.");
+    assert!(!shown.reply_all);
+    assert!(
+        row.preview.is_some(),
+        "the preview stays for clients that want both"
+    );
+    let page = person(&fx, SAMIR, Some(&thread)).await;
+    assert_eq!(
+        page.row.draft.map(|draft| draft.thread_id),
+        Some(thread.clone())
+    );
+
+    // A reply on its way out is no longer one to resume.
+    fx.state
+        .store
+        .update_draft_status(&draft.id, mxr_core::types::DraftStatus::Sending)
+        .await
+        .unwrap();
+    assert_eq!(samir(&list(&fx).await).draft, None);
+}

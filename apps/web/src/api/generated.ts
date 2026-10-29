@@ -8067,6 +8067,7 @@ export interface components {
             | "unsupported"
             | "internal";
         JobData: {
+            action?: components["schemas"]["MutationCommand"] | null;
             error?: string | null;
             /**
              * @description The first messages that failed, with why (at most 50); the exact total
@@ -8094,6 +8095,13 @@ export interface components {
              * @description Unix milliseconds. `UndoJob` works until then; set when the job ends.
              */
             undo_expires_at?: number | null;
+            /**
+             * Format: int32
+             * @description How many undo ids the job holds. `undo_ids` carries at most the newest
+             *     100 of them so a job over half a million messages stays small on the
+             *     wire; a selection job is undone as a whole by its own id.
+             */
+            undo_id_count?: number;
             undo_ids?: string[];
             /** @description The job this one reverses (`UndoJob`). */
             undo_of?: string | null;

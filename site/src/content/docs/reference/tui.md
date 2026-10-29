@@ -187,8 +187,8 @@ not ask the model about every row. The CLI equivalent is
 
 ## Thread summaries
 
-Run `:` → **Summarize thread** from the mailbox, message, or thread view. Its
-old key, `y`, now points you at the thread briefing (`B`). The LLM request runs in the background, so navigation, body loads,
+Run `:` → **Summarize thread** from the mailbox, message, or thread view. The
+LLM request runs in the background, so navigation, body loads,
 and other mail actions keep working.
 
 Cached summaries appear above the message body when a thread opens. If a long

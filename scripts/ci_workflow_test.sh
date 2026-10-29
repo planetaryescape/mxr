@@ -82,8 +82,8 @@ if grep -Fq 'continue-on-error:' <<<"$web_tests_block"; then
 fi
 
 classifier_block="$(sed -n '/^  classifier-eval:/,/^  test-quality-audit:/p' "$workflow")"
-if ! grep -Fq "needs.changes.outputs.classifier == 'true' || github.event_name == 'push'" <<<"$classifier_block"; then
-  echo "Classifier Eval must run for classifier changes and on every push to main." >&2
+if ! grep -Fq "if: needs.changes.outputs.classifier == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)" <<<"$classifier_block"; then
+  echo "Classifier Eval must run only for classifier changes (and manual runs), never on every push to main." >&2
   exit 1
 fi
 if ! grep -Fq 'handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo' <<<"$classifier_block"; then
@@ -98,6 +98,37 @@ fi
 keymap_block="$(sed -n '/^  keymap:/,/^  classifier-eval:/p' "$workflow")"
 if ! grep -Fq "needs.changes.outputs.rust != 'true'" <<<"$keymap_block" || ! grep -Fq 'cargo test -p mxr-keymap' <<<"$keymap_block"; then
   echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump past a moved key's until fails." >&2
+  exit 1
+fi
+
+# The workspace runs once in full, with the feature release.yml ships; the
+# no-feature job tests only the crates the feature changes.
+test_block="$(sed -n '/^  test:/,/^  test-semantic:/p' "$workflow")"
+semantic_block="$(sed -n '/^  test-semantic:/,/^  keymap:/p' "$workflow")"
+if ! grep -Fq 'name: Test (fast / no semantic)' <<<"$test_block" || ! grep -Fq 'run: cargo nextest run -p mxr -p mxr-semantic' <<<"$test_block"; then
+  echo "Test (fast / no semantic) must keep its required-check name and test only mxr and mxr-semantic without the feature." >&2
+  exit 1
+fi
+if ! grep -Fq 'run: cargo nextest run --workspace --features semantic-local' <<<"$semantic_block"; then
+  echo "Test (semantic-local) must run the whole workspace with semantic-local." >&2
+  exit 1
+fi
+for block in "$test_block" "$semantic_block"; do
+  if ! grep -Fq "github.event.pull_request.draft == false" <<<"$block"; then
+    echo "Both test jobs must skip draft PRs." >&2
+    exit 1
+  fi
+done
+
+# Clippy type-checks every target, so there is no separate check job to need.
+if grep -Eq '^  check:|needs:.*\bcheck\b' "$workflow"; then
+  echo "CI must not bring back the cargo check job or a dependency on it; Clippy covers it." >&2
+  exit 1
+fi
+
+# One browser engine in CI: Chromium. WebKit runs by hand (npm run e2e:webkit).
+if grep -Fq 'e2e:webkit' "$workflow" || grep -Fq 'mxr-builder' "$workflow"; then
+  echo "CI runs Web E2E on Chromium only; WebKit is a manual run." >&2
   exit 1
 fi
 

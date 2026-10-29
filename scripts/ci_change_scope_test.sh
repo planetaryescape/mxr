@@ -63,23 +63,46 @@ assert_scope push "$baseline" HEAD false true true false false
 reset_fixture
 echo protocol >crates/protocol/src/lib.rs
 commit_all 'protocol change'
-assert_scope pull_request "$baseline" HEAD true true false false false true
+assert_scope pull_request "$baseline" HEAD true true false false false false
 
-# The full-set classifier eval runs for the crates that generate, classify
-# and grade mail, and not for a UI crate.
-for classifier_path in crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs; do
+# The full-set classifier eval runs for the code that decides a graded
+# answer: the demo generator, the detectors, the daemon's post-sync
+# classification and the eval itself.
+for classifier_path in crates/provider-fake/src/lib.rs crates/provider-fake/src/fixtures/scenarios/bulk.rs \
+  crates/todo/src/detect.rs crates/reader/src/lib.rs crates/daemon/src/loops.rs \
+  crates/daemon/src/handler/todos.rs crates/daemon/src/handler/reading/mod.rs \
+  crates/daemon/src/handler/arrivals.rs crates/daemon/src/handler/tests/classify_eval_full.rs; do
   reset_fixture
+  mkdir -p "$(dirname "$classifier_path")"
   echo change >"$classifier_path"
   commit_all "classifier path $classifier_path"
   assert_scope pull_request "$baseline" HEAD true false false false false true
 done
 
-# The root manifest is the daemon crate's and the workspace's dependency
-# manifest, so a dependency or feature change there can move an answer.
+# Not for the rest of the daemon, its plumbing crates, or the fake
+# provider's spool and conformance helpers.
+for other_path in crates/daemon/src/lib.rs crates/daemon/src/handler/draft_compose.rs \
+  crates/daemon/src/handler/tests/classify_eval.rs crates/store/src/lib.rs \
+  crates/config/src/lib.rs crates/llm/src/lib.rs crates/provider-fake/src/spool.rs \
+  crates/todo/Cargo.toml; do
+  reset_fixture
+  mkdir -p "$(dirname "$other_path")"
+  echo change >"$other_path"
+  commit_all "non-classifier path $other_path"
+  assert_scope pull_request "$baseline" HEAD true false false false false false
+done
+
+# A dependency change in the root manifest or the lock file is Rust, not a
+# classifier change.
 reset_fixture
 echo change >Cargo.toml
 commit_all 'root manifest change'
-assert_scope pull_request "$baseline" HEAD true false false false false true
+assert_scope pull_request "$baseline" HEAD true false false false false false
+
+reset_fixture
+echo change >Cargo.lock
+commit_all 'lock file change'
+assert_scope pull_request "$baseline" HEAD true false false false false false
 
 reset_fixture
 echo tui >crates/tui/src/lib.rs
@@ -191,14 +214,14 @@ assert_scope push "$release_base" HEAD false false false true false false
 git reset -q --hard "$release_base"
 write_release_files 0.6.2 1.0.2 bbbb
 commit_all 'chore(main): release 0.6.2'
-assert_scope push "$release_base" HEAD true false false true false true
+assert_scope push "$release_base" HEAD true false false true false false
 
 # So is a manifest change beyond the version, whatever the commit says.
 git reset -q --hard "$release_base"
 write_release_files 0.6.2 1.0.1 aaaa
 printf 'tokio = "1"\n' >>Cargo.toml
 commit_all 'chore(main): release 0.6.2'
-assert_scope push "$release_base" HEAD true false false true false true
+assert_scope push "$release_base" HEAD true false false true false false
 
 reset_fixture
 assert_scope push '' HEAD true true true true false true

@@ -33,7 +33,7 @@ Not here: layout, responsive widths and resizing, motion, copy and teaching text
 
 ## Running it
 
-`npm run e2e` runs the whole suite in Chromium; pull requests and `main` both run it (`npm run e2e:engine` is the same run). `npm run e2e:webkit` runs it on WebKit.
+`npm run e2e` runs the whole suite in Chromium; pull requests and `main` both run it (`npm run e2e:engine` is the same run). `npm run e2e:webkit` runs it on WebKit by hand; CI runs Chromium only.
 
 Each run starts its own daemon on `MXR_E2E_BRIDGE_PORT` (default 17777, control port one above) and Vite on `MXR_E2E_APP_PORT` (default 5173), with its state in `MXR_E2E_RUNTIME_DIR`. Give a second checkout its own ports and directory. `scripts/e2e-server.mjs` refuses to start when the bridge or control port is taken, because a daemon that can't bind its bridge keeps running without it and the suite would otherwise run against the other daemon. `MXR_E2E_BIN` points at the `mxr` binary to run (default `target-cli/debug/mxr`).
 

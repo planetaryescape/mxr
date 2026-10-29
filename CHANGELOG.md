@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.184](https://github.com/planetaryescape/mxr/compare/v0.6.183...v0.6.184) (2026-10-29)
+
+
+### Bug Fixes
+
+* show the & in desktop menu titles such as Focus & reply ([#777](https://github.com/planetaryescape/mxr/issues/777)) ([f607e6c](https://github.com/planetaryescape/mxr/commit/f607e6c9aa6ed8353d17fd58346b7a268d824ddd))
+
+
+### Documentation
+
+* amend D169 so the desktop menu gives shortcuts only to Mod-chord actions ([c382641](https://github.com/planetaryescape/mxr/commit/c38264191ce66398795c1490bcce6ce0e13940f8))
+* record the App Shortcuts rebind check for the desktop menu ([928fa34](https://github.com/planetaryescape/mxr/commit/928fa3435c37fe6778ab94ef0e9fa28bd3e25aeb))
+* tell agents how Cargo target dirs get swept ([#775](https://github.com/planetaryescape/mxr/issues/775)) ([9c94b34](https://github.com/planetaryescape/mxr/commit/9c94b34803209a9b6432727da83f1ca8ab6b19ce))
+
 ## [0.6.183](https://github.com/planetaryescape/mxr/compare/v0.6.182...v0.6.183) (2026-10-28)
 
 

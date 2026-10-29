@@ -18,9 +18,12 @@ Always-on checks:
 - secret scan over checked-in files and Git history
 - release gate scripts: version gate, bundled Gmail OAuth gate, release workflow policy checks, provider smoke workflow checks, CI workflow checks
 
-Rust-affecting changes run `cargo deny`, `cargo check --workspace --all-targets`,
-architecture-boundary checks, `cargo fmt`, clippy, nextest fast/full semantic
-lanes, SQLx offline checks, and MSRV checks when the expensive lane is enabled.
+Rust-affecting changes run `cargo deny`, architecture-boundary checks,
+`cargo fmt`, clippy (which is also the workspace type check), the whole
+workspace's nextest run with `semantic-local`, a nextest run of `mxr` and
+`mxr-semantic` without it, SQLx offline checks, and MSRV checks when the
+expensive lane is enabled. The full-set classifier eval runs only when the code
+that decides a graded answer changes (`scripts/ci_change_scope.sh`).
 
 Web-affecting changes run npm audit, typecheck, lint, unit tests, and a focused
 Playwright smoke against a real mxr daemon.
@@ -601,7 +604,7 @@ site.
 
 **Chosen**: Build Linux x86_64 natively on Linux runners and macOS Apple Silicon natively on macOS runners. Keep `cross` available only if future Linux ARM64 or musl targets return.
 
-**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled and never `langfuse`, the developer-only feature that traces model calls (D150); CI's Clippy job fails if `opentelemetry` enters that feature set's dependency tree. The macOS build runs on a self-hosted runner (`mxr-builder`) on a developer's Mac, as that user. It gets a `CARGO_HOME`, `RUSTUP_HOME` and sccache server port of its own under the runner's tool cache, set by the local action `.github/actions/self-hosted-rust-home`, which CI's `Web E2E (WebKit / macOS)` job on the same runner also uses: on the user's own, rust-cache's save step deleted `~/.cargo/bin/rustup` and every unpacked crate after each release, which broke the user's builds mid-compile, and the first run killed the user's sccache server. The build job has no rust-cache step: releases run on new tags and caches are scoped to the ref, so it never restored a cache. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
+**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled and never `langfuse`, the developer-only feature that traces model calls (D150); CI's Clippy job fails if `opentelemetry` enters that feature set's dependency tree. The macOS build runs on a self-hosted runner (`mxr-builder`) on a developer's Mac, as that user. It gets a `CARGO_HOME`, `RUSTUP_HOME` and sccache server port of its own under the runner's tool cache, set by the local action `.github/actions/self-hosted-rust-home`: on the user's own, rust-cache's save step deleted `~/.cargo/bin/rustup` and every unpacked crate after each release, which broke the user's builds mid-compile, and the first run killed the user's sccache server. The build job has no rust-cache step: releases run on new tags and caches are scoped to the ref, so it never restored a cache. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
 
 **D068: Workspace publish via cargo-workspaces**
 

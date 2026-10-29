@@ -8104,10 +8104,10 @@ export interface components {
             undo_expires_at?: number | null;
             /**
              * Format: int32
-             * @description How many undo ids the job holds. `GetJob` carries at most the newest
-             *     100 of them so a job over half a million messages stays small on the
-             *     wire, and `ListJobs` none; a selection job is undone as a whole by its
-             *     own id.
+             * @description How many undo ids the job holds. `ListJobs` carries none. `GetJob`
+             *     carries a selection job's newest 100, so a job over half a million
+             *     messages stays small on the wire (it is undone as a whole by its own
+             *     id), and every other job's all, since clients undo those from the list.
              */
             undo_id_count?: number;
             undo_ids?: string[];

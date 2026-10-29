@@ -57,45 +57,6 @@ pub(crate) fn startup_rebuild_needed(
     stale_content || (total_messages != 0 && indexed != u64::from(total_messages))
 }
 
-/// Submits one page read earlier. A live batch can commit a newer version of
-/// one of these messages between the read and this submit, and the page would
-/// then overwrite it. So after the submit, any message of the page that a live
-/// batch touched is reloaded from SQLite and written again.
-async fn submit_page(
-    search: &SearchServiceHandle,
-    store: &Store,
-    batch: SearchUpdateBatch,
-    page_ids: &[MessageId],
-) -> Result<(), MxrError> {
-    search.apply_rebuild_batch(batch).await?;
-    search
-        .recheck_page(page_ids, |ids| reread_page(store, ids))
-        .await
-}
-
-/// The current index entries for `ids`, read from SQLite. A message that no
-/// longer exists is removed from the index.
-async fn reread_page(store: &Store, ids: Vec<MessageId>) -> Result<SearchUpdateBatch, MxrError> {
-    let store_error = |e: sqlx::Error| MxrError::Store(e.to_string());
-    let mut bodies = store.bodies_for_messages(&ids).await.map_err(store_error)?;
-    let reply_later = store
-        .reply_later_message_ids(&ids)
-        .await
-        .map_err(store_error)?;
-    let mut batch = SearchUpdateBatch::default();
-    for id in ids {
-        match store.get_envelope(&id).await.map_err(store_error)? {
-            Some(envelope) => batch.entries.push(SearchIndexEntry {
-                body: bodies.remove(&id),
-                reply_later: reply_later.contains(&id),
-                envelope,
-            }),
-            None => batch.removed_message_ids.push(id),
-        }
-    }
-    Ok(batch)
-}
-
 /// Pages by primary key, not by offset. An offset page re-sorts the table and
 /// walks past every earlier row, so the rebuild got slower as it went. A key
 /// seek costs the same at the start and the end of the mailbox.
@@ -111,7 +72,6 @@ async fn reindex_in_batches(
     // Only a complete rebuild clears the incomplete state. A rebuild that fails
     // part way drops this guard unfinished, so search keeps answering from SQLite.
     let rebuilding = search.begin_rebuild();
-    search.reset_live_touches().await;
     // Count only the bodies this rebuild falls back on, not earlier syncs.
     search.take_clean_fallbacks();
     let total = store
@@ -127,6 +87,9 @@ async fn reindex_in_batches(
     let mut after: Option<MessageId> = None;
 
     loop {
+        // Taken before the page is read: a live update numbered after this
+        // point may or may not be in the page, and the worker resolves it.
+        let read_seq = search.read_seq();
         let envelopes = store
             .list_envelopes_for_reindex(after.as_ref(), batch_size)
             .await
@@ -159,11 +122,10 @@ async fn reindex_in_batches(
                 progress(ReindexProgress::Indexing { indexed, total });
             }
         }
-        submit_page(search, store, batch, &ids).await?;
+        search.apply_rebuild_batch(batch, read_seq).await?;
     }
 
     progress(ReindexProgress::Complete { indexed });
-    search.reset_live_touches().await;
 
     let clean_fallbacks = search.take_clean_fallbacks();
     if clean_fallbacks > 0 {
@@ -195,6 +157,7 @@ async fn reindex_in_batches(
         .map_err(|e| MxrError::Store(e.to_string()))?;
 
     rebuilding.finish();
+    search.end_live_record().await?;
     Ok(indexed)
 }
 
@@ -409,32 +372,88 @@ mod tests {
         assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
     }
 
-    #[tokio::test]
-    async fn a_live_update_between_a_page_read_and_its_submit_is_not_overwritten() {
-        use mxr_core::types::SortOrder;
-
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account = state.default_account_id();
-        let stored = crate::test_fixtures::TestEnvelopeBuilder::new()
-            .account_id(account)
-            .subject("stalepageword")
-            .build();
-        state.store.upsert_envelope(&stored).await.unwrap();
-        let ids = vec![stored.id.clone()];
-
-        let rebuild = state.search.begin_rebuild();
-        state.search.reset_live_touches().await;
-        // The page the rebuild read before the live update.
-        let read_page = SearchUpdateBatch {
+    /// One rebuild page holding `envelope`, as a read at `read_seq` would give it.
+    fn page_of(envelope: &mxr_core::Envelope) -> SearchUpdateBatch {
+        SearchUpdateBatch {
             entries: vec![SearchIndexEntry {
-                envelope: stored.clone(),
+                envelope: envelope.clone(),
                 body: None,
                 reply_later: false,
             }],
             removed_message_ids: Vec::new(),
-        };
-        // A live sync commits a newer version and applies it to the index
-        // before the rebuild submits its older page.
+        }
+    }
+
+    async fn subject_hits(state: &AppState, word: &str) -> Vec<String> {
+        state
+            .search
+            .search(word, 10, 0, mxr_core::types::SortOrder::Relevance)
+            .await
+            .unwrap()
+            .results
+            .into_iter()
+            .map(|result| result.message_id)
+            .collect()
+    }
+
+    async fn stored_with_subject(state: &AppState, subject: &str) -> mxr_core::Envelope {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(state.default_account_id())
+            .subject(subject)
+            .build();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        envelope
+    }
+
+    #[tokio::test]
+    async fn a_live_update_after_a_page_read_is_not_overwritten_by_that_page() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let stored = stored_with_subject(&state, "stalepageword").await;
+        let rebuild = state.search.begin_rebuild();
+
+        // The rebuild reads the page, then a live sync commits and applies a newer row.
+        let read_seq = state.search.read_seq();
+        let old_page = page_of(&stored);
+        let mut newer = stored.clone();
+        newer.subject = "freshpageword".to_string();
+        state.store.upsert_envelope(&newer).await.unwrap();
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: vec![SearchIndexEntry {
+                    envelope: newer.clone(),
+                    body: None,
+                    reply_later: false,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(state.search.live_record_len().await.unwrap(), 1);
+
+        // The page is submitted after the live update; the newer row must win.
+        state
+            .search
+            .apply_rebuild_batch(old_page, read_seq)
+            .await
+            .unwrap();
+        drop(rebuild);
+        state.search.end_live_record().await.unwrap();
+
+        assert_eq!(
+            subject_hits(&state, "freshpageword").await,
+            [stored.id.as_str()]
+        );
+        assert!(subject_hits(&state, "stalepageword").await.is_empty());
+        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_live_update_before_the_page_read_is_what_the_page_applies() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let stored = stored_with_subject(&state, "stalepageword").await;
+        let rebuild = state.search.begin_rebuild();
+
         let mut newer = stored.clone();
         newer.subject = "freshpageword".to_string();
         state.store.upsert_envelope(&newer).await.unwrap();
@@ -451,24 +470,55 @@ mod tests {
             .await
             .unwrap();
 
-        submit_page(&state.search, &state.store, read_page, &ids)
+        // The rebuild reads after the live update, so its page holds the newer row.
+        let read_seq = state.search.read_seq();
+        let page = page_of(&newer);
+        state
+            .search
+            .apply_rebuild_batch(page, read_seq)
             .await
             .unwrap();
-        state.search.reset_live_touches().await;
-        rebuild.finish();
+        drop(rebuild);
+        state.search.end_live_record().await.unwrap();
 
-        let fresh = state
+        assert_eq!(
+            subject_hits(&state, "freshpageword").await,
+            [stored.id.as_str()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_live_delete_after_a_page_read_keeps_the_message_out_of_the_index() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let stored = stored_with_subject(&state, "deletedpageword").await;
+        let rebuild = state.search.begin_rebuild();
+
+        let read_seq = state.search.read_seq();
+        let old_page = page_of(&stored);
+        state
             .search
-            .search("freshpageword", 10, 0, SortOrder::Relevance)
+            .apply_batch(SearchUpdateBatch {
+                entries: Vec::new(),
+                removed_message_ids: vec![stored.id.clone()],
+            })
             .await
             .unwrap();
-        assert_eq!(fresh.results.len(), 1);
-        assert_eq!(fresh.results[0].message_id, stored.id.as_str());
-        let stale = state
+        state
             .search
-            .search("stalepageword", 10, 0, SortOrder::Relevance)
+            .apply_rebuild_batch(old_page, read_seq)
             .await
             .unwrap();
-        assert!(stale.results.is_empty());
+        drop(rebuild);
+        state.search.end_live_record().await.unwrap();
+
+        assert!(subject_hits(&state, "deletedpageword").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_finished_rebuild_leaves_no_live_record() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        stored_with_subject(&state, "recordword").await;
+        reindex(&state.search, &state.store, |_| {}).await.unwrap();
+        assert_eq!(state.search.live_record_len().await.unwrap(), 0);
     }
 }

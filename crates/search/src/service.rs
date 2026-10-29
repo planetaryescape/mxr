@@ -2,7 +2,7 @@ use crate::{SearchIndex, SearchPage};
 use mxr_core::id::MessageId;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tantivy::query::Query;
@@ -31,11 +31,11 @@ pub struct SearchServiceHandle {
     /// on disk is stale or short. A failed rebuild leaves it set.
     incomplete: Arc<AtomicBool>,
     clean_fallbacks: Arc<AtomicU64>,
-    /// Messages that live batches changed while a rebuild runs. Taken by
-    /// [`Self::recheck_page`], which rewrites a page the rebuild may have
-    /// submitted from an older read. Held across the worker send so the
-    /// recheck and a live batch reach the worker in the order they were made.
-    live_touched: Arc<tokio::sync::Mutex<HashSet<MessageId>>>,
+    /// The sequence number of the newest live batch. Each live batch takes the
+    /// next number when it is created; a rebuild records the current number
+    /// before it reads a page, so the worker can tell which live batches came
+    /// after that read.
+    live_seq: Arc<AtomicU64>,
     /// The rebuild that startup holds from open until its maintenance ends.
     startup_hold: Arc<std::sync::Mutex<Option<RebuildGuard>>>,
 }
@@ -87,10 +87,26 @@ impl Drop for RebuildGuard {
     }
 }
 
+/// What an applied batch is, for the worker's live-update record.
+#[derive(Debug, Clone, Copy)]
+enum BatchKind {
+    /// A live update, numbered when it was created.
+    Live { seq: u64 },
+    /// A page a rebuild read at `read_seq`.
+    Rebuild { read_seq: u64 },
+}
+
 enum SearchCommand {
     ApplyBatch {
         batch: SearchUpdateBatch,
+        kind: BatchKind,
         resp: oneshot::Sender<Result<(), MxrError>>,
+    },
+    ClearLiveRecord {
+        resp: oneshot::Sender<()>,
+    },
+    LiveRecordLen {
+        resp: oneshot::Sender<usize>,
     },
     Search {
         query: String,
@@ -128,11 +144,44 @@ impl SearchServiceHandle {
     pub fn start(index: SearchIndex) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SearchCommand>(32);
         let clean_fallbacks = Arc::clone(&index.clean_fallbacks);
+        let rebuilds = Arc::new(AtomicU64::new(0));
+        let worker_rebuilds = Arc::clone(&rebuilds);
         let handle = tokio::spawn(async move {
             let mut index = index;
+            // Newest live sequence applied per message, kept only while a
+            // rebuild runs. Only the worker touches it, so no lock is needed.
+            let mut live_record: HashMap<MessageId, u64> = HashMap::new();
             while let Some(command) = rx.recv().await {
                 match command {
-                    SearchCommand::ApplyBatch { batch, resp } => {
+                    SearchCommand::ApplyBatch {
+                        mut batch,
+                        kind,
+                        resp,
+                    } => {
+                        let rebuilding =
+                            worker_rebuilds.load(Ordering::Acquire) & REBUILD_MASK != 0;
+                        if !rebuilding {
+                            live_record.clear();
+                        }
+                        match kind {
+                            BatchKind::Live { seq } => {
+                                if rebuilding {
+                                    for id in batch_message_ids(&batch) {
+                                        let last = live_record.entry(id).or_insert(0);
+                                        *last = (*last).max(seq);
+                                    }
+                                }
+                            }
+                            BatchKind::Rebuild { read_seq } => {
+                                // A message a live batch changed after this page
+                                // was read has a newer row than the page holds.
+                                let newer = |id: &MessageId| {
+                                    live_record.get(id).is_some_and(|&seq| seq > read_seq)
+                                };
+                                batch.entries.retain(|entry| !newer(&entry.envelope.id));
+                                batch.removed_message_ids.retain(|id| !newer(id));
+                            }
+                        }
                         // Indexing and committing are CPU-bound and, on an
                         // initial sync, run for minutes. Doing that inline
                         // parks a tokio worker thread for the whole run, so
@@ -164,6 +213,13 @@ impl SearchServiceHandle {
                                 break;
                             }
                         }
+                    }
+                    SearchCommand::ClearLiveRecord { resp } => {
+                        live_record.clear();
+                        let _ = resp.send(());
+                    }
+                    SearchCommand::LiveRecordLen { resp } => {
+                        let _ = resp.send(live_record.len());
                     }
                     SearchCommand::Search {
                         query,
@@ -212,11 +268,11 @@ impl SearchServiceHandle {
         (
             Self {
                 tx,
-                rebuilds: Arc::new(AtomicU64::new(0)),
+                rebuilds,
                 incomplete: Arc::new(AtomicBool::new(false)),
                 clean_fallbacks,
                 startup_hold: Arc::new(std::sync::Mutex::new(None)),
-                live_touched: Arc::new(tokio::sync::Mutex::new(HashSet::new())),
+                live_seq: Arc::new(AtomicU64::new(0)),
             },
             handle,
         )
@@ -308,78 +364,61 @@ impl SearchServiceHandle {
         self.availability() == IndexAvailability::Ready { epoch }
     }
 
-    /// Applies a live batch (sync, mutations). While a rebuild runs, the
-    /// messages it changes are recorded so the rebuild can recheck them.
+    /// The sequence number of the newest live batch created so far. A rebuild
+    /// reads this before it reads a page from SQLite.
+    pub fn read_seq(&self) -> u64 {
+        self.live_seq.load(Ordering::Acquire)
+    }
+
+    /// Applies a live batch (sync, mutations). Call it after the store write the
+    /// batch describes: the batch takes its sequence number here.
     pub async fn apply_batch(&self, batch: SearchUpdateBatch) -> Result<(), MxrError> {
-        let mut touched = self.live_touched.lock().await;
-        if self.rebuilding() {
-            touched.extend(batch_message_ids(&batch));
-        }
-        let response = self.send_apply(batch).await?;
-        drop(touched);
-        response.await.map_err(|_| worker_stopped())?
+        let seq = self.live_seq.fetch_add(1, Ordering::AcqRel) + 1;
+        self.apply(batch, BatchKind::Live { seq }).await
     }
 
-    /// Applies one page of a rebuild. Not recorded: the rebuild's own pages
-    /// are what [`Self::recheck_page`] checks.
-    pub async fn apply_rebuild_batch(&self, batch: SearchUpdateBatch) -> Result<(), MxrError> {
-        let response = self.send_apply(batch).await?;
-        response.await.map_err(|_| worker_stopped())?
-    }
-
-    /// After a rebuild submits a page, rewrites the page's messages that a live
-    /// batch changed since the page was read. `reread` loads the current rows
-    /// for those ids, so the worker's last write for them is the newer one.
-    /// Touches are drained on every call, which bounds the record to the
-    /// interval between two pages.
-    pub async fn recheck_page<F, Fut>(
-        &self,
-        page_ids: &[MessageId],
-        reread: F,
-    ) -> Result<(), MxrError>
-    where
-        F: FnOnce(Vec<MessageId>) -> Fut,
-        Fut: std::future::Future<Output = Result<SearchUpdateBatch, MxrError>>,
-    {
-        let mut touched = self.live_touched.lock().await;
-        let drained = std::mem::take(&mut *touched);
-        let hits: Vec<MessageId> = page_ids
-            .iter()
-            .filter(|id| drained.contains(*id))
-            .cloned()
-            .collect();
-        if hits.is_empty() {
-            return Ok(());
-        }
-        let batch = reread(hits).await?;
-        let response = self.send_apply(batch).await?;
-        drop(touched);
-        response.await.map_err(|_| worker_stopped())?
-    }
-
-    /// Forgets recorded live touches. A rebuild calls this when it starts and
-    /// when it ends, so nothing outlives one rebuild.
-    pub async fn reset_live_touches(&self) {
-        self.live_touched.lock().await.clear();
-    }
-
-    fn rebuilding(&self) -> bool {
-        self.rebuilds.load(Ordering::Acquire) & REBUILD_MASK != 0
-    }
-
-    async fn send_apply(
+    /// Applies one page a rebuild read at `read_seq` (from [`Self::read_seq`],
+    /// taken before the page was read). The worker skips any message a live
+    /// batch created after `read_seq` has changed, because that row is newer.
+    pub async fn apply_rebuild_batch(
         &self,
         batch: SearchUpdateBatch,
-    ) -> Result<oneshot::Receiver<Result<(), MxrError>>, MxrError> {
+        read_seq: u64,
+    ) -> Result<(), MxrError> {
+        self.apply(batch, BatchKind::Rebuild { read_seq }).await
+    }
+
+    /// Forgets the live-update record. A rebuild calls this when it ends.
+    pub async fn end_live_record(&self) -> Result<(), MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::ClearLiveRecord { resp: resp_tx })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())
+    }
+
+    /// Number of messages in the live-update record. Zero outside a rebuild.
+    pub async fn live_record_len(&self) -> Result<usize, MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::LiveRecordLen { resp: resp_tx })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())
+    }
+
+    async fn apply(&self, batch: SearchUpdateBatch, kind: BatchKind) -> Result<(), MxrError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(SearchCommand::ApplyBatch {
                 batch,
+                kind,
                 resp: resp_tx,
             })
             .await
             .map_err(closed_error)?;
-        Ok(resp_rx)
+        resp_rx.await.map_err(|_| worker_stopped())?
     }
 
     pub async fn search(
@@ -698,48 +737,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_live_batch_during_a_rebuild_is_rechecked_once_then_forgotten() {
+    async fn live_updates_are_recorded_only_while_a_rebuild_runs_and_end_with_it() {
         let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
-        let rebuild = handle.begin_rebuild();
         let id = MessageId::new();
-        let rechecks = std::sync::atomic::AtomicUsize::new(0);
+        let removal = || SearchUpdateBatch {
+            entries: Vec::new(),
+            removed_message_ids: vec![id.clone()],
+        };
 
-        // Not a live batch: the rebuild's own page is not recorded.
-        handle
-            .apply_rebuild_batch(SearchUpdateBatch {
-                entries: Vec::new(),
-                removed_message_ids: vec![id.clone()],
-            })
-            .await
-            .unwrap();
-        handle
-            .recheck_page(std::slice::from_ref(&id), |_| async {
-                rechecks.fetch_add(1, Ordering::SeqCst);
-                Ok(SearchUpdateBatch::default())
-            })
-            .await
-            .unwrap();
-        assert_eq!(rechecks.load(Ordering::SeqCst), 0);
+        handle.apply_batch(removal()).await.unwrap();
+        assert_eq!(handle.live_record_len().await.unwrap(), 0);
 
-        // A live batch is recorded, so the next recheck rereads it once.
-        handle
-            .apply_batch(SearchUpdateBatch {
-                entries: Vec::new(),
-                removed_message_ids: vec![id.clone()],
-            })
-            .await
-            .unwrap();
-        for _ in 0..2 {
-            handle
-                .recheck_page(std::slice::from_ref(&id), |_| async {
-                    rechecks.fetch_add(1, Ordering::SeqCst);
-                    Ok(SearchUpdateBatch::default())
-                })
-                .await
-                .unwrap();
-        }
-        assert_eq!(rechecks.load(Ordering::SeqCst), 1);
+        let rebuild = handle.begin_rebuild();
+        handle.apply_batch(removal()).await.unwrap();
+        assert_eq!(handle.live_record_len().await.unwrap(), 1);
 
+        handle.end_live_record().await.unwrap();
+        assert_eq!(handle.live_record_len().await.unwrap(), 0);
         drop(rebuild);
+    }
+
+    #[tokio::test]
+    async fn every_live_batch_takes_the_next_sequence_number() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+        assert_eq!(handle.read_seq(), 0);
+        handle
+            .apply_batch(SearchUpdateBatch::default())
+            .await
+            .unwrap();
+        handle
+            .apply_batch(SearchUpdateBatch::default())
+            .await
+            .unwrap();
+        assert_eq!(handle.read_seq(), 2);
     }
 }

@@ -18,4 +18,4 @@ pub use new_text::{
 };
 pub use pipeline::{clean, ReaderConfig, ReaderOutput};
 pub use quotes::QuotedBlock;
-pub use searchable::{searchable_parts, searchable_text, SearchableText};
+pub use searchable::{body_match_parts, searchable_text, SearchableText};

@@ -330,7 +330,7 @@ async fn freeze_labels(
             references
                 .iter()
                 .map(|reference| match mutations::find_label(&labels, reference) {
-                    Some(label) if label.kind == LabelKind::User => Ok(FrozenLabel {
+                    Some(label) if is_users_own(label) => Ok(FrozenLabel {
                         reference: reference.clone(),
                         label_id: label.id.clone(),
                         provider_id: label.provider_id.clone(),
@@ -365,6 +365,13 @@ async fn freeze_labels(
     Ok(Some(frozen))
 }
 
+/// A label the user created: kind `User`, and no mailbox role (Inbox, Trash,
+/// Spam, …) either, in case a provider tags a role on a label it calls a user
+/// label.
+fn is_users_own(label: &mxr_core::types::Label) -> bool {
+    label.kind == LabelKind::User && label.role.is_none()
+}
+
 /// The provider ids a starting job applies: each label the preview froze,
 /// provided it is still there, still the user's, under the same provider id.
 /// `Ok(Err(..))` when one is not: the preview is stale.
@@ -379,7 +386,7 @@ async fn check_frozen_labels(
             labels.iter().any(|label| {
                 label.id == frozen.label_id
                     && label.provider_id == frozen.provider_id
-                    && label.kind == LabelKind::User
+                    && is_users_own(label)
             })
         };
         if let Some(gone) = wanted

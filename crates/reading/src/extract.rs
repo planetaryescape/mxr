@@ -17,6 +17,7 @@
 
 use crate::headline::clean_headline;
 use crate::urls::{clean_url, display_domain, is_click_tracker};
+use mxr_html_worker::Job;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{ElementRef, Html, Node};
@@ -239,7 +240,7 @@ pub fn extract(input: &IssueInput<'_>) -> Extraction {
 }
 
 /// A link as the walk found it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Anchor {
     text: String,
     href: String,
@@ -249,6 +250,7 @@ struct Anchor {
     in_strong: bool,
 }
 
+#[derive(Serialize, Deserialize)]
 struct Walked {
     paragraphs: Vec<Paragraph>,
     anchors: Vec<Anchor>,
@@ -471,6 +473,19 @@ static IMG: Lazy<scraper::Selector> =
     Lazy::new(|| scraper::Selector::parse("img").expect("img selector parses"));
 
 fn walk_html(html: &str) -> Walked {
+    // A lost helper (timeout, crash) reads as an over-budget page: no
+    // paragraphs or links.
+    WALK_HTML.call(html, &()).unwrap_or_else(|| Walked {
+        paragraphs: Vec::new(),
+        anchors: Vec::new(),
+    })
+}
+
+/// The HTML parse and walk, which is what runs in the HTML helper process.
+static WALK_HTML: Job<(), Walked> =
+    Job::new("reading.walk_html", |html, ()| walk_html_in_process(html));
+
+fn walk_html_in_process(html: &str) -> Walked {
     // Over the parser budget the page yields no paragraphs or links.
     if !mxr_reader::within_budget(html) {
         return Walked {
@@ -486,6 +501,11 @@ fn walk_html(html: &str) -> Walked {
         paragraphs: walker.paragraphs,
         anchors: walker.anchors,
     }
+}
+
+/// The extraction parses `reading.walk_html` runs in the HTML helper process.
+pub(crate) fn jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    vec![&WALK_HTML]
 }
 
 /// Plain-text issues: paragraphs split on blank lines; a URL's title is the

@@ -858,6 +858,7 @@ fn diagnostics_page_snapshot() {
             log_total_bytes: 512,
             history_retention_days: None,
             address_cache_stale: false,
+            html_helper: mxr_protocol::HtmlHelperStats::default(),
         }),
         events: vec![EventLogEntry {
             timestamp: 1710495000,

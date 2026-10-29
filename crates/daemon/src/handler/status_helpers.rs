@@ -255,6 +255,7 @@ pub(super) async fn collect_doctor_report(
             &mxr_config::config_file_path(),
         ),
         address_cache_stale: state.account_addresses.is_stale(),
+        html_helper: crate::html_helper::stats(),
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(state, db_path.clone()).await,
         index_path: index_path.display().to_string(),

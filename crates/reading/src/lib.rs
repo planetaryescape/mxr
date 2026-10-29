@@ -26,3 +26,11 @@ pub mod pace;
 pub mod urls;
 
 pub use extract::{extract, Extraction, IssueInput, LinkItem, Paragraph, ParagraphKind, Shape};
+
+/// Every parse this crate runs in the HTML helper process. The `mxr` binary
+/// registers them in its helper mode.
+pub fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    let mut jobs = extract::jobs();
+    jobs.extend(article::jobs());
+    jobs
+}

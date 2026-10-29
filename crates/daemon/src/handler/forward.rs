@@ -3,6 +3,7 @@ use crate::state::AppState;
 use mxr_core::{
     DraftAttachment, DraftAttachmentId, DraftContent, DraftId, Envelope, ForwardSource, MessageBody,
 };
+use mxr_html_worker::Job;
 use sha2::{Digest, Sha256};
 
 pub(super) async fn prepare_source(
@@ -167,30 +168,47 @@ pub(super) async fn prepare_source(
 }
 
 /// Every `cid:` attribute in the original HTML must name a related part. Over
-/// the parser budget the HTML cannot be read, so the forward is refused rather
-/// than sent with its references unchecked.
+/// the parser budget, or with the HTML helper unable to read it, the HTML cannot
+/// be checked, so the forward is refused rather than sent with its references
+/// unchecked.
 fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
-    // Over the parser budget the references cannot be checked, and a forward
-    // with an unchecked reference is not sent. Simplify the HTML and forward again.
-    if !mxr_reader::within_budget(html) {
+    let Some(values) = CID_REFERENCES.call(html, &()).flatten() else {
         return Err(HandlerError::Message(
             "Cannot forward original HTML: the HTML is too complex to check safely, so it \
              cannot be forwarded: simplify it (fewer tags, attributes or table cells) and \
              try again"
                 .to_string(),
         ));
-    }
-    let document = scraper::Html::parse_document(html);
-    for node in document.tree.nodes() {
-        let Some(element) = node.value().as_element() else {
-            continue;
-        };
-        for (_, value) in element.attrs() {
-            validate_cid_reference(body, value)?;
-        }
+    };
+    for value in &values {
+        validate_cid_reference(body, value)?;
     }
     Ok(())
 }
+
+/// The attribute values that start `cid:`, from a parse in the HTML helper
+/// process. `None` is a document over the parser budget.
+pub(crate) static CID_REFERENCES: Job<(), Option<Vec<String>>> =
+    Job::new("daemon.cid_references", |html, ()| {
+        if !mxr_reader::within_budget(html) {
+            return None;
+        }
+        let document = scraper::Html::parse_document(html);
+        Some(
+            document
+                .tree
+                .nodes()
+                .filter_map(|node| node.value().as_element())
+                .flat_map(|element| element.attrs().map(|(_, value)| value))
+                .filter(|value| {
+                    value
+                        .split_once(':')
+                        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("cid"))
+                })
+                .map(str::to_string)
+                .collect(),
+        )
+    });
 
 fn validate_cid_reference(body: &MessageBody, value: &str) -> Result<(), HandlerError> {
     let Some((_, cid)) = value
@@ -349,6 +367,32 @@ mod budget_tests {
         assert!(
             error.to_string().contains("missing inline attachment"),
             "got {error}"
+        );
+    }
+
+    #[test]
+    fn a_forward_is_refused_when_the_helper_could_not_check_its_html() {
+        let body = body_with_inline_part("logo@example.test");
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let html = r#"<img src="cid:logo@example.test">"#;
+        let error =
+            mxr_html_worker::with_supervisor(lost, || validate_html_cid_references(&body, html))
+                .expect_err("an unchecked forward is not sent");
+        assert!(
+            error.to_string().contains("too complex to check safely"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn only_cid_attributes_come_back_from_the_parse() {
+        let html = r#"<img src="CID:a@x"><a href="https://example.test/cid:b">l</a><table background="cid:c@x"></table>"#;
+        let found = CID_REFERENCES.run_here(html, &());
+        assert_eq!(
+            found,
+            Some(vec!["CID:a@x".to_string(), "cid:c@x".to_string()])
         );
     }
 }

@@ -618,6 +618,10 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 data_stats.relationship_drifts,
             ),
             format!(
+                "HTML helper: {}",
+                doctor.map_or_else(|| "-".into(), |report| report.html_helper.summary()),
+            ),
+            format!(
                 "Semantic indexed at: {}",
                 doctor.map_or_else(
                     || if loading {
@@ -990,6 +994,7 @@ mod tests {
             log_total_bytes: 0,
             history_retention_days: None,
             address_cache_stale: false,
+            html_helper: mxr_protocol::HtmlHelperStats::default(),
         }
     }
 

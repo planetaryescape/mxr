@@ -1,0 +1,33 @@
+[package]
+name = "mxr-html-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: runs untrusted mail HTML parsing in a resource-limited helper process"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Waits for a helper without stalling the runtime: `block_in_place` on a
+# multi-thread runtime.
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# setrlimit and getrusage through nix's safe wrappers; the workspace denies
+# unsafe code. The mxr binary already depends on this nix.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["resource"] }
+
+# A stand-in helper whose jobs misbehave on request, so the supervisor's
+# timeout, crash and limit paths are tested against a real child process.
+[[bin]]
+name = "mxr-html-worker-fixture"
+path = "tests/support/fixture_worker.rs"
+test = false
+doctest = false

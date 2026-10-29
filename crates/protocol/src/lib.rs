@@ -1465,6 +1465,7 @@ mod tests {
                         log_total_bytes: 0,
                         history_retention_days: None,
                         address_cache_stale: false,
+                        html_helper: HtmlHelperStats::default(),
                     },
                 },
                 IpcCategory::AdminMaintenance,

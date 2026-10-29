@@ -26,6 +26,7 @@ import {
 } from "@/lib/actions";
 import { applyServedKeymap } from "@/lib/actions/servedKeymap";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+import { isComposingKey } from "@/lib/keys/composition";
 import { isCharacterKey, useKeymapStore } from "@/state/keymapStore";
 
 import { updateKeys, type KeysChange, type KeysUpdate } from "./keysApi";
@@ -169,6 +170,7 @@ export function KeybindingsSection() {
                         aria-label={`Change keys for ${hint.label}`}
                         title={`Change keys for ${hint.label}`}
                         aria-expanded={editingThis}
+                        data-keys-editor={`${section.id}:${hint.id}`}
                         onClick={() => setEditing(editingThis ? null : `${section.id}:${hint.id}`)}
                       >
                         <Pencil />
@@ -180,7 +182,19 @@ export function KeybindingsSection() {
                         label={action.label}
                         keys={chords}
                         remapped={remapped.includes(action.id)}
-                        onClose={() => setEditing(null)}
+                        onClose={() => {
+                          const opener = `${section.id}:${hint.id}`;
+                          setEditing(null);
+                          // Back to the pencil that opened the editor, not the top of
+                          // the page: the next key to change is usually nearby.
+                          requestAnimationFrame(() =>
+                            document
+                              .querySelector<HTMLElement>(
+                                `[data-keys-editor="${CSS.escape(opener)}"]`,
+                              )
+                              ?.focus(),
+                          );
+                        }}
                       />
                     ) : null}
                   </li>
@@ -241,6 +255,12 @@ function KeyEditor({
   return (
     <form
       className="mt-2 space-y-2 rounded-md border border-border p-3"
+      onKeyDown={(event) => {
+        // Esc cancels, as everywhere else; nothing typed here is saved.
+        if (event.key !== "Escape" || isComposingKey(event.nativeEvent)) return;
+        event.preventDefault();
+        onClose();
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         if (!canSave || refuseWhileDaemonDown("change keys")) return;

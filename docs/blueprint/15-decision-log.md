@@ -1616,3 +1616,13 @@ The lexical index converts HTML to text with the reader's built-in converter and
 **Freshness**: The daemon hashes stable task fields/source evidence or the update's folded message ids, fact and tracker state. Clock labels, cut placement and provider read flags are excluded. Exact revisions persist, so an old client acknowledgment cannot overwrite newer attention. `SetModeRowSeen`, the bridge's `POST /api/v1/mail/rows/seen`, `mxr modes seen` and `mxr_mode_row_seen` share the same ledger and preview path.
 
 **Trade-offs accepted**: Existing rows start unseen. Content changes can make a row unseen again; revisiting identical content keeps it calm. Seen state is local, survives restarts and portable backups, and never changes provider flags or task completion.
+
+## D191: `--all` is a daemon job over a selection, not a client loop over ids
+
+**Chosen**: `archive`, `read-archive`, `label` and `unlabel` take `--all` with `--search`. The client sends the selection (`PreviewSelection`, then `StartSelectionJob` with a single-use preview token), never message ids. The daemon resolves the search once (lexical, newest first, the same filters as the paged search), keeps the ids under the token, and runs them as one job with one job id. `mxr undo <job_id>` reverses the whole job as a job of its own for one hour after it ends.
+
+**Considered**: A client that fetches ids and sends them in chunks (dropped after three review rounds found defects in it: frame overflow from per-item receipts, a partial failure that kept sending, a lost reply reported as "not applied", job ids missing from ids and CSV output); extending `StartMutationJob` with a selector; running archive through the reviewed-operation flow.
+
+**Why**: The client could not see what the daemon did with a chunk, so every defect came from the client deciding something it could not know. With the selection in the daemon the client never holds ids, never chunks and never decides whether to continue. The job id is chosen by the client, so a lost reply is recovered with `GetJob`. The reviewed archive flow keeps every item in one JSON blob it rewrites per state change and overflows a frame near 60,000 items.
+
+**Trade-offs accepted**: `archive --all` uses the generic job, so it has no per-message "never repeat" receipts; archive is a set-semantic label removal. A daemon restart ends a running job as `failed` ("interrupted") with its persisted counts and a re-run finishes it; resume needs a durable item table. The batch in flight at a restart (at most 100 messages) is neither counted nor undoable. CLI only: web, TUI and MCP follow. `trash`, `spam` and the flag commands wait until this has soaked.

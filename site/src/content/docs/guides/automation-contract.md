@@ -121,6 +121,7 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 | `mxr unsnooze` | message(s) or `--all` | ✓ | — | ✓ |
 | `mxr unsubscribe` | message(s) | ✓ | ✓ | ✓ |
 | `mxr undo MUTATION_ID` | one mutation | ✓ | — | — |
+| `mxr undo JOB_ID` | a whole `--all` job, within an hour of its end | ✓ | — | — |
 | `mxr send DRAFT_ID` | a draft | ✓ (`--at` conflicts) | — | — |
 | `mxr unsend DRAFT_ID` | a scheduled send | — | — | — |
 | `mxr drafts delete DRAFT_ID` | one local draft | ✓ | — | — |
@@ -135,7 +136,35 @@ fan out across the whole mailbox. When more than 1,000 match, the dry run, the
 confirmation prompt and (with `--yes`) stderr all say so before anything
 changes, and JSON output gains `capped: true`
 ([schema](/reference/json-output/#searches-that-match-more-than-1000-messages)).
-Narrow the query to reach the rest. Explicit and piped IDs have no cap. `mxr unsubscribe <address>` says the same per address.
+Narrow the query to reach the rest, or, for `archive`, `read-archive`, `label` and `unlabel`, pass `--all` (below). Explicit and piped IDs have no cap. `mxr unsubscribe <address>` says the same per address.
+
+### Every match: `--all`
+
+`archive`, `read-archive`, `label` and `unlabel` accept `--all` with `--search`
+to act on every match instead of the newest 1,000. It conflicts with message
+IDs and `--async`, and the daemon does the work: it resolves the search once,
+counts it exactly, and runs it as one background job, so the command never
+holds or sends a list of IDs. The loop is the same as for any batch:
+
+```bash
+mxr archive --search 'from:noreply@example.com' --all --dry-run --format json
+mxr archive --search 'from:noreply@example.com' --all --yes --format json
+mxr undo JOB_ID
+```
+
+The dry run reports `selected_messages`, `selected_threads`, the per-account
+counts, a sample of the 20 newest messages, `capped: false` and a
+`preview_token`. `--all --yes` previews, starts one job over exactly those
+messages, waits for it with progress on stderr, and prints it; mail that
+arrives after the preview is left alone. `--no-wait` returns once the daemon has
+accepted the job (follow it with `mxr jobs JOB_ID`), and
+`--preview-token TOKEN` runs exactly what an earlier dry run counted. The exit
+status is non-zero when the job ends `failed`, whatever it had done by then.
+`mxr undo JOB_ID` reverses the whole job for an hour after it ends, as a job of
+its own, and reports the messages it had to skip. A daemon restart ends a
+running job as `failed` ("interrupted") with its persisted counts; running the
+same search again finishes what is left. The shapes are in the
+[JSON output reference](/reference/json-output/#acting-on-every-match-with---all).
 
 Account-scoped mutations use the same target set for preview and apply:
 

@@ -385,6 +385,107 @@ confirmation prompt in table output:
 More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.
 ```
 
+`archive`, `read-archive`, `label` and `unlabel` can act on every match instead
+([below](#acting-on-every-match-with---all)); their notice says so:
+
+```text
+More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.
+```
+
+### Acting on every match with --all
+
+`mxr archive`, `read-archive`, `label` and `unlabel` take `--all` with
+`--search`. The daemon resolves the whole search, lexically and newest first,
+with the same visibility and trash/spam rules as `mxr search`. No message ID
+list crosses the socket in either direction, so the output below is the same
+size for ten matches and for half a million. `--all` conflicts with message IDs
+and `--async`. Other commands keep the newest-1,000 cap.
+
+`--all --dry-run` prints the exact count and a sample of the 20 newest
+messages (`capped` is always `false`):
+
+```json
+{
+  "action": "archive",
+  "dry_run": true,
+  "all": true,
+  "selection": { "kind": "search", "query": "from:noreply@example.com" },
+  "selected_messages": 70412,
+  "selected_threads": 51870,
+  "accounts": [
+    { "account_id": "019706f4-0000-7000-8000-000000000001", "account_name": "Work", "count": 70412 }
+  ],
+  "messages": [
+    {
+      "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+      "account_id": "019706f4-0000-7000-8000-000000000001",
+      "thread_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b92",
+      "from": "Alice",
+      "subject": "Quarterly review",
+      "date": "2026-10-28T09:12:00Z"
+    }
+  ],
+  "sample_size": 20,
+  "capped": false,
+  "preview_token": "<preview-token>",
+  "expires_at": 1761600000000
+}
+```
+
+`selection.account_id` appears when `--account` names one. `selected_messages` is the exact number of messages the job will change.
+`messages` is the sample, never the whole selection, and there is no
+`message_ids` or `requested` field. `preview_token` is absent when nothing
+matched. It is single use and valid for 10 minutes: `--all --preview-token
+TOKEN` runs exactly the messages that preview counted, and mail that arrives
+later is left alone. `--format jsonl` prints one line per sample message, each
+carrying `selected_messages`, `selected_threads` and `capped`. `--format csv`
+and `--format ids` are refused with `--dry-run`, because they would need the
+full list.
+
+`--all --yes` starts one job, waits for it (progress goes to stderr) and
+prints it. `--no-wait` prints it as soon as the daemon has accepted it. The job
+is the only place its ID appears:
+
+```json
+{
+  "action": "archive",
+  "dry_run": false,
+  "all": true,
+  "selection": { "kind": "search", "query": "from:noreply@example.com" },
+  "selected_messages": 70412,
+  "selected_threads": 51870,
+  "job": {
+    "job_id": "<job-id>",
+    "kind": "mutation.archive",
+    "status": "succeeded",
+    "progress": { "total": 70412, "completed": 70412, "succeeded": 70412, "skipped": 0, "failed": 0 },
+    "undo_ids": ["…one per batch of 100…"],
+    "started_at": 1761600001000,
+    "finished_at": 1761603601000,
+    "undo_expires_at": 1761607201000
+  },
+  "capped": false
+}
+```
+
+`--format ids` prints the job ID alone and `--format csv` has a `job_id`
+column. A job that ends `failed` makes the command exit non-zero, with the
+counts and the first failing message in the error. `skipped` counts messages
+that left the mailbox after the preview. `mxr jobs JOB_ID` shows the same job
+later: `failures` holds the first 50 failing messages with the provider's
+error (the exact total is `progress.failed`), `paused_until` is set while the
+job waits out a provider rate limit and resumes by itself, and a daemon
+restart ends a running job as `failed` ("interrupted") with the counts it had
+persisted.
+
+`mxr undo JOB_ID` reverses the whole job as a job of its own, for one hour
+after the job ends (`undo_expires_at`). It restores every message to the state
+it had before the job, waits for the undo job and prints it, with `job.undo_of`
+naming the original. Messages whose snapshot has expired or is missing, or
+whose mail is gone, are counted under `progress.skipped` and named in
+`job.error`; messages a retry could still restore are `progress.failed`, and
+undoing the same job again retries just those.
+
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address
 does. With `--format jsonl`, each dry-run line of a capped address carries

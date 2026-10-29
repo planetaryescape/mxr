@@ -4657,7 +4657,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.mailbox.pending_subscriptions_refresh = true;
                         }
                         AsyncResult::Unsubscribe(Err(e)) => {
-                            app.status_message = Some(format!("Unsubscribe failed: {e}"));
+                            app.status_message = Some(format!("Unsubscribe not finished: {e}"));
                         }
                         AsyncResult::Subscriptions(Ok(subscriptions)) => {
                             app.set_subscriptions(subscriptions);

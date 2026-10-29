@@ -576,6 +576,52 @@ async fn not_confirmed(
     }
 }
 
+/// Opening the page in a browser hands the request to the user. mxr cannot see
+/// whether the page loaded or the sender acted, so nothing is recorded as sent.
+/// The claim is released so a retry opens the page again, and the handoff is
+/// logged so the event log shows that it happened.
+pub(super) async fn browser_handoff(
+    state: &AppState,
+    envelope: &Envelope,
+    claimed_at: i64,
+    method: &str,
+) -> HandlerError {
+    if let Err(error) = log_mutation(
+        state,
+        envelope,
+        format!(
+            "Opened unsubscribe page for {}",
+            quoted_subject(&envelope.subject)
+        ),
+        Some(format!("method={method} from={}", envelope.from.email)),
+    )
+    .await
+    {
+        tracing::warn!(%error, "failed to record unsubscribe browser handoff");
+    }
+    match state
+        .store
+        .release_unsubscribe_claim(&envelope.id, claimed_at)
+        .await
+    {
+        Ok(()) => HandlerError::UnsubscribeAttempt {
+            message: "The unsubscribe page was opened in your browser. Finish the unsubscribe there. mxr cannot see whether the sender accepted it, so it is not recorded as sent, and a retry opens the page again.".into(),
+            code: "unsubscribe_opened_in_browser",
+            kind: IpcErrorKind::Provider,
+            retryable: true,
+        },
+        Err(release_error) => {
+            tracing::warn!(%release_error, "could not release unsubscribe claim");
+            HandlerError::UnsubscribeAttempt {
+                message: "The unsubscribe page was opened in your browser. mxr could not clear its attempt marker, so it kept the attempt marked and won't resend it. Finish the unsubscribe there.".into(),
+                code: "unsubscribe_release_failed",
+                kind: IpcErrorKind::Store,
+                retryable: false,
+            }
+        }
+    }
+}
+
 fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
     match method {
         UnsubscribeMethod::OneClick { .. } => "one_click",
@@ -5200,6 +5246,9 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
                         tracing::warn!(%error, "failed to record unsubscribe event");
                     }
                     Ok(ResponseData::Ack)
+                }
+                crate::unsubscribe::UnsubscribeResult::BrowserOpened => {
+                    Err(browser_handoff(state, envelope, claimed_at, method).await)
                 }
                 crate::unsubscribe::UnsubscribeResult::Failed(message) => {
                     Err(not_confirmed(state, envelope, claimed_at, &message).await)

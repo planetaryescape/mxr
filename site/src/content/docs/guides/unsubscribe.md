@@ -86,11 +86,13 @@ What happens after confirmation depends on the stored method:
 |---|---|---|
 | `OneClick` | `List-Unsubscribe` + `List-Unsubscribe-Post` | POSTs `List-Unsubscribe=One-Click` to the HTTPS URL |
 | `Mailto` | `List-Unsubscribe` | Sends a short unsubscribe email through the account's send provider |
-| `HttpLink` | `List-Unsubscribe` | Opens the unsubscribe page in your browser |
-| `BodyLink` | HTML body fallback | Opens the unsubscribe page in your browser |
+| `HttpLink` | `List-Unsubscribe` | Opens the unsubscribe page in your browser, which is a handoff, not a confirmed send |
+| `BodyLink` | HTML body fallback | Opens the unsubscribe page in your browser, which is a handoff, not a confirmed send |
 | `None` | No usable method | Fails without mutating anything |
 
-mxr records a successful unsubscribe event.
+mxr records a successful unsubscribe event. A browser method only records that
+the page was opened (`Opened unsubscribe page for ...`), because mxr cannot see
+whether the page loaded or the sender acted.
 
 ```bash
 mxr activity list --action mail.unsubscribe --format json \
@@ -121,6 +123,14 @@ to stderr for each message it skipped:
 ```text
 Skipped 4912a411-7dad-5a95-89c8-c3049e918bd6 (The unsubscribe was not confirmed: could not complete the request to the sender's server (could not connect). A retry may send it again if the first attempt actually reached the sender.)
 ```
+
+A browser method is a handoff, so it never counts as sent. mxr opens the page and
+answers with the error code `unsubscribe_opened_in_browser`, marked retryable,
+with this text: "The unsubscribe page was opened in your browser. Finish the
+unsubscribe there." No receipt is written, so a retry opens the page again. The
+CLI counts it as skipped, so a command that opened pages and sent nothing else
+exits non-zero. The TUI and web app show the same text under the heading
+"Unsubscribe not finished".
 
 Failure text names neither the unsubscribe URL nor your address, because those
 carry tokens and the error is logged. If the send went out but mxr could not

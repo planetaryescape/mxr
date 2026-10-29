@@ -16,6 +16,10 @@ use reqwest::Client;
 #[derive(Debug)]
 pub enum UnsubscribeResult {
     Success(String),
+    /// The sender's unsubscribe page was handed to the browser. The page may
+    /// never load, and the sender may never act on it, so this is not a
+    /// confirmed send: the caller releases its claim and reports the handoff.
+    BrowserOpened,
     Failed(String),
     NoMethod,
 }
@@ -47,7 +51,7 @@ pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) ->
 
         UnsubscribeMethod::HttpLink { url } | UnsubscribeMethod::BodyLink { url } => {
             match open_in_browser(url) {
-                Ok(()) => UnsubscribeResult::Success("Opened unsubscribe page in browser.".into()),
+                Ok(()) => UnsubscribeResult::BrowserOpened,
                 Err(_) => UnsubscribeResult::Failed(
                     "could not open the unsubscribe page in a browser".into(),
                 ),

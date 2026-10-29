@@ -197,6 +197,9 @@ impl Store {
         // Runs on every open, not once: a restored bundle from before 96
         // brings accounts without a colour or tag.
         self.backfill_account_identity().await?;
+        // Same reason as above: a dev database from before 093 was edited in
+        // place lacks the receipts foreign key.
+        self.repair_unsubscribe_receipts_foreign_key().await?;
 
         self.validate_schema().await?;
         Ok(())

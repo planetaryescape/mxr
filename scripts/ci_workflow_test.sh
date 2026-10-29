@@ -150,4 +150,17 @@ if grep -Fq 'e2e:webkit' "$workflow" || grep -Fq 'mxr-builder' "$workflow"; then
   exit 1
 fi
 
+# Every workflow must parse. An unquoted ": " in a `run:` line (a test filter
+# such as `cli_journey:: daemon_lifecycle::`) makes the whole file invalid, and
+# GitHub then runs nothing from it: release.yml stopped building tagged
+# releases this way for 0.6.190-0.6.192.
+for file in .github/workflows/*.yml .github/workflows/*.yaml; do
+  [ -e "$file" ] || continue
+  if ! ruby -ryaml -e 'YAML.load_file(ARGV[0])' "$file" 2>/dev/null \
+    && ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$file" 2>/dev/null; then
+    echo "$file is not valid YAML; GitHub would run none of its jobs." >&2
+    exit 1
+  fi
+done
+
 echo "ci_workflow_test: ok"

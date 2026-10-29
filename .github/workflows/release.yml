@@ -74,7 +74,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Run release-blocking CLI tests
         if: needs.plan.outputs.cli_changed == 'true'
-        run: cargo nextest run -p mxr --test integration cli_journey:: daemon_lifecycle:: reset_cli:: cli_help::
+        run: 'cargo nextest run -p mxr --test integration cli_journey:: daemon_lifecycle:: reset_cli:: cli_help::'
       - name: Run deterministic provider smoke suite
         if: needs.plan.outputs.cli_changed == 'true'
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture

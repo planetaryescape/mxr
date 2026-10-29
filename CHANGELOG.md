@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.195](https://github.com/planetaryescape/mxr/compare/v0.6.194...v0.6.195) (2026-10-29)
+
+
+### Bug Fixes
+
+* store each label's mailbox role ([#810](https://github.com/planetaryescape/mxr/issues/810)) ([58dcb65](https://github.com/planetaryescape/mxr/commit/58dcb65895b32479ce44b00f6111182ab321f7e0))
+
+
+### Documentation
+
+* record the Safari and desktop app check of keys and copy after clicking HTML mail ([3fb686e](https://github.com/planetaryescape/mxr/commit/3fb686e2af9b8626831989f364afb435c6924e18))
+
 ## [0.6.194](https://github.com/planetaryescape/mxr/compare/v0.6.193...v0.6.194) (2026-10-29)
 
 

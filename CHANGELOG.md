@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.193](https://github.com/planetaryescape/mxr/compare/v0.6.192...v0.6.193) (2026-10-29)
+
+
+### Bug Fixes
+
+* quote the integration test filters so the release workflow parses again ([#811](https://github.com/planetaryescape/mxr/issues/811)) ([5776fec](https://github.com/planetaryescape/mxr/commit/5776fec8bc09a186eb3bc2404861ab28e6103694))
+
 ## [0.6.192](https://github.com/planetaryescape/mxr/compare/v0.6.191...v0.6.192) (2026-10-29)
 
 

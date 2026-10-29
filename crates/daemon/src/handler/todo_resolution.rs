@@ -350,13 +350,27 @@ fn rule_resolution(
         })
 }
 
+/// A rule pattern, compiled once. The patterns are fixed, and compiling them
+/// for every sentence of every reviewed email was most of a resolution scan.
+fn rule_regex(pattern: &'static str) -> Option<Regex> {
+    static COMPILED: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<&'static str, Option<Regex>>>,
+    > = std::sync::LazyLock::new(Default::default);
+    COMPILED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(pattern)
+        .or_insert_with(|| Regex::new(pattern).ok())
+        .clone()
+}
+
 fn find_safe_quote(
-    patterns: &[&str],
+    patterns: &[&'static str],
     text: &str,
     location: &'static str,
 ) -> Option<(String, &'static str)> {
     for pattern in patterns {
-        let regex = Regex::new(pattern).ok()?;
+        let regex = rule_regex(pattern)?;
         for found in regex.find_iter(text) {
             let prefix = &text[..found.start()];
             let sentence_start = previous_quote_boundary(text, found.start()).unwrap_or(0);
@@ -522,7 +536,7 @@ fn rule_contradiction(task: &TodoRecord, subject: &str, body: &str) -> bool {
 fn has_object_bound_contradiction(
     title: &str,
     counterparty: Option<&str>,
-    patterns: &[&str],
+    patterns: &[&'static str],
     subject: &str,
     body: &str,
 ) -> bool {
@@ -530,9 +544,7 @@ fn has_object_bound_contradiction(
         text.split(['.', '!', '?', '\n']).any(|sentence| {
             object_matches_fields(title, counterparty, "", sentence)
                 && patterns.iter().any(|pattern| {
-                    Regex::new(pattern)
-                        .ok()
-                        .is_some_and(|regex| regex.is_match(sentence))
+                    rule_regex(pattern).is_some_and(|regex| regex.is_match(sentence))
                 })
         })
     })

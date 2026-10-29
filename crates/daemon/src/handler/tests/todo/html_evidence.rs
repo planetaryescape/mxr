@@ -4,7 +4,10 @@ use super::*;
 #[tokio::test]
 async fn structured_fields_retain_exact_authored_quote_and_revoke_with_account_trust() {
     let fx = Fixture::new().await;
-    let now = Utc::now();
+    // Pinned so the +2 and +3 day dues below share a month. A bill's to-do
+    // identity includes its due month (`mxr_todo::pass::stored_record`), so
+    // on the wall clock the rescan made a new row whenever now+3 was the 1st.
+    let now = Utc.with_ymd_and_hms(2026, 10, 26, 12, 0, 0).unwrap();
     configure_receiver(&fx).await;
     let quote = "Your council tax payment is due soon.";
     let mut bill = Mail::new(

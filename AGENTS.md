@@ -20,7 +20,7 @@
 ## Local build resources
 
 On BK's computer, run heavy local commands through `agent-work run -- <command> [args...]`.
-All projects and worktrees share Pueue's three-job queue. Cargo on the dotfiles PATH
+All projects and worktrees share one Pueue queue. Cargo on the dotfiles PATH
 queues builds/checks/tests automatically; explicitly wrap toolchain-specific Cargo
 and native build scripts. Inside a queued command, run children directly.
 Keep build, libtest, nextest and Rayon workers at five or fewer. Keep each
@@ -34,5 +34,8 @@ the queue, then launch the binary outside it. Setup and limits:
 `~/.dotfiles/docs/agent-work.md`.
 Cargo never deletes old artifacts, and a bloated `target-cli` slows every
 compile. `agent-work` cleans a target directory over 50 GiB before the day's
-first build in it. When you finish work, remove the worktree (its
-`target-cli` goes with it); in the main checkout, run `agent-work sweep`.
+first build in it. Take a worktree with `agent-worktree new <branch>`: it reuses
+an idle pool slot whose `target-cli` is already built (a fresh worktree's first
+`cargo test -p mxr --tests` takes about 20 minutes). When you finish, run
+`agent-worktree release`; remove any other worktree you created, and in the
+main checkout run `agent-work sweep`.

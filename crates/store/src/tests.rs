@@ -4352,6 +4352,126 @@ async fn prune_expired_undo_entries_drops_only_stale_rows() {
     assert!(store.read_undo_entry("fresh").await.unwrap().is_some());
 }
 
+/// A job's chunks are written with no expiry while it runs, then all get the
+/// same one when it ends. Ids with no entry are skipped, not an error.
+#[tokio::test]
+async fn set_undo_entries_expiry_moves_only_the_named_entries() {
+    use crate::undo::{UndoEntry, UndoableMutationKind};
+    let store = Store::in_memory().await.unwrap();
+    for id in ["a", "b", "other"] {
+        store
+            .write_undo_entry(&UndoEntry {
+                mutation_id: id.into(),
+                kind: UndoableMutationKind::Archive,
+                snapshots: Vec::new(),
+                desk: None,
+                applied_at: 100,
+                expires_at: i64::MAX,
+            })
+            .await
+            .unwrap();
+    }
+
+    let changed = store
+        .set_undo_entries_expiry(&["a".into(), "b".into(), "never-written".into()], 5_000)
+        .await
+        .unwrap();
+    assert_eq!(changed, 2);
+    for (id, expires_at) in [("a", 5_000), ("b", 5_000), ("other", i64::MAX)] {
+        assert_eq!(
+            store.read_undo_entry(id).await.unwrap().unwrap().expires_at,
+            expires_at,
+            "{id}"
+        );
+    }
+    // An entry anchored to the future survives a prune before then.
+    assert_eq!(store.prune_expired_undo_entries(4_999).await.unwrap(), 0);
+    assert_eq!(store.prune_expired_undo_entries(5_000).await.unwrap(), 2);
+    assert!(store.read_undo_entry("other").await.unwrap().is_some());
+}
+
+/// Startup finds the jobs the last daemon left `queued` or `running`, and
+/// nothing else (not finished jobs, not archive receipts).
+#[tokio::test]
+async fn list_unfinished_mutation_jobs_returns_only_queued_and_running_jobs() {
+    let store = Store::in_memory().await.unwrap();
+    for (id, kind, status) in [
+        ("queued", "mutation.archive", "queued"),
+        ("running", "mutation.archive", "running"),
+        ("done", "mutation.archive", "succeeded"),
+        ("failed", "mutation.archive", "failed"),
+        ("receipt", "recoverable_archive", "running"),
+    ] {
+        store
+            .upsert_mutation_job(id, kind, status, 1, None, &format!("{{\"id\":\"{id}\"}}"))
+            .await
+            .unwrap();
+    }
+    let mut found = store.list_unfinished_mutation_jobs().await.unwrap();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            r#"{"id":"queued"}"#.to_string(),
+            r#"{"id":"running"}"#.to_string()
+        ]
+    );
+}
+
+/// The existence check behind a search selection: three columns, in the
+/// order asked, with ids the store dropped left out, across the bind chunk.
+#[tokio::test]
+async fn stored_message_homes_returns_the_account_and_thread_of_stored_messages_only() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut stored = Vec::new();
+    for n in 0..3 {
+        let mut envelope = test_envelope(&account.id);
+        // The fixture's provider id is fixed, and a repeat would upsert one row.
+        envelope.provider_id = format!("homes-{n}");
+        store.upsert_envelope(&envelope).await.unwrap();
+        stored.push(envelope);
+    }
+    let ghost = MessageId::new();
+    let asked = vec![
+        stored[2].id.clone(),
+        ghost,
+        stored[0].id.clone(),
+        stored[1].id.clone(),
+    ];
+    let homes = store.stored_message_homes(&asked).await.unwrap();
+    assert_eq!(
+        homes,
+        vec![
+            (
+                stored[2].id.clone(),
+                account.id.clone(),
+                stored[2].thread_id.clone()
+            ),
+            (
+                stored[0].id.clone(),
+                account.id.clone(),
+                stored[0].thread_id.clone()
+            ),
+            (
+                stored[1].id.clone(),
+                account.id.clone(),
+                stored[1].thread_id.clone()
+            ),
+        ]
+    );
+    assert!(store.stored_message_homes(&[]).await.unwrap().is_empty());
+
+    // More ids than one statement binds.
+    let many: Vec<MessageId> = (0..1_200).map(|_| MessageId::new()).collect();
+    let mut with_stored = many.clone();
+    with_stored.push(stored[1].id.clone());
+    let found = store.stored_message_homes(&with_stored).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].0, stored[1].id);
+}
+
 /// Phase D: dedup log starts empty, was_mutation_applied returns false
 /// for an unseen key, true after record. Same key recorded twice is a
 /// no-op (single row).

@@ -1,6 +1,6 @@
 use super::{
-    apply_snooze, build_reply_references, get_or_render_reply_context, reconcile_label_mutation,
-    restore_snoozed_message, HandlerError, HandlerResult,
+    apply_snooze, build_reply_references, get_or_render_reply_context,
+    reconcile_label_mutation_deferred, restore_snoozed_message, HandlerError, HandlerResult,
 };
 use crate::state::AppState;
 use lettre::message::Mailbox;
@@ -14,9 +14,9 @@ use mxr_core::types::{
 use mxr_core::{AttachmentId, MailSendProvider, MxrError};
 use mxr_protocol::{
     AccountMutationResultData, DaemonEvent, DraftSafetyContextData, DraftSafetyModeData,
-    ForwardContext, IpcErrorKind, JobData, JobProgressData, JobStatusData, MutationCommand,
-    MutationResultData, ReplyContext, ResponseData, UnsubscribePurgeResultData,
-    UnsubscribePurgeStatusData,
+    ForwardContext, IpcErrorKind, JobData, JobFailureData, JobProgressData, JobStatusData,
+    MutationCommand, MutationResultData, ReplyContext, ResponseData, SelectionData,
+    UnsubscribePurgeResultData, UnsubscribePurgeStatusData,
 };
 use mxr_store::{Claim, EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::borrow::Cow;
@@ -30,6 +30,15 @@ use std::time::Duration;
 pub(super) const UNDO_WINDOW_SECS: i64 = 60;
 const MUTATION_JOB_CHUNK_SIZE: usize = 100;
 const MAX_RETAINED_JOBS: usize = 100;
+/// How long after a selection job ends `mxr undo <job_id>` still works.
+pub(super) const SELECTION_UNDO_WINDOW_SECS: i64 = 60 * 60;
+/// Failed messages a job keeps the details of; the total is in its progress.
+pub(super) const MAX_JOB_FAILURES: usize = 50;
+/// Waits in a row, with nothing done in between, before a job gives up on a
+/// provider that keeps refusing.
+pub(super) const MAX_CONSECUTIVE_RATE_LIMIT_WAITS: u32 = 20;
+/// Longest a job waits out one rate limit, whatever the provider asked.
+const MAX_RATE_LIMIT_WAIT_SECS: u64 = 15 * 60;
 #[cfg(not(test))]
 const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(test)]
@@ -674,24 +683,103 @@ fn emit_mutation_reconciliation_failed_if_needed(
     );
 }
 
+/// How a batch treats the trouble a background job can ride out. An
+/// immediate request (one the user is waiting on) keeps the strict rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ChunkMode {
+    /// A message missing from the store fails the batch; a rate limit is a
+    /// plain failure of that message.
+    Immediate,
+    /// A message missing from the store is skipped, a rate limit hands the
+    /// rest back to the caller to retry, and the failing message is counted
+    /// as failed (the rest of its account's batch stays skipped).
+    Job {
+        /// When this chunk's undo entry expires. `None`: the usual window
+        /// from now.
+        undo_expires_at: Option<i64>,
+    },
+}
+
+impl ChunkMode {
+    const fn is_job(self) -> bool {
+        matches!(self, Self::Job { .. })
+    }
+}
+
+/// Why one message's mutation failed. A rate limit is kept apart so a
+/// background job can wait it out instead of stopping.
+#[derive(Debug)]
+pub(super) enum ApplyError {
+    RateLimited {
+        retry_after_secs: u64,
+        message: String,
+    },
+    Failed(String),
+}
+
+impl ApplyError {
+    fn message(&self) -> &str {
+        match self {
+            Self::RateLimited { message, .. } | Self::Failed(message) => message,
+        }
+    }
+}
+
+impl From<String> for ApplyError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+/// A provider asked a job to wait; these messages were not tried.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RateLimitStop {
+    pub retry_after_secs: u64,
+    pub unprocessed: Vec<mxr_core::MessageId>,
+}
+
+/// What one chunk of a mutation did.
+pub(super) struct ChunkOutcome {
+    pub result: MutationResultData,
+    /// Left out by a sweep's check (not failures).
+    pub left_out: u32,
+    /// Not in the store any more (background jobs only).
+    pub missing: u32,
+    /// The first failing message of each account that failed.
+    pub failures: Vec<JobFailureData>,
+    pub rate_limit: Option<RateLimitStop>,
+    /// Accounts whose label counts are stale until refreshed. Empty for an
+    /// immediate request, which refreshes them before it returns.
+    pub stale_label_counts: Vec<mxr_core::AccountId>,
+}
+
 pub(super) async fn mutation(
     state: &AppState,
     cmd: &MutationCommand,
     client_correlation_id: Option<&str>,
 ) -> HandlerResult {
-    mutation_checked(state, cmd, client_correlation_id, None)
-        .await
-        .map(|(response, _left_out)| response)
+    mutation_checked(
+        state,
+        cmd,
+        client_correlation_id,
+        None,
+        ChunkMode::Immediate,
+    )
+    .await
+    .map(|outcome| ResponseData::MutationResult {
+        result: outcome.result,
+    })
 }
 
-/// `mutation`, holding each message to a sweep's check as it goes. Also
-/// returns how many messages the check left out (not failures).
+/// `mutation`, holding each message to a sweep's check as it goes, and with
+/// the trouble a background job rides out when `mode` says so.
 async fn mutation_checked(
     state: &AppState,
     cmd: &MutationCommand,
     client_correlation_id: Option<&str>,
     check: Option<&mut super::places::SweepCheck>,
-) -> Result<(ResponseData, u32), HandlerError> {
+    mode: ChunkMode,
+) -> Result<ChunkOutcome, HandlerError> {
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
     // One id per MutationCommand batch — drives both the dedup log
@@ -700,7 +788,7 @@ async fn mutation_checked(
     let mutation_id = uuid::Uuid::now_v7().to_string();
 
     if matches!(cmd, MutationCommand::Route { dry_run: true, .. }) {
-        let grouped = envelopes_by_account(state, message_ids).await?;
+        let (grouped, _) = envelopes_by_account(state, message_ids, false).await?;
         let mut accounts = Vec::new();
         for (account_id, envelopes) in grouped {
             let account_name = state
@@ -725,7 +813,7 @@ async fn mutation_checked(
                 .cmp(&right.account_name.to_lowercase())
                 .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
         });
-        let response = ResponseData::MutationResult {
+        return Ok(ChunkOutcome {
             result: MutationResultData {
                 requested: message_ids.len() as u32,
                 succeeded: 0,
@@ -735,8 +823,12 @@ async fn mutation_checked(
                 mutation_id: None,
                 undo_unavailable: false,
             },
-        };
-        return Ok((response, 0));
+            left_out: 0,
+            missing: 0,
+            failures: Vec::new(),
+            rate_limit: None,
+            stale_label_counts: Vec::new(),
+        });
     }
 
     let BatchOutcome {
@@ -744,7 +836,11 @@ async fn mutation_checked(
         changed: mut succeeded_snapshots,
         failed: failed_snapshots,
         left_out,
-    } = apply_mutation_batch(state, cmd, &mutation_id, check).await?;
+        missing,
+        failures,
+        rate_limit,
+        stale_label_counts,
+    } = apply_mutation_batch_with(state, cmd, &mutation_id, check, mode).await?;
     let succeeded = accounts.iter().map(|account| account.succeeded).sum();
     let skipped = accounts.iter().map(|account| account.skipped).sum();
     let failed = accounts.iter().map(|account| account.failed).sum();
@@ -758,13 +854,19 @@ async fn mutation_checked(
     let (mutation_id, undo_unavailable) = match (undoable_kind, succeeded_snapshots.is_empty()) {
         (Some(kind), false) => {
             let now = chrono::Utc::now().timestamp();
+            let expires_at = match mode {
+                ChunkMode::Job {
+                    undo_expires_at: Some(expires_at),
+                } => expires_at,
+                _ => now + UNDO_WINDOW_SECS,
+            };
             let entry = UndoEntry {
                 mutation_id: mutation_id.clone(),
                 kind,
                 snapshots: succeeded_snapshots,
                 desk: None,
                 applied_at: now,
-                expires_at: now + UNDO_WINDOW_SECS,
+                expires_at,
             };
             if let Err(error) = state.store.write_undo_entry(&entry).await {
                 // Non-fatal: the mutation already succeeded. The user
@@ -791,26 +893,46 @@ async fn mutation_checked(
 
     emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
 
-    Ok((ResponseData::MutationResult { result }, left_out))
+    Ok(ChunkOutcome {
+        result,
+        left_out,
+        missing,
+        failures,
+        rate_limit,
+        stale_label_counts,
+    })
 }
 
+/// The envelopes of `message_ids` grouped by account, and (when
+/// `skip_missing`) the ids the store no longer has. Without `skip_missing`
+/// one missing message is an error.
 async fn envelopes_by_account(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
-) -> Result<HashMap<mxr_core::AccountId, Vec<Envelope>>, HandlerError> {
+    skip_missing: bool,
+) -> Result<
+    (
+        HashMap<mxr_core::AccountId, Vec<Envelope>>,
+        Vec<mxr_core::MessageId>,
+    ),
+    HandlerError,
+> {
     let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
+    let mut missing = Vec::new();
     for message_id in message_ids {
-        let envelope = state
-            .store
-            .get_envelope(message_id)
-            .await?
-            .ok_or_else(|| format!("Message not found: {message_id}"))?;
+        let Some(envelope) = state.store.get_envelope(message_id).await? else {
+            if skip_missing {
+                missing.push(message_id.clone());
+                continue;
+            }
+            return Err(format!("Message not found: {message_id}").into());
+        };
         grouped
             .entry(envelope.account_id.clone())
             .or_default()
             .push(envelope);
     }
-    Ok(grouped)
+    Ok((grouped, missing))
 }
 
 /// What `apply_mutation_batch` did, with each message's state from before
@@ -825,6 +947,16 @@ pub(super) struct BatchOutcome {
     pub failed: Vec<UndoEntrySnapshot>,
     /// Left out by a sweep's check (not failures).
     pub left_out: u32,
+    /// Not in the store (only counted for `ChunkMode::Job`).
+    pub missing: u32,
+    /// The first failing message of each account that failed (only recorded
+    /// for `ChunkMode::Job`).
+    pub failures: Vec<JobFailureData>,
+    /// Set when a provider asked to wait (only for `ChunkMode::Job`).
+    pub rate_limit: Option<RateLimitStop>,
+    /// Accounts whose label counts the batch left stale: a job refreshes them
+    /// on its own schedule, an immediate batch has already done it.
+    pub stale_label_counts: Vec<mxr_core::AccountId>,
 }
 
 /// Apply `cmd` message by message under `mutation_id`, account by account,
@@ -834,7 +966,17 @@ pub(super) async fn apply_mutation_batch(
     state: &AppState,
     cmd: &MutationCommand,
     mutation_id: &str,
+    check: Option<&mut super::places::SweepCheck>,
+) -> Result<BatchOutcome, HandlerError> {
+    apply_mutation_batch_with(state, cmd, mutation_id, check, ChunkMode::Immediate).await
+}
+
+async fn apply_mutation_batch_with(
+    state: &AppState,
+    cmd: &MutationCommand,
+    mutation_id: &str,
     mut check: Option<&mut super::places::SweepCheck>,
+    mode: ChunkMode,
 ) -> Result<BatchOutcome, HandlerError> {
     let undoable = undoable_kind(cmd).is_some();
     let mut left_out = 0u32;
@@ -848,9 +990,14 @@ pub(super) async fn apply_mutation_batch(
     // message made batch time grow with commit latency (about 30 ms a
     // message in a debug build: 12 s of a 405-message archive job).
     let mut touched_ids: Vec<mxr_core::MessageId> = Vec::new();
+    let mut failures: Vec<JobFailureData> = Vec::new();
+    let mut rate_limit: Option<RateLimitStop> = None;
+    let mut label_changed_in: HashSet<mxr_core::AccountId> = HashSet::new();
 
+    let (grouped, missing) =
+        envelopes_by_account(state, mutation_message_ids(cmd), mode.is_job()).await?;
     let mut accounts = Vec::new();
-    for (account_id, envelopes) in envelopes_by_account(state, mutation_message_ids(cmd)).await? {
+    for (account_id, envelopes) in grouped {
         let account_name = state
             .store
             .get_account(&account_id)
@@ -923,11 +1070,14 @@ pub(super) async fn apply_mutation_batch(
                             )
                             .await
                         }
-                        Err(error) => Err(error.to_string()),
+                        Err(error) => Err(ApplyError::Failed(error.to_string())),
                     }
                 }
             };
             touched_ids.push(envelope.id.clone());
+            if changes_labels(cmd) {
+                label_changed_in.insert(envelope.account_id.clone());
+            }
             match applied {
                 Ok(()) => {
                     account_result.succeeded += 1;
@@ -939,6 +1089,28 @@ pub(super) async fn apply_mutation_batch(
                         tracing::warn!(%error, "failed to record mutation event");
                     }
                 }
+                Err(ApplyError::RateLimited {
+                    retry_after_secs, ..
+                }) if mode.is_job() => {
+                    // The provider refused before touching this message, so
+                    // nothing changed: no undo snapshot, no failure. This
+                    // message and the rest of the account's batch go back
+                    // to the job to try again after the wait.
+                    let unprocessed = envelopes[index..].iter().map(|e| e.id.clone());
+                    match rate_limit.as_mut() {
+                        Some(stop) => {
+                            stop.retry_after_secs = stop.retry_after_secs.max(retry_after_secs);
+                            stop.unprocessed.extend(unprocessed);
+                        }
+                        None => {
+                            rate_limit = Some(RateLimitStop {
+                                retry_after_secs,
+                                unprocessed: unprocessed.collect(),
+                            });
+                        }
+                    }
+                    break;
+                }
                 Err(error) => {
                     // It may have changed in part (read, then the archive
                     // failed), or at the provider but not here: its undo
@@ -949,8 +1121,18 @@ pub(super) async fn apply_mutation_batch(
                             ..snapshot
                         });
                     }
-                    account_result.skipped += (envelopes.len() - index) as u32;
-                    account_result.error = Some(error);
+                    let message = error.message().to_string();
+                    if mode.is_job() {
+                        account_result.failed += 1;
+                        account_result.skipped += (envelopes.len() - index - 1) as u32;
+                        failures.push(JobFailureData {
+                            message_id: envelope.id.clone(),
+                            error: message.clone(),
+                        });
+                    } else {
+                        account_result.skipped += (envelopes.len() - index) as u32;
+                    }
+                    account_result.error = Some(message);
                     break;
                 }
             }
@@ -971,6 +1153,15 @@ pub(super) async fn apply_mutation_batch(
         );
     }
 
+    // Per message, refreshing label counts scans every label's rows, which
+    // made a batch cost the mailbox size times the batch size. Once per
+    // batch here, or on the job's schedule.
+    let mut stale_label_counts: Vec<mxr_core::AccountId> = label_changed_in.into_iter().collect();
+    if !mode.is_job() {
+        refresh_label_counts(state, &stale_label_counts).await;
+        stale_label_counts.clear();
+    }
+
     accounts.sort_by(|left, right| {
         left.account_name
             .to_lowercase()
@@ -982,7 +1173,67 @@ pub(super) async fn apply_mutation_batch(
         changed: succeeded_snapshots,
         failed: failed_snapshots,
         left_out,
+        missing: missing.len() as u32,
+        failures,
+        rate_limit,
+        stale_label_counts,
     })
+}
+
+/// Whether the command moves messages between labels, so the counts the
+/// sidebar shows need refreshing.
+const fn changes_labels(cmd: &MutationCommand) -> bool {
+    !matches!(
+        cmd,
+        MutationCommand::Star { .. } | MutationCommand::SetRead { .. }
+    )
+}
+
+/// Recompute these accounts' label counts. They are derived from the
+/// messages, so a failure is logged, not a failed mutation: the next sync
+/// recomputes them.
+pub(super) async fn refresh_label_counts(state: &AppState, accounts: &[mxr_core::AccountId]) {
+    for account_id in accounts {
+        if let Err(error) = state.store.recalculate_label_counts(account_id).await {
+            tracing::warn!(%error, account_id = %account_id, "failed to refresh label counts");
+        }
+    }
+}
+
+/// How often a running job refreshes label counts: the refresh costs about the
+/// size of the mailbox, so a job over a large one does not do it per batch.
+const LABEL_COUNT_REFRESH: Duration = Duration::from_secs(5);
+
+/// Label counts a job has left stale, refreshed at most every
+/// `LABEL_COUNT_REFRESH` and once more when the job ends.
+pub(super) struct LabelCountSchedule {
+    stale: HashSet<mxr_core::AccountId>,
+    last: std::time::Instant,
+}
+
+impl LabelCountSchedule {
+    pub(super) fn new() -> Self {
+        Self {
+            stale: HashSet::new(),
+            last: std::time::Instant::now(),
+        }
+    }
+
+    pub(super) fn note(&mut self, accounts: impl IntoIterator<Item = mxr_core::AccountId>) {
+        self.stale.extend(accounts);
+    }
+
+    pub(super) async fn refresh_if_due(&mut self, state: &AppState) {
+        if self.last.elapsed() >= LABEL_COUNT_REFRESH {
+            self.refresh(state).await;
+        }
+    }
+
+    pub(super) async fn refresh(&mut self, state: &AppState) {
+        let accounts: Vec<_> = self.stale.drain().collect();
+        refresh_label_counts(state, &accounts).await;
+        self.last = std::time::Instant::now();
+    }
 }
 
 /// A check a job runs on each chunk just before applying it.
@@ -995,22 +1246,68 @@ pub(super) enum ChunkGuard {
     Sweep(super::places::SweepScope),
 }
 
+/// What starts a background mutation job.
+pub(super) struct JobSpec {
+    pub cmd: MutationCommand,
+    pub client_correlation_id: Option<String>,
+    pub guard: ChunkGuard,
+    /// Client-chosen id; `None` makes one.
+    pub job_id: Option<String>,
+    /// Set for a selection job: its undo window is anchored to the job's
+    /// end, and it is persisted before it is acknowledged.
+    pub selection: Option<SelectionData>,
+    /// The accounts the job will touch, so a scoped caller can read it from
+    /// the first poll.
+    pub accounts: Vec<AccountMutationResultData>,
+    /// Activity to record at the start and end of the job.
+    pub activity: Option<super::selection_jobs::JobActivity>,
+}
+
+impl JobSpec {
+    pub(super) fn new(
+        cmd: MutationCommand,
+        client_correlation_id: Option<String>,
+        guard: ChunkGuard,
+    ) -> Self {
+        Self {
+            cmd,
+            client_correlation_id,
+            guard,
+            job_id: None,
+            selection: None,
+            accounts: Vec::new(),
+            activity: None,
+        }
+    }
+}
+
 pub(super) async fn start_mutation_job(
     state: Arc<AppState>,
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
     guard: ChunkGuard,
 ) -> HandlerResult {
-    let total = mutation_message_ids(&cmd).len() as u32;
+    start_job(state, JobSpec::new(cmd, client_correlation_id, guard)).await
+}
+
+pub(super) async fn start_job(state: Arc<AppState>, spec: JobSpec) -> HandlerResult {
+    let total = mutation_message_ids(&spec.cmd).len() as u32;
     if total == 0 {
         return Err("No messages matched".into());
     }
 
-    let job_id = uuid::Uuid::now_v7().to_string();
+    let job_id = spec
+        .job_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
     let now = chrono::Utc::now().timestamp_millis();
+    let result = (!spec.accounts.is_empty()).then(|| MutationResultData {
+        accounts: spec.accounts.clone(),
+        ..empty_mutation_result(total)
+    });
     let job = JobData {
-        job_id: job_id.clone(),
-        kind: mutation_job_kind(&cmd).to_string(),
+        job_id,
+        kind: mutation_job_kind(&spec.cmd).to_string(),
         status: JobStatusData::Queued,
         progress: JobProgressData {
             total,
@@ -1023,16 +1320,32 @@ pub(super) async fn start_mutation_job(
         error: None,
         started_at: now,
         finished_at: None,
-        result: None,
+        result,
+        selection: spec.selection.clone(),
+        failures: Vec::new(),
+        paused_until: None,
+        undo_expires_at: None,
+        undo_of: None,
     };
-    persist_job(&state, &job).await;
+    if spec.selection.is_some() {
+        // The caller recovers a lost reply by asking for this job, so a job
+        // that was not saved must not be acknowledged.
+        persist_job_checked(&state, &job)
+            .await
+            .map_err(|error| HandlerError::from(format!("could not record the job: {error}")))?;
+    } else {
+        persist_job(&state, &job).await;
+    }
+    if let Some(activity) = spec.activity.as_ref() {
+        super::selection_jobs::record_job_accepted(&state, activity, &job);
+    }
 
-    let background_job_id = job_id.clone();
+    let started = job.clone();
     tokio::spawn(async move {
-        run_mutation_job(state, background_job_id, cmd, client_correlation_id, guard).await;
+        run_mutation_job(state, job, spec).await;
     });
 
-    Ok(ResponseData::JobStarted { job })
+    Ok(ResponseData::JobStarted { job: started })
 }
 
 pub(super) async fn list_jobs(state: &AppState) -> HandlerResult {
@@ -1060,37 +1373,75 @@ pub(super) async fn get_job(state: &AppState, job_id: &str) -> HandlerResult {
     Ok(ResponseData::Job { job })
 }
 
-async fn run_mutation_job(
-    state: Arc<AppState>,
-    job_id: String,
-    cmd: MutationCommand,
-    client_correlation_id: Option<String>,
-    guard: ChunkGuard,
-) {
-    update_job(&state, &job_id, |job| {
-        job.status = JobStatusData::Running;
-    })
-    .await;
+/// How long a job waits out a provider's rate limit. Tests count each
+/// requested second as ten milliseconds so a pause does not stall them.
+pub(super) fn rate_limit_wait(retry_after_secs: u64) -> Duration {
+    let secs = retry_after_secs.clamp(1, MAX_RATE_LIMIT_WAIT_SECS);
+    #[cfg(test)]
+    {
+        Duration::from_millis(secs * 10)
+    }
+    #[cfg(not(test))]
+    {
+        Duration::from_secs(secs)
+    }
+}
+
+async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec) {
+    let JobSpec {
+        cmd,
+        client_correlation_id,
+        guard,
+        activity,
+        ..
+    } = spec;
+    // A selection job's undo entries stay until the job ends, then all
+    // expire together an hour later (see the end of this function).
+    let anchored_undo = job.selection.is_some();
+    let mode = ChunkMode::Job {
+        undo_expires_at: anchored_undo.then_some(i64::MAX),
+    };
+    let kind = mutation_job_kind(&cmd);
+    let all_ids = mutation_message_ids(&cmd);
+    let total = job.progress.total;
+
+    job.status = JobStatusData::Running;
+    persist_job(&state, &job).await;
     crate::chimes::emit_daemon_event(
         &state,
         DaemonEvent::OperationStarted {
-            operation_id: job_id.clone(),
-            operation: mutation_job_kind(&cmd).to_string(),
+            operation_id: job.job_id.clone(),
+            operation: kind.to_string(),
             account_id: None,
-            message: format!(
-                "Starting mutation job over {} message(s)",
-                mutation_message_ids(&cmd).len()
-            ),
+            message: format!("Starting mutation job over {total} message(s)"),
         },
     );
 
-    let total = mutation_message_ids(&cmd).len() as u32;
-    let mut aggregate = empty_mutation_result(total);
-    let mut undo_ids = Vec::new();
+    let mut aggregate = job
+        .result
+        .clone()
+        .unwrap_or_else(|| empty_mutation_result(total));
     let mut terminal_error: Option<String> = None;
+    // Where the next chunk starts, and messages a provider asked us to hold
+    // back: they go first in the next chunk.
+    let mut next = 0usize;
+    let mut carry: Vec<mxr_core::MessageId> = Vec::new();
+    let mut waits_in_a_row = 0u32;
+    let mut label_counts = LabelCountSchedule::new();
 
-    for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
-        let (ids, left_out, mut check) = match start_chunk(&state, &guard, ids).await {
+    loop {
+        let chunk_ids: Vec<mxr_core::MessageId> = if carry.is_empty() {
+            if next >= all_ids.len() {
+                break;
+            }
+            let end = (next + MUTATION_JOB_CHUNK_SIZE).min(all_ids.len());
+            let chunk = all_ids[next..end].to_vec();
+            next = end;
+            chunk
+        } else {
+            std::mem::take(&mut carry)
+        };
+        let (ids, left_out, mut check) = match start_chunk(&state, &guard, &chunk_ids).await {
             Ok(started) => started,
             Err(error) => {
                 terminal_error = Some(error);
@@ -1104,95 +1455,128 @@ async fn run_mutation_job(
             continue;
         }
         let chunk_cmd = mutation_command_with_ids(&cmd, ids);
-        match mutation_checked(
+        let outcome = match mutation_checked(
             &state,
             &chunk_cmd,
             client_correlation_id.as_deref(),
             check.as_mut(),
+            mode,
         )
         .await
         {
-            Ok((ResponseData::MutationResult { result }, left_out)) => {
-                aggregate.skipped += left_out;
-                if let Some(mutation_id) = result.mutation_id.as_ref() {
-                    undo_ids.push(mutation_id.clone());
-                }
-                merge_mutation_result(&mut aggregate, &result);
-                update_job(&state, &job_id, |job| {
-                    job.progress.completed =
-                        aggregate.succeeded + aggregate.skipped + aggregate.failed;
-                    job.progress.succeeded = aggregate.succeeded;
-                    job.progress.skipped = aggregate.skipped;
-                    job.progress.failed = aggregate.failed;
-                    job.undo_ids = undo_ids.clone();
-                    job.result = Some(aggregate.clone());
-                })
-                .await;
-                crate::chimes::emit_daemon_event(
-                    &state,
-                    DaemonEvent::OperationProgress {
-                        operation_id: job_id.clone(),
-                        operation: mutation_job_kind(&cmd).to_string(),
-                        account_id: None,
-                        current: aggregate.succeeded + aggregate.skipped + aggregate.failed,
-                        total: Some(total),
-                        message: format!(
-                            "{} of {} processed ({} succeeded, {} skipped)",
-                            aggregate.succeeded + aggregate.skipped + aggregate.failed,
-                            total,
-                            aggregate.succeeded,
-                            aggregate.skipped
-                        ),
-                    },
-                );
-                if result.skipped > 0 || result.failed > 0 {
-                    terminal_error = Some(format!(
-                        "mutation job stopped after partial progress: {} succeeded, {} skipped, {} failed",
-                        aggregate.succeeded, aggregate.skipped, aggregate.failed
-                    ));
-                    break;
-                }
-            }
-            Ok(_) => {
-                terminal_error =
-                    Some("daemon returned unexpected mutation job response".to_string());
-                break;
-            }
+            Ok(outcome) => outcome,
             Err(error) => {
                 terminal_error = Some(error.to_string());
                 break;
             }
+        };
+
+        label_counts.note(outcome.stale_label_counts);
+        label_counts.refresh_if_due(&state).await;
+        // A message that left the store while the job ran is skipped: there
+        // is nothing to change, and it is not a reason to stop.
+        aggregate.skipped += outcome.left_out + outcome.missing;
+        if let Some(mutation_id) = outcome.result.mutation_id.as_ref() {
+            job.undo_ids.push(mutation_id.clone());
+        }
+        merge_mutation_result(&mut aggregate, &outcome.result);
+        for failure in outcome.failures {
+            if job.failures.len() < MAX_JOB_FAILURES {
+                job.failures.push(failure);
+            }
+        }
+        let stopped = outcome.result.skipped > 0 || outcome.result.failed > 0;
+        if outcome.result.succeeded > 0 {
+            waits_in_a_row = 0;
+        }
+        job.paused_until = None;
+        write_progress(&mut job, &aggregate);
+        persist_job(&state, &job).await;
+        crate::chimes::emit_daemon_event(
+            &state,
+            DaemonEvent::OperationProgress {
+                operation_id: job.job_id.clone(),
+                operation: kind.to_string(),
+                account_id: None,
+                current: job.progress.completed,
+                total: Some(total),
+                message: format!(
+                    "{} of {} processed ({} succeeded, {} skipped)",
+                    job.progress.completed, total, aggregate.succeeded, aggregate.skipped
+                ),
+            },
+        );
+        if stopped {
+            terminal_error = Some(format!(
+                "mutation job stopped after partial progress: {} succeeded, {} skipped, {} failed",
+                aggregate.succeeded, aggregate.skipped, aggregate.failed
+            ));
+            break;
+        }
+
+        // The provider asked us to wait. Nothing was done to the messages it
+        // refused, so they are tried again, once, after the wait.
+        if let Some(stop) = outcome.rate_limit {
+            waits_in_a_row += 1;
+            if waits_in_a_row > MAX_CONSECUTIVE_RATE_LIMIT_WAITS {
+                terminal_error = Some(format!(
+                    "mutation job stopped: the provider kept rate limiting it ({} succeeded, {} skipped, {} failed)",
+                    aggregate.succeeded, aggregate.skipped, aggregate.failed
+                ));
+                break;
+            }
+            let wait = rate_limit_wait(stop.retry_after_secs);
+            job.paused_until = Some(
+                chrono::Utc::now().timestamp_millis()
+                    + i64::try_from(wait.as_millis()).unwrap_or(i64::MAX),
+            );
+            persist_job(&state, &job).await;
+            tokio::time::sleep(wait).await;
+            carry = stop.unprocessed;
         }
     }
 
+    label_counts.refresh(&state).await;
     let finished_at = chrono::Utc::now().timestamp_millis();
-    if aggregate.mutation_id.is_none() && undo_ids.len() == 1 {
-        aggregate.mutation_id = undo_ids.first().cloned();
+    if aggregate.mutation_id.is_none() && job.undo_ids.len() == 1 {
+        aggregate.mutation_id = job.undo_ids.first().cloned();
     }
-    let status = if terminal_error.is_some() {
+    if anchored_undo && !job.undo_ids.is_empty() {
+        // One hour from now for every chunk, however long the job ran.
+        let expires_at = finished_at / 1000 + SELECTION_UNDO_WINDOW_SECS;
+        match state
+            .store
+            .set_undo_entries_expiry(&job.undo_ids, expires_at)
+            .await
+        {
+            Ok(_) => job.undo_expires_at = Some(expires_at * 1000),
+            Err(error) => {
+                tracing::warn!(%error, job_id = %job.job_id, "could not anchor the job's undo window");
+            }
+        }
+    }
+    job.status = if terminal_error.is_some() {
         JobStatusData::Failed
     } else {
         JobStatusData::Succeeded
     };
-    update_job(&state, &job_id, |job| {
-        job.status = status;
-        job.error = terminal_error.clone();
-        job.finished_at = Some(finished_at);
-        job.undo_ids = undo_ids.clone();
-        job.progress.completed = aggregate.succeeded + aggregate.skipped + aggregate.failed;
-        job.progress.succeeded = aggregate.succeeded;
-        job.progress.skipped = aggregate.skipped;
-        job.progress.failed = aggregate.failed;
-        job.result = Some(aggregate.clone());
-    })
-    .await;
+    job.error = terminal_error.clone();
+    job.finished_at = Some(finished_at);
+    job.paused_until = None;
+    write_progress(&mut job, &aggregate);
+    // Queued before the row says the job is over, so whoever sees it finished
+    // also finds its entry.
+    if let Some(activity) = activity.as_ref() {
+        super::selection_jobs::record_job_finished(&state, activity, &job);
+    }
+    persist_job(&state, &job).await;
 
     match terminal_error {
         Some(error) => crate::chimes::emit_daemon_event(
             &state,
             DaemonEvent::OperationFailed {
-                operation_id: job_id,
-                operation: mutation_job_kind(&cmd).to_string(),
+                operation_id: job.job_id,
+                operation: kind.to_string(),
                 account_id: None,
                 error,
                 retryable: false,
@@ -1201,8 +1585,8 @@ async fn run_mutation_job(
         None => crate::chimes::emit_daemon_event(
             &state,
             DaemonEvent::OperationCompleted {
-                operation_id: job_id,
-                operation: mutation_job_kind(&cmd).to_string(),
+                operation_id: job.job_id,
+                operation: kind.to_string(),
                 account_id: None,
                 message: format!(
                     "Mutation job completed: {} succeeded, {} skipped",
@@ -1211,6 +1595,15 @@ async fn run_mutation_job(
             },
         ),
     }
+}
+
+/// Copy the running totals into the job's progress and result.
+fn write_progress(job: &mut JobData, aggregate: &MutationResultData) {
+    job.progress.completed = aggregate.succeeded + aggregate.skipped + aggregate.failed;
+    job.progress.succeeded = aggregate.succeeded;
+    job.progress.skipped = aggregate.skipped;
+    job.progress.failed = aggregate.failed;
+    job.result = Some(aggregate.clone());
 }
 
 /// The chunk's ids that `guard` lets through now, how many it left out,
@@ -1252,15 +1645,16 @@ const fn job_status_str(status: &JobStatusData) -> &'static str {
 /// Persist (insert or replace) a job row and prune the table to the
 /// retention cap. Persistence failures are non-fatal — the mutation
 /// itself already ran; we just lose the history row.
-async fn persist_job(state: &AppState, job: &JobData) {
-    let data_json = match serde_json::to_string(job) {
-        Ok(json) => json,
-        Err(error) => {
-            tracing::warn!(%error, job_id = %job.job_id, "failed to serialize job for persistence");
-            return;
-        }
-    };
-    if let Err(error) = state
+pub(super) async fn persist_job(state: &AppState, job: &JobData) {
+    if let Err(error) = persist_job_checked(state, job).await {
+        tracing::warn!(%error, job_id = %job.job_id, "failed to persist mutation job");
+    }
+}
+
+/// [`persist_job`] for a caller that must know the row was written.
+pub(super) async fn persist_job_checked(state: &AppState, job: &JobData) -> Result<(), String> {
+    let data_json = serde_json::to_string(job).map_err(|error| error.to_string())?;
+    state
         .store
         .upsert_mutation_job(
             &job.job_id,
@@ -1271,34 +1665,12 @@ async fn persist_job(state: &AppState, job: &JobData) {
             &data_json,
         )
         .await
-    {
-        tracing::warn!(%error, job_id = %job.job_id, "failed to persist mutation job");
-        return;
-    }
+        .map_err(|error| error.to_string())?;
     let _ = state
         .store
         .prune_mutation_jobs(MAX_RETAINED_JOBS as i64)
         .await;
-}
-
-/// Load a job, apply an in-place update, and persist it. A no-op if the
-/// job row is missing. Each job is only ever updated by its own
-/// `run_mutation_job` task, so this read-modify-write is race-free.
-async fn update_job(state: &AppState, job_id: &str, update: impl FnOnce(&mut JobData)) {
-    let json = match state.store.get_mutation_job(job_id).await {
-        Ok(Some(json)) => json,
-        Ok(None) => return,
-        Err(error) => {
-            tracing::warn!(%error, job_id, "failed to load mutation job for update");
-            return;
-        }
-    };
-    let Ok(mut job) = serde_json::from_str::<JobData>(&json) else {
-        tracing::warn!(job_id, "failed to deserialize stored mutation job");
-        return;
-    };
-    update(&mut job);
-    persist_job(state, &job).await;
+    Ok(())
 }
 
 fn empty_mutation_result(requested: u32) -> MutationResultData {
@@ -1383,7 +1755,7 @@ fn mutation_command_with_ids(
     }
 }
 
-fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
+pub(super) fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
     match cmd {
         MutationCommand::Archive { .. } => "mutation.archive",
         MutationCommand::ReadAndArchive { .. } => "mutation.read_and_archive",
@@ -1456,17 +1828,6 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         return Err(format!("undo: window expired for mutation `{mutation_id}`").into());
     }
 
-    // Group snapshots by account so we resolve the provider once per
-    // account (not per message). Inside each account, restore each
-    // message's labels and read flag.
-    let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
-    for snapshot in &entry.snapshots {
-        by_account
-            .entry(snapshot.account_id.clone())
-            .or_default()
-            .push(snapshot);
-    }
-
     // The desk's Done also dismissed conversations and resolved promises.
     // Those are local rows: put them back first, and only once.
     let mut restored = 0u32;
@@ -1487,36 +1848,16 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             }
         }
     }
-    let mut irreversible = 0u32;
+    let outcome = restore_snapshots(state, entry.kind, &entry.snapshots, false).await;
+    refresh_label_counts(state, &outcome.stale_label_counts).await;
+    restored += outcome.restored;
+    let irreversible = outcome.irreversible;
     // Failures a retry can fix (a provider or account hiccup), kept so the
     // same id undoes just those next time.
-    let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
-    let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
-    for (account_id, snapshots) in by_account {
-        let provider = match state.get_provider(Some(&account_id)) {
-            Ok(p) => p,
-            Err(error) => {
-                last_error = Some(format!("account unavailable: {error}"));
-                retryable.extend(snapshots.into_iter().cloned());
-                continue;
-            }
-        };
-        for snapshot in snapshots {
-            match restore_snapshot(state, provider.as_ref(), entry.kind, snapshot).await {
-                Ok(()) => {
-                    restored += 1;
-                    reindex.push(snapshot.message_id.clone());
-                }
-                Err(SnapshotError::Irreversible(msg)) => {
-                    irreversible += 1;
-                    last_error = Some(msg);
-                }
-                Err(SnapshotError::Other(msg)) => {
-                    retryable.push(snapshot.clone());
-                    last_error = Some(msg);
-                }
-            }
-        }
+    let retryable = outcome.retryable;
+    let reindex = outcome.reindex;
+    if outcome.last_error.is_some() {
+        last_error = outcome.last_error;
     }
 
     // One search commit for the whole undo, as `apply_mutation_batch` does:
@@ -1561,11 +1902,110 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     .into())
 }
 
+/// What restoring a set of undo snapshots did.
+pub(super) struct RestoreOutcome {
+    pub restored: u32,
+    /// Messages that cannot be restored (gone from the provider or locally).
+    pub irreversible: u32,
+    /// Snapshots a retry can still restore (a provider or account hiccup, or
+    /// a rate limit that stopped the run).
+    pub retryable: Vec<UndoEntrySnapshot>,
+    /// Restored messages, for one search reindex.
+    pub reindex: Vec<mxr_core::MessageId>,
+    pub last_error: Option<String>,
+    /// Set when `stop_on_rate_limit` and a provider asked to wait: the
+    /// snapshots not yet tried are in `retryable`.
+    pub rate_limited_secs: Option<u64>,
+    /// Accounts whose label counts the restore left stale; the caller
+    /// refreshes them (see [`refresh_label_counts`]).
+    pub stale_label_counts: Vec<mxr_core::AccountId>,
+}
+
+/// Put each snapshot's message back as it was, account by account (the
+/// provider is resolved once per account). With `stop_on_rate_limit` a
+/// provider's request to wait ends that account's run instead of failing the
+/// rest of it.
+pub(super) async fn restore_snapshots(
+    state: &AppState,
+    kind: UndoableMutationKind,
+    snapshots: &[UndoEntrySnapshot],
+    stop_on_rate_limit: bool,
+) -> RestoreOutcome {
+    let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
+    for snapshot in snapshots {
+        by_account
+            .entry(snapshot.account_id.clone())
+            .or_default()
+            .push(snapshot);
+    }
+    let mut outcome = RestoreOutcome {
+        restored: 0,
+        irreversible: 0,
+        retryable: Vec::new(),
+        reindex: Vec::new(),
+        last_error: None,
+        rate_limited_secs: None,
+        stale_label_counts: Vec::new(),
+    };
+    for (account_id, snapshots) in by_account {
+        let provider = match state.get_provider(Some(&account_id)) {
+            Ok(p) => p,
+            Err(error) => {
+                outcome.last_error = Some(format!("account unavailable: {error}"));
+                outcome.retryable.extend(snapshots.into_iter().cloned());
+                continue;
+            }
+        };
+        let mut remaining = snapshots.into_iter();
+        while let Some(snapshot) = remaining.next() {
+            match restore_snapshot(state, provider.as_ref(), kind, snapshot).await {
+                Ok(()) => {
+                    outcome.restored += 1;
+                    outcome.reindex.push(snapshot.message_id.clone());
+                    if kind != UndoableMutationKind::Star
+                        && !outcome.stale_label_counts.contains(&account_id)
+                    {
+                        outcome.stale_label_counts.push(account_id.clone());
+                    }
+                }
+                Err(SnapshotError::Irreversible(msg)) => {
+                    outcome.irreversible += 1;
+                    outcome.last_error = Some(msg);
+                }
+                Err(SnapshotError::RateLimited {
+                    retry_after_secs,
+                    message,
+                }) if stop_on_rate_limit => {
+                    outcome.rate_limited_secs = Some(
+                        outcome
+                            .rate_limited_secs
+                            .map_or(retry_after_secs, |secs| secs.max(retry_after_secs)),
+                    );
+                    outcome.last_error = Some(message);
+                    outcome.retryable.push(snapshot.clone());
+                    outcome.retryable.extend(remaining.cloned());
+                    break;
+                }
+                Err(SnapshotError::RateLimited { message, .. } | SnapshotError::Other(message)) => {
+                    outcome.retryable.push(snapshot.clone());
+                    outcome.last_error = Some(message);
+                }
+            }
+        }
+    }
+    outcome
+}
+
 enum SnapshotError {
     /// The upstream message can't be modified (e.g. EXPUNGE, deleted on
     /// the server). Surfacing this distinct from generic errors lets
     /// the UI explain why undo failed.
     Irreversible(String),
+    /// The provider asked to wait; the restore did not happen.
+    RateLimited {
+        retry_after_secs: u64,
+        message: String,
+    },
     Other(String),
 }
 
@@ -1672,9 +2112,15 @@ async fn restore_snapshot(
         {
             tracing::warn!(%error, "undo failed to record dedup row");
         }
-        reconcile_label_mutation(state, provider, &snapshot.message_id, &to_add, &to_remove)
-            .await
-            .map_err(SnapshotError::Other)?;
+        reconcile_label_mutation_deferred(
+            state,
+            provider,
+            &snapshot.message_id,
+            &to_add,
+            &to_remove,
+        )
+        .await
+        .map_err(SnapshotError::Other)?;
     }
 
     // Read flag: only relevant for SetRead, ReadAndArchive and the desk's
@@ -1812,6 +2258,15 @@ fn uncertain_label_changes(
 
 fn classify_provider_error(error: mxr_core::MxrError) -> SnapshotError {
     let message = error.to_string();
+    if let mxr_core::MxrError::RateLimited {
+        retry_after_secs, ..
+    } = &error
+    {
+        return SnapshotError::RateLimited {
+            retry_after_secs: *retry_after_secs,
+            message,
+        };
+    }
     let lower = message.to_lowercase();
     let irreversible = lower.contains("not found")
         || lower.contains("expunge")
@@ -1844,7 +2299,7 @@ async fn apply_mutation_to_envelope(
     mutation_id: &str,
     cmd: &MutationCommand,
     envelope: &Envelope,
-) -> Result<(), String> {
+) -> Result<(), ApplyError> {
     // Keep the account-scoped provider guard held across the dedup
     // check, provider apply, dedup record, and local reconciliation.
     let provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
@@ -1860,7 +2315,7 @@ async fn apply_mutation_under_guard(
     mutation_id: &str,
     cmd: &MutationCommand,
     envelope: &Envelope,
-) -> Result<(), String> {
+) -> Result<(), ApplyError> {
     let message_id = &envelope.id;
     let provider_id = &envelope.provider_id;
     match cmd {
@@ -1879,8 +2334,14 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
-                .await?;
+            reconcile_label_mutation_deferred(
+                state,
+                provider,
+                message_id,
+                &[],
+                &["INBOX".to_string()],
+            )
+            .await?;
         }
         MutationCommand::ReadAndArchive { .. } => {
             // Two provider calls under one mutation_id; suffix the dedup
@@ -1917,8 +2378,14 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
-                .await?;
+            reconcile_label_mutation_deferred(
+                state,
+                provider,
+                message_id,
+                &[],
+                &["INBOX".to_string()],
+            )
+            .await?;
         }
         MutationCommand::Trash { .. } => {
             apply_one_mutation(
@@ -1935,8 +2402,8 @@ async fn apply_mutation_under_guard(
             .await?;
             // Trash is provider-specific (Gmail relabels, IMAP moves+expunges).
             // Mirror the common case locally: drop INBOX, add TRASH if labels-capable;
-            // otherwise let reconcile_label_mutation re-sync from the provider.
-            reconcile_label_mutation(
+            // otherwise let reconcile_label_mutation_deferred re-sync from the provider.
+            reconcile_label_mutation_deferred(
                 state,
                 provider,
                 message_id,
@@ -1960,7 +2427,7 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(
+            reconcile_label_mutation_deferred(
                 state,
                 provider,
                 message_id,
@@ -2031,8 +2498,14 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
-                .await?;
+            reconcile_label_mutation_deferred(
+                state,
+                provider,
+                message_id,
+                &resolved_add,
+                &resolved_remove,
+            )
+            .await?;
         }
         MutationCommand::Move { target_label, .. } => {
             let labels = state
@@ -2056,7 +2529,7 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(
+            reconcile_label_mutation_deferred(
                 state,
                 provider,
                 message_id,
@@ -2100,8 +2573,14 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
-                .await?;
+            reconcile_label_mutation_deferred(
+                state,
+                provider,
+                message_id,
+                &resolved_add,
+                &resolved_remove,
+            )
+            .await?;
             if *archive {
                 apply_one_mutation(
                     state,
@@ -2146,7 +2625,7 @@ async fn apply_one_mutation(
     dedup_key: &str,
     mutation: mxr_core::Mutation,
     account_id: &mxr_core::AccountId,
-) -> Result<(), String> {
+) -> Result<(), ApplyError> {
     let already = state
         .store
         .was_mutation_applied(mutation_id, account_id, dedup_key)
@@ -2171,7 +2650,16 @@ async fn apply_one_mutation(
             PROVIDER_MUTATION_TIMEOUT.as_secs()
         )))
     })
-    .map_err(|e| e.to_string())?;
+    // A typed rate limit stays typed, so a background job can wait it out.
+    .map_err(|error| match error {
+        MxrError::RateLimited {
+            retry_after_secs, ..
+        } => ApplyError::RateLimited {
+            retry_after_secs,
+            message: error.to_string(),
+        },
+        error => ApplyError::Failed(error.to_string()),
+    })?;
     let now = chrono::Utc::now().timestamp();
     if let Err(error) = state
         .store

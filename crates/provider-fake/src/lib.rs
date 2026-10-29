@@ -143,6 +143,8 @@ pub struct FakeProvider {
     /// When set, every mutation of this one message fails, so a batch
     /// fails part way: the messages before it change, the rest don't.
     failing_message: Mutex<Option<String>>,
+    /// Mutations still to refuse as rate limited, and the wait each reports.
+    rate_limited_mutations: Mutex<(u32, u64)>,
     page_size: usize,
     /// `MXR_FAKE_SPOOL_DIR`: messages and failures an end-to-end test
     /// drops in from outside the daemon (`spool`).
@@ -321,6 +323,7 @@ impl FakeProvider {
             sends_fail_after_accepting: AtomicBool::new(false),
             mutations_fail_after_accepting: AtomicBool::new(false),
             failing_message: Mutex::new(None),
+            rate_limited_mutations: Mutex::new((0, 0)),
             page_size: SYNC_PAGE_SIZE,
             spool: spool::Spool::from_env(),
         }
@@ -344,6 +347,17 @@ impl FakeProvider {
             .lock()
             .expect("fake provider failing_message mutex should not be poisoned") =
             provider_message_id.map(str::to_string);
+    }
+
+    /// Refuse the next `times` mutations as rate limited, each with a
+    /// `retry_after_secs` wait. A refused mutation is not recorded: the
+    /// provider did nothing, as a real 429 does.
+    pub fn rate_limit_next_mutations(&self, times: u32, retry_after_secs: u64) {
+        *self
+            .rate_limited_mutations
+            .lock()
+            .expect("fake provider rate limit mutex should not be poisoned") =
+            (times, retry_after_secs);
     }
 
     /// Make every subsequent send accept the mail and then fail, or stop.
@@ -554,6 +568,19 @@ impl MailSyncProvider for FakeProvider {
         _mutation_id: &str,
         mutation: &Mutation,
     ) -> Result<(), MxrError> {
+        {
+            let mut limited = self
+                .rate_limited_mutations
+                .lock()
+                .expect("fake provider rate limit mutex should not be poisoned");
+            if limited.0 > 0 {
+                limited.0 -= 1;
+                return Err(MxrError::RateLimited {
+                    retry_after_secs: limited.1,
+                    detail: Some("fake".into()),
+                });
+            }
+        }
         if matches!(mutation, Mutation::ModifyLabels { .. })
             && self.label_changes_fail.load(Ordering::SeqCst)
         {

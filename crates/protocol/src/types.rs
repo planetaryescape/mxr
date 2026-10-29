@@ -1,4 +1,7 @@
-use crate::{ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData};
+use crate::{
+    ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData, JobFailureData, SelectionData,
+    SelectionPreviewData,
+};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::AccountColor;
@@ -1294,6 +1297,36 @@ pub enum Request {
     },
     GetArchiveOperation {
         identity: ArchiveIdentityData,
+    },
+    /// Resolve `selection` in the daemon and report what `mutation` would
+    /// cover: an exact count, thread and account counts, a sample of the
+    /// newest messages, and a single-use token. `mutation.message_ids` must be
+    /// empty. Changes nothing; no message id list is returned.
+    PreviewSelection {
+        selection: SelectionData,
+        mutation: MutationCommand,
+        /// Sample size; the daemon defaults to 20 and caps at 100.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample_size: Option<u32>,
+    },
+    /// Run `mutation` over exactly the messages a `PreviewSelection` counted,
+    /// as one background job. `job_id` is chosen by the client and makes the
+    /// request idempotent: a repeat returns the existing job, so a lost reply
+    /// is recovered with `GetJob`. `mutation.message_ids` must be empty and
+    /// `selection` and `mutation` must equal the preview's.
+    StartSelectionJob {
+        job_id: String,
+        preview_token: String,
+        selection: SelectionData,
+        mutation: MutationCommand,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_correlation_id: Option<String>,
+    },
+    /// Reverse a finished job as its own background job: every message the job
+    /// changed goes back to the state it had before the job ran. Available
+    /// for one hour after the job finishes.
+    UndoJob {
+        job_id: String,
     },
     ListJobs,
     /// Inspect one daemon-side job by id.
@@ -3076,6 +3109,9 @@ impl Request {
             | Self::ListRuleHistory { .. }
             | Self::Mutation { .. }
             | Self::StartMutationJob { .. }
+            | Self::PreviewSelection { .. }
+            | Self::StartSelectionJob { .. }
+            | Self::UndoJob { .. }
             | Self::GetArchiveWorkspace
             | Self::GetRecoveryStatus
             | Self::ActivateRecovery { .. }
@@ -3502,6 +3538,23 @@ pub struct JobData {
     pub finished_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<MutationResultData>,
+    /// The selection a `StartSelectionJob` ran over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionData>,
+    /// The first messages that failed, with why (at most 50); the exact total
+    /// is in `progress.failed`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<JobFailureData>,
+    /// Unix milliseconds. Set while the job waits out a provider rate limit;
+    /// it resumes by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_until: Option<i64>,
+    /// Unix milliseconds. `UndoJob` works until then; set when the job ends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub undo_expires_at: Option<i64>,
+    /// The job this one reverses (`UndoJob`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub undo_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4062,6 +4115,9 @@ pub enum ResponseData {
     },
     Job {
         job: JobData,
+    },
+    SelectionPreview {
+        preview: SelectionPreviewData,
     },
     UnsubscribePurgeResult {
         result: UnsubscribePurgeResultData,
@@ -4897,6 +4953,7 @@ impl ResponseData {
             | Self::JobStarted { .. }
             | Self::Jobs { .. }
             | Self::Job { .. }
+            | Self::SelectionPreview { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::UnsubscribePlan { .. }
             | Self::SendOutcome { .. }

@@ -778,6 +778,7 @@ mod records;
 mod reply_semantics;
 mod routing_and_search;
 mod search_fallback;
+mod selection_jobs;
 mod send_outcomes;
 mod sent_assessments;
 mod stars;

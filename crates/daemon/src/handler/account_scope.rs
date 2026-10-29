@@ -14,7 +14,7 @@ use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
     AuthSessionId, ClientKind, DaemonEvent, JobData, MutationCommand, PromiseSourceData, Request,
-    ResponseData, ThreadSummaryData,
+    ResponseData, SelectionData, ThreadSummaryData,
 };
 use mxr_store::SignatureScope;
 use std::sync::Arc;
@@ -207,6 +207,18 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExportRecords { account_id, .. }
         | Request::ListPlace { account_id, .. }
         | Request::SweepPlace { account_id, .. } => optional_account(account_id.as_ref()),
+        // A selection names its account, not its messages: the id list is
+        // empty and never crosses IPC, so classifying by messages would let
+        // it past every scoped profile. No account is `AllAccounts`, denied
+        // to a scoped profile like a search with no account.
+        Request::PreviewSelection {
+            selection: SelectionData::Search { account_id, .. },
+            ..
+        }
+        | Request::StartSelectionJob {
+            selection: SelectionData::Search { account_id, .. },
+            ..
+        } => optional_account(account_id.as_ref()),
         Request::PreviewSyncAll | Request::SyncAll => AllAllowedSyncAccounts,
         Request::ArchiveAsk { filters, .. } => optional_account(filters.account_id.as_ref()),
         Request::GetPerson {
@@ -496,7 +508,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
         Request::GetArchiveWorkspace | Request::GetMicrosoftTodoStatus => Unscoped,
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
-        Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
+        Request::GetJob { job_id } | Request::UndoJob { job_id } => Targets(vec![T::Job(job_id)]),
 
         Request::ExplainCategoryMembership { message_id, .. } => Targets(vec![T::Message(message_id)]),
         Request::RuleCategories {form,..} | Request::RuleTreatment {form,..} => {

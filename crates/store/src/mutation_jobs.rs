@@ -146,6 +146,19 @@ impl super::Store {
         Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())
     }
 
+    /// The `data_json` of every job still marked `queued` or `running`. At
+    /// daemon startup these are jobs the previous process died with.
+    pub async fn list_unfinished_mutation_jobs(&self) -> Result<Vec<String>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT data_json FROM mutation_jobs
+               WHERE kind != 'recoverable_archive' AND status IN ('queued', 'running')
+               ORDER BY started_at, job_id"#,
+        )
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())
+    }
+
     /// Return the `data_json` for a single job, if present.
     pub async fn get_mutation_job(&self, job_id: &str) -> Result<Option<String>, sqlx::Error> {
         let row = sqlx::query(r#"SELECT data_json FROM mutation_jobs WHERE job_id = ?1"#)

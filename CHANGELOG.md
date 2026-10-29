@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.188](https://github.com/planetaryescape/mxr/compare/v0.6.187...v0.6.188) (2026-10-29)
+
+
+### Bug Fixes
+
+* reopen the right conversation when undo brings a person back in Messages ([#794](https://github.com/planetaryescape/mxr/issues/794)) ([b36d8d3](https://github.com/planetaryescape/mxr/commit/b36d8d33e0c7e9749e74d42d34d92cc0f18afaa8))
+
 ## [0.6.187](https://github.com/planetaryescape/mxr/compare/v0.6.186...v0.6.187) (2026-10-29)
 
 

@@ -283,6 +283,7 @@ async fn a_digest_is_its_links_and_a_link_on_later_outlives_its_issue() {
     request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread],
             mode: ModeKindData::Reading,
             dry_run: false,
@@ -326,6 +327,7 @@ async fn let_go_of_everything_shown_does_exactly_what_its_preview_said() {
         .collect();
     assert_eq!(threads.len(), 4);
     let done = |dry_run| Request::SetModeDone {
+        thread_accounts: Vec::new(),
         thread_ids: threads.clone(),
         mode: ModeKindData::Reading,
         dry_run,

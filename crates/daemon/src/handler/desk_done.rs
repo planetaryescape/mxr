@@ -131,32 +131,48 @@ pub(super) async fn resolve_desk_items(
 }
 
 async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>, HandlerError> {
-    let thread_ids: Vec<ThreadId> = items.iter().map(|item| item.thread_id.clone()).collect();
+    // An item that names its account is that account's row. A bare thread id
+    // takes the store's owner, which is wrong when two accounts share the id.
+    let bare: Vec<ThreadId> = items
+        .iter()
+        .filter(|item| item.account_id.is_none())
+        .map(|item| item.thread_id.clone())
+        .collect();
     let owners: HashMap<ThreadId, AccountId> = state
         .store
-        .get_threads_batch(&thread_ids)
+        .get_threads_batch(&bare)
         .await?
         .into_iter()
         .map(|thread| (thread.id, thread.account_id))
         .collect();
+    let accounts: Vec<Option<AccountId>> = items
+        .iter()
+        .map(|item| {
+            item.account_id
+                .clone()
+                .or_else(|| owners.get(&item.thread_id).cloned())
+        })
+        .collect();
 
     // Each account's threads in one read, so every plan's messages and its
     // dismissal watermark come from the same snapshot.
-    let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
-    for thread_id in &thread_ids {
-        if let Some(account) = owners.get(thread_id) {
-            by_account
-                .entry(account.clone())
-                .or_default()
-                .push(thread_id.clone());
+    let mut by_account: Vec<(AccountId, Vec<ThreadId>)> = Vec::new();
+    for (item, account) in items.iter().zip(&accounts) {
+        let Some(account) = account else { continue };
+        match by_account.iter_mut().find(|(owner, _)| owner == account) {
+            Some((_, ids)) => {
+                if !ids.contains(&item.thread_id) {
+                    ids.push(item.thread_id.clone());
+                }
+            }
+            None => by_account.push((account.clone(), vec![item.thread_id.clone()])),
         }
     }
-    let by_account_ids: Vec<(AccountId, Vec<ThreadId>)> = by_account.into_iter().collect();
-    let mut threads: HashMap<ThreadId, Vec<DeskMessage>> = HashMap::new();
-    for (account, ids) in &by_account_ids {
+    let mut threads: HashMap<(AccountId, ThreadId), Vec<DeskMessage>> = HashMap::new();
+    for (account, ids) in &by_account {
         for message in state.store.desk_messages_in_threads(account, ids).await? {
             threads
-                .entry(message.thread_id.clone())
+                .entry((account.clone(), message.thread_id.clone()))
                 .or_default()
                 .push(message);
         }
@@ -182,8 +198,8 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
     // only when no other mode (To do, Updates, Reading) still holds the
     // thread and `modes.archive_on_last_done` is on.
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
-    let mut held_elsewhere: HashSet<ThreadId> = HashSet::new();
-    for (account, ids) in &by_account_ids {
+    let mut held_elsewhere: HashSet<(AccountId, ThreadId)> = HashSet::new();
+    for (account, ids) in &by_account {
         for placement in super::modes::place_threads(state, account, ids, Utc::now()).await? {
             let held = placement
                 .data
@@ -191,32 +207,35 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
                 .iter()
                 .any(|entry| entry.mode != ModeKindData::Messages && entry.mode.holds_inbox());
             if held || !archive_on_last_done {
-                held_elsewhere.insert(placement.data.thread_id);
+                held_elsewhere.insert((account.clone(), placement.data.thread_id));
             }
         }
     }
 
     let mut plans = Vec::with_capacity(items.len());
-    let mut seen: HashSet<&ThreadId> = HashSet::new();
-    for item in items {
-        let found = owners
-            .get(&item.thread_id)
-            .zip(threads.get(&item.thread_id));
+    let mut seen: HashSet<(ThreadId, Option<AccountId>)> = HashSet::new();
+    for (item, account) in items.iter().zip(&accounts) {
         // One plan per conversation, so each message is changed and
         // snapshotted for undo once.
-        let plan = if !seen.insert(&item.thread_id) {
+        let plan = if !seen.insert((item.thread_id.clone(), account.clone())) {
             Err("this conversation is already in the request".to_string())
         } else {
-            match found {
-                Some((account_id, thread)) => {
-                    plan_item(state, item, account_id, thread, &flags).await?
+            match account {
+                Some(account_id) => {
+                    let key = (account_id.clone(), item.thread_id.clone());
+                    match threads.get(&key) {
+                        Some(thread) => plan_item(state, item, account_id, thread, &flags).await?,
+                        None => Err("conversation not found".to_string()),
+                    }
                 }
                 None => Err("conversation not found".to_string()),
             }
         };
         let plan = plan.map(|mut plan| {
-            if held_elsewhere.contains(&plan.thread_id) {
-                plan.archive.clear();
+            if let Some(account_id) = account {
+                if held_elsewhere.contains(&(account_id.clone(), plan.thread_id.clone())) {
+                    plan.archive.clear();
+                }
             }
             plan
         });

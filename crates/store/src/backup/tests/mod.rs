@@ -762,6 +762,68 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
 }
 
 #[tokio::test]
+async fn a_backup_from_before_105_gives_its_system_labels_their_role() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    // A synced Inbox with one message, as a pre-105 database stored it.
+    sqlx::query(
+        "INSERT INTO labels (id, account_id, name, kind, provider_id, unread_count, total_count)
+         VALUES ('inbox', ?, 'INBOX', 'system', 'INBOX', 0, 1)",
+    )
+    .bind(account.id.as_str())
+    .execute(store.writer())
+    .await
+    .unwrap();
+    store.writer().close().await;
+
+    // Make the source look like schema 104: no role column, no migration 105.
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(source.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "ALTER TABLE labels DROP COLUMN role; DELETE FROM schema_migrations WHERE version>=105;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 105);
+    inspect(stage.path()).await.unwrap();
+    std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
+    retire_restored(&restored.path().join("mxr.db"))
+        .await
+        .unwrap();
+
+    let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
+    let inbox = restored_store
+        .system_mailbox_counts(std::slice::from_ref(&account.id))
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|(role, _, _)| *role == Role::Inbox)
+        .map(|(_, _, total)| total);
+    assert_eq!(
+        inbox,
+        Some(1),
+        "the restored merged Inbox must count the message"
+    );
+    restored_store.writer().close().await;
+}
+
+#[tokio::test]
 async fn inspect_rejects_unrecognized_schema_objects_in_supported_bundle() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();

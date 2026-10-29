@@ -1424,6 +1424,7 @@ async fn get_thread_includes_message_label_provider_ids() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThread {
             thread_id: envelope.thread_id,
+            account_id: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;

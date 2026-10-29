@@ -63,9 +63,9 @@ function openLink(link: ExtractedLink | undefined) {
 
 export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: () => void }) {
   const thread = useQuery({
-    queryKey: ["thread", target.threadId],
+    queryKey: ["thread", target.threadId, target.accountId ?? null],
     // Same key the reader uses, so an open thread is already cached.
-    queryFn: () => fetchThread(target.threadId ?? ""),
+    queryFn: () => fetchThread(target.threadId ?? "", target.accountId),
     enabled: Boolean(target.threadId),
   });
   const links = useMemo(() => extractLinks(thread.data?.bodies ?? []), [thread.data]);

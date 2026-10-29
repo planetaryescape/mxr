@@ -722,6 +722,7 @@ async fn let_go(
     let (outcomes, mutation_id) = expect_data!(
         client
             .request(Request::SetModeDone {
+                thread_accounts: Vec::new(),
                 thread_ids,
                 mode: ModeKindData::Reading,
                 dry_run,

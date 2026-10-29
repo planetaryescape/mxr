@@ -310,6 +310,7 @@ impl App {
         let request = Request::ResolveDeskItems {
             items: vec![mxr_protocol::DeskDoneItemData {
                 thread_id: item.thread_id.clone(),
+                account_id: None,
                 lane: (item.source == FocusSource::Owed).then_some(DeskLaneKind::Owed),
                 commitment_id: None,
             }],

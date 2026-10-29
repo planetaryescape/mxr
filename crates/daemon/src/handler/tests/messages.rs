@@ -1633,6 +1633,7 @@ async fn a_copied_thread_is_listed_in_updates_and_leaves_when_done_there() {
     request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![copied.clone()],
             mode: mxr_protocol::ModeKindData::Updates,
             dry_run: false,

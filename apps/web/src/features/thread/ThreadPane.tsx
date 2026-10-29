@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
@@ -28,9 +29,16 @@ export function ThreadPane({
   /** A link to mark in its message: opened from a To do row. */
   linkHighlight?: LinkHighlight;
 }) {
+  // A list row puts its account in the URL (`account`), so a thread id held
+  // by two accounts opens that account's copy.
+  const accountId = useSearch({
+    strict: false,
+    select: (search: Record<string, unknown>) =>
+      typeof search.account === "string" ? search.account : null,
+  } as never) as string | null;
   const query = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId],
+    queryFn: () => fetchThread(threadId, accountId),
   });
   // Wait for both local context reads, so their lines are in place before
   // the first message paints. A failed read just leaves its line out. The

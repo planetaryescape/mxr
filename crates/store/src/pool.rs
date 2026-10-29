@@ -313,6 +313,13 @@ impl Store {
     async fn apply_label_role_migration(&self) -> Result<(), sqlx::Error> {
         self.add_column_if_missing("labels", "role", "ALTER TABLE labels ADD COLUMN role TEXT")
             .await?;
+        self.backfill_label_roles_from_names().await
+    }
+
+    /// Sets `role` on System labels that have none, from their names. Migration
+    /// 105 runs it on existing databases. A backup taken before 105 runs it on
+    /// its copy, because those labels arrive with no role.
+    pub(crate) async fn backfill_label_roles_from_names(&self) -> Result<(), sqlx::Error> {
         for role in Role::system_mailboxes() {
             for name in role.system_label_names() {
                 sqlx::query(

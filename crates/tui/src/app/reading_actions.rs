@@ -339,6 +339,7 @@ impl App {
         self.queue_mutation(
             Request::SetModeDone {
                 thread_ids: vec![target.thread_id],
+                thread_accounts: Vec::new(),
                 mode: ModeKindData::Reading,
                 dry_run: false,
                 todo_ids: Vec::new(),
@@ -374,6 +375,7 @@ impl App {
             self.queue_mutation(
                 Request::SetModeDone {
                     thread_ids,
+                    thread_accounts: Vec::new(),
                     mode: ModeKindData::Reading,
                     dry_run: false,
                     todo_ids: Vec::new(),

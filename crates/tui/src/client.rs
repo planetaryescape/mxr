@@ -469,6 +469,7 @@ impl Client {
         let resp = self
             .request(Request::GetThread {
                 thread_id: thread_id.clone(),
+                account_id: None,
             })
             .await?;
         match resp {

@@ -478,6 +478,7 @@ impl App {
         }
         let item = mxr_protocol::DeskDoneItemData {
             thread_id: row.thread_id.clone(),
+            account_id: Some(row.account_id.clone()),
             lane: Some(row.lane),
             commitment_id: row.commitment_id.clone(),
         };

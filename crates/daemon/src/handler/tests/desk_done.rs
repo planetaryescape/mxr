@@ -11,6 +11,7 @@ use mxr_store::CommitmentStatus;
 
 fn item(thread: &ThreadId, lane: Option<DeskLaneKind>) -> DeskDoneItemData {
     DeskDoneItemData {
+        account_id: None,
         thread_id: thread.clone(),
         lane,
         commitment_id: None,
@@ -288,6 +289,7 @@ async fn done_on_a_promise_resolves_it_marks_its_thread_read_and_undo_reopens_it
     assert!(none.is_none());
 
     let due = DeskDoneItemData {
+        account_id: None,
         thread_id: thread.clone(),
         lane: Some(DeskLaneKind::Due),
         commitment_id: Some(commitment.clone()),
@@ -431,6 +433,7 @@ async fn keeping_one_promise_leaves_the_other_promises_on_that_thread_under_due(
         recorded.push(commitment.id);
     }
     let due = DeskDoneItemData {
+        account_id: None,
         thread_id: thread.clone(),
         lane: Some(DeskLaneKind::Due),
         commitment_id: Some(recorded[0].clone()),
@@ -465,6 +468,7 @@ async fn a_promise_from_another_account_is_refused() {
         .await
         .unwrap();
     let item = DeskDoneItemData {
+        account_id: None,
         thread_id: thread.clone(),
         lane: Some(DeskLaneKind::Due),
         commitment_id: Some("theirs".into()),

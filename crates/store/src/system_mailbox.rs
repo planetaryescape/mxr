@@ -740,7 +740,13 @@ mod tests {
         let (thread, _) = message(&store, &acct.id, 10, &[&sent], None).await;
 
         let listed = store
-            .list_threads_by_role(&[acct.id.clone()], Role::Sent, 10, 0, SortOrder::DateDesc)
+            .list_threads_by_role(
+                std::slice::from_ref(&acct.id),
+                Role::Sent,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
             .await
             .unwrap();
         assert_eq!(

@@ -166,6 +166,7 @@ async fn modes_report() {
         let response = mode_done::set_mode_done(
             &state,
             mode_done::DoneRequest {
+                thread_accounts: &[],
                 thread_ids: &sample,
                 mode,
                 dry_run: true,

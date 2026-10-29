@@ -144,11 +144,15 @@ export function ListWithReader({
   }, [setActivePane, threadOpen]);
 
   const open = useCallback(
-    (id: string, options?: { focusReader?: boolean }) => {
+    (id: string, options?: { focusReader?: boolean; accountId?: string | null }) => {
       setActivePane(options?.focusReader === false ? "mailbox" : "reader");
+      const accountId = options?.accountId ?? rowAccountsRef.current.get(id) ?? null;
       void navigate({
         to: `${basePath}/${encodeURIComponent(id)}`,
-        search: preserveSearch ? (previous: Record<string, unknown>) => previous : undefined,
+        search: (previous: Record<string, unknown>) => ({
+          ...(preserveSearch ? previous : {}),
+          ...(accountId ? { account: accountId } : {}),
+        }),
       });
     },
     [basePath, navigate, preserveSearch, setActivePane],
@@ -161,7 +165,8 @@ export function ListWithReader({
     });
   }, [basePath, navigate, preserveSearch, setActivePane]);
   const onOpenRow = useCallback(
-    (row: MessageRowView, options: { focusReader: boolean }) => open(row.thread_id, options),
+    (row: MessageRowView, options: { focusReader: boolean }) =>
+      open(row.thread_id, { ...options, accountId: row.account_id ?? null }),
     [open],
   );
   // The open conversation left the list from somewhere other than the
@@ -173,6 +178,19 @@ export function ListWithReader({
   );
   const loadedIdsRef = useRef(loadedIds);
   loadedIdsRef.current = loadedIds;
+  // Account of each loaded conversation, so a neighbour the keyboard opens
+  // keeps its account. The first row wins when two accounts share an id.
+  const rowAccounts = useMemo(() => {
+    const accounts = new Map<string, string | null>();
+    for (const group of groups) {
+      for (const row of group.rows) {
+        if (!accounts.has(row.thread_id)) accounts.set(row.thread_id, row.account_id ?? null);
+      }
+    }
+    return accounts;
+  }, [groups]);
+  const rowAccountsRef = useRef(rowAccounts);
+  rowAccountsRef.current = rowAccounts;
   const isListed = useCallback((id: string) => loadedIdsRef.current.includes(id), []);
   const stillShows = useRouteStillShows();
   const expectRemoval = useAdvanceOnRemoval({

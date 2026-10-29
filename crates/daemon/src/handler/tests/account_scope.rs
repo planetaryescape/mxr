@@ -688,6 +688,7 @@ async fn mode_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::SetModeDone {
+        thread_accounts: Vec::new(),
         thread_ids: vec![o.thread.clone()],
         mode: ModeKindData::Updates,
         dry_run: true,
@@ -698,6 +699,7 @@ async fn mode_requests_stay_in_the_agents_accounts() {
     // To do names its rows by id; another account's row is out of scope
     // even with no thread named.
     assert_scoped(&s, |o| Request::SetModeDone {
+        thread_accounts: Vec::new(),
         thread_ids: vec![],
         mode: ModeKindData::Todo,
         dry_run: true,
@@ -706,6 +708,7 @@ async fn mode_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::SetModeDone {
+        thread_accounts: Vec::new(),
         thread_ids: vec![],
         mode: ModeKindData::Updates,
         dry_run: true,
@@ -830,6 +833,7 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     })
     .await;
     assert_scoped(&s, |o| Request::DeferThreads {
+        thread_accounts: Vec::new(),
         thread_ids: vec![o.thread.clone()],
         until: Utc::now() + Duration::days(1),
         dry_run: true,
@@ -842,6 +846,7 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     .await;
     assert_scoped(&s, |o| Request::ResolveDeskItems {
         items: vec![DeskDoneItemData {
+            account_id: None,
             thread_id: o.thread.clone(),
             lane: None,
             commitment_id: None,
@@ -854,6 +859,7 @@ async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
         &s,
         &Request::ResolveDeskItems {
             items: vec![DeskDoneItemData {
+                account_id: None,
                 thread_id: s.own.thread.clone(),
                 lane: None,
                 commitment_id: Some(s.other.commitment.clone()),
@@ -1471,6 +1477,7 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     for req in [
         Request::GetThread {
             thread_id: shared.clone(),
+            account_id: None,
         },
         Request::GetThreadContext {
             thread_id: shared.clone(),

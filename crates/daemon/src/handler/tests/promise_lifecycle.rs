@@ -74,6 +74,7 @@ async fn review2_desk_done_and_undo_restore_both_promise_and_task() {
         .unwrap()
         .remove(0);
     let items = vec![mxr_protocol::DeskDoneItemData {
+        account_id: None,
         thread_id: mail.thread_id.clone(),
         lane: Some(mxr_protocol::DeskLaneKind::Due),
         commitment_id: Some(id.clone()),
@@ -327,6 +328,7 @@ async fn desk_undo_keeps_later_task_decisions_and_other_promises() {
             &fx,
             Request::ResolveDeskItems {
                 items: vec![mxr_protocol::DeskDoneItemData {
+                    account_id: None,
                     thread_id: mail.thread_id.clone(),
                     lane: Some(mxr_protocol::DeskLaneKind::Due),
                     commitment_id: Some(id.clone()),
@@ -465,6 +467,7 @@ fn accepted_date_and_desk_undo_survive_a_real_store_reopen() {
                     &fx,
                     Request::ResolveDeskItems {
                         items: vec![mxr_protocol::DeskDoneItemData {
+                            account_id: None,
                             thread_id: mail.thread_id.clone(),
                             lane: Some(mxr_protocol::DeskLaneKind::Due),
                             commitment_id: Some(id.clone()),

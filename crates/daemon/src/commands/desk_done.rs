@@ -28,6 +28,7 @@ pub(crate) async fn run(
     let items = thread_ids
         .into_iter()
         .map(|thread_id| DeskDoneItemData {
+            account_id: None,
             thread_id,
             lane,
             commitment_id: promise.clone(),

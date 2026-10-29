@@ -52,8 +52,12 @@ export function deskLaneOf(threadId: string): DeskLaneKind | undefined {
 }
 
 /** Set the time. Resolves true when every conversation took it. */
-export function deferThreads(threadIds: string[], choice: TimeChoice): Promise<boolean> {
-  return deferThreadsAt(threadIds, choice.at, describeChoice(choice));
+export function deferThreads(
+  threadIds: string[],
+  choice: TimeChoice,
+  accountId?: string | null,
+): Promise<boolean> {
+  return deferThreadsAt(threadIds, choice.at, describeChoice(choice), accountId);
 }
 
 /** Set the time from the instant shown and its words (a typed time or a preset). */
@@ -61,6 +65,8 @@ export async function deferThreadsAt(
   threadIds: string[],
   until: string,
   when: string,
+  /** The account the conversation's row belongs to, when it is known. */
+  accountId?: string | null,
 ): Promise<boolean> {
   const unique = [...new Set(threadIds)];
   if (unique.length === 0) return false;
@@ -71,7 +77,13 @@ export async function deferThreadsAt(
   try {
     const result = await apiFetch<ThreadsDeferred>("/api/v1/mail/desk/later", {
       method: "POST",
-      body: { thread_ids: unique, until },
+      body: {
+        thread_ids: unique,
+        ...(accountId
+          ? { thread_accounts: unique.map((thread_id) => ({ thread_id, account_id: accountId })) }
+          : {}),
+        until,
+      },
     });
     const set = result.items.flatMap((item) => (item.error || !item.kind ? [] : [item.kind]));
     const failed = result.items.filter((item) => item.error);

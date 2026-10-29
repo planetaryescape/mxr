@@ -26,6 +26,7 @@ pub(crate) async fn run(
         .map_or_else(|| resolution.at.to_rfc3339(), TimeChoice::summary);
     let resp = client
         .request(Request::DeferThreads {
+            thread_accounts: Vec::new(),
             thread_ids,
             until: resolution.at,
             dry_run,

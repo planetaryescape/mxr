@@ -28,6 +28,9 @@ vi.mock("@/api/client", async (original) => ({
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { children: ReactNode }) => <a href="/m/inbox">{children}</a>,
+  // The reader reads its account from the URL; these tests mount it without a router.
+  useSearch: ({ select }: { select?: (search: Record<string, unknown>) => unknown } = {}) =>
+    select ? select({}) : {},
 }));
 
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({

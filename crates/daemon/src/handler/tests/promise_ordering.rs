@@ -115,6 +115,7 @@ async fn fragment_before_assessment(fx: &Fixture) -> (Envelope, mxr_store::TodoR
     );
     let before = &tasks[0];
     let items = vec![mxr_protocol::DeskDoneItemData {
+        account_id: None,
         thread_id: mail.thread_id.clone(),
         lane: Some(mxr_protocol::DeskLaneKind::Due),
         commitment_id: Some(accepted.id.clone()),

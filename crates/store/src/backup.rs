@@ -666,6 +666,14 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         .execute(&mut *connection)
         .await?;
     drop(connection);
+    if version < 105 {
+        // Labels from before 105 have no role, and restore does not run the
+        // migration that fills it in.
+        store
+            .backfill_label_roles_from_names()
+            .await
+            .map_err(|e| format!("Backfilling label roles: {e}"))?;
+    }
     let (workspace_id, recovery_generation) = store.archive_workspace().await?;
     let mut files = super::backup_resources::copy_resources(&store, source, stage)
         .await

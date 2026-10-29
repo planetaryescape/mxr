@@ -137,7 +137,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
   const rsvp = (action: InviteAction, withComment: boolean) => () => {
     const target = single(hooks.getTarget(), "RSVP");
     if (!target?.threadId || refuseWhileDaemonDown("answer the invite")) return;
-    void ensureThread(target.threadId).then((thread) => {
+    void ensureThread(target.threadId, target.accountId).then((thread) => {
       const invite = thread.bodies.findLast((body) => body.metadata?.calendar);
       if (!invite) {
         toast.info("This conversation has no calendar invite");
@@ -289,7 +289,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     attachments: () => {
       const target = single(hooks.getTarget(), "Attachments");
       if (!target?.threadId) return;
-      void ensureThread(target.threadId).then((thread) => {
+      void ensureThread(target.threadId, target.accountId).then((thread) => {
         const attachments = thread.bodies.flatMap((body) => body.attachments ?? []);
         if (attachments.length === 0) {
           toast.info("No attachments in this conversation");

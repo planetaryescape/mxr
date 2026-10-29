@@ -768,7 +768,10 @@ async fn dispatch(
             attachment_id,
         } => mailbox::open_attachment(state, message_id, attachment_id).await,
         Request::ListBodies { message_ids } => mailbox::list_bodies(state, message_ids).await,
-        Request::GetThread { thread_id } => mailbox::get_thread(state, thread_id).await,
+        Request::GetThread {
+            thread_id,
+            account_id,
+        } => mailbox::get_thread(state, thread_id, account_id.as_ref()).await,
         Request::ListThreads {
             account_id,
             label_id,
@@ -1556,9 +1559,10 @@ async fn dispatch(
         }
         Request::DeferThreads {
             thread_ids,
+            thread_accounts,
             until,
             dry_run,
-        } => deferral::defer_threads(state, thread_ids, *until, *dry_run).await,
+        } => deferral::defer_threads(state, thread_ids, thread_accounts, *until, *dry_run).await,
         Request::ListPlace {
             place,
             account_id,
@@ -1969,6 +1973,7 @@ async fn dispatch(
         }
         Request::SetModeDone {
             thread_ids,
+            thread_accounts,
             mode,
             dry_run,
             todo_ids,
@@ -1978,6 +1983,7 @@ async fn dispatch(
                 state,
                 mode_done::DoneRequest {
                     thread_ids,
+                    thread_accounts,
                     mode: *mode,
                     dry_run: *dry_run,
                     todo_ids,

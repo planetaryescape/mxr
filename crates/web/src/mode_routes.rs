@@ -154,6 +154,11 @@ pub(crate) struct ModeDoneBody {
     #[serde(default)]
     #[schema(value_type = Vec<String>)]
     thread_ids: Vec<ThreadId>,
+    /// The same conversations as `thread_ids`, each with the account its row
+    /// belongs to. A legacy thread id can be held by two accounts, so a row
+    /// sends its pair and acts on that account only.
+    #[serde(default)]
+    thread_accounts: Vec<mxr_protocol::ThreadAccountRef>,
     /// Preview only: the same plan, nothing changed.
     #[serde(default)]
     dry_run: bool,
@@ -180,7 +185,7 @@ async fn set_done(
     Json(body): Json<ModeDoneBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     let mode = parse_mode(&mode)?;
-    if body.thread_ids.is_empty() && body.sender.is_none() {
+    if body.thread_ids.is_empty() && body.thread_accounts.is_empty() && body.sender.is_none() {
         return Err(BridgeError::BadRequest(
             "name thread_ids or a sender".into(),
         ));
@@ -191,6 +196,7 @@ async fn set_done(
         None,
         Request::SetModeDone {
             thread_ids: body.thread_ids,
+            thread_accounts: body.thread_accounts,
             mode,
             dry_run: body.dry_run,
             todo_ids: body.todo_ids,

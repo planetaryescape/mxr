@@ -355,6 +355,7 @@ async fn done_here_moves_the_badge_the_page_and_the_headline_together() {
     // Maya has two owed threads: putting one away leaves her a unit.
     let done = |thread: &ThreadId| Request::ResolveDeskItems {
         items: vec![mxr_protocol::DeskDoneItemData {
+            account_id: None,
             thread_id: thread.clone(),
             lane: None,
             commitment_id: None,

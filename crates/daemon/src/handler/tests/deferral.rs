@@ -24,6 +24,7 @@ async fn defer(
     match request(
         fx,
         Request::DeferThreads {
+            thread_accounts: Vec::new(),
             thread_ids: threads.to_vec(),
             until,
             dry_run,
@@ -524,6 +525,7 @@ async fn done_cancels_a_pending_wait_and_undo_puts_it_back() {
         &fx,
         Request::ResolveDeskItems {
             items: vec![DeskDoneItemData {
+                account_id: None,
                 thread_id: thread.clone(),
                 lane: None,
                 commitment_id: None,
@@ -575,6 +577,7 @@ async fn done_on_a_returned_wait_puts_it_away_and_out_of_the_queue() {
         &fx,
         Request::ResolveDeskItems {
             items: vec![DeskDoneItemData {
+                account_id: None,
                 thread_id: thread.clone(),
                 lane: Some(mxr_protocol::DeskLaneKind::Waiting),
                 commitment_id: None,
@@ -650,6 +653,7 @@ async fn a_time_that_has_passed_is_refused_and_unknown_threads_say_why() {
         id: 9,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::DeferThreads {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             until: Utc::now() - Duration::minutes(1),
             dry_run: false,
@@ -679,6 +683,7 @@ async fn a_time_that_has_passed_is_refused_and_unknown_threads_say_why() {
 
 fn done_item(thread: &ThreadId) -> DeskDoneItemData {
     DeskDoneItemData {
+        account_id: None,
         thread_id: thread.clone(),
         lane: None,
         commitment_id: None,

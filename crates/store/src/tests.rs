@@ -1252,6 +1252,68 @@ async fn list_threads_pagination_and_sort() {
 }
 
 #[tokio::test]
+async fn list_threads_pages_a_shared_thread_id_once_per_account() {
+    let store = Store::in_memory().await.unwrap();
+    let first = test_account();
+    let mut second = test_account();
+    second.id = AccountId::new();
+    second.email = "second@example.com".into();
+    second.name = "Second".into();
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    // One legacy Gmail thread id held by both accounts, plus a thread each
+    // account owns alone. Newest first: shared/first, shared/second, own/first,
+    // own/second.
+    let shared = ThreadId::new();
+    let own_first = ThreadId::new();
+    let own_second = ThreadId::new();
+    let base = chrono::Utc::now();
+    let seeds = [
+        (&first.id, &shared, 0, "shared-first"),
+        (&second.id, &shared, 1, "shared-second"),
+        (&first.id, &own_first, 2, "own-first"),
+        (&second.id, &own_second, 3, "own-second"),
+    ];
+    for (account, thread, hours, provider) in seeds {
+        let mut env = test_envelope(account);
+        env.id = MessageId::new();
+        env.thread_id = thread.clone();
+        env.provider_id = provider.to_string();
+        env.date = base - chrono::Duration::hours(hours);
+        store.upsert_envelope(&env).await.unwrap();
+    }
+
+    // One row per page: the shared id's second account must not vanish, and
+    // no page may return a thread the page did not select.
+    let mut pairs = Vec::new();
+    for offset in 0..4 {
+        let page = store
+            .list_threads(None, None, 1, offset, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        assert_eq!(page.len(), 1, "page at offset {offset}");
+        pairs.push((page[0].account_id.clone(), page[0].id.clone()));
+    }
+    assert_eq!(
+        pairs,
+        vec![
+            (first.id.clone(), shared.clone()),
+            (second.id.clone(), shared.clone()),
+            (first.id.clone(), own_first),
+            (second.id.clone(), own_second),
+        ]
+    );
+
+    let page_of_two = store
+        .list_threads(None, None, 2, 0, SortOrder::DateDesc)
+        .await
+        .unwrap();
+    assert_eq!(page_of_two.len(), 2, "a shared id takes two slots, not one");
+    assert!(page_of_two.iter().all(|thread| thread.id == shared));
+}
+
+#[tokio::test]
 async fn thread_latest_date_ignores_impossible_future_dates() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

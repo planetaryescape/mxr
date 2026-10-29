@@ -38,7 +38,7 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
     if (!target.threadId) return;
     onClose();
     time.reset();
-    return deferThreads([target.threadId], choice).then(() => undefined);
+    return deferThreads([target.threadId], choice, target.accountId).then(() => undefined);
   }
 
   /** No time: the untimed flag, as Later in the Not-now picker. */

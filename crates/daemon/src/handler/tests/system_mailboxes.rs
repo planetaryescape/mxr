@@ -483,6 +483,7 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
         &a.fx,
         Request::GetThread {
             thread_id: shared.clone(),
+            account_id: None,
         },
     )
     .await
@@ -518,10 +519,55 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThread {
             thread_id: only_hidden,
+            account_id: None,
         }),
     };
     assert!(matches!(
         handle_request(&a.fx.state, &msg).await.payload,
         IpcPayload::Response(Response::Error { .. })
     ));
+}
+
+#[tokio::test]
+async fn getting_a_shared_thread_for_one_account_reads_only_that_accounts_messages() {
+    // A legacy thread id held by two enabled accounts: a row names its own
+    // account, and the reader must get that account's messages alone.
+    let a = accounts().await;
+    let shared = ThreadId::new();
+    let store = &a.fx.state.store;
+    let mut ids = Vec::new();
+    for (account, tag, minutes) in [(&a.first, "mine", 40), (&a.second, "theirs", 30)] {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .thread_id(shared.clone())
+            .provider_id(format!("shared-{tag}"))
+            .subject(format!("Shared {tag}"))
+            .date(Utc::now() - Duration::minutes(minutes))
+            .build();
+        store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        ids.push(envelope.id);
+    }
+
+    let ResponseData::Thread {
+        thread, messages, ..
+    } = request(
+        &a.fx,
+        Request::GetThread {
+            thread_id: shared.clone(),
+            account_id: Some(a.second.clone()),
+        },
+    )
+    .await
+    else {
+        panic!("expected a thread")
+    };
+    assert_eq!(thread.account_id, a.second);
+    assert_eq!(thread.subject, "Shared theirs");
+    assert_eq!(
+        messages.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+        vec![ids[1].clone()]
+    );
 }

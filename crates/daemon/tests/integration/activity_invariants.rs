@@ -91,6 +91,7 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
     };
     let make_thread = || Request::GetThread {
         thread_id: mxr_core::ThreadId::new(),
+        account_id: None,
     };
 
     let requests = [make_search(), make_mutation(), make_thread()];

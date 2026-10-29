@@ -610,6 +610,7 @@ mod tests {
             (
                 Request::GetThread {
                     thread_id: ThreadId::new(),
+                    account_id: None,
                 },
                 IpcCategory::CoreMail,
             ),

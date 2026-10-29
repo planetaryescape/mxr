@@ -17,7 +17,9 @@
 //! state plus the marks, rows and promises as they were.
 
 use super::mode_rules::{due_detail, handoff_copy, provider_name, Handoff, StillIn};
-use super::modes::{mark_name, place_threads, threads_by_account, without_done, Placement};
+use super::modes::{
+    mark_name, place_threads, thread_targets, threads_by_account, without_done, Placement,
+};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
 use super::places::placed_inbox;
 use super::{HandlerError, HandlerResult};
@@ -106,6 +108,8 @@ impl Plan {
 /// One `SetModeDone`, as the handler hands it over.
 pub(super) struct DoneRequest<'a> {
     pub thread_ids: &'a [ThreadId],
+    /// Rows that name their account; each acts on that account.
+    pub thread_accounts: &'a [mxr_protocol::ThreadAccountRef],
     pub mode: ModeKindData,
     pub dry_run: bool,
     /// To do: only these rows; empty ticks off every open row.
@@ -133,16 +137,17 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
         ));
     }
     let mut thread_ids = request.thread_ids.to_vec();
+    let pinned = request.thread_accounts;
     if let Some(sender) = sender {
         for thread in sender_threads(state, mode, sender).await? {
             if !thread_ids.contains(&thread) {
                 thread_ids.push(thread);
             }
         }
-    } else if thread_ids.is_empty() {
+    } else if thread_ids.is_empty() && pinned.is_empty() {
         return Err(HandlerError::InvalidRequest("no threads given".into()));
     }
-    let plans = plan(state, &thread_ids, mode, todo_ids, None, Utc::now()).await?;
+    let plans = plan(state, &thread_ids, pinned, mode, todo_ids, None, Utc::now()).await?;
     finish(state, plans, dry_run).await
 }
 
@@ -173,6 +178,7 @@ pub(super) async fn let_go_updates(
     let plans = plan(
         state,
         thread_ids,
+        &[],
         ModeKindData::Updates,
         &[],
         Some(&exact),
@@ -246,15 +252,31 @@ async fn sender_threads(
 async fn plan(
     state: &AppState,
     thread_ids: &[ThreadId],
+    pinned: &[mxr_protocol::ThreadAccountRef],
     mode: ModeKindData,
     todo_ids: &[String],
     exact: Option<&Exact<'_>>,
     now: DateTime<Utc>,
 ) -> Result<Vec<Plan>, HandlerError> {
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
-    let mut placed: HashMap<ThreadId, Placement> = HashMap::new();
-    let mut history_topics = HashSet::new();
-    for (account, threads) in threads_by_account(state, thread_ids).await? {
+    let targets = thread_targets(state, thread_ids, pinned).await?;
+    // Keyed by account too: a legacy thread id can be held by two accounts,
+    // and each copy is placed and acted on for its own account.
+    let mut by_account: Vec<(AccountId, Vec<ThreadId>)> = Vec::new();
+    for (thread_id, account) in &targets {
+        let Some(account) = account else { continue };
+        match by_account.iter_mut().find(|(owner, _)| owner == account) {
+            Some((_, threads)) => {
+                if !threads.contains(thread_id) {
+                    threads.push(thread_id.clone());
+                }
+            }
+            None => by_account.push((account.clone(), vec![thread_id.clone()])),
+        }
+    }
+    let mut placed: HashMap<(AccountId, ThreadId), Placement> = HashMap::new();
+    let mut history_topics: HashSet<(AccountId, ThreadId)> = HashSet::new();
+    for (account, threads) in by_account {
         let placements = Box::pin(place_threads(state, &account, &threads, now)).await?;
         if mode == ModeKindData::Messages {
             let history: Vec<_> = placements
@@ -263,25 +285,32 @@ async fn plan(
                 .map(|placement| placement.data.thread_id.clone())
                 .collect();
             if !history.is_empty() {
-                history_topics.extend(
-                    Box::pin(super::messages::done_topics(state, &account, &history, now)).await?,
-                );
+                let topics =
+                    Box::pin(super::messages::done_topics(state, &account, &history, now)).await?;
+                history_topics.extend(topics.into_iter().map(|id| (account.clone(), id)));
             }
         }
         for placement in placements {
-            placed.insert(placement.data.thread_id.clone(), placement);
+            placed.insert(
+                (account.clone(), placement.data.thread_id.clone()),
+                placement,
+            );
         }
     }
-    let mut seen: HashSet<&ThreadId> = HashSet::new();
-    Ok(thread_ids
+    let mut seen: HashSet<(&ThreadId, Option<&AccountId>)> = HashSet::new();
+    Ok(targets
         .iter()
-        .map(|thread_id| {
+        .map(|(thread_id, account)| {
             // One plan per thread, so each message is changed and
             // snapshotted for undo once.
-            if !seen.insert(thread_id) {
+            if !seen.insert((thread_id, account.as_ref())) {
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
-            match placed.get(thread_id) {
+            let Some(account) = account else {
+                return Plan::failed(thread_id, mode, "conversation not found");
+            };
+            let key = (account.clone(), thread_id.clone());
+            match placed.get(&key) {
                 Some(placement) => plan_one(
                     placement,
                     mode,
@@ -289,7 +318,7 @@ async fn plan(
                     exact,
                     archive_on_last_done,
                     now,
-                    history_topics.contains(thread_id),
+                    history_topics.contains(&key),
                 ),
                 None => Plan::failed(thread_id, mode, "conversation not found"),
             }

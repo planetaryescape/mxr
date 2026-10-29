@@ -140,6 +140,7 @@ fn j_skips_to_the_end_and_e_puts_it_away_with_undo() {
         [Request::ResolveDeskItems { items, dry_run: false }]
             if items == &[DeskDoneItemData {
                 thread_id: owed[1].thread_id.clone(),
+                account_id: None,
                 lane: Some(DeskLaneKind::Owed),
                 commitment_id: None,
             }]
@@ -182,6 +183,7 @@ fn a_reply_later_done_lets_the_daemon_pick_the_lane_and_a_failure_puts_it_back()
         Request::ResolveDeskItems { items, dry_run: false }
             if items == &[DeskDoneItemData {
                 thread_id: later[0].thread_id.clone(),
+                account_id: None,
                 lane: None,
                 commitment_id: None,
             }]

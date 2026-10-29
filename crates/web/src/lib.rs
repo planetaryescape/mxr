@@ -347,15 +347,37 @@ fn annotate_open_commitment_counts(
     }
 }
 
+/// Which account's copy of a thread to read. A legacy thread id can be held
+/// by two accounts; a list row passes its own account.
+#[derive(Debug, Default, Deserialize)]
+struct ThreadScopeQuery {
+    #[serde(default)]
+    account_id: Option<String>,
+}
+
 async fn thread(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
+    Query(scope): Query<ThreadScopeQuery>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let thread_id = parse_thread_id(&thread_id)?;
-    match ipc_request(&state.config.socket_path, Request::GetThread { thread_id }).await? {
+    let account_id = scope
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetThread {
+            thread_id,
+            account_id,
+        },
+    )
+    .await?
+    {
         ResponseData::Thread {
             thread,
             messages,

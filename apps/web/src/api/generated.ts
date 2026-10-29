@@ -7072,6 +7072,7 @@ export interface components {
         };
         /** @description One desk item to mark done: "nothing for me to do here, put it away". */
         DeskDoneItemData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /** @description A promise under Due: Done resolves it. Required for `due`. */
             commitment_id?: string | null;
             lane?: components["schemas"]["DeskLaneKind"] | null;
@@ -8809,6 +8810,12 @@ export interface components {
             /** @description Preview only: the same plan, nothing changed. */
             dry_run?: boolean;
             sender?: components["schemas"]["ModeDoneSenderData"] | null;
+            /**
+             * @description The same conversations as `thread_ids`, each with the account its row
+             *     belongs to. A legacy thread id can be held by two accounts, so a row
+             *     sends its pair and acts on that account only.
+             */
+            thread_accounts?: components["schemas"]["ThreadAccountRef"][];
             thread_ids?: string[];
             /** @description To do only: tick off just these rows. */
             todo_ids?: string[];
@@ -10987,6 +10994,7 @@ export interface components {
                   message_ids: components["schemas"]["MessageId"][];
               }
             | {
+                  account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetThread";
                   thread_id: components["schemas"]["ThreadId"];
@@ -12710,6 +12718,12 @@ export interface components {
                   dry_run?: boolean;
                   mode: components["schemas"]["ModeKindData"];
                   sender?: components["schemas"]["ModeDoneSenderData"] | null;
+                  /**
+                   * @description The conversations a client row named, with the account each row
+                   *     belongs to. Each acts on its own account; `thread_ids` without a
+                   *     pair keep the daemon's own choice of account.
+                   */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids?: components["schemas"]["ThreadId"][];
                   todo_ids?: string[];
               }
@@ -13117,6 +13131,8 @@ export interface components {
                   /** @enum {string} */
                   cmd: "DeferThreads";
                   dry_run?: boolean;
+                  /** @description Same as on `SetModeDone`: rows that name their account. */
+                  thread_accounts?: components["schemas"]["ThreadAccountRef"][];
                   thread_ids: components["schemas"]["ThreadId"][];
                   /** Format: date-time */
                   until: string;
@@ -15369,6 +15385,15 @@ export interface components {
             subject: string;
             /** Format: int32 */
             unread_count: number;
+        };
+        /**
+         * @description A conversation as a client's row names it: the thread and the account that
+         *     owns the row. A legacy thread id can be held by two accounts, so a request
+         *     built from a row carries both.
+         */
+        ThreadAccountRef: {
+            account_id: components["schemas"]["AccountId"];
+            thread_id: components["schemas"]["ThreadId"];
         };
         ThreadAskData: {
             quote?: components["schemas"]["VerifiedQuoteData"] | null;

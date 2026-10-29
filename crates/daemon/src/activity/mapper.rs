@@ -291,6 +291,7 @@ pub fn map_request(
             thread_ids,
             until,
             dry_run,
+            ..
         } => (
             "desk.later",
             Some("thread"),
@@ -337,7 +338,7 @@ pub fn map_request(
         ),
 
         // ----- thread reading -----
-        Request::GetThread { thread_id } => (
+        Request::GetThread { thread_id, .. } => (
             "thread.open",
             Some("thread"),
             Some(thread_id.as_str().clone()),

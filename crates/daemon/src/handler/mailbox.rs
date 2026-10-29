@@ -1464,11 +1464,19 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
     Ok(ResponseData::Bodies { bodies, failures })
 }
 
-pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
+pub(super) async fn get_thread(
+    state: &AppState,
+    thread_id: &ThreadId,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
     // A legacy thread id can span accounts. Only enabled accounts' messages
     // are read, so a disabled account's subject, snippet, participants and
     // message ids never reach a reader (which would go on to fetch bodies).
-    let accounts = enabled_accounts_in_scope(state, None).await?;
+    // A row names its account, so the reader stays on that account's copy.
+    let mut accounts = enabled_accounts_in_scope(state, None).await?;
+    if let Some(account_id) = account_id {
+        accounts.retain(|account| account == account_id);
+    }
     let thread = state
         .store
         .hydrate_threads_in_accounts(std::slice::from_ref(thread_id), &accounts)

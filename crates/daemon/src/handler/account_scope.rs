@@ -341,8 +341,12 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         },
 
         // ----- Named by thread -----
-        Request::GetThread { thread_id }
-        | Request::SummarizeThread { thread_id }
+        Request::GetThread { thread_id, account_id } => {
+            let mut targets = vec![T::Thread(thread_id)];
+            targets.extend(account_id.as_ref().map(T::Account));
+            Targets(targets)
+        }
+        Request::SummarizeThread { thread_id }
         | Request::GetThreadBriefing { thread_id, .. }
         | Request::ExportThread { thread_id, .. }
         | Request::GetThreadContext { thread_id }

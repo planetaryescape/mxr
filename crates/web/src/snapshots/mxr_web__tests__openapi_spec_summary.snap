@@ -564,6 +564,7 @@ expression: summary
     "TextPlainFormat",
     "TextRangeData",
     "Thread",
+    "ThreadAccountRef",
     "ThreadAskData",
     "ThreadBriefingData",
     "ThreadContextData",

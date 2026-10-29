@@ -125,7 +125,7 @@ SMTP send failures are not yet aggregated into doctor diagnostics.
 |--------|------|---------|
 | `GET` | `/mail/mailbox` | Browse the inbox or any lens |
 | `GET` | `/mail/search` | Run a Tantivy search |
-| `GET` | `/mail/threads/{id}` | Full thread payload (messages + bodies) |
+| `GET` | `/mail/threads/{id}` | Full thread payload (messages + bodies). `?account_id=` returns only that account's messages; a thread id held by two accounts needs it to name one (list rows pass their own) |
 | `GET` | `/mail/threads/{id}/export` | Markdown / JSON export |
 | `GET` | `/mail/drafts` | List drafts |
 | `GET` | `/mail/messages/{message_id}/body` | Fetch one message body |
@@ -258,7 +258,7 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `POST` | `/mail/threads/previews` | Subject, latest sender, date, snippet, message and unread counts and an attachment flag for up to 100 threads, with no bodies (`{thread_ids}`; unknown ids are left out) |
 | `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`) |
 | `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids}`) |
-| `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, dry_run, todo_ids?, sender?}`): `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
+| `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, thread_accounts?, dry_run, todo_ids?, sender?}`): `thread_accounts` (`[{thread_id, account_id}]`) acts on each row's own account, for a thread id held by two accounts; `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
 | `GET` | `/mail/modes/guide` | How a mode explains itself (`?mode=now`) |
 | `POST` | `/mail/hints/{hint}` | Dismiss a hint in every client, or show it again (`{seen}`) |
 

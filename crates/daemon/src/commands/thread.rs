@@ -106,7 +106,12 @@ async fn fetch_thread(
     client: &mut IpcClient,
     id: ThreadId,
 ) -> anyhow::Result<(mxr_core::Thread, Vec<mxr_core::Envelope>)> {
-    let resp = client.request(Request::GetThread { thread_id: id }).await?;
+    let resp = client
+        .request(Request::GetThread {
+            thread_id: id,
+            account_id: None,
+        })
+        .await?;
     expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Thread {

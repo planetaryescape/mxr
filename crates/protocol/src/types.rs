@@ -622,6 +622,16 @@ pub enum IpcPayload {
     Event(DaemonEvent),
 }
 
+/// A conversation as a client's row names it: the thread and the account that
+/// owns the row. A legacy thread id can be held by two accounts, so a request
+/// built from a row carries both.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadAccountRef {
+    pub thread_id: ThreadId,
+    pub account_id: AccountId,
+}
+
 /// Every command a client can ask the daemon to perform.
 ///
 /// Tagged `cmd` on the wire. One flat enum is the whole client-facing
@@ -763,8 +773,13 @@ pub enum Request {
     ListBodies {
         message_ids: Vec<MessageId>,
     },
+    /// Without `account_id`, a thread id held by several accounts returns
+    /// every account's messages. A client that opens a list row passes the
+    /// row's account, so the reader and its actions stay on that account.
     GetThread {
         thread_id: ThreadId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
     },
     /// Paginated list of threads in date-descending order (most-recent
     /// first), with optional account/label filters. Each returned
@@ -2382,6 +2397,11 @@ pub enum Request {
     SetModeDone {
         #[serde(default)]
         thread_ids: Vec<ThreadId>,
+        /// The conversations a client row named, with the account each row
+        /// belongs to. Each acts on its own account; `thread_ids` without a
+        /// pair keep the daemon's own choice of account.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
         mode: ModeKindData,
         #[serde(default)]
         dry_run: bool,
@@ -2958,6 +2978,9 @@ pub enum Request {
     /// were. Returns `ResponseData::ThreadsDeferred`.
     DeferThreads {
         thread_ids: Vec<ThreadId>,
+        /// Same as on `SetModeDone`: rows that name their account.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_accounts: Vec<ThreadAccountRef>,
         until: chrono::DateTime<chrono::Utc>,
         #[serde(default)]
         dry_run: bool,

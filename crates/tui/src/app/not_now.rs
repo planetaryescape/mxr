@@ -203,6 +203,7 @@ impl App {
                 self.queue_mutation(
                     Request::DeferThreads {
                         thread_ids: vec![thread_id],
+                        thread_accounts: Vec::new(),
                         until: at,
                         dry_run: false,
                     },

@@ -251,6 +251,7 @@ async fn done(
     let (items, dry_run, mutation_id, undo_unavailable) = expect_response(
         client
             .request(Request::SetModeDone {
+                thread_accounts: Vec::new(),
                 thread_ids: parse_thread_ids(args.thread_ids)?,
                 mode,
                 dry_run: args.dry_run,

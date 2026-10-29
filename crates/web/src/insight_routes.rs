@@ -168,6 +168,9 @@ async fn desk_done(
 #[derive(Debug, Deserialize)]
 struct DeskLaterBody {
     thread_ids: Vec<mxr_core::id::ThreadId>,
+    /// The same conversations with the account each row belongs to.
+    #[serde(default)]
+    thread_accounts: Vec<mxr_protocol::ThreadAccountRef>,
     /// The instant the client previewed (RFC3339), never a phrase.
     until: chrono::DateTime<chrono::Utc>,
     #[serde(default)]
@@ -180,7 +183,7 @@ async fn desk_later(
     Json(body): Json<DeskLaterBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, None, &state.config.auth_token)?;
-    if body.thread_ids.is_empty() {
+    if body.thread_ids.is_empty() && body.thread_accounts.is_empty() {
         return Err(BridgeError::BadRequest(
             "thread_ids must not be empty".into(),
         ));
@@ -189,6 +192,7 @@ async fn desk_later(
         &state.config.socket_path,
         Request::DeferThreads {
             thread_ids: body.thread_ids,
+            thread_accounts: body.thread_accounts,
             until: body.until,
             dry_run: body.dry_run,
         },

@@ -150,6 +150,7 @@ async fn review7_mixed_and_pure_acts_keep_explicit_reply_later_and_exact_undo() 
             crate::handler::deferral::defer_threads_at(
                 &fx.state,
                 std::slice::from_ref(&mail.thread_id),
+                &[],
                 until,
                 true,
                 deferred_at,
@@ -173,6 +174,7 @@ async fn review7_mixed_and_pure_acts_keep_explicit_reply_later_and_exact_undo() 
         } = crate::handler::deferral::defer_threads_at(
             &fx.state,
             std::slice::from_ref(&mail.thread_id),
+            &[],
             until,
             false,
             deferred_at,

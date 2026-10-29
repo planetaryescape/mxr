@@ -284,6 +284,7 @@ impl App {
         self.queue_mutation(
             Request::SetModeDone {
                 thread_ids: vec![thread_id],
+                thread_accounts: Vec::new(),
                 mode,
                 dry_run: false,
                 todo_ids,

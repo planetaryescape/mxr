@@ -15395,6 +15395,17 @@
           "thread_id"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the row belongs to. Omitted: the daemon picks one of the\naccounts holding the thread id, which is wrong when two share it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "commitment_id": {
             "type": [
               "string",
@@ -20277,6 +20288,13 @@
                 "type": "null"
               }
             ]
+          },
+          "thread_accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadAccountRef"
+            },
+            "description": "The same conversations as `thread_ids`, each with the account its row\nbelongs to. A legacy thread id can be held by two accounts, so a row\nsends its pair and acts on that account only."
           },
           "thread_ids": {
             "type": "array",
@@ -26494,11 +26512,22 @@
           },
           {
             "type": "object",
+            "description": "Without `account_id`, a thread id held by several accounts returns\nevery account's messages. A client that opens a list row passes the\nrow's account, so the reader and its actions stay on that account.",
             "required": [
               "thread_id",
               "cmd"
             ],
             "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -33098,6 +33127,13 @@
                   }
                 ]
               },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "The conversations a client row named, with the account each row\nbelongs to. Each acts on its own account; `thread_ids` without a\npair keep the daemon's own choice of account."
+              },
               "thread_ids": {
                 "type": "array",
                 "items": {
@@ -34640,6 +34676,13 @@
               },
               "dry_run": {
                 "type": "boolean"
+              },
+              "thread_accounts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadAccountRef"
+                },
+                "description": "Same as on `SetModeDone`: rows that name their account."
               },
               "thread_ids": {
                 "type": "array",
@@ -42478,6 +42521,22 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "ThreadAccountRef": {
+        "type": "object",
+        "description": "A conversation as a client's row names it: the thread and the account that\nowns the row. A legacy thread id can be held by two accounts, so a request\nbuilt from a row carries both.",
+        "required": [
+          "thread_id",
+          "account_id"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },

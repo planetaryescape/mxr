@@ -93,6 +93,12 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
         void markModeDone(
           "messages",
           viaMode.map((row) => row.thread_id),
+          {
+            accounts: viaMode.map((row) => ({
+              thread_id: row.thread_id,
+              account_id: row.account_id,
+            })),
+          },
         );
     },
     [messages],

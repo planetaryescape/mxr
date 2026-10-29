@@ -212,6 +212,7 @@ async fn execute_replaceable_request(
                 bg,
                 Request::GetThread {
                     thread_id: thread_id.clone(),
+                    account_id: None,
                 },
             )
             .await

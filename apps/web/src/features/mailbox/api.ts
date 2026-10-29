@@ -55,8 +55,13 @@ export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxR
   return apiFetch<MailboxResponse>(`/api/v1/mail/mailbox?${query.toString()}`);
 }
 
-export function fetchThread(threadId: string): Promise<ThreadResponse> {
-  return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${encodeURIComponent(threadId)}`);
+/**
+ * A thread id can be held by two accounts. A row passes its own account, so
+ * the copy returned is that account's messages only.
+ */
+export function fetchThread(threadId: string, accountId?: string | null): Promise<ThreadResponse> {
+  const query = accountId ? `?account_id=${encodeURIComponent(accountId)}` : "";
+  return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${encodeURIComponent(threadId)}${query}`);
 }
 
 const SUMMARY_TIMEOUT_MS = 125_000;

@@ -947,7 +947,14 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(thread_id) = app.pending_assistant_thread_open.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(&bg, Request::GetThread { thread_id }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetThread {
+                        thread_id,
+                        account_id: None,
+                    },
+                )
+                .await;
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Thread { messages, .. },
@@ -963,7 +970,14 @@ pub async fn run() -> anyhow::Result<()> {
         if let Some(thread_id) = app.pending_delivery_open.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(&bg, Request::GetThread { thread_id }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetThread {
+                        thread_id,
+                        account_id: None,
+                    },
+                )
+                .await;
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Thread { messages, .. },
@@ -6192,6 +6206,7 @@ fn spawn_reading_fetches(
                 &bg,
                 Request::SetModeDone {
                     thread_ids: thread_ids.clone(),
+                    thread_accounts: Vec::new(),
                     mode: mxr_protocol::ModeKindData::Reading,
                     dry_run: true,
                     todo_ids: Vec::new(),

@@ -98,6 +98,11 @@ export interface DoneScope {
   todoIds?: readonly string[];
   /** Updates or Reading: every thread of this sender's, resolved by the daemon. */
   sender?: { account_id: string; sender_email: string };
+  /**
+   * The conversations as the rows name them. A thread id held by two
+   * accounts acts on the row's account only.
+   */
+  accounts?: readonly { thread_id: string; account_id: string }[];
 }
 
 export function doneModeRequest(
@@ -110,6 +115,7 @@ export function doneModeRequest(
     method: "POST",
     body: {
       thread_ids: threadIds,
+      ...(scope.accounts?.length ? { thread_accounts: scope.accounts } : {}),
       dry_run: dryRun,
       ...(scope.todoIds?.length ? { todo_ids: scope.todoIds } : {}),
       ...(scope.sender ? { sender: scope.sender } : {}),

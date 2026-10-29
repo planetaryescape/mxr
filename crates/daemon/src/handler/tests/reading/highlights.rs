@@ -143,6 +143,7 @@ async fn a_removal_previews_what_it_removes_and_undo_brings_it_back() {
     request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread],
             mode: ModeKindData::Reading,
             dry_run: false,

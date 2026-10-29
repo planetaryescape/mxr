@@ -555,6 +555,41 @@ pub(super) async fn threads_by_account(
     Ok(grouped)
 }
 
+/// What a thread request acts on: each conversation with the account it is
+/// acted on for. A pair from the client names that account. A bare thread id
+/// takes the account the store reports, which is one of the accounts holding
+/// that id, so a request that names rows should send their pairs. `None`
+/// means no account holds the id.
+pub(super) async fn thread_targets(
+    state: &AppState,
+    thread_ids: &[ThreadId],
+    pinned: &[mxr_protocol::ThreadAccountRef],
+) -> Result<Vec<(ThreadId, Option<AccountId>)>, HandlerError> {
+    let mut targets: Vec<(ThreadId, Option<AccountId>)> = pinned
+        .iter()
+        .map(|pair| (pair.thread_id.clone(), Some(pair.account_id.clone())))
+        .collect();
+    let bare: Vec<ThreadId> = thread_ids
+        .iter()
+        .filter(|id| pinned.iter().all(|pair| pair.thread_id != **id))
+        .cloned()
+        .collect();
+    if !bare.is_empty() {
+        let owners: HashMap<ThreadId, AccountId> = state
+            .store
+            .get_threads_batch(&bare)
+            .await?
+            .into_iter()
+            .map(|thread| (thread.id, thread.account_id))
+            .collect();
+        targets.extend(bare.into_iter().map(|thread_id| {
+            let owner = owners.get(&thread_id).cloned();
+            (thread_id, owner)
+        }));
+    }
+    Ok(targets)
+}
+
 pub(super) async fn get_membership(
     state: &AppState,
     message_id: Option<&MessageId>,

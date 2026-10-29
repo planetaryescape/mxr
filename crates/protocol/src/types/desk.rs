@@ -149,6 +149,10 @@ pub struct DeskThreadRefData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeskDoneItemData {
     pub thread_id: ThreadId,
+    /// The account the row belongs to. Omitted: the daemon picks one of the
+    /// accounts holding the thread id, which is wrong when two share it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
     /// The lane the row is in. Omitted: `waiting` when you wrote last,
     /// otherwise `owed`, by the desk's own rule.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -40,4 +40,24 @@ describe("targetFromRows", () => {
     const target = targetFromRows([row({ kind: "message", id: "m-1", starred: true })], "list");
     expect(target.unstarIds).toEqual(["m-1"]);
   });
+
+  test("an action on one account's row for a shared thread id sends only that account's messages", () => {
+    const mine = row({
+      id: "a-1",
+      thread_id: "shared",
+      account_id: "acc-a",
+      message_ids: ["a-1", "a-2"],
+    });
+    const other = row({
+      id: "b-1",
+      thread_id: "shared",
+      account_id: "acc-b",
+      message_ids: ["b-1"],
+    });
+    const target = targetFromRows([mine], "list");
+    expect(target.messageIds).toEqual(["a-1", "a-2"]);
+    expect(target.accountId).toBe("acc-a");
+    expect(target.threadId).toBe("shared");
+    expect(target.messageIds).not.toContain(other.id);
+  });
 });

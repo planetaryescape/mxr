@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id as \"account_id!\", thread_id as \"thread_id!\"\n                       FROM messages\n                       WHERE (?1 IS NULL OR account_id = ?1)\n                         AND (?2 IS NULL OR id IN (\n                             SELECT ml.message_id FROM message_labels ml\n                             JOIN labels l ON l.id = ml.label_id\n                             WHERE l.id = ?2\n                         ))\n                       GROUP BY thread_id, account_id\n                       ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) ASC,\n                                thread_id ASC, account_id ASC\n                       LIMIT ?4 OFFSET ?5",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "name": "thread_id!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "messages",
+            "name": "thread_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "d7a7c850b417dfcc9bd334c3437f7016478e4f8ba98e3f3ff95d588c20f1aa94"
+}

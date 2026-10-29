@@ -117,6 +117,7 @@ async fn done(
     match request(
         fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             mode,
             dry_run,
@@ -534,6 +535,7 @@ async fn archive_has_no_done_and_unknown_threads_say_so() {
         id: 3,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             mode: ModeKindData::Archive,
             dry_run: true,
@@ -550,6 +552,7 @@ async fn archive_has_no_done_and_unknown_threads_say_so() {
     let ResponseData::ModeDone { items, .. } = request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![missing, thread.clone(), thread],
             mode: ModeKindData::Todo,
             dry_run: true,
@@ -898,6 +901,7 @@ async fn desk_done_never_archives_a_thread_to_do_still_holds() {
         &fx,
         Request::ResolveDeskItems {
             items: vec![mxr_protocol::DeskDoneItemData {
+                account_id: None,
                 thread_id: thread.clone(),
                 lane: Some(mxr_protocol::DeskLaneKind::Owed),
                 commitment_id: None,
@@ -965,6 +969,7 @@ async fn todo_done(fx: &Fixture, thread: &ThreadId, todo_ids: Vec<String>) -> Mo
     match request(
         fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: vec![thread.clone()],
             mode: ModeKindData::Todo,
             dry_run: false,
@@ -1048,6 +1053,7 @@ async fn done_for_a_sender_covers_every_thread_of_theirs_in_the_mode() {
     let ResponseData::ModeDone { items, .. } = request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: Vec::new(),
             mode: ModeKindData::Updates,
             dry_run: true,
@@ -1067,6 +1073,7 @@ async fn done_for_a_sender_covers_every_thread_of_theirs_in_the_mode() {
     let ResponseData::ModeDone { items, .. } = request(
         &fx,
         Request::SetModeDone {
+            thread_accounts: Vec::new(),
             thread_ids: Vec::new(),
             mode: ModeKindData::Updates,
             dry_run: false,

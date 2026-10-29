@@ -49,6 +49,7 @@ export const useDeskDone = create<DeskDoneState>((set) => ({
 export function deskDoneItem(row: DeskRow): DeskDoneItem {
   return {
     thread_id: row.thread_id,
+    account_id: row.account_id,
     lane: row.lane,
     ...(row.commitment_id ? { commitment_id: row.commitment_id } : {}),
   };

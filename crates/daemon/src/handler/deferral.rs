@@ -17,6 +17,7 @@
 
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{current_messages, is_outbound, last_stored};
+use super::modes::thread_targets;
 use super::mutations::UNDO_WINDOW_SECS;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -68,27 +69,37 @@ impl Plan {
 pub(super) async fn defer_threads(
     state: &AppState,
     thread_ids: &[ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
     until: DateTime<Utc>,
     dry_run: bool,
 ) -> HandlerResult {
-    defer_threads_at(state, thread_ids, until, dry_run, Utc::now()).await
+    defer_threads_at(
+        state,
+        thread_ids,
+        thread_accounts,
+        until,
+        dry_run,
+        Utc::now(),
+    )
+    .await
 }
 
 /// `defer_threads` with the clock given (tests move it).
 pub(super) async fn defer_threads_at(
     state: &AppState,
     thread_ids: &[ThreadId],
+    thread_accounts: &[mxr_protocol::ThreadAccountRef],
     until: DateTime<Utc>,
     dry_run: bool,
     now: DateTime<Utc>,
 ) -> HandlerResult {
-    if thread_ids.is_empty() {
+    if thread_ids.is_empty() && thread_accounts.is_empty() {
         return Err("no conversations given".into());
     }
     if until <= now {
         return Err("that time has already passed; pick a later one".into());
     }
-    let mut plans = plan(state, thread_ids, now).await?;
+    let mut plans = plan(state, thread_ids, thread_accounts, now).await?;
     if dry_run {
         return Ok(ResponseData::ThreadsDeferred {
             items: plans.iter().map(Plan::item).collect(),
@@ -142,26 +153,26 @@ pub(super) async fn defer_threads_at(
 async fn plan(
     state: &AppState,
     thread_ids: &[ThreadId],
+    pinned: &[mxr_protocol::ThreadAccountRef],
     now: DateTime<Utc>,
 ) -> Result<Vec<Plan>, HandlerError> {
-    let owners: HashMap<ThreadId, AccountId> = state
-        .store
-        .get_threads_batch(thread_ids)
-        .await?
-        .into_iter()
-        .map(|thread| (thread.id, thread.account_id))
-        .collect();
-    let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
-    for thread_id in thread_ids {
-        if let Some(account) = owners.get(thread_id) {
-            by_account
-                .entry(account.clone())
-                .or_default()
-                .push(thread_id.clone());
+    let targets = thread_targets(state, thread_ids, pinned).await?;
+    // Grouped by account, and messages keyed by (account, thread): a legacy
+    // thread id held by two accounts is two conversations.
+    let mut by_account: Vec<(AccountId, Vec<ThreadId>)> = Vec::new();
+    for (thread_id, account) in &targets {
+        let Some(account) = account else { continue };
+        match by_account.iter_mut().find(|(owner, _)| owner == account) {
+            Some((_, threads)) => {
+                if !threads.contains(thread_id) {
+                    threads.push(thread_id.clone());
+                }
+            }
+            None => by_account.push((account.clone(), vec![thread_id.clone()])),
         }
     }
 
-    let mut threads: HashMap<ThreadId, Vec<DeskMessage>> = HashMap::new();
+    let mut threads: HashMap<(AccountId, ThreadId), Vec<DeskMessage>> = HashMap::new();
     let mut matchers = HashMap::new();
     let mut senders = HashMap::new();
     for (account, ids) in by_account {
@@ -172,7 +183,7 @@ async fn plan(
         );
         for message in messages {
             threads
-                .entry(message.thread_id.clone())
+                .entry((account.clone(), message.thread_id.clone()))
                 .or_default()
                 .push(message);
         }
@@ -194,19 +205,21 @@ async fn plan(
         .map(|(id, _)| id)
         .collect();
 
-    let mut seen = HashSet::new();
-    let plans = thread_ids
+    let mut seen: HashSet<(&ThreadId, Option<&AccountId>)> = HashSet::new();
+    let plans = targets
         .iter()
-        .map(|thread_id| {
-            let account = owners.get(thread_id);
-            if !seen.insert(thread_id) {
+        .map(|(thread_id, account)| {
+            if !seen.insert((thread_id, account.as_ref())) {
                 return Plan::failed(
                     thread_id,
-                    account.cloned(),
+                    account.clone(),
                     "this conversation is already in the request",
                 );
             }
-            let (Some(account), Some(thread)) = (account, threads.get(thread_id)) else {
+            let Some(account) = account else {
+                return Plan::failed(thread_id, None, "conversation not found");
+            };
+            let Some(thread) = threads.get(&(account.clone(), thread_id.clone())) else {
                 return Plan::failed(thread_id, None, "conversation not found");
             };
             let is_self = &matchers[account];

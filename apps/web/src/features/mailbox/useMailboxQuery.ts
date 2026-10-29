@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { fetchMailbox, fetchShell, mailboxKey, shellKey } from "./api";
 import type { MailLens } from "./lenses";
+import { threadRowKey } from "./rowKey";
 import type { MailboxResponse, MessageGroupView } from "./types";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -62,7 +63,7 @@ export function mergeMailboxPages(
   for (const page of pages) {
     for (const group of page.mailbox.groups) {
       const rows = group.rows.filter((row) => {
-        const key = view === "threads" ? row.thread_id || row.id : row.id;
+        const key = view === "threads" ? threadRowKey(row.thread_id || row.id, row.account_id) : row.id;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;

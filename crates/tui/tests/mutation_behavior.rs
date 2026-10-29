@@ -405,6 +405,7 @@ fn reply_later_at_a_typed_time_sends_the_previewed_instant() {
             thread_ids,
             until,
             dry_run,
+            ..
         } => {
             assert_eq!(thread_ids, &vec![thread_id]);
             assert_eq!(until, &previewed, "what was previewed is what is sent");

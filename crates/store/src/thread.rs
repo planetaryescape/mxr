@@ -205,9 +205,12 @@ impl super::Store {
         let offset_i = offset as i64;
 
         let started_at = std::time::Instant::now();
+        // Keyed by (account, thread): a legacy thread id can span accounts,
+        // and grouping by the id alone would let one shared id take two
+        // slots, returning two rows for it.
         let id_rows = match sort {
             SortOrder::DateAsc => sqlx::query!(
-                r#"SELECT thread_id as "thread_id!"
+                r#"SELECT account_id as "account_id!", thread_id as "thread_id!"
                        FROM messages
                        WHERE (?1 IS NULL OR account_id = ?1)
                          AND (?2 IS NULL OR id IN (
@@ -215,8 +218,9 @@ impl super::Store {
                              JOIN labels l ON l.id = ml.label_id
                              WHERE l.id = ?2
                          ))
-                       GROUP BY thread_id
-                       ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) ASC
+                       GROUP BY thread_id, account_id
+                       ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) ASC,
+                                thread_id ASC, account_id ASC
                        LIMIT ?4 OFFSET ?5"#,
                 account_filter,
                 label_filter,
@@ -227,12 +231,12 @@ impl super::Store {
             .fetch_all(self.reader())
             .await?
             .into_iter()
-            .map(|r| r.thread_id)
+            .map(|r| (r.account_id, r.thread_id))
             .collect::<Vec<_>>(),
             // DateDesc | Relevance (Relevance has no defined meaning
             // for thread listing — fall back to "most recent first").
             _ => sqlx::query!(
-                r#"SELECT thread_id as "thread_id!"
+                r#"SELECT account_id as "account_id!", thread_id as "thread_id!"
                    FROM messages
                    WHERE (?1 IS NULL OR account_id = ?1)
                      AND (?2 IS NULL OR id IN (
@@ -240,8 +244,9 @@ impl super::Store {
                          JOIN labels l ON l.id = ml.label_id
                          WHERE l.id = ?2
                      ))
-                   GROUP BY thread_id
-                   ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) DESC
+                   GROUP BY thread_id, account_id
+                   ORDER BY MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) DESC,
+                            thread_id DESC, account_id DESC
                    LIMIT ?4 OFFSET ?5"#,
                 account_filter,
                 label_filter,
@@ -252,23 +257,29 @@ impl super::Store {
             .fetch_all(self.reader())
             .await?
             .into_iter()
-            .map(|r| r.thread_id)
+            .map(|r| (r.account_id, r.thread_id))
             .collect::<Vec<_>>(),
         };
         trace_query("thread.list_threads.ids", started_at, id_rows.len());
 
-        let thread_ids: Vec<ThreadId> = id_rows
+        let page = id_rows
             .iter()
-            .map(|s| decode_id::<ThreadId>(s))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|(account, thread)| {
+                Ok((
+                    decode_id::<AccountId>(account)?,
+                    decode_id::<ThreadId>(thread)?,
+                ))
+            })
+            .collect::<Result<Vec<(AccountId, ThreadId)>, sqlx::Error>>()?;
+        let thread_ids: Vec<ThreadId> = page.iter().map(|(_, id)| id.clone()).collect();
 
+        // Hydrating an id yields every account's copy of it; keep only the
+        // pairs this page selected, in SQL sort order.
         let mut threads = self.get_threads_batch(&thread_ids).await?;
-        // get_threads_batch returns in arbitrary order; restore the
-        // SQL sort order before returning.
-        threads.sort_by_key(|t| {
-            thread_ids
-                .iter()
-                .position(|id| id == &t.id)
+        threads.retain(|thread| page.contains(&(thread.account_id.clone(), thread.id.clone())));
+        threads.sort_by_key(|thread| {
+            page.iter()
+                .position(|(account, id)| *account == thread.account_id && *id == thread.id)
                 .unwrap_or(usize::MAX)
         });
         Ok(threads)

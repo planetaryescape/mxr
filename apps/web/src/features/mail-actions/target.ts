@@ -82,13 +82,19 @@ export function uniqueLabels(rows: MessageRowView[]): MessageLabelView[] {
   return [...labels.values()];
 }
 
-/** Load (or reuse) the full thread behind a single-thread target. */
-export async function ensureThread(threadId: string): Promise<ThreadResponse> {
+/**
+ * Load (or reuse) the full thread behind a single-thread target. The target's
+ * account scopes it, so its actions reach that account's messages only.
+ */
+export async function ensureThread(
+  threadId: string,
+  accountId?: string | null,
+): Promise<ThreadResponse> {
   const qc = getActiveQueryClient();
-  if (!qc) return fetchThread(threadId);
+  if (!qc) return fetchThread(threadId, accountId);
   return qc.fetchQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, accountId ?? null],
+    queryFn: () => fetchThread(threadId, accountId),
     staleTime: 30_000,
   });
 }

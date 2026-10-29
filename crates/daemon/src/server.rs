@@ -395,9 +395,16 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
 
         let mut shutdown_rx = state.shutdown_receiver();
+        // The bridge reaches the daemon over the socket too, so an open web
+        // tab or TUI shows up as an open connection here.
+        let idle_exit_after = crate::idle_exit::idle_exit_after();
+        let mut idle_since = tokio::time::Instant::now();
 
         // Accept connections from every bound transport.
         loop {
+            let idle_deadline = idle_exit_after
+                .filter(|_| connections.is_empty())
+                .map(|after| idle_since + after);
             tokio::select! {
                 joined = connections.join_next(), if !connections.is_empty() => {
                     match joined {
@@ -407,6 +414,28 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                         }
                         None => {}
                     }
+                    if connections.is_empty() {
+                        idle_since = tokio::time::Instant::now();
+                    }
+                }
+                () = sleep_until_deadline(idle_deadline) => {
+                    // Read accounts at the deadline, not at startup: one can
+                    // be added while the daemon runs.
+                    match state.store.list_accounts().await {
+                        Ok(accounts) if !crate::idle_exit::has_real_account(&accounts) => {
+                            tracing::info!(
+                                idle_secs = idle_exit_after.unwrap_or_default().as_secs(),
+                                "no real account and no client connected; stopping idle daemon"
+                            );
+                            state.request_shutdown();
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(%error, "could not list accounts for idle exit; staying up");
+                        }
+                    }
+                    idle_since = tokio::time::Instant::now();
                 }
                 changed = shutdown_rx.changed() => {
                     if changed.is_ok() && *shutdown_rx.borrow_and_update() {
@@ -552,6 +581,14 @@ impl ShutdownSignals {
             .await
             .context("failed to receive Ctrl-C while daemon was running")?;
         Ok(ShutdownSignal::Interrupt)
+    }
+}
+
+/// Sleeps until `deadline`, or forever when there is none.
+async fn sleep_until_deadline(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
     }
 }
 

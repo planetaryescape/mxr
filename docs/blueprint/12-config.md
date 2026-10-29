@@ -371,6 +371,7 @@ Path roots are resolved outside the TOML model:
 - `MXR_DAEMON_ADDR` selects the client transport for the CLI: `unix://<path>` (default), `tcp://<host:port>` (loopback + token), or `cmd://<command>` (spawn-and-pipe, e.g. `cmd://ssh -T host mxr daemon dial-stdio`). TUI/web/MCP honor `unix://` only. Precedence over `MXR_SOCKET_PATH` and the per-instance default.
 - `MXR_DAEMON_TOKEN` supplies the daemon bearer token directly, overriding the token file. Shared by the HTTP bridge and the TCP transport.
 - `MXR_DAEMON_AUTOSTART=off` disables client daemon creation and automatic replacement. Use it for a supervised foreground daemon; clients can still connect to a reachable compatible owner.
+- `MXR_IDLE_EXIT_SECS` sets how long a daemon with no enabled real account (none, or fake only) waits with no client connected before it exits; default 1800, `0` disables. Daemons with a real account never idle-exit.
 
 `mxr config` shows resolved values.
 

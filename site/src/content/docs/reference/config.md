@@ -54,6 +54,12 @@ manager owns a foreground daemon; clients can connect to a compatible owner but
 will not start or replace one. See [`transports`](#transports) and the
 [headless Linux service recipe](/guides/headless-linux/).
 
+A daemon with no enabled real mail account (none, or only the fake provider
+that tests and `mxr demo` use) stops itself after 30 minutes with no client
+connected, so test and demo daemons don't run forever. The next command starts
+it again. A daemon with a real account keeps running. `MXR_IDLE_EXIT_SECS`
+changes the wait in seconds; `0` turns it off.
+
 ## Top-level sections
 
 ```toml

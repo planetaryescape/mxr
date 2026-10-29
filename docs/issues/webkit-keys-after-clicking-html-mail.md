@@ -32,6 +32,15 @@ With focus back on the page, ⌘C reaches the page, not the frame. The page's `c
 
 Verified in Playwright on Chromium and WebKit: after a click in the message `?` opens keyboard help (asserted in `html-rendering.spec.ts`, which fails on WebKit without the fix); a drag selection survives the focus return; ⌘C then ⌘V pastes the selected text (empty without the copy handler); a link click still opens a popup.
 
-## Not yet verified
+## Verified in Safari and the desktop app
 
-Real Safari and the Tauri shell (WKWebView), whose input path differs from Playwright's WebKit. Playwright's ⌘C runs the copy command directly, so the `beforecopy` path that Safari's Edit menu validation needs is untested. Settle it in the desktop app: click into an HTML mail and press `j`; select text in the mail and press ⌘C, then paste.
+Verified 2026-10-29 in Safari 27.0.1 and the desktop app (`/Applications/mxr.app` 0.6.153, WKWebView) on macOS 27.0, both loading the web app from Homebrew's mxr 0.6.189 against an isolated `mxr demo` profile. The desktop shell only hosts the page, so the shell's older version does not matter: it ran a stand-in `mxr` on its PATH that printed the demo bridge's URL. Input came from real HID mouse events (CGEvent) and System Events keystrokes and menu clicks, not a test driver. Every step passed in both:
+
+| Step | Safari 27.0.1 | Desktop app (WKWebView) |
+| --- | --- | --- |
+| Click in an HTML message's body, press `?` | Keyboard help opened, listing "Reader (this view)" | Same |
+| Double-click a word in the message, press ⌘C | Clipboard held `queries`, as plain text and HTML | Clipboard held `question`, as plain text and HTML |
+| Drag-select text in the message, then Edit → Copy | Copy was enabled; clipboard held ` window functions, u` | Copy was enabled; clipboard held `s it is for now and revi` |
+| Press `?` after selecting | Help opened | Help opened |
+
+The message was the demo's "SQLite Notes: ten queries you should know" in Safari and "Launch checklist for Project Aurora" in the desktop app, both shown Formatted in the sandboxed frame. While focus is back on the page, the selection in the message stays visible in the inactive (grey) highlight.

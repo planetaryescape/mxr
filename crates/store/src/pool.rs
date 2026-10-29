@@ -1,3 +1,4 @@
+use mxr_core::types::Role;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 
@@ -249,6 +250,9 @@ impl Store {
             MigrationKind::DecisionLogStableId => {
                 self.apply_decision_log_stable_id_migration().await?;
             }
+            MigrationKind::LabelRole => {
+                self.apply_label_role_migration().await?;
+            }
         }
 
         let applied_at = chrono::Utc::now().timestamp();
@@ -301,6 +305,35 @@ impl Store {
                 .fetch_optional(&self.writer)
                 .await?;
         Ok(row.is_some())
+    }
+
+    /// Stores `labels.role` and fills the rows synced before it existed from
+    /// the system label names. Providers report the role at sync from here on, so the name
+    /// table is only read here, once.
+    async fn apply_label_role_migration(&self) -> Result<(), sqlx::Error> {
+        self.add_column_if_missing("labels", "role", "ALTER TABLE labels ADD COLUMN role TEXT")
+            .await?;
+        self.backfill_label_roles_from_names().await?;
+        Ok(())
+    }
+
+    /// Sets `role` on System labels that have none, from their names. Migration
+    /// 105 runs it on existing databases. A backup taken before 105 runs it on
+    /// its copy, because those labels arrive with no role.
+    pub(crate) async fn backfill_label_roles_from_names(&self) -> Result<(), sqlx::Error> {
+        for role in Role::system_mailboxes() {
+            for name in role.system_label_names() {
+                sqlx::query(
+                    "UPDATE labels SET role = ?
+                     WHERE kind = 'system' AND role IS NULL AND lower(name) = ?",
+                )
+                .bind(role.storage_name())
+                .bind(*name)
+                .execute(&self.writer)
+                .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn apply_decision_log_stable_id_migration(&self) -> Result<(), sqlx::Error> {
@@ -422,6 +455,7 @@ enum MigrationKind {
     },
     Composite(&'static [MigrationStep]),
     DecisionLogStableId,
+    LabelRole,
 }
 
 enum MigrationStep {
@@ -1275,6 +1309,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 102, name: "ask_view_summaries", kind: MigrationKind::Sql(include_str!("../migrations/102_ask_view_summaries.sql")) },
     Migration { version: 103, name: "navigation_lookups", kind: MigrationKind::Sql(include_str!("../migrations/103_navigation_lookups.sql")) },
     Migration { version: 104, name: "conversation_summaries", kind: MigrationKind::Sql(include_str!("../migrations/104_conversation_summaries.sql")) },
+    Migration { version: 105, name: "label_role", kind: MigrationKind::LabelRole },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -1519,7 +1554,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
 ];
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![expect(
         clippy::unwrap_used,
         reason = "tests unwrap fixture setup for direct failures"
@@ -1543,7 +1578,8 @@ mod tests {
             .unwrap()
     }
 
-    async fn store_at_version(db_path: &Path, version: u32) -> Store {
+    /// A store migrated only as far as `version`, as a database from that release.
+    pub(crate) async fn store_at_version(db_path: &Path, version: u32) -> Store {
         let url = format!("sqlite:{}", db_path.display());
         let opts = SqliteConnectOptions::from_str(&url)
             .unwrap()
@@ -1564,8 +1600,8 @@ mod tests {
         };
         sqlx::raw_sql(
             "CREATE TABLE schema_migrations (
-                version INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
+                version    INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
                 applied_at INTEGER NOT NULL
             )",
         )
@@ -2134,7 +2170,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=104).collect::<Vec<_>>(),
+                (83..=105).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);
@@ -2415,5 +2451,59 @@ mod tests {
                 ("undated".to_string(), None),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn label_role_migration_fills_system_rows_synced_before_it_from_their_names() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-104.db");
+        {
+            let store = store_at_version(&db_path, 104).await;
+            sqlx::query("PRAGMA foreign_keys = OFF")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            for (id, name, kind) in [
+                ("sent", "SENT", "system"),
+                ("draft", "Draft", "system"),
+                ("inbox", "inbox", "system"),
+                ("folder", "Sent", "folder"),
+                ("user", "Sent", "user"),
+                ("gesendet", "Gesendete Elemente", "system"),
+            ] {
+                sqlx::query(
+                    "INSERT INTO labels (id, account_id, name, kind, provider_id, unread_count, total_count)
+                     VALUES (?, 'a', ?, ?, ?, 0, 0)",
+                )
+                .bind(id)
+                .bind(name)
+                .bind(kind)
+                .bind(id)
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+            store.writer().close().await;
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT id, role FROM labels ORDER BY id")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        let role = |id: &str| {
+            rows.iter()
+                .find(|(row_id, _)| row_id == id)
+                .and_then(|(_, role)| role.clone())
+        };
+        assert_eq!(role("sent").as_deref(), Some("sent"));
+        assert_eq!(role("draft").as_deref(), Some("drafts"));
+        assert_eq!(role("inbox").as_deref(), Some("inbox"));
+        // Only System labels are backfilled from a name.
+        assert_eq!(role("folder"), None);
+        assert_eq!(role("user"), None);
+        // A name the table does not know stays unset.
+        assert_eq!(role("gesendet"), None);
     }
 }

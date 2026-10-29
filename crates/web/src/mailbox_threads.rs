@@ -30,7 +30,7 @@ pub(crate) struct ThreadPage {
 
 /// Which of a thread's messages sit in the lens, for choosing a row's
 /// mutation targets.
-enum Membership<'a> {
+pub(crate) enum Membership<'a> {
     /// One label (an account-scoped Inbox, or a label lens). When no
     /// envelope carries it (label ids out of step with the store) the whole
     /// thread is used rather than an empty row.
@@ -201,24 +201,18 @@ pub(crate) async fn load_thread_page(
         }
     }
 
-    let mut rows = Vec::with_capacity(threads.len());
-    let mut row_envelopes = Vec::with_capacity(threads.len());
-    for thread in &threads {
-        let envelopes = thread
-            .message_ids
-            .iter()
-            .filter_map(|id| envelopes_by_id.get(id))
-            .collect::<Vec<_>>();
-        match thread_row(thread, &envelopes, &thread_lens.membership) {
-            Some((date, row, latest)) => {
-                rows.push((date, row));
-                row_envelopes.push(latest.clone());
-            }
-            None => tracing::debug!(
-                thread_id = %thread.id,
-                "thread listed without any stored envelope; skipping row"
-            ),
-        }
+    let ThreadRows {
+        mut rows,
+        row_envelopes,
+        dropped,
+    } = thread_rows(&threads, &envelopes_by_id, &thread_lens.membership);
+    if !dropped.is_empty() {
+        // Ids only: the envelopes behind them are mail content.
+        tracing::debug!(
+            dropped = dropped.len(),
+            thread_ids = ?dropped.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "thread page left out threads with no message in the lens"
+        );
     }
 
     let page_envelopes = envelopes_by_id.values().cloned().collect::<Vec<_>>();
@@ -237,6 +231,46 @@ pub(crate) async fn load_thread_page(
         row_envelopes,
         thread_count: threads.len(),
     }))
+}
+
+/// The rows one page builds from the daemon's threads.
+pub(crate) struct ThreadRows {
+    pub(crate) rows: Vec<(DateTime<Utc>, MessageRowView)>,
+    /// Envelope behind each row, in row order.
+    pub(crate) row_envelopes: Vec<Envelope>,
+    /// Threads with no message in the lens, so no row. A thread drops when
+    /// the page holds none of its envelopes, or, in a role view, when none of
+    /// its envelopes is in the mailbox. The daemon lists by the stored role
+    /// and the bridge judges by the labels fetched with the chrome, so a sync
+    /// that changes a label between those two reads can drop a row.
+    pub(crate) dropped: Vec<ThreadId>,
+}
+
+pub(crate) fn thread_rows(
+    threads: &[Thread],
+    envelopes_by_id: &HashMap<MessageId, Envelope>,
+    membership: &Membership<'_>,
+) -> ThreadRows {
+    let mut built = ThreadRows {
+        rows: Vec::with_capacity(threads.len()),
+        row_envelopes: Vec::with_capacity(threads.len()),
+        dropped: Vec::new(),
+    };
+    for thread in threads {
+        let envelopes = thread
+            .message_ids
+            .iter()
+            .filter_map(|id| envelopes_by_id.get(id))
+            .collect::<Vec<_>>();
+        match thread_row(thread, &envelopes, membership) {
+            Some((date, row, latest)) => {
+                built.rows.push((date, row));
+                built.row_envelopes.push(latest.clone());
+            }
+            None => built.dropped.push(thread.id.clone()),
+        }
+    }
+    built
 }
 
 fn envelope_has_label(envelope: &Envelope, label: &Label) -> bool {

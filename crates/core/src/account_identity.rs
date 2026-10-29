@@ -20,6 +20,10 @@ pub enum AccountColor {
     Vermilion,
     Purple,
     Slate,
+    /// A slot a newer daemon sent that this build does not know. Clients draw
+    /// it as slate. It is never a value to write: `ALL` and `FromStr` leave it out.
+    #[serde(other)]
+    Unknown,
 }
 
 impl AccountColor {
@@ -46,6 +50,7 @@ impl AccountColor {
             Self::Vermilion => "vermilion",
             Self::Purple => "purple",
             Self::Slate => "slate",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -221,6 +226,19 @@ mod tests {
         for color in AccountColor::ALL {
             assert_eq!(color.as_str().parse::<AccountColor>().unwrap(), color);
         }
+    }
+
+    #[test]
+    fn a_slot_from_a_newer_daemon_decodes_as_unknown_not_an_error() {
+        let color: AccountColor = serde_json::from_str("\"teal\"").unwrap();
+        assert_eq!(color, AccountColor::Unknown);
+        assert_eq!(
+            serde_json::from_str::<AccountColor>("\"sky\"").unwrap(),
+            AccountColor::Sky
+        );
+        // Unknown is a decoded value only: it is never one the user can type.
+        assert!("unknown".parse::<AccountColor>().is_err());
+        assert!(!AccountColor::ALL.contains(&AccountColor::Unknown));
     }
 
     #[test]

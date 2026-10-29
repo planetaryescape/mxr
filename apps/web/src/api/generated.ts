@@ -4666,7 +4666,8 @@ export interface components {
             | "blue"
             | "vermilion"
             | "purple"
-            | "slate";
+            | "slate"
+            | "unknown";
         AccountConfigData: {
             color?: components["schemas"]["AccountColor"] | null;
             email: string;
@@ -9333,6 +9334,7 @@ export interface components {
             since: string;
         };
         OwedReplyRowData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /**
              * Format: double
              * @description The pace `overdue_score` is measured against, in days.
@@ -10829,6 +10831,14 @@ export interface components {
                   /** @enum {string} */
                   cmd: "ListEnvelopes";
                   label_id?: components["schemas"]["LabelId"] | null;
+                  /**
+                   * @description A system mailbox (`inbox`, `starred`, `sent`, `drafts`, `spam`,
+                   *     `trash`, `all_mail`). With no `account_id` it lists that mailbox
+                   *     across every enabled account; with one, that account's. A daemon
+                   *     that knows it prefers it to `label_id`; an older one ignores it
+                   *     and lists `label_id`, so callers keep sending both.
+                   */
+                  label_role?: string | null;
                   /** Format: int32 */
                   limit: number;
                   /** Format: int32 */
@@ -10970,6 +10980,8 @@ export interface components {
                   /** @enum {string} */
                   cmd: "ListThreads";
                   label_id?: components["schemas"]["LabelId"] | null;
+                  /** @description Same meaning as on `ListEnvelopes`. */
+                  label_role?: string | null;
                   /** Format: int32 */
                   limit: number;
                   /** Format: int32 */
@@ -10978,8 +10990,19 @@ export interface components {
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
+                  /**
+                   * @description With no `account_id`, return every enabled account's labels
+                   *     instead of only the default account's. Ignored when
+                   *     `account_id` is set.
+                   */
+                  all_accounts?: boolean;
                   /** @enum {string} */
                   cmd: "ListLabels";
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "SystemMailboxCounts";
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
@@ -13234,6 +13257,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  kind: "SystemMailboxCounts";
+                  mailboxes: components["schemas"]["SystemMailboxCount"][];
+              }
+            | {
+                  /** @enum {string} */
                   kind: "Label";
                   label: components["schemas"]["Label"];
               }
@@ -14753,7 +14781,11 @@ export interface components {
          *     lexical index. Absent on a reply from the index.
          */
         SearchDegraded: {
-            /** @description A notice the daemon wrote for this reply, shown in place of the one built from `reason`. Clients older than this field ignore it and show the generic notice for `reason`. */
+            /**
+             * @description A notice the daemon wrote for this reply, shown in place of the one
+             *     built from `reason`. Clients older than this field ignore it and show
+             *     the generic notice for `reason`.
+             */
             notice_override?: string | null;
             reason: components["schemas"]["SearchDegradedReason"];
             /** @description The parts of a message the limited search looked at. */
@@ -15263,6 +15295,17 @@ export interface components {
              */
             provider_available: boolean;
         };
+        /**
+         * @description One system mailbox's counts across a set of accounts. `role` is the wire
+         *     name `label_role` uses (`inbox`, `starred`, ..., `all_mail`).
+         */
+        SystemMailboxCount: {
+            role: string;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            unread: number;
+        };
         /** @description One run of a word-level diff from the user's text to the proposal. */
         TextChangeData: {
             kind: components["schemas"]["TextChangeKindData"];
@@ -15471,6 +15514,7 @@ export interface components {
          *     message; counts and the attachment flag cover the whole thread.
          */
         ThreadPreviewData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /** @description Any message in the thread carries an attachment. */
             has_attachments?: boolean;
             /**

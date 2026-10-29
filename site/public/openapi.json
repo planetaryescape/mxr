@@ -8130,7 +8130,8 @@
           "blue",
           "vermilion",
           "purple",
-          "slate"
+          "slate",
+          "unknown"
         ]
       },
       "AccountConfigData": {
@@ -21653,6 +21654,17 @@
           "overdue_score"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the reply is owed from. Absent from older daemons."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expected_days": {
             "type": "number",
             "format": "double",
@@ -42867,6 +42879,17 @@
           "snippet"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the latest message came to. Absent from older daemons."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "has_attachments": {
             "type": "boolean",
             "description": "Any message in the thread carries an attachment."

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Row } from "@/components/Row";
 import { Avatar } from "@/components/Avatar";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { formatWhen } from "@/lib/format";
 import { linkHref, type AssistantLink } from "./links";
@@ -146,6 +147,7 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
   const link = row.link ?? null;
   const thread = link?.kind === "thread";
   const rich = isRich(row);
+  const mark = useRowAccountMark(row.account_id);
   // A thread row's title is the subject and its detail the sender; a person's is the other way round.
   const who = thread ? (row.sender ?? row.detail ?? row.title) : row.title;
   const under = [row.sender, row.snippet].filter(Boolean).join(" · ") || row.detail;
@@ -177,6 +179,7 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
                 <a
                   href={linkHref(link satisfies AssistantLink)}
                   {...{ [APP_LINK_ATTRIBUTE]: "" }}
+                  aria-label={mark ? `${row.title}, ${mark.name}` : undefined}
                   className={`${className} focus-visible:text-signal`}
                 >
                   {content}

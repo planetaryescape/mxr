@@ -68,6 +68,13 @@ describe("useAccountIdentities", () => {
     expect(result.current.marksShown).toBe(false);
   });
 
+  test("a colour slot from a newer daemon draws as slate, and the account keeps its tag", async () => {
+    const { result } = renderIdentities([{ ...work, identity: { color: "teal", tag: "W" } }, home]);
+    await waitFor(() => expect(result.current.marksShown).toBe(true));
+    expect(result.current.byId.get("work")).toMatchObject({ name: "Work", tag: "W", slot: "slate" });
+    expect(result.current.byId.get("home")).toMatchObject({ slot: "amber" });
+  });
+
   test("an older daemon with no identities shows no marks", async () => {
     const { result } = renderIdentities([
       { ...work, identity: undefined },

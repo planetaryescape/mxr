@@ -8,6 +8,7 @@
 //! `cargo test -p mxr-keymap` fails until the two agree.
 
 use super::*;
+use crate::app::AccountFormMode;
 use crate::keybindings::{action_from_name, default_keybindings, KeyBinding};
 use mxr_protocol::MailPlaceData;
 use std::collections::BTreeMap;
@@ -1662,6 +1663,23 @@ fn a_moved_key_names_the_key_the_person_gave_its_action() {
     }
     let status = app.status_message.clone().unwrap_or_default();
     assert!(status.ends_with("is now %"), "{key} in {place}: {status}");
+}
+
+#[test]
+fn with_single_keys_off_the_account_form_types_letters_into_its_text_fields() {
+    let mut app = remapped_app("list", "single_keys = false\n");
+    app.screen = Screen::Accounts;
+    app.accounts.page.form.visible = true;
+    app.accounts.page.form.mode = AccountFormMode::ImapSmtp;
+    // The name field, which is text. `s` saves and `r` reauthorises when
+    // single keys are on, so the word below also proves they stay text here.
+    app.accounts.page.form.active_field = 2;
+    for c in "shark".chars() {
+        assert_eq!(press_char(&mut app, c), None, "{c} is text, not a command");
+    }
+    assert_eq!(app.accounts.page.form.name, "shark");
+    assert!(app.accounts.page.form.editing_field);
+    assert!(app.status_message.is_none(), "no single-key notice");
 }
 
 #[test]

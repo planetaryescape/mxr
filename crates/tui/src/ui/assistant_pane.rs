@@ -3,6 +3,7 @@
 //! untrusted text: control characters are stripped and nothing in it is
 //! followed or fetched.
 
+use super::account_mark::AccountMarks;
 use super::assistant_describe::{
     answered_with, plain_text, plain_text_with_links, preview_draft, preview_messages,
     readout_line, tool_words,
@@ -42,6 +43,7 @@ pub fn draw(
     area: Rect,
     state: &AssistantState,
     now: Instant,
+    account_marks: &AccountMarks,
     theme: &Theme,
 ) -> u16 {
     frame.render_widget(Clear, area);
@@ -104,7 +106,7 @@ pub fn draw(
     } else if let Some(list) = &state.list {
         (list_lines(list, width, theme), 0)
     } else {
-        let lines = transcript_lines(state, width, theme);
+        let lines = transcript_lines(state, width, account_marks, theme);
         let height = usize::from(chunks[0].height);
         let max = lines.len().saturating_sub(height);
         let max_scroll = u16::try_from(max).unwrap_or(u16::MAX);
@@ -430,6 +432,7 @@ fn failed_steps(items: &[AssistantItemData], failed_call_ids: &[String]) -> Vec<
 pub(crate) fn transcript_lines(
     state: &AssistantState,
     width: usize,
+    account_marks: &AccountMarks,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -500,13 +503,24 @@ pub(crate) fn transcript_lines(
                         Some(detail) => format!("{}  {detail}", row.title),
                         None => row.title.clone(),
                     };
-                    lines.push(Line::from(vec![
-                        Span::styled("  • ", muted),
-                        Span::styled(
-                            truncate(&one_line(&line), width.saturating_sub(4)),
-                            Style::default().fg(theme.text_secondary),
-                        ),
-                    ]));
+                    // A row with no account (a person) keeps the chip column's width.
+                    let chip = row
+                        .account_id
+                        .as_ref()
+                        .and_then(|account_id| account_marks.row_cell(account_id, theme))
+                        .or_else(|| {
+                            (account_marks.column_width() > 0)
+                                .then(|| vec![Span::raw(" ".repeat(account_marks.column_width()))])
+                        })
+                        .unwrap_or_default();
+                    let chip_width = chip.iter().map(Span::width).sum::<usize>();
+                    let mut spans = vec![Span::styled("  • ", muted)];
+                    spans.extend(chip);
+                    spans.push(Span::styled(
+                        truncate(&one_line(&line), width.saturating_sub(4 + chip_width)),
+                        Style::default().fg(theme.text_secondary),
+                    ));
+                    lines.push(Line::from(spans));
                 }
                 let failed = failed_steps(items, failed_call_ids);
                 if !failed.is_empty() {
@@ -1308,6 +1322,7 @@ mod tests {
                 Rect::new(0, 0, 48, 24),
                 state,
                 state.started_at.unwrap_or_else(Instant::now),
+                &AccountMarks::default(),
                 &Theme::default(),
             );
         })
@@ -1866,6 +1881,60 @@ mod tests {
     }
 
     #[test]
+    fn readout_rows_wear_their_account_chip_when_marks_are_shown() {
+        let work = mxr_core::AccountId::new();
+        let marks = crate::ui::account_mark::plain_marks_for_tests(&[
+            (&work, "Work", "W"),
+            (&mxr_core::AccountId::new(), "Home", "H"),
+        ]);
+        let mut state = open_state();
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::Idle,
+            vec![
+                user(1, "who wrote"),
+                AssistantItemData::Assistant {
+                    seq: 2,
+                    text: "These two wrote.".into(),
+                    model: None,
+                    leaves_machine: None,
+                    failed_call_ids: Vec::new(),
+                    rows: vec![
+                        mxr_protocol::AssistantReadoutRowData {
+                            account_id: Some(work),
+                            title: "Weekly sync".into(),
+                            detail: Some("Quinn".into()),
+                            ..Default::default()
+                        },
+                        mxr_protocol::AssistantReadoutRowData {
+                            title: "Invoice".into(),
+                            ..Default::default()
+                        },
+                    ],
+                    created_at: 0,
+                },
+            ],
+            Vec::new(),
+        ));
+        let screen = render_to_string(48, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 48, 24),
+                &state,
+                Instant::now(),
+                &marks,
+                &Theme::default(),
+            );
+        });
+        assert!(screen.contains("[W]  Weekly sync  Quinn"), "{screen}");
+        // A row with no account keeps the chip column's width.
+        assert!(
+            screen.contains(&format!("•{}Invoice", " ".repeat(6))),
+            "{screen}"
+        );
+    }
+
+    #[test]
     fn daemon_text_with_escape_sequences_draws_as_plain_text() {
         let hostile = "\u{1b}[2J\u{1b}[Hforged\u{202e}gnp\u{9b}";
         let mut state = open_state();
@@ -1973,6 +2042,7 @@ mod tests {
                 Rect::new(0, 0, 48, height),
                 state,
                 Instant::now(),
+                &AccountMarks::default(),
                 &Theme::default(),
             );
         })
@@ -2067,6 +2137,7 @@ mod tests {
                 Rect::new(0, 0, 60, 24),
                 state,
                 now,
+                &AccountMarks::default(),
                 &Theme::default(),
             );
         })

@@ -5,6 +5,7 @@
 //! sidebar/keybinding hook-up is incremental TUI plumbing that
 //! lives in `app/` once the lens state is wired through.
 
+use super::account_mark::AccountMarks;
 use super::desk_lens::short_duration;
 use mxr_protocol::{OwedReplyRowData, PeopleSplitData};
 use ratatui::prelude::*;
@@ -15,6 +16,7 @@ pub fn draw(
     area: Rect,
     rows: &[OwedReplyRowData],
     people: Option<PeopleSplitData>,
+    account_marks: &AccountMarks,
     theme: &crate::theme::Theme,
 ) {
     // Where the people who wrote to you but you don't write with are.
@@ -61,6 +63,7 @@ pub fn draw(
         Span::styled("  Score  ", Style::default().fg(theme.text_muted)),
         Span::styled("Waiting  ", Style::default().fg(theme.text_muted)),
         Span::styled("Cadence  ", Style::default().fg(theme.text_muted)),
+        Span::raw(" ".repeat(account_marks.column_width())),
         Span::styled("From / Subject", Style::default().fg(theme.text_muted)),
     ])];
 
@@ -73,17 +76,31 @@ pub fn draw(
             theme.text_muted
         };
         let from = row.from_name.as_deref().unwrap_or(&row.from_email);
-        lines.push(Line::from(vec![
+        let mut spans = vec![
             Span::styled(
                 format!("  {:>4.2}  ", row.overdue_score),
                 Style::default().fg(score_color),
             ),
             Span::raw(format!("{:>7}  ", days_label(row.waiting_days))),
             Span::raw(format!("{:>7}  ", days_label(row.expected_days))),
-            Span::styled(truncate(from, 24), Style::default().fg(theme.accent)),
-            Span::raw("  "),
-            Span::raw(truncate(&row.subject, 60)),
-        ]));
+        ];
+        // Rows without an account (an older daemon) keep the chip column's
+        // width, so the subjects still line up.
+        match row
+            .account_id
+            .as_ref()
+            .and_then(|account_id| account_marks.row_cell(account_id, theme))
+        {
+            Some(chip) => spans.extend(chip),
+            None => spans.push(Span::raw(" ".repeat(account_marks.column_width()))),
+        }
+        spans.push(Span::styled(
+            truncate(from, 24),
+            Style::default().fg(theme.accent),
+        ));
+        spans.push(Span::raw("  "));
+        spans.push(Span::raw(truncate(&row.subject, 60)));
+        lines.push(Line::from(spans));
     }
 
     if let Some(others) = others {
@@ -130,6 +147,7 @@ mod tests {
             expected_days: expected,
             overdue_score: waiting / expected,
             usual_seconds: None,
+            account_id: None,
         }
     }
 
@@ -141,6 +159,7 @@ mod tests {
                 Rect::new(0, 0, 80, 12),
                 &[],
                 None,
+                &AccountMarks::default(),
                 &crate::theme::Theme::default(),
             );
         });
@@ -162,6 +181,7 @@ mod tests {
                 Rect::new(0, 0, 100, 12),
                 &rows,
                 None,
+                &AccountMarks::default(),
                 &crate::theme::Theme::default(),
             );
         });
@@ -182,6 +202,7 @@ mod tests {
                 Rect::new(0, 0, 100, 6),
                 &rows,
                 None,
+                &AccountMarks::default(),
                 &crate::theme::Theme::default(),
             );
         });
@@ -204,6 +225,7 @@ mod tests {
                 Rect::new(0, 0, 100, 12),
                 &rows,
                 None,
+                &AccountMarks::default(),
                 &crate::theme::Theme::default(),
             );
         });
@@ -227,10 +249,63 @@ mod tests {
                 Rect::new(0, 0, 80, 12),
                 &[],
                 people,
+                &AccountMarks::default(),
                 &crate::theme::Theme::default(),
             );
         });
         assert!(rendered.contains("3 others who wrote to you are in Messages."));
         assert!(!rendered.contains("Nothing waiting on you"));
+    }
+
+    fn mixed_marks(work: &mxr_core::AccountId, home: &mxr_core::AccountId) -> AccountMarks {
+        crate::ui::account_mark::plain_marks_for_tests(&[(work, "Work", "W"), (home, "Home", "H")])
+    }
+
+    #[test]
+    fn mixed_accounts_mark_each_row_with_its_own_chip() {
+        let work = mxr_core::AccountId::new();
+        let home = mxr_core::AccountId::new();
+        let mut alice = row("alice@example.com", "Status update?", 5.0, 1.0);
+        alice.account_id = Some(work.clone());
+        let mut bob = row("bob@example.com", "Quick question", 2.0, 7.0);
+        bob.account_id = Some(home.clone());
+        let marks = mixed_marks(&work, &home);
+        let rendered = render_to_string(100, 8, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 8),
+                &[alice, bob],
+                None,
+                &marks,
+                &crate::theme::Theme::default(),
+            );
+        });
+        let alice_line = rendered
+            .lines()
+            .find(|line| line.contains("Status update?"))
+            .expect("alice's row");
+        let bob_line = rendered
+            .lines()
+            .find(|line| line.contains("Quick question"))
+            .expect("bob's row");
+        assert!(alice_line.contains("[W]"), "{rendered}");
+        assert!(bob_line.contains("[H]"), "{rendered}");
+        insta::assert_snapshot!("owed_lens_mixed_accounts", rendered);
+    }
+
+    #[test]
+    fn a_single_account_view_shows_no_chip_column() {
+        let rows = vec![row("alice@example.com", "Status update?", 5.0, 1.0)];
+        let rendered = render_to_string(100, 6, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &rows,
+                None,
+                &AccountMarks::default(),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(!rendered.contains('['), "{rendered}");
     }
 }

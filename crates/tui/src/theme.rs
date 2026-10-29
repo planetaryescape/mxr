@@ -110,6 +110,7 @@ impl AccountPalette {
     }
 
     pub fn fill(&self, color: AccountColor) -> Color {
+        // A slot this build doesn't know (`Unknown`) falls back to slate, the last one.
         let slot = AccountColor::ALL
             .iter()
             .position(|candidate| *candidate == color)

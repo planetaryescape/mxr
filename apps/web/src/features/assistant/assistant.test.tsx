@@ -20,6 +20,11 @@ import type {
   AssistantItem,
   AssistantPending,
 } from "./api";
+import {
+  AccountIdentitiesContext,
+  identitiesFrom,
+} from "@/features/accounts/useAccountIdentities";
+import type { RuntimeAccount } from "@/features/compose/api";
 import { previewMessages } from "./describe";
 import { renderMarkdown } from "./markdown";
 import { PendingCards } from "./PendingCards";
@@ -413,6 +418,54 @@ describe("transcript", () => {
     expect(screen.getByText("Found 14")).toBeVisible();
     expect(screen.getByText("and 13 more")).toBeVisible();
     expect(screen.getByRole("link", { name: /Your parcel shipped/ })).toBeVisible();
+  });
+
+  test("a readout row's link names its account when the view mixes accounts", () => {
+    const accounts = identitiesFrom(
+      [
+        {
+          account_id: "work",
+          name: "Work",
+          email: "bk@work.example",
+          provider_kind: "imap",
+          is_default: true,
+          enabled: true,
+          identity: { color: "sky", tag: "W" },
+        },
+        {
+          account_id: "home",
+          name: "Home",
+          email: "bk@home.example",
+          provider_kind: "imap",
+          is_default: false,
+          enabled: true,
+          identity: { color: "amber", tag: "H" },
+        },
+      ] as RuntimeAccount[],
+      false,
+    );
+    const mixed: AssistantItem = {
+      ...search,
+      readout: {
+        total: 1,
+        rows: [
+          {
+            title: "Your parcel shipped",
+            detail: "Shop",
+            account_id: "work",
+            link: { kind: "thread", thread_id: "t-1234567" },
+          },
+        ],
+      },
+    };
+    render(
+      <AccountIdentitiesContext.Provider value={accounts}>
+        <Transcript items={[turn[0]!, mixed]} running={false} conversationId="c1" />
+      </AccountIdentitiesContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Searched your mail: 14 found/ }));
+    expect(screen.getByRole("link", { name: "Your parcel shipped, Work" })).toBeVisible();
   });
 
   test("no default view shows a tool name or JSON, until Details is opened", () => {

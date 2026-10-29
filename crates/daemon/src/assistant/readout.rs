@@ -47,7 +47,7 @@ fn readout_capped(content: &str, row_cap: usize) -> Option<AssistantReadoutData>
     let root = unwrap(&value)?;
 
     let mut lists = Vec::new();
-    collect_lists(root, 0, &mut lists);
+    collect_lists(root, None, 0, &mut lists);
     lists.sort_by_key(|list| list_rank(list.key));
     if !lists.is_empty() {
         let listed: u64 = lists.iter().map(|list| list.total).sum();
@@ -57,10 +57,10 @@ fn readout_capped(content: &str, row_cap: usize) -> Option<AssistantReadoutData>
             .map_or(listed, |total| total.max(listed));
         let rows = lists
             .iter()
-            .flat_map(|list| list.items.iter())
-            .filter_map(|item| item.as_object())
+            .flat_map(|list| list.items.iter().map(move |item| (item, list.account)))
+            .filter_map(|(item, account)| Some((item.as_object()?, account)))
             .take(row_cap)
-            .map(row)
+            .map(|(object, account)| row(object, account))
             .collect();
         return Some(AssistantReadoutData {
             total: Some(total),
@@ -154,14 +154,25 @@ struct List<'a> {
     key: &'a str,
     items: &'a [Value],
     total: u64,
+    /// The account the list's rows came to: the item's own `account_id`, or
+    /// the one on the object that holds the list (a place bundle's messages).
+    account: Option<&'a str>,
 }
 
 /// Every list of nameable things, in the order the result gives them. A
-/// list's own `<name>_total` counts what a capped list left out.
-fn collect_lists<'a>(object: &'a Map<String, Value>, depth: usize, out: &mut Vec<List<'a>>) {
+/// list's own `<name>_total` counts what a capped list left out. `account`
+/// is the nearest `account_id` above the object, so a place bundle's
+/// messages carry the bundle's account.
+fn collect_lists<'a>(
+    object: &'a Map<String, Value>,
+    account: Option<&'a str>,
+    depth: usize,
+    out: &mut Vec<List<'a>>,
+) {
     if depth > DEPTH {
         return;
     }
+    let account = object.get("account_id").and_then(Value::as_str).or(account);
     for (key, value) in object {
         match value {
             Value::Array(items) if items.iter().any(nameable) => {
@@ -170,16 +181,21 @@ fn collect_lists<'a>(object: &'a Map<String, Value>, depth: usize, out: &mut Vec
                     .get(&format!("{key}_total"))
                     .and_then(Value::as_u64)
                     .map_or(shown, |total| total.max(shown));
-                out.push(List { key, items, total });
+                out.push(List {
+                    key,
+                    items,
+                    total,
+                    account,
+                });
             }
             Value::Array(items) => {
                 for item in items {
                     if let Value::Object(child) = item {
-                        collect_lists(child, depth + 1, out);
+                        collect_lists(child, account, depth + 1, out);
                     }
                 }
             }
-            Value::Object(child) => collect_lists(child, depth + 1, out),
+            Value::Object(child) => collect_lists(child, account, depth + 1, out),
             _ => {}
         }
     }
@@ -204,7 +220,7 @@ fn nameable(item: &Value) -> bool {
     })
 }
 
-fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
+fn row(object: &Map<String, Value>, account: Option<&str>) -> AssistantReadoutRowData {
     let person_name = object
         .get("person")
         .and_then(|person| text(person.get("name")));
@@ -244,7 +260,9 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
         .or_else(|| text(object.get("sender_name")))
         .or_else(|| text(object.get("sender_email")));
     AssistantReadoutRowData {
-        account_id: text(object.get("account_id")).and_then(|id| id.parse::<AccountId>().ok()),
+        account_id: text(object.get("account_id"))
+            .or_else(|| account.map(str::to_string))
+            .and_then(|id| id.parse::<AccountId>().ok()),
         title: clipped(&title, DETAIL_CHARS),
         detail,
         link: link(object),
@@ -561,6 +579,49 @@ mod tests {
     }
 
     #[test]
+    fn a_place_message_takes_its_bundles_account() {
+        let account = "7b0a9f2e-0000-4000-8000-000000000002";
+        let out = read_rows(json!({"bundles": [{
+            "account_id": account,
+            "sender_email": "a@b.example",
+            "messages": [{
+                "message_id": "m1", "thread_id": "t1", "subject": "Weekly digest",
+                "date": "2026-10-01T09:00:00+00:00", "unread": false,
+            }],
+        }]}));
+        assert_eq!(
+            out[0]
+                .account_id
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(account)
+        );
+    }
+
+    #[test]
+    fn a_thread_preview_row_carries_the_account_its_message_came_to() {
+        let account = mxr_core::id::AccountId::new();
+        let content = serde_json::to_string(&mxr_protocol::ResponseData::ThreadPreviews {
+            previews: vec![mxr_protocol::ThreadPreviewData {
+                thread_id: mxr_core::id::ThreadId::new(),
+                subject: "Invoice 4471".into(),
+                sender_name: None,
+                sender_email: "dana@work.example".into(),
+                latest_at: 1_760_000_000,
+                message_count: 1,
+                unread_count: 0,
+                snippet: "Please confirm".into(),
+                has_attachments: false,
+                account_id: Some(account.clone()),
+            }],
+        })
+        .expect("serialise previews");
+        let out = readout(&content).expect("a readout");
+        assert_eq!(out.rows[0].account_id, Some(account));
+    }
+
+    #[test]
     fn thread_previews_fill_the_email_row_from_the_real_wire_shape() {
         // Serialised from the daemon's own response type, so this pins what
         // `mxr_thread_previews` hands the readout.
@@ -578,6 +639,7 @@ mod tests {
                     unread_count: 2,
                     snippet: "Please confirm\npayment by Friday".into(),
                     has_attachments: true,
+                    account_id: None,
                 },
                 mxr_protocol::ThreadPreviewData {
                     thread_id: second.clone(),
@@ -589,6 +651,7 @@ mod tests {
                     unread_count: 0,
                     snippet: "Ten links".into(),
                     has_attachments: false,
+                    account_id: None,
                 },
             ],
         })

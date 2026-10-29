@@ -3596,6 +3596,7 @@ mod tests {
                         unread_count: 1,
                         snippet: "Please confirm".into(),
                         has_attachments: false,
+                        account_id: None,
                     }],
                 },
             })

@@ -193,6 +193,16 @@ pub(super) async fn upsert_account_config(
     account: AccountConfigData,
     reveal_holder: bool,
 ) -> AccountOperationResult {
+    if let Err(error) = crate::account_identity::refuse_unknown_colour(account.color) {
+        return account_operation_result(
+            false,
+            format!("Failed to save account '{}'.", account.key),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        );
+    }
     // A tag is refused when another account already shows it or stores it.
     // The account's own tag is not a clash.
     let existing_id = mxr_config::load_config().ok().and_then(|config| {

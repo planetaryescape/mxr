@@ -143,11 +143,15 @@ impl App {
             Screen::Rules => self.rules.page.form.visible && self.rules.page.form.active_field <= 3,
             Screen::Accounts => {
                 let page = &self.accounts.page;
+                // With single-key shortcuts off, a text field takes its
+                // letters without Enter first (see `handle_account_form_key`).
                 page.active_auth_session.is_none()
                     && !page.resume_new_account_draft_prompt_open
                     && page.form.visible
                     && page.form.pending_mode_switch.is_none()
-                    && page.form.editing_field
+                    && (page.form.editing_field
+                        || (!self.keybindings.single_keys
+                            && account_form_field_is_editable(&page.form)))
             }
             Screen::Analytics => modals.analytics_filter.as_ref().is_some_and(|modal| {
                 modal

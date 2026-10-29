@@ -519,7 +519,7 @@ Acceptance:
 - A remap saved in web settings applies in the TUI on its next start.
 - Holding `g` for 300 ms lists the places.
 - In the desktop app, macOS App Shortcuts can rebind a menu command.
-  - Verified on macOS 2026-10-28 against a debug build of `21e716c88`: with `NSUserKeyEquivalents` `"Go to Inbox" = "@~i"` written for `dev.planetaryescape.mxr` and the app relaunched, the menu item reported ⌘⌥I through accessibility and ⌘⌥I sent by System Events delivered `nav.inbox` to a stand-in page that logs menu actions; without the override the same keys reached the page and ran no command. The same run showed the Go menu titling "Focus & reply" as "Focus  reply", without its `&`.
+  - Verified on macOS 2026-10-28 against a debug build of `21e716c88`: with `NSUserKeyEquivalents` `"Go to Inbox" = "@~i"` written for `dev.planetaryescape.mxr` and the app relaunched, the menu item reported ⌘⌥I through accessibility and ⌘⌥I sent by System Events delivered `nav.inbox` to a stand-in page that logs menu actions; without the override the same keys reached the page and ran no command. The same run showed the Go menu titling "Focus & reply" as "Focus  reply", without its `&`: muda reads a lone `&` as a mnemonic marker and drops it. Fixed: `menu.rs` now doubles each `&` in a label, so the menu shows the label as written.
 
 Docs ship with each rung: the guides that name keys, `reference/keybindings.md`, `reference/config.md` (`keys.toml`, the switch), and chapters 08, 12 and 22 pointing here.
 

@@ -362,8 +362,12 @@ numbers can differ slightly from the snapshot.
 
 The whole 50,000-message demo is one more test, marked `#[ignore]` so the
 workspace test jobs skip it. CI runs it in the "Classifier Eval (full set)"
-job, on pull requests that touch the generator, the classifier or the eval and
-on every push to `main`, and snapshots the summary: per-question accuracy,
+job when a pull request or a push to `main` changes the code that decides a
+graded answer (the demo generator, the detectors, the daemon's post-sync
+classification or the eval; the list is in `scripts/ci_change_scope.sh`), and
+on a manual CI run. Other changes skip it, including store, sync and
+dependency changes that could still move an answer; run it locally after one
+of those. It snapshots the summary: per-question accuracy,
 held-out accuracy, counts and the mismatch clusters (never one line per
 email). Run it locally only when you need to, because it takes a few minutes
 and a lot of CPU:

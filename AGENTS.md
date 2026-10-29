@@ -13,7 +13,7 @@
   - Unit/component first: UI state, keypress reducers, modal forms, date parsing, and visual formatters run in Vitest (`apps/web/src/**/*.test.tsx`) with jsdom in milliseconds.
   - E2E tests (`apps/web/e2e/`) are strictly for full cross-system user journeys and browser engine compatibility (WebKit / Chromium). Do not write Playwright tests for pure reducer logic, CSS animation frame polling, or date parsing permutations.
   - Never check in temporary milestone or spike specs (e.g. `w6-*.spec.ts`, `milestone-*.spec.ts`); consolidate into permanent feature specs.
-  - PRs run `npm run e2e:engine` (the ~15 core journey specs, Chromium). Merges to `main` run the whole Chromium suite and `npm run e2e:webkit:engine` (the same specs on WebKit) on the self-hosted Mac runner; run the whole WebKit suite locally with `npm run e2e:webkit`.
+  - CI runs one browser engine, Chromium: PRs run `npm run e2e:engine` (the ~15 core journey specs) and merges to `main` run the whole suite. WebKit is not in CI; run it by hand with `npm run e2e:webkit:engine` (the same specs) or `npm run e2e:webkit` (the whole suite).
 - For code changes, load `.agents/skills/mxr-development/SKILL.md`. For CLI/email tasks, load `.agents/skills/mxr/SKILL.md`.
 - Use code as source of truth; use `docs/blueprint/`, `docs/activity-log.md`, and `docs/implementation-journey.md` for design background.
 

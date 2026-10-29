@@ -2067,9 +2067,7 @@ impl Modify for BearerSecurity {
 /// several megabytes in debug builds, more than a Tokio worker's 2 MiB: the
 /// daemon aborted with a stack overflow on startup when the enum grew. It is
 /// built on a thread with room to spare and shared from then on.
-pub fn cached_spec() -> utoipa::openapi::OpenApi {
-    use std::sync::OnceLock;
-    static SPEC: OnceLock<utoipa::openapi::OpenApi> = OnceLock::new();
+pub fn cached_spec() -> &'static utoipa::openapi::OpenApi {
     SPEC.get_or_init(|| {
         std::thread::Builder::new()
             .name("openapi-spec".into())
@@ -2079,7 +2077,13 @@ pub fn cached_spec() -> utoipa::openapi::OpenApi {
             .join()
             .expect("build the OpenAPI spec")
     })
-    .clone()
+}
+
+static SPEC: std::sync::OnceLock<utoipa::openapi::OpenApi> = std::sync::OnceLock::new();
+
+/// The document if [`cached_spec`] has already built it.
+pub(crate) fn built_spec() -> Option<&'static utoipa::openapi::OpenApi> {
+    SPEC.get()
 }
 
 #[derive(serde::Serialize, utoipa::ToSchema)]

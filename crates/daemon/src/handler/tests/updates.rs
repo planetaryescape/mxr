@@ -1134,77 +1134,94 @@ async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
 /// The web e2e daemon runs about 25 minutes on one seed. A fixture dated
 /// against cuts the digest doesn't use (or a cut that falls mid-run) left
 /// the seeded mail outside the digest it was read in.
-#[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_whatever_cuts_the_daemon_uses() {
-    // The CI failure's three-minute window, midnight, and US DST dates.
-    // Running under TZ=America/New_York also exercises missing/repeated cuts.
-    for (month, day, hour, minute) in [
-        (10, 19, 4, 44),
-        (10, 20, 0, 2),
-        (3, 8, 4, 44),
-        (11, 1, 4, 44),
-    ] {
-        let seed = chrono::Local
-            .with_ymd_and_hms(2026, month, day, hour, minute, 0)
-            .unwrap()
-            .with_timezone(&Utc);
-        let local = |minutes: i64| {
-            (seed + Duration::minutes(minutes))
-                .with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
+///
+/// One test per seed date: each syncs the demo once per cut list, and as one
+/// test they were among the slowest in the suite. Running under
+/// TZ=America/New_York also exercises missing and repeated cuts.
+async fn assert_the_seeded_digest_holds_at((month, day, hour, minute): (u32, u32, u32, u32)) {
+    let seed = chrono::Local
+        .with_ymd_and_hms(2026, month, day, hour, minute, 0)
+        .unwrap()
+        .with_timezone(&Utc);
+    let local = |minutes: i64| {
+        (seed + Duration::minutes(minutes))
+            .with_timezone(&chrono::Local)
+            .format("%H:%M")
+            .to_string()
+    };
+    let cases: Vec<Vec<String>> = vec![
+        vec!["08:00".into(), "16:30".into()],
+        vec![local(-1)],
+        vec![local(1)],
+        vec![local(0)],
+        vec![local(-90), local(40), "03:17".into()],
+        vec!["23:59".into(), "00:01".into(), "08:00".into()],
+        vec!["02:14".into(), "05:24".into(), "03:17".into()],
+        vec!["01:14".into(), "01:17".into(), "05:24".into()],
+    ];
+    for cuts in cases {
+        let state = demo_state(seed, &cuts).await;
+        let digest = updates::digest_at(&state, None, None, false, false, seed, &chrono::Local)
+            .await
+            .unwrap();
+        let line = |source: &str| {
+            all_lines(&digest)
+                .into_iter()
+                .find(|line| line.source_key == source)
+                .unwrap_or_else(|| panic!("missing {source} at {seed}, cuts {cuts:?}"))
         };
-        let cases: Vec<Vec<String>> = vec![
-            vec!["08:00".into(), "16:30".into()],
-            vec![local(-1)],
-            vec![local(1)],
-            vec![local(0)],
-            vec![local(-90), local(40), "03:17".into()],
-            vec!["23:59".into(), "00:01".into(), "08:00".into()],
-            vec!["02:14".into(), "05:24".into(), "03:17".into()],
-            vec!["01:14".into(), "01:17".into(), "05:24".into()],
-        ];
-        for cuts in cases {
-            let state = demo_state(seed, &cuts).await;
-            let digest = updates::digest_at(&state, None, None, false, false, seed, &chrono::Local)
-                .await
-                .unwrap();
-            let line = |source: &str| {
-                all_lines(&digest)
-                    .into_iter()
-                    .find(|line| line.source_key == source)
-                    .unwrap_or_else(|| panic!("missing {source} at {seed}, cuts {cuts:?}"))
-            };
-            assert_eq!(
-                line("strava.com").delta.as_ref().map(|d| d.text.as_str()),
-                Some("up 12% on last week"),
-                "seeded and read at {seed}, cuts {cuts:?}"
-            );
-            for source in ["github.com/acme/api", "google.com", "stripe.com"] {
-                assert_eq!(line(source).section, UpdateSectionData::NeedsALook);
-            }
-            assert_eq!(
-                line("github.com/acme/api").count,
-                2,
-                "two fresh failing runs"
-            );
-            assert_eq!(line("vercel.com").section, UpdateSectionData::Routine);
-            assert_eq!(line("vercel.com").count, 4, "four fresh deploys");
-            for source in ["linearstatus.example", "plausible.io"] {
-                assert_eq!(line(source).section, UpdateSectionData::Changed);
-            }
-            assert!(all_lines(&digest)
+        assert_eq!(
+            line("strava.com").delta.as_ref().map(|d| d.text.as_str()),
+            Some("up 12% on last week"),
+            "seeded and read at {seed}, cuts {cuts:?}"
+        );
+        for source in ["github.com/acme/api", "google.com", "stripe.com"] {
+            assert_eq!(line(source).section, UpdateSectionData::NeedsALook);
+        }
+        assert_eq!(
+            line("github.com/acme/api").count,
+            2,
+            "two fresh failing runs"
+        );
+        assert_eq!(line("vercel.com").section, UpdateSectionData::Routine);
+        assert_eq!(line("vercel.com").count, 4, "four fresh deploys");
+        for source in ["linearstatus.example", "plausible.io"] {
+            assert_eq!(line(source).section, UpdateSectionData::Changed);
+        }
+        assert!(all_lines(&digest)
+            .iter()
+            .all(|line| line.source_key != "acme-login.example"));
+        if seed > digest.cut.at {
+            assert!(digest
+                .since
+                .lines
                 .iter()
-                .all(|line| line.source_key != "acme-login.example"));
-            if seed > digest.cut.at {
-                assert!(digest
-                    .since
-                    .lines
-                    .iter()
-                    .any(|line| line.source_key == "linear.app"));
-            }
+                .any(|line| line.source_key == "linear.app"));
         }
     }
+}
+
+/// The CI failure's three-minute window.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_in_the_ci_failure_window() {
+    assert_the_seeded_digest_holds_at((10, 19, 4, 44)).await;
+}
+
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_just_after_midnight() {
+    assert_the_seeded_digest_holds_at((10, 20, 0, 2)).await;
+}
+
+/// US clocks go forward on 8 March 2026.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_forward() {
+    assert_the_seeded_digest_holds_at((3, 8, 4, 44)).await;
+}
+
+/// US clocks go back on 1 November 2026.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_back() {
+    assert_the_seeded_digest_holds_at((11, 1, 4, 44)).await;
 }
 
 /// The e2e config pins one daily cut a minute before the seed, so a run

@@ -318,21 +318,10 @@ async fn rehydrate_attachment_only_invites(
     account_id: Option<&AccountId>,
 ) -> u64 {
     let page_size: u32 = 200;
-    let mut offset: u32 = 0;
+    let mut after: Option<MessageId> = None;
     let mut rehydrated: u64 = 0;
     loop {
-        let envelopes_result = if let Some(account_id) = account_id {
-            state
-                .store
-                .list_envelopes_by_account(account_id, page_size, offset)
-                .await
-        } else {
-            state
-                .store
-                .list_all_envelopes_paginated(page_size, offset)
-                .await
-        };
-        let envelopes = match envelopes_result {
+        let envelopes = match next_envelope_page(&state.store, &mut after, page_size).await {
             Ok(envelopes) => envelopes,
             Err(error) => {
                 tracing::warn!("backfill_invites: list envelopes failed: {error}");
@@ -343,7 +332,10 @@ async fn rehydrate_attachment_only_invites(
             break;
         }
         let batch_len = envelopes.len() as u32;
-        for envelope in &envelopes {
+        for envelope in envelopes
+            .iter()
+            .filter(|envelope| account_id.is_none_or(|id| &envelope.account_id == id))
+        {
             let body = match state.store.get_body(&envelope.id).await {
                 Ok(Some(body)) => body,
                 Ok(None) => continue,
@@ -383,13 +375,65 @@ async fn rehydrate_attachment_only_invites(
         if batch_len < page_size {
             break;
         }
-        offset += page_size;
     }
     tracing::info!(
         rehydrated,
         "backfill_invites: re-hydrated attachment-only invites"
     );
     rehydrated
+}
+
+/// The next page of every envelope in id order. Pages seek by key rather than
+/// offset, so rows rewritten during the walk (a re-hydrated invite is saved
+/// again) cannot shift a later page past unvisited rows.
+async fn next_envelope_page(
+    store: &mxr_store::Store,
+    after: &mut Option<MessageId>,
+    page_size: u32,
+) -> Result<Vec<mxr_core::Envelope>, sqlx::Error> {
+    let page = store
+        .list_envelopes_for_reindex(after.as_ref(), page_size)
+        .await?;
+    if let Some(last) = page.last() {
+        *after = Some(last.id.clone());
+    }
+    Ok(page)
+}
+
+#[cfg(test)]
+mod backfill_paging_tests {
+    use super::*;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+
+    #[tokio::test]
+    async fn keyset_pages_visit_every_envelope_exactly_once() {
+        let state = AppState::in_memory().await.unwrap();
+        let account = state.default_account_id();
+        let mut expected = Vec::new();
+        for n in 0..7 {
+            let envelope = TestEnvelopeBuilder::new()
+                .account_id(account.clone())
+                .provider_id(format!("page-{n}"))
+                .build();
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            expected.push(envelope.id.as_str());
+        }
+        expected.sort();
+
+        let mut after = None;
+        let mut visited = Vec::new();
+        loop {
+            let page = next_envelope_page(&state.store, &mut after, 3)
+                .await
+                .unwrap();
+            if page.is_empty() {
+                break;
+            }
+            visited.extend(page.iter().map(|envelope| envelope.id.as_str()));
+        }
+
+        assert_eq!(visited, expected);
+    }
 }
 
 pub(super) async fn respond_invite(
@@ -860,6 +904,11 @@ pub(super) async fn read_attachment_chunk(
 }
 
 fn collect_html_image_sources(html: &str) -> Vec<String> {
+    // Over the parser budget no image list is offered for the message; the
+    // document is not parsed.
+    if !mxr_reader::within_budget(html) {
+        return Vec::new();
+    }
     static IMG_SELECTOR: std::sync::OnceLock<Selector> = std::sync::OnceLock::new();
     let selector = IMG_SELECTOR.get_or_init(|| Selector::parse("img").expect("valid img selector"));
 
@@ -1616,5 +1665,28 @@ mod hydration_flag_tests {
         let mut fetched_plain = TestEnvelopeBuilder::new().build();
         keep_stored_sent_flag(&mut fetched_plain, &stored_received);
         assert!(!fetched_plain.flags.contains(MessageFlags::SENT));
+    }
+}
+
+#[cfg(test)]
+mod image_budget_tests {
+    use super::collect_html_image_sources;
+
+    #[test]
+    fn image_sources_are_not_collected_from_an_over_budget_document() {
+        let over = format!(
+            "<table>{}<img src=\"https://example.test/a.png\"></table>",
+            "<br>".repeat(200_000)
+        );
+        assert!(collect_html_image_sources(&over).is_empty());
+    }
+
+    #[test]
+    fn image_sources_are_collected_from_an_ordinary_document() {
+        let html = r#"<p><img src="https://example.test/a.png"></p>"#;
+        assert_eq!(
+            collect_html_image_sources(html),
+            vec!["https://example.test/a.png".to_string()]
+        );
     }
 }

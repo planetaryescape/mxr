@@ -3,8 +3,7 @@ use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
-use mxr_reader::{clean, ReaderConfig};
-use std::panic::AssertUnwindSafe;
+use mxr_reader::searchable_text;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -26,91 +25,16 @@ pub struct SearchIndex {
     pub(crate) clean_fallbacks: Arc<AtomicU64>,
 }
 
-/// The reader's HTML conversion with every removal step off. Quoted replies,
-/// signatures and boilerplate stay in the text: each removal can drop words the
-/// reader shows. Markup, CSS and scripts are still dropped by the conversion.
-fn conversion_only_config() -> ReaderConfig {
-    ReaderConfig {
-        html_command: None,
-        collapse_quotes: false,
-        strip_signatures: false,
-        strip_boilerplate: false,
-        strip_tracking: false,
-    }
-}
-
-/// The values added to the body field for a message: `text_plain` as stored,
-/// and `text_html` converted to text. A part that is itself an HTML document is
-/// converted rather than indexed as markup. The reader's built-in converter is
-/// used, never `render.html_command`.
-fn indexed_body_parts(body: &MessageBody, clean_fallbacks: &AtomicU64) -> Vec<String> {
-    let mut parts = Vec::with_capacity(2);
-    if let Some(plain) = body.text_plain.as_deref() {
-        parts.push(convert_part(plain, false, clean_fallbacks));
-    }
-    if let Some(html) = body.text_html.as_deref() {
-        parts.push(convert_part(html, true, clean_fallbacks));
-    }
-    parts.retain(|part| !part.trim().is_empty());
-    parts
-}
-
-/// Converts one part with the reader's pipeline. A panic in html2text, which
-/// it hits on some malformed tables, falls back to tag stripping and is counted.
-fn convert_part(text: &str, as_html: bool, clean_fallbacks: &AtomicU64) -> String {
-    let config = conversion_only_config();
-    convert_guarded(text, clean_fallbacks, || {
-        if as_html {
-            clean(None, Some(text), &config).content
-        } else {
-            clean(Some(text), None, &config).content
-        }
-    })
-}
-
-/// Runs one conversion, and on a panic indexes the part as tag-stripped text
-/// and counts it. Taking the conversion as a closure lets tests make it panic.
-fn convert_guarded(
-    text: &str,
-    clean_fallbacks: &AtomicU64,
-    convert: impl FnOnce() -> String,
-) -> String {
-    std::panic::catch_unwind(AssertUnwindSafe(convert)).unwrap_or_else(|_| {
-        clean_fallbacks.fetch_add(1, Ordering::Relaxed);
-        strip_html_tags(text)
-    })
-}
-
-/// Text between tags, with `<style>` and `<script>` contents dropped. Used only
-/// when the reader's HTML conversion cannot run, so it stays deliberately simple.
-fn strip_html_tags(html: &str) -> String {
-    let lower = html.to_ascii_lowercase();
-    let mut out = String::with_capacity(html.len());
-    let mut pos = 0;
-    while let Some(offset) = html[pos..].find('<') {
-        let tag_start = pos + offset;
-        out.push_str(&html[pos..tag_start]);
-        let tag_end = html[tag_start..]
-            .find('>')
-            .map_or(html.len(), |end| tag_start + end + 1);
-        let tag = &lower[tag_start..tag_end];
-        pos = tag_end;
-        for raw in ["style", "script"] {
-            if tag.starts_with(&format!("<{raw}")) {
-                let close = format!("</{raw}");
-                pos = lower[tag_end..]
-                    .find(&close)
-                    .map_or(html.len(), |end| tag_end + end);
-                let close_end = html[pos..]
-                    .find('>')
-                    .map_or(html.len(), |end| pos + end + 1);
-                pos = close_end;
-            }
-        }
-        out.push(' ');
-    }
-    out.push_str(&html[pos..]);
-    out
+/// The body text added to the index: the text rules match too, from
+/// `mxr_reader::searchable_text`. The reader's built-in converter is used,
+/// never `render.html_command`. Panics counted in `clean_fallbacks`.
+fn indexed_body_text(body: &MessageBody, clean_fallbacks: &AtomicU64) -> String {
+    let searchable = searchable_text(body.text_plain.as_deref(), body.text_html.as_deref());
+    clean_fallbacks.fetch_add(
+        u64::try_from(searchable.fallbacks).unwrap_or(u64::MAX),
+        Ordering::Relaxed,
+    );
+    searchable.text
 }
 
 #[derive(Debug, Clone)]
@@ -427,8 +351,9 @@ impl SearchIndex {
             doc.add_text(s.labels, label.to_lowercase());
         }
 
-        for part in indexed_body_parts(body, &self.clean_fallbacks) {
-            doc.add_text(s.body_text, part);
+        let body_text = indexed_body_text(body, &self.clean_fallbacks);
+        if !body_text.is_empty() {
+            doc.add_text(s.body_text, body_text);
         }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
@@ -930,19 +855,11 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn a_converter_panic_falls_back_to_tag_stripped_text_and_is_counted() {
-        let counter = AtomicU64::new(0);
-        let text = convert_guarded(
-            "<p>keepme</p><script>var hidden=1;</script><b>also</b>",
-            &counter,
-            || std::panic::resume_unwind(Box::new("converter failed")),
-        );
-
-        assert!(text.contains("keepme"));
-        assert!(text.contains("also"));
-        assert!(!text.contains("hidden"));
-        assert!(!text.contains('<'));
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    fn a_long_html_paragraph_is_one_phrase_in_the_index() {
+        // The reader's 80-column view breaks before "overdue"; the index must not.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let (index, id) = index_one(None, Some(html.as_str()));
+        assert_eq!(search_ids(&index, "\"payment overdue\""), vec![id]);
     }
 
     #[test]
@@ -972,24 +889,10 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn strip_html_tags_drops_style_and_script_contents() {
-        let text = strip_html_tags(
-            "<p>keepme</p><style>.hidden{x:1}</style><script>var hiddenjs=1;</script><b>also</b>",
-        );
-
-        assert!(text.contains("keepme"));
-        assert!(text.contains("also"));
-        assert!(!text.contains("hidden"));
-        assert!(!text.contains("hiddenjs"));
-        assert!(!text.contains('<'));
-    }
-
-    #[test]
-    fn indexed_parts_keep_quotes_and_signatures_and_drop_markup() {
+    fn indexed_body_text_keeps_quotes_and_signatures_and_drops_markup() {
         let envelope = TestEnvelopeBuilder::new().build();
         let counter = AtomicU64::new(0);
-        let parts = indexed_body_parts(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
-        let text = parts.join("\n");
+        let text = indexed_body_text(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
 
         assert!(text.contains("visiblebananaword"));
         assert!(text.contains("earlierquotedword"));
@@ -1022,7 +925,7 @@ mod reader_text_tests {
         let counter = AtomicU64::new(0);
         let clean_started = Instant::now();
         for (_, body) in &envelopes {
-            std::hint::black_box(indexed_body_parts(body, &counter));
+            std::hint::black_box(indexed_body_text(body, &counter));
         }
         let clean_elapsed = clean_started.elapsed();
 

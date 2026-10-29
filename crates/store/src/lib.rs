@@ -197,7 +197,7 @@ pub use rules::{
 pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
 pub use search_fts_fallback::{
-    FtsClause, FtsColumns, FtsFallbackHit, FtsFallbackPage, FtsFallbackQuery,
+    AddressOrWords, FtsClause, FtsColumns, FtsFallbackHit, FtsFallbackPage, FtsFallbackQuery,
 };
 pub use semantic::SemanticIndexRow;
 pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};

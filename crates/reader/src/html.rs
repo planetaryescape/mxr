@@ -1,7 +1,7 @@
+use crate::html_limits::bounded_html;
 use crate::pipeline::ReaderConfig;
 use once_cell::sync::Lazy;
-use regex::{Captures, Regex};
-use std::borrow::Cow;
+use regex::Regex;
 use std::cell::Cell;
 use std::panic::AssertUnwindSafe;
 use std::process::Command;
@@ -37,29 +37,8 @@ fn builtin_to_plain_text(html: &str) -> String {
     html_to_plain_text(html, "reader")
 }
 
-/// Largest colspan/rowspan html2text is given. Real mail stays far below
-/// this; anything above it is a malformed or hostile table.
-pub const MAX_TABLE_SPAN: u64 = 1000;
-
-static TABLE_SPAN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-        .expect("table span regex should compile")
-});
-
-/// Clamps `colspan` and `rowspan` attribute values to `MAX_TABLE_SPAN`.
-///
-/// html2text 0.17.4 overflows its column arithmetic on huge spans (a colspan
-/// near `usize::MAX` panics), so clamping keeps the common case in the
-/// renderer itself. Values that don't fit a u64 are clamped too. Values at or
-/// under the cap come back as the same text.
-pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
-    TABLE_SPAN_RE.replace_all(html, |caps: &Captures<'_>| {
-        let value = caps[3]
-            .parse::<u64>()
-            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
-}
+/// Largest colspan/rowspan html2text is given. See `html_limits`.
+pub const MAX_TABLE_SPAN: u64 = crate::html_limits::MAX_SPAN;
 
 thread_local! {
     // Set while a guarded html2text call runs on this thread. A panic hook
@@ -114,18 +93,80 @@ pub fn guard_html2text<T>(site: &'static str, render: impl FnOnce() -> T) -> Opt
     }
 }
 
+/// Text for matching (rules and the search index) from HTML: the reader's
+/// conversion at the reader's width, with table spans clamped and the render
+/// guarded. Display wrapping stays in the result; callers that match words
+/// collapse whitespace themselves. Returns the text, and whether a panic in
+/// the conversion forced the tag-strip fallback.
+pub(crate) fn html_to_match_text(html: &str, site: &'static str) -> (String, bool) {
+    render_bounded(html, site)
+}
+
+/// Runs a render under the guard. A render error is tag-stripped quietly; a
+/// panic is tag-stripped and reported, as the second value.
+fn guarded_or_strip<E>(
+    html: &str,
+    site: &'static str,
+    render: impl FnOnce() -> Result<String, E>,
+) -> (String, bool) {
+    match guard_html2text(site, render) {
+        Some(Ok(text)) => (text, false),
+        Some(Err(_)) => (strip_html_tags(html), false),
+        None => (strip_html_tags(html), true),
+    }
+}
+
+#[cfg(test)]
+mod match_text_tests {
+    use super::*;
+
+    #[test]
+    fn a_panicking_render_gives_the_tag_stripped_text_and_is_reported() {
+        let source = "<p>keepme</p><script>var hidden=1;</script><b>also</b>";
+        let (text, fell_back) = guarded_or_strip::<()>(source, "test", || {
+            std::panic::resume_unwind(Box::new("renderer failed"))
+        });
+        assert!(fell_back);
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn a_normal_render_is_not_reported_and_wraps_at_the_reader_width() {
+        let line = "word ".repeat(40);
+        let html = format!("<p>{}</p>", line.trim_end());
+        let (text, fell_back) = html_to_match_text(&html, "test");
+        assert!(!fell_back);
+        assert!(
+            text.lines().count() > 1,
+            "expected display wrapping, got {text:?}"
+        );
+    }
+}
+
 /// Plain text for HTML mail at the reader's width, with the default
 /// (undecorated) renderer. Never panics: when html2text fails, the tag strip
 /// below stands in so the message still shows its text.
 pub fn html_to_plain_text(html: &str, site: &'static str) -> String {
+    render_bounded(html, site).0
+}
+
+/// The one render every reader caller goes through: html2text at the reader's
+/// width, on input bounded by `html_limits` and with table spans clamped. Over
+/// the size cap the tag strip stands in without a render. Errors and panics
+/// also give the strip. The second value is true only for a panic.
+fn render_bounded(html: &str, site: &'static str) -> (String, bool) {
+    // `bounded_html` clamps the spans and refuses documents over the caps.
+    let Some(bounded) = bounded_html(html) else {
+        return (strip_html_tags(html), false);
+    };
     // plain_no_decorate keeps the pre-0.17 behavior: no markdown-style
     // `**bold**` / `*italic*` markers in the reader's plain text.
-    let clamped = clamp_table_spans(html);
-    guard_html2text(site, || {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
+    guarded_or_strip(html, site, || {
+        html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
     })
-    .and_then(Result::ok)
-    .unwrap_or_else(|| strip_html_tags(html))
 }
 
 static STYLE_OR_SCRIPT_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
@@ -260,6 +301,7 @@ impl std::fmt::Display for HtmlRenderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::html_limits::clamp_table_spans;
 
     #[test]
     fn converts_basic_html_to_text() {
@@ -438,5 +480,126 @@ mod tests {
     fn empty_command_error() {
         let err = run_external_command("", "test").expect_err("empty commands should fail");
         assert!(matches!(err, HtmlRenderError::EmptyCommand));
+    }
+}
+
+#[cfg(test)]
+mod limit_render_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn direct_render(html: &str) -> String {
+        html2text::config::plain_no_decorate()
+            .string_from_read(html.as_bytes(), 80)
+            .expect("ordinary HTML renders")
+    }
+
+    fn wide_table() -> String {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        html
+    }
+
+    /// Fast and linear: finishes in the time bound and returns text no larger
+    /// than four times the input.
+    fn assert_bounded(html: &str, started: Instant, text: &str) {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            text.len() < 4 * html.len(),
+            "{} bytes out for {} in",
+            text.len(),
+            html.len()
+        );
+    }
+
+    #[test]
+    fn a_normal_email_renders_exactly_as_html2text_renders_it() {
+        let html = "<html><body><p>Hello team,</p>\
+            <table><tr><td>a</td><td>b</td><td>c</td></tr>\
+            <tr><td>d</td><td>e</td><td>f</td></tr>\
+            <tr><td>g</td><td>h</td><td>i</td></tr></table>\
+            <ul><li>one<ul><li>nested</li></ul></li><li>two</li></ul>\
+            <blockquote>quoted words</blockquote></body></html>";
+        assert_eq!(html_to_plain_text(html, "test"), direct_render(html));
+    }
+
+    #[test]
+    fn a_table_hidden_by_a_comment_is_bounded() {
+        let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn a_rowspan_table_is_bounded() {
+        let mut html = String::from("<table>");
+        for n in 0..50_000 {
+            html.push_str(&format!(r#"<tr><td rowspan="1000">x{n}</td></tr>"#));
+        }
+        html.push_str("</table>");
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("x0") && text.contains("x49999"));
+    }
+
+    #[test]
+    fn a_100000_deep_div_nest_is_bounded() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn a_300_item_list_with_optional_end_tags_renders_as_html2text_renders_it() {
+        let html = format!("<ol>{}</ol>", "<li>Item<br>details".repeat(300));
+        assert_eq!(html_to_plain_text(&html, "test"), direct_render(&html));
+    }
+
+    #[test]
+    fn a_table_of_brs_is_bounded_and_quick() {
+        let html = format!("<table>{}end</table>", "<br>".repeat(200_000));
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("end"));
+    }
+
+    #[test]
+    fn a_tag_with_100000_attributes_is_bounded_and_quick() {
+        let mut html = String::from("<td");
+        for n in 0..100_000 {
+            html.push_str(&format!(" a{n}"));
+        }
+        html.push_str(">payload</td>");
+        let started = Instant::now();
+        let text = html_to_plain_text(&html, "test");
+        assert_bounded(&html, started, &text);
+        assert!(text.contains("payload"));
+    }
+
+    #[test]
+    fn rowspan_in_text_is_shown_unchanged() {
+        let text = html_to_plain_text("<p>use rowspan=365. for the rows</p>", "test");
+        assert!(text.contains("rowspan=365."), "got {text:?}");
     }
 }

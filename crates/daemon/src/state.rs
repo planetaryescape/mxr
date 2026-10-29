@@ -858,11 +858,17 @@ impl AppState {
         }
         let (search, search_worker) = SearchServiceHandle::start(search_index.index);
         runtime_tasks.set_search_worker(search_worker);
-        // A stale index is incomplete until the startup rebuild finishes. A
-        // short index is not marked: startup maintenance rebuilds it, and clears
-        // the flag if sync has already filled the gap.
-        if lexical_content_stale.get().is_some() {
-            search.mark_incomplete();
+        // Searches must not read a stale or short index between here and the
+        // startup rebuild. Startup maintenance ends this hold once the rebuild
+        // is done, or once it finds nothing to rebuild.
+        let total_messages = store.count_all_messages().await.unwrap_or_default();
+        let indexed_messages = search.num_docs().await.unwrap_or_default();
+        if crate::reindex::startup_rebuild_needed(
+            lexical_content_stale.get().is_some(),
+            total_messages,
+            indexed_messages,
+        ) {
+            search.hold_startup_rebuild();
         }
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(store.clone(), &data_dir, config.search.semantic.clone()),

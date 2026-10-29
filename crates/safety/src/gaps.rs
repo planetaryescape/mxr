@@ -16,13 +16,34 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     // `&#91;&#91;?: …]]`, a marker split by tags or one broken across lines by
     // a renderer is a gap although no serialized part holds the literal
     // `[[?:`. Quoted text and the signature count too, since they are sent.
+    let rendered_markdown = match &draft.content {
+        DraftContent::Markdown { source } => {
+            Some(mxr_outbound::render::render_markdown(source).html)
+        }
+        DraftContent::Html { .. } => None,
+    };
+    let html = match (&draft.content, &rendered_markdown) {
+        (DraftContent::Html { html, .. }, _) => html.as_str(),
+        (_, Some(rendered)) => rendered.as_str(),
+        (DraftContent::Markdown { .. }, None) => "",
+    };
+    // Over the parser budget the HTML cannot be read, so the gap check cannot
+    // run. That is a blocker with no override: a gap hidden in such HTML must
+    // not be sent.
+    if !mxr_reader::within_budget(html) {
+        return vec![DraftSafetyIssue::new(
+            DraftSafetyIssueCode::UnfilledGap,
+            DraftSafetySeverity::Blocker,
+            "HTML is too complex to check for unfilled gaps, so it cannot be sent: simplify \
+             it (fewer tags, attributes or table cells) and try again",
+        )];
+    }
     let body_views: Vec<String> = match &draft.content {
         DraftContent::Markdown { source } => {
-            let html = mxr_outbound::render::render_markdown(source).html;
-            vec![source.clone(), visible_text(&html), attribute_text(&html)]
+            vec![source.clone(), visible_text(html), attribute_text(html)]
         }
-        DraftContent::Html { html, text } => vec![
-            html.clone(),
+        DraftContent::Html { text, .. } => vec![
+            html.to_string(),
             text.clone().unwrap_or_default(),
             visible_text(html),
             attribute_text(html),
@@ -72,6 +93,11 @@ fn squash(text: &str) -> String {
 /// joined by a mark that is not whitespace, so the whitespace-blind scan never
 /// joins the end of one value to the start of the next.
 fn attribute_text(html: &str) -> String {
+    // Over the parser budget the raw markup stands in: attribute values stay
+    // inside it, so the scan still sees them, just unparsed.
+    if !mxr_reader::within_budget(html) {
+        return html.to_string();
+    }
     scraper::Html::parse_document(html)
         .tree
         .nodes()
@@ -85,6 +111,10 @@ fn attribute_text(html: &str) -> String {
 /// dropped, with no line wrapping (the reader's renderer wraps at 80 columns,
 /// which can split a marker in two).
 fn visible_text(html: &str) -> String {
+    // Over the parser budget, the linear tag strip stands in for the document.
+    if !mxr_reader::within_budget(html) {
+        return mxr_reader::strip_html_tags(html);
+    }
     scraper::Html::parse_document(html)
         .root_element()
         .text()
@@ -315,5 +345,39 @@ mod tests {
         assert_eq!(check(&draft("s", only_in_html)).len(), 1);
         let clean = DraftContent::html("<p>Hi</p>", Some("Hi".into()));
         assert!(check(&draft("s", clean)).is_empty());
+    }
+
+    #[test]
+    fn a_gap_hidden_among_65_attributes_is_a_non_overridable_blocker() {
+        let attributes: String = (0..65).map(|n| format!(" a{n}")).collect();
+        let html = format!("<p{attributes}>&#91;&#91;?: the date]]</p>");
+        let issues = check(&draft("subject", DraftContent::Html { html, text: None }));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == DraftSafetyIssueCode::UnfilledGap
+                    && issue.severity == mxr_core::types::DraftSafetySeverity::Blocker
+                    && issue.override_token.is_none()),
+            "got {issues:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn an_over_budget_document_keeps_its_attribute_text_for_the_scan() {
+        let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
+        assert!(attribute_text(&html).contains("zzalt"));
+    }
+
+    #[test]
+    fn an_over_budget_document_keeps_its_visible_text_via_the_tag_strip() {
+        let html = format!("<p>zzvisible</p>{}", "<br>".repeat(200_000));
+        let text = visible_text(&html);
+        assert!(text.contains("zzvisible"));
+        assert!(!text.contains('<'));
     }
 }

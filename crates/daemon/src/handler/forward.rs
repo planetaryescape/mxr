@@ -51,18 +51,16 @@ pub(super) async fn prepare_source(
         .filter(|html| !html.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| format!("<pre>{}</pre>", htmlescape::encode_minimal(&original_text)));
-    mxr_outbound::html::validate_html(&original_html)
-        .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
-    {
-        let document = scraper::Html::parse_document(&original_html);
-        for node in document.tree.nodes() {
-            let Some(element) = node.value().as_element() else {
-                continue;
-            };
-            for (_, value) in element.attrs() {
-                validate_cid_reference(body, value)?;
-            }
-        }
+    // A forward with no HTML part sends generated, escaped markup: nothing to
+    // check. With an HTML part, the document is checked whole or refused.
+    let has_html_part = body
+        .text_html
+        .as_deref()
+        .is_some_and(|html| !html.trim().is_empty());
+    if has_html_part {
+        mxr_outbound::html::validate_html(&original_html)
+            .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
+        validate_html_cid_references(body, &original_html)?;
     }
     // CSS background images may reference related parts without an img/src.
     static CSS_URL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -168,6 +166,32 @@ pub(super) async fn prepare_source(
     })
 }
 
+/// Every `cid:` attribute in the original HTML must name a related part. Over
+/// the parser budget the HTML cannot be read, so the forward is refused rather
+/// than sent with its references unchecked.
+fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
+    // Over the parser budget the references cannot be checked, and a forward
+    // with an unchecked reference is not sent. Simplify the HTML and forward again.
+    if !mxr_reader::within_budget(html) {
+        return Err(HandlerError::Message(
+            "Cannot forward original HTML: the HTML is too complex to check safely, so it \
+             cannot be forwarded: simplify it (fewer tags, attributes or table cells) and \
+             try again"
+                .to_string(),
+        ));
+    }
+    let document = scraper::Html::parse_document(html);
+    for node in document.tree.nodes() {
+        let Some(element) = node.value().as_element() else {
+            continue;
+        };
+        for (_, value) in element.attrs() {
+            validate_cid_reference(body, value)?;
+        }
+    }
+    Ok(())
+}
+
 fn validate_cid_reference(body: &MessageBody, value: &str) -> Result<(), HandlerError> {
     let Some((_, cid)) = value
         .split_once(':')
@@ -271,4 +295,60 @@ pub(super) async fn sent_attachments(
         });
     }
     Ok(attachments)
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    fn body_with_inline_part(cid: &str) -> MessageBody {
+        let mut body = crate::test_fixtures::make_empty_body(&mxr_core::MessageId::new());
+        body.attachments.push(mxr_core::AttachmentMeta {
+            id: mxr_core::AttachmentId::new(),
+            message_id: body.message_id.clone(),
+            filename: "logo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            disposition: mxr_core::AttachmentDisposition::Inline,
+            content_id: Some(cid.to_string()),
+            content_location: None,
+            size_bytes: 4,
+            local_path: None,
+            provider_id: String::new(),
+        });
+        body
+    }
+
+    fn over_budget_with(reference: &str) -> String {
+        format!(r#"<img src="{reference}">{}"#, "<br>".repeat(200_000))
+    }
+
+    #[test]
+    fn an_over_budget_forward_is_refused_even_with_a_resolving_cid() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = over_budget_with("cid:logo@example.test");
+        let error =
+            validate_html_cid_references(&body, &html).expect_err("over-budget HTML is refused");
+        assert!(
+            error.to_string().contains("too complex to check safely"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_forward_with_a_resolving_cid_is_unchanged() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = r#"<img src="cid:logo@example.test">"#;
+        assert!(validate_html_cid_references(&body, html).is_ok());
+    }
+
+    #[test]
+    fn an_ordinary_forward_with_a_dangling_cid_is_still_refused() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = r#"<img src="cid:missing@example.test">"#;
+        let error = validate_html_cid_references(&body, html).expect_err("dangling cid");
+        assert!(
+            error.to_string().contains("missing inline attachment"),
+            "got {error}"
+        );
+    }
 }

@@ -2,6 +2,7 @@ use crate::{SearchIndex, SearchPage};
 use mxr_core::id::MessageId;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tantivy::query::Query;
@@ -30,6 +31,13 @@ pub struct SearchServiceHandle {
     /// on disk is stale or short. A failed rebuild leaves it set.
     incomplete: Arc<AtomicBool>,
     clean_fallbacks: Arc<AtomicU64>,
+    /// The sequence number of the newest live batch. Each live batch takes the
+    /// next number when it is created; a rebuild records the current number
+    /// before it reads a page, so the worker can tell which live batches came
+    /// after that read.
+    live_seq: Arc<AtomicU64>,
+    /// The rebuild that startup holds from open until its maintenance ends.
+    startup_hold: Arc<std::sync::Mutex<Option<RebuildGuard>>>,
 }
 
 /// Whether the lexical index can answer a search right now.
@@ -66,23 +74,69 @@ impl RebuildGuard {
 }
 
 // One word holds both the rebuilds in progress (low bits) and an epoch (high
-// bits), so a reader sees both from a single load. Ending a rebuild adds
-// `END_REBUILD`: epoch + 1 and rebuilds - 1 in one step.
+// bits), so a reader sees both from a single load. The epoch moves only when
+// the count leaves zero or returns to it: overlapping rebuilds share one epoch,
+// so one guard ending while another still runs does not move it.
 const REBUILD_BITS: u32 = 16;
 const REBUILD_MASK: u64 = (1 << REBUILD_BITS) - 1;
 const START_REBUILD: u64 = (1 << REBUILD_BITS) + 1;
 const END_REBUILD: u64 = (1 << REBUILD_BITS) - 1;
 
+/// Adds a rebuild, moving the epoch if none was running.
+fn add_rebuild(word: &AtomicU64) {
+    let mut current = word.load(Ordering::Acquire);
+    loop {
+        let next = if current & REBUILD_MASK == 0 {
+            current + START_REBUILD
+        } else {
+            current + 1
+        };
+        match word.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return,
+            Err(actual) => current = actual,
+        }
+    }
+}
+
+/// Removes a rebuild, moving the epoch if it was the last one running.
+fn remove_rebuild(word: &AtomicU64) {
+    let mut current = word.load(Ordering::Acquire);
+    loop {
+        let next = if current & REBUILD_MASK == 1 {
+            current + END_REBUILD
+        } else {
+            current - 1
+        };
+        match word.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return,
+            Err(actual) => current = actual,
+        }
+    }
+}
+
 impl Drop for RebuildGuard {
     fn drop(&mut self) {
-        self.rebuilds.fetch_add(END_REBUILD, Ordering::AcqRel);
+        remove_rebuild(&self.rebuilds);
     }
+}
+
+/// What an applied batch is, for the worker's live-update record.
+#[derive(Debug, Clone, Copy)]
+enum BatchKind {
+    /// A live update, numbered when it was created.
+    Live { seq: u64 },
+    /// A page a rebuild read at `read_seq`.
+    Rebuild { read_seq: u64 },
 }
 
 enum SearchCommand {
     ApplyBatch {
         batch: SearchUpdateBatch,
+        kind: BatchKind,
         resp: oneshot::Sender<Result<(), MxrError>>,
+    },
+    LiveRecordLen {
+        resp: oneshot::Sender<usize>,
     },
     Search {
         query: String,
@@ -120,11 +174,51 @@ impl SearchServiceHandle {
     pub fn start(index: SearchIndex) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SearchCommand>(32);
         let clean_fallbacks = Arc::clone(&index.clean_fallbacks);
+        let rebuilds = Arc::new(AtomicU64::new(0));
+        let worker_rebuilds = Arc::clone(&rebuilds);
         let handle = tokio::spawn(async move {
             let mut index = index;
+            // Newest live sequence applied per message, kept only while a
+            // rebuild runs. Only the worker touches it, so no lock is needed.
+            let mut live_record: HashMap<MessageId, u64> = HashMap::new();
+            // The rebuild epoch the record was built under. The record is
+            // cleared when no rebuild is running (the last guard was dropped) and
+            // when the epoch moved, which only happens at idle-to-rebuilding and
+            // back. Overlapping guards never clear it.
+            let mut record_epoch: u64 = 0;
             while let Some(command) = rx.recv().await {
+                let state = worker_rebuilds.load(Ordering::Acquire);
+                let rebuilding = state & REBUILD_MASK != 0;
+                let epoch = state >> REBUILD_BITS;
+                if !rebuilding || epoch != record_epoch {
+                    live_record.clear();
+                    record_epoch = epoch;
+                }
                 match command {
-                    SearchCommand::ApplyBatch { batch, resp } => {
+                    SearchCommand::ApplyBatch {
+                        mut batch,
+                        kind,
+                        resp,
+                    } => {
+                        match kind {
+                            BatchKind::Live { seq } => {
+                                if rebuilding {
+                                    for id in batch_message_ids(&batch) {
+                                        let last = live_record.entry(id).or_insert(0);
+                                        *last = (*last).max(seq);
+                                    }
+                                }
+                            }
+                            BatchKind::Rebuild { read_seq } => {
+                                // A message a live batch changed after this page
+                                // was read has a newer row than the page holds.
+                                let newer = |id: &MessageId| {
+                                    live_record.get(id).is_some_and(|&seq| seq > read_seq)
+                                };
+                                batch.entries.retain(|entry| !newer(&entry.envelope.id));
+                                batch.removed_message_ids.retain(|id| !newer(id));
+                            }
+                        }
                         // Indexing and committing are CPU-bound and, on an
                         // initial sync, run for minutes. Doing that inline
                         // parks a tokio worker thread for the whole run, so
@@ -156,6 +250,9 @@ impl SearchServiceHandle {
                                 break;
                             }
                         }
+                    }
+                    SearchCommand::LiveRecordLen { resp } => {
+                        let _ = resp.send(live_record.len());
                     }
                     SearchCommand::Search {
                         query,
@@ -204,9 +301,11 @@ impl SearchServiceHandle {
         (
             Self {
                 tx,
-                rebuilds: Arc::new(AtomicU64::new(0)),
+                rebuilds,
                 incomplete: Arc::new(AtomicBool::new(false)),
                 clean_fallbacks,
+                startup_hold: Arc::new(std::sync::Mutex::new(None)),
+                live_seq: Arc::new(AtomicU64::new(0)),
             },
             handle,
         )
@@ -219,15 +318,45 @@ impl SearchServiceHandle {
         // Set before the rebuild count, so a reader that sees the count also
         // sees the index as incomplete.
         self.incomplete.store(true, Ordering::Release);
-        self.rebuilds.fetch_add(START_REBUILD, Ordering::AcqRel);
+        add_rebuild(&self.rebuilds);
         RebuildGuard {
             rebuilds: Arc::clone(&self.rebuilds),
             incomplete: Arc::clone(&self.incomplete),
         }
     }
 
-    /// Marks the index incomplete without a rebuild running, for an index found
-    /// stale at startup. A rebuild that finishes clears it.
+    /// Reports the index as rebuilding from now until [`Self::end_startup_rebuild`],
+    /// for an index that startup found stale or short. The rebuild itself starts
+    /// later; searches in between answer from SQLite instead of the partial index.
+    pub fn hold_startup_rebuild(&self) {
+        let guard = self.begin_rebuild();
+        let previous = self
+            .startup_hold
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .replace(guard);
+        drop(previous);
+    }
+
+    /// Ends the hold from [`Self::hold_startup_rebuild`]. `complete` means the
+    /// index holds every message; otherwise it stays incomplete, as after a
+    /// failed rebuild. Without a hold, `complete` only clears any incomplete mark.
+    pub fn end_startup_rebuild(&self, complete: bool) {
+        let held = self
+            .startup_hold
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        match (held, complete) {
+            (Some(guard), true) => guard.finish(),
+            (Some(guard), false) => drop(guard),
+            (None, true) => self.clear_incomplete(),
+            (None, false) => {}
+        }
+    }
+
+    /// Marks the index incomplete without a rebuild running. A rebuild that
+    /// finishes clears it.
     pub fn mark_incomplete(&self) {
         self.incomplete.store(true, Ordering::Release);
     }
@@ -268,11 +397,47 @@ impl SearchServiceHandle {
         self.availability() == IndexAvailability::Ready { epoch }
     }
 
+    /// The sequence number of the newest live batch created so far. A rebuild
+    /// reads this before it reads a page from SQLite.
+    pub fn read_seq(&self) -> u64 {
+        self.live_seq.load(Ordering::Acquire)
+    }
+
+    /// Applies a live batch (sync, mutations). Call it after the store write the
+    /// batch describes: the batch takes its sequence number here.
     pub async fn apply_batch(&self, batch: SearchUpdateBatch) -> Result<(), MxrError> {
+        let seq = self.live_seq.fetch_add(1, Ordering::AcqRel) + 1;
+        self.apply(batch, BatchKind::Live { seq }).await
+    }
+
+    /// Applies one page a rebuild read at `read_seq` (from [`Self::read_seq`],
+    /// taken before the page was read). The worker skips any message a live
+    /// batch created after `read_seq` has changed, because that row is newer.
+    pub async fn apply_rebuild_batch(
+        &self,
+        batch: SearchUpdateBatch,
+        read_seq: u64,
+    ) -> Result<(), MxrError> {
+        self.apply(batch, BatchKind::Rebuild { read_seq }).await
+    }
+
+    /// Number of messages in the live-update record. Zero outside a rebuild:
+    /// the record is cleared by the first worker command after a rebuild ends.
+    pub async fn live_record_len(&self) -> Result<usize, MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::LiveRecordLen { resp: resp_tx })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())
+    }
+
+    async fn apply(&self, batch: SearchUpdateBatch, kind: BatchKind) -> Result<(), MxrError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(SearchCommand::ApplyBatch {
                 batch,
+                kind,
                 resp: resp_tx,
             })
             .await
@@ -411,6 +576,14 @@ impl SearchServiceHandle {
 /// segment on a large batch; a full backfill batch would otherwise be
 /// held until the single commit at the end.
 const COMMIT_CHUNK: usize = 5_000;
+
+fn batch_message_ids(batch: &SearchUpdateBatch) -> impl Iterator<Item = MessageId> + '_ {
+    batch
+        .entries
+        .iter()
+        .map(|entry| entry.envelope.id.clone())
+        .chain(batch.removed_message_ids.iter().cloned())
+}
 
 fn apply_batch(index: &mut SearchIndex, batch: SearchUpdateBatch) -> Result<(), MxrError> {
     for message_id in batch.removed_message_ids {
@@ -558,5 +731,67 @@ mod tests {
         let _ = worker.await;
 
         assert_eq!(handle.availability(), IndexAvailability::Stopped);
+    }
+
+    #[tokio::test]
+    async fn a_startup_hold_reads_as_rebuilding_until_it_ends() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        handle.hold_startup_rebuild();
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+
+        // A rebuild that runs and finishes inside the hold does not end it.
+        handle.begin_rebuild().finish();
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+
+        handle.end_startup_rebuild(true);
+        assert!(matches!(
+            handle.availability(),
+            IndexAvailability::Ready { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_startup_hold_that_fails_leaves_the_index_incomplete() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        handle.hold_startup_rebuild();
+        handle.end_startup_rebuild(false);
+        assert_eq!(handle.availability(), IndexAvailability::Incomplete);
+    }
+
+    #[tokio::test]
+    async fn live_updates_are_recorded_only_while_a_rebuild_runs_and_end_with_it() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+        let id = MessageId::new();
+        let removal = || SearchUpdateBatch {
+            entries: Vec::new(),
+            removed_message_ids: vec![id.clone()],
+        };
+
+        handle.apply_batch(removal()).await.unwrap();
+        assert_eq!(handle.live_record_len().await.unwrap(), 0);
+
+        let rebuild = handle.begin_rebuild();
+        handle.apply_batch(removal()).await.unwrap();
+        assert_eq!(handle.live_record_len().await.unwrap(), 1);
+
+        drop(rebuild);
+        assert_eq!(handle.live_record_len().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn every_live_batch_takes_the_next_sequence_number() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+        assert_eq!(handle.read_seq(), 0);
+        handle
+            .apply_batch(SearchUpdateBatch::default())
+            .await
+            .unwrap();
+        handle
+            .apply_batch(SearchUpdateBatch::default())
+            .await
+            .unwrap();
+        assert_eq!(handle.read_seq(), 2);
     }
 }

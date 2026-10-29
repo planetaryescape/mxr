@@ -1798,6 +1798,9 @@ pub(crate) struct RuleMessage {
     body: Option<mxr_core::MessageBody>,
     to: Vec<String>,
     labels: Vec<String>,
+    /// The parts rules match, built on first use. `None` when the body is
+    /// absent or has no text part, so body rules report unknown.
+    searchable_body: std::sync::OnceLock<Option<Vec<String>>>,
 }
 
 impl RuleMessage {
@@ -1812,6 +1815,7 @@ impl RuleMessage {
             envelope,
             body,
             labels,
+            searchable_body: std::sync::OnceLock::new(),
         }
     }
 
@@ -1893,10 +1897,16 @@ impl mxr_rules::MessageView for RuleMessage {
             mxr_core::types::UnsubscribeMethod::None
         )
     }
-    fn body_text(&self) -> Option<&str> {
-        self.body
+    fn body_parts(&self) -> Option<Vec<&str>> {
+        // Part 0 is the stored plain text as it was before HTML was matched;
+        // part 1 is the HTML converted to text. See `mxr_reader::body_match_parts`.
+        self.searchable_body
+            .get_or_init(|| {
+                let body = self.body.as_ref()?;
+                mxr_reader::body_match_parts(body.text_plain.as_deref(), body.text_html.as_deref())
+            })
             .as_ref()
-            .and_then(|body| body.text_plain.as_deref().or(body.text_html.as_deref()))
+            .map(|parts| parts.iter().map(String::as_str).collect())
     }
     fn link_density_inputs(&self) -> (u32, u32) {
         (self.envelope.link_count, self.envelope.body_word_count)
@@ -4221,5 +4231,147 @@ mod history_prune_tests {
             .await
             .expect("history prune loop exits after shutdown")
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod rule_message_text_tests {
+    use super::RuleMessage;
+    use crate::test_fixtures::{make_empty_body, TestEnvelopeBuilder};
+    use mxr_rules::{Conditions, FieldCondition, MessageView, StringMatch};
+
+    fn body_contains(word: &str) -> Conditions {
+        Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Contains(word.to_string()),
+        })
+    }
+
+    fn message(text_plain: Option<&str>, text_html: Option<&str>) -> RuleMessage {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let mut body = make_empty_body(&envelope.id);
+        body.text_plain = text_plain.map(str::to_string);
+        body.text_html = text_html.map(str::to_string);
+        RuleMessage::from_parts(envelope, Some(body), Vec::new())
+    }
+
+    #[test]
+    fn a_word_only_inside_style_does_not_match_a_body_rule() {
+        let html = "<html><head><style>.a{b:c} zzcssword{d:e}</style></head>\
+                    <body><p>Visible text</p></body></html>";
+        let view = message(None, Some(html));
+        assert_eq!(
+            body_contains("zzcssword").evaluate_known(&view),
+            Some(false)
+        );
+        assert_eq!(
+            body_contains("visible text").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_word_in_the_html_part_matches_when_the_plain_part_lacks_it() {
+        let view = message(
+            Some("Plain part without it"),
+            Some("<p>The html part says zzhtmlword</p>"),
+        );
+        assert_eq!(
+            body_contains("zzhtmlword").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn rule_body_parts_are_the_search_parts_and_are_stable_across_calls() {
+        let view = message(Some("plain words"), Some("<p>html words</p>"));
+        let expected =
+            mxr_reader::body_match_parts(Some("plain words"), Some("<p>html words</p>")).unwrap();
+        let parts = |view: &RuleMessage| -> Vec<String> {
+            view.body_parts()
+                .unwrap_or_default()
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(parts(&view), expected);
+        assert_eq!(parts(&view), expected);
+    }
+
+    #[test]
+    fn exact_and_anchored_rules_match_a_plain_and_html_duplicate() {
+        // The same word in both parts must still satisfy a whole-text rule.
+        let view = message(Some("invoice"), Some("<p>invoice</p>"));
+        let exact = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Exact("invoice".to_string()),
+        });
+        let anchored = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Regex("^invoice$".to_string()),
+        });
+        assert_eq!(exact.evaluate_known(&view), Some(true));
+        assert_eq!(anchored.evaluate_known(&view), Some(true));
+    }
+
+    #[test]
+    fn a_message_without_body_or_text_is_unknown_to_body_rules() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let no_body = RuleMessage::from_parts(envelope.clone(), None, Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_body), None);
+
+        let mut empty = make_empty_body(&envelope.id);
+        empty.text_plain = None;
+        let no_text = RuleMessage::from_parts(envelope, Some(empty), Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_text), None);
+    }
+
+    #[test]
+    fn a_long_html_paragraph_matches_a_phrase_rule_across_its_display_wrap() {
+        // The reader breaks this paragraph at 80 columns; the rule must still
+        // see "payment overdue" as the words the sender wrote.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let view = message(None, Some(&html));
+        assert_eq!(
+            body_contains("payment overdue").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    fn body_rule(pattern: StringMatch) -> Conditions {
+        Conditions::Field(FieldCondition::BodyContains { pattern })
+    }
+
+    #[test]
+    fn pre_html_plain_rules_keep_their_exact_results() {
+        // A trailing newline is part of the stored plain text, so an exact rule
+        // written against it still matches.
+        let plain = message(Some("invoice\n"), None);
+        assert_eq!(
+            body_rule(StringMatch::Exact("invoice\n".to_string())).evaluate_known(&plain),
+            Some(true)
+        );
+        assert_eq!(
+            body_rule(StringMatch::Regex("\\Ainvoice\\n\\z".to_string())).evaluate_known(&plain),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_negated_empty_check_on_empty_mail_is_unchanged() {
+        // Empty plain text matches ^$, so NOT ^$ is false, as before HTML matching.
+        let empty = message(Some(""), None);
+        let not_empty = Conditions::Not {
+            condition: Box::new(body_rule(StringMatch::Regex("^$".to_string()))),
+        };
+        assert_eq!(not_empty.evaluate_known(&empty), Some(false));
+        let with_html = message(Some(""), Some("<p>words</p>"));
+        assert_eq!(not_empty.evaluate_known(&with_html), Some(false));
+    }
+
+    #[test]
+    fn a_message_with_no_body_parts_is_unknown_to_body_rules() {
+        let no_body = RuleMessage::from_parts(TestEnvelopeBuilder::new().build(), None, Vec::new());
+        assert_eq!(
+            body_rule(StringMatch::Contains("x".to_string())).evaluate_known(&no_body),
+            None
+        );
     }
 }

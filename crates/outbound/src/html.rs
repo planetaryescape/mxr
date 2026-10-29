@@ -193,6 +193,10 @@ pub enum HtmlIssueKind {
     /// comments are real markup to Outlook, so a `<script>` in one is a live
     /// script, not inert text.
     ForbiddenElementInComment { tag: String },
+    /// The document is over the parser budget (size, tag count, attribute count
+    /// or table shape), so it cannot be checked safely. It is refused, and the
+    /// fix is to simplify the HTML.
+    TooComplexToCheck,
 }
 
 impl fmt::Display for HtmlIssue {
@@ -202,6 +206,11 @@ impl fmt::Display for HtmlIssue {
             None => String::new(),
         };
         match &self.kind {
+            HtmlIssueKind::TooComplexToCheck => write!(
+                f,
+                "HTML is too complex to check safely, so it cannot be sent{where_}: \
+                 simplify it (fewer tags, attributes or table cells) and try again"
+            ),
             HtmlIssueKind::ForbiddenElement { tag } => {
                 write!(
                     f,
@@ -303,6 +312,20 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
+    // Over the parser budget the document is refused, not checked by a weaker
+    // pass: a linear scan cannot see through attribute counts or entities, so
+    // every check is missed for such a document. The nested parses below run on
+    // parts of this same document, so they are within budget too.
+    if !crate::html_limits::within_budget(html) {
+        return Err(HtmlValidationError {
+            issues: vec![HtmlIssue {
+                kind: HtmlIssueKind::TooComplexToCheck,
+                line: None,
+                detail: String::new(),
+                origin: IssueOrigin::Document,
+            }],
+        });
+    }
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
     let mut comments_seen = 0;
@@ -401,36 +424,20 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
     // Guarded like the reader's call (html2text panics on some malformed
-    // tables). mxr-outbound cannot depend on mxr-reader, so the span clamp and
-    // the fallback are local copies; keep them in step with
-    // `mxr_reader::clamp_table_spans`. A sent message always gets its text,
-    // even if it is rougher.
-    let clamped = clamp_table_spans(html);
+    // tables). mxr-outbound cannot depend on mxr-reader, so the bounds, the span
+    // clamp and the fallback are local copies (`html_limits`). A sent message
+    // always gets its text, even if it is rougher.
+    // Bounded input first: an adversarial table costs html2text gigabytes, and
+    // an allocation failure aborts, so `catch_unwind` cannot protect against it.
+    let Some(bounded) = crate::html_limits::bounded_html(html) else {
+        return strip_tags_fallback(html);
+    };
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
+        html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
     }))
     .ok()
     .and_then(Result::ok)
     .unwrap_or_else(|| strip_tags_fallback(html))
-}
-
-/// Largest colspan/rowspan html2text is given. Matches
-/// `mxr_reader::MAX_TABLE_SPAN`.
-const MAX_TABLE_SPAN: u64 = 1000;
-
-static TABLE_SPAN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-        .expect("table span regex should compile")
-});
-
-/// Copy of `mxr_reader::clamp_table_spans`; see `generate_text_alternative`.
-fn clamp_table_spans(html: &str) -> std::borrow::Cow<'_, str> {
-    TABLE_SPAN_RE.replace_all(html, |caps: &regex::Captures<'_>| {
-        let value = caps[3]
-            .parse::<u64>()
-            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
 }
 
 /// Tag-stripping fallback for `generate_text_alternative` when html2text
@@ -932,6 +939,68 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::html_limits::clamp_table_spans;
+    #[test]
+    fn text_alternative_bounds_an_adversarial_table_before_html2text() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(text.contains("c0") && text.contains("r19999"));
+        assert!(text.len() < 4 * html.len());
+    }
+
+    #[test]
+    fn text_alternative_of_a_table_hidden_by_a_comment_is_bounded() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr><!-- </table> -->");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn text_alternative_of_a_100000_deep_div_nest_is_bounded() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn text_alternative_of_an_oversized_body_is_the_tag_strip() {
+        let html = format!(
+            "<p>zzoversizedword</p>{}",
+            "<p>filler</p>".repeat(crate::html_limits::MAX_HTML_BYTES / 13 + 1)
+        );
+        let text = generate_text_alternative(&html);
+        assert!(text.contains("zzoversizedword"));
+        assert!(!text.contains('<'));
+    }
+
     #[test]
     fn text_alternative_renders_a_huge_span_without_the_fallback() {
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
@@ -1847,5 +1916,61 @@ mod tests {
             assert!(validate_html(&source).is_err(), "{source}");
             assert_eq!(source, before);
         }
+    }
+}
+
+#[cfg(test)]
+mod budget_validation_tests {
+    use super::*;
+
+    fn refused_as_too_complex(html: &str) -> bool {
+        validate_html(html).is_err_and(|error| {
+            error
+                .issues
+                .iter()
+                .any(|issue| issue.kind == HtmlIssueKind::TooComplexToCheck)
+        })
+    }
+
+    fn sixty_five_inert_attributes() -> String {
+        (0..65).map(|n| format!(" a{n}")).collect()
+    }
+
+    #[test]
+    fn an_over_budget_html_send_is_refused_as_too_complex() {
+        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
+    }
+
+    #[test]
+    fn an_image_with_an_onerror_hidden_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<img{} src=x onerror="alert(1)">"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_link_with_an_entity_encoded_javascript_url_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<a{} href="jav&#x61;script:alert(1)">x</a>"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_script_in_an_over_budget_document_is_refused() {
+        let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
+    }
+
+    #[test]
+    fn an_over_budget_text_alternative_is_the_tag_strip() {
+        let over = format!("<p>zzalt</p>{}", "<br>".repeat(200_000));
+        let text = generate_text_alternative(&over);
+        assert!(text.contains("zzalt"));
+        assert!(!text.contains('<'));
     }
 }

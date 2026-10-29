@@ -2,6 +2,7 @@ mod label_resolve;
 mod search_execute;
 mod search_fallback;
 mod search_filter;
+pub(crate) mod search_resolve;
 
 use search_execute::{execute_search, execute_search_or_fallback};
 

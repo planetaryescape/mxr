@@ -28,11 +28,12 @@ pub use mail_query::{
 pub use content_version::{
     lexical_content_is_current, record_lexical_content_version, LEXICAL_CONTENT_VERSION,
 };
-pub use index::{SearchIndex, SearchPage, SearchResult};
+pub use index::{ResolvedHit, SearchIndex, SearchPage, SearchResolver, SearchResult};
 pub use query_builder::{build_query, CompiledQuery, QueryBuilder, MAX_PROSE_WORDS};
 pub use schema::MxrSchema;
 pub use service::{
-    IndexAvailability, RebuildGuard, SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch,
+    IndexAvailability, RebuildGuard, ResolveTarget, SearchIndexEntry, SearchServiceHandle,
+    SearchUpdateBatch,
 };
 
 /// Canonical name for the mxr-specific `is:owed-reply` filter.

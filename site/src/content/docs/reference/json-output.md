@@ -471,26 +471,49 @@ is the only place its ID appears:
 `--format ids` prints the job ID alone and `--format csv` has a `job_id`
 column. A job that ends `failed` makes the command exit non-zero, with the
 counts and the first failing message in the error. `skipped` counts messages
-that left the mailbox after the preview. `mxr jobs JOB_ID` shows the same job
-later: `failures` holds the first 50 failing messages with the provider's
-error (the exact total is `progress.failed`), `paused_until` is set while the
-job waits out a provider rate limit and resumes by itself, and a daemon
-restart ends a running job as `failed` ("interrupted") with the counts it had
-persisted.
+that left the mailbox after the preview. `failed` also counts a message a
+provider's rate limit stopped half way when the job gave up (read-archive
+marked it read, then the archive was refused): it may have changed, its
+failure says so, and `mxr undo JOB_ID` restores it. `mxr jobs JOB_ID` shows
+the same job later: `failures` holds the first 50 failing messages with the
+provider's error (the exact total is `progress.failed`), `paused_until` is set
+while the job waits out a provider rate limit and resumes by itself, and a
+daemon restart ends a running job as `failed` ("interrupted") with the counts
+it had persisted.
+
+A label edit acts on the labels the dry run resolved, in each account the
+search reaches, whatever they are called by the time the job runs: renaming
+`Work` after the preview, or making a new label called `Work`, does not
+change which label is edited. If a label the preview resolved is deleted (or
+is no longer one you created) before the job starts, `--yes` is refused with
+`the label … changed since the preview …; preview again`. Labels are checked
+only in the accounts the search reaches. The search can be at most 2,048 bytes
+and a label edit can name at most 8 labels of at most 512 bytes each.
 
 `mxr undo JOB_ID` reverses the whole job as a job of its own, for one hour
 after the job ends (`undo_expires_at`). It restores every message to the state
 it had before the job, waits for the undo job and prints it, with `job.undo_of`
-naming the original. Messages whose snapshot has expired or is missing, or
-whose mail is gone, are counted under `progress.skipped` and named in
-`job.error`; messages a retry could still restore are `progress.failed`, and
-undoing the same job again retries just those.
+naming the original. The window is checked before each message, so a message
+reached after it closes is not restored. Messages whose snapshot has expired
+or is missing, whose mail is gone, or that another undo is restoring, are
+counted under `progress.skipped` and named in `job.error`; messages a retry
+could still restore are `progress.failed`, and undoing the same job again
+retries just those. A batch the undo job is restoring cannot be undone on its
+own at the same time (`mxr undo MUTATION_ID` says it `is being undone
+already`); a batch undone on its own first is skipped by the undo job.
 
-A job response carries at most the newest 100 `undo_ids`; `undo_id_count` says
-how many the job holds (a job over half a million messages has 5,000), and a
-selection job is undone as a whole with `mxr undo JOB_ID`. A selection job also
+`mxr jobs JOB_ID` carries at most the newest 100 `undo_ids` and the first 50
+`failures`; `undo_id_count` and `failure_count` say how many the job holds (a
+job over half a million messages has 5,000 undo ids), and a selection job is
+undone as a whole with `mxr undo JOB_ID`. The `mxr jobs` listing carries
+neither list: `undo_ids` and `failures` are empty there, and the two counts say
+how many `mxr jobs JOB_ID` shows. Every error and failure reason is cut to 512
+bytes (an account name to 128) when the job is saved, so a listing of the 100
+retained jobs stays well under the 16 MiB frame limit. A selection job also
 carries `action`, the label edit or archive it applies, so a start repeated
-under the same job id with a different action is refused.
+under the same job id with a different action is refused. A job id is only
+ever returned for a job the daemon has recorded: a start that loses the
+preview token to another start is refused and leaves no job.
 
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address

@@ -39,9 +39,11 @@ export function ShortcutGuide() {
       <ul className="grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-x-5">
         {choices.slice(0, 20).map((choice) => (
           <li key={choice.chord} className="type-body flex items-start gap-2 text-text-1">
-            <KeyChip className="shrink-0 pointer-coarse:inline-flex">
-              {formatChord(choice.next)}
-            </KeyChip>
+            {choice.next.map((next) => (
+              <KeyChip key={next} className="shrink-0 pointer-coarse:inline-flex">
+                {formatChord(next)}
+              </KeyChip>
+            ))}
             <span>{choice.label}</span>
           </li>
         ))}

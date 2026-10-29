@@ -323,9 +323,8 @@ async function seedMailbox() {
 
 /**
  * Hints show once per profile, and every spec shares this daemon. Starting
- * with all of them dismissed keeps a hint from landing in some other
- * spec's layout or taking its Esc; teaching.spec.ts brings back the ones
- * it tests.
+ * with all of them dismissed keeps a hint from landing in a spec's layout
+ * or taking its Esc.
  */
 async function dismissEveryHint() {
   const { guides } = await fetchJson("/api/v1/mail/modes/guide");

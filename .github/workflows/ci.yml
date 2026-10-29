@@ -442,7 +442,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1]
     defaults:
       run:
         working-directory: apps/web
@@ -477,9 +477,9 @@ jobs:
         run: |
           set -o pipefail
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 20m npm run e2e:engine -- --workers=1 --shard=${{ matrix.shard }}/1 2>&1 | tee playwright-run.log
           else
-            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
+            timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/1 2>&1 | tee playwright-run.log
           fi
       # Keep functional failures separate from the speed traces below.
       - name: Upload Playwright results

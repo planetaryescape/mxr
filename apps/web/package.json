@@ -21,10 +21,10 @@
     "pree2e": "node ./scripts/e2e-owned-processes.mjs",
     "e2e": "playwright test",
     "pree2e:engine": "node ./scripts/e2e-owned-processes.mjs",
-    "e2e:engine": "playwright test --grep \"\\s(navigation|keyboard-help|keyboard-navigation|compose-send|reader|accessibility|messages|todo|updates|archive|now|search|offline-banner|onboarding-redirect|smoke|snooze|controls)\\.spec|design-gate\\.spec\\.ts.*midnight theme\"",
+    "e2e:engine": "playwright test",
     "pree2e:webkit": "node ./scripts/e2e-owned-processes.mjs",
     "e2e:webkit": "MXR_E2E_WEBKIT=1 playwright test --project=webkit",
-    "e2e:webkit:engine": "MXR_E2E_WEBKIT=1 playwright test --project=webkit --grep \"\\s(navigation|keyboard-help|keyboard-navigation|compose-send|reader|accessibility|messages|todo|updates|archive|now|search|offline-banner|onboarding-redirect|smoke|snooze|controls)\\.spec|design-gate\\.spec\\.ts.*midnight theme\"",
+    "e2e:webkit:engine": "MXR_E2E_WEBKIT=1 playwright test --project=webkit",
     "pree2e:perf": "node ./scripts/e2e-owned-processes.mjs",
     "e2e:perf": "playwright test -c playwright.perf.config.ts",
     "analyze": "ANALYZE=1 vite build"
@@ -83,7 +83,6 @@
     "zustand": "*"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.3",
     "@playwright/test": "*",
     "@tanstack/react-router-devtools": "*",
     "@tanstack/router-plugin": "*",

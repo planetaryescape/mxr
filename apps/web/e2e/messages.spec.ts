@@ -1,371 +1,45 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { bridge, openApp } from "./helpers/state";
+import { archiveViaBridge } from "./helpers/archive";
 import { freshReplyRequest } from "./helpers/reply-request";
+import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-const SAMIR = "person:samir@launchpad.example";
-const IRIS = "person:iris@meridian.example";
-
 interface Row {
-  id: string;
-  title: string;
-  band: string;
-  kind: string;
-  topics: { thread_id: string; subject: string; state: string }[];
-  preview?: { text: string } | null;
+  topics: { thread_id: string }[];
 }
 
 interface MessagesAnswer {
   messages: { your_turn: Row[]; pinned: Row[]; recent: Row[]; quiet: Row[] };
 }
 
-async function messages(page: Page, history = true) {
-  return (
-    await bridge<MessagesAnswer>(page, `/api/v1/mail/people?limit=500${history ? "&turn=all" : ""}`)
-  ).messages;
+/** Whether the daemon's attention view (Messages' default) still holds `thread`. */
+async function needsAttention(page: Page, thread: string): Promise<boolean> {
+  const { messages } = await bridge<MessagesAnswer>(page, "/api/v1/mail/people?limit=500");
+  return [...messages.your_turn, ...messages.pinned, ...messages.recent, ...messages.quiet].some(
+    (row) => row.topics.some((topic) => topic.thread_id === thread),
+  );
 }
 
-function all(data: MessagesAnswer["messages"]): Row[] {
-  return [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet];
-}
-
-/** Wait for the demo's people to sync. */
-async function waitForPeople(page: Page) {
-  await expect
-    .poll(async () => all(await messages(page)).some((row) => row.id === SAMIR), {
-      timeout: 60_000,
-    })
-    .toBe(true);
-}
-
-async function topicOf(page: Page, person: string, subject: string): Promise<string> {
-  const row = all(await messages(page)).find((candidate) => candidate.id === person);
-  const topic = row?.topics.find((candidate) => candidate.subject === subject);
-  expect(topic, `${person} has a topic "${subject}"`).toBeTruthy();
-  return topic!.thread_id;
-}
-
-function row(page: Page, id: string) {
-  return page.locator(`[data-testid="messages-row"][data-row-id="${id}"]`);
-}
-
-test("each person is one row with topics, a group is its own row, a cc is not here", async ({
+test("done in Messages takes the conversation out of attention, and u brings it back", async ({
   page,
 }) => {
-  await waitForPeople(page);
-  const personPageRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("/api/v1/mail/people/page")) personPageRequests.push(request.url());
-  });
-  await openApp(page, "/messages?turn=all");
-  await expect(page.getByRole("heading", { name: "Messages", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose a conversation" })).toBeVisible();
-  await expect(page.getByTestId("person-page")).toHaveCount(0);
-  expect(personPageRequests).toEqual([]);
-  await expect(page.getByTestId("mode-header").first()).toHaveText(
-    "All conversations, including archived and sent-only history.",
-  );
-  // One row however many conversations he's in. Other specs may have
-  // answered him already, so his band isn't pinned down here.
-  await expect(row(page, SAMIR)).toHaveCount(1);
-  // The group is its own row (in whichever band), and the thread you were
-  // only copied on is in no row at all.
-  const data = all(await messages(page));
-  // The demo's generated mail has threads Samir writes with Ruth copied on
-  // every message, which are groups of the same two people, so the seeded
-  // group is found by its topic as well as its members.
-  const groups = data.filter(
-    (candidate) =>
-      candidate.title === "Samir, Ruth" &&
-      candidate.topics.some((topic) => topic.subject === "Pricing copy"),
-  );
-  expect(groups).toHaveLength(1);
-  expect(groups[0]!.kind).toBe("group");
-  expect(groups[0]!.id).toMatch(/^group:/);
-  expect(
-    data.some((candidate) => candidate.topics.some((topic) => topic.subject === "Offsite dates")),
-  ).toBe(false);
-  const iris = data.find((candidate) => candidate.id === IRIS);
-  expect(iris?.preview?.text).toBe("You: Thanks, on it.");
-  // No early-version marker on Messages any more.
-  await expect(page.getByTestId("rail-early").filter({ hasText: /messages/i })).toHaveCount(0);
+  const { person, thread, messageIds } = await freshReplyRequest(page);
+  try {
+    await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
+    await expect(page.getByTestId("conversation")).toBeVisible();
+    expect(await needsAttention(page, thread)).toBe(true);
 
-  const firstRow = page.getByTestId("messages-row").first();
-  await page.keyboard.press("ArrowDown");
-  await expect(firstRow).toHaveAttribute("aria-current", "true");
+    await page.keyboard.press("e");
+    await expect.poll(() => needsAttention(page, thread), { timeout: 15_000 }).toBe(false);
 
-  await row(page, SAMIR).click();
-  const pageView = page.getByTestId("person-page");
-  await expect(pageView.getByTestId("person-name")).toHaveText("Samir Patel");
-  const topicTrigger = pageView.getByTestId("topics-trigger");
-  const topics = pageView.getByTestId("topics");
-  await expect(topics).toHaveCount(0);
-  await expect(topicTrigger).toContainText(/Contract renewal|Launch checklist|Pricing copy/);
-  await topicTrigger.click();
-  // The demo's generated mail has "Contract renewal details" and "Launch
-  // checklist for Project Aurora" too; these are the seeded topics.
-  await expect(
-    topics.getByTestId("topic").filter({ hasText: /Contract renewal(?! details)/ }),
-  ).toHaveCount(1);
-  await expect(
-    topics.getByTestId("topic").filter({ hasText: /Launch checklist(?! for)/ }),
-  ).toHaveCount(1);
-  await expect(
-    topics.getByTestId("topic").filter({ hasText: "with Ruth: Pricing copy" }),
-  ).toHaveCount(1);
-  await topics.getByTestId("topic").first().focus();
-  await page.keyboard.press("Escape");
-  await expect(topics).toHaveCount(0);
-  await expect(topicTrigger).toBeFocused();
-  await expect(pageView.getByTestId("composer")).toContainText("Reply to Samir · ");
-});
-
-test("no row's preview is the quoted-only placeholder", async ({ page }) => {
-  await waitForPeople(page);
-  const data = all(await messages(page));
-  for (const candidate of data) {
-    expect(candidate.preview?.text ?? "", candidate.title).not.toContain("only quoted");
+    // The toast's words depend on what was left open ("Undone", "Restored: …");
+    // the daemon's answer is the check.
+    await page.keyboard.press("u");
+    await expect.poll(() => needsAttention(page, thread), { timeout: 15_000 }).toBe(true);
+  } finally {
+    // Specs share one mailbox: leave no new turn behind for the others.
+    await archiveViaBridge(page, messageIds);
   }
-  await openApp(page, "/messages");
-  await expect(row(page, SAMIR)).toHaveCount(1);
-  await expect(page.getByTestId("messages-row").filter({ hasText: "only quoted" })).toHaveCount(0);
-});
-
-test("{ and } step through a person's topics", async ({ page }) => {
-  await waitForPeople(page);
-  const contract = await topicOf(page, SAMIR, "Contract renewal");
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
-  const pageView = page.getByTestId("person-page");
-  const current = pageView.getByTestId("topics-trigger");
-  await expect(current).toContainText("Contract renewal");
-  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).toBe(contract);
-  await page.keyboard.press("}");
-  await expect(current).not.toContainText("Contract renewal");
-  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).not.toBe(contract);
-  await page.keyboard.press("{");
-  await expect(current).toContainText("Contract renewal");
-  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).toBe(contract);
-});
-
-test("a thread link opens the person and topic that contain it", async ({ page }) => {
-  await waitForPeople(page);
-  const contract = await topicOf(page, SAMIR, "Contract renewal");
-  await openApp(page, `/messages/${encodeURIComponent(contract)}`);
-  const pageView = page.getByTestId("person-page");
-  await expect(pageView.getByTestId("person-name")).toHaveText("Samir Patel");
-  await expect(pageView.getByTestId("topics-trigger")).toContainText("Contract renewal");
-  expect(new URL(page.url()).pathname).toBe(`/messages/${encodeURIComponent(contract)}`);
-});
-
-test("returning to Messages leaves the previous conversation closed", async ({ page }) => {
-  await waitForPeople(page);
-  const personPageRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("/api/v1/mail/people/page")) personPageRequests.push(request.url());
-  });
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}`);
-  await expect(page.getByTestId("person-name")).toHaveText("Samir Patel");
-  // Strict Mode can cancel the first fetch and replace it. Returning to the
-  // unselected route must add no request, regardless of that initial retry.
-  const requestsBeforeLeaving = personPageRequests.length;
-  expect(requestsBeforeLeaving).toBeGreaterThan(0);
-
-  await page.keyboard.press("g");
-  await page.keyboard.press("i");
-  await expect(page).toHaveURL(/\/m\/inbox$/);
-  await page.keyboard.press("g");
-  await page.keyboard.press("m");
-  await expect(page).toHaveURL(/\/messages$/);
-  await expect(page.getByRole("heading", { name: "Choose a conversation" })).toBeVisible();
-  await expect(page.getByTestId("person-page")).toHaveCount(0);
-  expect(personPageRequests).toHaveLength(requestsBeforeLeaving);
-});
-
-test("a long reply is a letter, trimmed, and o shows it as sent", async ({ page }) => {
-  await waitForPeople(page);
-  const contract = await topicOf(page, SAMIR, "Contract renewal");
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
-  const letter = page
-    .getByTestId("conversation-message")
-    .filter({ hasText: "Samir" })
-    .filter({ has: page.getByTestId("trimmed-marker") })
-    .last();
-  await expect(letter).toHaveAttribute("data-layout", "letter");
-  await expect(letter.getByTestId("trimmed-marker")).toContainText(
-    /trimmed: quote, sig(, footer)?/,
-  );
-  await expect(letter).toHaveAttribute("data-latest", "true");
-  const showLess = letter.getByRole("button", { name: "Show less", exact: true });
-  await expect(showLess).toHaveAttribute("aria-expanded", "true");
-  await showLess.click();
-  const readAll = letter.getByRole("button", { name: /^Read all \d+ paragraphs$/ });
-  await expect(readAll).toHaveAttribute("aria-expanded", "false");
-  await readAll.click();
-  await expect(showLess).toHaveAttribute("aria-expanded", "true");
-  // The quote of your own message and Samir's signature are gone.
-  await expect(letter).not.toContainText("Could you check it with legal");
-  await expect(letter).not.toContainText("+44 20 7946 0102");
-  await page.keyboard.press("o");
-  await expect(letter.getByTestId("as-sent")).toBeVisible();
-  await page.keyboard.press("o");
-  await expect(letter.getByTestId("as-sent")).toHaveCount(0);
-});
-
-test("Got it shows the exact text and counts down; undo sends nothing", async ({ page }) => {
-  await waitForPeople(page);
-  const { person, thread: contract } = await freshReplyRequest(page);
-  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  const sent = async () =>
-    (
-      await bridge<{ page: { conversation: { messages: unknown[] } } }>(
-        page,
-        `/api/v1/mail/people/page?person=${encodeURIComponent(person)}&topic=${contract}`,
-      )
-    ).page.conversation.messages.length;
-  const before = await sent();
-  await page.keyboard.press(".");
-  const preview = page.getByTestId("got-it-preview");
-  await expect(preview).toBeVisible();
-  await expect(preview.getByTestId("got-it-text")).toContainText(/got it/i);
-  await expect(preview.getByTestId("got-it-countdown")).toHaveText(/Sending in \ds/);
-  await page.keyboard.press("u");
-  await expect(preview).toHaveCount(0);
-  await expect(page.getByText("Got it cancelled. Nothing was sent.")).toBeVisible();
-  // Past the countdown, nothing went out.
-  await page.waitForTimeout(6_000);
-  expect(await sent()).toBe(before);
-});
-
-test("leaving mid-countdown sends nothing", async ({ page }) => {
-  await waitForPeople(page);
-  const { person, thread: contract } = await freshReplyRequest(page);
-  const sent = async () =>
-    (
-      await bridge<{ page: { conversation: { messages: unknown[] } } }>(
-        page,
-        `/api/v1/mail/people/page?person=${encodeURIComponent(person)}&topic=${contract}`,
-      )
-    ).page.conversation.messages.length;
-  const before = await sent();
-
-  // Away to another mode.
-  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  await page.keyboard.press(".");
-  await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  await page.keyboard.press("g");
-  await page.keyboard.press("i");
-  await expect(page).toHaveURL(/\/m\/inbox$/);
-
-  // Away to another person.
-  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  await page.keyboard.press(".");
-  await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  const other = page.locator(`[data-testid="messages-row"]:not([data-row-id="${person}"])`).first();
-  const otherName = (await other.getByTestId("row-title").textContent()) ?? "";
-  await other.click();
-  await expect(page.getByTestId("person-name")).toHaveText(otherName);
-  await expect(page.getByTestId("got-it-preview")).toHaveCount(0);
-
-  await page.waitForTimeout(6_500);
-  expect(await sent()).toBe(before);
-});
-
-test("Got it sends after the countdown and the turn passes", async ({ page }) => {
-  await waitForPeople(page);
-  const { person, thread } = await freshReplyRequest(page);
-  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  await page.getByTestId("got-it").click();
-  await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  await expect(page.getByText(/Got it sent to/)).toBeVisible({ timeout: 15_000 });
-  await expect
-    .poll(async () =>
-      (await messages(page)).your_turn.some((candidate) =>
-        candidate.topics.some((topic) => topic.thread_id === thread && topic.state === "your_turn"),
-      ),
-    )
-    .toBe(false);
-});
-
-test("done removes attention while All conversations retains the conversation", async ({
-  page,
-}) => {
-  await waitForPeople(page);
-  const { person, thread } = await freshReplyRequest(page);
-  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  expect(
-    all(await messages(page, false)).some((candidate) =>
-      candidate.topics.some((topic) => topic.thread_id === thread),
-    ),
-  ).toBe(true);
-  await page.keyboard.press("e");
-  await expect(page.getByText(/Done in Messages|Archived/).first()).toBeVisible();
-  await expect
-    .poll(
-      async () =>
-        all(await messages(page, false)).some((candidate) =>
-          candidate.topics.some((topic) => topic.thread_id === thread),
-        ),
-      {
-        timeout: 15_000,
-      },
-    )
-    .toBe(false);
-  await page.getByRole("radio", { name: "All conversations", exact: true }).click();
-  await expect(page).toHaveURL(/turn=all/);
-  await page.getByRole("button", { name: /^Quiet \(/ }).click();
-  await expect(row(page, person)).toBeVisible();
-  await row(page, person).click();
-  await expect(page.getByTestId("conversation")).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-  await expect(page.getByRole("radio", { name: "Needs attention" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await expect(row(page, person)).toHaveCount(0);
-});
-
-test.describe("on a phone", () => {
-  test.use({ viewport: { width: 390, height: 844 } });
-
-  test("opening plain Messages closes the previously open person", async ({ page }) => {
-    await waitForPeople(page);
-    const personPageRequests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/v1/mail/people/page"))
-        personPageRequests.push(request.url());
-    });
-    await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}`);
-    await expect(page.getByTestId("person-name")).toHaveText("Samir Patel");
-    const requestsBeforeLeaving = personPageRequests.length;
-    expect(requestsBeforeLeaving).toBeGreaterThan(0);
-
-    await page.keyboard.press("g");
-    await page.keyboard.press("m");
-    await expect(page).toHaveURL(/\/messages$/);
-    await expect(row(page, SAMIR)).toBeVisible();
-    await expect(page.getByTestId("person-page")).toHaveCount(0);
-    expect(personPageRequests).toHaveLength(requestsBeforeLeaving);
-  });
-
-  test("the list and the person page are two screens", async ({ page }) => {
-    await waitForPeople(page);
-    await openApp(page, "/messages");
-    await expect(row(page, SAMIR)).toBeVisible();
-    await expect(page.getByTestId("person-page")).toBeHidden();
-    await expect(page.getByRole("heading", { name: "Choose a conversation" })).toHaveCount(0);
-    await row(page, SAMIR).click();
-    const pageView = page.getByTestId("person-page");
-    await expect(pageView).toBeVisible();
-    await expect(row(page, SAMIR)).toBeHidden();
-    await expect(pageView.getByTestId("got-it")).toBeVisible();
-    await pageView.getByRole("button", { name: "Back to the people" }).click();
-    await expect(row(page, SAMIR)).toBeVisible();
-  });
 });

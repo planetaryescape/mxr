@@ -221,6 +221,29 @@ impl super::Store {
         Ok(())
     }
 
+    /// Set `expires_at` on each of these entries; ids with no entry are
+    /// skipped. A job's chunks are written with no expiry while it runs and
+    /// all get the same one when it ends.
+    pub async fn set_undo_entries_expiry(
+        &self,
+        mutation_ids: &[String],
+        expires_at: i64,
+    ) -> Result<u64, sqlx::Error> {
+        let mut changed = 0;
+        for chunk in mutation_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "UPDATE mutation_undo_log SET expires_at = ? WHERE mutation_id IN ({placeholders})"
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(expires_at);
+            for id in chunk {
+                query = query.bind(id);
+            }
+            changed += query.execute(self.writer()).await?.rows_affected();
+        }
+        Ok(changed)
+    }
+
     /// Drop every entry whose `expires_at` is at or before `now`. Bounds
     /// the table size under heavy mutation traffic.
     pub async fn prune_expired_undo_entries(&self, now: i64) -> Result<u64, sqlx::Error> {

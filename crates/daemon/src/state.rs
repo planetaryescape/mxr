@@ -543,6 +543,7 @@ pub struct AppState {
     pub(crate) treatment_previews: crate::handler::rule_treatment::TreatmentPreviews,
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
+    pub(crate) selection_previews: crate::handler::selection_jobs::SelectionPreviews,
     pub(crate) category_rule_previews: crate::handler::category_rules::CategoryRulePreviews,
     pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
     /// Writing-help proposals waiting to be accepted (`ComposeAssist`).
@@ -937,6 +938,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2419,6 +2421,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2520,6 +2523,7 @@ impl AppState {
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2573,14 +2577,36 @@ impl AppState {
 
     #[cfg(test)]
     pub async fn in_memory_with_fake_config(
+        config: mxr_config::MxrConfig,
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+        Self::in_memory_with_fake_index(config, SearchIndex::in_memory()?).await
+    }
+
+    /// [`Self::in_memory_with_fake_config`] over a search index the test
+    /// opened (for example in a temp directory), not a RAM one.
+    #[cfg(test)]
+    pub async fn in_memory_with_fake_index(
+        config: mxr_config::MxrConfig,
+        index: SearchIndex,
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+        Self::in_memory_with_fake_provider(config, index, mxr_provider_fake::FakeProvider::new)
+            .await
+    }
+
+    /// [`Self::in_memory_with_fake_index`] with the fake provider built by
+    /// the test (for example over a large demo dataset) from the account id.
+    #[cfg(test)]
+    pub async fn in_memory_with_fake_provider(
         mut config: mxr_config::MxrConfig,
+        index: SearchIndex,
+        make_provider: impl FnOnce(AccountId) -> mxr_provider_fake::FakeProvider,
     ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
         let attachment_dir = test_attachment_dir()?;
         config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
-        let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
+        let (search, search_worker) = SearchServiceHandle::start(index);
         runtime_tasks.set_search_worker(search_worker);
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(
@@ -2614,7 +2640,7 @@ impl AppState {
         };
         store.insert_account(&account).await?;
 
-        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let fake = Arc::new(make_provider(account_id.clone()));
         let provider: Arc<dyn MailSyncProvider> = fake.clone();
         let send_provider: Option<Arc<dyn MailSendProvider>> = Some(fake.clone());
 
@@ -2647,6 +2673,7 @@ impl AppState {
                 treatment_previews: Default::default(),
                 sweep_previews: Default::default(),
                 purge_previews: Default::default(),
+                selection_previews: Default::default(),
                 category_rule_previews: Default::default(),
                 category_previews: Default::default(),
                 compose_proposals: Default::default(),

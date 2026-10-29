@@ -7,8 +7,14 @@ import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { fetchSnoozed, unsnoozeMessage, type SnoozedEntry } from "@/features/mailbox/api";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { PageEmpty } from "@/components/PageParts";
+import { definedShortcut } from "@/lib/actions/definition";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { formatLongDate, formatRelative, plural } from "@/lib/format";
+
+/** Snoozed's empty state names Not now's key from the definition (it moved from `Z` to `b`). */
+export function snoozedEmptyBody(): string {
+  return `Press ${definedShortcut("mail.snooze")} on a conversation to send it away until later.`;
+}
 
 /** One row per conversation: waking it wakes every snoozed message in it. */
 function toRows(entries: SnoozedEntry[]): MessageRowView[] {
@@ -80,7 +86,7 @@ export function SnoozedRoute() {
         <PageEmpty
           framed
           title="Nothing snoozed"
-          body="Press Z on a conversation to send it away until later."
+          body={snoozedEmptyBody()}
         />
       }
     />

@@ -14,10 +14,20 @@ vi.mock("sonner", () => ({
     success: vi.fn<() => void>(),
     error: vi.fn<() => void>(),
     message: vi.fn<() => void>(),
+    info: vi.fn<() => void>(),
   }),
 }));
 
-import { isWebUrl, openInMarginalia } from "./readingVerbs";
+import { toast } from "sonner";
+
+import { highlightSelection, isWebUrl, openInMarginalia } from "./readingVerbs";
+
+describe("highlighting with nothing selected", () => {
+  it("names the highlight key from the key definition, not the retired h", async () => {
+    expect(await highlightSelection("", "item-1", "issue")).toBe(false);
+    expect(toast.info).toHaveBeenCalledWith('Select some text first, then press "');
+  });
+});
 
 describe("opening Marginalia", () => {
   beforeEach(() => vi.restoreAllMocks());

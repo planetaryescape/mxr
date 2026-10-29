@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { markModeDone } from "@/features/modes/modeDone";
+import { definedShortcut } from "@/lib/actions/definition";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
@@ -144,7 +145,7 @@ export async function letGo(threadIds: readonly string[]): Promise<boolean> {
   return done;
 }
 
-/** `h`: save the selected passage. */
+/** `"`: save the selected passage. */
 export async function highlightSelection(
   selection: string,
   itemKey: string,
@@ -154,7 +155,7 @@ export async function highlightSelection(
 ): Promise<boolean> {
   const payload = highlightPayload(selection, itemKey, view);
   if (!payload) {
-    toast.info("Select some text first, then press h");
+    toast.info(`Select some text first, then press ${definedShortcut("reading.reader-highlight")}`);
     return false;
   }
   try {

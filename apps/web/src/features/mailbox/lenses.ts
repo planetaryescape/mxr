@@ -28,6 +28,11 @@ export interface MailLens {
   identity: LensIdentity;
   /** Real label name for label lenses (moves, routes, projections). */
   labelName?: string;
+  /**
+   * The account a label belongs to, when the sidebar lists labels of every
+   * account. The list opens that label in its own account.
+   */
+  accountId?: string;
 }
 
 const SYSTEM_ORDER = ["inbox", "starred", "sent", "drafts", "archive", "spam", "trash"];
@@ -94,7 +99,9 @@ function lensFromItem(sectionId: string, item: SidebarItem): MailLens | null {
         ? { lens_kind: "inbox" }
         : lens.kind === "all_mail"
           ? { lens_kind: "all_mail" }
-          : { lens_kind: "label", label_id: lens.labelId ?? undefined };
+          : lens.kind === "starred"
+            ? { lens_kind: "starred" }
+            : { lens_kind: "label", label_id: lens.labelId ?? undefined };
     return {
       key: slug,
       label: displaySystemName(item.label, slug),
@@ -116,6 +123,7 @@ function lensFromItem(sectionId: string, item: SidebarItem): MailLens | null {
       params: { lens_kind: "label", label_id: lens.labelId },
       identity: { kind: "label", labelName: item.label },
       labelName: item.label,
+      accountId: item.accountId ?? undefined,
     };
   }
   if (lens.kind === "category" && lens.categoryId) {

@@ -485,7 +485,7 @@ impl App {
                     // Open label picker
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Apply);
+                        .open(self.label_picker_labels(), LabelPickerMode::Apply);
                 }
             }
             Action::MoveToLabel => {
@@ -516,7 +516,7 @@ impl App {
                     // Open label picker
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Move);
+                        .open(self.label_picker_labels(), LabelPickerMode::Move);
                 }
             }
             Action::RouteToLabel => {
@@ -552,7 +552,7 @@ impl App {
                 } else if self.active_label_record().is_some() {
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Route);
+                        .open(self.label_picker_labels(), LabelPickerMode::Route);
                 } else {
                     self.status_message = Some("Open a queue label before routing".into());
                 }

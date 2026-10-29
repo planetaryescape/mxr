@@ -432,11 +432,15 @@ pub(crate) async fn list_subscriptions(
     state: &AppState,
     account_id: Option<&AccountId>,
     limit: u32,
+    all_accounts: bool,
 ) -> HandlerResult {
-    // Resolve to default account if not specified
-    let resolved = account_id
-        .cloned()
-        .or_else(|| state.default_account_id_opt());
+    // Every enabled account's senders when asked for; otherwise the default
+    // account's when no account is named.
+    let resolved = match account_id {
+        Some(account_id) => Some(account_id.clone()),
+        None if all_accounts => None,
+        None => state.default_account_id_opt(),
+    };
     let subscriptions = state
         .store
         .list_subscriptions(resolved.as_ref(), limit)

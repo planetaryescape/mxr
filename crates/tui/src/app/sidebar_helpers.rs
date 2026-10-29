@@ -11,6 +11,40 @@ impl App {
         (account.enabled || restored_profile) && account.sync_kind.is_some()
     }
 
+    /// The labels the picker applies, moves or routes by name. Those names
+    /// resolve in the default account, so the picker keeps that account's user
+    /// labels; system labels are shared as before. The sidebar lists every
+    /// account's user labels instead.
+    pub(crate) fn label_picker_labels(&self) -> Vec<Label> {
+        let default_account = self
+            .accounts
+            .page
+            .accounts
+            .iter()
+            .find(|account| account.is_default)
+            .map(|account| &account.account_id);
+        self.mailbox
+            .labels
+            .iter()
+            .filter(|label| {
+                label.kind == LabelKind::System
+                    || default_account.is_none_or(|id| id == &label.account_id)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Starred is listed by role when no label names it (an IMAP-only set of
+    /// accounts with no \Flagged folder); the sidebar and the renderer both
+    /// use this so their indexes match.
+    pub(crate) fn starred_role_item_shown(&self) -> bool {
+        !self
+            .mailbox
+            .labels
+            .iter()
+            .any(|label| label.system_mailbox_role() == Some(mxr_core::Role::Starred))
+    }
+
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = Vec::new();
         // Accounts section (only shown when multiple accounts exist)
@@ -67,6 +101,9 @@ impl App {
                 SidebarItem::CalendarInvites,
                 SidebarItem::AllMail,
             ]);
+            if self.starred_role_item_shown() {
+                items.push(SidebarItem::Starred);
+            }
             items.extend(
                 system_labels
                     .into_iter()
@@ -142,7 +179,8 @@ impl App {
             all_mail_active: !self.search.active
                 && self.mailbox.mailbox_view == MailboxView::Messages
                 && self.mailbox.active_label.is_none()
-                && self.mailbox.pending_active_label.is_none(),
+                && self.mailbox.pending_active_label.is_none()
+                && self.mailbox.active_role.is_none(),
             subscriptions_active: self.mailbox.mailbox_view == MailboxView::Subscriptions,
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
             now_active: self.mailbox.mailbox_view == MailboxView::Now,
@@ -165,6 +203,9 @@ impl App {
             calendar_invites_count: self.mailbox.calendar_invites_page.entries.len(),
             accounts,
             accounts_expanded: self.mailbox.sidebar_accounts_expanded,
+            account_marks: self.account_marks(),
+            starred_shown: self.starred_role_item_shown(),
+            starred_active: self.mailbox.active_role == Some(mxr_core::Role::Starred),
             sync_throbber: Some(&self.mailbox.sidebar_sync_throbber),
             system_expanded: self.mailbox.sidebar_system_expanded,
             user_expanded: self.mailbox.sidebar_user_expanded,
@@ -213,6 +254,7 @@ impl App {
                 SidebarSelectionKey::Account(account.key.clone().unwrap_or_default())
             }
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
+            SidebarItem::Starred => SidebarSelectionKey::Starred,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
             SidebarItem::Now => SidebarSelectionKey::Now,
             SidebarItem::Messages => SidebarSelectionKey::Messages,
@@ -240,6 +282,7 @@ impl App {
                     account.key.as_deref() == Some(key.as_str())
                 }
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
+                (SidebarItem::Starred, SidebarSelectionKey::Starred) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
                 (SidebarItem::Now, SidebarSelectionKey::Now) => true,
                 (SidebarItem::Messages, SidebarSelectionKey::Messages) => true,
@@ -295,7 +338,13 @@ impl App {
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
             .filter(|l| l.kind != mxr_core::types::LabelKind::System)
             .collect();
-        user.sort_by_key(|label| label.name.to_lowercase());
+        // Same-name labels of different accounts sit together, in account order.
+        user.sort_by(|a, b| {
+            a.name
+                .to_lowercase()
+                .cmp(&b.name.to_lowercase())
+                .then_with(|| a.account_id.to_string().cmp(&b.account_id.to_string()))
+        });
 
         let mut result = system;
         result.extend(user);
@@ -340,6 +389,7 @@ impl App {
                 }
             }
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
+            Some(SidebarItem::Starred) => Some(Action::GoToStarred),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Now) => Some(Action::OpenNow),
             // Waiting on is a lane of the desk, which backs Messages.
@@ -381,6 +431,7 @@ impl App {
                 SidebarItem::Header(SidebarHeader::Accounts | SidebarHeader::More)
                 | SidebarItem::Account(_)
                 | SidebarItem::AllMail
+                | SidebarItem::Starred
                 | SidebarItem::Subscriptions
                 | SidebarItem::Now
                 | SidebarItem::Messages

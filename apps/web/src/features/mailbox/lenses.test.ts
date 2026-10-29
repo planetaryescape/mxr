@@ -79,6 +79,64 @@ describe("lensesFromShell", () => {
     expect(identity("sent")).toEqual({ kind: "label", labelName: "SENT" });
   });
 
+  test("opens a Starred item with no label through the starred lens", () => {
+    const starred = lensesFromShell({
+      sidebar: {
+        sections: [
+          {
+            id: "system",
+            title: "System",
+            items: [
+              {
+                id: "starred",
+                label: "Starred",
+                unread: 2,
+                total: 5,
+                lens: { kind: "starred" },
+              },
+            ],
+          },
+        ],
+      },
+    }).find((lens) => lens.key === "starred");
+    expect(starred?.path).toBe("/m/starred");
+    expect(starred?.params).toEqual({ lens_kind: "starred" });
+    expect(starred?.identity).toEqual({ kind: "starred" });
+    expect([starred?.unread, starred?.total]).toEqual([2, 5]);
+  });
+
+  test("keeps the account of a label listed from every account", () => {
+    const shared: ShellResponse = {
+      sidebar: {
+        sections: [
+          {
+            id: "labels",
+            title: "Labels",
+            items: [
+              {
+                id: "work-acct-b",
+                label: "Work",
+                accountId: "acct-b",
+                lens: { kind: "label", labelId: "Label_b" },
+              },
+              {
+                id: "work-acct-a",
+                label: "Work",
+                accountId: "acct-a",
+                lens: { kind: "label", labelId: "Label_a" },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const [first, second] = lensesFromShell(shared);
+    expect(first?.key).toBe("label:work-acct-b");
+    expect(first?.accountId).toBe("acct-b");
+    expect(first?.params).toEqual({ lens_kind: "label", label_id: "Label_b" });
+    expect(second?.accountId).toBe("acct-a");
+  });
+
   test("lists saved searches separately", () => {
     expect(savedSearchLenses(lenses).map((lens) => [lens.label, lens.path])).toEqual([
       ["Unread invoices", "/m/saved/unread-invoices"],

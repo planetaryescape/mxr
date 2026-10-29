@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef } from "react";
 
+import { AccountMark } from "@/components/AccountMark";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import {
   isEntryActive,
@@ -24,6 +25,7 @@ import { UnreadDot } from "@/components/UnreadDot";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { useDeskQuery, type Desk } from "@/features/desk/api";
 import { lensesFromShell } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
@@ -119,6 +121,7 @@ export function useNavSections(): NavSection[] {
           label: lens.label,
           Icon: FolderOpen,
           color: labelColor(lens.label),
+          accountId: lens.accountId,
         })),
       });
     }
@@ -421,6 +424,7 @@ function SidebarLink({
   focused: boolean;
 }) {
   const count = entry.count && entry.count > 0 ? entry.count : null;
+  const accountMark = useRowAccountMark(entry.accountId);
   const link = (
     <Link
       to={entry.to}
@@ -444,6 +448,7 @@ function SidebarLink({
       )}
     >
       <NavMark entry={entry} className={active ? "text-text-2" : "text-text-3"} />
+      {!collapsed && accountMark ? <AccountMark identity={accountMark} /> : null}
       {!collapsed ? (
         <span className="min-w-0 flex-1 truncate">
           {entry.label}

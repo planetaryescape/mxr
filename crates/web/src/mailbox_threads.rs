@@ -143,6 +143,17 @@ fn thread_lens<'a>(
                 lens_label: label.map_or_else(|| "Label".to_string(), lens_label_name),
             }
         }
+        MailboxLensKind::Starred => ThreadLens {
+            label_filter: None,
+            // The role lists by the starred flag in every account, scoped or not.
+            label_role: Role::Starred.system_mailbox_wire_name().map(str::to_string),
+            membership: Membership::Role {
+                role: Role::Starred,
+                labels: &chrome.scope_labels,
+            },
+            counts: chrome.role_counts(Role::Starred),
+            lens_label: "Starred".to_string(),
+        },
         MailboxLensKind::Category
         | MailboxLensKind::SavedSearch
         | MailboxLensKind::Subscription => return Ok(None),

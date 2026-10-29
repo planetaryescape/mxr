@@ -17,7 +17,9 @@ export function useShellQuery() {
  * projected at render time (see pendingMailOps), never written into it.
  */
 export function useMailboxQuery(lens: MailLens | null) {
-  const account = useUiPrefs((s) => s.accountScope);
+  const scope = useUiPrefs((s) => s.accountScope);
+  // A label listed from every account opens in its own account.
+  const account = lens?.accountId ?? scope;
   const view = useUiPrefs((s) => s.listMode);
   const params = lens ? { ...lens.params, view, limit: MAILBOX_PAGE_SIZE, account } : null;
   return useInfiniteQuery({

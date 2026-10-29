@@ -189,7 +189,9 @@ fn subscriptions_view_dispatches_list_subscriptions_with_default_limit() {
     let mut app = App::new();
     app.analytics.view = AnalyticsView::Subscriptions;
     match app.analytics_request_for_active_view() {
-        Some(mxr_protocol::Request::ListSubscriptions { limit, account_id }) => {
+        Some(mxr_protocol::Request::ListSubscriptions {
+            limit, account_id, ..
+        }) => {
             assert_eq!(limit, 200);
             assert!(account_id.is_none());
         }

@@ -68,7 +68,7 @@ export interface MailboxCounts {
 }
 
 export interface SidebarLens {
-  kind: "inbox" | "all_mail" | "label" | "saved_search" | "subscription" | string;
+  kind: "inbox" | "all_mail" | "starred" | "label" | "saved_search" | "subscription" | string;
   labelId?: string | null;
   categoryId?: string | null;
   savedSearch?: string | null;
@@ -82,6 +82,8 @@ export interface SidebarItem {
   total?: number;
   active?: boolean;
   lens?: SidebarLens;
+  /** A user label's account, sent when the view mixes accounts. */
+  accountId?: string | null;
 }
 
 export interface SidebarSection {

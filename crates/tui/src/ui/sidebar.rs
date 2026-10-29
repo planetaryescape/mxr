@@ -1,3 +1,4 @@
+use super::account_mark::AccountMarks;
 use crate::app::ActivePane;
 use crate::theme::Theme;
 use mxr_core::types::{Label, LabelKind, SavedSearch};
@@ -95,6 +96,11 @@ pub struct SidebarView<'a> {
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
     pub active_label: Option<&'a mxr_core::LabelId>,
+    /// Chips for the labels of each account, when rows are marked.
+    pub account_marks: AccountMarks,
+    /// Starred has no label to name, so it is listed by role.
+    pub starred_shown: bool,
+    pub starred_active: bool,
 }
 
 struct SidebarBuildState<'a> {
@@ -106,6 +112,7 @@ struct SidebarBuildState<'a> {
     system_expanded: bool,
     user_expanded: bool,
     saved_searches_expanded: bool,
+    starred_shown: bool,
 }
 
 /// One of the rail's entries: Now, the five modes, then Inbox.
@@ -189,6 +196,7 @@ enum SidebarEntry<'a> {
     Inbox,
     More(MorePage),
     AllMail,
+    Starred,
     Subscriptions {
         count: usize,
     },
@@ -222,6 +230,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
         system_expanded: view.system_expanded,
         user_expanded: view.user_expanded,
         saved_searches_expanded: view.saved_searches_expanded,
+        starred_shown: view.starred_shown,
     };
     let entries = build_sidebar_entries(view.labels, view.saved_searches, &build_state);
     let selected_visual_index = visual_index_for_selection(&entries, view.sidebar_selected);
@@ -266,6 +275,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 render_sidebar_link(inner_width, page.name(), None, false, theme)
             }
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
+            SidebarEntry::Starred => {
+                render_sidebar_link(inner_width, "Starred", None, view.starred_active, theme)
+            }
             SidebarEntry::Subscriptions { count } => {
                 render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
             }
@@ -278,9 +290,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 view.calendar_invites_active,
                 theme,
             ),
-            SidebarEntry::Label(label) => {
-                render_label_item(label, inner_width, view.active_label, theme)
-            }
+            SidebarEntry::Label(label) => render_label_item(
+                label,
+                inner_width,
+                view.active_label,
+                &view.account_marks,
+                theme,
+            ),
             SidebarEntry::SavedSearch(search) => ListItem::new(format!("  {}", search.name)),
         })
         .collect::<Vec<_>>();
@@ -372,7 +388,13 @@ fn build_sidebar_entries<'a>(
         .filter(|label| label.kind != LabelKind::System)
         .copied()
         .collect();
-    user_labels.sort_by_key(|label| label.name.to_lowercase());
+    // Same-name labels of different accounts sit together, in account order.
+    user_labels.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.account_id.to_string().cmp(&b.account_id.to_string()))
+    });
 
     let mut entries = Vec::new();
 
@@ -415,6 +437,9 @@ fn build_sidebar_entries<'a>(
             count: state.calendar_invites_count,
         });
         entries.push(SidebarEntry::AllMail);
+        if state.starred_shown {
+            entries.push(SidebarEntry::Starred);
+        }
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
 
@@ -455,6 +480,7 @@ fn visual_index_for_selection(
             | SidebarEntry::Inbox
             | SidebarEntry::More(_)
             | SidebarEntry::AllMail
+            | SidebarEntry::Starred
             | SidebarEntry::Subscriptions { .. }
             | SidebarEntry::Owed { .. }
             | SidebarEntry::CalendarInvites { .. }
@@ -615,6 +641,7 @@ fn render_label_item<'a>(
     label: &Label,
     inner_width: usize,
     active_label: Option<&mxr_core::LabelId>,
+    account_marks: &AccountMarks,
     theme: &Theme,
 ) -> ListItem<'a> {
     let is_active = active_label.is_some_and(|current| current == &label.id);
@@ -628,14 +655,24 @@ fn render_label_item<'a>(
         String::new()
     };
 
+    // The account's chip comes first when the view mixes accounts, so the
+    // same label name on two accounts reads apart (blueprint 33).
+    let mut spans = vec![Span::raw("  ")];
+    let mut prefix_width = 2;
+    if let Some(chip) = account_marks.row_cell(&label.account_id, theme) {
+        spans.extend(chip);
+        spans.push(Span::raw(" "));
+        prefix_width += account_marks.column_width() + 1;
+    }
     // Right-align count: name on left, count on right
-    let name_part = format!("  {display_name}");
-    let line = if count_str.is_empty() {
-        name_part
-    } else {
-        let padding = inner_width.saturating_sub(name_part.len() + count_str.len());
-        format!("{}{}{}", name_part, " ".repeat(padding), count_str)
-    };
+    spans.push(Span::raw(display_name.to_string()));
+    if !count_str.is_empty() {
+        let padding = inner_width
+            .saturating_sub(prefix_width + display_name.chars().count() + count_str.len());
+        spans.push(Span::raw(" ".repeat(padding)));
+        spans.push(Span::raw(count_str));
+    }
+    let line = Line::from(spans);
 
     let style = if is_active {
         // Full-width highlight bar for active label
@@ -815,6 +852,7 @@ mod tests {
             system_expanded: true,
             user_expanded: true,
             saved_searches_expanded: true,
+            starred_shown: false,
         }
     }
 

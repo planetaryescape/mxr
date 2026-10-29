@@ -16,7 +16,7 @@ export interface SnoozePreset {
 }
 
 export interface MailboxLensParams {
-  lens_kind: "inbox" | "all_mail" | "label" | "category" | "saved_search" | "subscription";
+  lens_kind: "inbox" | "all_mail" | "starred" | "label" | "category" | "saved_search" | "subscription";
   label_id?: string;
   category_id?: string;
   saved_search?: string;

@@ -264,6 +264,31 @@ async fn list_labels_all_accounts_returns_each_enabled_accounts_labels() {
     assert!(labels.iter().all(|l| l.account_id == a.first));
 }
 
+#[tokio::test]
+async fn list_subscriptions_all_accounts_answers_and_a_scoped_profile_cannot_ask_for_it() {
+    let a = accounts().await;
+    // Every enabled account's senders when asked; the default account's otherwise.
+    let ResponseData::Subscriptions { .. } = request(
+        &a.fx,
+        Request::ListSubscriptions {
+            account_id: None,
+            limit: 8,
+            all_accounts: true,
+        },
+    )
+    .await
+    else {
+        panic!("expected subscriptions")
+    };
+    scope_to_first(&a).await;
+    let req = Request::ListSubscriptions {
+        account_id: None,
+        limit: 8,
+        all_accounts: true,
+    };
+    assert!(scoped_check(&a, &req).await.is_err(), "{req:?}");
+}
+
 /// Profile limited to the first account, every other gate open.
 async fn scope_to_first(a: &Accounts) {
     let mut config = a.fx.state.config_snapshot();

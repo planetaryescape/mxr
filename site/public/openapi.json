@@ -43758,6 +43758,14 @@
             ],
             "format": "date-time"
           },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the source email left the inbox through a provider sync and is\nstill out: \"filed in Gmail\". Never set for an archive mxr made, and\ncleared when the mail comes back."
+          },
           "source_message_id": {
             "oneOf": [
               {

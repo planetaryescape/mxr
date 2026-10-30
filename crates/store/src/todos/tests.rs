@@ -53,7 +53,7 @@ impl Fx {
             source_message_id: Some(source.0.clone()),
             source_date: Some(date),
             source_filed_at: None,
-            source_unread: None,
+            source_unread: Some(true),
             kind: "bill".to_string(),
             verb: "pay".to_string(),
             doc_type: Some("bill_link".to_string()),

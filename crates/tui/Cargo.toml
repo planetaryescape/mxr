@@ -48,7 +48,7 @@ unicode-width = { workspace = true }
 # Ctrl-z raises SIGTSTP through nix's safe wrapper; the workspace denies
 # unsafe code, and the mxr binary already depends on this nix.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", features = ["signal"] }
+nix = { version = "0.31", features = ["signal"] }
 
 [dev-dependencies]
 insta = { workspace = true }

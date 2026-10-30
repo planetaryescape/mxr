@@ -1,8 +1,20 @@
 //! User corrections and full-state undo share a transaction and compare the
-//! complete row, so a same-second concurrent edit cannot be overwritten.
+//! stored row, so a same-second concurrent edit cannot be overwritten. The
+//! mail state derived from other tables (filed elsewhere, read) is left out
+//! of that comparison: reading or archiving the email changes the row's
+//! tone, not the to-do's fields, and must not block an undo.
 use crate::{decode_json, encode_json, Store, TodoRecord};
 use chrono::{DateTime, Utc};
 use sqlx::Row;
+
+/// The row as `todos` stores it, without the fields derived from the source
+/// email's event log and read flag.
+fn stored(record: &TodoRecord) -> TodoRecord {
+    let mut record = record.clone();
+    record.source_filed_at = None;
+    record.source_unread = None;
+    record
+}
 
 impl Store {
     pub async fn correct_todo(
@@ -24,7 +36,7 @@ impl Store {
         }
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
         let current = correction_row(&mut tx, &before.id).await?;
-        if current != *before {
+        if stored(&current) != stored(before) {
             return Err(sqlx::Error::Protocol(
                 "To-do changed; refresh before correcting it".into(),
             ));
@@ -55,7 +67,7 @@ impl Store {
         let before: TodoRecord = decode_json(row.try_get("before_json")?)?;
         let after: TodoRecord = decode_json(row.try_get("after_json")?)?;
         let current = correction_row(&mut tx, todo_id).await?;
-        if current != after {
+        if stored(&current) != stored(&after) {
             return Err(sqlx::Error::Protocol(
                 "To-do changed after that correction; newer work was kept".into(),
             ));

@@ -90,6 +90,8 @@ pub struct TodoRecord {
     /// When the source email most recently left the inbox through a provider
     /// sync, and is still out; `None` when mxr filed it or it came back.
     pub source_filed_at: Option<DateTime<Utc>>,
+    /// The source email is unread; `None` when the row has no source email.
+    pub source_unread: Option<bool>,
     pub kind: String,
     pub verb: String,
     pub doc_type: Option<String>,
@@ -170,15 +172,17 @@ pub(crate) const COLUMNS: &str =
     commitment_id, rules_version, dedup_key, surfaced_at, created_at, updated_at, done_at,
     dismissed_at";
 
-/// `COLUMNS` plus the derived time the source email was filed outside mxr.
+/// `COLUMNS` plus the derived state of the source email.
 ///
 /// Read-only rows select this; inserts keep using `COLUMNS`, because the
-/// filed time is evidence from `message_events`, not a column to write. A
-/// sync that removes the inbox label is the only source: mxr's own archive
-/// rewrites the label set in bulk, which emits no per-label event, so its
-/// archive never marks its own to-do as filed elsewhere. The message must
-/// still be out of the inbox, so an undo or an external unarchive clears the
-/// marker.
+/// filed time and the unread flag are evidence, not columns to write. A
+/// sync that removes the inbox label is the only source of the filed time:
+/// mxr's own archive rewrites the label set in bulk, which emits no
+/// per-label event, so its archive never marks its own to-do as filed
+/// elsewhere. The message must still be out of the inbox, so an undo or an
+/// external unarchive clears the marker. The unread flag is the message's
+/// own read state, so reading the email calms the row before the to-do is
+/// ticked.
 pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_message_id, source_date, kind, verb,
     doc_type, title, counterparty, sender_domain, amount_minor, currency, due_at, due_words,
     act_by_at, surface_at, scheduled_for, action_url, action_domain, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,
@@ -196,7 +200,10 @@ pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_messa
             SELECT 1 FROM message_labels ml
              WHERE ml.message_id = e.message_id AND ml.label_id = l.id
         )
-    ) AS source_filed_at";
+    ) AS source_filed_at,
+    (SELECT CASE WHEN (m.flags & 1) = 0 THEN 1 ELSE 0 END
+       FROM messages m
+      WHERE m.id = todos.source_message_id) AS source_unread";
 
 /// Open rows the sweep may expire: detected, untouched, and not a bill or
 /// promise, which stay "was due" until the user acts (D117).
@@ -234,6 +241,12 @@ pub(crate) fn row_to_todo(row: &SqliteRow) -> Result<TodoRecord, sqlx::Error> {
             row.try_get::<Option<i64>, _>("source_filed_at")
                 .unwrap_or(None),
         )?,
+        // Same for the read state: a query without the derived column leaves
+        // it unknown, and the row keeps the neutral tier.
+        source_unread: row
+            .try_get::<Option<i64>, _>("source_unread")
+            .unwrap_or(None)
+            .map(|flags| flags != 0),
         kind: row.try_get("kind")?,
         verb: row.try_get("verb")?,
         doc_type: row.try_get("doc_type")?,

@@ -874,8 +874,10 @@ this), `signal` (`routine`, `changed`, `new_source`, `anomaly`,
 ```
 
 **View and actions.** Three sections by signal, not date: Needs a look,
-Changed, Routine. No timestamps unless the time is the fact, no unread
-state, badge or sound. Google's SRE book is the model: only actionable
+Changed, Routine. No timestamps unless the time is the fact, no badge or
+sound. The line's text follows its newest email's read state (D189): unread
+reads bright and semibold, read calms to `--text-2`. Google's SRE book is the
+model: only actionable
 alerts may interrupt, the rest belongs on a dashboard that shows state. `A`
 lets go of the cut with a dry-run preview ("Let go of 31 updates from 12
 sources; 2 also in To do stay there"), `e` lets go of one source, `t` hands

@@ -220,6 +220,10 @@ pub struct TodoData {
     /// cleared when the mail comes back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The source email is unread. `None` when the row has no source email.
+    /// A read source calms the row even before the to-do is ticked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unread: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surfaced_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

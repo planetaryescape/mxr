@@ -462,6 +462,7 @@ mod tests {
             thread_ids: Vec::new(),
             latest_message_id: None,
             latest_message_pinned: false,
+            unread: None,
             fact_message_id: None,
             latest_thread_id: None,
             latest_at: at,

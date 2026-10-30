@@ -115,6 +115,17 @@ describe("Row", () => {
     expect(screen.getByTestId("row")).not.toHaveAttribute("data-unread");
   });
 
+  test("an unread row names the state for assistive tech", () => {
+    const { rerender } = renderRow({ unread: true });
+    expect(screen.getByText("Unread.")).toHaveClass("sr-only");
+    rerender(
+      <ul>
+        <Row lit={false} unread={false} primary="Pat" data-testid="row" />
+      </ul>,
+    );
+    expect(screen.queryByText("Unread.")).toBeNull();
+  });
+
   test("a list with no read state keeps the neutral text tier", () => {
     renderRow();
     expect(screen.getByText("Pat Colleague")).toHaveClass("text-text-1");

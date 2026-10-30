@@ -53,6 +53,7 @@ impl Fx {
             source_message_id: Some(source.0.clone()),
             source_date: Some(date),
             source_filed_at: None,
+            source_unread: Some(true),
             kind: "bill".to_string(),
             verb: "pay".to_string(),
             doc_type: Some("bill_link".to_string()),
@@ -836,9 +837,9 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
 }
 
 #[test]
-fn the_read_columns_are_the_row_columns_plus_the_filed_time() {
+fn the_read_columns_are_the_row_columns_plus_the_derived_state() {
     assert!(SELECT_COLUMNS.starts_with(COLUMNS));
-    assert!(SELECT_COLUMNS.ends_with("AS source_filed_at"));
+    assert!(SELECT_COLUMNS.ends_with("AS source_unread"));
 }
 
 #[tokio::test]
@@ -921,4 +922,92 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
             .source_filed_at,
         None
     );
+}
+
+#[tokio::test]
+async fn a_source_message_read_state_calms_the_row_and_a_missing_source_stays_unknown() {
+    use mxr_core::types::EventSource;
+
+    let fx = Fx::new().await;
+    let source = fx.message("unread", at(0)).await;
+    let row = fx.record("unread", &source, at(0));
+    fx.store.insert_todo(&row).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("unread")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        Some(true)
+    );
+
+    fx.store
+        .set_read(&source.0, true, EventSource::User)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("unread")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        Some(false)
+    );
+
+    let mut manual = fx.record("manual", &source, at(0));
+    manual.dedup_key = "manual".to_string();
+    manual.source_message_id = None;
+    fx.store.insert_todo(&manual).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("manual")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        None
+    );
+}
+
+#[tokio::test]
+async fn reading_the_source_does_not_block_undoing_a_correction() {
+    use mxr_core::types::EventSource;
+
+    let fx = Fx::new().await;
+    let source = fx.message("undo", at(0)).await;
+    fx.store
+        .insert_todo(&fx.record("undo", &source, at(0)))
+        .await
+        .unwrap();
+    let before = fx.store.get_todo("undo").await.unwrap().unwrap();
+    let mut after = before.clone();
+    after.title = "Keep the corrected bill".into();
+    after.user_edited = true;
+    fx.store
+        .correct_todo(
+            "undo-correction",
+            "wrong_details",
+            &before,
+            &after,
+            false,
+            at(1),
+        )
+        .await
+        .unwrap();
+
+    // Reading the email changes the derived tone, not the to-do, so undo
+    // must still be allowed.
+    fx.store
+        .set_read(&source.0, true, EventSource::User)
+        .await
+        .unwrap();
+    let undone = fx
+        .store
+        .undo_todo_correction("undo", "undo-correction", false, at(2))
+        .await
+        .unwrap();
+    assert_eq!(undone.title, before.title);
+    assert_eq!(undone.source_unread, Some(false));
 }

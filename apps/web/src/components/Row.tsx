@@ -106,6 +106,10 @@ export const Row = memo(function Row({
   const secondaryTone = unread ? "text-text-1" : "text-text-2";
   const text = (
     <>
+      {/* The inbox spells "Unread" into its own aria-label; elsewhere the
+          state is typographic, so give assistive tech the same fact without
+          changing the visible text. */}
+      {unread ? <span className="sr-only">Unread. </span> : null}
       {leadControl ? null : lead}
       <span className="min-w-0 flex-1">
         <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>

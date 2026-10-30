@@ -320,6 +320,7 @@ export const TodoRow = memo(function TodoRow({
       aria-current={lit ? "true" : undefined}
       lit={lit}
       via={via}
+      unread={todo.unread ?? undefined}
       leaving={leaving}
       land={[todo.thread_id, todo.source_message_id]}
       onClick={() => onSelect(todo)}
@@ -338,16 +339,7 @@ export const TodoRow = memo(function TodoRow({
       }
       primary={
         <>
-          <span
-            data-testid="todo-title"
-            className={cn(
-              done
-                ? "text-text-3 line-through"
-                : band === "now"
-                  ? "font-semibold text-text-1"
-                  : "text-text-2",
-            )}
-          >
+          <span data-testid="todo-title" className={cn(done && "text-text-3 line-through")}>
             {todo.title}
           </span>
           {todo.amount ? (

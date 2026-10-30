@@ -139,6 +139,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       data-focused={lit ? "true" : undefined}
       lit={lit}
       via={via}
+      unread={line.unread ?? undefined}
       leaving={leaving}
       land={landIds}
       // Focus comes back here when the menu closes, so Space peeks in the normal flow.
@@ -154,14 +155,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       lead={<SourceMark name={name} />}
       primary={
         <>
-          <span
-            data-testid="update-source"
-            title={line.source_name}
-            className={cn(
-              line.section === "needs_a_look" && "font-semibold text-text-1",
-              line.section === "routine" && "text-text-2",
-            )}
-          >
+          <span data-testid="update-source" title={line.source_name}>
             {name}
             {host ? (
               <span data-testid="update-host" className="type-meta ml-1 text-text-3 max-sm:hidden">

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.198](https://github.com/planetaryescape/mxr/compare/v0.6.197...v0.6.198) (2026-10-30)
+
+
+### Features
+
+* read state for To do and Updates rows ([#823](https://github.com/planetaryescape/mxr/issues/823)) ([fbc255b](https://github.com/planetaryescape/mxr/commit/fbc255b094f943014f46ddc3c4d9cacffbb04c36))
+
 ## [0.6.197](https://github.com/planetaryescape/mxr/compare/v0.6.196...v0.6.197) (2026-10-30)
 
 

@@ -517,7 +517,7 @@ impl Store {
         let suggestion = from_row(&suggestion)?;
         let task_sql = format!(
             "SELECT {} FROM todos WHERE id = ? AND account_id = ? AND state = 'open'",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         );
         let task = sqlx::query(sqlx::AssertSqlSafe(task_sql))
             .bind(todo_id)
@@ -595,7 +595,7 @@ impl Store {
         }
         let updated = sqlx::query(sqlx::AssertSqlSafe(format!(
             "SELECT {} FROM todos WHERE id = ? AND account_id = ?",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         )))
         .bind(todo_id)
         .bind(account_id.as_str())
@@ -643,7 +643,7 @@ impl Store {
         let suggestion = from_row(&row)?;
         let task_sql = format!(
             "SELECT {} FROM todos WHERE id = ? AND account_id = ?",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         );
         let task = sqlx::query(sqlx::AssertSqlSafe(task_sql))
             .bind(todo_id)
@@ -735,7 +735,7 @@ impl Store {
     ) -> Result<Option<TodoRecord>, sqlx::Error> {
         let sql = format!(
             "SELECT {} FROM todos WHERE id = ? AND account_id = ?",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         );
         let row = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(todo_id)
@@ -828,6 +828,7 @@ mod tests {
                 thread_id: Some(thread.clone()),
                 source_message_id: Some(source.id.clone()),
                 source_date: Some(now),
+                source_filed_at: None,
                 kind: "bill".into(),
                 verb: "pay".into(),
                 doc_type: None,

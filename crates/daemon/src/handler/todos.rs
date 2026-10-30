@@ -1248,6 +1248,7 @@ pub(super) async fn create(
         thread_id: Some(row.thread_id.clone()),
         source_message_id: Some(row.id.clone()),
         source_date: Some(row.date),
+        source_filed_at: None,
         kind: kind.as_str().to_string(),
         verb: title
             .split_whitespace()

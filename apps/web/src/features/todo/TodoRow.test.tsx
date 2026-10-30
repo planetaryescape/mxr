@@ -56,7 +56,7 @@ describe("TodoRow", () => {
     const view = within(row);
     expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
     expect(row).toHaveTextContent("Camden Council");
-    expect(row).toHaveTextContent(/from \w+|from today|from yesterday/);
+    expect(row).toHaveTextContent(/arrived \w+|arrived today|arrived yesterday/);
     expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
     expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
     expect(view.queryByTestId("runway-bar")).toBeNull();
@@ -106,6 +106,28 @@ describe("TodoRow", () => {
       }),
     );
     expect(within(later.row).getByTestId("todo-when").className).not.toContain("text-cue");
+  });
+
+  test("a later-email notice never hides when the email arrived", () => {
+    const todo = todoFixture({
+      resolution: {
+        id: "resolution-1",
+        message_id: "msg_resolution",
+        thread_id: "thread_bill",
+        source_date: "2026-10-04T09:00:00Z",
+        quote: "Your card was declined.",
+        quote_location: "body",
+        source_method: "rule",
+        action: "complete",
+        proposed_due_at: null,
+        proposed_due_words: null,
+        status: "pending",
+      },
+    });
+    const { row } = renderRow(todo);
+    const line = within(row).getByTestId("todo-request-and-quote");
+    expect(line).toHaveTextContent(/arrived /);
+    expect(line).toHaveTextContent("a later email may change this");
   });
 
   test("a later-mail resolution shows its evidence and opens that exact source", () => {
@@ -186,6 +208,14 @@ describe("TodoRow", () => {
 
     expect(screen.queryByTestId("todo-resolution-preview")).toBeNull();
     expect(screen.queryByRole("button", { name: "Accept and complete" })).toBeNull();
+  });
+
+  test("a filed source shows its date and keeps the to-do open", () => {
+    const todo = todoFixture({ source_filed_at: "2026-10-30T08:00:00Z" });
+    const { row } = renderRow(todo, "now", { details: true });
+    const filed = within(row).getByTestId("todo-filed");
+    expect(filed).toHaveAttribute("dateTime", "2026-10-30T08:00:00Z");
+    expect(within(row).getByTestId("todo-request-and-quote")).toHaveTextContent(/left the inbox/);
   });
 
   test("expanded details preserve arrival, why, next and per-field unchecked words", () => {

@@ -156,7 +156,7 @@ impl crate::Store {
     ) -> Result<Option<crate::TodoRecord>, sqlx::Error> {
         let sql = format!(
             "SELECT {} FROM todos WHERE account_id=? AND commitment_id=? LIMIT 2",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         );
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())

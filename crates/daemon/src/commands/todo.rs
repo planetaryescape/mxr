@@ -589,6 +589,13 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
             arrived.with_timezone(&Local).format("%a %-d %b")
         );
     }
+    if let Some(filed) = todo.source_filed_at {
+        let _ = writeln!(
+            out,
+            "{indent}            Left the inbox {}",
+            filed.with_timezone(&Local).format("%a %-d %b")
+        );
+    }
     let _ = writeln!(out, "{indent}            {}", todo.why);
 }
 
@@ -984,6 +991,19 @@ mod tests {
             out.lines().count(),
             "the block keeps its own lines"
         );
+    }
+
+    #[test]
+    fn a_filed_source_says_so_under_the_row() {
+        let mut todo = hostile_row();
+        todo.source_filed_at = Some(
+            chrono::DateTime::parse_from_rfc3339("2026-10-30T09:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+        );
+        let mut out = String::new();
+        row(&mut out, &todo, "");
+        assert!(out.contains("Left the inbox"), "{out}");
     }
 
     #[test]

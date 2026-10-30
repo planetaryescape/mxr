@@ -36,6 +36,7 @@ function Details({
   onOpenResolution: (todo: Todo, threadId: string, messageId: string) => void;
 }) {
   const arrived = useReceived(todo.source_date);
+  const filed = useReceived(todo.source_filed_at);
   const thread = useQuery({
     queryKey: ["thread", todo.thread_id ?? ""],
     queryFn: () => fetchThread(todo.thread_id ?? ""),
@@ -61,6 +62,21 @@ function Details({
             >
               {arrived}
             </time>
+          </FieldLine>
+        ) : null}
+        {todo.source_filed_at ? (
+          <FieldLine label="Filed">
+            <time
+              dateTime={todo.source_filed_at}
+              title={`Left the inbox ${formatLongDate(todo.source_filed_at)}`}
+              data-testid="todo-filed"
+            >
+              {filed}
+            </time>
+            <span className="text-text-3">
+              {" "}
+              The email left your inbox; this to-do is still open.
+            </span>
           </FieldLine>
         ) : null}
         <FieldLine label="Why">

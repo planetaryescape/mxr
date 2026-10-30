@@ -123,14 +123,20 @@ async fn place_threads_with_evidence(
     if messages.is_empty() {
         return Ok(Vec::new());
     }
+    let message_ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+    // An archive another client made keeps the thread in its modes; the
+    // server location is evidence, not a mode decision. Without this, mail
+    // filed in Gmail would silently vanish from Updates and Reading.
+    let externally_filed = store
+        .externally_filed_message_ids(account_id, &message_ids)
+        .await?;
     let mut senders = Senders::load(state, account_id, &messages).await?;
     // Membership exposes bounded evidence quotes as well as verdicts. Keep
     // full source loading here, on the requested threads, never on the mode
     // list's whole history. Do not mix evidence from another generation.
     let mut detailed_asks = HashMap::new();
     if include_evidence {
-        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        detailed_asks = store.asks_for_messages(account_id, &ids).await?;
+        detailed_asks = store.asks_for_messages(account_id, &message_ids).await?;
         detailed_asks.retain(|id, answer| {
             senders
                 .asks
@@ -251,6 +257,7 @@ async fn place_threads_with_evidence(
             senders: &senders,
             detailed_asks: &detailed_asks,
             written_to: &written_to,
+            externally_filed: &externally_filed,
             is_self: &is_self,
             now,
         });
@@ -284,6 +291,9 @@ struct PlaceInputs<'a> {
     detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
+    /// Messages whose source left the inbox through a provider sync and stayed
+    /// out, so Updates and Reading keep holding them with a filed marker.
+    externally_filed: &'a HashSet<mxr_core::MessageId>,
     is_self: &'a dyn Fn(&str) -> bool,
     now: DateTime<Utc>,
 }
@@ -330,7 +340,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let inbound = |m: &&DeskMessage| !is_outbound(m, inputs.is_self) && !m.trashed;
     let mut by_kind: HashMap<SenderKindData, Vec<&DeskMessage>> = HashMap::new();
     for message in thread.iter().filter(inbound) {
-        if !message.in_inbox
+        if !(message.in_inbox || inputs.externally_filed.contains(&message.id))
             || message.snoozed
             || !inputs.senders.assessments.contains_key(&message.id)
         {

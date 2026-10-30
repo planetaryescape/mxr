@@ -87,6 +87,9 @@ pub struct TodoRecord {
     pub thread_id: Option<ThreadId>,
     pub source_message_id: Option<MessageId>,
     pub source_date: Option<DateTime<Utc>>,
+    /// When the source email most recently left the inbox through a provider
+    /// sync, and is still out; `None` when mxr filed it or it came back.
+    pub source_filed_at: Option<DateTime<Utc>>,
     pub kind: String,
     pub verb: String,
     pub doc_type: Option<String>,
@@ -167,6 +170,34 @@ pub(crate) const COLUMNS: &str =
     commitment_id, rules_version, dedup_key, surfaced_at, created_at, updated_at, done_at,
     dismissed_at";
 
+/// `COLUMNS` plus the derived time the source email was filed outside mxr.
+///
+/// Read-only rows select this; inserts keep using `COLUMNS`, because the
+/// filed time is evidence from `message_events`, not a column to write. A
+/// sync that removes the inbox label is the only source: mxr's own archive
+/// rewrites the label set in bulk, which emits no per-label event, so its
+/// archive never marks its own to-do as filed elsewhere. The message must
+/// still be out of the inbox, so an undo or an external unarchive clears the
+/// marker.
+pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_message_id, source_date, kind, verb,
+    doc_type, title, counterparty, sender_domain, amount_minor, currency, due_at, due_words,
+    act_by_at, surface_at, scheduled_for, action_url, action_domain, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,
+    looks_done_message_id, looks_done_reason, origin, reason, field_sources, user_edited,
+    commitment_id, rules_version, dedup_key, surfaced_at, created_at, updated_at, done_at,
+    dismissed_at,
+    (SELECT MAX(e.occurred_at)
+       FROM message_events e
+       JOIN labels l ON l.id = e.label_id
+      WHERE e.message_id = todos.source_message_id
+        AND UPPER(l.provider_id) = 'INBOX'
+        AND e.event_type = 'unlabeled'
+        AND e.source = 'sync'
+        AND NOT EXISTS (
+            SELECT 1 FROM message_labels ml
+             WHERE ml.message_id = e.message_id AND ml.label_id = l.id
+        )
+    ) AS source_filed_at";
+
 /// Open rows the sweep may expire: detected, untouched, and not a bill or
 /// promise, which stay "was due" until the user acts (D117).
 const EXPIRABLE: &str = concat!(
@@ -197,6 +228,12 @@ pub(crate) fn row_to_todo(row: &SqliteRow) -> Result<TodoRecord, sqlx::Error> {
         thread_id: optional_id(row.try_get("thread_id")?)?,
         source_message_id: optional_id(row.try_get("source_message_id")?)?,
         source_date: decode_optional_timestamp(row.try_get("source_date")?)?,
+        // Some internal queries select the todo columns without the derived
+        // filed time; absence means "not known here", never a wrong marker.
+        source_filed_at: decode_optional_timestamp(
+            row.try_get::<Option<i64>, _>("source_filed_at")
+                .unwrap_or(None),
+        )?,
         kind: row.try_get("kind")?,
         verb: row.try_get("verb")?,
         doc_type: row.try_get("doc_type")?,
@@ -459,7 +496,7 @@ impl super::Store {
     }
 
     pub async fn get_todo(&self, id: &str) -> Result<Option<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {COLUMNS} FROM todos WHERE id = ?");
+        let sql = format!("SELECT {SELECT_COLUMNS} FROM todos WHERE id = ?");
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(id)
             .fetch_optional(self.reader())
@@ -474,7 +511,8 @@ impl super::Store {
         account_id: &AccountId,
         dedup_key: &str,
     ) -> Result<Option<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {COLUMNS} FROM todos WHERE account_id = ? AND dedup_key = ?");
+        let sql =
+            format!("SELECT {SELECT_COLUMNS} FROM todos WHERE account_id = ? AND dedup_key = ?");
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
             .bind(dedup_key)
@@ -490,7 +528,7 @@ impl super::Store {
         let mut out = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(crate::SQLITE_BIND_CHUNK) {
             let sql = format!(
-                "SELECT {COLUMNS} FROM todos WHERE id IN ({})",
+                "SELECT {SELECT_COLUMNS} FROM todos WHERE id IN ({})",
                 in_list(chunk.len())
             );
             let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
@@ -544,7 +582,7 @@ impl super::Store {
         // The account's open rows are few (the state index finds them), so
         // the thread filter runs over those rather than needing its own index.
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE account_id = ?1 AND state = 'open'
                AND thread_id IN (SELECT value FROM json_each(?2))"
         );
@@ -583,7 +621,7 @@ impl super::Store {
         done_since: DateTime<Utc>,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE (?1 IS NULL OR account_id = ?1)
                AND (state = 'open' OR (state = 'done' AND done_at >= ?2))"
         );
@@ -606,7 +644,7 @@ impl super::Store {
         limit: u32,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE (?1 IS NULL OR account_id = ?1) AND state = ?2
              ORDER BY COALESCE(expired_at, done_at, dismissed_at, updated_at) DESC, id
              LIMIT ?3"
@@ -643,7 +681,7 @@ impl super::Store {
         account_id: Option<&AccountId>,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE (?1 IS NULL OR account_id = ?1) AND state = 'open' AND catchup = 'pending'
              ORDER BY act_by_at IS NULL, act_by_at, source_date DESC, id"
         );
@@ -930,7 +968,7 @@ impl super::Store {
         sender_domain: &str,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE account_id = ? AND sender_domain = ? AND state = 'open'"
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))
@@ -952,7 +990,7 @@ impl super::Store {
         thread_id: &ThreadId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE account_id = ?1 AND state = 'open'
                AND (thread_id = ?2 OR EXISTS (
                  SELECT 1 FROM messages source

@@ -75,6 +75,12 @@ pub(crate) fn trust_line(
     if let Some(arrived) = todo.source_date {
         parts.push(format!("arrived {}", received_label(arrived, now, zone)));
     }
+    if let Some(filed) = todo.source_filed_at {
+        parts.push(format!(
+            "left the inbox {}",
+            zone.at(filed).format("%-d %b")
+        ));
+    }
     if let Some(domain) = todo
         .action
         .as_ref()
@@ -986,6 +992,7 @@ pub(crate) mod tests {
             thread_id: None,
             source_message_id: Some(MessageId::new()),
             source_date: None,
+            source_filed_at: None,
             surfaced_at: None,
             expired_at: None,
             done_at: None,
@@ -1309,6 +1316,20 @@ pub(crate) mod tests {
             )
         )
         .starts_with("arrived "));
+
+        bill.source_filed_at = Some(
+            chrono::DateTime::parse_from_rfc3339("2026-10-30T09:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        assert!(trust_line(
+            &bill,
+            now,
+            crate::ui::received_label::DisplayZone::Fixed(
+                chrono::FixedOffset::east_opt(3600).unwrap()
+            )
+        )
+        .contains("left the inbox 30 Oct"));
 
         let no_source = council_tax();
         assert!(!trust_line(

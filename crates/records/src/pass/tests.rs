@@ -303,6 +303,7 @@ async fn a_ticked_off_council_tax_bill_is_a_record_and_undo_unfiles_it() {
         thread_id: None,
         source_message_id: Some(source.clone()),
         source_date: Some(at(0)),
+        source_filed_at: None,
         kind: "bill".into(),
         verb: "pay".into(),
         doc_type: None,

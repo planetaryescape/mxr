@@ -34,7 +34,7 @@ impl Store {
         if !current {
             return Ok(());
         }
-        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND (currency IS ? OR (currency IS NULL AND ?)) AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND (currency IS ? OR (currency IS NULL AND ?)) AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::SELECT_COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(record.account_id.as_str())
             .bind(crate::encode_json(&legacy_keys)?)
@@ -214,7 +214,7 @@ impl Store {
         &self,
         account: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND NOT (kind = 'renewal' AND dedup_key LIKE 'record-renewal|%') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND NOT (kind = 'renewal' AND dedup_key LIKE 'record-renewal|%') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::SELECT_COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())
             .fetch_all(self.reader())
@@ -248,7 +248,10 @@ impl Store {
             tx.rollback().await?;
             return Ok(false);
         }
-        let sql = format!("SELECT {} FROM todos WHERE id = ?", crate::todos::COLUMNS);
+        let sql = format!(
+            "SELECT {} FROM todos WHERE id = ?",
+            crate::todos::SELECT_COLUMNS
+        );
         let row = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(&before.id)
             .fetch_one(&mut *tx)
@@ -278,7 +281,7 @@ impl Store {
             // before inserting new automatic rows for the account.
             let sql = format!(
                 "SELECT {} FROM todos WHERE account_id = ? AND dedup_key = ? AND id != ?",
-                crate::todos::COLUMNS
+                crate::todos::SELECT_COLUMNS
             );
             if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(sql))
                 .bind(before.account_id.as_str())

@@ -54,34 +54,56 @@ export function rowParty(todo: Todo): string | null {
 
 const SHORT_DAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const SHORT_DATE_YEAR = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 
 const midnight = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-/** "today", "yesterday", "Mon" within the week, else "12 Oct": when the email arrived. */
-export function fromDay(arrived: Date, now: Date): string {
+/**
+ * "today", "yesterday", "Mon" within the week, else "12 Oct": when the email
+ * arrived. Another year keeps its year ("12 Oct 2025") so an old row cannot
+ * read as a recent one.
+ */
+export function arrivedDay(arrived: Date, now: Date): string {
   const days = Math.round((midnight(now).getTime() - midnight(arrived).getTime()) / 86_400_000);
   if (days <= 0) return "today";
   if (days === 1) return "yesterday";
-  return days < 7 ? SHORT_DAY.format(arrived) : SHORT_DATE.format(arrived);
+  if (days < 7) return SHORT_DAY.format(arrived);
+  return arrived.getFullYear() === now.getFullYear()
+    ? SHORT_DATE.format(arrived)
+    : SHORT_DATE_YEAR.format(arrived);
 }
 
 /**
- * The row's one secondary line: who, and where it came from ("Frank Billing
- * · from Mon", "Quinn Dev · from you"). A promise is from you; every other
- * row is from the day its email arrived. A later email that may change the
- * row, or a sign it looks done, says so in its place: that is what to act on.
+ * The row's one secondary line: who, when its email arrived, when it left the
+ * inbox again (an archive made outside mxr), then anything that may change
+ * the row ("Frank Billing · arrived Mon · left the inbox today · a later
+ * email may change this"). The verb names the date: "arrived" is the email,
+ * "left the inbox" is a location, while the row's window ("act by Fri", "due
+ * Fri") is the deadline. A promise is from you, not an email. A notice never
+ * takes the arrival's place: how recent the ask is stays visible on every row.
  */
 export function rowSecondary(todo: Todo, now: Date): string | null {
-  if (todo.resolution?.status === "pending") return "A later email may change this";
-  if (todo.looks_done) return `Looks done: ${todo.looks_done.reason}`;
   const who = rowParty(todo);
-  const from =
+  const arrival =
     todo.kind === "promise"
       ? "from you"
       : todo.source_date
-        ? `from ${fromDay(new Date(todo.source_date), now)}`
+        ? `arrived ${arrivedDay(new Date(todo.source_date), now)}`
         : null;
-  return [who, from].filter(Boolean).join(" · ") || null;
+  const filed = todo.source_filed_at
+    ? `left the inbox ${arrivedDay(new Date(todo.source_filed_at), now)}`
+    : null;
+  const notice =
+    todo.resolution?.status === "pending"
+      ? "a later email may change this"
+      : todo.looks_done
+        ? `looks done: ${todo.looks_done.reason}`
+        : null;
+  return [who, arrival, filed, notice].filter(Boolean).join(" · ") || null;
 }
 
 /** Due or to act by today or earlier: the one place the cue colour belongs on a date. */

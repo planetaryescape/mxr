@@ -140,6 +140,12 @@ Gmail". This is the Superhuman and Shortwave "done is archive" model
 applied per mode; Gmail categories never archive, and HEY doesn't need to
 because it owns the mailbox (now-and-handoff.md §F).
 
+The reverse is not symmetric. An archive observed from the provider — you
+filed the mail in Gmail or another client — never writes a done mark in any
+mode. Updates and Reading keep holding the thread, and a to-do whose source
+was filed says "left the inbox 30 Oct" and stays open until you tick it.
+Archive is evidence of a decision, not the decision itself.
+
 ## Classification is rules first, then the user's model, and every item says why
 
 1. **Sender rules (exist today).** `mail_kind::classify`
@@ -822,6 +828,14 @@ undo; the rest only offer.
 **Not a list of emails.** The row is the task, ordered by when you must
 act; a bill, its reminder and its receipt are one row that updates and then
 completes; each row has one button labelled with its verb and destination.
+
+A source email filed in another client is evidence, not completion. The
+row keeps its arrival, adds "left the inbox 30 Oct", and stays open: one
+tick from done, never silently closed. Archive alone never completes a row;
+only a second, independent signal (a receipt from the same domain with the
+same amount, or the user's tick) does. The marker is derived from the sync
+event that removed INBOX, clears if the mail returns, and is never written
+for an archive mxr made itself.
 
 ## Updates is a briefing by source, read twice a day and let go in one key
 

@@ -834,7 +834,6 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
         .unwrap();
     assert_eq!(key_of("october").await, key("due:2026-11"));
 }
-||||||| parent of cc9869dd3 (feat: show when a to-do's source email left the inbox)
 
 #[test]
 fn the_read_columns_are_the_row_columns_plus_the_filed_time() {

@@ -13,10 +13,14 @@ export type LampVia = "key" | "pointer";
 export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children"> {
   /** The row's `<li>`, for a page that returns focus to it (React 19 passes `ref` as a prop). */
   ref?: Ref<HTMLLIElement>;
-  /** The one lit row: the lamp surface and the leading hairline. */
+  /** The one lit row: the lamp surface, and nothing on the leading edge. */
   lit: boolean;
   via?: LampVia;
-  /** Unread: a gutter bar, hidden while lit (the primary line's weight still shows it). */
+  /**
+   * Unread mail reads bright and semibold; read mail calms to `--text-2`.
+   * Omit it where the list has no read state (To do, Updates, drafts), and the
+   * row keeps the neutral text tier.
+   */
   unread?: boolean;
   /** The row is folding away (pointer done). Not interactive meanwhile. */
   leaving?: boolean;
@@ -30,9 +34,9 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   lead?: ReactNode;
   /** The lead is a control (a checkbox): it sits beside the row's link, not inside it. */
   leadControl?: boolean;
-  /** The primary line: Body, `--text-1`, semibold when unread or your turn. */
+  /** The primary line: Body, semibold and `--text-1` when unread, `--text-2` when read. */
   primary: ReactNode;
-  /** One secondary line: Body, `--text-2`, truncated. */
+  /** One secondary line: Body, `--text-1` while unread, else `--text-2`, truncated. */
   secondary?: ReactNode;
   /** Marks and values. Shown while unlit; the lit row shows the verbs in their place. */
   trail?: ReactNode;
@@ -67,15 +71,16 @@ const MAIN = "relative flex min-w-0 flex-1 items-center gap-3 text-left outline-
  * and cannot add slots. The height is fixed by the density token, so lighting
  * a row, folding a verb in or showing a mark never moves the rows below it.
  *
- * Lit: `--ink-lamp` surface and a 2px `--signal` hairline inside the leading
- * edge. Hovering with a pointer shows the verbs without lighting the row. The
- * verbs take the trail's place on the same line, so only the text's ellipsis
- * can move, never the row's height.
+ * Lit: `--ink-lamp` surface, and nothing on the leading edge. Unread is the
+ * text's job (semibold and `--text-1` against a read row's `--text-2`), so the
+ * left edge says only where you are. Hovering with a pointer shows the verbs
+ * without lighting the row. The verbs take the trail's place on the same line,
+ * so only the text's ellipsis can move, never the row's height.
  */
 export const Row = memo(function Row({
   lit,
   via = "key",
-  unread = false,
+  unread,
   leaving = false,
   land = NO_IDS,
   lead,
@@ -94,13 +99,18 @@ export const Row = memo(function Row({
 }: RowProps) {
   const landed = useLanded(...land);
   const identity = useRowAccountMark(accountId);
+  // `undefined` means the list has no read state, so the row keeps the neutral
+  // tier. Only an explicit `false` calms the row.
+  const read = unread === false;
+  const primaryTone = unread ? "font-semibold text-text-1" : read ? "text-text-2" : "text-text-1";
+  const secondaryTone = unread ? "text-text-1" : "text-text-2";
   const text = (
     <>
       {leadControl ? null : lead}
       <span className="min-w-0 flex-1">
-        <span className="type-body block truncate text-text-1">{primary}</span>
+        <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>
         {secondary ? (
-          <span className="type-body block truncate text-text-2">{secondary}</span>
+          <span className={cn("type-body block truncate", secondaryTone)}>{secondary}</span>
         ) : null}
       </span>
     </>
@@ -119,27 +129,13 @@ export const Row = memo(function Row({
         className,
       )}
     >
-      {/* The unread bar sits in the gutter outside the leading edge, in the text tier, so it never reads as the lamp's cyan hairline. */}
-      {unread && !lit ? (
-        <span
-          aria-hidden
-          data-testid="unread-bar"
-          className="absolute -left-1.5 inset-y-2 w-[2px] bg-text-1"
-        />
-      ) : null}
+      {/* The lamp surface is the one mark of where you are: no leading-edge
+          hairline, so nothing sits at a different inset from anything else. */}
       <div className="relative isolate flex h-(--row-height) items-center gap-3 px-3">
         <span
           aria-hidden
           className={cn(
             "absolute inset-0 -z-10 bg-ink-lamp opacity-0",
-            lit && "opacity-100",
-            via === "pointer" && "transition-[opacity] duration-fast",
-          )}
-        />
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-0 left-0 -z-10 w-[2px] bg-signal opacity-0",
             lit && "opacity-100",
             via === "pointer" && "transition-[opacity] duration-fast",
           )}

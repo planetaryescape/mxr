@@ -4,7 +4,7 @@ Status: proposal, 2026-10-16. Source baseline: `origin/main` at `f209d84ef`.
 
 Each main screen, designed in the terms of [26](26-web-design-concept.md) and built from the parts in [27](27-web-design-system.md). What each screen does is specified in [21](21-web-experience.md) and [22](22-email-modes.md); this chapter says how it should be experienced: where the eye lands first, what recedes, what the lit item shows, and what changes from today. Audit references (`01-now`, `30-screener`) are the screenshots in [the audit](../research/web-design/audit-2026-10-16.md).
 
-Mockups are at 1440px with the rail expanded and the assistant closed, unless noted. `▌` is the lamp's hairline on the lit row. Dim text is described, not drawn.
+Mockups are at 1440px with the rail expanded and the assistant closed, unless noted. `▌` marks the lit row. Dim text is described, not drawn.
 
 ## The shell
 

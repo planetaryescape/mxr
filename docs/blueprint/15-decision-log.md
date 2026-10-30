@@ -1582,3 +1582,13 @@ The lexical index converts HTML to text with the reader's built-in converter and
 **Why**: BK, 2026-10-29: "close the draft, show draft on the message in the message list in the accent color, similar to what whatsapp does, I think imessage does the same, if they open the message, their draft is there and they can continue". On a phone the sheet looked like Back had done nothing (docs/issues/phone-back-reopens-draft.md).
 
 **Trade-offs accepted**: The same rule applies on wide layouts, where b2ea14e8b had already replaced the docked window with the sheet. Moving the lamp with `j` and `k` does not resume the reply, so the keys stay with the list; the reply box under the conversation shows the draft instead.
+
+## D188: Read is typographic and the row's leading edge is unmarked
+
+**Chosen**: Unread rows carry a semibold primary line in `--text-1` with the secondary in `--text-1`; read rows drop to normal weight in `--text-2`. The unread gutter bar and the lit row's 2px `--signal` hairline are removed; the lit row is the `--ink-lamp` surface alone. Messages' Your turn keeps its band and pin dot and no longer adds weight, so weight has one meaning. In To do and Updates, which have no per-row read state, the same tiers follow the section: now and needs-a-look bright and bold, coming-up, whenever and routine in `--text-2`, done struck in `--text-3`.
+
+**Considered**: Keeping the bar and aligning it with the hairline; an unread dot alone; colouring the whole row; a per-row seen ledger for To do and Updates.
+
+**Why**: BK, 2026-10-30, on the inbox: the unread bar sat 6px outside the row while the blue hairline sat on its edge, so the two marks read as one offset mark, and because the bar hid while lit, blue appeared on read rows too. Gmail's convention (bold and near-white for unread, normal and grey for read) removes the ambiguity and frees the leading edge to mean only where you are. It works in every theme without new tokens, and weight is not colour.
+
+**Trade-offs accepted**: Read rows lose the bar's scan-aid at the list edge, so the contrast between read and unread is typographic. The To do and Updates tiers mean "needs you" rather than literally "read" until those modes get a seen state.

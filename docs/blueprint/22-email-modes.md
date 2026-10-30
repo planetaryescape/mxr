@@ -718,7 +718,8 @@ for the last two.
 **Unread is a filter, not the row's state.** The row still shows the turn
 ("the state is the turn, not read or unread", above), and no count of
 unread appears anywhere, because D095 removed unread counts on purpose.
-The filter answers "what haven't I looked at" without turning unread back
+Read state is only the text's tone: unread is bright and semibold, read calms
+to `--text-2` (D188). The filter answers "what haven't I looked at" without turning unread back
 into a to-do flag.
 
 **One contract.** `ListMessages` already accepts `MessagesFilterData { turn,

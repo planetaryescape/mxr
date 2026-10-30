@@ -43,13 +43,13 @@ Today's five tiers (`--foreground`, `--fg-2`, `--muted-foreground`, `--subtle-fo
 
 | Role | Token | Midnight | Light | Rule |
 |---|---|---|---|---|
-| Lamp (accent) | `--signal` | `#5cd5fc` | `#006f93` | Focus, the lit item's hairline, the one primary action, links, change landing. Never decoration. |
+| Lamp (accent) | `--signal` | `#5cd5fc` | `#006f93` | Focus rings, the one primary action, links, change landing. Never decoration. |
 | Lamp soft | `--signal-soft` | `#01394a` | `#d5eff7` | Selected segment, text selection. |
 | Needs you | `--cue` | `#f8ca65` | `#7a5400` | Due and overdue dates, "your turn" marks. Under 3% of a screen. |
 | Failure | `--danger` | `#fd8a8c` | `#b42330` | Failed states and destructive verbs only. |
 | Success | `--ok` | `#68d7a1` | `#1f7a4d` | Success states only ("healthy", "delivered"). Not for "done", which is the row leaving. |
 
-Unread is shown by weight (primary text, semibold) plus a full-height 2px bar in `--text-1` in the gutter just outside the row's leading edge (BK, 2026-05-11: "these little unread markers should be full height, notjust part of the height"), never by colouring the whole row. The bar is neutral so it never reads as the lamp's cyan hairline, which sits inside the row. It spans the row's text block (inset 8px top and bottom), so bars on adjacent unread rows don't join into one line, and it hides while the row is lit, where weight alone shows unread (W1 comp). In Paper, the accent is rust (`hsl(14 75% 38%)`); unread marks and count badges use `--text-1` instead of the accent there, fixing the "reads as error red" finding. They read `--unread-marker` and `--unread-marker-foreground`, which are the accent in the other themes and `--text-1` and the desk in Paper.
+Unread is shown by the text alone: the primary line is semibold in `--text-1`, the secondary joins it in `--text-1`, and a read row drops to normal weight in `--text-2` (BK, 2026-10-30: "if a row is unread then make the text bold and closer to white ... if it's now read then it's no longer bold and is a bit greyed out"). Nothing is drawn on the leading edge: the old neutral unread bar sat 6px outside the row's edge while the lit hairline sat on it, so one edge carried two states at two insets and a read-but-lit row still showed blue. The lit row is the `--ink-lamp` surface and nothing else, which is the one mark of where you are. Weight and text tier are non-colour cues, so the state does not rely on colour alone. In Paper, the accent is rust (`hsl(14 75% 38%)`); count badges and the sidebar's unread dot use `--text-1` instead of the accent there, fixing the "reads as error red" finding. They read `--unread-marker` and `--unread-marker-foreground`, which are the accent in the other themes and `--text-1` and the desk in Paper.
 
 ### Generating themes
 
@@ -145,13 +145,13 @@ One anatomy, `Row` (D129), used by every list. A mode supplies the content of ea
 └──────┴───────────────────────────────────────────────┴────────────────────┘
 ```
 
-- **Lead:** avatar (people), checkbox (To do), source mark (Updates, Reading) or amount (Archive). The unread bar sits in the gutter outside the lead.
-- **Primary line:** Body, `--text-1`; semibold when unread or your turn.
+- **Lead:** avatar (people), checkbox (To do), source mark (Updates, Reading) or amount (Archive). Nothing sits in the gutter outside it.
+- **Primary line:** Body; semibold in `--text-1` when unread or the row needs you, normal in `--text-2` when read or calm.
 - **Secondary line:** Body, `--text-2`, one line, truncated with an ellipsis (never clipped mid-word, an audit finding on phones).
 - **Reason:** for the lit row, shown in the status bar's left side ("Here because: ...", meta, `--text-2`, the daemon's reason string, D111) and in the reader. Never a third line in the row: lighting a row must not change its height (D124's amendment). While a row is lit the status bar's left side reads "● <freshness short> · Here because: <reason>"; with nothing lit it shows the normal freshness line, and a failing sync keeps its warning in that place (W2). On phones, which have no status bar, the reason shows on the item's own page (the person page, the reader), not in the row (W2).
 - **Trail:** marks (an attachment clip, a star, and a 14px glyph per other mode the item is in, all `--text-3` with tooltips), then the account mark while the view mixes accounts (a chip in the account's colour holding its tag, D147, chapter 33), then the time in meta. On the lit row the marks are replaced by the actions with keys, on the same line; the account mark and the time stay, the actions sitting in front of them, so the row you are on never loses when it arrived (D148). `Row` draws the account mark itself from the row's `account_id`, so no mode adds or forgets it. A conversation's message count follows the sender in meta (BK, 2026-05-11: "i need some indication that this is a conversation thread").
 - **Marks, not sentences:** "Also in To do: ..." becomes the To do mark; "New sender. Keep in Messages? ..." becomes a `new` mark (meta, `--cue`, after the name). A new sender's lit row shows, in place of verbs, four mode-glyph chips with the keys `1` Messages, `2` Updates, `3` Reading and `4` Block (names in tooltips); the status bar spells it out while the row is lit: "New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block" (W2). The digits answer only while a new sender is lit and never while typing in a field; everywhere else they stay the numbered tabs.
-- **Lit:** `--ink-lamp` background, 2px `--signal` hairline on the leading edge, actions in the trail. Same height as unlit. Hover on a pointer device shows the actions without lighting the row.
+- **Lit:** `--ink-lamp` background, no leading-edge mark, actions in the trail. Same height as unlit. Hover on a pointer device shows the actions without lighting the row.
 - **Leaving:** height and opacity to 0 in 120ms (pointer) or at once (key), the next row lit in the same frame.
 - **Everywhere:** pickers and lists inside dialogs (labels, move to, snooze, the history list) use `Row` and the same keys: `j`/`k` move, `Space` toggles, `Enter` confirms, `Esc` leaves (BK, 2026-04-22: "I'm not able to navvigate with j and k ... and space to select/deselect and enter to confirm", and "why not a list like the oneon the messages list?").
 

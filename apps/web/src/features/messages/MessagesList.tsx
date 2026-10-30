@@ -376,12 +376,7 @@ const PersonRow = memo(function PersonRow({
       lead={<Face title={row.title} group={row.kind === "group"} />}
       primary={
         <>
-          <span
-            data-testid="row-title"
-            className={cn(row.your_turn || row.unread ? "font-semibold" : undefined)}
-          >
-            {row.title}
-          </span>
+          <span data-testid="row-title">{row.title}</span>
           {topicCount > 1 ? (
             <span data-testid="row-topic-count" className="type-meta ml-2 tabular-nums text-text-3">
               {topicCount} topics

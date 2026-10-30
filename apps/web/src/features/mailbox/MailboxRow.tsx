@@ -150,12 +150,7 @@ export const MailboxRow = memo(function MailboxRow({
       }
       primary={
         <>
-          <span
-            className={cn(row.unread && "font-semibold")}
-            title={row.sender_detail ?? row.sender}
-          >
-            {who}
-          </span>
+          <span title={row.sender_detail ?? row.sender}>{who}</span>
           {count ? (
             <span className="type-meta ml-1.5 text-text-3" aria-hidden>
               {count}
@@ -173,7 +168,7 @@ export const MailboxRow = memo(function MailboxRow({
               />
             </span>
           ) : null}
-          <span className={cn(row.unread && "text-text-1")}>{row.subject || "(no subject)"}</span>
+          <span>{row.subject || "(no subject)"}</span>
           {userLabels.map((label) => (
             <LabelChip key={label.id} name={label.name} />
           ))}

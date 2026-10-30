@@ -993,6 +993,7 @@ pub(crate) mod tests {
             source_message_id: Some(MessageId::new()),
             source_date: None,
             source_filed_at: None,
+            source_unread: None,
             surfaced_at: None,
             expired_at: None,
             done_at: None,

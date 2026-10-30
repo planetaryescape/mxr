@@ -1592,3 +1592,13 @@ The lexical index converts HTML to text with the reader's built-in converter and
 **Why**: BK, 2026-10-30, on the inbox: the unread bar sat 6px outside the row while the blue hairline sat on its edge, so the two marks read as one offset mark, and because the bar hid while lit, blue appeared on read rows too. Gmail's convention (bold and near-white for unread, normal and grey for read) removes the ambiguity and frees the leading edge to mean only where you are. It works in every theme without new tokens, and weight is not colour.
 
 **Trade-offs accepted**: Read rows lose the bar's scan-aid at the list edge, so the contrast between read and unread is typographic. The To do and Updates tiers mean "needs you" rather than literally "read" until those modes get a seen state.
+
+## D189: To do and Updates take the source email's read state
+
+**Chosen**: To-do and Updates rows carry the read state of the email they came from: `TodoData.unread` and `UpdateLineData.unread`. Unread reads bright and semibold, read calms to `--text-2`, and a row with no email (a promise, a parcel tracker) keeps the neutral tier. Reading the email calms the row even before the to-do is ticked; ticking it still leaves the row as it is. Section emphasis remains for lines with no email, replacing the To do and Updates half of D188.
+
+**Considered**: A per-row "seen" ledger marked when the row is focused; dimming whole sections; leaving To do and Updates on section emphasis only.
+
+**Why**: BK asked for the same read/read distinction as the inbox: "that I've read even though I haven't done'd them". The email already carries a read flag, so no new state and no new sync surface: the row derives it with the same kind of subquery as `source_filed_at` in the store, and from the digest's own message in Updates. It keeps mxr's rule that unread is not a to-do flag.
+
+**Trade-offs accepted**: A to-do created from an email read long ago is born calm, because the axis is the email, not the row. A true per-row seen state would need a ledger and every client; this deliberately does not add one.

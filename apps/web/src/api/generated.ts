@@ -15860,6 +15860,11 @@ export interface components {
             thread_id?: components["schemas"]["ThreadId"] | null;
             /** @description "Pay council tax". */
             title: string;
+            /**
+             * @description The source email is unread. `None` when the row has no source email.
+             *     A read source calms the row even before the to-do is ticked.
+             */
+            unread?: boolean | null;
             /** Format: date-time */
             updated_at: string;
             /** @description You made or changed it: it never expires and re-runs leave it be. */
@@ -16253,6 +16258,11 @@ export interface components {
              */
             todo_title: string;
             tracker?: components["schemas"]["UpdateTrackerData"] | null;
+            /**
+             * @description The line's newest email is unread. `None` for a line that is not an
+             *     email (a parcel tracker). Reading the email calms the line.
+             */
+            unread?: boolean | null;
             /**
              * @description "Here because: automated sender, not a person (rule). In the 08:00
              *     digest."

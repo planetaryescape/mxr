@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.197](https://github.com/planetaryescape/mxr/compare/v0.6.196...v0.6.197) (2026-10-30)
+
+
+### Features
+
+* mark a to-do's source as left the inbox ([#821](https://github.com/planetaryescape/mxr/issues/821)) ([2968270](https://github.com/planetaryescape/mxr/commit/29682700fef6d1f02f15d597fdef02371263ae64))
+
+
+### Bug Fixes
+
+* calm read rows and drop the leading-edge marks ([#817](https://github.com/planetaryescape/mxr/issues/817)) ([15ea543](https://github.com/planetaryescape/mxr/commit/15ea54319b39aaeecc3ae0703f053fe18e7515e1))
+
+
+### Documentation
+
+* retire old skill names and record the Messages research ([#820](https://github.com/planetaryescape/mxr/issues/820)) ([5ba392b](https://github.com/planetaryescape/mxr/commit/5ba392ba0f71a0185403412f146e510adc259fbf))
+
 ## [0.6.196](https://github.com/planetaryescape/mxr/compare/v0.6.195...v0.6.196) (2026-10-29)
 
 

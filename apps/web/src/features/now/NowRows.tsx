@@ -134,9 +134,7 @@ export const PersonRow = memo(function PersonRow({
       lead={<Avatar name={who} size="lg" />}
       primary={
         <>
-          <span className={cn(row.unread && "font-semibold")} title={row.counterparty_email}>
-            {who}
-          </span>
+          <span title={row.counterparty_email}>{who}</span>
           {newSender ? <NewMark className="ml-2" /> : null}
         </>
       }

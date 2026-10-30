@@ -231,13 +231,19 @@ describe("UpdateLineRow's source", () => {
     const source = within(row).getByTestId("update-source");
     expect(source).toHaveTextContent("Google (accounts.google.com)");
     expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
-    expect(source).toHaveClass("font-medium");
+    expect(source).toHaveClass("font-semibold", "text-text-1");
   });
 
   test("a changed source is regular weight and carries no host", () => {
     const { row } = renderLine(lineFixture({ source_name: "Strava" }));
-    expect(within(row).getByTestId("update-source")).toHaveClass("font-normal");
+    expect(within(row).getByTestId("update-source")).not.toHaveClass("font-semibold");
     expect(within(row).queryByTestId("update-host")).toBeNull();
+  });
+
+  test("a routine source calms to the second text tier", () => {
+    const { row } = renderLine(lineFixture({ section: "routine", source_name: "Strava" }));
+    expect(within(row).getByTestId("update-source")).toHaveClass("text-text-2");
+    expect(within(row).getByTestId("update-source")).not.toHaveClass("font-semibold");
   });
 });
 

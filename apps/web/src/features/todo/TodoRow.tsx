@@ -325,8 +325,11 @@ export const TodoRow = memo(function TodoRow({
           <span
             data-testid="todo-title"
             className={cn(
-              band === "coming" ? "font-normal" : "font-medium",
-              done && "text-text-3 line-through",
+              done
+                ? "text-text-3 line-through"
+                : band === "now"
+                  ? "font-semibold text-text-1"
+                  : "text-text-2",
             )}
           >
             {todo.title}

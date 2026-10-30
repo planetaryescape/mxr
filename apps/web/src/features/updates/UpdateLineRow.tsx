@@ -157,7 +157,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           <span
             data-testid="update-source"
             title={line.source_name}
-            className={cn("font-medium", line.section !== "needs_a_look" && "font-normal")}
+            className={cn(
+              line.section === "needs_a_look" && "font-semibold text-text-1",
+              line.section === "routine" && "text-text-2",
+            )}
           >
             {name}
             {host ? (

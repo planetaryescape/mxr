@@ -65,7 +65,7 @@ describe("Row", () => {
     expect(inner()).toHaveClass("h-(--row-height)");
   });
 
-  test("lit draws the lamp surface and the hairline; unlit draws neither", () => {
+  test("lit draws the lamp surface and nothing else; unlit draws it transparent", () => {
     const { rerender } = renderRow();
     const layers = () => [...screen.getByTestId("row").querySelectorAll("span[aria-hidden]")];
     expect(layers().every((layer) => layer.classList.contains("opacity-0"))).toBe(true);
@@ -76,7 +76,7 @@ describe("Row", () => {
       </ul>,
     );
     expect(screen.getByTestId("row")).toHaveAttribute("data-lit", "true");
-    expect(layers().filter((layer) => layer.classList.contains("opacity-100"))).toHaveLength(2);
+    expect(layers().filter((layer) => layer.classList.contains("opacity-100"))).toHaveLength(1);
   });
 
   test("a key never fades the lamp; a pointer does", () => {
@@ -91,17 +91,35 @@ describe("Row", () => {
     expect(surface()).toHaveClass("transition-[opacity]", "duration-fast");
   });
 
-  test("the unread bar shows on an unlit unread row and hides while lit", () => {
+  test("unread is bright and semibold, read calms to the second tier, and no bar is drawn", () => {
     const { rerender } = renderRow({ unread: true });
-    expect(screen.getByTestId("unread-bar")).toHaveClass("w-[2px]", "bg-text-1");
+    expect(screen.getByText("Pat Colleague")).toHaveClass("font-semibold", "text-text-1");
+    expect(screen.getByText("RustConf invite")).toHaveClass("text-text-1");
+    expect(screen.getByTestId("row")).toHaveAttribute("data-unread", "true");
+    expect(screen.queryByTestId("unread-bar")).toBeNull();
+
     rerender(
       <ul>
-        <Row lit unread primary="Pat" data-testid="row" />
+        <Row
+          lit={false}
+          unread={false}
+          primary="Pat Colleague"
+          secondary="RustConf invite"
+          data-testid="row"
+        />
       </ul>,
     );
-    expect(screen.queryByTestId("unread-bar")).toBeNull();
-    // Weight still says unread, so it stays on the row for the primary line to use.
-    expect(screen.getByTestId("row")).toHaveAttribute("data-unread", "true");
+    expect(screen.getByText("Pat Colleague")).toHaveClass("text-text-2");
+    expect(screen.getByText("Pat Colleague")).not.toHaveClass("font-semibold");
+    expect(screen.getByText("RustConf invite")).toHaveClass("text-text-2");
+    expect(screen.getByTestId("row")).not.toHaveAttribute("data-unread");
+  });
+
+  test("a list with no read state keeps the neutral text tier", () => {
+    renderRow();
+    expect(screen.getByText("Pat Colleague")).toHaveClass("text-text-1");
+    expect(screen.getByText("RustConf invite")).toHaveClass("text-text-2");
+    expect(screen.getByTestId("row")).not.toHaveAttribute("data-unread");
   });
 
   test("verbs replace the trail on the lit row and show on pointer hover, never both", () => {

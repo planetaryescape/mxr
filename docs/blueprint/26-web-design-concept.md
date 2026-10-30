@@ -31,7 +31,7 @@ It fits mxr rather than any product. The brand is already "deep-ocean, editorial
 What the concept means in practice:
 
 - **Material:** navy ink in three depths (the room, the desk, the lamp-lit page), ruled lines instead of boxes, type as the texture. No cards, gradients, glass or grain (DESIGN.md).
-- **Light:** one lit thing per screen, drawn one step lighter with a cyan hairline. Cyan is the lamp's colour: focus, selection, the one primary action, and change. Yellow is the rare note on the spike: due, overdue, needs you now.
+- **Light:** one lit thing per screen, drawn one step lighter on the lamp surface. Cyan is the lamp's colour: focus, the one primary action, and change. Yellow is the rare note on the spike: due, overdue, needs you now.
 - **Voices:** mono for the wire (meta, times, counts, the assistant's steps, keys), sans for the desk (rows, controls), casual-axis reading type for the pages you read.
 - **Mood:** calm, competent, late and unhurried. The app never shouts, never celebrates the routine, and is quietly satisfying at the end.
 

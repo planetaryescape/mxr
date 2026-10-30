@@ -1,6 +1,8 @@
 use crate::{decode_id, trace_query};
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::{QueryBuilder, Row, Sqlite};
+use std::collections::HashSet;
 use std::time::Instant;
 
 impl super::Store {
@@ -82,5 +84,51 @@ impl super::Store {
             });
         }
         Ok(events)
+    }
+
+    /// The messages whose inbox label was last removed by a provider sync and
+    /// that are still out of the inbox.
+    ///
+    /// This is the evidence behind "left the inbox": an archive made in
+    /// another client, never one mxr made, because mxr rewrites labels in
+    /// bulk without per-label events. A message whose mail came back stops
+    /// matching.
+    pub async fn externally_filed_message_ids(
+        &self,
+        account_id: &AccountId,
+        message_ids: &[MessageId],
+    ) -> Result<HashSet<MessageId>, sqlx::Error> {
+        let started_at = Instant::now();
+        let mut filed = HashSet::new();
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let mut qb = QueryBuilder::<Sqlite>::new(
+                r#"SELECT DISTINCT e.message_id
+                     FROM message_events e
+                     JOIN labels l ON l.id = e.label_id
+                    WHERE e.account_id = "#,
+            );
+            qb.push_bind(account_id.as_str());
+            qb.push(
+                " AND UPPER(l.provider_id) = 'INBOX'
+                      AND e.event_type = 'unlabeled'
+                      AND e.source = 'sync'
+                      AND e.message_id IN (",
+            );
+            let mut ids = qb.separated(", ");
+            for id in chunk {
+                ids.push_bind(id.as_str().clone());
+            }
+            qb.push(
+                ") AND NOT EXISTS (
+                     SELECT 1 FROM message_labels ml
+                      WHERE ml.message_id = e.message_id AND ml.label_id = l.id
+                   )",
+            );
+            for row in qb.build().fetch_all(self.reader()).await? {
+                filed.insert(decode_id(&row.get::<String, _>(0))?);
+            }
+        }
+        trace_query("message_events.externally_filed", started_at, filed.len());
+        Ok(filed)
     }
 }

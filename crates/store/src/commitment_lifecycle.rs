@@ -28,7 +28,10 @@ async fn todo(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
 ) -> Result<Option<TodoRecord>, sqlx::Error> {
-    let sql = format!("SELECT {} FROM todos WHERE id=?", crate::todos::COLUMNS);
+    let sql = format!(
+        "SELECT {} FROM todos WHERE id=?",
+        crate::todos::SELECT_COLUMNS
+    );
     sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(id)
         .fetch_optional(&mut **tx)
@@ -56,7 +59,7 @@ impl Store {
         }
         let sql = format!(
             "SELECT {} FROM todos WHERE account_id=? AND commitment_id=? AND state='open'",
-            crate::todos::COLUMNS
+            crate::todos::SELECT_COLUMNS
         );
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())

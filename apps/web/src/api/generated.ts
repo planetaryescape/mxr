@@ -15841,6 +15841,13 @@ export interface components {
             scheduled_for?: string | null;
             /** Format: date-time */
             source_date?: string | null;
+            /**
+             * Format: date-time
+             * @description When the source email left the inbox through a provider sync and is
+             *     still out: "filed in Gmail". Never set for an archive mxr made, and
+             *     cleared when the mail comes back.
+             */
+            source_filed_at?: string | null;
             source_message_id?: components["schemas"]["MessageId"] | null;
             state: components["schemas"]["TodoStateData"];
             /**

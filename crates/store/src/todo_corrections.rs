@@ -80,7 +80,10 @@ async fn correction_row(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
 ) -> Result<TodoRecord, sqlx::Error> {
-    let sql = format!("SELECT {} FROM todos WHERE id = ?", crate::todos::COLUMNS);
+    let sql = format!(
+        "SELECT {} FROM todos WHERE id = ?",
+        crate::todos::SELECT_COLUMNS
+    );
     let row = sqlx::query(sqlx::AssertSqlSafe(sql))
         .bind(id)
         .fetch_one(&mut **tx)

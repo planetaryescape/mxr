@@ -104,6 +104,7 @@ pub async fn plan<Tz: TimeZone>(
             thread_id: source.thread_id,
             source_message_id: Some(source.message_id),
             source_date: Some(source.message_at),
+            source_filed_at: None,
             kind: TodoKind::Renewal.as_str().into(),
             verb: "review".into(),
             doc_type: None,

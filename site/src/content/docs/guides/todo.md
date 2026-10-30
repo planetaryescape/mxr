@@ -14,12 +14,18 @@ mxr todo --format json
 
 In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
 `Coming up`, `Later`, `Whenever` and `Done this week`. A web row is a
-checkbox, the task, who it is from ("Frank Billing · from Mon", or "from you"
-for a promise you made) and its window in words ("act by Fri"). The window
-turns amber on the day and after. The lit row's keys, `e` done and `o`
-email, take the window's place on the same line, and the same keys show in
-the status bar with the reason the task is here. The act-by date is the
-last date to act and still meet the due date; mxr can surface the task earlier
+checkbox, the task, who it is from ("Frank Billing · arrived Mon", or "from you"
+for a promise you made) and its window in words ("act by Fri"). The verb names
+the date: "arrived" is when the email reached you, while "act by" and "due" are
+deadlines. The window turns amber on the day and after. A later email that may
+change the row says so after the arrival, never in its place. If the email is
+archived outside mxr (in Gmail, say, or another client), the row still shows
+when it arrived and adds "left the inbox 30 Oct"; the to-do stays open until
+you tick it, so an archive is never mistaken for a finished task. The lit row's
+keys, `e` done and `o` email, take the window's place on the same line, and the
+same keys show in the status bar with the reason the task is here. The act-by
+date is the last date to act and still meet the due date; mxr can surface the
+task earlier
 to give you time. For a bank-transfer bill, act-by is three working days before
 the due date. Use a row's ID from the JSON output for the CLI commands below.
 

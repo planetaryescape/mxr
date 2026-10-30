@@ -52,6 +52,7 @@ impl Fx {
             thread_id: Some(source.1.clone()),
             source_message_id: Some(source.0.clone()),
             source_date: Some(date),
+            source_filed_at: None,
             kind: "bill".to_string(),
             verb: "pay".to_string(),
             doc_type: Some("bill_link".to_string()),
@@ -832,4 +833,92 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
         .await
         .unwrap();
     assert_eq!(key_of("october").await, key("due:2026-11"));
+}
+
+#[test]
+fn the_read_columns_are_the_row_columns_plus_the_filed_time() {
+    assert!(SELECT_COLUMNS.starts_with(COLUMNS));
+    assert!(SELECT_COLUMNS.ends_with("AS source_filed_at"));
+}
+
+#[tokio::test]
+async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
+    use mxr_core::id::LabelId;
+    use mxr_core::types::{EventSource, Label, LabelKind, Role};
+
+    let fx = Fx::new().await;
+    let inbox = Label {
+        id: LabelId::new(),
+        account_id: fx.account.clone(),
+        name: "Inbox".to_string(),
+        kind: LabelKind::System,
+        color: None,
+        provider_id: "INBOX".to_string(),
+        unread_count: 0,
+        total_count: 0,
+        role: Some(Role::Inbox),
+    };
+    fx.store.upsert_label(&inbox).await.unwrap();
+
+    // Sync saw the mail leave the inbox: the row says filed elsewhere.
+    let (message, thread) = fx.message("filed", at(0)).await;
+    fx.store
+        .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::Sync)
+        .await
+        .unwrap();
+    fx.store
+        .remove_message_label(&message, &inbox.id, EventSource::Sync)
+        .await
+        .unwrap();
+    let filed = fx.record("filed", &(message.clone(), thread.clone()), at(0));
+    fx.store.insert_todo(&filed).await.unwrap();
+    assert!(
+        fx.store
+            .get_todo("filed")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at
+            .is_some(),
+        "a sync unlabel is evidence the user filed the mail elsewhere"
+    );
+
+    // mxr's own archive rewrites the label set in bulk and emits no event:
+    // its archive must never mark its own to-do as filed elsewhere.
+    let (own, own_thread) = fx.message("own", at(0)).await;
+    fx.store
+        .set_message_labels(&own, std::slice::from_ref(&inbox.id), EventSource::Sync)
+        .await
+        .unwrap();
+    fx.store
+        .set_message_labels(&own, &[], EventSource::User)
+        .await
+        .unwrap();
+    let mut own_record = fx.record("own", &(own, own_thread), at(0));
+    own_record.dedup_key = "bill|own".to_string();
+    fx.store.insert_todo(&own_record).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("own")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at,
+        None
+    );
+
+    // The mail came back to the inbox: the marker clears.
+    fx.store
+        .add_message_label(&message, &inbox.id, EventSource::Sync)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("filed")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at,
+        None
+    );
 }

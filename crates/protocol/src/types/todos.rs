@@ -215,6 +215,11 @@ pub struct TodoData {
     pub source_message_id: Option<MessageId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_date: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the source email left the inbox through a provider sync and is
+    /// still out: "filed in Gmail". Never set for an archive mxr made, and
+    /// cleared when the mail comes back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surfaced_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

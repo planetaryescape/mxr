@@ -43808,6 +43808,13 @@
             "type": "string",
             "description": "\"Pay council tax\"."
           },
+          "unread": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The source email is unread. `None` when the row has no source email.\nA read source calms the row even before the to-do is ticked."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -44910,6 +44917,13 @@
                 "type": "null"
               }
             ]
+          },
+          "unread": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The line's newest email is unread. `None` for a line that is not an\nemail (a parcel tracker). Reading the email calms the line."
           },
           "why": {
             "type": "string",

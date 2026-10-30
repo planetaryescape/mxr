@@ -231,19 +231,26 @@ describe("UpdateLineRow's source", () => {
     const source = within(row).getByTestId("update-source");
     expect(source).toHaveTextContent("Google (accounts.google.com)");
     expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
-    expect(source).toHaveClass("font-semibold", "text-text-1");
   });
 
-  test("a changed source is regular weight and carries no host", () => {
-    const { row } = renderLine(lineFixture({ source_name: "Strava" }));
-    expect(within(row).getByTestId("update-source")).not.toHaveClass("font-semibold");
-    expect(within(row).queryByTestId("update-host")).toBeNull();
+  test("an unread email reads bright and semibold", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: true }));
+    expect(within(row).getByTestId("update-source").parentElement).toHaveClass(
+      "font-semibold",
+      "text-text-1",
+    );
   });
 
-  test("a routine source calms to the second text tier", () => {
-    const { row } = renderLine(lineFixture({ section: "routine", source_name: "Strava" }));
-    expect(within(row).getByTestId("update-source")).toHaveClass("text-text-2");
-    expect(within(row).getByTestId("update-source")).not.toHaveClass("font-semibold");
+  test("a read email calms to the second text tier", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: false }));
+    const source = within(row).getByTestId("update-source");
+    expect(source.parentElement).toHaveClass("text-text-2");
+    expect(source.parentElement).not.toHaveClass("font-semibold");
+  });
+
+  test("a line with no email keeps the neutral tier", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: undefined }));
+    expect(within(row).getByTestId("update-source").parentElement).toHaveClass("text-text-1");
   });
 });
 

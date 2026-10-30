@@ -65,6 +65,22 @@ describe("TodoRow", () => {
     expect(row.querySelector("svg")).toBeNull();
   });
 
+  test("an unread source email reads bright and semibold; a read one calms", () => {
+    const { row, rerender } = renderRow(todoFixture({ unread: true }), "now", { lit: false });
+    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass(
+      "font-semibold",
+      "text-text-1",
+    );
+    rerender(todoFixture({ unread: false }));
+    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass("text-text-2");
+    expect(within(row).getByTestId("todo-title").parentElement).not.toHaveClass("font-semibold");
+  });
+
+  test("a completed row stays struck even when its email is unread", () => {
+    const { row } = renderRow(todoFixture({ unread: true }), "done", { lit: false });
+    expect(within(row).getByTestId("todo-title")).toHaveClass("text-text-3", "line-through");
+  });
+
   test("a field to check shows as one word in the trail, not a chip", () => {
     const { row } = renderRow(todoFixture(), "now", { lit: false });
     expect(within(row).getByTestId("todo-unchecked")).toHaveTextContent("unchecked");

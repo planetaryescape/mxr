@@ -599,6 +599,7 @@ where
         source_message_id: Some(row.id.clone()),
         source_date: Some(row.date),
         source_filed_at: None,
+        source_unread: None,
         kind: detection.kind.as_str().to_string(),
         verb: detection.verb,
         doc_type: detection.doc_type,

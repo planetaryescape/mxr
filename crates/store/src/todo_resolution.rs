@@ -829,6 +829,7 @@ mod tests {
                 source_message_id: Some(source.id.clone()),
                 source_date: Some(now),
                 source_filed_at: None,
+                source_unread: None,
                 kind: "bill".into(),
                 verb: "pay".into(),
                 doc_type: None,

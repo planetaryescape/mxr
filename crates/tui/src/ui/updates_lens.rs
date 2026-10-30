@@ -547,6 +547,7 @@ pub(crate) mod tests {
             thread_ids: vec![ThreadId::new()],
             latest_message_id: Some(MessageId::new()),
             latest_message_pinned: false,
+            unread: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),

@@ -9811,6 +9811,11 @@ export interface components {
             /** @description The issue's shape (a link carries its issue's). */
             shape: components["schemas"]["ReadingShapeData"];
             source: string;
+            /**
+             * Format: date-time
+             * @description The source email left the inbox outside mxr; this item stays in Reading.
+             */
+            source_filed_at?: string | null;
             /** @description The issue's first real paragraph, or the link's blurb. */
             standfirst?: string | null;
             /** @description On Later for over 30 days and not yet asked: "Still want it?" */
@@ -16271,6 +16276,12 @@ export interface components {
             sender_email?: string;
             setting: components["schemas"]["UpdateSourceSettingData"];
             signal: components["schemas"]["UpdateSignalData"];
+            /**
+             * Format: date-time
+             * @description The newest email left the inbox outside mxr; the update is still here.
+             *     Absent for parcel trackers, which represent a delivery, not one email.
+             */
+            source_filed_at?: string | null;
             source_key: string;
             /** @description "GitHub acme/api", "Strava". */
             source_name: string;

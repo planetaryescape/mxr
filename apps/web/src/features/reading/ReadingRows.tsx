@@ -2,6 +2,7 @@ import { Bookmark, ChevronRight, ExternalLink, Newspaper } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { ModeMarks } from "@/components/ModeMark";
+import { SourceFiled } from "@/components/SourceFiled";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
 import { cn } from "@/lib/utils";
@@ -84,7 +85,19 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
       onMouseDown={() => handlers.onPoint(item.item_key)}
       lead={<Newspaper aria-hidden className="size-4 shrink-0 text-text-3" strokeWidth={1.75} />}
       primary={item.title}
-      secondary={item.standfirst || item.engagement || undefined}
+      secondary={
+        item.source_filed_at ? (
+          <>
+            <span className="hidden sm:inline">
+              <SourceFiled value={item.source_filed_at} />
+              {item.standfirst || item.engagement ? " · " : null}
+            </span>
+            {item.standfirst || item.engagement}
+          </>
+        ) : (
+          item.standfirst || item.engagement || undefined
+        )
+      }
       renderMain={readLink(item.item_key, handlers, `${item.source}: ${item.title}`)}
       trail={
         <>
@@ -128,6 +141,13 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
             />
           ) : null}
         </>
+      }
+      hint={
+        item.source_filed_at ? (
+          <div className="ml-10 mb-1 sm:hidden">
+            <SourceFiled value={item.source_filed_at} />
+          </div>
+        ) : undefined
       }
     />
   );

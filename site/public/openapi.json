@@ -22927,6 +22927,14 @@
           "source": {
             "type": "string"
           },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The source email left the inbox outside mxr; this item stays in Reading."
+          },
           "standfirst": {
             "type": [
               "string",
@@ -44969,6 +44977,14 @@
           },
           "signal": {
             "$ref": "#/components/schemas/UpdateSignalData"
+          },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The newest email left the inbox outside mxr; the update is still here.\nAbsent for parcel trackers, which represent a delivery, not one email."
           },
           "source_key": {
             "type": "string"

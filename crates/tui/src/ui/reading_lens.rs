@@ -108,6 +108,12 @@ fn dot() -> &'static str {
 /// "Long Reads Weekly · 3 min · you read 8 of 10 · 6 links".
 fn meta_line(item: &ReadingItemData) -> String {
     let mut parts = vec![one_line(&item.source), format!("{} min", item.minutes)];
+    if let Some(filed) = item.source_filed_at {
+        parts.push(format!(
+            "left the inbox {}",
+            filed.with_timezone(&chrono::Local).format("%-d %b %Y")
+        ));
+    }
     if let Some(engagement) = &item.engagement {
         parts.push(one_line(engagement));
     }

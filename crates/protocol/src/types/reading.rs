@@ -175,6 +175,9 @@ pub struct ReadingItemData {
     #[serde(default)]
     pub tracked: bool,
     pub arrived_at: chrono::DateTime<chrono::Utc>,
+    /// The source email left the inbox outside mxr; this item stays in Reading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// When it leaves the edition. Absent on Later, which never expires.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,

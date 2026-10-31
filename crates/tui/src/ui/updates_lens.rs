@@ -36,6 +36,12 @@ pub struct UpdatesView<'a> {
 /// Code wrote every part of it.
 fn suffix(line: &UpdateLineData) -> String {
     let mut parts = Vec::new();
+    if let Some(filed) = line.source_filed_at {
+        parts.push(format!(
+            "left the inbox {}",
+            filed.with_timezone(&chrono::Local).format("%-d %b %Y")
+        ));
+    }
     // A code the fact line does not already show ("MFA Login Authentication").
     if let Some(code) = line
         .code
@@ -526,6 +532,18 @@ fn draw_tune_menu(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn filed_update_suffix_names_the_server_location() {
+        let mut update = line(
+            mxr_protocol::UpdateSectionData::NeedsALook,
+            "GitHub",
+            "Build failed",
+            1,
+        );
+        assert!(!super::suffix(&update).contains("left the inbox"));
+        update.source_filed_at = Some(update.latest_at);
+        assert!(super::suffix(&update).contains("left the inbox"));
+    }
     use super::*;
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -565,6 +583,7 @@ pub(crate) mod tests {
             latest_message_pinned: false,
             unread: None,
             seen_revision: None,
+            source_filed_at: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),

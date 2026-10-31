@@ -210,6 +210,92 @@ async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
     assert_ne!(older.id, latest.id);
 }
 
+#[tokio::test]
+async fn externally_filed_updates_stay_in_the_digest_until_let_go() {
+    use mxr_core::EventSource;
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    let thread = ThreadId::new();
+    let mail = update(
+        &fx,
+        &thread,
+        "notifications@github.com",
+        "Build failed on main",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let before = digest(&fx, now).await;
+    assert!(all_lines(&before)
+        .iter()
+        .any(|line| line.latest_message_id.as_ref() == Some(&mail.id)));
+
+    fx.state
+        .store
+        .remove_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let after = digest(&fx, now).await;
+    let retained = all_lines(&after)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&mail.id))
+        .expect("archived update remains visible");
+    assert!(retained.source_filed_at.is_some());
+
+    fx.state
+        .store
+        .add_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let restored = digest(&fx, now).await;
+    assert!(all_lines(&restored)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&mail.id))
+        .unwrap()
+        .source_filed_at
+        .is_none());
+
+    fx.state
+        .store
+        .remove_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let final_digest = digest(&fx, now).await;
+    let preview = let_go(&fx, now, Some(&final_digest.selection_token), true)
+        .await
+        .unwrap();
+    let applied = let_go(&fx, now, Some(&final_digest.selection_token), false)
+        .await
+        .unwrap();
+    assert_eq!(preview.message_count, applied.message_count);
+    assert_eq!(applied.message_count, 1);
+    assert!(applied
+        .items
+        .iter()
+        .all(|item| item.error.is_none() && item.archived == 0));
+    assert!(
+        all_lines(&digest(&fx, now).await).is_empty(),
+        "explicit let-go still clears the retained update"
+    );
+
+    let next = update(
+        &fx,
+        &thread,
+        "notifications@github.com",
+        "Build failed on main",
+        cut - Duration::minutes(30),
+    )
+    .await;
+    let next_digest = digest(&fx, now).await;
+    let next_line = all_lines(&next_digest)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&next.id))
+        .expect("new mail brings Updates back");
+    assert!(
+        next_line.source_filed_at.is_none(),
+        "an older archive must not label a newer inbox email as filed"
+    );
+}
+
 async fn let_go(
     fx: &Fixture,
     now: DateTime<Utc>,

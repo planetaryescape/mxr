@@ -231,6 +231,13 @@ fn render_digest(
 
 fn line_text(line: &UpdateLineData) -> String {
     let mut text = terminal_text(&line.fact).into_owned();
+    if let Some(filed) = line.source_filed_at {
+        let _ = write!(
+            text,
+            " · left the inbox {}",
+            filed.with_timezone(&chrono::Local).format("%-d %b %Y")
+        );
+    }
     // A code the fact line does not already show ("MFA Login Authentication").
     if let Some(code) = line
         .code
@@ -464,6 +471,7 @@ mod tests {
             latest_message_pinned: false,
             unread: None,
             seen_revision: None,
+            source_filed_at: None,
             fact_message_id: None,
             latest_thread_id: None,
             latest_at: at,

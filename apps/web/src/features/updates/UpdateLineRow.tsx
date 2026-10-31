@@ -3,6 +3,7 @@ import { MoreHorizontal } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelMark } from "@/components/ModelMark";
+import { SourceFiled } from "@/components/SourceFiled";
 import { Received, When } from "@/components/When";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
@@ -203,6 +204,13 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           </span>
         </>
       }
+      secondary={
+        line.source_filed_at ? (
+          <span className="hidden sm:inline">
+            <SourceFiled value={line.source_filed_at} />
+          </span>
+        ) : undefined
+      }
       trail={
         trailing ? (
           <TrailingValue
@@ -324,6 +332,11 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       }
       hint={
         <>
+          {line.source_filed_at ? (
+            <div className="ml-10 mb-1 sm:hidden">
+              <SourceFiled value={line.source_filed_at} />
+            </div>
+          ) : null}
           {peeked ? (
             <Peek
               line={line}

@@ -50,7 +50,14 @@ The stored-assessment details require changes made after
 Updates holds automated mail in your inbox: the same senders the
 classifier puts in Updates, such as `notifications@github.com` or a
 `no-reply` address. Thirty emails from twelve senders read as twelve
-lines, in three sections that never change order:
+lines, in three sections that never change order. If sync observes an archive
+in Gmail or another client, the update stays here with a labelled
+"left the inbox" date. This is a server location, not a completion signal;
+let go in Updates when you are finished. A folded line describes its newest
+email, so an older archived message never labels newer inbox mail as filed.
+Parcel tracker rows describe the delivery, not one email, and have no such date.
+
+The sections are:
 
 | Section | What lands there |
 |---|---|

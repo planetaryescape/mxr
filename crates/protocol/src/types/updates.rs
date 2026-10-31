@@ -235,6 +235,10 @@ pub struct UpdateLineData {
     /// Opaque version to acknowledge with `SetModeRowSeen`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seen_revision: Option<String>,
+    /// The newest email left the inbox outside mxr; the update is still here.
+    /// Absent for parcel trackers, which represent a delivery, not one email.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// The message `fact` and `todo_title` came from, for `t`. In Changed
     /// it can be older than the newest.
     #[serde(default, skip_serializing_if = "Option::is_none")]

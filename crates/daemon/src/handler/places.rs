@@ -286,7 +286,7 @@ pub(super) async fn scan_inbox(
     let mut placed = Vec::new();
     let mut people_threads = HashMap::new();
     for account_id in accounts {
-        let candidates = state.store.place_candidates(account_id).await?;
+        let candidates = state.store.mode_candidates(account_id).await?;
         let kinds = AccountKinds::load(state, account_id, &candidates).await?;
         let mut seen_people = HashSet::new();
         for message in candidates {
@@ -299,7 +299,8 @@ pub(super) async fn scan_inbox(
             }
             // Classify first; only mail that stays gets its reason written.
             let classification = kinds.classification(&message);
-            if classification.kind.to_data() == SenderKindData::People
+            if message.in_inbox
+                && classification.kind.to_data() == SenderKindData::People
                 && seen_people.insert(message.thread_id.clone())
             {
                 let threads: &mut Vec<_> = people_threads.entry(account_id.clone()).or_default();
@@ -894,8 +895,10 @@ async fn sweep_selection(
     allowed: Option<&HashSet<MessageId>>,
 ) -> Result<SweepSelection, HandlerError> {
     let accounts = scoped_accounts(state, scope.account_id.as_ref()).await?;
-    let placed =
+    let mut placed =
         place_messages(state, &accounts, scope.place, scope.sender_email.as_deref()).await?;
+    // A provider sweep only archives inbox mail, not retained mode items.
+    placed.retain(|item| item.message.in_inbox);
     let (pinned, mut selected): (Vec<&Placed>, Vec<&Placed>) =
         placed.iter().partition(|item| item.message.pinned);
     if let Some(allowed) = allowed {

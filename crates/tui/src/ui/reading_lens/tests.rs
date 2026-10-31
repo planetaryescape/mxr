@@ -32,6 +32,7 @@ pub(crate) fn item(key: &str, title: &str, source: &str) -> ReadingItemData {
         domain: None,
         tracked: false,
         arrived_at: at(),
+        source_filed_at: None,
         expires_at: Some(at() + Duration::days(14)),
         why: "Here because: you subscribed, and it has an unsubscribe link (rule). Fades Monday unless you keep it.".into(),
         fades: Some("Fades Monday unless you keep it.".into()),
@@ -60,6 +61,14 @@ fn link(key: &str, idx: u8, title: &str, domain: &str, tracked: bool) -> Reading
         on_later: false,
         article_cached: false,
     }
+}
+
+#[test]
+fn filed_reading_metadata_names_the_server_location() {
+    let mut issue = item("filed", "An unfinished essay", "Weekly");
+    assert!(!super::meta_line(&issue).contains("left the inbox"));
+    issue.source_filed_at = Some(at());
+    assert!(super::meta_line(&issue).contains("left the inbox"));
 }
 
 fn source(name: &str, evidence: &str) -> ReadingSourceData {

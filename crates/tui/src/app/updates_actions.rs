@@ -145,6 +145,12 @@ impl App {
     /// Enter unfolds the quieter sources, or opens the line's email; `o`
     /// always opens the email.
     fn updates_open(&mut self, email_only: bool) {
+        if let Some(line) = self
+            .selected_updates_line()
+            .filter(|line| line.latest_message_id.is_some())
+        {
+            self.mark_update_row_seen(&line);
+        }
         match self.selected_updates_row() {
             Some(UpdatesRow::MoreRoutine(_)) if !email_only => {
                 self.mailbox.updates_page.routine_open = true;
@@ -437,8 +443,28 @@ impl App {
             return;
         }
         page.peek = Some(line.id.clone());
+        self.mark_update_row_seen(&line);
         if let Some(message_id) = line.latest_message_id {
             self.queue_priority_body_fetch(message_id);
+        }
+    }
+
+    fn mark_update_row_seen(&mut self, line: &UpdateLineData) {
+        if line.unread != Some(true) {
+            return;
+        }
+        if let Some(revision) = &line.seen_revision {
+            self.queue_mutation(
+                Request::SetModeRowSeen {
+                    account_id: line.account_id.clone(),
+                    mode: mxr_protocol::ModeKindData::Updates,
+                    row_id: line.id.clone(),
+                    revision: revision.clone(),
+                    dry_run: false,
+                },
+                MutationEffect::ModeDone(String::new()),
+                String::new(),
+            );
         }
     }
 

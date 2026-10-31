@@ -181,8 +181,8 @@ pub(crate) const COLUMNS: &str =
 /// per-label event, so its archive never marks its own to-do as filed
 /// elsewhere. The message must still be out of the inbox, so an undo or an
 /// external unarchive clears the marker. The unread flag is the message's
-/// own read state, so reading the email calms the row before the to-do is
-/// ticked.
+/// own read state, not the row's attention state: the daemon derives that
+/// from `mode_row_seen` (D190).
 pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_message_id, source_date, kind, verb,
     doc_type, title, counterparty, sender_domain, amount_minor, currency, due_at, due_words,
     act_by_at, surface_at, scheduled_for, action_url, action_domain, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,

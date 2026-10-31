@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
-import { memo, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelMark } from "@/components/ModelMark";
 import { Received, When } from "@/components/When";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { fetchThread } from "@/features/mailbox/api";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 import { formatLongDate, initials, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +94,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   hint?: ReactNode;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
+  const markRowSeen = useMarkRowSeen("updates");
+  useEffect(() => {
+    if (peeked) markRowSeen(line);
+  }, [peeked, line, markRowSeen]);
   const hide = useUpdatesHidden((s) => s.hide);
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLLIElement>(null);
@@ -140,6 +145,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       lit={lit}
       via={via}
       unread={line.unread ?? undefined}
+      unreadLabel="Unseen"
       leaving={leaving}
       land={landIds}
       // Focus comes back here when the menu closes, so Space peeks in the normal flow.

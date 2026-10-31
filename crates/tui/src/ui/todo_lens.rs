@@ -241,7 +241,7 @@ fn row_line(
     theme: &crate::theme::Theme,
     chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
-    let marker = if selected { "\u{258c} " } else { "  " };
+    let marker = "  ";
     let who = who(todo);
     let amount = todo
         .amount
@@ -252,12 +252,17 @@ fn row_line(
     let when = one_line(&todo.when_label);
     let cols = RowColumns::for_width(width);
     let when = truncate(&when, cols.when);
-    let text = if dim {
+    let text = if dim || todo.unread == Some(false) {
         theme.text_secondary
     } else {
         theme.text_primary
     };
     let title_width = cols.title;
+    let primary = if todo.unread == Some(true) && !dim {
+        Style::default().fg(text).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(text)
+    };
     let mut spans = vec![
         Span::raw(marker),
         Span::styled(
@@ -265,7 +270,7 @@ fn row_line(
                 "{:<title_width$}  ",
                 truncate(&one_line(&todo.title), title_width)
             ),
-            Style::default().fg(text),
+            primary,
         ),
     ];
     if cols.who > 0 {
@@ -293,7 +298,7 @@ fn row_line(
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     if selected {
         for span in &mut spans {
-            span.style = span.style.add_modifier(Modifier::REVERSED);
+            span.style = span.style.bg(theme.selection_bg);
         }
     }
     Line::from(spans)
@@ -994,6 +999,7 @@ pub(crate) mod tests {
             source_date: None,
             source_filed_at: None,
             unread: None,
+            seen_revision: None,
             surfaced_at: None,
             expired_at: None,
             done_at: None,

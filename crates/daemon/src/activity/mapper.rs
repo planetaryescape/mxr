@@ -1120,6 +1120,12 @@ pub fn map_request(
                 "teaching copy and its seen state are not activity"
             );
         }
+        Request::SetModeRowSeen { .. } => {
+            skip_activity!(
+                "row_seen",
+                "local row attention is UI state, not mail activity"
+            );
+        }
         Request::GetKeymap | Request::UpdateKeys { .. } => {
             skip_activity!(
                 "keymap",

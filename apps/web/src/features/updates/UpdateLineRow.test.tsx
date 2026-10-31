@@ -452,19 +452,21 @@ describe("UpdateLineRow's more menu", () => {
     const second = lineFixture({ id: "b", source_key: "b.example", source_name: "Beta" });
     const h = makeHandlers();
     render(
-      <ul>
-        {[first, second].map((line, index) => (
-          <UpdateLineRow
-            key={line.id}
-            line={line}
-            index={index}
-            lit={false}
-            via="key"
-            peeked={false}
-            {...h}
-          />
-        ))}
-      </ul>,
+      <QueryClientProvider client={new QueryClient()}>
+        <ul>
+          {[first, second].map((line, index) => (
+            <UpdateLineRow
+              key={line.id}
+              line={line}
+              index={index}
+              lit={false}
+              via="key"
+              peeked={false}
+              {...h}
+            />
+          ))}
+        </ul>
+      </QueryClientProvider>,
     );
     const rows = screen.getAllByTestId("update-line");
     openMenu(rows[1]!, "More actions for Beta");
@@ -475,6 +477,13 @@ describe("UpdateLineRow's more menu", () => {
 });
 
 describe("UpdateLineRow's peek", () => {
+  test("peeking acknowledges this row, while keyboard focus alone does not", async () => {
+    renderLine(lineFixture({ unread: true, seen_revision: "exact-revision" }), { peeked: false });
+    expect(apiFetch).not.toHaveBeenCalledWith("/api/v1/mail/rows/seen", expect.anything());
+    cleanup();
+    renderLine(lineFixture({ unread: true, seen_revision: "exact-revision" }), { peeked: true });
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen"));
+  });
   test("it holds the why, the numbers, the suggestion with its answers, and the links", () => {
     const { row, handlers: h } = renderLine(
       lineFixture({

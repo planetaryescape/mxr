@@ -96,6 +96,7 @@ mod remote;
 mod remote_tests;
 pub(crate) mod reply_later;
 mod reply_recipients;
+mod row_seen;
 pub(crate) mod rule_treatment;
 mod rules;
 mod runtime;
@@ -623,6 +624,7 @@ async fn dispatch(
         .flatten()
     {
         let result = Box::pin(state.mode_cache.read(state, view)).await;
+        let result = row_seen::decorate(state, result).await;
         return respond(result, request, &account_id, account_key, started_at);
     }
     let result = match req {
@@ -1851,6 +1853,13 @@ async fn dispatch(
         Request::UpdateKeys { change, dry_run } => keymap::update(change, *dry_run),
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
+        Request::SetModeRowSeen {
+            account_id,
+            mode,
+            row_id,
+            revision,
+            dry_run,
+        } => row_seen::mark(state, account_id, *mode, row_id, revision, *dry_run).await,
         // Boxed with the other mode requests below: their futures build the
         // Updates digest, and inline they overflowed a debug worker's stack.
         Request::GetNow { account_id } => Box::pin(now::get_now(state, account_id.as_ref())).await,
@@ -2352,6 +2361,7 @@ async fn dispatch(
             .map_err(HandlerError::from),
         (result, _) => result,
     };
+    let result = row_seen::decorate(state, result).await;
     respond(result, request, &account_id, account_key, started_at)
 }
 
@@ -2762,7 +2772,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ActivityStats { .. }
         | Request::ExportActivity { .. }
         | Request::ListSavedActivityFilters
-        | Request::GetSavedActivityFilter { .. } => Read,
+        | Request::GetSavedActivityFilter { .. }
+        | Request::SetModeRowSeen { dry_run: true, .. } => Read,
 
         // --- DraftOnly: logical draft create/update/delete (local plus an
         // optional linked provider resource) ---
@@ -2917,6 +2928,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
         | Request::SetHintSeen { .. }
+        | Request::SetModeRowSeen { dry_run: false, .. }
         | Request::SetRecordField { .. }
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
@@ -3276,6 +3288,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::UpdateKeys { .. } => "update_keys",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetHintSeen { .. } => "set_hint_seen",
+        Request::SetModeRowSeen { .. } => "set_mode_row_seen",
         Request::ListRecords { .. } => "list_records",
         Request::ListRecordSubscriptions { .. } => "list_record_subscriptions",
         Request::GetRecord { .. } => "get_record",
@@ -3417,6 +3430,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::MergePeople { account_id, .. }
         | Request::SplitPerson { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
+        Request::SetModeRowSeen { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::ComposeAssist {
             draft: mxr_protocol::DraftTargetData::New { account_id, .. },

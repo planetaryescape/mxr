@@ -125,14 +125,20 @@ pub(crate) fn line_row(
         format!("{fact} \u{b7} {extra}")
     };
     let mut spans = vec![
-        Span::raw(marker(selected)),
+        Span::raw("  "),
         Span::styled(mark, mark_style),
         Span::styled(
             format!(
                 "{:<source_width$}  ",
                 truncate(&one_line(&line.source_name), source_width)
             ),
-            Style::default().fg(theme.text_primary),
+            match line.unread {
+                Some(true) => Style::default()
+                    .fg(theme.text_primary)
+                    .add_modifier(Modifier::BOLD),
+                Some(false) => Style::default().fg(theme.text_secondary),
+                None => Style::default().fg(theme.text_primary),
+            },
         ),
         Span::styled(
             format!("{:<rest$}", truncate(&text, rest)),
@@ -142,6 +148,11 @@ pub(crate) fn line_row(
     spans.extend(chip.unwrap_or_default());
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     spans.push(Span::styled(count, Style::default().fg(theme.text_muted)));
+    if selected {
+        for span in &mut spans {
+            span.style = span.style.bg(theme.selection_bg);
+        }
+    }
     Line::from(spans)
 }
 
@@ -548,6 +559,7 @@ pub(crate) mod tests {
             latest_message_id: Some(MessageId::new()),
             latest_message_pinned: false,
             unread: None,
+            seen_revision: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),

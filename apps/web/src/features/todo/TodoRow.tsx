@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchThread } from "@/features/mailbox/api";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 import { formatLongDate } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
@@ -297,6 +298,10 @@ export const TodoRow = memo(function TodoRow({
   onOpenResolution,
   hint,
 }: TodoRowProps) {
+  const markRowSeen = useMarkRowSeen("todo");
+  useEffect(() => {
+    if (details) markRowSeen(todo);
+  }, [details, todo, markRowSeen]);
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
   // One subscription to the minute clock: the due-today flag, then the secondary line.
@@ -321,6 +326,7 @@ export const TodoRow = memo(function TodoRow({
       lit={lit}
       via={via}
       unread={todo.unread ?? undefined}
+      unreadLabel="Unseen"
       leaving={leaving}
       land={[todo.thread_id, todo.source_message_id]}
       onClick={() => onSelect(todo)}

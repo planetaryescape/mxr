@@ -3005,6 +3005,19 @@ pub enum KeyClientArg {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ModesAction {
+    /// Calm the exact To do or Updates revision you opened. Get the row id,
+    /// account_id and seen_revision from `todo` or `updates --format json`.
+    Seen {
+        #[arg(value_parser = ["todo", "updates"])]
+        mode: String,
+        row_id: String,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        revision: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// What a mode is for, what lands there, how it works, its keys and
     /// its hints. Every mode that has shipped when none is named.
     Explain {

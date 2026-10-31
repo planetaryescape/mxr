@@ -1,13 +1,12 @@
 ---
 source: crates/tui/src/ui/todo_lens.rs
-assertion_line: 1154
 expression: rendered
 ---
 "╭ To do ─ Things email asked you to do, ordered by when to act. ───────────────────────────────────────────────────────╮"
 "│  2 things need you. Pay council tax first, act by Wed.                                                               │"
 "│                                                                                                                      │"
 "│  NOW                                                                                                                 │"
-"│▌ Pay council tax                Camden Council           £142.00  ▓▓▓▓▓▓░░░░ act by Wed 7 Oct · due Fri 9 Oct        │"
+"│  Pay council tax                Camden Council           £142.00  ▓▓▓▓▓▓░░░░ act by Wed 7 Oct · due Fri 9 Oct        │"
 "│  Pay water bill                 Thames Water                                 was due Wed 30 Sep                      │"
 "│                                                                                                                      │"
 "│  COMING UP                                                                                                           │"

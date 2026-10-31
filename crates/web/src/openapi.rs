@@ -97,7 +97,7 @@ use utoipa::{
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
         mail_todo_get, mail_todos_state, mail_todo_correct, mail_todo_undo_correction, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
         mail_microsoft_todo_status, mail_microsoft_todo_link, mail_microsoft_todo_sync,
-        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen,
+        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen, mail_row_seen,
         mail_classify_report, mail_now, mail_rail, mail_codes, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
@@ -911,6 +911,16 @@ fn mail_mode_guide() {}
 )]
 #[allow(dead_code)]
 fn mail_hint_seen() {}
+
+#[utoipa::path(
+    post, path = "/api/v1/mail/rows/seen",
+    summary = "Mark the opened To do or Updates row revision seen, without completing it",
+    request_body = crate::mode_routes::RowSeenBody,
+    responses((status = 200, description = "Ack", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token"))
+)]
+#[allow(dead_code)]
+fn mail_row_seen() {}
 
 #[utoipa::path(
     get,

@@ -74,6 +74,90 @@ async fn digest(fx: &Fixture, now: DateTime<Utc>) -> UpdatesDigestData {
 }
 
 #[tokio::test]
+async fn a_seen_update_stays_in_the_digest_and_new_folded_mail_becomes_unseen() {
+    let fx = Fixture::new().await;
+    let (cut, _) = clock();
+    let sender = "notifications@example.com";
+    known_source(&fx, sender).await;
+    let thread = ThreadId::new();
+    let mail = update(
+        &fx,
+        &thread,
+        sender,
+        "Monthly report: 12 items",
+        cut - Duration::hours(2),
+    )
+    .await;
+    let get = || Request::GetUpdatesDigest {
+        account_id: Some(fx.account.clone()),
+        cut: Some(cut),
+        mark_seen: false,
+        expired: false,
+    };
+    let ResponseData::UpdatesDigest { digest } = request(&fx, get()).await else {
+        panic!()
+    };
+    let line = digest
+        .needs_a_look
+        .iter()
+        .chain(&digest.changed)
+        .chain(&digest.routine)
+        .find(|line| line.message_ids.contains(&mail.id))
+        .unwrap()
+        .clone();
+    assert_eq!(line.unread, Some(true));
+    let mark = |revision: &str| Request::SetModeRowSeen {
+        account_id: fx.account.clone(),
+        mode: mxr_protocol::ModeKindData::Updates,
+        row_id: line.id.clone(),
+        revision: revision.into(),
+        dry_run: false,
+    };
+    request(&fx, mark(line.seen_revision.as_deref().unwrap())).await;
+    let ResponseData::UpdatesDigest { digest: calm } = request(&fx, get()).await else {
+        panic!()
+    };
+    let find = |d: &UpdatesDigestData| {
+        d.needs_a_look
+            .iter()
+            .chain(&d.changed)
+            .chain(&d.routine)
+            .find(|l| l.id == line.id)
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(find(&calm).unread, Some(false));
+    assert_eq!(
+        calm.message_count, digest.message_count,
+        "seen is not let go"
+    );
+    assert!(!fx
+        .state
+        .store
+        .get_envelope(&mail.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .flags
+        .contains(mxr_core::MessageFlags::READ));
+    update(
+        &fx,
+        &thread,
+        sender,
+        "Monthly report: 14 items",
+        cut - Duration::hours(1),
+    )
+    .await;
+    request(&fx, mark(line.seen_revision.as_deref().unwrap())).await;
+    let ResponseData::UpdatesDigest { digest: fresh } = request(&fx, get()).await else {
+        panic!()
+    };
+    let fresh = find(&fresh);
+    assert_eq!(fresh.unread, Some(true));
+    assert_ne!(fresh.seen_revision, line.seen_revision);
+}
+
+#[tokio::test]
 async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();

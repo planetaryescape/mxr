@@ -12,6 +12,8 @@ interface LineAnswer {
   source_key: string;
   source_name: string;
   fact: string;
+  unread?: boolean;
+  seen_revision?: string;
   in_todo?: string | null;
   todo_suggestion?: string | null;
   delta?: { text: string } | null;
@@ -64,6 +66,27 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   const full = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count;
   await openApp(page, "/updates");
   await expect(page.getByTestId("update-line").first()).toBeVisible();
+  // A peek crosses the bridge and persists exact row attention, without
+  // letting go. Reloading loses client state but keeps the row calm.
+  const firstRow = page.getByTestId("update-line").first();
+  const rowId = await firstRow.getAttribute("data-line-id");
+  const seen = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/mail/rows/seen") && response.request().method() === "POST",
+  );
+  await firstRow.getByRole("button", { name: "peek", exact: true }).click();
+  expect((await seen).ok()).toBe(true);
+  const persisted = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest;
+  expect(
+    [...persisted.needs_a_look, ...persisted.changed, ...persisted.routine].find(
+      (line) => line.id === rowId,
+    )?.unread,
+  ).toBe(false);
+  expect(persisted.message_count).toBe(full);
+  await page.reload();
+  await expect(
+    page.locator(`[data-testid="update-line"][data-line-id="${rowId}"]`),
+  ).not.toHaveAttribute("data-unread", "true");
   await page.keyboard.press("E");
   const dialog = page.getByTestId("updates-let-go-dialog");
   await expect(dialog).toContainText(

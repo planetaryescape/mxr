@@ -228,10 +228,13 @@ pub struct UpdateLineData {
     /// digest payloads omit this and are deliberately treated as unpinned.
     #[serde(default)]
     pub latest_message_pinned: bool,
-    /// The line's newest email is unread. `None` for a line that is not an
-    /// email (a parcel tracker). Reading the email calms the line.
+    /// This line revision has not been opened or peeked, including trackers.
+    /// Independent of the source email's READ flag. Omitted by older daemons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unread: Option<bool>,
+    /// Opaque version to acknowledge with `SetModeRowSeen`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_revision: Option<String>,
     /// The message `fact` and `todo_title` came from, for `t`. In Changed
     /// it can be older than the newest.
     #[serde(default, skip_serializing_if = "Option::is_none")]

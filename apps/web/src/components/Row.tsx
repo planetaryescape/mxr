@@ -17,11 +17,12 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   lit: boolean;
   via?: LampVia;
   /**
-   * Unread mail reads bright and semibold; read mail calms to `--text-2`.
-   * Omit it where the list has no read state (To do, Updates, drafts), and the
-   * row keeps the neutral text tier.
+   * Unread mail or unseen mode rows read bright and semibold; read/seen
+   * calms to `--text-2`. Omit for lists with no attention state.
    */
   unread?: boolean;
+  /** Screen-reader name for the attention state (mode rows use "Unseen"). */
+  unreadLabel?: string;
   /** The row is folding away (pointer done). Not interactive meanwhile. */
   leaving?: boolean;
   /**
@@ -81,6 +82,7 @@ export const Row = memo(function Row({
   lit,
   via = "key",
   unread,
+  unreadLabel = "Unread",
   leaving = false,
   land = NO_IDS,
   lead,
@@ -109,7 +111,7 @@ export const Row = memo(function Row({
       {/* The inbox spells "Unread" into its own aria-label; elsewhere the
           state is typographic, so give assistive tech the same fact without
           changing the visible text. */}
-      {unread ? <span className="sr-only">Unread. </span> : null}
+      {unread ? <span className="sr-only">{unreadLabel}. </span> : null}
       {leadControl ? null : lead}
       <span className="min-w-0 flex-1">
         <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>

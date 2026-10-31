@@ -5,6 +5,36 @@ use crate::{decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
 
 impl super::Store {
+    /// Exact revisions opened in a mode. Reading a list never writes these.
+    pub async fn mode_rows_seen(
+        &self,
+        account: &mxr_core::AccountId,
+        mode: &str,
+    ) -> Result<std::collections::HashSet<(String, String)>, sqlx::Error> {
+        let rows = sqlx::query_as(
+            "SELECT row_id, revision FROM mode_row_seen WHERE account_id = ? AND mode = ?",
+        )
+        .bind(account.as_str())
+        .bind(mode)
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    pub async fn mark_mode_row_seen(
+        &self,
+        account: &mxr_core::AccountId,
+        mode: &str,
+        row_id: &str,
+        revision: &str,
+        at: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT INTO mode_row_seen (account_id, mode, row_id, revision, seen_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING")
+            .bind(account.as_str()).bind(mode).bind(row_id).bind(revision).bind(at.timestamp())
+            .execute(self.writer()).await?;
+        Ok(())
+    }
+
     pub async fn mode_last_viewed(&self, mode: &str) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
         let at: Option<i64> =
             sqlx::query_scalar("SELECT last_viewed_at FROM mode_views WHERE mode = ?")
@@ -61,5 +91,53 @@ impl super::Store {
                 .await
                 .map(|_| false),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn row_seen_survives_reopen_and_is_exact_scoped_and_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seen.db");
+        let store = crate::Store::new(&path).await.unwrap();
+        let account = crate::test_fixtures::test_account();
+        store.insert_account(&account).await.unwrap();
+        for revision in ["new", "old", "new"] {
+            store
+                .mark_mode_row_seen(&account.id, "todo", "same-id", revision, Utc::now())
+                .await
+                .unwrap();
+        }
+        store.reader().close().await;
+        store.writer().close().await;
+        drop(store);
+        let reopened = crate::Store::new(&path).await.unwrap();
+        let rows = reopened.mode_rows_seen(&account.id, "todo").await.unwrap();
+        assert_eq!(
+            rows.len(),
+            2,
+            "duplicates are idempotent; old acknowledgements cannot replace new ones"
+        );
+        assert!(rows.contains(&("same-id".into(), "new".into())));
+        assert!(!rows.contains(&("same-id".into(), "not-opened".into())));
+        assert!(reopened
+            .mode_rows_seen(&account.id, "updates")
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(reopened
+            .mode_rows_seen(&mxr_core::AccountId::new(), "todo")
+            .await
+            .unwrap()
+            .is_empty());
+        reopened.delete_account(&account.id).await.unwrap();
+        assert!(reopened
+            .mode_rows_seen(&account.id, "todo")
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

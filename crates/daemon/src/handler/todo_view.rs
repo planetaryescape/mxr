@@ -129,7 +129,9 @@ where
         source_message_id: record.source_message_id.clone(),
         source_date: record.source_date,
         source_filed_at: record.source_filed_at,
-        unread: record.source_unread,
+        // Filled from the exact row ledger at the IPC response seam.
+        unread: None,
+        seen_revision: None,
         surfaced_at: record.surfaced_at,
         expired_at: record.expired_at,
         done_at: record.done_at,

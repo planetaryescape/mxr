@@ -189,6 +189,7 @@ impl App {
                 .as_ref()
                 .filter(|resolution| matches!(resolution.status.as_str(), "pending" | "accepted"))
             {
+                self.mark_todo_row_seen(&todo);
                 self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
                     message_id: resolution.message_id.clone(),
                     link: None,
@@ -201,12 +202,13 @@ impl App {
     }
 
     fn review_selected_resolution(&mut self) {
-        let Some(todo) = self.selected_todo() else {
+        let Some(todo) = self.selected_todo().cloned() else {
             return;
         };
         let Some(resolution) = todo.resolution.as_ref().filter(|r| r.status == "pending") else {
             return;
         };
+        self.mark_todo_row_seen(&todo);
         self.mailbox.todo_page.pending_resolution = Some((
             todo.id.clone(),
             resolution.id.clone(),
@@ -288,6 +290,7 @@ impl App {
             .or_else(|| todo.source_message_id.clone());
         match message_id {
             Some(message_id) => {
+                self.mark_todo_row_seen(todo);
                 self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
                     message_id,
                     link: todo.action.as_ref().map(|action| action.url.clone()),
@@ -302,6 +305,25 @@ impl App {
                 );
             }
             None => self.status_message = Some("This to-do has no email to open".into()),
+        }
+    }
+
+    fn mark_todo_row_seen(&mut self, todo: &TodoData) {
+        if todo.unread != Some(true) {
+            return;
+        }
+        if let Some(revision) = &todo.seen_revision {
+            self.queue_mutation(
+                Request::SetModeRowSeen {
+                    account_id: todo.account_id.clone(),
+                    mode: mxr_protocol::ModeKindData::Todo,
+                    row_id: todo.id.clone(),
+                    revision: revision.clone(),
+                    dry_run: false,
+                },
+                MutationEffect::ModeDone(String::new()),
+                String::new(),
+            );
         }
     }
 

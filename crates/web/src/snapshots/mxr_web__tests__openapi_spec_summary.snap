@@ -486,6 +486,7 @@ expression: summary
     "ResponseTimeSummary",
     "RetainedIntentData",
     "Role",
+    "RowSeenBody",
     "RuleCategoriesPreviewData",
     "RuleCategoryMatchData",
     "RuleFormData",

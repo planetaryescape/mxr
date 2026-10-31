@@ -31,6 +31,22 @@ the due date. Use a row's ID from the JSON output for the CLI commands below.
 
 ## Check the source and act
 
+Open a task's email with `o`, or open **details**, to mark that row seen.
+Unseen tasks are bold and bright; seen tasks use normal-weight grey text,
+even while unfinished. Moving the selection alone does not mark a task seen.
+This state is local to mxr and shared by its clients, not the email's read
+flag. Changed task details or new source evidence make the row unseen again.
+
+For scripts, copy `id`, `account_id` and `seen_revision` from the task's JSON:
+
+```bash
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --dry-run --format json
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --format json
+```
+
+The preview changes nothing; the second command records only that revision
+as seen. Neither command ticks the task off or marks its email read.
+
 ```bash
 mxr todo why TODO_ID --format json
 ```

@@ -5652,6 +5652,38 @@
         }
       }
     },
+    "/api/v1/mail/rows/seen": {
+      "post": {
+        "tags": [],
+        "summary": "Mark the opened To do or Updates row revision seen, without completing it",
+        "operationId": "mail_row_seen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowSeenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ack",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/scheduled-sends": {
       "get": {
         "tags": [],
@@ -32761,6 +32793,40 @@
           },
           {
             "type": "object",
+            "description": "Mark only the exact To do or Updates row revision that was opened or\npeeked. Does not read the source email or complete/let go of the row.\nReturns `Ack`; dry runs validate without writing.",
+            "required": [
+              "account_id",
+              "mode",
+              "row_id",
+              "revision",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetModeRowSeen"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/components/schemas/ModeKindData"
+              },
+              "revision": {
+                "type": "string"
+              },
+              "row_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Now, the front page: People, Due soon, one Updates card and an\nevening Reading pick, at most three items each, with \"and N more\"\nlines and the clear state. Local reads only. Returns\n`ResponseData::Now`.",
             "required": [
               "cmd"
@@ -40174,6 +40240,33 @@
           "starred"
         ]
       },
+      "RowSeenBody": {
+        "type": "object",
+        "description": "The exact row revision the client opened; never a source-email read flag.",
+        "required": [
+          "account_id",
+          "mode",
+          "row_id",
+          "revision"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "row_id": {
+            "type": "string"
+          }
+        }
+      },
       "RuleCategoriesPreviewData": {
         "type": "object",
         "required": [
@@ -43751,6 +43844,13 @@
             "format": "date-time",
             "description": "Your own date; wins over `surface_at`."
           },
+          "seen_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque version to acknowledge with `SetModeRowSeen`."
+          },
           "source_date": {
             "type": [
               "string",
@@ -43813,7 +43913,7 @@
               "boolean",
               "null"
             ],
-            "description": "The source email is unread. `None` when the row has no source email.\nA read source calms the row even before the to-do is ticked."
+            "description": "This row revision has not been opened or peeked. Independent of the\nsource email's READ flag. Omitted by older daemons."
           },
           "updated_at": {
             "type": "string",
@@ -44854,6 +44954,13 @@
           "section": {
             "$ref": "#/components/schemas/UpdateSectionData"
           },
+          "seen_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque version to acknowledge with `SetModeRowSeen`."
+          },
           "sender_email": {
             "type": "string"
           },
@@ -44923,7 +45030,7 @@
               "boolean",
               "null"
             ],
-            "description": "The line's newest email is unread. `None` for a line that is not an\nemail (a parcel tracker). Reading the email calms the line."
+            "description": "This line revision has not been opened or peeked, including trackers.\nIndependent of the source email's READ flag. Omitted by older daemons."
           },
           "why": {
             "type": "string",

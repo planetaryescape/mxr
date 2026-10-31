@@ -107,6 +107,8 @@
     "vitest": "4.1.12"
   },
   "overrides": {
+    "glob": "^14.0.3",
+    "minimatch": "^11.0.3",
     "tinypool": "^2.2.0"
   },
   "allowScripts": {

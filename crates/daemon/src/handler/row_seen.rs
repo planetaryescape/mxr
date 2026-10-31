@@ -43,7 +43,7 @@ fn update_revision(line: &UpdateLineData) -> Result<String, HandlerError> {
     let mut messages = line
         .message_ids
         .iter()
-        .map(|id| id.as_str())
+        .map(mxr_core::MessageId::as_str)
         .collect::<Vec<_>>();
     messages.sort_unstable();
     // Cut/section/delta/why can change without new content. New folded mail,

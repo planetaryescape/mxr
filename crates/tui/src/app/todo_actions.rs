@@ -304,7 +304,12 @@ impl App {
                     },
                 );
             }
-            None => self.status_message = Some("This to-do has no email to open".into()),
+            None => {
+                // Enter is an explicit look at the task even for an own
+                // promise without source mail; merely selecting it is not.
+                self.mark_todo_row_seen(todo);
+                self.status_message = Some("This to-do has no email to open".into());
+            }
         }
     }
 

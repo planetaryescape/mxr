@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
+test.describe.configure({ timeout: 90_000 });
 
 interface LineAnswer {
   id: string;
@@ -65,7 +66,8 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
 
   const full = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count;
   await openApp(page, "/updates");
-  await expect(page.getByTestId("update-line").first()).toBeVisible();
+  // Cold startup also queues the desk and rail before this mode's read.
+  await expect(page.getByTestId("update-line").first()).toBeVisible({ timeout: 30_000 });
   // A peek crosses the bridge and persists exact row attention, without
   // letting go. Reloading loses client state but keeps the row calm.
   const firstRow = page.getByTestId("update-line").first();

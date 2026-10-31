@@ -103,12 +103,13 @@ impl super::Store {
                  SELECT e.message_id FROM message_events e
                  JOIN labels l ON l.id = e.label_id
                  WHERE e.account_id = ?1 AND l.provider_id = 'INBOX'
-                   AND e.event_type = 'unlabeled' AND e.source = 'sync'
+                   AND {}
              ) AND NOT EXISTS (
                  SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
                  WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
              ) AND {NOT_TRASHED}",
-            place_candidates_sql()
+            place_candidates_sql(),
+            crate::message_events::EXTERNAL_FILING
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())

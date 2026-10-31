@@ -6,6 +6,21 @@ use sqlx::{QueryBuilder, Row, Sqlite};
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// `e` is an event for inbox label `l`. The last observed transition wins,
+/// using event ids to distinguish archive/undo in the same second.
+pub(crate) const EXTERNAL_FILING: &str = "e.event_type IN ('unlabeled', 'archived')
+    AND e.source = 'sync'
+    AND NOT EXISTS (
+        SELECT 1 FROM message_events newer
+        WHERE newer.message_id=e.message_id AND newer.label_id=e.label_id
+          AND newer.id>e.id
+          AND newer.event_type IN ('labeled','unlabeled','archived','unarchived')
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM message_labels ml
+        WHERE ml.message_id=e.message_id AND ml.label_id=l.id
+    )";
+
 impl super::Store {
     /// Append a state-transition event for a message. Callers must have
     /// already detected a real transition; this method writes unconditionally.
@@ -90,10 +105,8 @@ impl super::Store {
     /// The messages whose inbox label was last removed by a provider sync and
     /// that are still out of the inbox.
     ///
-    /// This is the evidence behind "left the inbox": an archive made in
-    /// another client, never one mxr made, because mxr rewrites labels in
-    /// bulk without per-label events. A message whose mail came back stops
-    /// matching.
+    /// This is the evidence behind "left the inbox". A local archive or
+    /// return to inbox supersedes the outside signal, even in the same second.
     pub async fn externally_filed_messages(
         &self,
         account_id: Option<&AccountId>,
@@ -111,22 +124,14 @@ impl super::Store {
             qb.push_bind(account_id.map(AccountId::as_str));
             qb.push(" IS NULL OR e.account_id = ");
             qb.push_bind(account_id.map(AccountId::as_str));
-            qb.push(
-                ") AND UPPER(l.provider_id) = 'INBOX'
-                      AND e.event_type = 'unlabeled'
-                      AND e.source = 'sync'
-                      AND e.message_id IN (",
-            );
+            qb.push(") AND UPPER(l.provider_id) = 'INBOX' AND ");
+            qb.push(EXTERNAL_FILING);
+            qb.push(" AND e.message_id IN (");
             let mut ids = qb.separated(", ");
             for id in chunk {
                 ids.push_bind(id.as_str().clone());
             }
-            qb.push(
-                ") AND NOT EXISTS (
-                     SELECT 1 FROM message_labels ml
-                      WHERE ml.message_id = e.message_id AND ml.label_id = l.id
-                   ) GROUP BY e.message_id",
-            );
+            qb.push(") GROUP BY e.message_id");
             for row in qb.build().fetch_all(self.reader()).await? {
                 filed.insert(
                     decode_id(&row.get::<String, _>(0))?,

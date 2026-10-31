@@ -884,8 +884,7 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
         "a sync unlabel is evidence the user filed the mail elsewhere"
     );
 
-    // mxr's own archive rewrites the label set in bulk and emits no event:
-    // its archive must never mark its own to-do as filed elsewhere.
+    // mxr's own archive is attributed locally, never filed elsewhere.
     let (own, own_thread) = fx.message("own", at(0)).await;
     fx.store
         .set_message_labels(&own, std::slice::from_ref(&inbox.id), EventSource::Sync)
@@ -921,6 +920,60 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
             .unwrap()
             .source_filed_at,
         None
+    );
+
+    // A local archive after that return must not revive the older sync event.
+    fx.store
+        .set_message_labels(&message, &[], EventSource::User)
+        .await
+        .unwrap();
+    assert!(fx
+        .store
+        .get_todo("filed")
+        .await
+        .unwrap()
+        .unwrap()
+        .source_filed_at
+        .is_none());
+    assert!(fx
+        .store
+        .externally_filed_messages(None, std::slice::from_ref(&message))
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Full sync uses bulk replacement too: its real inbox departure is observed.
+    fx.store
+        .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::User)
+        .await
+        .unwrap();
+    fx.store
+        .set_message_labels(&message, &[], EventSource::Sync)
+        .await
+        .unwrap();
+    assert!(fx
+        .store
+        .get_todo("filed")
+        .await
+        .unwrap()
+        .unwrap()
+        .source_filed_at
+        .is_some());
+    assert!(fx
+        .store
+        .externally_filed_messages(None, std::slice::from_ref(&message))
+        .await
+        .unwrap()
+        .contains_key(&message));
+    let events = fx.store.list_message_events(&message).await.unwrap().len();
+    fx.store
+        .set_message_labels(&message, &[], EventSource::Sync)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.list_message_events(&message).await.unwrap().len(),
+        events,
+        "replaying identical labels creates no filing event"
     );
 }
 

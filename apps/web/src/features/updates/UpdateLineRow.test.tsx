@@ -9,8 +9,10 @@ import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
 import { UpdateLineRow } from "./UpdateLineRow";
 
-const apiFetch = vi.fn<(path: string) => Promise<unknown>>();
-vi.mock("@/api/client", () => ({ apiFetch: (path: string) => apiFetch(path) }));
+const apiFetch = vi.fn<typeof import("@/api/client").apiFetch>();
+vi.mock("@/api/client", () => ({
+  apiFetch: (...args: Parameters<typeof apiFetch>) => apiFetch(...args),
+}));
 
 beforeEach(() => {
   apiFetch.mockReset();
@@ -478,11 +480,22 @@ describe("UpdateLineRow's more menu", () => {
 
 describe("UpdateLineRow's peek", () => {
   test("peeking acknowledges this row, while keyboard focus alone does not", async () => {
-    renderLine(lineFixture({ unread: true, seen_revision: "exact-revision" }), { peeked: false });
+    const line = lineFixture({ unread: true, seen_revision: "exact-revision" });
+    renderLine(line, { peeked: false });
     expect(apiFetch).not.toHaveBeenCalledWith("/api/v1/mail/rows/seen", expect.anything());
     cleanup();
-    renderLine(lineFixture({ unread: true, seen_revision: "exact-revision" }), { peeked: true });
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen"));
+    renderLine(line, { peeked: true });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          mode: "updates",
+          account_id: line.account_id,
+          row_id: line.id,
+          revision: "exact-revision",
+        },
+      }),
+    );
   });
   test("it holds the why, the numbers, the suggestion with its answers, and the links", () => {
     const { row, handlers: h } = renderLine(

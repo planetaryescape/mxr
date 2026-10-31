@@ -19,7 +19,9 @@ pick **Updates** in the sidebar.
 
 Press `Space` to peek at a line, or `o` to open its email. Either marks that
 line seen: bold and bright becomes normal-weight grey, without letting go
-of the update. Selecting a line alone does not mark it seen. This is local
+of the update. A tracker line without an email, such as a parcel, cannot
+open an email with `o`; use `Space` to peek at it. Selecting a line alone
+does not mark it seen. This is local
 mxr state, shared by its clients and independent of the email's read flag.
 New folded mail, a changed fact or a tracker transition makes the line
 unseen again.

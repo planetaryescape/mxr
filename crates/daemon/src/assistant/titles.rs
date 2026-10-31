@@ -650,6 +650,13 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             v("Previewing", "Previewed", "preview", &rest)
         }
         "mxr_updates_digest" => v("Reading", "Read", "read", "your Updates briefing"),
+        "mxr_mode_row_seen" => {
+            if run {
+                v("Marking", "Marked", "mark", "a row seen")
+            } else {
+                v("Previewing", "Previewed", "preview", "marking a row seen")
+            }
+        }
         "mxr_updates_let_go_preview" => v(
             "Previewing",
             "Previewed",

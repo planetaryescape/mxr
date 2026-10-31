@@ -252,13 +252,13 @@ fn row_line(
     let when = one_line(&todo.when_label);
     let cols = RowColumns::for_width(width);
     let when = truncate(&when, cols.when);
-    let text = if dim || todo.unread == Some(false) {
+    let text = if todo.unread != Some(true) && (dim || todo.unread == Some(false)) {
         theme.text_secondary
     } else {
         theme.text_primary
     };
     let title_width = cols.title;
-    let primary = if todo.unread == Some(true) && !dim {
+    let primary = if todo.unread == Some(true) {
         Style::default().fg(text).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(text)
@@ -963,6 +963,22 @@ pub(crate) mod tests {
         TodoRunwayData, TodoStateData, TodoWeekData, TODO_GUIDE,
     };
     use mxr_test_support::render_to_string;
+
+    #[test]
+    fn unseen_titles_stay_bright_and_bold_in_future_bands() {
+        let theme = crate::theme::Theme::default();
+        let mut task = todo("attention", "Review the agreement");
+        for dim in [false, true] {
+            task.unread = Some(true);
+            let line = row_line(&task, false, dim, 120, &theme, None);
+            assert_eq!(line.spans[1].style.fg, Some(theme.text_primary));
+            assert!(line.spans[1].style.add_modifier.contains(Modifier::BOLD));
+            task.unread = Some(false);
+            let line = row_line(&task, false, dim, 120, &theme, None);
+            assert_eq!(line.spans[1].style.fg, Some(theme.text_secondary));
+            assert!(!line.spans[1].style.add_modifier.contains(Modifier::BOLD));
+        }
+    }
 
     pub(crate) fn todo(id: &str, title: &str) -> TodoData {
         let now = Utc::now();

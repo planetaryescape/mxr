@@ -181,7 +181,9 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
             !seen
                 .get(&(todo.account_id.clone(), "todo"))
                 .is_some_and(|rows| {
-                    rows.contains(&(todo.id.clone(), todo.seen_revision.clone().unwrap()))
+                    todo.seen_revision
+                        .as_ref()
+                        .is_some_and(|revision| rows.contains(&(todo.id.clone(), revision.clone())))
                 }),
         );
     }
@@ -190,7 +192,9 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
             !seen
                 .get(&(line.account_id.clone(), "updates"))
                 .is_some_and(|rows| {
-                    rows.contains(&(line.id.clone(), line.seen_revision.clone().unwrap()))
+                    line.seen_revision
+                        .as_ref()
+                        .is_some_and(|revision| rows.contains(&(line.id.clone(), revision.clone())))
                 }),
         );
     }

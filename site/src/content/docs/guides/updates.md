@@ -47,16 +47,33 @@ The stored-assessment details require changes made after
 
 ## Each source is one line, sorted by what it asks of you
 
-Updates holds automated mail in your inbox: the same senders the
+Updates starts with automated inbox mail and retains eligible mail whose
+inbox removal mxr observed through sync. These are the same senders the
 classifier puts in Updates, such as `notifications@github.com` or a
 `no-reply` address. Thirty emails from twelve senders read as twelve
 lines, in three sections that never change order. If sync observes an archive
 in Gmail or another client, the update stays here with a labelled
-"left the inbox" date, labelled with when mxr observed the change (the archive
+"left the inbox · observed" date, showing when mxr observed the change (the archive
 may have happened earlier). This is a server location, not a completion signal;
 let go in Updates when you are finished. The line's filing marker follows its newest
 email, so an older archived message never labels newer inbox mail as filed.
 Parcel tracker rows describe the delivery, not one email, and have no such date.
+The marker clears if that newest email returns to the inbox. Existing expiry,
+source settings and let-go decisions still apply; this does not pull in mail
+first discovered already archived.
+
+Inspect the eligible digest and post-cut lines without acknowledging them:
+
+```bash
+mxr updates --format json \
+  | jq '[.needs_a_look[], .changed[], .routine[], .since.lines[]]
+        | map(select(.source_filed_at != null)
+              | {id, source_name, latest_message_id, source_filed_at})'
+```
+
+An empty array means no returned line has current filing evidence. It does
+not prove that every source email is still in the inbox. See the
+[field contract](/reference/json-output/#source-filing-evidence).
 
 The sections are:
 

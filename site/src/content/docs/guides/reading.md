@@ -9,9 +9,9 @@ unread count, the sources you read most come first, and items fade on their
 own unless you keep them.
 
 Archiving the email in Gmail or another client does not mean you finished
-reading. When sync observes that change, the item stays in the edition and
-shows "left the inbox" with the date mxr observed the change, not necessarily
-the date it was archived. The marker clears if the email returns
+reading. When sync observes that change, an eligible item stays in the edition
+or on Later and shows "left the inbox" with the date mxr observed the change,
+not necessarily the date it was archived. The marker clears if the email returns
 to the inbox. Reading's own let-go, Later and expiry rules still apply; mail
 that was already archived before mxr observed it is not pulled into the edition.
 

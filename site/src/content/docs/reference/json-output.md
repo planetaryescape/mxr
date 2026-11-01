@@ -278,6 +278,41 @@ tracker, so `domain` is the tracker's). There is no unread field anywhere
 in Reading. `--format jsonl` prints one item per line and `--format ids`
 the item keys.
 
+## Source filing evidence
+
+To do rows, Updates lines and Reading items may include `source_filed_at`, an
+RFC3339 timestamp. It records when mxr observed the source email leave the
+provider inbox through sync, while that removal is still the latest relevant
+inbox transition. It does not record task completion, a mode done mark, or the
+provider's original archive time. Sync evidence alone does not identify who
+removed the email or whether a person or automation did it.
+
+| Surface | Source described | Other dates with separate meanings |
+|---|---|---|
+| To do row | `source_message_id` | `source_date` is the source email's stored date; `act_by_at` and `due_at` describe the task. |
+| Updates line | `latest_message_id`, even when `fact_message_id` is older | `latest_at` is the newest email's date, not its filing date. Parcel tracker lines have no filing timestamp. |
+| Reading item | `message_id`, in the edition or Later shelf | `arrived_at` is the source email's date; `expires_at` is its edition expiry and is absent on Later. |
+
+The optional field is omitted when there is no current qualifying evidence.
+Older daemons also omit it. Absence is not proof of inbox membership: mail
+first discovered already archived has no observed removal, and a later local
+archive supersedes an earlier sync event. A return to the inbox clears the
+marker. None of these cases should be interpreted as "finished".
+
+Updates and Reading retain eligible externally filed mail, subject to their
+normal mode rules. Inspect Reading items with filing evidence without recording
+a visit:
+
+```bash
+mxr reading edition --peek --format json \
+  | jq '[.bands[].items[], .later[]]
+        | map(select(.source_filed_at != null)
+              | {item_key, message_id, arrived_at, source_filed_at, on_later})'
+```
+
+`[]` means no returned item has this marker. For digest lines, use the
+[Updates example](/guides/updates/#each-source-is-one-line-sorted-by-what-it-asks-of-you).
+
 ## Mutation dry-run
 
 `--dry-run` on a core mail mutation returns one preview object:

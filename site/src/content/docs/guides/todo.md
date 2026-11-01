@@ -20,9 +20,10 @@ the date: "arrived" is when the email reached you, while "act by" and "due" are
 deadlines. The window turns amber on the day and after. A later email that may
 change the row says so after the arrival, never in its place. If the email is
 archived outside mxr (in Gmail, say, or another client), the row still shows
-when it arrived and adds "left the inbox 30 Oct"; the to-do stays open until
-you tick it, so an archive is never mistaken for a finished task. The lit row's
-keys, `e` done and `o` email, take the window's place on the same line, and the
+when it arrived and adds "left the inbox 30 Oct". That date is when mxr observed
+the inbox removal, not necessarily when it happened at the provider. Filing
+does not tick off the task; its normal completion and expiry rules still apply.
+The lit row's keys, `e` done and `o` email, take the window's place on the same line, and the
 same keys show in the status bar with the reason the task is here. The act-by
 date is the last date to act and still meet the due date; mxr can surface the
 task earlier

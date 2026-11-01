@@ -1110,13 +1110,13 @@ async fn kind_correction_previews_retimes_and_restores_the_exact_row() {
             None,
         )
         .await;
-    // Both kinds need room for their different lead times; a near deadline
-    // clamps both surface dates to arrival and no longer tests retiming.
-    let deadline = (chrono::Utc::now() + Duration::days(30)).format("%-d %B %Y");
+    // Keep the deadline far enough ahead that the two kinds have distinct
+    // lead times; a fixed imminent date clamps both to the source date.
+    let due = (mail.date + Duration::days(30)).format("%-d %B %Y");
     body(
         &fx,
         &mail,
-        &format!("Please pay invoice #A123 £25 by {deadline}."),
+        &format!("Please pay invoice #A123 £25 by {due}."),
     )
     .await;
     crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;

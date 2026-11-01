@@ -142,9 +142,20 @@ because it owns the mailbox (now-and-handoff.md §F).
 
 The reverse is not symmetric. An archive observed from the provider — you
 filed the mail in Gmail or another client — never writes a done mark in any
-mode. Updates and Reading keep holding the thread, and a to-do whose source
-was filed says "left the inbox 30 Oct" and stays open until you tick it.
-Archive is evidence of a decision, not the decision itself.
+mode. Updates and Reading retain eligible sources, and a to-do whose source
+was filed says "left the inbox 30 Oct" without completing the task.
+Archive is provider-location evidence, not proof that the work is finished.
+
+The shipped retention rule is narrower than "all archived mail": Updates and
+Reading add eligible sources whose latest relevant inbox transition is a
+sync-observed removal and that remain outside the inbox. Existing done, snooze,
+source and expiry rules still apply. Mail first discovered already archived has
+no such transition. Returning it to the inbox clears the marker; a later local
+archive supersedes an earlier sync removal. The timestamp is the observation
+time, not an upstream archive timestamp. Updates attaches it to the newest email
+in a folded line, not necessarily the email supplying its fact; delivery trackers
+have no single-email marker. See [mode filing reference](../reference/mode-filing.md)
+for the write paths, predicate and regression checks.
 
 ## Classification is rules first, then the user's model, and every item says why
 

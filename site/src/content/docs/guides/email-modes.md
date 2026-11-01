@@ -62,11 +62,24 @@ the provider. This is enabled by default through
 you apply `mxr modes done THREAD_ID --mode messages`. Archive records do not
 hold an email in the inbox and filing a record does not perform this action.
 
-An archive made in another client is evidence, not a mode decision. Updates
-and Reading keep the thread, so filing the mail in Gmail does not move the
-email out of the mode you were reading. A to-do whose source was filed still
-reads "left the inbox <day>" and stays open until you tick it. Only mxr's own
-done marks and previews change membership.
+An inbox removal observed by sync is evidence, not a mode decision. It does
+not complete a task or mark Updates or Reading done. Those modes retain
+eligible items; their own let-go, snooze and expiry rules still apply. Mail
+first discovered already archived is not added to Updates or Reading just
+because it is outside the inbox.
+
+Updates and Reading label retained mail "left the inbox · observed <day>".
+The date is when mxr observed the change, not necessarily when the provider
+archived it. To do keeps its arrival and deadline dates separate from its
+"left the inbox" marker. Returning the source to the inbox clears the marker.
+Inspect the [filing fields](/reference/json-output/#source-filing-evidence)
+without marking the work done:
+
+```bash
+mxr updates --format json
+mxr reading edition --peek --format json
+mxr todo --format json
+```
 
 ## Sorting rules and categories serve different jobs
 

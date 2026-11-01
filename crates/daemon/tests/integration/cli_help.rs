@@ -525,6 +525,7 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
             &["keys", "single-keys", "--help"],
         ),
         ("cli_help_modes", &["modes", "--help"]),
+        ("cli_help_modes_seen", &["modes", "seen", "--help"]),
         ("cli_help_modes_explain", &["modes", "explain", "--help"]),
         ("cli_help_modes_hint", &["modes", "hint", "--help"]),
         ("cli_help_modes_rail", &["modes", "rail", "--help"]),

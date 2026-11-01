@@ -7,6 +7,7 @@ How each mode explains itself: its job, empty states, keys and hints
 Usage: mxr modes [OPTIONS] <COMMAND>
 
 Commands:
+  seen     Calm the exact To do or Updates revision you opened. Get the row id, account_id and seen_revision from `todo` or `updates --format json`
   explain  What a mode is for, what lands there, how it works, its keys and its hints. Every mode that has shipped when none is named
   hint     Dismiss a hint in every client, as Esc or acting on its element does, or bring it back with --show. `mxr modes explain` lists the ids
   rail     The rail: Now, the five modes and Inbox, with each one's key and count, which are early versions, and the pages under More

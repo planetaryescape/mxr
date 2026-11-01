@@ -255,6 +255,8 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
             let mut text_html = None;
             let mut attachments = Vec::new();
             let mut calendar = None;
+            // Keep the outer-message positions stored by mail-parser 0.11.
+            // Global part IDs in 1.0 also count the contents of attached messages.
             for (idx, part) in msg.root().parts().enumerate() {
                 if let Some(content_type) = part.content_type() {
                     let subtype = content_type.subtype().unwrap_or_default();

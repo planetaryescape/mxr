@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.198](https://github.com/planetaryescape/mxr/compare/v0.6.197...v0.6.198) (2026-11-01)
+
+
+### Features
+
+* calm To do and Updates rows once seen ([#828](https://github.com/planetaryescape/mxr/issues/828)) ([1a56fc6](https://github.com/planetaryescape/mxr/commit/1a56fc65cc0f486bf7410698895b2c65dd87e5b2))
+* read state for To do and Updates rows ([#823](https://github.com/planetaryescape/mxr/issues/823)) ([fbc255b](https://github.com/planetaryescape/mxr/commit/fbc255b094f943014f46ddc3c4d9cacffbb04c36))
+
 ## [0.6.197](https://github.com/planetaryescape/mxr/compare/v0.6.196...v0.6.197) (2026-10-30)
 
 

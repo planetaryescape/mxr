@@ -202,8 +202,11 @@ async fn review7_mixed_and_pure_acts_keep_explicit_reply_later_and_exact_undo() 
             .unwrap();
         assert_eq!(after[&mail.id].units, before.units);
         request(&fx, Request::UndoMutation { mutation_id }).await;
+        // Undo restores the original semantic delivery. Compare at the
+        // fixture's assessment clock, not a wall-clock week later (which
+        // correctly makes that frozen assessment stale).
         assert_eq!(
-            delivered(&fx, &mail, until + Duration::seconds(1)).await,
+            delivered(&fx, &mail, now()).await,
             (expected, expected, expected)
         );
     }

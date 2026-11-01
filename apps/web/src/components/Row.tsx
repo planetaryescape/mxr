@@ -40,6 +40,8 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   primary: ReactNode;
   /** One secondary line: Body, `--text-1` while unread, else `--text-2`, truncated. */
   secondary?: ReactNode;
+  /** Hide a desktop-only secondary line without leaving an empty phone line. */
+  secondaryDesktopOnly?: boolean;
   /** Marks and values. Shown while unlit; the lit row shows the verbs in their place. */
   trail?: ReactNode;
   /**
@@ -90,6 +92,7 @@ export const Row = memo(function Row({
   leadControl = false,
   primary,
   secondary,
+  secondaryDesktopOnly = false,
   trail,
   time,
   verbs,
@@ -116,7 +119,9 @@ export const Row = memo(function Row({
       <span className="min-w-0 flex-1">
         <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>
         {secondary ? (
-          <span className={cn("type-body block truncate", secondaryTone)}>{secondary}</span>
+          <span className={cn("type-body block truncate", secondaryTone, secondaryDesktopOnly && "hidden sm:block")}>
+            {secondary}
+          </span>
         ) : null}
       </span>
     </>

@@ -266,7 +266,7 @@ fn item_lines(out: &mut String, item: &ReadingItemData) {
     let mut meta = vec![item.source.clone()];
     if let Some(filed) = item.source_filed_at {
         meta.push(format!(
-            "left the inbox {}",
+            "left the inbox · observed {}",
             filed.with_timezone(&chrono::Local).format("%-d %b %Y")
         ));
     }

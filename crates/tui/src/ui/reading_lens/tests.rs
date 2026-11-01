@@ -64,11 +64,32 @@ fn link(key: &str, idx: u8, title: &str, domain: &str, tracked: bool) -> Reading
 }
 
 #[test]
-fn filed_reading_metadata_names_the_server_location() {
-    let mut issue = item("filed", "An unfinished essay", "Weekly");
-    assert!(!super::meta_line(&issue).contains("left the inbox"));
-    issue.source_filed_at = Some(at());
-    assert!(super::meta_line(&issue).contains("left the inbox"));
+fn filed_reading_marker_survives_long_sources_in_edition_and_later() {
+    for later in [false, true] {
+        let mut page = page();
+        let edition = page.edition.as_mut().unwrap();
+        edition.later = vec![item("later-filed", "An unfinished essay", "Weekly")];
+        let issue = if later {
+            &mut edition.later[0]
+        } else {
+            &mut edition.bands[0].items[0]
+        };
+        issue.source = "A very long newsletter source name ".repeat(8);
+        // The fixed +01 test zone puts this on the next day.
+        issue.source_filed_at = Some(Utc.with_ymd_and_hms(2026, 10, 7, 23, 30, 0).unwrap());
+        page.later_shelf = later;
+        for width in [40, 60, 120] {
+            let rendered = render(&page, 0, width);
+            assert!(
+                rendered.contains("left the inbox"),
+                "later={later}, width={width}: {rendered}"
+            );
+            assert!(
+                rendered.contains("8 Oct") && rendered.contains("2026"),
+                "later={later}, width={width}: {rendered}"
+            );
+        }
+    }
 }
 
 fn source(name: &str, evidence: &str) -> ReadingSourceData {

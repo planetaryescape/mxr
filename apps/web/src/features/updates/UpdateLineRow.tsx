@@ -211,6 +211,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           </span>
         ) : undefined
       }
+      secondaryDesktopOnly
       trail={
         trailing ? (
           <TrailingValue

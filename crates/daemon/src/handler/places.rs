@@ -239,7 +239,8 @@ pub(super) struct PlacedInbox {
     pub people_threads: HashMap<AccountId, Vec<mxr_core::ThreadId>>,
 }
 
-/// The inbox mail of `accounts` (from `sender_email` only, when given)
+/// Inbox mail and retained externally filed Updates/Reading of `accounts`
+/// (from `sender_email` only, when given)
 /// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
     state: &AppState,
@@ -262,7 +263,8 @@ async fn place_messages(
     super::modes::without_done(state, accounts, &[mode], placed).await
 }
 
-/// The inbox mail of `accounts` (from `sender_email` only, when given)
+/// Inbox mail and retained externally filed Updates/Reading of `accounts`
+/// (from `sender_email` only, when given)
 /// that belongs in Reading or Paper trail, each with its kind, in one
 /// pass. Deliveries and invites have places of their own (and an invite
 /// may still need an answer), so they stay out, as they do from the
@@ -276,7 +278,7 @@ pub(super) async fn placed_inbox(
     Ok(scan_inbox(state, accounts, sender_email).await?.mail)
 }
 
-/// Share the already-classified inbox with the rail's quiet-thread selector.
+/// Share classified inbox and retained filed mail with the rail's quiet-thread selector.
 /// Membership still decides whether each complete thread is actually quiet.
 pub(super) async fn scan_inbox(
     state: &AppState,

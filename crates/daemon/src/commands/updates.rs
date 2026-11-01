@@ -234,7 +234,7 @@ fn line_text(line: &UpdateLineData) -> String {
     if let Some(filed) = line.source_filed_at {
         let _ = write!(
             text,
-            " · left the inbox {}",
+            " · left the inbox · observed {}",
             filed.with_timezone(&chrono::Local).format("%-d %b %Y")
         );
     }

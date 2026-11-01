@@ -99,6 +99,7 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
         )
       }
       renderMain={readLink(item.item_key, handlers, `${item.source}: ${item.title}`)}
+      secondaryDesktopOnly={!item.standfirst && !item.engagement}
       trail={
         <>
           {item.on_later ? (

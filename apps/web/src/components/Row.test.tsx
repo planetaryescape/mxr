@@ -53,6 +53,11 @@ function renderRow(
 }
 
 describe("Row", () => {
+  test("desktop-only secondary content hides its outer line on phones", () => {
+    renderRow({ secondary: "left the inbox", secondaryDesktopOnly: true });
+    expect(screen.getByText("left the inbox")).toHaveClass("hidden", "sm:block");
+  });
+
   test("every row is the same fixed height, lit or not", () => {
     const { rerender } = renderRow();
     const inner = () => screen.getByTestId("row").firstElementChild;

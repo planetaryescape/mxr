@@ -86,6 +86,84 @@ async fn todo(fx: &Fixture, message: &MessageId, title: &str) -> String {
 }
 
 #[tokio::test]
+async fn now_rows_share_the_modes_exact_seen_revisions() {
+    let fx = Fixture::new().await;
+    let ask = owed(&fx, "alex@example.com").await;
+    todo(&fx, &ask.id, "Send the form").await;
+    mail(
+        &fx,
+        &ThreadId::new(),
+        "security@google.com",
+        "Security alert: new sign-in",
+        Duration::hours(20),
+    )
+    .await;
+    let ResponseData::Now { now } = request(&fx, Request::GetNow { account_id: None }).await else {
+        panic!("Now")
+    };
+    let task = &now.due_soon.todos[0].todo;
+    assert_eq!(task.unread, Some(true));
+    let ResponseData::Todo { todo: mode_task } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: task.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("task")
+    };
+    assert_eq!(mode_task.seen_revision, task.seen_revision);
+    let lines = &now.updates.as_ref().unwrap().lines;
+    assert!(!lines.is_empty());
+    let update = &lines[0];
+    for (mode, account, id, revision) in [
+        (
+            mxr_protocol::ModeKindData::Todo,
+            &task.account_id,
+            &task.id,
+            &task.seen_revision,
+        ),
+        (
+            mxr_protocol::ModeKindData::Updates,
+            &update.account_id,
+            &update.id,
+            &update.seen_revision,
+        ),
+    ] {
+        request(
+            &fx,
+            Request::SetModeRowSeen {
+                account_id: account.clone(),
+                mode,
+                row_id: id.clone(),
+                revision: revision.clone().unwrap(),
+                dry_run: false,
+            },
+        )
+        .await;
+    }
+    let ResponseData::Now { now: refreshed } =
+        request(&fx, Request::GetNow { account_id: None }).await
+    else {
+        panic!("Now")
+    };
+    assert_eq!(refreshed.due_soon.todos[0].todo.unread, Some(false));
+    assert_eq!(
+        refreshed.due_soon.todos[0].todo.seen_revision,
+        task.seen_revision
+    );
+    assert_eq!(
+        refreshed.updates.as_ref().unwrap().lines[0].unread,
+        Some(false)
+    );
+    assert_eq!(
+        refreshed.updates.as_ref().unwrap().lines[0].seen_revision,
+        update.seen_revision
+    );
+}
+
+#[tokio::test]
 async fn now_caps_each_section_at_three_and_says_how_many_more() {
     let fx = Fixture::new().await;
     let mut asks = Vec::new();

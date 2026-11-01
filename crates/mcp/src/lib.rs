@@ -1422,7 +1422,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_mode_row_seen",
-        description = "Mark an exact To do or Updates row revision seen after opening it. Copy account_id, id and seen_revision from the row. Does not mark email read, complete a task, or let go of updates. Defaults to preview; confirm=true writes."
+        description = "Mark an exact To do or Updates row revision seen after opening it. Copy account_id from the row, row_id from its id, and revision from its seen_revision. Does not mark email read, complete a task, or let go of updates. Defaults to preview; confirm=true writes."
     )]
     pub async fn mode_row_seen(
         &self,

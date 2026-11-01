@@ -29,7 +29,7 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
                     mode: ModeKindData::parse(&mode)
                         .ok_or_else(|| anyhow::anyhow!("Unknown mode: {mode}"))?,
                     row_id,
-                    revision,
+                    revision: revision.clone(),
                     dry_run,
                 })
                 .await?;
@@ -40,17 +40,24 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
                 _ => None,
             })?;
             match format {
-                OutputFormat::Json | OutputFormat::Jsonl => println!(
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &serde_json::json!({"seen": !dry_run, "dry_run": dry_run})
+                    )?
+                ),
+                OutputFormat::Jsonl => println!(
                     "{}",
                     serde_json::json!({"seen": !dry_run, "dry_run": dry_run})
                 ),
                 _ => println!(
-                    "{}",
+                    "{}: {}",
                     if dry_run {
                         "Would mark this row revision seen"
                     } else {
                         "Row revision seen"
-                    }
+                    },
+                    terminal_text(&revision)
                 ),
             }
             return Ok(());

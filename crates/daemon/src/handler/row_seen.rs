@@ -51,7 +51,6 @@ fn update_revision(line: &UpdateLineData) -> Result<String, HandlerError> {
     revision(&(
         messages,
         &line.fact,
-        &line.code,
         &line.numbers,
         &line.tracker,
         &line.link,
@@ -106,9 +105,19 @@ pub(super) async fn mark(
 
 pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> HandlerResult {
     let mut data = result?;
+    let attach_resolution = matches!(
+        &data,
+        ResponseData::TodoChange { .. } | ResponseData::Now { .. }
+    );
     let mut todos = Vec::new();
     let mut lines = Vec::new();
     match &mut data {
+        ResponseData::Now { now } => {
+            todos.extend(now.due_soon.todos.iter_mut().map(|item| &mut item.todo));
+            if let Some(updates) = &mut now.updates {
+                lines.extend(&mut updates.lines);
+            }
+        }
         ResponseData::Todo { todo } => todos.push(todo),
         ResponseData::Todos { todos: rows } => todos.extend(rows),
         ResponseData::TodoRunway { runway } => {
@@ -130,23 +139,13 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
         }
         _ => return Ok(data),
     }
-    // One indexed lookup per account/mode, not one query for every row.
-    let mut seen = HashMap::new();
-    for (account, mode) in todos
-        .iter()
-        .map(|t| (&t.account_id, "todo"))
-        .chain(lines.iter().map(|l| (&l.account_id, "updates")))
-    {
-        let key = (account.clone(), mode);
-        if let std::collections::hash_map::Entry::Vacant(entry) = seen.entry(key) {
-            let rows = state.store.mode_rows_seen(account, mode).await?;
-            entry.insert(rows);
-        }
-    }
-    for todo in todos {
+    let mut revisions: HashMap<_, Vec<(String, String)>> = HashMap::new();
+    for todo in &mut todos {
         // Mutation replies and list reads must describe the same revision;
         // some mutation paths build the task before attaching its evidence.
-        if todo.resolution.is_none() {
+        // List responses already attached evidence, including the absence of
+        // an offer. Do not repeat those queries on every cached list read.
+        if attach_resolution && todo.resolution.is_none() {
             todo.resolution = state
                 .store
                 .latest_todo_resolution(&todo.id, &todo.account_id)
@@ -154,21 +153,46 @@ pub(super) async fn decorate(state: &AppState, result: HandlerResult) -> Handler
                 .map(|suggestion| super::todo_resolution::resolution_data(&suggestion));
         }
         let revision = todo_revision(todo)?;
+        revisions
+            .entry((todo.account_id.clone(), "todo"))
+            .or_default()
+            .push((todo.id.clone(), revision.clone()));
+        todo.seen_revision = Some(revision);
+    }
+    for line in &mut lines {
+        let revision = update_revision(line)?;
+        revisions
+            .entry((line.account_id.clone(), "updates"))
+            .or_default()
+            .push((line.id.clone(), revision.clone()));
+        line.seen_revision = Some(revision);
+    }
+    // One indexed lookup per account/mode, bounded by this response's rows,
+    // not by the lifetime history of acknowledged revisions.
+    let mut seen = HashMap::new();
+    for ((account, mode), rows) in revisions {
+        seen.insert(
+            (account.clone(), mode),
+            state.store.mode_rows_seen_in(&account, mode, &rows).await?,
+        );
+    }
+    for todo in todos {
         todo.unread = Some(
             !seen
                 .get(&(todo.account_id.clone(), "todo"))
-                .is_some_and(|rows| rows.contains(&(todo.id.clone(), revision.clone()))),
+                .is_some_and(|rows| {
+                    rows.contains(&(todo.id.clone(), todo.seen_revision.clone().unwrap()))
+                }),
         );
-        todo.seen_revision = Some(revision);
     }
     for line in lines {
-        let revision = update_revision(line)?;
         line.unread = Some(
             !seen
                 .get(&(line.account_id.clone(), "updates"))
-                .is_some_and(|rows| rows.contains(&(line.id.clone(), revision.clone()))),
+                .is_some_and(|rows| {
+                    rows.contains(&(line.id.clone(), line.seen_revision.clone().unwrap()))
+                }),
         );
-        line.seen_revision = Some(revision);
     }
     Ok(data)
 }
@@ -190,6 +214,13 @@ mod tests {
         }))
         .unwrap();
         let opened = update_revision(&line).unwrap();
+        line.code = Some("123456".into());
+        assert_eq!(
+            update_revision(&line).unwrap(),
+            opened,
+            "a clock-cleared code is not new mail"
+        );
+        line.code = None;
         line.section = mxr_protocol::UpdateSectionData::Routine;
         line.why = "In the next digest".into();
         line.unread = Some(false);

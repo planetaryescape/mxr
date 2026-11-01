@@ -308,7 +308,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
 }
 
 #[tokio::test]
-async fn exact_row_seen_revisions_round_trip_without_changing_mail() {
+async fn exact_row_seen_revisions_round_trip_through_backup() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))

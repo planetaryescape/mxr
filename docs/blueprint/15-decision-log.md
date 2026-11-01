@@ -1585,6 +1585,8 @@ The lexical index converts HTML to text with the reader's built-in converter and
 
 ## D188: Read is typographic and the row's leading edge is unmarked
 
+**Partly superseded by D190**: To do and Updates now use exact-revision seen state, not section-based tiers. The unmarked leading edge and background-only selection remain.
+
 **Chosen**: Unread rows carry a semibold primary line in `--text-1` with the secondary in `--text-1`; read rows drop to normal weight in `--text-2`. The unread gutter bar and the lit row's 2px `--signal` hairline are removed; the lit row is the `--ink-lamp` surface alone. Messages' Your turn keeps its band and pin dot and no longer adds weight, so weight has one meaning. In To do and Updates, which have no per-row read state, the same tiers follow the section: now and needs-a-look bright and bold, coming-up, whenever and routine in `--text-2`, done struck in `--text-3`.
 
 **Considered**: Keeping the bar and aligning it with the hairline; an unread dot alone; colouring the whole row; a per-row seen ledger for To do and Updates.
@@ -1607,7 +1609,7 @@ The lexical index converts HTML to text with the reader's built-in converter and
 
 ## D190: Opening a To do or Updates row calms that revision
 
-**Chosen**: Each account's To do and Updates rows have a local seen ledger keyed by mode, row id and content revision. Opening the row's email or its details/peek marks only the displayed revision seen. Moving focus and reading a list do not. Unseen is bright and bold; seen is normal-weight `--text-2`, even while the task is open or the update remains in its digest. This supersedes D189, including its neutral exception for rows without email. Selection stays background-only.
+**Chosen**: Each account's To do and Updates rows have a local seen ledger keyed by mode, row id and content revision. Opening the row's email or its details/peek marks only the displayed revision seen. Moving focus and reading a list do not. Unseen is bright and bold in every section; seen is normal-weight `--text-2`, even while the task is open or the update remains in its digest. Section placement does not override attention styling. This supersedes D189, including its neutral exception for rows without email, and D188's section-based mode tiers. Selection stays background-only.
 
 **Why**: BK chose “Calm rows once seen”: the source email can remain unread after the row has been inspected. Provider flags, completion and letting go are separate decisions.
 

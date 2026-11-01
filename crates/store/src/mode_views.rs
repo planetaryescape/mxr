@@ -5,6 +5,30 @@ use crate::{decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
 
 impl super::Store {
+    /// Look up only the exact revisions in a response, not the account's history.
+    pub async fn mode_rows_seen_in(
+        &self,
+        account: &mxr_core::AccountId,
+        mode: &str,
+        revisions: &[(String, String)],
+    ) -> Result<std::collections::HashSet<(String, String)>, sqlx::Error> {
+        let rows = sqlx::query_as(
+            "SELECT DISTINCT seen.row_id, seen.revision FROM json_each(?) requested
+             JOIN mode_row_seen seen ON seen.account_id = ? AND seen.mode = ?
+             AND seen.row_id = json_extract(requested.value, '$[0]')
+             AND seen.revision = json_extract(requested.value, '$[1]')",
+        )
+        .bind(
+            serde_json::to_string(revisions)
+                .map_err(|error| sqlx::Error::Encode(Box::new(error)))?,
+        )
+        .bind(account.as_str())
+        .bind(mode)
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
     /// Exact revisions opened in a mode. Reading a list never writes these.
     pub async fn mode_rows_seen(
         &self,
@@ -122,6 +146,28 @@ mod tests {
             "duplicates are idempotent; old acknowledgements cannot replace new ones"
         );
         assert!(rows.contains(&("same-id".into(), "new".into())));
+        let requested = [
+            ("same-id".into(), "new".into()),
+            ("same-id".into(), "unseen".into()),
+        ];
+        let current = reopened
+            .mode_rows_seen_in(&account.id, "todo", &requested)
+            .await
+            .unwrap();
+        assert_eq!(
+            current,
+            std::collections::HashSet::from([("same-id".into(), "new".into())])
+        );
+        assert!(reopened
+            .mode_rows_seen_in(&account.id, "updates", &requested)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(reopened
+            .mode_rows_seen_in(&mxr_core::AccountId::new(), "todo", &requested)
+            .await
+            .unwrap()
+            .is_empty());
         assert!(!rows.contains(&("same-id".into(), "not-opened".into())));
         assert!(reopened
             .mode_rows_seen(&account.id, "updates")

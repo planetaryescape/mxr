@@ -1,0 +1,98 @@
+{
+  "observed": "2026-11-01",
+  "eve": "0.83.2",
+  "node": "26.7.0",
+  "command": "npm run experiment -- --immediate-crash",
+  "exitCode": 1,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 833
+    },
+    {
+      "name": "unauthenticated-request",
+      "status": 401
+    },
+    {
+      "name": "read",
+      "status": "waiting",
+      "turnCompleted": true,
+      "pendingInputs": 0,
+      "milliseconds": 143,
+      "sessionId": "wrun_01M6CMNBH8GTPW0AHCGBK53QEC"
+    },
+    {
+      "name": "denial-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 84,
+      "sessionId": "wrun_01M6CMNBNK2CQ895NE3Y8NMB0A"
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 77,
+      "sessionId": "wrun_01M6CMNBSDF6BQFNWRNFG4BT59"
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "archive-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 69,
+      "sessionId": "wrun_01M6CMNBWW471GTJD9MSMRJ6WE"
+    },
+    {
+      "name": "pre-crash-checkpoints",
+      "steps": [
+        {
+          "name": "step//eve@0.83.2//createSessionStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//startSessionTimeoutStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "name": "startup",
+      "milliseconds": 827
+    },
+    {
+      "name": "failure",
+      "error": "Error: Approval approve did not settle in 30s\n    at Timeout.<anonymous> (file://experiment.mjs:178:66)\n    at listOnTimeout (node:internal/timers:685:17)\n    at process.processTimers (node:internal/timers:618:7)",
+      "evidence": "evidence/scripted-KY5nh6"
+    }
+  ]
+}

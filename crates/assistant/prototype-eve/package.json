@@ -1,0 +1,18 @@
+{
+  "name": "mxr-eve-throwaway-spike",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "experiment": "node experiment.mjs",
+    "info": "EVE_TELEMETRY_DISABLED=1 eve info --json",
+    "build": "EVE_TELEMETRY_DISABLED=1 eve build --profile .eve/build-profile.json",
+    "start": "EVE_TELEMETRY_DISABLED=1 EVE_TRACES=off eve start --host 127.0.0.1 --port 19437 --no-schedules"
+  },
+  "dependencies": {
+    "eve": "0.83.2",
+    "ai": "7.0.153",
+    "@ai-sdk/openai-compatible": "3.0.78",
+    "zod": "4.6.7"
+  }
+}

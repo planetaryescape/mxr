@@ -1,0 +1,177 @@
+{
+  "observed": "2026-11-01",
+  "eve": "0.83.2",
+  "node": "26.7.0",
+  "command": "npm run experiment",
+  "exitCode": 0,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 836
+    },
+    {
+      "name": "unauthenticated-request",
+      "status": 401
+    },
+    {
+      "name": "read",
+      "status": "waiting",
+      "turnCompleted": true,
+      "pendingInputs": 0,
+      "milliseconds": 143,
+      "sessionId": "wrun_01M6CMPNJVVHTKP5Y9KHVJSFRD"
+    },
+    {
+      "name": "denial-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 80,
+      "sessionId": "wrun_01M6CMPNQ66KNV12RMX3W5YVF4"
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 72,
+      "sessionId": "wrun_01M6CMPNTS3SG6XF0P1W4BBWV4"
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "archive-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 70,
+      "sessionId": "wrun_01M6CMPNXXX02EMPV8DBRES9WQ"
+    },
+    {
+      "name": "pre-crash-checkpoints",
+      "steps": [
+        {
+          "name": "step//eve@0.83.2//createSessionStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//startSessionTimeoutStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "name": "startup",
+      "milliseconds": 827
+    },
+    {
+      "name": "approval-after-process-crash",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "duplicate-approval",
+      "status": "waiting",
+      "mutations": 1
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMPNJVVHTKP5Y9KHVJSFRD",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-run-metadata",
+      "sessionId": "wrun_01M6CMPNJVVHTKP5Y9KHVJSFRD",
+      "status": "completed",
+      "retainsRunInput": false,
+      "retainsUserPromptTitle": true
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMPNQ66KNV12RMX3W5YVF4",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-run-metadata",
+      "sessionId": "wrun_01M6CMPNQ66KNV12RMX3W5YVF4",
+      "status": "completed",
+      "retainsRunInput": false,
+      "retainsUserPromptTitle": true
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMPNTS3SG6XF0P1W4BBWV4",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-run-metadata",
+      "sessionId": "wrun_01M6CMPNTS3SG6XF0P1W4BBWV4",
+      "status": "completed",
+      "retainsRunInput": false,
+      "retainsUserPromptTitle": true
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMPNXXX02EMPV8DBRES9WQ",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-run-metadata",
+      "sessionId": "wrun_01M6CMPNXXX02EMPV8DBRES9WQ",
+      "status": "completed",
+      "retainsRunInput": false,
+      "retainsUserPromptTitle": true
+    },
+    {
+      "name": "retired-workflow-content-scan",
+      "filesContainingFixtureContent": []
+    },
+    {
+      "name": "complete",
+      "mode": "scripted-provider-real-eve",
+      "evidence": "evidence/scripted-Lc05YA"
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "observed": "2026-11-01",
+  "eve": "0.83.2",
+  "node": "26.7.0",
+  "command": "npm run experiment -- --send-crash",
+  "exitCode": 1,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 835
+    },
+    {
+      "name": "unauthenticated-request",
+      "status": 401
+    },
+    {
+      "name": "read",
+      "status": "waiting",
+      "turnCompleted": true,
+      "pendingInputs": 0,
+      "milliseconds": 140,
+      "sessionId": "wrun_01M6CMN4H0K8XBBZHRT133HNS2"
+    },
+    {
+      "name": "denial-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 81,
+      "sessionId": "wrun_01M6CMN4N9Z86CDWWD1GXC8WB6"
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 72,
+      "sessionId": "wrun_01M6CMN4RXR8GJX622HVDAH3WZ"
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "archive-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 68,
+      "sessionId": "wrun_01M6CMN4W290YH5B6RXEEFDN0C"
+    },
+    {
+      "name": "pre-crash-checkpoints",
+      "steps": [
+        {
+          "name": "step//eve@0.83.2//createSessionStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//startSessionTimeoutStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        },
+        {
+          "name": "step//eve@0.83.2//turnStep",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "name": "startup",
+      "milliseconds": 826
+    },
+    {
+      "name": "approval-after-process-crash",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "duplicate-approval",
+      "status": "waiting",
+      "mutations": 1
+    },
+    {
+      "name": "send-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 49,
+      "sessionId": "wrun_01M6CMN6W3WTKTCTKS6FD46JWM"
+    },
+    {
+      "name": "startup",
+      "milliseconds": 827
+    },
+    {
+      "name": "send-crash",
+      "passed": false,
+      "error": "Error: Uncertain send did not recover within 30s",
+      "effects": 1,
+      "attempts": 1
+    },
+    {
+      "name": "retirement-error",
+      "sessionId": "wrun_01M6CMN6W3WTKTCTKS6FD46JWM",
+      "error": "ClientError: Failed to reset the session."
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMN4H0K8XBBZHRT133HNS2",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMN4N9Z86CDWWD1GXC8WB6",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMN4RXR8GJX622HVDAH3WZ",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMN4W290YH5B6RXEEFDN0C",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMN6W3WTKTCTKS6FD46JWM",
+      "httpStatus": 200,
+      "bytes": 3940,
+      "containsSyntheticBody": true,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-workflow-content-scan",
+      "filesContainingFixtureContent": []
+    },
+    {
+      "name": "complete",
+      "mode": "scripted-provider-real-eve",
+      "evidence": "evidence/scripted-HMuAng"
+    }
+  ]
+}

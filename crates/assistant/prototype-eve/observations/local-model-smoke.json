@@ -1,0 +1,89 @@
+{
+  "observed": "2026-11-01",
+  "eve": "0.83.2",
+  "node": "26.7.0",
+  "command": "npm run experiment -- --local --smoke-only",
+  "exitCode": 0,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 836
+    },
+    {
+      "name": "unauthenticated-request",
+      "status": 401
+    },
+    {
+      "name": "read",
+      "status": "waiting",
+      "turnCompleted": true,
+      "pendingInputs": 0,
+      "milliseconds": 3611,
+      "sessionId": "wrun_01M6CMJ5Y0A0FX0CJJVGP8FPF7"
+    },
+    {
+      "name": "denial-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 9461,
+      "sessionId": "wrun_01M6CMJ9ERQ40R8FBEQ80V2YXF"
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "status": "waiting",
+      "turnCompleted": false,
+      "pendingInputs": 1,
+      "milliseconds": 7111,
+      "sessionId": "wrun_01M6CMJMTZXY5DEAPWPAF0BK1N"
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMJ5Y0A0FX0CJJVGP8FPF7",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMJ9ERQ40R8FBEQ80V2YXF",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-session-read",
+      "sessionId": "wrun_01M6CMJMTZXY5DEAPWPAF0BK1N",
+      "httpStatus": 410,
+      "bytes": 87,
+      "containsSyntheticBody": false,
+      "containsShippingSubject": false
+    },
+    {
+      "name": "retired-workflow-content-scan",
+      "filesContainingFixtureContent": []
+    },
+    {
+      "name": "complete",
+      "mode": "real-local-model",
+      "evidence": "evidence/local-pC9Vob"
+    }
+  ]
+}

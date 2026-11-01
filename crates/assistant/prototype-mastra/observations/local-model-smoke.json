@@ -1,0 +1,113 @@
+{
+  "observed": "2026-11-01",
+  "versions": {
+    "@mastra/core": "1.79.0",
+    "@mastra/libsql": "1.27.0",
+    "@mastra/mcp": "2.5.0",
+    "node": "26.7.0"
+  },
+  "command": "npm run experiment -- --local --smoke-only",
+  "exitCode": 0,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 397,
+      "rssBytes": 242941952,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "read",
+      "runId": "fc88d67e-8311-4104-a5a0-53a729771622",
+      "milliseconds": 8175,
+      "approvals": 0,
+      "crashed": false
+    },
+    {
+      "name": "denial-pending",
+      "runId": "7f5925dc-2231-45af-9cc1-90eb57d33479",
+      "milliseconds": 11005,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "runId": "fdeaed83-abd9-4b9e-b7f3-c37f752d120c",
+      "milliseconds": 11618,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "duplicate-approval",
+      "passed": true,
+      "result": "DurableAgent \"Synthetic mxr assistant\" resume(fdeaed83-abd9-4b9e-b7f3-c37f752d120c) could not find a suspended run for this runId. The run has already finished (for example, an earlier approval or resume already handled it), never suspended, or the runId is invalid."
+    },
+    {
+      "name": "erasure-pending",
+      "runId": "f05cf39f-dce9-4ae7-b25c-7ff2ce345da4",
+      "milliseconds": 11577,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "before-deletion",
+      "markerTables": {
+        "mastra_workflow_snapshot": 2
+      }
+    },
+    {
+      "name": "cleanup-only",
+      "markerTables": {
+        "mastra_workflow_snapshot": 2
+      }
+    },
+    {
+      "name": "snapshot-deletion",
+      "deleted": [
+        "durable-agentic-execution",
+        "durable-agentic-loop"
+      ],
+      "markerTables": {}
+    },
+    {
+      "name": "startup",
+      "milliseconds": 420,
+      "rssBytes": 236093440,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "post-deletion-resume",
+      "mutationCount": 0,
+      "result": "No registry entry found for run f05cf39f-dce9-4ae7-b25c-7ff2ce345da4. Cannot resume.",
+      "markerTables": {}
+    },
+    {
+      "name": "complete",
+      "passed": true,
+      "mode": "real-local-model",
+      "evidence": "evidence/local-2KnjAI"
+    }
+  ]
+}

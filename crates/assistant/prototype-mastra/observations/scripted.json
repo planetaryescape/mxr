@@ -1,0 +1,213 @@
+{
+  "observed": "2026-11-01",
+  "versions": {
+    "@mastra/core": "1.79.0",
+    "@mastra/libsql": "1.27.0",
+    "@mastra/mcp": "2.5.0",
+    "node": "26.7.0"
+  },
+  "command": "npm run experiment",
+  "exitCode": 0,
+  "results": [
+    {
+      "name": "startup",
+      "milliseconds": 376,
+      "rssBytes": 243040256,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "read",
+      "runId": "b305a16f-1bd6-4a93-8702-b20e87e7f2d5",
+      "milliseconds": 126,
+      "approvals": 0,
+      "crashed": false
+    },
+    {
+      "name": "denial-pending",
+      "runId": "51558937-40d8-457c-964d-ea6abbe33322",
+      "milliseconds": 436,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "denial",
+      "passed": true,
+      "mutations": 0
+    },
+    {
+      "name": "ordinary-approval-pending",
+      "runId": "76ff8050-7c9b-42ad-a594-2eeaeb8a0f69",
+      "milliseconds": 437,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "ordinary-approval",
+      "passed": true,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "duplicate-approval",
+      "passed": true,
+      "result": "DurableAgent \"Synthetic mxr assistant\" resume(76ff8050-7c9b-42ad-a594-2eeaeb8a0f69) could not find a suspended run for this runId. The run has already finished (for example, an earlier approval or resume already handled it), never suspended, or the runId is invalid."
+    },
+    {
+      "name": "checkpointed-approval-crash-pending",
+      "runId": "42c9b72b-b6c8-4ab2-8deb-2f175cc6f349",
+      "milliseconds": 146,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "startup",
+      "milliseconds": 376,
+      "rssBytes": 242368512,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "checkpointed-approval-crash",
+      "passed": true,
+      "recoveryMilliseconds": 481,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "immediate-approval-crash-pending",
+      "runId": "a8adc373-1728-4d97-9e63-30d7fb19ecfc",
+      "milliseconds": 500,
+      "approvals": 1,
+      "crashed": true
+    },
+    {
+      "name": "startup",
+      "milliseconds": 375,
+      "rssBytes": 242581504,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "immediate-approval-crash",
+      "passed": true,
+      "recoveryMilliseconds": 479,
+      "exactSelection": [
+        [
+          "shipping-1",
+          "shipping-2"
+        ]
+      ]
+    },
+    {
+      "name": "send-pending",
+      "runId": "f49d2266-2b9f-4e63-b97e-6ead5c423cce",
+      "milliseconds": 21,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "startup",
+      "milliseconds": 352,
+      "rssBytes": 240893952,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "send-crash",
+      "passed": true,
+      "recoveryMilliseconds": 17329,
+      "effects": 1,
+      "attempts": 2,
+      "reapprovalRequired": false,
+      "statuses": [],
+      "recovery": {
+        "agents": 1,
+        "recovered": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "skipped": 1
+      },
+      "protection": "fixture operation ledger, NOT Mastra exactly-once"
+    },
+    {
+      "name": "startup",
+      "milliseconds": 376,
+      "rssBytes": 243974144,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "erasure-pending",
+      "runId": "d9036315-ea63-4aa3-89f4-90a6c0f0ee2f",
+      "milliseconds": 165,
+      "approvals": 1,
+      "crashed": false
+    },
+    {
+      "name": "before-deletion",
+      "markerTables": {
+        "mastra_workflow_snapshot": 2
+      }
+    },
+    {
+      "name": "cleanup-only",
+      "markerTables": {
+        "mastra_workflow_snapshot": 2
+      }
+    },
+    {
+      "name": "snapshot-deletion",
+      "deleted": [
+        "durable-agentic-execution",
+        "durable-agentic-loop"
+      ],
+      "markerTables": {}
+    },
+    {
+      "name": "startup",
+      "milliseconds": 372,
+      "rssBytes": 240893952,
+      "tools": [
+        "mail_search",
+        "mail_archive",
+        "mail_send"
+      ]
+    },
+    {
+      "name": "post-deletion-resume",
+      "mutationCount": 0,
+      "result": "No registry entry found for run d9036315-ea63-4aa3-89f4-90a6c0f0ee2f. Cannot resume.",
+      "markerTables": {}
+    },
+    {
+      "name": "complete",
+      "passed": true,
+      "mode": "scripted-provider-real-mastra",
+      "evidence": "evidence/scripted-X1wAbU"
+    }
+  ]
+}

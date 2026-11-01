@@ -1,0 +1,17 @@
+{
+  "name": "mxr-mastra-throwaway-spike",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "experiment": "node experiment.mjs",
+    "mcp-probe": "MASTRA_TELEMETRY_DISABLED=1 node mcp-probe.mjs"
+  },
+  "dependencies": {
+    "@mastra/core": "1.79.0",
+    "@mastra/libsql": "1.27.0",
+    "@mastra/mcp": "2.5.0",
+    "@ai-sdk/openai-compatible": "3.0.78",
+    "zod": "4.6.7"
+  }
+}

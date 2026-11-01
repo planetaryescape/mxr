@@ -1,0 +1,37 @@
+{
+  "observed": "2026-11-01",
+  "versions": {
+    "@mastra/core": "1.79.0",
+    "@mastra/libsql": "1.27.0",
+    "@mastra/mcp": "2.5.0",
+    "node": "26.7.0"
+  },
+  "command": "npm run mcp-probe",
+  "exitCode": 0,
+  "results": [
+    {
+      "passed": true,
+      "transport": "stdio",
+      "serverProtocol": "2025-06-18",
+      "tools": [
+        "mail_mail_search"
+      ],
+      "result": {
+        "source": "untrusted-mail",
+        "messages": [
+          {
+            "id": "shipping-1",
+            "subject": "Shipping notice: parcel one",
+            "archived": false
+          },
+          {
+            "id": "shipping-2",
+            "subject": "Shipping notice: parcel two",
+            "archived": false
+          }
+        ]
+      },
+      "evidence": "evidence/mcp-lBrFPE"
+    }
+  ]
+}

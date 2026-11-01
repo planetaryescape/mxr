@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.199](https://github.com/planetaryescape/mxr/compare/v0.6.198...v0.6.199) (2026-11-01)
+
+
+### Bug Fixes
+
+* retain and label externally filed Updates and Reading ([#827](https://github.com/planetaryescape/mxr/issues/827)) ([c0e1d52](https://github.com/planetaryescape/mxr/commit/c0e1d52407628f85c31dcff09473524b99c1e290))
+
 ## [0.6.198](https://github.com/planetaryescape/mxr/compare/v0.6.197...v0.6.198) (2026-11-01)
 
 

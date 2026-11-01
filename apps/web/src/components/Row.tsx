@@ -3,6 +3,7 @@ import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "r
 
 import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
+import { rowPrimaryTone } from "@/components/rowTone";
 import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useLanded } from "@/state/landingStore";
@@ -103,8 +104,7 @@ export const Row = memo(function Row({
   const identity = useRowAccountMark(accountId);
   // `undefined` means the list has no read state, so the row keeps the neutral
   // tier. Only an explicit `false` calms the row.
-  const read = unread === false;
-  const primaryTone = unread ? "font-semibold text-text-1" : read ? "text-text-2" : "text-text-1";
+  const primaryTone = rowPrimaryTone(unread);
   const secondaryTone = unread ? "text-text-1" : "text-text-2";
   const text = (
     <>

@@ -319,7 +319,6 @@ function Bands({
       // Doing what the button says is what the runway hint names.
       dismissRunwayHint();
       if (action.kind === "reply") {
-        markRowSeen(todo);
         useComposeUi.getState().openCompose(replyIntent(action.messageId, "single"), "overlay");
         return;
       }

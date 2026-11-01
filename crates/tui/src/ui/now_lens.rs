@@ -74,6 +74,14 @@ pub(crate) struct Body {
 }
 
 impl Body {
+    /// Track the cursor for scrolling when the row already owns its styling.
+    pub(crate) fn select_styled(&mut self, line: Line<'static>, selected: bool) {
+        if selected {
+            self.selected_line = self.lines.len();
+        }
+        self.lines.push(line);
+    }
+
     pub(crate) fn text(&mut self, text: impl Into<String>, style: Style) {
         self.lines.push(Line::from(Span::styled(
             format!("  {}", text.into()),

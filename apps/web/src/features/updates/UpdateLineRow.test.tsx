@@ -479,6 +479,42 @@ describe("UpdateLineRow's more menu", () => {
 });
 
 describe("UpdateLineRow's peek", () => {
+  test("refetching an open peek never acknowledges a newer revision until reopened", async () => {
+    const client = new QueryClient();
+    const handlers = makeHandlers();
+    const original = lineFixture({ unread: true, seen_revision: "opened" });
+    const content = (line: UpdateLine, peeked: boolean) => (
+      <QueryClientProvider client={client}>
+        <ul>
+          <UpdateLineRow line={line} index={0} lit via="key" peeked={peeked} {...handlers} />
+        </ul>
+      </QueryClientProvider>
+    );
+    const view = render(content(original, true));
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen"),
+      ).toHaveLength(1),
+    );
+    const changed = { ...original, fact: "New update", seen_revision: "new-revision" };
+    await act(async () => view.rerender(content(changed, true)));
+    expect(apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen")).toHaveLength(
+      1,
+    );
+    view.rerender(content(changed, false));
+    view.rerender(content(changed, true));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          account_id: changed.account_id,
+          mode: "updates",
+          row_id: changed.id,
+          revision: "new-revision",
+        },
+      }),
+    );
+  });
   test("peeking acknowledges this row, while keyboard focus alone does not", async () => {
     const line = lineFixture({ unread: true, seen_revision: "exact-revision" });
     renderLine(line, { peeked: false });

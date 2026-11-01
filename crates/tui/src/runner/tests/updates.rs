@@ -44,7 +44,7 @@ fn updates_app() -> App {
 }
 
 #[test]
-fn an_update_peek_acknowledges_only_the_revision_opened() {
+fn an_update_peek_acknowledges_the_rows_own_revision() {
     let mut app = updates_app();
     let line = &mut app
         .mailbox

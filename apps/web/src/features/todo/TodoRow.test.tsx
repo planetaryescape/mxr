@@ -57,6 +57,13 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
+  test("background task revisions stay unseen until details are reopened", () => {
+    const original = todoFixture({ unread: true, seen_revision: "opened" });
+    const { rerender } = renderRow(original, "now", { details: true });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+    rerender({ ...original, title: "New content", seen_revision: "new-revision" });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+  });
   test("details mark a row seen, but keyboard focus does not", () => {
     const todo = todoFixture({ unread: true, seen_revision: "revision" });
     renderRow(todo, "now", { lit: true, details: false });

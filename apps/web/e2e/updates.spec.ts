@@ -70,7 +70,7 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   await expect(page.getByTestId("update-line").first()).toBeVisible({ timeout: 30_000 });
   // A peek crosses the bridge and persists exact row attention, without
   // letting go. Reloading loses client state but keeps the row calm.
-  const firstRow = page.getByTestId("update-line").first();
+  const firstRow = page.locator('[data-testid="update-line"][data-unread="true"]').first();
   const rowId = await firstRow.getAttribute("data-line-id");
   const seen = page.waitForResponse(
     (response) =>

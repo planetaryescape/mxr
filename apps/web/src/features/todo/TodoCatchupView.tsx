@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { ModeFrame } from "@/components/ModeFrame";
+import { rowPrimaryTone } from "@/components/rowTone";
 import { Button } from "@/components/ui/button";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
@@ -87,18 +88,8 @@ function PlainRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-3">
-          <span
-            className={cn(
-              "text-base",
-              todo.unread
-                ? "font-semibold text-text-1"
-                : todo.unread === false
-                  ? "text-text-2"
-                  : "text-text-1",
-            )}
-          >
-            {todo.title}
-          </span>
+          {todo.unread ? <span className="sr-only">Unseen. </span> : null}
+          <span className={cn("text-base", rowPrimaryTone(todo.unread))}>{todo.title}</span>
           {party ? <span className="text-sm text-muted-foreground">{party}</span> : null}
           {todo.amount ? (
             <span className="font-mono text-sm tabular-nums">{todo.amount.display}</span>

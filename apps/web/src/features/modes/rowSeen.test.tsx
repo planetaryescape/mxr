@@ -43,12 +43,12 @@ test.each(["todo", "updates"] as const)(
   },
 );
 
-test("seen rows and payloads from older daemons never write", () => {
+test("seen rows and payloads from older daemons never write", async () => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
   );
   const { result } = renderHook(() => useMarkRowSeen("todo"), { wrapper });
-  act(() => {
+  await act(async () => {
     result.current({ id: "row", account_id: "account", unread: false, seen_revision: "rev" });
     result.current({ id: "row", account_id: "account", unread: true });
   });

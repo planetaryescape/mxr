@@ -55,11 +55,11 @@ fn opening_a_todo_acknowledges_its_revision_but_selection_does_not() {
         .iter()
         .any(|r| matches!(r, Request::SetModeRowSeen { .. })));
     app.apply(Action::TodoOpenEmail);
-    assert!(queued(&app)
-        .iter()
-        .any(|r| matches!(r, Request::SetModeRowSeen {
-        mode: mxr_protocol::ModeKindData::Todo, row_id, revision, dry_run: false, ..
-    } if row_id == &id && revision == "opened-revision")));
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen {
+            mode: mxr_protocol::ModeKindData::Todo, row_id, revision, dry_run: false, ..
+        } if row_id == &id && revision == "opened-revision")
+    }));
     assert_eq!(
         app.selected_todo().unwrap().state,
         mxr_protocol::TodoStateData::Open
@@ -70,7 +70,9 @@ fn opening_a_todo_acknowledges_its_revision_but_selection_does_not() {
     row.action = None;
     row.seen_revision = Some("no-source-revision".into());
     app.apply(Action::TodoPrimary);
-    assert!(queued(&app).iter().any(|r| matches!(r, Request::SetModeRowSeen { revision, .. } if revision == "no-source-revision")));
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen { revision, .. } if revision == "no-source-revision")
+    }));
 }
 
 fn attach_resolution(app: &mut App, status: &str) {

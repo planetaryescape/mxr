@@ -95,8 +95,14 @@ export const UpdateLineRow = memo(function UpdateLineRow({
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
   const markRowSeen = useMarkRowSeen("updates");
+  const openedRow = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (peeked) markRowSeen(line);
+    if (!peeked) {
+      openedRow.current = undefined;
+    } else if (openedRow.current !== line.id) {
+      openedRow.current = line.id;
+      markRowSeen(line);
+    }
   }, [peeked, line, markRowSeen]);
   const hide = useUpdatesHidden((s) => s.hide);
   const [menuOpen, setMenuOpen] = useState(false);

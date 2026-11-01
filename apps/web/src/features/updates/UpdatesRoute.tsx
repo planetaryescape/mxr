@@ -242,12 +242,17 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
       return;
     }
     if (openedThread.current === params.threadId) return;
-    const opened = rows.find((row) => row.line.latest_thread_id === params.threadId)?.line;
+    const opened = [
+      ...digest.needs_a_look,
+      ...digest.changed,
+      ...digest.routine,
+      ...digest.since.lines,
+    ].find((line) => line.latest_thread_id === params.threadId);
     if (opened) {
       openedThread.current = params.threadId;
       markRowSeen(opened);
     }
-  }, [params.threadId, rows, markRowSeen]);
+  }, [params.threadId, digest, markRowSeen]);
   const openEmail = useCallback(
     (line: UpdateLine) => {
       if (line.latest_thread_id) {

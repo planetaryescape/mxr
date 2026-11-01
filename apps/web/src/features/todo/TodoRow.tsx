@@ -299,8 +299,14 @@ export const TodoRow = memo(function TodoRow({
   hint,
 }: TodoRowProps) {
   const markRowSeen = useMarkRowSeen("todo");
+  const openedRow = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (details) markRowSeen(todo);
+    if (!details) {
+      openedRow.current = undefined;
+    } else if (openedRow.current !== todo.id) {
+      openedRow.current = todo.id;
+      markRowSeen(todo);
+    }
   }, [details, todo, markRowSeen]);
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);

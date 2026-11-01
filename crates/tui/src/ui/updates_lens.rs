@@ -14,7 +14,7 @@ use mxr_protocol::{
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use super::now_lens::{marker, section, Body};
+use super::now_lens::{section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
 use crate::ui::mail_list::format_date_relative;
 use crate::ui::sanitize::{one_line, truncate};
@@ -247,7 +247,7 @@ fn body_for(
                 }
                 let chip = view.account_marks.row_cell(&line.account_id, theme);
                 let row_width = width.saturating_sub(view.account_marks.column_width());
-                body.select(
+                body.select_styled(
                     line_row(line, selected, row_width, theme, view.now, chip),
                     selected,
                 );
@@ -295,11 +295,16 @@ fn body_for(
                     plural(*more as u32, "quieter source", "quieter sources"),
                     plural(folded, "update", "updates")
                 );
-                body.select(
+                body.select_styled(
                     Line::from(vec![
-                        Span::raw(marker(selected)),
+                        Span::raw("  "),
                         Span::styled(truncate(&text, width.saturating_sub(4)), muted),
-                    ]),
+                    ])
+                    .style(if selected {
+                        Style::default().bg(theme.selection_bg)
+                    } else {
+                        Style::default()
+                    }),
                     selected,
                 );
             }
@@ -737,6 +742,34 @@ pub(crate) mod tests {
             |_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()),
             &mxr_keymap::guide_key,
         )
+    }
+
+    #[test]
+    fn selected_updates_keep_a_uniform_background_without_reverse_video() {
+        let theme = crate::theme::Theme::default();
+        let digest = populated();
+        let page = UpdatesPageState {
+            digest: Some(digest.clone()),
+            ..Default::default()
+        };
+        let view = UpdatesView {
+            now: Utc::now(),
+            page: &page,
+            selected_index: 0,
+            active_pane: &ActivePane::MailList,
+            account_marks: crate::ui::account_mark::AccountMarks::default(),
+            peek_body: None,
+        };
+        let body = body_for(&view, &digest, 120, &theme);
+        let selected = &body.lines[body.selected_line];
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| span.style.bg == Some(theme.selection_bg)));
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
     }
 
     #[test]

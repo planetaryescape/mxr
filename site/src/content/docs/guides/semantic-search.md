@@ -142,7 +142,7 @@ Typical flow:
 2. later enable or `mxr semantic profile use ...`
 3. mxr reuses stored chunks, backfills only missing ones, then builds embeddings
 
-Use `mxr semantic reindex` only when chunk extraction behavior changed or you want a full correctness rebuild; it skips whatever is already embedded, so it is cheap to re-run.
+Use `mxr semantic reindex` after chunk extraction changes, after an embedding backend upgrade, or to finish an interrupted rebuild. It reuses vectors that are current for the active backend.
 
 ## Status, profiles, and reindex
 
@@ -174,6 +174,13 @@ mxr doctor --reindex-semantic
 ```
 
 An ordinary `mxr semantic reindex` is idempotent and stepped: it walks the corpus, skips messages whose chunks and embeddings already match the active profile, and persists its position as it goes, so re-running one that was interrupted picks up where it stopped rather than starting over. Only one index pass runs at a time — a second request joins the pass in flight.
+
+After an embedding backend upgrade, background backfill rebuilds the whole
+profile before marking its vectors current. Until that migration finishes, semantic searches return an error asking for a
+reindex. Run `mxr semantic reindex` to start the
+rebuild immediately; the normal pass also replaces every vector from the older
+backend. An interrupted migration keeps its old revision and retries the whole
+profile.
 
 Reach for `--force` only to recover a corrupt or half-migrated index, or after a change to chunk extraction that makes the stored vectors wrong rather than missing. On a large mailbox it re-embeds every message, which is the slowest thing mxr does.
 

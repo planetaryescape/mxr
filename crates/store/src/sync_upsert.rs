@@ -78,7 +78,7 @@ impl super::Store {
         // while that cleanup is between its check and its removal.
         let _cleanup = self.lock_message_cleanup().await;
         for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
-            let mut tx = self.writer().begin().await?;
+            let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
             for upsert in chunk {
                 let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;

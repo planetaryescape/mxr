@@ -660,7 +660,7 @@ impl super::Store {
         label_ids: &[LabelId],
         source: EventSource,
     ) -> Result<(), sqlx::Error> {
-        let mut tx = self.writer().begin().await?;
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
         replace_message_labels_tx(&mut tx, message_id, label_ids, source).await?;
         tx.commit().await?;
         Ok(())

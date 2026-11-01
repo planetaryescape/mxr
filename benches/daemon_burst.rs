@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use mxr::handler::handle_request;
 use mxr::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -8,6 +8,7 @@ use mxr_core::types::{
 };
 use mxr_protocol::{IpcMessage, IpcPayload, Request};
 use mxr_search::{SearchIndexEntry, SearchUpdateBatch};
+use std::hint::black_box;
 use std::sync::Arc;
 use tempfile::TempDir;
 

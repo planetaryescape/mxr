@@ -1399,11 +1399,13 @@ impl MailSyncProvider for ImapProvider {
             ))
         })?;
 
-        let part = parsed.parts.get(part_idx).ok_or_else(|| {
+        // Provider IDs are root-message part positions persisted before mail-parser 1.0.
+        // Global part IDs now also count the contents of nested messages.
+        let part = parsed.root().parts().nth(part_idx).ok_or_else(|| {
             mxr_core::error::MxrError::Provider(format!("Attachment part {part_idx} not found"))
         })?;
 
-        Ok(part.contents().to_vec())
+        Ok(part.decoded().into_owned())
     }
 
     async fn apply_mutation(

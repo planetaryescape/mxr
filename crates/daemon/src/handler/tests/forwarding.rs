@@ -110,7 +110,6 @@ fn draft(source: ForwardSource, intro: &str) -> Draft {
 
 #[tokio::test]
 async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and_all_mime_parts() {
-    use mail_parser::MimeHeaders;
     let sender = Arc::new(MimeTransport::default());
     let (state, fake, id) = fixture(sender.clone()).await;
     let temp = tempfile::tempdir().unwrap();
@@ -282,10 +281,10 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
         .filter(|part| part.attachment_name() == Some("report.pdf"))
         .collect();
     assert_eq!(pdfs.len(), 5);
-    assert_eq!(pdfs[0].contents(), b"fake attachment content");
+    assert_eq!(pdfs[0].decoded().as_ref(), b"fake attachment content");
     for (index, pdf) in pdfs.iter().enumerate().skip(1) {
         assert_eq!(
-            pdf.contents(),
+            pdf.decoded(),
             format!("%PDF-synthetic-{index}\n").as_bytes()
         );
     }
@@ -297,7 +296,7 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
             })
         })
         .unwrap();
-    assert_eq!(binary_part.contents(), binary);
+    assert_eq!(binary_part.decoded(), binary);
     let inline = attachments
         .iter()
         .find(|part| part.content_id() == Some("logo@example.com"))
@@ -311,7 +310,7 @@ async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and
         .unwrap();
     assert_eq!(location_part.attachment_name(), Some("asset.dat"));
     assert!(location_part.content_disposition().unwrap().is_inline());
-    assert_eq!(location_part.contents(), b"%PDF-synthetic-7\n");
+    assert_eq!(location_part.decoded().as_ref(), b"%PDF-synthetic-7\n");
     assert!(html.contains("src=\"images/logo.gif\""));
 }
 
@@ -567,5 +566,5 @@ async fn forwarding_attachment_only_message_preserves_an_empty_binary_file() {
         .parse(&messages[0])
         .unwrap();
     assert_eq!(parsed.attachments().count(), 1);
-    assert!(parsed.attachments().next().unwrap().contents().is_empty());
+    assert!(parsed.attachments().next().unwrap().decoded().is_empty());
 }

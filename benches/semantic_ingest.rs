@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use mxr_config::SemanticConfig;
 use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
 use mxr_core::types::{
@@ -8,6 +8,7 @@ use mxr_core::types::{
 use mxr_semantic::SemanticEngine;
 use mxr_store::Store;
 use std::fs::File;
+use std::hint::black_box;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

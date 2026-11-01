@@ -261,11 +261,11 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> Ke
     }
 
     let diff = TextDiff::from_words(original, output);
-    let old = diff.old_slices();
-    let new = diff.new_slices();
-    let mut starts = Vec::with_capacity(old.len() + 1);
+    let old = diff.old_lookup();
+    let new = diff.new_lookup();
+    let mut starts = Vec::with_capacity(diff.old_len() + 1);
     let mut at = 0;
-    for token in old {
+    for token in diff.iter_old_slices() {
         starts.push(at);
         at += token.len();
     }
@@ -280,10 +280,10 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> Ke
         // without touching a byte outside it.
         let inside = selection.start <= from && to <= selection.end;
         if tag == DiffTag::Equal || !inside {
-            old[old_range].iter().for_each(|token| text.push_str(token));
+            old_range.for_each(|index| text.push_str(&old[index]));
             reverted |= tag != DiffTag::Equal;
         } else {
-            new[new_range].iter().for_each(|token| text.push_str(token));
+            new_range.for_each(|index| text.push_str(&new[index]));
         }
     }
     // The ends were never rewritten, so this holds; it is the guarantee, so a

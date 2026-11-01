@@ -7,7 +7,7 @@
 )]
 
 use chrono::{DateTime, TimeZone, Utc};
-use mail_parser::{MimeHeaders, PartType};
+use mail_parser::PartKind;
 use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
 use mxr_core::types::{
     Address, AttachmentDisposition, AttachmentMeta, BodyPartSource, Envelope, MessageBody,
@@ -255,20 +255,20 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
             let mut text_html = None;
             let mut attachments = Vec::new();
             let mut calendar = None;
-            for (idx, part) in msg.parts.iter().enumerate() {
+            for (idx, part) in msg.root().parts().enumerate() {
                 if let Some(content_type) = part.content_type() {
                     let subtype = content_type.subtype().unwrap_or_default();
                     if content_type.ctype().eq_ignore_ascii_case("text")
                         && subtype.eq_ignore_ascii_case("calendar")
                     {
-                        if let Some(text) = part.text_contents() {
-                            calendar = calendar.or_else(|| calendar_metadata_from_text(text));
+                        if let Some(text) = part.text() {
+                            calendar = calendar.or_else(|| calendar_metadata_from_text(&text));
                         }
                     }
                 }
 
-                let disposition = attachment_disposition(part);
-                if is_attachment_part(part, disposition) {
+                let disposition = attachment_disposition(&part);
+                if is_attachment_part(&part, disposition) {
                     let filename = part.attachment_name().map_or_else(
                         || format!("attachment-{idx}"),
                         std::string::ToString::to_string,
@@ -277,32 +277,32 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                         id: AttachmentId::from_provider_id("imap", &format!("{message_id}:{idx}")),
                         message_id: message_id.clone(),
                         filename,
-                        mime_type: part_mime_type(part),
+                        mime_type: part_mime_type(&part),
                         disposition,
                         content_id: normalize_content_id(part.content_id()),
                         content_location: part.content_location().map(str::to_string),
-                        size_bytes: part.len() as u64,
+                        size_bytes: part.decoded_len() as u64,
                         local_path: None,
                         provider_id: format!("{idx}"),
                     });
                     continue;
                 }
 
-                match &part.body {
-                    // mail_parser reports `text/calendar` as `PartType::Text`. A
+                match part.kind() {
+                    // mail_parser reports `text/calendar` as `PartKind::Text`. A
                     // bare calendar part (no filename/disposition) would otherwise
                     // land its raw `BEGIN:VCALENDAR...` in `text_plain`. It is
                     // already captured into `metadata.calendar` above, so skip it.
-                    PartType::Text(_) if is_calendar_part(part) => {}
-                    PartType::Text(text) if text_plain.is_none() => {
-                        text_plain = Some(text.to_string());
+                    PartKind::Text if is_calendar_part(&part) => {}
+                    PartKind::Text if text_plain.is_none() => {
+                        text_plain = part.text().map(std::borrow::Cow::into_owned);
                         metadata.text_plain_source = Some(BodyPartSource::Exact);
                         metadata.text_plain_format = part
                             .content_type()
                             .and_then(parse_text_plain_format_from_content_type);
                     }
-                    PartType::Html(html) if text_html.is_none() => {
-                        text_html = Some(html.to_string());
+                    PartKind::Html if text_html.is_none() => {
+                        text_html = part.text().map(std::borrow::Cow::into_owned);
                         metadata.text_html_source = Some(BodyPartSource::Exact);
                     }
                     _ => {}
@@ -403,7 +403,7 @@ fn strip_html_to_text(html: &str) -> String {
 }
 
 fn parse_text_plain_format_from_content_type(
-    content_type: &mail_parser::ContentType<'_>,
+    content_type: mail_parser::ContentType<'_>,
 ) -> Option<TextPlainFormat> {
     if !content_type.ctype().eq_ignore_ascii_case("text")
         || !content_type
@@ -426,7 +426,7 @@ fn parse_text_plain_format_from_content_type(
     }
 }
 
-fn attachment_disposition<'a>(headers: &impl MimeHeaders<'a>) -> AttachmentDisposition {
+fn attachment_disposition(headers: &mail_parser::MessagePart<'_>) -> AttachmentDisposition {
     match headers.content_disposition() {
         Some(disposition) if disposition.is_attachment() => AttachmentDisposition::Attachment,
         Some(disposition) if disposition.is_inline() => AttachmentDisposition::Inline,
@@ -446,7 +446,7 @@ fn is_attachment_part(
         return true;
     }
 
-    if matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_)) {
+    if matches!(part.kind(), PartKind::Binary | PartKind::InlineBinary) {
         return true;
     }
 
@@ -486,6 +486,42 @@ mod tests {
     use super::*;
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;
+
+    #[test]
+    fn nested_message_parts_do_not_replace_the_outer_body_or_attachments() {
+        let raw = concat!(
+            "From: sender@example.com\r\n",
+            "Content-Type: multipart/mixed; boundary=outer\r\n\r\n",
+            "--outer\r\nContent-Type: message/rfc822\r\n\r\n",
+            "From: nested@example.com\r\n",
+            "Content-Type: multipart/mixed; boundary=inner\r\n\r\n",
+            "--inner\r\nContent-Type: text/plain\r\n\r\nNested body\r\n",
+            "--inner\r\nContent-Type: application/octet-stream\r\n",
+            "Content-Disposition: attachment; filename=nested.bin\r\n\r\nNested attachment\r\n",
+            "--inner--\r\n",
+            "--outer\r\nContent-Type: text/plain\r\n\r\nOuter body\r\n",
+            "--outer\r\nContent-Type: application/octet-stream\r\n",
+            "Content-Disposition: attachment; filename=outer.bin\r\n",
+            "Content-Transfer-Encoding: base64\r\n\r\nAQID\r\n",
+            "--outer--\r\n",
+        )
+        .as_bytes();
+        let body = parse_message_body(raw, &MessageId::new());
+        assert_eq!(body.text_plain.as_deref(), Some("Outer body"));
+        assert_eq!(body.attachments.len(), 1);
+        let attachment = &body.attachments[0];
+        assert_eq!(attachment.filename, "outer.bin");
+        assert_eq!(attachment.size_bytes, 3);
+        assert_eq!(attachment.provider_id, "3");
+        let parsed = mail_parser::MessageParser::default().parse(raw).unwrap();
+        let part = parsed
+            .root()
+            .parts()
+            .nth(attachment.provider_id.parse().unwrap())
+            .unwrap();
+        assert_ne!(part.id() as usize, 3);
+        assert_eq!(part.decoded().as_ref(), [1, 2, 3]);
+    }
 
     #[test]
     fn flags_from_imap_converts_standard_flags() {

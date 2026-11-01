@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use icalendar::parser::{
     read_calendar, unfold, Component as ParsedCalendarComponent, Property as ParsedCalendarProperty,
 };
-use mail_parser::{Message, MessageParser, MimeHeaders};
+use mail_parser::{Message, MessageParser};
 use mxr_core::types::{
     Address, CalendarAttendee, CalendarMetadata, CalendarPerson, MessageMetadata, TextPlainFormat,
     UnsubscribeMethod,
@@ -443,40 +443,35 @@ pub fn extract_parsed_headers(
         message_id_header: message.message_id().map(|id| format!("<{id}>")),
         in_reply_to: message
             .in_reply_to()
-            .as_text_list()
             .and_then(|ids| ids.first().map(|id| format!("<{id}>"))),
         references: message
             .references()
-            .as_text_list()
             .map(|ids| ids.iter().map(|id| format!("<{id}>")).collect())
             .unwrap_or_default(),
-        unsubscribe: convert_unsubscribe(list_unsubscribe::parse_from_message(message)),
+        unsubscribe: parse_unsubscribe(message),
         metadata: extract_metadata(message, raw_headers),
     }
 }
 
 fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> MessageMetadata {
     let content_language = message
-        .header_values("Content-Language")
-        .flat_map(|value| {
-            value
-                .as_text()
-                .unwrap_or_default()
-                .split(',')
-                .map(|lang| lang.trim().to_string())
-                .collect::<Vec<_>>()
-        })
-        .filter(|lang| !lang.is_empty())
+        .headers()
+        .all("Content-Language")
+        .filter_map(|header| header.value().as_text_list())
+        .flat_map(|languages| languages.iter())
+        .map(|language| language.trim().to_string())
+        .filter(|language| !language.is_empty())
         .collect();
 
     let auth_results = message
-        .header_values("Authentication-Results")
+        .headers()
+        .all("Authentication-Results")
+        .map(|header| header.value())
         .filter_map(|value| value.as_text().map(std::string::ToString::to_string))
         .collect();
 
     let list_id = message
         .list_id()
-        .as_address()
         .and_then(extract_first_addr)
         .and_then(|address| mxr_core::mail_evidence::normalize_list_id(&address.email));
     let text_plain_format = message.content_type().and_then(parse_text_plain_format);
@@ -496,7 +491,7 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
     }
 }
 
-fn parse_text_plain_format(content_type: &mail_parser::ContentType<'_>) -> Option<TextPlainFormat> {
+fn parse_text_plain_format(content_type: mail_parser::ContentType<'_>) -> Option<TextPlainFormat> {
     if !content_type.ctype().eq_ignore_ascii_case("text")
         || !content_type
             .subtype()
@@ -538,32 +533,35 @@ fn convert_unsubscribe(method: list_unsubscribe::UnsubscribeMethod) -> Unsubscri
     }
 }
 
-fn extract_first_addr(addr: &mail_parser::Address<'_>) -> Option<Address> {
-    match addr {
-        mail_parser::Address::List(list) => list.first().map(to_address),
-        mail_parser::Address::Group(groups) => groups
-            .first()
-            .and_then(|group| group.addresses.first())
-            .map(to_address),
-    }
+fn extract_first_addr(addresses: mail_parser::AddressList<'_>) -> Option<Address> {
+    addresses.first().map(to_address)
 }
 
-fn extract_addrs(addr: &mail_parser::Address<'_>) -> Vec<Address> {
-    match addr {
-        mail_parser::Address::List(list) => list.iter().map(to_address).collect(),
-        mail_parser::Address::Group(groups) => groups
-            .iter()
-            .flat_map(|group| group.addresses.iter())
-            .map(to_address)
-            .collect(),
-    }
+fn extract_addrs(addresses: mail_parser::AddressList<'_>) -> Vec<Address> {
+    addresses.mailboxes().map(to_address).collect()
 }
 
-fn to_address(addr: &mail_parser::Addr<'_>) -> Address {
+fn to_address(addr: mail_parser::Mailbox<'_>) -> Address {
     Address {
         name: addr.name().map(std::string::ToString::to_string),
         email: addr.address().unwrap_or_default().to_string(),
     }
+}
+
+// The optional list-unsubscribe adapter still takes mail-parser 0.11 messages.
+// Pass raw fields to its version-independent parser instead.
+fn parse_unsubscribe(message: &Message<'_>) -> UnsubscribeMethod {
+    let headers = message.headers();
+    let value = headers
+        .get("List-Unsubscribe")
+        .map(|header| String::from_utf8_lossy(header.raw_value()));
+    let post = headers
+        .get("List-Unsubscribe-Post")
+        .map(|header| String::from_utf8_lossy(header.raw_value()));
+    convert_unsubscribe(list_unsubscribe::parse_with_post(
+        value.as_deref().unwrap_or_default(),
+        post.as_deref(),
+    ))
 }
 
 /// Normalize every line ending — CRLF, bare CR, and LF — to CRLF so downstream
@@ -872,6 +870,46 @@ mod tests {
         assert_eq!(addresses.len(), 2);
         assert_eq!(addresses[0].name.as_deref(), Some("Last, First"));
         assert_eq!(addresses[1].email, "second@example.com");
+    }
+
+    #[test]
+    fn preserves_header_lists_and_one_click_unsubscribe() {
+        let parsed = parse_headers_from_raw(
+            concat!(
+                "From: Empty:;, Team: Alice <alice@example.com>, Bob <bob@example.com>;\r\n",
+                "To: Team: Alice <alice@example.com>, Bob <bob@example.com>;\r\n",
+                "Content-Language: en, fr\r\n",
+                "Content-Language: de\r\n",
+                "In-Reply-To: <parent@example.com>\r\n",
+                "References: <root@example.com> <parent@example.com>\r\n",
+                "List-Unsubscribe: <mailto:list@example.com>,\r\n",
+                " <https://example.com/unsubscribe>\r\n",
+                "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n",
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(parsed.from.unwrap().email, "alice@example.com");
+        assert_eq!(
+            parsed
+                .to
+                .iter()
+                .map(|address| address.email.as_str())
+                .collect::<Vec<_>>(),
+            ["alice@example.com", "bob@example.com"]
+        );
+        assert_eq!(parsed.metadata.content_language, ["en", "fr", "de"]);
+        assert_eq!(parsed.in_reply_to.as_deref(), Some("<parent@example.com>"));
+        assert_eq!(
+            parsed.references,
+            ["<root@example.com>", "<parent@example.com>"]
+        );
+        assert_eq!(
+            parsed.unsubscribe,
+            UnsubscribeMethod::OneClick {
+                url: "https://example.com/unsubscribe".into(),
+            }
+        );
     }
 
     #[test]

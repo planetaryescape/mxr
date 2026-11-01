@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 mxr-core = { workspace = true }
 chrono = { workspace = true }
-jiff = { version = "=0.2.28", default-features = false, features = ["std"] }
+jiff = { version = "=0.2.38", default-features = false, features = ["std"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

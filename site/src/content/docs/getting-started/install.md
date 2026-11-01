@@ -73,7 +73,7 @@ cd mxr
 cargo install --path . --locked
 ```
 
-Building from source requires Rust 1.88+ (see `Cargo.toml` for the current MSRV).
+Building from source requires Rust 1.98+ (see `Cargo.toml` for the current MSRV).
 
 ## Verify installation
 

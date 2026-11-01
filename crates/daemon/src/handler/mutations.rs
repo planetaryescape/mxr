@@ -4,7 +4,7 @@ use super::{
 };
 use crate::state::AppState;
 use lettre::message::Mailbox;
-use mail_parser::{MessageParser, MimeHeaders, PartType};
+use mail_parser::{MessageParser, PartKind};
 use mxr_core::types::{
     Address, AttachmentDisposition, Draft, DraftContent, DraftSafetyIssue, DraftSafetyIssueCode,
     DraftSafetyReport, DraftSafetySeverity, DraftStatus, Envelope, InlineAsset, MessageBody,
@@ -2987,9 +2987,9 @@ async fn draft_from_server_snapshot(
     let mut attachments = Vec::new();
     let mut managed_attachments = Vec::new();
     let mut inline_assets = Vec::new();
-    for (index, part) in parsed.parts.iter().enumerate() {
-        let disposition = remote_attachment_disposition(part);
-        if !is_remote_attachment_part(part, disposition) {
+    for (index, part) in parsed.root().parts().enumerate() {
+        let disposition = remote_attachment_disposition(&part);
+        if !is_remote_attachment_part(&part, disposition) {
             continue;
         }
         tokio::fs::create_dir_all(&revision_dir)
@@ -3000,12 +3000,13 @@ async fn draft_from_server_snapshot(
             .map_err(|error| error.to_string())?;
         let attachment_id =
             AttachmentId::from_provider_id("provider-draft", &format!("{}:{index}", existing.id));
+        let decoded = part.decoded();
         let filename = part
             .attachment_name()
             .map_or_else(|| format!("attachment-{index}"), str::to_string);
         if disposition != AttachmentDisposition::Inline {
             use sha2::{Digest, Sha256};
-            let digest: String = Sha256::digest(part.contents())
+            let digest: String = Sha256::digest(&decoded)
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect();
@@ -3015,7 +3016,7 @@ async fn draft_from_server_snapshot(
                 .flatten()
                 .find(|resource| {
                     resource.filename == filename
-                        && resource.length_bytes == part.contents().len() as u64
+                        && resource.length_bytes == decoded.len() as u64
                         && resource.sha256 == digest
                         && !managed_attachments
                             .iter()
@@ -3030,7 +3031,7 @@ async fn draft_from_server_snapshot(
             &filename,
             &attachment_id,
         ));
-        tokio::fs::write(&path, part.contents())
+        tokio::fs::write(&path, &decoded)
             .await
             .map_err(|error| error.to_string())?;
         super::set_private_file_permissions(&path)
@@ -3076,7 +3077,7 @@ async fn draft_from_server_snapshot(
     })
 }
 
-fn remote_attachment_disposition<'a>(headers: &impl MimeHeaders<'a>) -> AttachmentDisposition {
+fn remote_attachment_disposition(headers: &mail_parser::MessagePart<'_>) -> AttachmentDisposition {
     match headers.content_disposition() {
         Some(disposition) if disposition.is_attachment() => AttachmentDisposition::Attachment,
         Some(disposition) if disposition.is_inline() => AttachmentDisposition::Inline,
@@ -3094,7 +3095,7 @@ fn is_remote_attachment_part(
     matches!(
         disposition,
         AttachmentDisposition::Attachment | AttachmentDisposition::Inline
-    ) || matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_))
+    ) || matches!(part.kind(), PartKind::Binary | PartKind::InlineBinary)
         || part.attachment_name().is_some()
 }
 

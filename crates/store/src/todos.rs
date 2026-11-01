@@ -176,13 +176,12 @@ pub(crate) const COLUMNS: &str =
 ///
 /// Read-only rows select this; inserts keep using `COLUMNS`, because the
 /// filed time and the unread flag are evidence, not columns to write. A
-/// sync that removes the inbox label is the only source of the filed time:
-/// mxr's own archive rewrites the label set in bulk, which emits no
-/// per-label event, so its archive never marks its own to-do as filed
-/// elsewhere. The message must still be out of the inbox, so an undo or an
-/// external unarchive clears the marker. The unread flag is the message's
-/// own read state, not the row's attention state: the daemon derives that
-/// from `mode_row_seen` (D190).
+/// sync that removes the inbox label is the source of the filed time;
+/// subsequent local inbox transitions supersede it. Keep the condition
+/// aligned with `message_events::EXTERNAL_FILING`. The message must still
+/// be out of the inbox, so an undo or external unarchive clears the marker.
+/// The unread flag is the message's own read state, not the row's attention
+/// state: the daemon derives that from `mode_row_seen` (D190).
 pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_message_id, source_date, kind, verb,
     doc_type, title, counterparty, sender_domain, amount_minor, currency, due_at, due_words,
     act_by_at, surface_at, scheduled_for, action_url, action_domain, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,
@@ -194,8 +193,14 @@ pub(crate) const SELECT_COLUMNS: &str = "id, account_id, thread_id, source_messa
        JOIN labels l ON l.id = e.label_id
       WHERE e.message_id = todos.source_message_id
         AND UPPER(l.provider_id) = 'INBOX'
-        AND e.event_type = 'unlabeled'
+        AND e.event_type IN ('unlabeled', 'archived')
         AND e.source = 'sync'
+        AND NOT EXISTS (
+            SELECT 1 FROM message_events newer
+            WHERE newer.message_id=e.message_id AND newer.label_id=e.label_id
+              AND newer.id>e.id
+              AND newer.event_type IN ('labeled','unlabeled','archived','unarchived')
+        )
         AND NOT EXISTS (
             SELECT 1 FROM message_labels ml
              WHERE ml.message_id = e.message_id AND ml.label_id = l.id

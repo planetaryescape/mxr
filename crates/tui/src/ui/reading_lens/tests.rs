@@ -32,6 +32,7 @@ pub(crate) fn item(key: &str, title: &str, source: &str) -> ReadingItemData {
         domain: None,
         tracked: false,
         arrived_at: at(),
+        source_filed_at: None,
         expires_at: Some(at() + Duration::days(14)),
         why: "Here because: you subscribed, and it has an unsubscribe link (rule). Fades Monday unless you keep it.".into(),
         fades: Some("Fades Monday unless you keep it.".into()),
@@ -59,6 +60,35 @@ fn link(key: &str, idx: u8, title: &str, domain: &str, tracked: bool) -> Reading
         tracked,
         on_later: false,
         article_cached: false,
+    }
+}
+
+#[test]
+fn filed_reading_marker_survives_long_sources_in_edition_and_later() {
+    for later in [false, true] {
+        let mut page = page();
+        let edition = page.edition.as_mut().unwrap();
+        edition.later = vec![item("later-filed", "An unfinished essay", "Weekly")];
+        let issue = if later {
+            &mut edition.later[0]
+        } else {
+            &mut edition.bands[0].items[0]
+        };
+        issue.source = "A very long newsletter source name ".repeat(8);
+        // The fixed +01 test zone puts this on the next day.
+        issue.source_filed_at = Some(Utc.with_ymd_and_hms(2026, 10, 7, 23, 30, 0).unwrap());
+        page.later_shelf = later;
+        for width in [40, 60, 120] {
+            let rendered = render(&page, 0, width);
+            assert!(
+                rendered.contains("left the inbox"),
+                "later={later}, width={width}: {rendered}"
+            );
+            assert!(
+                rendered.contains("8 Oct") && rendered.contains("2026"),
+                "later={later}, width={width}: {rendered}"
+            );
+        }
     }
 }
 

@@ -61,6 +61,18 @@ function openMenu(row: HTMLElement, name: string) {
 }
 
 describe("UpdateLineRow at rest", () => {
+  test("an externally filed email stays actionable and names its server location", () => {
+    const value = "2026-10-30T09:00:00Z";
+    const { row } = renderLine(lineFixture({ source_filed_at: value }), {
+      focused: false,
+    });
+    for (const marker of within(row).getAllByTestId("source-filed")) {
+      expect(marker).toHaveTextContent("left the inbox");
+      expect(marker.querySelector("time")).toHaveAttribute("dateTime", value);
+    }
+    expect(within(row).getByRole("button", { name: "let go" })).toBeInTheDocument();
+  });
+
   test("a row is its source, its fact and one trailing value, with no buttons in the way", () => {
     const { row } = renderLine(lineFixture(), { focused: false });
     const view = within(row);

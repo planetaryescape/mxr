@@ -251,6 +251,15 @@ fn body_for(
                     line_row(line, selected, row_width, theme, view.now, chip),
                     selected,
                 );
+                if let Some(filed) = line.source_filed_at {
+                    let label = format!(
+                        "left the inbox · observed {}",
+                        filed.with_timezone(&chrono::Local).format("%-d %b %Y")
+                    );
+                    for text in wrap(&label, width.saturating_sub(4)) {
+                        body.text(format!("  {text}"), secondary);
+                    }
+                }
                 if let Some(suggested) = &line.todo_suggestion {
                     for text in wrap(&one_line(suggested), width.saturating_sub(8)) {
                         body.text(
@@ -526,6 +535,25 @@ fn draw_tune_menu(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn filed_update_marker_survives_a_long_fact() {
+        let mut digest = populated();
+        let update = &mut digest.needs_a_look[0];
+        update.fact = "A very long fact ".repeat(30);
+        update.source_filed_at = Some(update.latest_at);
+        let page = UpdatesPageState {
+            digest: Some(digest),
+            ..Default::default()
+        };
+        for width in [40, 60, 120] {
+            let rendered = render(&page, width);
+            assert!(
+                rendered.contains("left the inbox"),
+                "width={width}: {rendered}"
+            );
+            assert!(rendered.contains("observed"), "width={width}: {rendered}");
+        }
+    }
     use super::*;
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -565,6 +593,7 @@ pub(crate) mod tests {
             latest_message_pinned: false,
             unread: None,
             seen_revision: None,
+            source_filed_at: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),

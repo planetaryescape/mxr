@@ -78,7 +78,7 @@ impl super::Store {
         // while that cleanup is between its check and its removal.
         let _cleanup = self.lock_message_cleanup().await;
         for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
-            let mut tx = self.writer().begin().await?;
+            let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
             for upsert in chunk {
                 let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
@@ -92,7 +92,13 @@ impl super::Store {
                     .execute(&mut *tx)
                     .await?;
                 insert_body_tx(&mut tx, &upsert.body).await?;
-                replace_message_labels_tx(&mut tx, &upsert.envelope.id, &upsert.label_ids).await?;
+                replace_message_labels_tx(
+                    &mut tx,
+                    &upsert.envelope.id,
+                    &upsert.label_ids,
+                    mxr_core::EventSource::Sync,
+                )
+                .await?;
                 replace_message_keywords_tx(
                     &mut tx,
                     &upsert.envelope.id,
@@ -193,6 +199,42 @@ mod tests {
             body,
             label_ids,
         }
+    }
+
+    #[tokio::test]
+    async fn batch_sync_records_inbox_departures_without_inventing_historical_archives() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        let inbox = label(&account, "INBOX");
+        store.upsert_label(&inbox).await.unwrap();
+        let mut page = [
+            upsert(&account, 1, vec![inbox.id.clone()]),
+            upsert(&account, 2, vec![]),
+        ];
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let ids: Vec<_> = page.iter().map(|item| item.envelope.id.clone()).collect();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+        page[0].label_ids.clear();
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let filed = store
+            .externally_filed_messages(Some(&account.id), &ids)
+            .await
+            .unwrap();
+        assert_eq!(filed.len(), 1);
+        assert!(filed.contains_key(&ids[0]));
+        assert!(!filed.contains_key(&ids[1]));
+        page[0].label_ids.push(inbox.id);
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     /// A synced message whose id was deleted earlier (an IMAP UID reused

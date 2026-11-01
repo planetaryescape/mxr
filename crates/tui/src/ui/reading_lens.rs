@@ -134,6 +134,24 @@ struct Body {
 }
 
 impl Body {
+    fn filed(
+        &mut self,
+        item: &ReadingItemData,
+        view: &ReadingLensView<'_>,
+        width: usize,
+        style: Style,
+    ) {
+        if let Some(filed) = item.source_filed_at {
+            let label = format!(
+                "left the inbox · observed {}",
+                view.zone.at(filed).format("%-d %b %Y")
+            );
+            for line in wrap(&label, width) {
+                self.text(line, style);
+            }
+        }
+    }
+
     fn text(&mut self, text: impl Into<String>, style: Style) {
         self.lines.push(Line::from(Span::styled(
             format!("  {}", text.into()),
@@ -213,6 +231,7 @@ fn edition_body(view: &ReadingLensView<'_>, width: usize, theme: &crate::theme::
                 selected,
             ));
             body.text(truncate(&meta_line(item), text_width), secondary);
+            body.filed(item, view, text_width, secondary);
             if let Some(offer) = &item.unsubscribe_offer {
                 body.text(
                     truncate(
@@ -322,6 +341,7 @@ fn later_body(
             meta.push("saved to read offline".into());
         }
         body.text(truncate(&meta.join(dot()), text_width), secondary);
+        body.filed(item, view, text_width, secondary);
         body.text(truncate(&one_line(&item.why), text_width), muted);
         if item.still_want_it {
             body.text(

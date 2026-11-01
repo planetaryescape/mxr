@@ -55,7 +55,17 @@ pub(crate) async fn replace_message_labels_tx(
     conn: &mut sqlx::SqliteConnection,
     message_id: &MessageId,
     label_ids: &[LabelId],
+    source: EventSource,
 ) -> Result<(), sqlx::Error> {
+    let inbox = sqlx::query_as::<_, (String, String, bool)>(
+        "SELECT l.id, m.account_id, EXISTS (
+             SELECT 1 FROM message_labels ml WHERE ml.message_id=m.id AND ml.label_id=l.id
+         ) FROM messages m JOIN labels l ON l.account_id=m.account_id
+         WHERE m.id=? AND l.provider_id='INBOX'",
+    )
+    .bind(message_id.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
     let mid = message_id.as_str();
     sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
         .execute(&mut *conn)
@@ -70,6 +80,20 @@ pub(crate) async fn replace_message_labels_tx(
         )
         .execute(&mut *conn)
         .await?;
+    }
+    if let Some((inbox_id, account, was_inbox)) = inbox {
+        let in_inbox = label_ids.iter().any(|id| id.as_str() == inbox_id);
+        if in_inbox != was_inbox {
+            sqlx::query("INSERT INTO message_events (message_id, account_id, event_type, source, label_id, occurred_at) VALUES (?, ?, ?, ?, ?, ?)")
+                .bind(message_id.as_str())
+                .bind(account)
+                // First seeing mail in INBOX is not an "unarchive".
+                .bind(if in_inbox { "labeled" } else { "archived" })
+                .bind(source.as_db_str())
+                .bind(inbox_id)
+                .bind(chrono::Utc::now().timestamp())
+                .execute(&mut *conn).await?;
+        }
     }
     Ok(())
 }
@@ -627,15 +651,17 @@ impl super::Store {
     /// This is the reconciliation path used by sync to mirror remote state;
     /// it does not emit per-label `message_events` rows. Callers that need
     /// per-label attribution must compute the diff and use
-    /// `add_message_label` / `remove_message_label`.
+    /// `add_message_label` / `remove_message_label`. The inbox transition is
+    /// recorded separately, atomically, so full sync and local archive/undo
+    /// cannot reuse an older outside-archive signal.
     pub async fn set_message_labels(
         &self,
         message_id: &MessageId,
         label_ids: &[LabelId],
-        _source: EventSource,
+        source: EventSource,
     ) -> Result<(), sqlx::Error> {
-        let mut tx = self.writer().begin().await?;
-        replace_message_labels_tx(&mut tx, message_id, label_ids).await?;
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        replace_message_labels_tx(&mut tx, message_id, label_ids, source).await?;
         tx.commit().await?;
         Ok(())
     }

@@ -14,7 +14,7 @@ use mxr_protocol::{
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use super::now_lens::{marker, section, Body};
+use super::now_lens::{section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
 use crate::ui::mail_list::format_date_relative;
 use crate::ui::sanitize::{one_line, truncate};
@@ -125,14 +125,20 @@ pub(crate) fn line_row(
         format!("{fact} \u{b7} {extra}")
     };
     let mut spans = vec![
-        Span::raw(marker(selected)),
+        Span::raw("  "),
         Span::styled(mark, mark_style),
         Span::styled(
             format!(
                 "{:<source_width$}  ",
                 truncate(&one_line(&line.source_name), source_width)
             ),
-            Style::default().fg(theme.text_primary),
+            match line.unread {
+                Some(true) => Style::default()
+                    .fg(theme.text_primary)
+                    .add_modifier(Modifier::BOLD),
+                Some(false) => Style::default().fg(theme.text_secondary),
+                None => Style::default().fg(theme.text_primary),
+            },
         ),
         Span::styled(
             format!("{:<rest$}", truncate(&text, rest)),
@@ -142,6 +148,11 @@ pub(crate) fn line_row(
     spans.extend(chip.unwrap_or_default());
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     spans.push(Span::styled(count, Style::default().fg(theme.text_muted)));
+    if selected {
+        for span in &mut spans {
+            span.style = span.style.bg(theme.selection_bg);
+        }
+    }
     Line::from(spans)
 }
 
@@ -236,7 +247,7 @@ fn body_for(
                 }
                 let chip = view.account_marks.row_cell(&line.account_id, theme);
                 let row_width = width.saturating_sub(view.account_marks.column_width());
-                body.select(
+                body.select_styled(
                     line_row(line, selected, row_width, theme, view.now, chip),
                     selected,
                 );
@@ -284,11 +295,16 @@ fn body_for(
                     plural(*more as u32, "quieter source", "quieter sources"),
                     plural(folded, "update", "updates")
                 );
-                body.select(
+                body.select_styled(
                     Line::from(vec![
-                        Span::raw(marker(selected)),
+                        Span::raw("  "),
                         Span::styled(truncate(&text, width.saturating_sub(4)), muted),
-                    ]),
+                    ])
+                    .style(if selected {
+                        Style::default().bg(theme.selection_bg)
+                    } else {
+                        Style::default()
+                    }),
                     selected,
                 );
             }
@@ -548,6 +564,7 @@ pub(crate) mod tests {
             latest_message_id: Some(MessageId::new()),
             latest_message_pinned: false,
             unread: None,
+            seen_revision: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),
@@ -725,6 +742,34 @@ pub(crate) mod tests {
             |_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()),
             &mxr_keymap::guide_key,
         )
+    }
+
+    #[test]
+    fn selected_updates_keep_a_uniform_background_without_reverse_video() {
+        let theme = crate::theme::Theme::default();
+        let digest = populated();
+        let page = UpdatesPageState {
+            digest: Some(digest.clone()),
+            ..Default::default()
+        };
+        let view = UpdatesView {
+            now: Utc::now(),
+            page: &page,
+            selected_index: 0,
+            active_pane: &ActivePane::MailList,
+            account_marks: crate::ui::account_mark::AccountMarks::default(),
+            peek_body: None,
+        };
+        let body = body_for(&view, &digest, 120, &theme);
+        let selected = &body.lines[body.selected_line];
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| span.style.bg == Some(theme.selection_bg)));
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
     }
 
     #[test]

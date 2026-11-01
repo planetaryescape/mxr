@@ -3,6 +3,7 @@ import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "r
 
 import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
+import { rowPrimaryTone } from "@/components/rowTone";
 import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useLanded } from "@/state/landingStore";
@@ -17,11 +18,12 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   lit: boolean;
   via?: LampVia;
   /**
-   * Unread mail reads bright and semibold; read mail calms to `--text-2`.
-   * Omit it where the list has no read state (To do, Updates, drafts), and the
-   * row keeps the neutral text tier.
+   * Unread mail or unseen mode rows read bright and semibold; read/seen
+   * calms to `--text-2`. Omit for lists with no attention state.
    */
   unread?: boolean;
+  /** Screen-reader name for the attention state (mode rows use "Unseen"). */
+  unreadLabel?: string;
   /** The row is folding away (pointer done). Not interactive meanwhile. */
   leaving?: boolean;
   /**
@@ -81,6 +83,7 @@ export const Row = memo(function Row({
   lit,
   via = "key",
   unread,
+  unreadLabel = "Unread",
   leaving = false,
   land = NO_IDS,
   lead,
@@ -101,15 +104,14 @@ export const Row = memo(function Row({
   const identity = useRowAccountMark(accountId);
   // `undefined` means the list has no read state, so the row keeps the neutral
   // tier. Only an explicit `false` calms the row.
-  const read = unread === false;
-  const primaryTone = unread ? "font-semibold text-text-1" : read ? "text-text-2" : "text-text-1";
+  const primaryTone = rowPrimaryTone(unread);
   const secondaryTone = unread ? "text-text-1" : "text-text-2";
   const text = (
     <>
       {/* The inbox spells "Unread" into its own aria-label; elsewhere the
           state is typographic, so give assistive tech the same fact without
           changing the visible text. */}
-      {unread ? <span className="sr-only">Unread. </span> : null}
+      {unread ? <span className="sr-only">{unreadLabel}. </span> : null}
       {leadControl ? null : lead}
       <span className="min-w-0 flex-1">
         <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>

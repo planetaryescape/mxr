@@ -1585,6 +1585,8 @@ The lexical index converts HTML to text with the reader's built-in converter and
 
 ## D188: Read is typographic and the row's leading edge is unmarked
 
+**Partly superseded by D190**: To do and Updates now use exact-revision seen state, not section-based tiers. The unmarked leading edge and background-only selection remain.
+
 **Chosen**: Unread rows carry a semibold primary line in `--text-1` with the secondary in `--text-1`; read rows drop to normal weight in `--text-2`. The unread gutter bar and the lit row's 2px `--signal` hairline are removed; the lit row is the `--ink-lamp` surface alone. Messages' Your turn keeps its band and pin dot and no longer adds weight, so weight has one meaning. In To do and Updates, which have no per-row read state, the same tiers follow the section: now and needs-a-look bright and bold, coming-up, whenever and routine in `--text-2`, done struck in `--text-3`.
 
 **Considered**: Keeping the bar and aligning it with the hairline; an unread dot alone; colouring the whole row; a per-row seen ledger for To do and Updates.
@@ -1595,6 +1597,8 @@ The lexical index converts HTML to text with the reader's built-in converter and
 
 ## D189: To do and Updates take the source email's read state
 
+**Superseded by D190**: row attention is now independent of source read flags.
+
 **Chosen**: To-do and Updates rows carry the read state of the email they came from: `TodoData.unread` and `UpdateLineData.unread`. Unread reads bright and semibold, read calms to `--text-2`, and a row with no email (a promise, a parcel tracker) keeps the neutral tier. Reading the email calms the row even before the to-do is ticked; ticking it still leaves the row as it is. Section emphasis remains for lines with no email, replacing the To do and Updates half of D188.
 
 **Considered**: A per-row "seen" ledger marked when the row is focused; dimming whole sections; leaving To do and Updates on section emphasis only.
@@ -1602,3 +1606,13 @@ The lexical index converts HTML to text with the reader's built-in converter and
 **Why**: BK asked for the same read/read distinction as the inbox: "that I've read even though I haven't done'd them". The email already carries a read flag, so no new state and no new sync surface: the row derives it with the same kind of subquery as `source_filed_at` in the store, and from the digest's own message in Updates. It keeps mxr's rule that unread is not a to-do flag.
 
 **Trade-offs accepted**: A to-do created from an email read long ago is born calm, because the axis is the email, not the row. A true per-row seen state would need a ledger and every client; this deliberately does not add one.
+
+## D190: Opening a To do or Updates row calms that revision
+
+**Chosen**: Each account's To do and Updates rows have a local seen ledger keyed by mode, row id and content revision. Opening the row's email or its details/peek marks only the displayed revision seen. Moving focus and reading a list do not. Unseen is bright and bold in every section; seen is normal-weight `--text-2`, even while the task is open or the update remains in its digest. Section placement does not override attention styling. This supersedes D189, including its neutral exception for rows without email, and D188's section-based mode tiers. Selection stays background-only.
+
+**Why**: BK chose “Calm rows once seen”: the source email can remain unread after the row has been inspected. Provider flags, completion and letting go are separate decisions.
+
+**Freshness**: The daemon hashes stable task fields/source evidence or the update's folded message ids, fact and tracker state. Clock labels, cut placement and provider read flags are excluded. Exact revisions persist, so an old client acknowledgment cannot overwrite newer attention. `SetModeRowSeen`, the bridge's `POST /api/v1/mail/rows/seen`, `mxr modes seen` and `mxr_mode_row_seen` share the same ledger and preview path.
+
+**Trade-offs accepted**: Existing rows start unseen. Content changes can make a row unseen again; revisiting identical content keeps it calm. Seen state is local, survives restarts and portable backups, and never changes provider flags or task completion.

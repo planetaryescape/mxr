@@ -667,6 +667,14 @@ async fn todo_requests_stay_in_the_agents_accounts() {
 #[tokio::test]
 async fn mode_requests_stay_in_the_agents_accounts() {
     let s = scoped().await;
+    assert_scoped(&s, |o| Request::SetModeRowSeen {
+        account_id: o.account.clone(),
+        mode: ModeKindData::Todo,
+        row_id: o.todo.clone(),
+        revision: "a".repeat(64),
+        dry_run: false,
+    })
+    .await;
     assert_scoped(&s, |o| Request::GetNow {
         account_id: Some(o.account.clone()),
     })

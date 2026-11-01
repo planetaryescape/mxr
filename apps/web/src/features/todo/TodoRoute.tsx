@@ -39,6 +39,7 @@ import type { LampVia } from "@/components/Row";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
 import { listMotions } from "@/features/modes/listMotions";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 
 /**
  * The runway for the account scope. The first fetch on each visit records
@@ -265,16 +266,39 @@ function Bands({
   const { dismiss: dismissRunwayHint } = runwayHint;
   const closeHint = useActiveHintDismiss();
 
+  const markRowSeen = useMarkRowSeen("todo");
+  const openedThread = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!params.threadId) {
+      openedThread.current = undefined;
+      return;
+    }
+    if (openedThread.current === params.threadId) return;
+    const opened =
+      current?.todo.thread_id === params.threadId
+        ? current.todo
+        : live.find((item) => item.todo.thread_id === params.threadId)?.todo;
+    if (opened) {
+      openedThread.current = params.threadId;
+      markRowSeen(opened);
+    }
+  }, [params.threadId, current, live, markRowSeen]);
   const openEmail = useCallback(
     (todo: Todo) => {
       // The hint names `e` and `o`; doing either is what it asked for.
       dismissRunwayHint();
-      if (todo.thread_id) nav?.open(todo.thread_id);
+      if (todo.thread_id) {
+        openedThread.current = todo.thread_id;
+        markRowSeen(todo);
+        nav?.open(todo.thread_id);
+      }
     },
-    [dismissRunwayHint, nav],
+    [dismissRunwayHint, nav, markRowSeen],
   );
   const openResolutionEmail = useCallback(
     (todo: Todo, threadId: string, messageId: string) => {
+      openedThread.current = threadId;
+      markRowSeen(todo);
       setActivePane("reader");
       void navigate({
         to: "/todo/$threadId",
@@ -286,7 +310,7 @@ function Bands({
         }),
       });
     },
-    [navigate, setActivePane],
+    [navigate, setActivePane, markRowSeen],
   );
   const runPrimary = useCallback(
     (todo: Todo) => {
@@ -299,6 +323,8 @@ function Bands({
         return;
       }
       if (action.kind === "email" && todo.thread_id) {
+        openedThread.current = todo.thread_id;
+        markRowSeen(todo);
         // The link rides in the URL, so the mark lasts exactly as long as
         // this opening of the email.
         setActivePane("reader");
@@ -317,7 +343,7 @@ function Bands({
       }
       openEmail(todo);
     },
-    [dismissRunwayHint, navigate, openEmail, setActivePane],
+    [dismissRunwayHint, navigate, openEmail, setActivePane, markRowSeen],
   );
   const done = useCallback(
     (todo: Todo, how: LampVia) => {

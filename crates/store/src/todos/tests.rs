@@ -925,7 +925,7 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
 }
 
 #[tokio::test]
-async fn a_source_message_read_state_calms_the_row_and_a_missing_source_stays_unknown() {
+async fn source_message_read_state_is_available_and_a_missing_source_stays_unknown() {
     use mxr_core::types::EventSource;
 
     let fx = Fx::new().await;

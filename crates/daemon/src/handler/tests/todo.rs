@@ -27,6 +27,138 @@ mod provenance_cases;
 mod resolution_budget;
 mod same_email;
 
+#[tokio::test]
+async fn row_seen_is_not_email_read_or_completion_and_old_peeks_do_not_hide_edits() {
+    let fx = Fixture::new().await;
+    let message = fx
+        .message(
+            &ThreadId::new(),
+            "alex@example.com",
+            super::desk::ME,
+            Duration::hours(1),
+            None,
+        )
+        .await;
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: message.id.clone(),
+            title: "Send the form".into(),
+            kind: None,
+            due: None,
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected created task")
+    };
+    let original = change.changed[0].clone();
+    assert_eq!(original.unread, Some(true));
+    let get = || Request::GetTodo {
+        todo_id: original.id.clone(),
+    };
+    let mark = |revision: &str, dry_run| Request::SetModeRowSeen {
+        account_id: original.account_id.clone(),
+        mode: mxr_protocol::ModeKindData::Todo,
+        row_id: original.id.clone(),
+        revision: revision.into(),
+        dry_run,
+    };
+    let rev = original.seen_revision.as_deref().unwrap();
+    fx.state
+        .store
+        .set_read(&message.id, true, mxr_core::EventSource::Sync)
+        .await
+        .unwrap();
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(
+        todo.unread,
+        Some(true),
+        "reading email is not opening the row"
+    );
+    assert_eq!(todo.seen_revision, original.seen_revision);
+    request(&fx, mark(rev, true)).await;
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(
+        todo.unread,
+        Some(true),
+        "preview/list reads do not mark seen"
+    );
+    request(&fx, mark(rev, false)).await;
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(todo.unread, Some(false));
+    assert_eq!(todo.state, TodoStateData::Open, "seen is not done");
+    fx.state
+        .store
+        .set_read(&message.id, false, mxr_core::EventSource::Sync)
+        .await
+        .unwrap();
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(
+        todo.unread,
+        Some(false),
+        "provider unread cannot revive row attention"
+    );
+    request(
+        &fx,
+        Request::UpdateTodo {
+            todo_id: original.id.clone(),
+            edits: vec![mxr_protocol::TodoEditData {
+                field: "title".into(),
+                value: "Send the revised form".into(),
+            }],
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await;
+    request(&fx, mark(rev, false)).await;
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_ne!(todo.seen_revision, original.seen_revision);
+    assert_eq!(
+        todo.unread,
+        Some(true),
+        "an old peek cannot calm new content"
+    );
+    request(&fx, mark(todo.seen_revision.as_deref().unwrap(), false)).await;
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(todo.unread, Some(false));
+    for action in [TodoStateActionData::Done, TodoStateActionData::Undo] {
+        request(
+            &fx,
+            Request::SetTodoState {
+                todo_ids: vec![original.id.clone()],
+                action,
+                dry_run: false,
+            },
+        )
+        .await;
+    }
+    let ResponseData::Todo { todo } = request(&fx, get()).await else {
+        panic!()
+    };
+    assert_eq!(todo.state, TodoStateData::Open);
+    assert_eq!(
+        todo.unread,
+        Some(false),
+        "reopening a task does not unsee its unchanged content"
+    );
+}
+
 const CAMDEN_AUTH: &str =
     "mx.google.com; dkim=pass header.i=@camden.gov.uk; spf=pass; dmarc=pass (p=REJECT) header.from=camden.gov.uk";
 const LOOKALIKE_AUTH: &str =

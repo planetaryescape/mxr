@@ -43,6 +43,32 @@ fn updates_app() -> App {
     app
 }
 
+#[test]
+fn an_update_peek_acknowledges_the_rows_own_revision() {
+    let mut app = updates_app();
+    let line = &mut app
+        .mailbox
+        .updates_page
+        .digest
+        .as_mut()
+        .unwrap()
+        .needs_a_look[0];
+    line.unread = Some(true);
+    line.seen_revision = Some("peeked-revision".into());
+    let name = line.source_name.clone();
+    select_source(&mut app, &name);
+    assert!(!queued(&app)
+        .iter()
+        .any(|r| matches!(r, Request::SetModeRowSeen { .. })));
+    app.apply(Action::UpdatesPeek);
+    assert!(queued(&app)
+        .iter()
+        .any(|r| matches!(r, Request::SetModeRowSeen {
+        mode: mxr_protocol::ModeKindData::Updates, revision, dry_run: false, ..
+    } if revision == "peeked-revision")));
+    assert!(app.mailbox.updates_page.peek.is_some());
+}
+
 fn select_source(app: &mut App, name: &str) {
     let index = app
         .mailbox

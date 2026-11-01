@@ -29,6 +29,7 @@ import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { listMotions } from "@/features/modes/listMotions";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 
 import {
   useDigest,
@@ -233,11 +234,34 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     },
     [setCursorId],
   );
+  const markRowSeen = useMarkRowSeen("updates");
+  const openedThread = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!params.threadId) {
+      openedThread.current = undefined;
+      return;
+    }
+    if (openedThread.current === params.threadId) return;
+    const opened = [
+      ...digest.needs_a_look,
+      ...digest.changed,
+      ...digest.routine,
+      ...digest.since.lines,
+    ].find((line) => line.latest_thread_id === params.threadId);
+    if (opened) {
+      openedThread.current = params.threadId;
+      markRowSeen(opened);
+    }
+  }, [params.threadId, digest, markRowSeen]);
   const openEmail = useCallback(
     (line: UpdateLine) => {
-      if (line.latest_thread_id) nav?.open(line.latest_thread_id);
+      if (line.latest_thread_id) {
+        openedThread.current = line.latest_thread_id;
+        markRowSeen(line);
+        nav?.open(line.latest_thread_id);
+      }
     },
-    [nav],
+    [nav, markRowSeen],
   );
   const letGoLine = useCallback(
     (line: UpdateLine) => {

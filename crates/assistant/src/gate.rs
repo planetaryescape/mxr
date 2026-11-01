@@ -79,6 +79,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_list_place", Rule::Read),
     ("mxr_list_scheduled_sends", Rule::Read),
     ("mxr_messages", Rule::Read),
+    ("mxr_mode_row_seen", Rule::Confirm),
     ("mxr_move", Rule::Confirm),
     (
         "mxr_mutate",
@@ -263,6 +264,24 @@ fn with(arguments: &Value, key: &str, value: Value) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn row_attention_previews_run_but_commits_require_approval() {
+        let args =
+            json!({"mode": "todo", "row_id": "row", "account_id": "account", "revision": "exact"});
+        assert_eq!(classify("mxr_mode_row_seen", &args), Gate::Run);
+        let committing = with(&args, "confirm", json!(true));
+        assert_eq!(
+            classify("mxr_mode_row_seen", &committing),
+            Gate::Approve {
+                preview: Some((
+                    "mxr_mode_row_seen".into(),
+                    with(&args, "confirm", json!(false))
+                ))
+            }
+        );
+        assert!(!auto_approvable("mxr_mode_row_seen", &committing));
+    }
 
     #[test]
     fn reads_run_and_unknown_tools_wait() {

@@ -113,6 +113,7 @@ fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
 
 fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
+        Request::SetModeRowSeen { account_id, .. } => account(account_id),
         Request::RemoteRead { .. } | Request::GetRemoteReady | Request::RemoteAuthority { .. } => AllAccounts,
         Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
         // Refused for agent profiles before scoping; a conversation can

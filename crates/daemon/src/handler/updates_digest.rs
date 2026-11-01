@@ -477,7 +477,9 @@ where
         count: super::now::count(members.len()),
         latest_message_id: Some(message.id.clone()),
         latest_message_pinned: message.pinned,
-        unread: Some(!message.flags.contains(mxr_core::MessageFlags::READ)),
+        // Filled from the exact row ledger at the IPC response seam.
+        unread: None,
+        seen_revision: None,
         fact_message_id: Some(lead.item.message.id.clone()),
         latest_thread_id: Some(message.thread_id.clone()),
         latest_at: message.date,
@@ -897,6 +899,7 @@ where
         latest_message_id: None,
         latest_message_pinned: false,
         unread: None,
+        seen_revision: None,
         fact_message_id: None,
         latest_thread_id: delivery.thread_id.clone(),
         latest_at: delivery.last_event_at,

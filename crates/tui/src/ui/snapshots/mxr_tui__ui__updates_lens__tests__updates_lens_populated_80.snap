@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/updates_lens.rs
-assertion_line: 714
 expression: rendered
 ---
 "╭ Updates ─ Notifications gathered twice a day. Read the digest, then let go. ─╮"
@@ -8,7 +7,7 @@ expression: rendered
 "│  2 need a look, 2 changed. 22 routine from 6 sources.                        │"
 "│                                                                              │"
 "│ ── Needs a look ──────────────────────────────────────────────────────────── │"
-"│▌ ! Google            Security alert: New sign-in from Chrome on Windo…  Oct 7│"
+"│  ! Google            Security alert: New sign-in from Chrome on Windo…  Oct 7│"
 "│  ! Stripe (stripe.…  Payout of R 4,210.00 failed: bank declined         Oct 7│"
 "│      Suggested to-do: failed payment from Stripe (stripe.com) (rule). t      │"
 "│      adds it.                                                                │"

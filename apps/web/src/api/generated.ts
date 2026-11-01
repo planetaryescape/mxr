@@ -2763,6 +2763,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/rows/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark the opened To do or Updates row revision seen, without completing it */
+        post: operations["mail_row_seen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/scheduled-sends": {
         parameters: {
             query?: never;
@@ -12636,6 +12653,15 @@ export interface components {
                   seen?: boolean;
               }
             | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  cmd: "SetModeRowSeen";
+                  dry_run?: boolean;
+                  mode: components["schemas"]["ModeKindData"];
+                  revision: string;
+                  row_id: string;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetNow";
@@ -14607,6 +14633,14 @@ export interface components {
             | "all_mail"
             | "important"
             | "starred";
+        /** @description The exact row revision the client opened; never a source-email read flag. */
+        RowSeenBody: {
+            account_id: components["schemas"]["AccountId"];
+            dry_run?: boolean;
+            mode: components["schemas"]["ModeKindData"];
+            revision: string;
+            row_id: string;
+        };
         RuleCategoriesPreviewData: {
             accounts: components["schemas"]["AccountId"][];
             applied: boolean;
@@ -15839,6 +15873,8 @@ export interface components {
              * @description Your own date; wins over `surface_at`.
              */
             scheduled_for?: string | null;
+            /** @description Opaque version to acknowledge with `SetModeRowSeen`. */
+            seen_revision?: string | null;
             /** Format: date-time */
             source_date?: string | null;
             /**
@@ -15861,8 +15897,8 @@ export interface components {
             /** @description "Pay council tax". */
             title: string;
             /**
-             * @description The source email is unread. `None` when the row has no source email.
-             *     A read source calms the row even before the to-do is ticked.
+             * @description This row revision has not been opened or peeked. Independent of the
+             *     source email's READ flag. Omitted by older daemons.
              */
             unread?: boolean | null;
             /** Format: date-time */
@@ -16230,6 +16266,8 @@ export interface components {
             numbers?: components["schemas"]["UpdateNumberData"][];
             provenance?: components["schemas"]["UpdateProvenanceData"][];
             section: components["schemas"]["UpdateSectionData"];
+            /** @description Opaque version to acknowledge with `SetModeRowSeen`. */
+            seen_revision?: string | null;
             sender_email?: string;
             setting: components["schemas"]["UpdateSourceSettingData"];
             signal: components["schemas"]["UpdateSignalData"];
@@ -16259,8 +16297,8 @@ export interface components {
             todo_title: string;
             tracker?: components["schemas"]["UpdateTrackerData"] | null;
             /**
-             * @description The line's newest email is unread. `None` for a line that is not an
-             *     email (a parcel tracker). Reading the email calms the line.
+             * @description This line revision has not been opened or peeked, including trackers.
+             *     Independent of the source email's READ flag. Omitted by older daemons.
              */
             unread?: boolean | null;
             /**
@@ -22420,6 +22458,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_row_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowSeenBody"];
+            };
+        };
+        responses: {
+            /** @description Ack */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

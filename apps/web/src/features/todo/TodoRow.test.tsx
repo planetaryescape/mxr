@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Todo } from "./api";
@@ -9,7 +9,13 @@ import type { Band } from "./todoRows";
 import { resetDaemonAvailabilityForTest } from "@/lib/daemonAvailability";
 import { setToken } from "@/lib/tokenStorage";
 
-beforeEach(() => resetDaemonAvailabilityForTest());
+const markRowSeen = vi.fn<(row: Todo) => void>();
+vi.mock("@/features/modes/rowSeen", () => ({ useMarkRowSeen: () => markRowSeen }));
+
+beforeEach(() => {
+  resetDaemonAvailabilityForTest();
+  markRowSeen.mockReset();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowProps> = {}) {
@@ -51,6 +57,26 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
+  test("background task revisions stay unseen until details are reopened", () => {
+    const original = todoFixture({ unread: true, seen_revision: "opened" });
+    const { rerender } = renderRow(original, "now", { details: true });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+    rerender({ ...original, title: "New content", seen_revision: "new-revision" });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+  });
+  test("details mark a row seen, but keyboard focus does not", () => {
+    const todo = todoFixture({ unread: true, seen_revision: "revision" });
+    renderRow(todo, "now", { lit: true, details: false });
+    expect(markRowSeen).not.toHaveBeenCalled();
+    cleanup();
+    renderRow(todoFixture({ id: "peeked", unread: true, seen_revision: "revision-2" }), "now", {
+      lit: false,
+      details: true,
+    });
+    expect(markRowSeen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "peeked", seen_revision: "revision-2" }),
+    );
+  });
   test("shows the task, who it is from and the window in words, with no bar or icon", () => {
     const { row } = renderRow(todoFixture(), "now", { lit: false });
     const view = within(row);
@@ -65,7 +91,7 @@ describe("TodoRow", () => {
     expect(row.querySelector("svg")).toBeNull();
   });
 
-  test("an unread source email reads bright and semibold; a read one calms", () => {
+  test("an unseen row reads bright and semibold; a seen one calms", () => {
     const { row, rerender } = renderRow(todoFixture({ unread: true }), "now", { lit: false });
     expect(within(row).getByTestId("todo-title").parentElement).toHaveClass(
       "font-semibold",

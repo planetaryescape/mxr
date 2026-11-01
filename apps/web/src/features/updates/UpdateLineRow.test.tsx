@@ -9,8 +9,10 @@ import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
 import { UpdateLineRow } from "./UpdateLineRow";
 
-const apiFetch = vi.fn<(path: string) => Promise<unknown>>();
-vi.mock("@/api/client", () => ({ apiFetch: (path: string) => apiFetch(path) }));
+const apiFetch = vi.fn<typeof import("@/api/client").apiFetch>();
+vi.mock("@/api/client", () => ({
+  apiFetch: (...args: Parameters<typeof apiFetch>) => apiFetch(...args),
+}));
 
 beforeEach(() => {
   apiFetch.mockReset();
@@ -452,19 +454,21 @@ describe("UpdateLineRow's more menu", () => {
     const second = lineFixture({ id: "b", source_key: "b.example", source_name: "Beta" });
     const h = makeHandlers();
     render(
-      <ul>
-        {[first, second].map((line, index) => (
-          <UpdateLineRow
-            key={line.id}
-            line={line}
-            index={index}
-            lit={false}
-            via="key"
-            peeked={false}
-            {...h}
-          />
-        ))}
-      </ul>,
+      <QueryClientProvider client={new QueryClient()}>
+        <ul>
+          {[first, second].map((line, index) => (
+            <UpdateLineRow
+              key={line.id}
+              line={line}
+              index={index}
+              lit={false}
+              via="key"
+              peeked={false}
+              {...h}
+            />
+          ))}
+        </ul>
+      </QueryClientProvider>,
     );
     const rows = screen.getAllByTestId("update-line");
     openMenu(rows[1]!, "More actions for Beta");
@@ -475,6 +479,60 @@ describe("UpdateLineRow's more menu", () => {
 });
 
 describe("UpdateLineRow's peek", () => {
+  test("refetching an open peek never acknowledges a newer revision until reopened", async () => {
+    const client = new QueryClient();
+    const handlers = makeHandlers();
+    const original = lineFixture({ unread: true, seen_revision: "opened" });
+    const content = (line: UpdateLine, peeked: boolean) => (
+      <QueryClientProvider client={client}>
+        <ul>
+          <UpdateLineRow line={line} index={0} lit via="key" peeked={peeked} {...handlers} />
+        </ul>
+      </QueryClientProvider>
+    );
+    const view = render(content(original, true));
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen"),
+      ).toHaveLength(1),
+    );
+    const changed = { ...original, fact: "New update", seen_revision: "new-revision" };
+    await act(async () => view.rerender(content(changed, true)));
+    expect(apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen")).toHaveLength(
+      1,
+    );
+    view.rerender(content(changed, false));
+    view.rerender(content(changed, true));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          account_id: changed.account_id,
+          mode: "updates",
+          row_id: changed.id,
+          revision: "new-revision",
+        },
+      }),
+    );
+  });
+  test("peeking acknowledges this row, while keyboard focus alone does not", async () => {
+    const line = lineFixture({ unread: true, seen_revision: "exact-revision" });
+    renderLine(line, { peeked: false });
+    expect(apiFetch).not.toHaveBeenCalledWith("/api/v1/mail/rows/seen", expect.anything());
+    cleanup();
+    renderLine(line, { peeked: true });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          mode: "updates",
+          account_id: line.account_id,
+          row_id: line.id,
+          revision: "exact-revision",
+        },
+      }),
+    );
+  });
   test("it holds the why, the numbers, the suggestion with its answers, and the links", () => {
     const { row, handlers: h } = renderLine(
       lineFixture({

@@ -92,7 +92,7 @@ async fn a_backup_from_schema_104_restores_with_label_roles() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 105);
+    assert_eq!(manifest.schema_version, 106);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))

@@ -7,7 +7,7 @@ expression: rendered
 "│  2 need a look, 2 changed. 22 routine from 6 sources.    │"
 "│                                                          │"
 "│ ── Needs a look ──────────────────────────────────────── │"
-"│▌ ! Google       Security alert: New sign-in from …  Oct 7│"
+"│  ! Google       Security alert: New sign-in from …  Oct 7│"
 "│  ! Stripe (st…  Payout of R 4,210.00 failed: bank…  Oct 7│"
 "│      Suggested to-do: failed payment from Stripe         │"
 "│      (stripe.com) (rule). t adds it.                     │"

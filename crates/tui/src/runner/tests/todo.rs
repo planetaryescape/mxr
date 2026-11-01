@@ -44,6 +44,37 @@ fn todo_app(hints_seen: bool) -> App {
     app
 }
 
+#[test]
+fn opening_a_todo_acknowledges_its_revision_but_selection_does_not() {
+    let mut app = todo_app(true);
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.unread = Some(true);
+    row.seen_revision = Some("opened-revision".into());
+    let id = row.id.clone();
+    assert!(!queued(&app)
+        .iter()
+        .any(|r| matches!(r, Request::SetModeRowSeen { .. })));
+    app.apply(Action::TodoOpenEmail);
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen {
+            mode: mxr_protocol::ModeKindData::Todo, row_id, revision, dry_run: false, ..
+        } if row_id == &id && revision == "opened-revision")
+    }));
+    assert_eq!(
+        app.selected_todo().unwrap().state,
+        mxr_protocol::TodoStateData::Open
+    );
+    app.pending_mutation_queue.clear();
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.source_message_id = None;
+    row.action = None;
+    row.seen_revision = Some("no-source-revision".into());
+    app.apply(Action::TodoPrimary);
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen { revision, .. } if revision == "no-source-revision")
+    }));
+}
+
 fn attach_resolution(app: &mut App, status: &str) {
     let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
     row.resolution = Some(mxr_protocol::TodoResolutionData {

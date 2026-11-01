@@ -68,7 +68,7 @@ async fn portable_backup_preserves_outcomes_without_exporting_runnable_approvals
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 105);
+    assert_eq!(manifest.schema_version, 106);
     assert!(manifest
         .exclusions
         .iter()

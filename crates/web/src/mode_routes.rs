@@ -238,6 +238,38 @@ fn seen_default() -> bool {
     true
 }
 
+/// The exact row revision the client opened; never a source-email read flag.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct RowSeenBody {
+    account_id: mxr_core::AccountId,
+    mode: ModeKindData,
+    row_id: String,
+    revision: String,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn set_row_seen(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<RowSeenBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SetModeRowSeen {
+            account_id: body.account_id,
+            mode: body.mode,
+            row_id: body.row_id,
+            revision: body.revision,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 async fn set_hint_seen(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -296,5 +328,6 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             get(get_membership).post(post_membership),
         )
         .route("/hints/{hint}", post(set_hint_seen))
+        .route("/rows/seen", post(set_row_seen))
         .route("/modes/{mode}/done", post(set_done))
 }

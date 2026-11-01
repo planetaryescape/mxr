@@ -2265,6 +2265,17 @@ pub enum Request {
         seen: bool,
     },
     // ----- Modes -----
+    /// Mark only the exact To do or Updates row revision that was opened or
+    /// peeked. Does not read the source email or complete/let go of the row.
+    /// Returns `Ack`; dry runs validate without writing.
+    SetModeRowSeen {
+        account_id: AccountId,
+        mode: ModeKindData,
+        row_id: String,
+        revision: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Now, the front page: People, Due soon, one Updates card and an
     /// evening Reading pick, at most three items each, with "and N more"
     /// lines and the clear state. Local reads only. Returns
@@ -3182,6 +3193,7 @@ impl Request {
             | Self::SetTodoCatchup { .. }
             | Self::GetModeGuide { .. }
             | Self::SetHintSeen { .. }
+            | Self::SetModeRowSeen { .. }
             | Self::GetNow { .. }
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }

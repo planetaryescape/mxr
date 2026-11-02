@@ -320,6 +320,31 @@ describe("TodoRow", () => {
     expect(row.querySelector("a[href]")).toBeNull();
   });
 
+  test("expanded details constrain their grid and wrap long source evidence without dropping it", () => {
+    const evidence = `https://example.test/payment/${"a".repeat(96)}`;
+    const { row } = renderRow(
+      todoFixture({
+        thread_id: null,
+        why: evidence,
+        fields: [
+          {
+            field: "quote",
+            evidence,
+            source: "rule",
+            source_label: "a pattern in the email",
+            checked: true,
+          },
+        ],
+      }),
+      "now",
+      { details: true },
+    );
+    const details = within(row).getByTestId("todo-source");
+    expect(within(details).getByTestId("todo-why")).toHaveTextContent(evidence);
+    expect(details.querySelector("dd:last-child")).toHaveTextContent(evidence);
+    expect(details).toHaveClass("grid-cols-[minmax(0,1fr)]", "[overflow-wrap:anywhere]");
+  });
+
   test("overdue reads 'was due' and nothing is red", () => {
     const { row } = renderRow(
       todoFixture({ overdue: true, when_label: "was due Fri 2 Oct", runway: 1 }),

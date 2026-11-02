@@ -12,6 +12,9 @@ mxr todo
 mxr todo --format json
 ```
 
+The open web runway refreshes when a sync finishes, including when it was empty.
+Reopening a completed task also refreshes Now and the navigation counts.
+
 In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
 `Coming up`, `Later`, `Whenever` and `Done this week`. A web row is a
 checkbox, the task, who it is from ("Frank Billing · arrived Mon", or "from you"

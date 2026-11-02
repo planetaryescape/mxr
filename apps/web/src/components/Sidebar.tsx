@@ -26,6 +26,7 @@ import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
+import { useArchiveResumeSearch } from "@/features/archive/archiveNavigation";
 import { useDeskQuery, type Desk } from "@/features/desk/api";
 import { lensesFromShell } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
@@ -79,6 +80,7 @@ const LIST_SECTIONS = new Set(["places", "saved", "mail", "views", "labels", "ca
  * sheet both read this.
  */
 export function useNavSections(): NavSection[] {
+  const archiveSearch = useArchiveResumeSearch();
   const shell = useShellQuery();
   const desk = useDeskQuery();
   const rail = useRailQuery();
@@ -91,6 +93,7 @@ export function useNavSections(): NavSection[] {
     const places: NavEntry[] = railNavEntries(rail.data).map((entry) => ({
       key: entry.key,
       to: entry.to,
+      search: entry.key === "archive" ? archiveSearch : undefined,
       label: entry.label,
       Icon: entry.Icon,
       shortcut: entry.shortcut,
@@ -153,7 +156,7 @@ export function useNavSections(): NavSection[] {
       });
     }
     return result;
-  }, [desk.data, rail.data, shell.data]);
+  }, [archiveSearch, desk.data, rail.data, shell.data]);
 }
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {

@@ -23,6 +23,8 @@ In the web app and the TUI, `g m` opens Messages.
 The web app starts with the conversation list and no conversation open.
 Choose a person or group to read it. A link to a specific conversation opens
 that conversation directly. Opening Messages from navigation returns to the list.
+**Back to the people** also returns to the list, keeping your filters. Refreshing
+then stays on the list instead of reopening the conversation.
 
 Possible personal mail with no deciding rule stays in Messages, marked **Not
 sure**, with the reason “No rule decided; Messages for now”. Inspect the stored

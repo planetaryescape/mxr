@@ -77,6 +77,8 @@ async function refreshTodos({ guide = false }: { guide?: boolean } = {}): Promis
   if (!qc) return;
   await Promise.all([
     qc.invalidateQueries({ queryKey: TODO_KEY }),
+    qc.invalidateQueries({ queryKey: ["now"] }),
+    qc.invalidateQueries({ queryKey: ["rail"] }),
     guide ? qc.invalidateQueries({ queryKey: ["mode-guide"] }) : null,
   ]).catch(() => undefined);
 }
@@ -168,6 +170,8 @@ export function markDone(todos: readonly Todo[], how: LeaveVia = "pointer") {
   });
 }
 
+const pendingTicks = new Set<string>();
+
 /**
  * `e` on a to-do that came from an email: done in To do through
  * `SetModeDone`, which ticks off the thread's open rows and, when no other
@@ -176,6 +180,16 @@ export function markDone(todos: readonly Todo[], how: LeaveVia = "pointer") {
  * email is ticked off on its own.
  */
 export async function tickOff(todo: Todo, how: LeaveVia = "pointer"): Promise<void> {
+  if (pendingTicks.has(todo.id)) return;
+  pendingTicks.add(todo.id);
+  try {
+    await tickOffOnce(todo, how);
+  } finally {
+    pendingTicks.delete(todo.id);
+  }
+}
+
+async function tickOffOnce(todo: Todo, how: LeaveVia): Promise<void> {
   const threadId = todo.thread_id;
   if (!threadId) {
     await markDone([todo], how);

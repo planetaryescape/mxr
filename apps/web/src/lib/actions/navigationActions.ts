@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner";
 
 import { MODE_GLYPHS } from "@/components/ModeMark";
+import { archiveResumeHref } from "@/features/archive/archiveNavigation";
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { holdTypeAhead } from "@/lib/keys/typeAhead";
 import { useModals } from "@/state/modalStore";
@@ -84,7 +85,11 @@ export const navigationActions: ActionBehavior[] = [
   { id: "nav.now", icon: MODE_GLYPHS.now, run: go("/now") },
   { id: "nav.messages", icon: MODE_GLYPHS.messages, run: go("/messages") },
   { id: "nav.updates", icon: MODE_GLYPHS.updates, run: go("/updates") },
-  { id: "nav.archive-mode", icon: MODE_GLYPHS.archive, run: go("/archive") },
+  {
+    id: "nav.archive-mode",
+    icon: MODE_GLYPHS.archive,
+    run: () => getRuntimeNavigate().navigate(archiveResumeHref()),
+  },
   { id: "nav.desk", icon: LampDesk, run: go("/desk") },
   { id: "nav.waiting", icon: Timer, run: go("/messages?turn=theirs") },
   { id: "nav.inbox", icon: Inbox, run: go("/m/inbox") },

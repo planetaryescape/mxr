@@ -752,6 +752,7 @@ function MessagesBody({
     },
     open: () => selectedId && openRow(selectedId),
     personPage: () => {
+      if (!selectedId) return;
       setPageOpen(true);
       requestAnimationFrame(() => {
         const personPage = document.querySelector<HTMLElement>('[data-testid="person-page"]');
@@ -933,7 +934,7 @@ function MessagesBody({
                   loading={person.isPlaceholderData}
                   pending={gotIt.pending}
                   ackLoading={gotIt.loading}
-                  onBack={() => setPageOpen(false)}
+                  onBack={clearSelection}
                   onTopic={(thread) => {
                     topicsHint.dismiss();
                     if (selectedId) select(selectedId, { topic: thread });

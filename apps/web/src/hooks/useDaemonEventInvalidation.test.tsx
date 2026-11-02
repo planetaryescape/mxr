@@ -125,6 +125,13 @@ describe("useDaemonEventInvalidation", () => {
     expect(invalidatedKeys()).toContain(JSON.stringify(["shell"]));
   });
 
+  test("SyncCompleted refreshes the To do runway and catchup view", () => {
+    const { emit, invalidates } = setup();
+    emit({ type: "SyncCompleted", account_id: "acct-1", messages_synced: 1 });
+    expect(invalidates(["todos", "runway", "all"])).toBe(true);
+    expect(invalidates(["todos", "catchup", "all"])).toBe(true);
+  });
+
   test("ReminderTriggered refreshes the reply queue and mailbox", () => {
     const { emit, invalidatedKeys } = setup();
     emit({ type: "ReminderTriggered", sent_message_id: "msg-1" });

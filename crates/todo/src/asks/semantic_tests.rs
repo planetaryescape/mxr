@@ -319,7 +319,9 @@ fn judge_unnamed_recipient(
             owner_names: &[],
             owner_addresses: &["alex@demo.mxr.local".into()],
             is_owner: &is_owner,
-            sent: "2026-11-02T12:00:00Z".parse().unwrap(),
+            sent: "2026-11-02T12:00:00Z"
+                .parse()
+                .expect("fixed message timestamp"),
             predecessor: None,
             owner_replied_afterwards: false,
             reply_capable: true,

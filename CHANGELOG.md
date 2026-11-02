@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.201](https://github.com/planetaryescape/mxr/compare/v0.6.200...v0.6.201) (2026-11-02)
+
+
+### Bug Fixes
+
+* resolve post-release navigation and task QA findings ([#834](https://github.com/planetaryescape/mxr/issues/834)) ([a00dea9](https://github.com/planetaryescape/mxr/commit/a00dea9a39b95a4c0f0d6d7ca8d7d3e3c4a2feeb))
+
 ## [0.6.200](https://github.com/planetaryescape/mxr/compare/v0.6.199...v0.6.200) (2026-11-02)
 
 

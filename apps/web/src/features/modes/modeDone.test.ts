@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { setActiveQueryClient } from "@/lib/queryClient";
+import * as queryClient from "@/lib/queryClient";
 
 import { resetLeaving } from "@/lib/leaving";
 import { useUndo } from "@/state/undoStore";
@@ -19,7 +19,7 @@ const outcome = (thread: string, copy: string): ModeDoneOutcome => ({
 
 test("refreshing modes refetches the active To do runway once", async () => {
   const qc = new QueryClient();
-  setActiveQueryClient(qc);
+  const activeClient = vi.spyOn(queryClient, "getActiveQueryClient").mockReturnValue(qc);
   const queryKey = ["todos", "runway", "all"];
   qc.setQueryData(queryKey, []);
   const fetchRunway = vi.fn<() => Promise<string[]>>(async () => ["new task"]);
@@ -32,6 +32,7 @@ test("refreshing modes refetches the active To do runway once", async () => {
   } finally {
     unsubscribe();
     qc.clear();
+    activeClient.mockRestore();
   }
 });
 

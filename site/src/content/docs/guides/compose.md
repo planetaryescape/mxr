@@ -116,10 +116,11 @@ mxr drafts push DRAFT_ID
 
 The first push creates one Gmail draft and records its stable draft id.
 Repeating `push`, or editing the linked draft from any mxr client, updates that
-same Gmail draft in place. Normal `mxr sync` uses Gmail's changing message id
-as a revision: Gmail-side edits replace the same local draft, and Gmail-side
-deletion removes it locally. No MIME diff is required. Unsupported providers
-are refused without changing the local draft.
+same Gmail draft in place. Normal `mxr sync` checks Gmail's changing message id
+before downloading draft contents: Gmail-side edits replace the same local
+draft, unchanged bodies and attachments are not downloaded again, and
+Gmail-side deletion removes it locally. No MIME diff is required. Unsupported
+providers are refused without changing the local draft.
 
 In `mxr web`, **Drafts** in the sidebar opens this same local list. Open a row
 to edit it, use the confirmed trash action to delete both linked copies, or

@@ -37,6 +37,9 @@ describe("mode loading layouts", () => {
     expect(container.querySelector('[data-skeleton-row="checkbox"]')).toBeInTheDocument();
     expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeNull();
     expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    for (const list of container.querySelectorAll("ul")) {
+      expect(list).toHaveClass("gap-0.5");
+    }
   });
 
   test("Updates uses grouped single-line source rows", () => {
@@ -49,6 +52,9 @@ describe("mode loading layouts", () => {
     const first = container.querySelector('[data-skeleton-row="source"]');
     // One primary line, unlike the two-line mail skeleton this replaces.
     expect(first?.querySelectorAll(".type-body")).toHaveLength(1);
+    for (const list of container.querySelectorAll("ul")) {
+      expect(list).toHaveClass("gap-0.5");
+    }
   });
 
   test("Reading reserves its edition bands and source leads", () => {
@@ -73,9 +79,15 @@ describe("mode loading layouts", () => {
     expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeInTheDocument();
   });
 
-  test.each([NowSkeleton, TodoSkeleton, UpdatesSkeleton, ReadingSkeleton, MessagesSkeleton])(
+  test.each([
+    ["NowSkeleton", NowSkeleton],
+    ["TodoSkeleton", TodoSkeleton],
+    ["UpdatesSkeleton", UpdatesSkeleton],
+    ["ReadingSkeleton", ReadingSkeleton],
+    ["MessagesSkeleton", MessagesSkeleton],
+  ] as const)(
     "%s keeps quiet-phase placeholders invisible and adds no fake controls or spoken content",
-    (Component) => {
+    (_name, Component) => {
       const { container, rerender } = render(<Component shown={false} />);
       expect(screen.queryByTestId("page-skeleton")).toBeNull();
       expect(container.querySelector('[aria-hidden="true"]')).toHaveClass("invisible");

@@ -65,6 +65,7 @@ test("a phone or an already-open email does not reserve a hidden record card", (
 
 test("quiet Archive reserves the same layout without showing bars", () => {
   const { container } = render(<ArchiveSkeleton shown={false} />);
+  expect(screen.getByTestId("archive-search-placeholder")).toBeInTheDocument();
   expect(screen.queryByTestId("page-skeleton")).toBeNull();
   expect(container.querySelector('[aria-hidden="true"]')).toHaveClass("invisible");
 });

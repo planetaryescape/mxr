@@ -2,9 +2,9 @@ import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Skeleton, SkeletonBar, SkeletonRow, type SkeletonRowProps } from "@/components/Skeleton";
 
-function Rows({ count, ...row }: { count: number } & SkeletonRowProps) {
+function Rows({ count, spaced = false, ...row }: { count: number; spaced?: boolean } & SkeletonRowProps) {
   return (
-    <ul className="grid grid-cols-[minmax(0,1fr)]">
+    <ul className={`grid grid-cols-[minmax(0,1fr)]${spaced ? " gap-0.5" : ""}`}>
       {Array.from({ length: count }, (_, index) => (
         <SkeletonRow key={index} {...row} />
       ))}
@@ -57,12 +57,12 @@ export function TodoSkeleton({ shown }: { shown: boolean }) {
       <ModeFrame>
         <Summary headline />
         <SectionHeading className="mx-5 mb-1 mt-4">Now</SectionHeading>
-        <Rows count={3} lead="checkbox" />
+        <Rows count={3} lead="checkbox" spaced />
         <SectionHeading className="mx-5 mb-1 mt-4">Coming up</SectionHeading>
         <div className="mx-5 mt-2">
           <SkeletonBar className="w-20" />
         </div>
-        <Rows count={2} lead="checkbox" />
+        <Rows count={2} lead="checkbox" spaced />
         <div className="mx-5 mt-5">
           <SkeletonBar className="w-36" />
         </div>
@@ -77,9 +77,9 @@ export function UpdatesSkeleton({ shown }: { shown: boolean }) {
       <ModeFrame>
         <Summary />
         <SectionHeading className="mx-5 mb-1 mt-4">Needs a look</SectionHeading>
-        <Rows count={3} lead="source" secondary={false} />
+        <Rows count={3} lead="source" secondary={false} spaced />
         <SectionHeading className="mx-5 mb-1 mt-4">Changed</SectionHeading>
-        <Rows count={4} lead="source" secondary={false} />
+        <Rows count={4} lead="source" secondary={false} spaced />
         <SectionHeading className="mx-5 mb-1 mt-4">Routine</SectionHeading>
       </ModeFrame>
     </Skeleton>

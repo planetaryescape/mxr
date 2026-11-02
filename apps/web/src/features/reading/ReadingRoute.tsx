@@ -147,7 +147,7 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
   return (
     <>
       <EditionHeader
-        edition={data}
+        edition={phase === "ready" ? data : undefined}
         guide={guide.data}
         view={view}
         onLetGoAll={() => data && openLetGoAll(data, setDialog)}

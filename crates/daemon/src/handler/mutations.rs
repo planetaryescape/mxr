@@ -2869,19 +2869,36 @@ pub(crate) async fn reconcile_provider_drafts(
             continue;
         };
         let _provider_guard = state.acquire_provider_operation(account_id).await;
-        match sender.fetch_draft(&provider_draft_id).await {
-            Ok(Some(snapshot))
-                if stored_revision.as_deref() == Some(snapshot.revision.as_str()) => {}
-            Ok(Some(snapshot)) if stored_revision.is_none() => {
+        let remote_revision = sender
+            .fetch_draft_revision(&provider_draft_id)
+            .await
+            .map_err(|error| {
+                format!("failed to verify provider draft {provider_draft_id}: {error}")
+            })?;
+        let snapshot = if let Some(revision) = remote_revision {
+            if stored_revision.as_deref() == Some(revision.as_str()) {
+                continue;
+            }
+            if stored_revision.is_none() {
                 // A link created by an older mxr version has no baseline. Its
                 // current provider version corresponds to the local draft, so
-                // record it without rewriting content on the first sync.
+                // record it without downloading or rewriting its contents.
                 state
                     .store
-                    .set_provider_draft_revision(&local_draft_id, &snapshot.revision)
+                    .set_provider_draft_revision(&local_draft_id, &revision)
                     .await
                     .map_err(|error| error.to_string())?;
+                continue;
             }
+            // The raw response's own revision is authoritative if Gmail edits
+            // or deletes the draft between the metadata and content requests.
+            sender.fetch_draft(&provider_draft_id).await
+        } else {
+            Ok(None)
+        };
+        match snapshot {
+            Ok(Some(snapshot))
+                if stored_revision.as_deref() == Some(snapshot.revision.as_str()) => {}
             Ok(Some(snapshot)) => {
                 let local = state
                     .store

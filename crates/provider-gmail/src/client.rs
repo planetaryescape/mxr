@@ -110,6 +110,12 @@ pub trait GmailApi: Send + Sync {
         thread_id: Option<&str>,
     ) -> Result<(), GmailError>;
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError>;
+    async fn fetch_draft_revision(&self, draft_id: &str) -> Result<Option<String>, GmailError> {
+        Ok(self
+            .fetch_draft(draft_id)
+            .await?
+            .map(|snapshot| snapshot.revision))
+    }
     async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError>;
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
     async fn create_label(&self, name: &str, color: Option<&str>)
@@ -518,6 +524,28 @@ impl GmailClient {
         Ok(())
     }
 
+    /// Gmail replaces the nested message id on every draft edit. Request only
+    /// that id so polling an unchanged draft never transfers its attachments.
+    pub async fn fetch_draft_revision(&self, draft_id: &str) -> Result<Option<String>, GmailError> {
+        let url = format!(
+            "{}/drafts/{draft_id}?format=minimal&fields=message%2Fid",
+            self.base_url
+        );
+        let resp = self.send("drafts.get", self.http.get(&url)).await?;
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            return Err(self.handle_error("drafts.get", resp).await);
+        }
+        let json: serde_json::Value = resp.json().await?;
+        let revision = json["message"]["id"]
+            .as_str()
+            .filter(|revision| !revision.is_empty())
+            .ok_or_else(|| GmailError::Parse("draft response missing message.id".into()))?;
+        Ok(Some(revision.to_string()))
+    }
+
     pub async fn fetch_draft(
         &self,
         draft_id: &str,
@@ -766,6 +794,10 @@ impl GmailApi for GmailClient {
 
     async fn fetch_draft(&self, draft_id: &str) -> Result<Option<ServerDraftSnapshot>, GmailError> {
         Self::fetch_draft(self, draft_id).await
+    }
+
+    async fn fetch_draft_revision(&self, draft_id: &str) -> Result<Option<String>, GmailError> {
+        Self::fetch_draft_revision(self, draft_id).await
     }
 
     async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
@@ -1510,6 +1542,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn draft_revision_lookup_rejects_missing_or_empty_message_ids() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+        for body in [
+            serde_json::json!({}),
+            serde_json::json!({"message": null}),
+            serde_json::json!({"message": {"id": ""}}),
+        ] {
+            server.reset().await;
+            Mock::given(method("GET"))
+                .and(path("/drafts/d1"))
+                .and(query_param("format", "minimal"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert!(matches!(
+                gated_client(&server).fetch_draft_revision("d1").await,
+                Err(GmailError::Parse(_))
+            ));
+            server.verify().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn draft_revision_lookup_distinguishes_deletion_from_failures() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+        for status in [404, 401, 403, 429, 500] {
+            server.reset().await;
+            Mock::given(method("GET"))
+                .and(path("/drafts/d1"))
+                .and(query_param("format", "minimal"))
+                .respond_with(ResponseTemplate::new(status).insert_header("retry-after", "900"))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let result = gated_client(&server).fetch_draft_revision("d1").await;
+            assert!(
+                matches!(
+                    (status, &result),
+                    (404, Ok(None))
+                        | (401, Err(GmailError::AuthExpired))
+                        | (403, Err(GmailError::Api { status: 403, .. }))
+                        | (
+                            429,
+                            Err(GmailError::RateLimited {
+                                retry_after_secs: 900,
+                                ..
+                            })
+                        )
+                        | (500, Err(GmailError::Api { status: 500, .. }))
+                ),
+                "status {status}: {result:?}"
+            );
+            server.verify().await;
+        }
+    }
+
+    #[tokio::test]
     async fn a_refusal_holds_every_later_call_without_a_request() {
         let Some(server) = start_mock_server().await else {
             return;
@@ -1564,6 +1658,15 @@ mod tests {
             "{detail}"
         );
         assert!(detail.contains(" UTC; Gmail labels.list"), "{detail}");
+
+        assert!(matches!(
+            client.fetch_draft_revision("d1").await,
+            Err(GmailError::RateLimited { .. })
+        ));
+        assert!(matches!(
+            client.fetch_draft("d1").await,
+            Err(GmailError::RateLimited { .. })
+        ));
 
         let trash = client.trash_message("m1").await.unwrap_err();
         assert!(matches!(trash, GmailError::RateLimited { .. }), "{trash:?}");

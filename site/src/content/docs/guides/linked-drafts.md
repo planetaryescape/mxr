@@ -67,9 +67,10 @@ mxr sync
 ```
 
 Gmail keeps the draft ID stable but changes the nested message ID after an
-edit. mxr uses that message ID as the revision marker. When it changes, mxr
-parses the current Gmail MIME and updates the existing local draft under the
-same local UUID.
+edit. mxr checks that message ID without downloading the body or attachments.
+Only a changed revision triggers a full download and updates the existing local
+draft under the same local UUID. An unchanged draft keeps its local content and
+revision, including during background sync when no mxr window is open.
 
 ## Delete both copies
 

@@ -1179,6 +1179,16 @@ impl MailSendProvider for GmailProvider {
             .map_err(MxrError::from)
     }
 
+    async fn fetch_draft_revision(
+        &self,
+        provider_draft_id: &str,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        self.client
+            .fetch_draft_revision(provider_draft_id)
+            .await
+            .map_err(MxrError::from)
+    }
+
     async fn fetch_draft(
         &self,
         provider_draft_id: &str,

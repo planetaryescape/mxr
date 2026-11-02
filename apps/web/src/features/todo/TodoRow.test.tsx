@@ -88,7 +88,7 @@ describe("TodoRow", () => {
     expect(view.queryByTestId("runway-bar")).toBeNull();
     expect(view.queryByTestId("todo-action")).toBeNull();
     expect(view.queryByTestId("todo-provenance")).toBeNull();
-    expect([...row.querySelectorAll("svg")].filter((icon) => !icon.closest("button"))).toHaveLength(
+    expect([...row.querySelectorAll("svg")].filter((icon) => !icon.closest("button:not([role='checkbox'])"))).toHaveLength(
       0,
     );
   });
@@ -146,6 +146,17 @@ describe("TodoRow", () => {
     fireEvent.click(details);
     expect(props.onToggleDetails).toHaveBeenCalledWith(props.todo);
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("done band reopen and details keep compact phone icons", () => {
+    const { row } = renderRow(todoFixture(), "done");
+    for (const button of [
+      within(row).getByRole("button", { name: /reopen/ }),
+      within(row).getByRole("button", { name: "details" }),
+    ]) {
+      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
+      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
+    }
   });
 
   test("a row with no email offers no o email", () => {

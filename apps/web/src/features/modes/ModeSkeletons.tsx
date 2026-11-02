@@ -32,6 +32,11 @@ export function NowSkeleton({ shown }: { shown: boolean }) {
     <Skeleton shown={shown} label="Loading Now" className="min-h-0 flex-1 overflow-hidden pb-6">
       <ModeFrame width="wide">
         <Summary headline />
+        <div data-testid="now-arrivals-placeholder" className="shrink-0 border-b border-rule-soft px-5 py-2">
+          <span className="type-meta flex h-4 items-center">
+            <SkeletonBar className="w-2/5" />
+          </span>
+        </div>
         <ModeColumns split>
           <div className="min-w-0">
             <SectionHeading className="mx-5 mb-1 mt-4">People</SectionHeading>

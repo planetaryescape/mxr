@@ -106,7 +106,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
   const guide = useModeGuide("updates");
   const phase = useDelayedPending(status.isLoading);
   const data = status.data;
-  const subtitle = guide.data?.header ?? data?.header ?? DEFAULT_SUBTITLE;
+  const subtitle = guide.data?.header ?? (phase === "ready" ? data?.header : undefined) ?? DEFAULT_SUBTITLE;
   // Before the digest shows, the header is the title and subtitle alone.
   const plainHeader = <PageFrame title="Updates" purpose={subtitle} />;
   if (phase !== "ready") {

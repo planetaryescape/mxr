@@ -9,12 +9,19 @@ interface LayoutState {
   single: boolean;
   threadId?: string;
 }
+interface PanelProps {
+  children: ReactNode;
+  id?: string;
+  defaultSize?: string;
+  minSize?: string;
+  maxSize?: string;
+}
 const layout = vi.hoisted((): LayoutState => ({ single: false }));
 const splitPane = vi.hoisted(() =>
   vi.fn<(...args: unknown[]) => object>(() => ({
     groupProps: {},
     otherPanelProps: {},
-    sidePanelProps: {},
+    sidePanelProps: { defaultSize: "420px", minSize: "320px", maxSize: "560px" },
   })),
 );
 vi.mock("@tanstack/react-router", () => ({ useParams: () => ({ threadId: layout.threadId }) }));
@@ -25,7 +32,11 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 vi.mock("@/hooks/useSplitPane", () => ({ useSplitPane: splitPane }));
 vi.mock("@/components/ui/resizable", () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ResizablePanel: ({ children, id, defaultSize, minSize, maxSize }: PanelProps) => (
+    <div id={id} data-default-size={defaultSize} data-min-size={minSize} data-max-size={maxSize}>
+      {children}
+    </div>
+  ),
 }));
 
 beforeEach(() => {
@@ -43,6 +54,10 @@ test("Archive reserves its question, coming-up list, filters, amount rows and ca
   expect(screen.getByTestId("archive-search-placeholder")).toBeInTheDocument();
   expect(screen.getByTestId("archive-filters-placeholder")).toBeInTheDocument();
   expect(screen.getByTestId("archive-card-placeholder")).toBeInTheDocument();
+  const card = container.querySelector("#archive-card-loading");
+  expect(card).toHaveAttribute("data-default-size", "420px");
+  expect(card).toHaveAttribute("data-min-size", "320px");
+  expect(card).toHaveAttribute("data-max-size", "560px");
   expect(container.querySelector("h2")).toHaveTextContent("Coming up");
   expect(container.querySelector('[data-skeleton-row="amount"]')).toBeInTheDocument();
   // Reuse the real ledger's preference key and constraints, not a second arbitrary split.

@@ -26,6 +26,7 @@ describe("mode loading layouts", () => {
     expect(container.querySelector('[data-skeleton-row="checkbox"]')).toBeInTheDocument();
     expect(container.querySelector("[data-split=true]")).toBeInTheDocument();
     expect(container.querySelector('[data-frame="wide"]')).toBeInTheDocument();
+    expect(screen.getByTestId("now-arrivals-placeholder")).toBeInTheDocument();
   });
 
   test("To do reserves task bands and checkbox leads rather than an email list", () => {
@@ -37,7 +38,9 @@ describe("mode loading layouts", () => {
     expect(container.querySelector('[data-skeleton-row="checkbox"]')).toBeInTheDocument();
     expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeNull();
     expect(container.querySelector('[role="checkbox"]')).toBeNull();
-    for (const list of container.querySelectorAll("ul")) {
+    const lists = container.querySelectorAll("ul");
+    expect(lists).toHaveLength(2);
+    for (const list of lists) {
       expect(list).toHaveClass("gap-0.5");
     }
   });
@@ -52,7 +55,9 @@ describe("mode loading layouts", () => {
     const first = container.querySelector('[data-skeleton-row="source"]');
     // One primary line, unlike the two-line mail skeleton this replaces.
     expect(first?.querySelectorAll(".type-body")).toHaveLength(1);
-    for (const list of container.querySelectorAll("ul")) {
+    const lists = container.querySelectorAll("ul");
+    expect(lists).toHaveLength(2);
+    for (const list of lists) {
       expect(list).toHaveClass("gap-0.5");
     }
   });
@@ -92,6 +97,7 @@ describe("mode loading layouts", () => {
       expect(screen.queryByTestId("page-skeleton")).toBeNull();
       expect(container.querySelector('[aria-hidden="true"]')).toHaveClass("invisible");
       rerender(<Component shown />);
+      expect(container.querySelector('[aria-hidden="true"]')).not.toHaveClass("invisible");
       expect(screen.getAllByRole("status")).toHaveLength(1);
       expect(screen.queryByRole("heading")).toBeNull();
       expect(container.querySelector("button, a, input, [tabindex]")).toBeNull();

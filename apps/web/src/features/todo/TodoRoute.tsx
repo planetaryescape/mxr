@@ -8,7 +8,8 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { TodoSkeleton } from "@/features/modes/ModeSkeletons";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -114,9 +115,9 @@ function Runway({
   const data = status.data;
   return (
     <>
-      <TodoHeader runway={data} guide={guide.data} />
+      <TodoHeader runway={phase === "ready" ? data : undefined} guide={guide.data} />
       {phase !== "ready" ? (
-        <PageSkeleton framed shown={phase === "skeleton"} />
+        <TodoSkeleton shown={phase === "skeleton"} />
       ) : status.isError ? (
         <PageError
           framed

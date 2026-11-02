@@ -7,7 +7,8 @@ import { Bookmark } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { ReadingSkeleton } from "@/features/modes/ModeSkeletons";
 import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
@@ -152,7 +153,7 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
         onLetGoAll={() => data && openLetGoAll(data, setDialog)}
       />
       {phase !== "ready" ? (
-        <PageSkeleton framed shown={phase === "skeleton"} />
+        <ReadingSkeleton shown={phase === "skeleton"} later={view === "later"} />
       ) : status.isError ? (
         <PageError
           framed

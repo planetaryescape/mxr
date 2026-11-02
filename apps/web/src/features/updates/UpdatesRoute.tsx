@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LampVia } from "@/components/Row";
 import { SectionHeading } from "@/components/SectionHeading";
 import { Button } from "@/components/ui/button";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { UpdatesSkeleton } from "@/features/modes/ModeSkeletons";
 import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
@@ -112,7 +113,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
     return (
       <>
         {plainHeader}
-        <PageSkeleton framed shown={phase === "skeleton"} />
+        <UpdatesSkeleton shown={phase === "skeleton"} />
       </>
     );
   }

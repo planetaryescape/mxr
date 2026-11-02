@@ -77,7 +77,7 @@ describe("TodoRow", () => {
       expect.objectContaining({ id: "peeked", seen_revision: "revision-2" }),
     );
   });
-  test("shows the task, who it is from and the window in words, with no bar or icon", () => {
+  test("shows the task, who it is from and the window in words, with no bar or leading pictogram", () => {
     const { row } = renderRow(todoFixture(), "now", { lit: false });
     const view = within(row);
     expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
@@ -88,7 +88,9 @@ describe("TodoRow", () => {
     expect(view.queryByTestId("runway-bar")).toBeNull();
     expect(view.queryByTestId("todo-action")).toBeNull();
     expect(view.queryByTestId("todo-provenance")).toBeNull();
-    expect(row.querySelector("svg")).toBeNull();
+    expect([...row.querySelectorAll("svg")].filter((icon) => !icon.closest("button"))).toHaveLength(
+      0,
+    );
   });
 
   test("an unseen row reads bright and semibold; a seen one calms", () => {
@@ -128,6 +130,21 @@ describe("TodoRow", () => {
     expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
     fireEvent.click(within(row).getByRole("button", { name: "email" }));
     expect(props.onOpenEmail).toHaveBeenCalledWith(props.todo);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("selected task actions have compact phone icons without losing their names or handlers", () => {
+    const { row, props } = renderRow(todoFixture());
+    const done = within(row).getByTestId("todo-tick");
+    const email = within(row).getByRole("button", { name: "email" });
+    const details = within(row).getByRole("button", { name: "details" });
+    for (const button of [done, email, details]) {
+      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
+      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
+    }
+    expect(done).toHaveAccessibleName(`Tick off ${props.todo.title}`);
+    fireEvent.click(details);
+    expect(props.onToggleDetails).toHaveBeenCalledWith(props.todo);
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 

@@ -683,6 +683,16 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 });
 
+test("the unselected conversation pane keeps its guidance while the people list loads", async () => {
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(() => pending.promise);
+  await mountMessages("/messages");
+  expect(await screen.findByText("Choose a conversation")).toBeInTheDocument();
+  await act(async () => pending.resolve({ messages: listOf(row("person:a", [topic("a")])) }));
+  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
+  expect(screen.getByText("Choose a conversation")).toBeInTheDocument();
+});
+
 test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
   const pending = deferred<FixtureReply>();
   http.send.mockImplementation(() => pending.promise);

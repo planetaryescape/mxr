@@ -13,7 +13,8 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { describeTarget } from "@/features/mail-actions/mailVerbs";
 import { conversationNotNow } from "@/features/mail-actions/notNow";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { MessagesSkeleton } from "@/features/modes/ModeSkeletons";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -893,10 +894,7 @@ function MessagesBody({
               </div>
             ) : null}
             {loading ? (
-              <div className="pt-2">
-                <div aria-hidden className="mx-5 mb-1 mt-3 h-4" />
-                <PageSkeleton framed lead="avatar" shown={skeleton} />
-              </div>
+              <MessagesSkeleton shown={skeleton} />
             ) : (
               <MessagesList
                 data={data}
@@ -970,7 +968,7 @@ function MessagesBody({
               />
             ) : selectedId ? (
               <div className="flex-1" aria-busy="true" />
-            ) : allRows.length > 0 ? (
+            ) : allRows.length > 0 || loading ? (
               <PageEmpty
                 framed
                 title="Choose a conversation"

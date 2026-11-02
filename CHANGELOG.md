@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.203](https://github.com/planetaryescape/mxr/compare/v0.6.202...v0.6.203) (2026-11-02)
+
+
+### Bug Fixes
+
+* avoid downloading unchanged Gmail draft attachments during sync ([#841](https://github.com/planetaryescape/mxr/issues/841)) ([2e0983b](https://github.com/planetaryescape/mxr/commit/2e0983bc8344504e15aa38635cb30636b85dbcf5))
+
 ## [0.6.202](https://github.com/planetaryescape/mxr/compare/v0.6.201...v0.6.202) (2026-11-02)
 
 

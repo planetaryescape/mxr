@@ -936,11 +936,6 @@ name = "Snooze"
 keys = ["b"]
 contexts = ["list", "reader", "sidebar", "place", "now"]
 
-[[action.moved]]
-key = "Z"
-contexts = ["list", "reader", "place"]
-until = "0.6.197"
-
 [[action]]
 id = "mail.unsubscribe"
 label = "Unsubscribe…"
@@ -988,12 +983,6 @@ description = "File it in Archive as a record, after a preview of the card"
 group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
-
-[[action.moved]]
-key = "T"
-contexts = ["list", "reader", "place"]
-until = "0.6.197"
-to = "modes.move"
 
 [[action.tui]]
 name = "PassToMode"
@@ -1070,12 +1059,6 @@ short_label = "Who is this"
 group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
-
-[[action.moved]]
-key = "W"
-contexts = ["list", "reader", "place"]
-until = "0.6.197"
-to = "mail.sender-profile"
 
 [[action.tui]]
 name = "OpenWhoisOnFocusedSender"
@@ -2035,11 +2018,6 @@ name = "ScreenerDisposeAllow"
 keys = ["a"]
 contexts = ["screener"]
 
-[[action.moved]]
-key = "1"
-contexts = ["screener"]
-until = "0.6.200"
-
 [[action]]
 id = "screener.deny"
 label = "Deny sender"
@@ -2051,11 +2029,6 @@ keys = ["d"]
 name = "ScreenerDisposeDeny"
 keys = ["d"]
 contexts = ["screener"]
-
-[[action.moved]]
-key = "2"
-contexts = ["screener"]
-until = "0.6.200"
 
 [[action]]
 id = "screener.feed"
@@ -2069,11 +2042,6 @@ name = "ScreenerDisposeFeed"
 keys = ["f"]
 contexts = ["screener"]
 
-[[action.moved]]
-key = "3"
-contexts = ["screener"]
-until = "0.6.200"
-
 [[action]]
 id = "screener.paper-trail"
 label = "Send to paper trail"
@@ -2085,11 +2053,6 @@ keys = ["p"]
 name = "ScreenerDisposePaperTrail"
 keys = ["p"]
 contexts = ["screener"]
-
-[[action.moved]]
-key = "4"
-contexts = ["screener"]
-until = "0.6.200"
 
 [[action]]
 id = "screener.down"
@@ -2177,11 +2140,6 @@ keys = ["b"]
 name = "Snooze"
 keys = ["b"]
 contexts = ["focus"]
-
-[[action.moved]]
-key = "Z"
-contexts = ["focus"]
-until = "0.6.197"
 
 [[action]]
 id = "focus.remind"
@@ -2443,11 +2401,6 @@ name = "TodoSchedule"
 keys = ["b"]
 contexts = ["todo"]
 
-[[action.moved]]
-key = "Z"
-contexts = ["todo"]
-until = "0.6.197"
-
 [[action]]
 id = "todo.edit"
 label = "Edit what mxr read…"
@@ -2522,11 +2475,6 @@ name = "TodoOpenExpired"
 keys = ["3"]
 contexts = ["todo", "catchup", "expired"]
 
-[[action.moved]]
-key = "E"
-contexts = ["todo"]
-until = "0.6.197"
-
 [[action]]
 id = "todo.catchup"
 label = "Catch-up"
@@ -2539,11 +2487,6 @@ keys = ["2"]
 name = "TodoOpenCatchup"
 keys = ["2"]
 contexts = ["todo", "catchup", "expired"]
-
-[[action.moved]]
-key = "C"
-contexts = ["todo"]
-until = "0.6.197"
 
 [[action]]
 id = "todo.close-hint"
@@ -3087,11 +3030,6 @@ name = "ReadingLaterShelf"
 keys = ["2"]
 contexts = ["reading", "reading-reader"]
 
-[[action.moved]]
-key = "B"
-contexts = ["reading", "reading-reader"]
-until = "0.6.197"
-
 [[action]]
 id = "reading.highlights"
 label = "Highlights"
@@ -3105,11 +3043,6 @@ keys = ["3"]
 name = "ReadingHighlights"
 keys = ["3"]
 contexts = ["reading", "reading-reader"]
-
-[[action.moved]]
-key = "H"
-contexts = ["reading-reader"]
-until = "0.6.197"
 
 [[action]]
 id = "reading.marginalia"
@@ -3171,12 +3104,6 @@ short_label = "Issue"
 group = "Read"
 scopes = ["reading-reader"]
 palette_only = true
-
-[[action.moved]]
-key = "I"
-contexts = ["reading-reader"]
-until = "0.6.197"
-to = "reading.reader-article"
 
 [[action]]
 id = "reading.reader-later"
@@ -3387,12 +3314,6 @@ group = "Triage"
 scopes = ["now"]
 hide_in_palette = true
 
-[[action.moved]]
-key = "1"
-contexts = ["now"]
-until = "0.6.197"
-to = "modes.move"
-
 [[action]]
 id = "now.sender-2"
 label = "New sender: keep in Updates"
@@ -3400,12 +3321,6 @@ short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
 hide_in_palette = true
-
-[[action.moved]]
-key = "2"
-contexts = ["now"]
-until = "0.6.197"
-to = "modes.move"
 
 [[action]]
 id = "now.sender-3"
@@ -3415,12 +3330,6 @@ group = "Triage"
 scopes = ["now"]
 hide_in_palette = true
 
-[[action.moved]]
-key = "3"
-contexts = ["now"]
-until = "0.6.197"
-to = "modes.move"
-
 [[action]]
 id = "now.sender-4"
 label = "New sender: block"
@@ -3428,12 +3337,6 @@ short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
 hide_in_palette = true
-
-[[action.moved]]
-key = "4"
-contexts = ["now"]
-until = "0.6.197"
-to = "modes.move"
 
 [[action]]
 id = "messages.down"
@@ -3702,12 +3605,6 @@ group = "Triage"
 scopes = ["messages"]
 hide_in_palette = true
 
-[[action.moved]]
-key = "1"
-contexts = ["messages"]
-until = "0.6.197"
-to = "modes.move"
-
 [[action]]
 id = "messages.sender-2"
 label = "New sender: keep in Updates"
@@ -3715,12 +3612,6 @@ short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
 hide_in_palette = true
-
-[[action.moved]]
-key = "2"
-contexts = ["messages"]
-until = "0.6.197"
-to = "modes.move"
 
 [[action]]
 id = "messages.sender-3"
@@ -3730,12 +3621,6 @@ group = "Triage"
 scopes = ["messages"]
 hide_in_palette = true
 
-[[action.moved]]
-key = "3"
-contexts = ["messages"]
-until = "0.6.197"
-to = "modes.move"
-
 [[action]]
 id = "messages.sender-4"
 label = "New sender: block"
@@ -3743,12 +3628,6 @@ short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
 hide_in_palette = true
-
-[[action.moved]]
-key = "4"
-contexts = ["messages"]
-until = "0.6.197"
-to = "modes.move"
 
 [[action]]
 id = "updates.down"
@@ -3952,26 +3831,6 @@ name = "OpenMoveMenu"
 keys = ["X"]
 contexts = ["list", "reader", "place", "now", "messages", "reading", "reading-reader", "updates", "arrivals-list"]
 
-[[action.moved]]
-key = "m"
-contexts = ["not-sure"]
-until = "0.6.197"
-
-[[action.moved]]
-key = "x"
-contexts = ["not-sure"]
-until = "0.6.197"
-
-[[action.moved]]
-key = "r"
-contexts = ["not-sure"]
-until = "0.6.197"
-
-[[action.moved]]
-key = "e"
-contexts = ["not-sure"]
-until = "0.6.197"
-
 [[action]]
 id = "modes.move-sender"
 label = "Send everything from this sender to…"
@@ -4172,18 +4031,6 @@ keys = ["* t"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
-id = "tui.prev-search-result"
-label = "Prev search result"
-group = "TUI"
-clients = ["tui"]
-
-[[action.moved]]
-key = "N"
-contexts = ["list", "sidebar", "place", "invites"]
-until = "0.6.200"
-to = "list.up"
-
-[[action]]
 id = "tui.switch-pane"
 label = "Switch pane"
 group = "TUI"
@@ -4194,18 +4041,6 @@ note = "A browser keeps Tab for focus order; h and l move between panes in both 
 name = "SwitchPane"
 keys = ["Tab"]
 contexts = ["list", "reader", "sidebar", "place"]
-
-[[action]]
-id = "tui.next-search-result"
-label = "Next search result"
-group = "TUI"
-clients = ["tui"]
-
-[[action.moved]]
-key = "n"
-contexts = ["list", "sidebar", "place", "invites"]
-until = "0.6.200"
-to = "list.down"
 
 [[action]]
 id = "tui.quit-view"

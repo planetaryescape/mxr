@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { resetLeaving } from "@/lib/leaving";
 import { useUndo } from "@/state/undoStore";
@@ -13,6 +13,13 @@ const outcome = (thread: string, copy: string): ModeDoneOutcome => ({
   mode: "messages",
   provider: "Gmail",
   copy,
+});
+
+const todoDone = (id: string) => ({
+  kind: "ModeDone",
+  dry_run: false,
+  mutation_id: id,
+  items: [{ thread_id: "shared", mode: "todo", provider: "Gmail", copy: "Ticked off." }],
 });
 
 describe("done here's toast", () => {
@@ -131,5 +138,63 @@ describe("done here when nothing was done", () => {
       method: "POST",
       body: { thread_ids: ["t1"], dry_run: false, todo_ids: ["todo-a"] },
     });
+  });
+});
+
+describe("named To do completion in flight", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    useUndo.getState().clear();
+  });
+
+  test("a duplicate activation sends once and preserves the successful Undo", async () => {
+    let finish!: (value: ReturnType<typeof todoDone>) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<ReturnType<typeof todoDone>>((resolve) => (finish = resolve)));
+    fetchMock.mockResolvedValueOnce({
+      kind: "ModeDone",
+      dry_run: false,
+      items: [{ thread_id: "shared", mode: "todo", error: "no open to-do on this conversation" }],
+    });
+    const first = markModeDone("todo", ["shared"], { todoIds: ["one"] });
+    await markModeDone("todo", ["shared"], { todoIds: ["one"] });
+    finish(todoDone("undo-one"));
+    await first;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useUndo.getState().lastMutationId).toBe("undo-one");
+    expect(useUndo.getState().lastUndo).toBeTypeOf("function");
+  });
+
+  test("another task on the same email still completes while the first is pending", async () => {
+    let finish!: (value: ReturnType<typeof todoDone>) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<ReturnType<typeof todoDone>>((resolve) => (finish = resolve)));
+    fetchMock.mockResolvedValueOnce(todoDone("undo-two"));
+    const first = markModeDone("todo", ["shared"], { todoIds: ["one"] });
+    await markModeDone("todo", ["shared"], { todoIds: ["two"] });
+    finish(todoDone("undo-one"));
+    await first;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ body: { todo_ids: ["two"] } });
+    expect(useUndo.getState().lastMutationId).toBe("undo-two");
+  });
+
+  test("a failed task can be retried after the request settles", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+    await markModeDone("todo", ["shared"], { todoIds: ["one"] });
+    fetchMock.mockResolvedValueOnce(todoDone("retry-undo"));
+    expect(await markModeDone("todo", ["shared"], { todoIds: ["one"] })).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useUndo.getState().lastMutationId).toBe("retry-undo");
+  });
+
+  test("an overlapping batch submits only tasks not already pending", async () => {
+    let finish!: (value: ReturnType<typeof todoDone>) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<ReturnType<typeof todoDone>>((resolve) => (finish = resolve)));
+    fetchMock.mockResolvedValueOnce(todoDone("undo-two"));
+    const first = markModeDone("todo", ["shared"], { todoIds: ["one"] });
+    await markModeDone("todo", ["shared"], { todoIds: ["one", "two", "two"] });
+    finish(todoDone("undo-one"));
+    await first;
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ body: { todo_ids: ["two"] } });
+    expect(useUndo.getState().lastMutationId).toBe("undo-two");
   });
 });

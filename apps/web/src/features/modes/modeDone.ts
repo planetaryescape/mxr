@@ -159,6 +159,10 @@ export interface ModeDoneOptions extends DoneScope {
   message?: (done: readonly ModeDoneOutcome[]) => string;
 }
 
+// Named rows can share an email. Guard their identities, not the thread,
+// so a repeated activation cannot replace the first request's Undo.
+const pendingTodoIds = new Set<string>();
+
 /**
  * Done here for these threads. Resolves true when every one was done; one
  * that couldn't be keeps its row (the refetch brings it back), and doing it
@@ -179,12 +183,22 @@ export async function markModeDone(
   if (!options.todoIds?.length && unique.length > 0 && unique.every((id) => inFlight.has(id))) {
     return false;
   }
+  const todoIds = options.todoIds?.length
+    ? [...new Set(options.todoIds)].filter((id) => !pendingTodoIds.has(id))
+    : undefined;
+  if (todoIds?.length === 0) return false;
+  todoIds?.forEach((id) => pendingTodoIds.add(id));
   useModeDone.getState().hide(mode, unique);
   if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
-    const result = await doneModeRequest(mode, unique, false, options);
+    const result = await doneModeRequest(
+      mode,
+      unique,
+      false,
+      todoIds ? { ...options, todoIds } : options,
+    );
     const failed = result.items.filter((item) => item.error);
     const done = result.items.filter((item) => !item.error);
     const mutationId = result.mutation_id ?? null;
@@ -236,6 +250,7 @@ export async function markModeDone(
     });
     return false;
   } finally {
+    todoIds?.forEach((id) => pendingTodoIds.delete(id));
     useModeDone.getState().show(mode, unique);
     useModeDone.getState().settle(mode, unique);
   }

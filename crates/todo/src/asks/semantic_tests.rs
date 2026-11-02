@@ -381,6 +381,20 @@ fn an_unknown_owner_name_does_not_claim_shared_or_copied_requests() {
 }
 
 #[test]
+fn an_unknown_owner_name_does_not_claim_requests_addressed_to_known_people() {
+    for (body, copied_name) in [
+        ("Hi Sam,\nPlease sign the contract.", None),
+        ("Hi Alex Smith,\nPlease sign the contract.", Some("Alex")),
+    ] {
+        let assessment = judge_unnamed_recipient(body, RecipientRole::AloneTo, copied_name);
+        assert!(
+            !answers(&assessment).contains(&AskAnswer::AsksYou),
+            "{body}: {assessment:?}"
+        );
+    }
+}
+
+#[test]
 fn an_unknown_owner_name_does_not_promote_quoted_or_signed_off_requests() {
     for body in [
         "> Hi Alex,\n> Please sign the contract.",

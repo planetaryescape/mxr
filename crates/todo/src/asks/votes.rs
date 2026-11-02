@@ -568,14 +568,19 @@ fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Ac
                     .next()
                     .is_some_and(|first| first.eq_ignore_ascii_case(name))
         };
-        let known_other = input
-            .to
-            .iter()
+        let known_other = std::iter::once(input.from)
+            .chain(input.to)
             .chain(input.cc)
             .chain(input.bcc)
             .filter(|address| !(input.is_owner)(&address.email))
             .filter_map(|address| address.name.as_deref())
-            .any(matches_name);
+            .any(|other| {
+                matches_name(other)
+                    || name
+                        .split_whitespace()
+                        .next()
+                        .is_some_and(|first| first.eq_ignore_ascii_case(other))
+            });
         return if facts.owner_names.iter().any(|own| matches_name(own))
             || facts.owner_names.is_empty()
                 && facts.recipient_role == RecipientRole::AloneTo

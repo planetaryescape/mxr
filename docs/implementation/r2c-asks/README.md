@@ -15,7 +15,7 @@ retain their original verification limits as implementation history.
 
 The current asks policy is `asks-r2c-17`. If the owner has no observed display
 name, a salutation alone no longer overrides the sole owned To recipient.
-Known name mismatches, named copied addressees, shared recipients and context-only
+Known name mismatches, the sender's name, named copied addressees, shared recipients and context-only
 quotes remain excluded. Inspect the stored answer with `mxr modes why MESSAGE_ID --format json`.
 
 ## Inspect the stored answer and correct a task

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.200](https://github.com/planetaryescape/mxr/compare/v0.6.199...v0.6.200) (2026-11-02)
+
+
+### Bug Fixes
+
+* match mode loading states to their layouts ([#832](https://github.com/planetaryescape/mxr/issues/832)) ([5d9c71a](https://github.com/planetaryescape/mxr/commit/5d9c71a0fb76f5b628ec627d94f64f4da07f1837))
+
+
+### Documentation
+
+* clarify observed filing and independent mode state ([#831](https://github.com/planetaryescape/mxr/issues/831)) ([f638244](https://github.com/planetaryescape/mxr/commit/f6382442829d06731465e6ad4db29a5684dd1919))
+
 ## [0.6.199](https://github.com/planetaryescape/mxr/compare/v0.6.198...v0.6.199) (2026-11-01)
 
 

@@ -14,6 +14,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { parseArchiveSearch } from "@/features/archive/archiveSearch";
+import { useArchiveNavigation } from "@/features/archive/archiveNavigation";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { Sidebar } from "./Sidebar";
@@ -29,7 +30,10 @@ vi.mock("@/features/modes/rail", async (original) => ({
   useRailQuery: () => ({}),
 }));
 
-afterEach(() => act(() => useUiPrefs.setState({ accountScope: null })));
+afterEach(() => act(() => {
+  useUiPrefs.setState({ accountScope: null });
+  useArchiveNavigation.setState({ searches: {} });
+}));
 
 function ArchiveLookup() {
   const search = useSearch({ strict: false });
@@ -66,6 +70,13 @@ test("sidebar Archive resumes the lookup after another mode, including on reload
   });
   const view = render(<RouterProvider router={router} />);
   await screen.findByText("Lookup: lisbon; record: tap");
+  act(() => useArchiveNavigation.getState().remember("work", { q: "contract", record: "legal" }));
+  act(() => useUiPrefs.setState({ accountScope: "work" }));
+  await waitFor(() => expect(screen.getByRole("link", { name: /^Archive/ })).toHaveAttribute(
+    "href", expect.stringContaining("q=contract"),
+  ));
+  expect(useArchiveNavigation.getState().searches.work).toMatchObject({ q: "contract", record: "legal" });
+  act(() => useUiPrefs.setState({ accountScope: null }));
   fireEvent.click(screen.getByRole("link", { name: /^Reading/ }));
   await screen.findByText("Reading edition");
   fireEvent.click(screen.getByRole("link", { name: /^Archive/ }));

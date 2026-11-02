@@ -1,5 +1,5 @@
 import { defaultStringifySearch, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { create } from "zustand";
 
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -28,8 +28,14 @@ export function useArchiveResumeSearch(): ArchiveSearch | undefined {
   const location = useRouterState({ select: (state) => state.location });
   const search = useArchiveNavigation((state) => state.searches[account ?? "all"]);
   const remember = useArchiveNavigation((state) => state.remember);
+  const recorded = useRef({ account, search: JSON.stringify(location.search) });
   useEffect(() => {
     if (location.pathname === "/archive" || location.pathname.startsWith("/archive/")) {
+      const currentSearch = JSON.stringify(location.search);
+      // An account switch alone does not make the old URL that account's
+      // saved lookup. A subsequent search/navigation can replace it.
+      if (account !== recorded.current.account && currentSearch === recorded.current.search) return;
+      recorded.current = { account, search: currentSearch };
       remember(account, parseArchiveSearch(location.search));
     }
   }, [account, location.pathname, location.search, remember]);

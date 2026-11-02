@@ -945,7 +945,8 @@ test("p focuses the current topic when open, or its trigger when the topic list 
   });
   await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
 
-  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  // The filter command reveals the list while retaining its selected person.
+  act(() => runCommand("messages", "filter"));
   await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
 
   act(() => expect(runCommand("messages", "personPage")).toBe(true));
@@ -957,6 +958,40 @@ test("p focuses the current topic when open, or its trigger when the topic list 
   const current = screen.getByTestId("topic");
   act(() => expect(runCommand("messages", "personPage")).toBe(true));
   await waitFor(() => expect(current).toHaveFocus());
+});
+
+test.each([
+  "/messages?turn=all&unread=true&pace=true&person=person%3Aa&topic=a-live",
+  "/messages/a-live?turn=all&unread=true&pace=true",
+])("Back clears the conversation URL and keeps the people list after remount: %s", async (initial) => {
+  layout.wide = false;
+  const a = row("person:a", [topic("a-live")]);
+  const data = listOf(a);
+  client.setQueryData(["messages-mode", "list", "all", "all", "unread", "pace"], data);
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people/page")) return { page: personPage(a, "a-live") };
+    if (url.pathname.endsWith("/people")) return { messages: data };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages(initial);
+  await screen.findByTestId("shown-topic");
+  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/messages");
+    expect(router.state.location.search.person).toBeUndefined();
+    expect(router.state.location.search.topic).toBeUndefined();
+  });
+  expect(router.state.location.search).toMatchObject({ turn: "all", unread: true, pace: true });
+  expect(screen.queryByTestId("person-page")).toBeNull();
+  act(() => runCommand("messages", "personPage"));
+  expect(screen.queryByText("Choose a conversation")).toBeNull();
+  const restoredUrl = router.state.location.href;
+  cleanup();
+  await mountMessages(restoredUrl);
+  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
+  expect(screen.queryByTestId("person-page")).toBeNull();
 });
 
 test("Esc after p brings focus back from the person page to Messages", async () => {

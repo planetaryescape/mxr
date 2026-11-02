@@ -14,7 +14,7 @@ import { formatLongDate } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
 
-import type { Todo } from "./api";
+import type { Todo, TodoField } from "./api";
 import { MicrosoftTodoAction } from "./MicrosoftTodoAction";
 import { resolveSuggestion, useTodoHidden } from "./todoVerbs";
 import {
@@ -27,7 +27,7 @@ import {
   type Band,
 } from "./todoRows";
 
-/** Under a row on `v`: why, when, field sources and evidence, a later email's offer, then the source email. */
+/** Under a row on `v`: reason and source email first, field evidence and diagnostics on demand. */
 function Details({
   todo,
   onOpenEmail,
@@ -49,6 +49,14 @@ function Details({
     thread.data?.messages.find((entry) => entry.id === todo.source_message_id) ??
     thread.data?.messages.at(-1);
   const gate = linkLine(todo);
+  const seenEvidence = new Set([todo.why]);
+  const fields = orderedFields(todo.fields).map((field) => {
+    const evidence = field.evidence && !seenEvidence.has(field.evidence) ? field.evidence : null;
+    if (evidence) seenEvidence.add(evidence);
+    return { field, evidence };
+  });
+  const sources = fields.filter(({ field }) => !field.field.startsWith("asks_"));
+  const diagnostics = fields.filter(({ field }) => field.field.startsWith("asks_"));
   return (
     <div
       data-testid="todo-source"
@@ -85,17 +93,6 @@ function Details({
           <span data-testid="todo-why">{todo.why}</span>
         </FieldLine>
         {todo.next ? <FieldLine label="Next">{todo.next}</FieldLine> : null}
-        {orderedFields(todo.fields).map((field) => (
-          <FieldLine key={field.field} label={fieldLabel(field.field)}>
-            <span className="text-text-1">{field.source_label}</span>
-            {field.evidence ? <span>: &ldquo;{field.evidence}&rdquo;</span> : null}
-            {field.checked ? null : (
-              <span data-testid="todo-field-unchecked" className="type-meta ml-2 text-text-3">
-                unchecked
-              </span>
-            )}
-          </FieldLine>
-        ))}
       </dl>
       {gate ? <p>{gate}</p> : null}
       {todo.resolution ? <Resolution todo={todo} onOpenResolution={onOpenResolution} /> : null}
@@ -123,7 +120,37 @@ function Details({
           </Button>
         ) : null}
       </div>
+      <FieldSources label="Field sources" fields={sources} />
+      <FieldSources label="Diagnostics" fields={diagnostics} />
     </div>
+  );
+}
+
+function FieldSources({
+  label,
+  fields,
+}: {
+  label: string;
+  fields: readonly { field: TodoField; evidence: string | null }[];
+}) {
+  if (fields.length === 0) return null;
+  return (
+    <details onClick={(event) => event.stopPropagation()}>
+      <summary className="cursor-pointer text-text-2">{label}</summary>
+      <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+        {fields.map(({ field, evidence }) => (
+          <FieldLine key={field.field} label={fieldLabel(field.field)}>
+            <span className="text-text-1">{field.source_label}</span>
+            {evidence ? <span>: &ldquo;{evidence}&rdquo;</span> : null}
+            {field.checked ? null : (
+              <span data-testid="todo-field-unchecked" className="type-meta ml-2 text-text-3">
+                unchecked
+              </span>
+            )}
+          </FieldLine>
+        ))}
+      </dl>
+    </details>
   );
 }
 

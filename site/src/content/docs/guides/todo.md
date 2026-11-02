@@ -64,6 +64,11 @@ marked, or a reply to a promise). Check extracted details against that source
 before relying on them. Use the
 row's edit control, or `,` on the web, to correct what mxr read.
 
+Web details show the reason and next step first. Expand **Field sources** to
+check each field's source and any unchecked values. Repeated evidence appears
+once. Raw assessment fingerprints and policy/unit identifiers are under
+**Diagnostics**; they remain available in `mxr todo why TODO_ID --format json`.
+
 Bills, failed payments, sign or verification requests, promises and annual
 renewal reviews can become tasks automatically. An alert in Updates offers
 `t` to create a task when you choose; it does not automatically create one

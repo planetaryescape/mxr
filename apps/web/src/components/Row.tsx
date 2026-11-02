@@ -119,7 +119,13 @@ export const Row = memo(function Row({
       <span className="min-w-0 flex-1">
         <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>
         {secondary ? (
-          <span className={cn("type-body block truncate", secondaryTone, secondaryDesktopOnly && "hidden sm:block")}>
+          <span
+            className={cn(
+              "type-body block truncate",
+              secondaryTone,
+              secondaryDesktopOnly && "hidden sm:block",
+            )}
+          >
             {secondary}
           </span>
         ) : null}
@@ -242,7 +248,11 @@ export function RowVerb({
   );
   const content = (
     <>
-      {keys ? <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip> : null}
+      {keys ? (
+        <KeyChip className={cn("h-4 px-1 pointer-coarse:hidden", Icon && "max-sm:hidden")}>
+          {keys}
+        </KeyChip>
+      ) : null}
       {Icon ? <Icon aria-hidden className="size-4 sm:hidden" /> : null}
       <span className={nameFrom === "list" ? "hidden @xl/list:inline" : "hidden sm:inline"}>
         {label}

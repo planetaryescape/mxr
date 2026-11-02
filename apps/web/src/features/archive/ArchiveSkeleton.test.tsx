@@ -5,7 +5,11 @@ import type { ReactNode } from "react";
 import { ArchiveSkeleton } from "./ArchiveSkeleton";
 import { CARD_PANE_SIZE } from "./archiveLayout";
 
-const layout = vi.hoisted((): { single: boolean; threadId?: string } => ({ single: false }));
+interface LayoutState {
+  single: boolean;
+  threadId?: string;
+}
+const layout = vi.hoisted((): LayoutState => ({ single: false }));
 const splitPane = vi.hoisted(() =>
   vi.fn<(...args: unknown[]) => object>(() => ({
     groupProps: {},

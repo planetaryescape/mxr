@@ -55,7 +55,7 @@ export function SkeletonRow({
         className={cn(
           "size-4 shrink-0",
           lead === "checkbox" && "border border-rule bg-transparent",
-          lead === "amount" && "w-16",
+          lead === "amount" && "w-24 sm:w-28",
         )}
       />
     );

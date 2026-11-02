@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { setActiveQueryClient } from "@/lib/queryClient";
 
 import { resetLeaving } from "@/lib/leaving";
 import { useUndo } from "@/state/undoStore";
 
-import { doneToast, markModeDone, useModeDone, type ModeDoneOutcome } from "./modeDone";
+import { doneToast, markModeDone, refreshModes, useModeDone, type ModeDoneOutcome } from "./modeDone";
 
 const fetchMock = vi.hoisted(() => vi.fn<(path: string, opts?: unknown) => Promise<unknown>>());
 vi.mock("@/api/client", () => ({ apiFetch: fetchMock }));
@@ -13,6 +15,24 @@ const outcome = (thread: string, copy: string): ModeDoneOutcome => ({
   mode: "messages",
   provider: "Gmail",
   copy,
+});
+
+test("refreshing modes refetches the active To do runway once", async () => {
+  const qc = new QueryClient();
+  setActiveQueryClient(qc);
+  const queryKey = ["todos", "runway", "all"];
+  qc.setQueryData(queryKey, []);
+  const fetchRunway = vi.fn<() => Promise<string[]>>(async () => ["new task"]);
+  const observer = new QueryObserver(qc, { queryKey, queryFn: fetchRunway, staleTime: Infinity });
+  const unsubscribe = observer.subscribe(() => {});
+  try {
+    await refreshModes();
+    expect(fetchRunway).toHaveBeenCalledTimes(1);
+    expect(observer.getCurrentResult().data).toEqual(["new task"]);
+  } finally {
+    unsubscribe();
+    qc.clear();
+  }
 });
 
 const todoDone = (id: string) => ({
@@ -170,8 +190,11 @@ describe("named To do completion in flight", () => {
     fetchMock.mockResolvedValueOnce(todoDone("undo-two"));
     const first = markModeDone("todo", ["shared"], { todoIds: ["one"] });
     await markModeDone("todo", ["shared"], { todoIds: ["two"] });
+    const hiddenWhileFirstPending = useModeDone.getState().hidden.todo.has("shared");
     finish(todoDone("undo-one"));
     await first;
+    expect(hiddenWhileFirstPending).toBe(true);
+    expect(useModeDone.getState().hidden.todo.has("shared")).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ body: { todo_ids: ["two"] } });
     expect(useUndo.getState().lastMutationId).toBe("undo-two");

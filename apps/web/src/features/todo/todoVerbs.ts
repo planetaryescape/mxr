@@ -170,6 +170,8 @@ export function markDone(todos: readonly Todo[], how: LeaveVia = "pointer") {
   });
 }
 
+const pendingTicks = new Set<string>();
+
 /**
  * `e` on a to-do that came from an email: done in To do through
  * `SetModeDone`, which ticks off the thread's open rows and, when no other
@@ -178,6 +180,16 @@ export function markDone(todos: readonly Todo[], how: LeaveVia = "pointer") {
  * email is ticked off on its own.
  */
 export async function tickOff(todo: Todo, how: LeaveVia = "pointer"): Promise<void> {
+  if (pendingTicks.has(todo.id)) return;
+  pendingTicks.add(todo.id);
+  try {
+    await tickOffOnce(todo, how);
+  } finally {
+    pendingTicks.delete(todo.id);
+  }
+}
+
+async function tickOffOnce(todo: Todo, how: LeaveVia): Promise<void> {
   const threadId = todo.thread_id;
   if (!threadId) {
     await markDone([todo], how);

@@ -162,6 +162,7 @@ export interface ModeDoneOptions extends DoneScope {
 // Named rows can share an email. Guard their identities, not the thread,
 // so a repeated activation cannot replace the first request's Undo.
 const pendingTodoIds = new Set<string>();
+const pendingThreads = new Map<string, number>();
 
 /**
  * Done here for these threads. Resolves true when every one was done; one
@@ -188,6 +189,10 @@ export async function markModeDone(
     : undefined;
   if (todoIds?.length === 0) return false;
   todoIds?.forEach((id) => pendingTodoIds.add(id));
+  for (const id of unique) {
+    const key = `${mode}:${id}`;
+    pendingThreads.set(key, (pendingThreads.get(key) ?? 0) + 1);
+  }
   useModeDone.getState().hide(mode, unique);
   if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
@@ -251,8 +256,18 @@ export async function markModeDone(
     return false;
   } finally {
     todoIds?.forEach((id) => pendingTodoIds.delete(id));
-    useModeDone.getState().show(mode, unique);
-    useModeDone.getState().settle(mode, unique);
+    const settled = unique.filter((id) => {
+      const key = `${mode}:${id}`;
+      const remaining = (pendingThreads.get(key) ?? 1) - 1;
+      if (remaining > 0) {
+        pendingThreads.set(key, remaining);
+        return false;
+      }
+      pendingThreads.delete(key);
+      return true;
+    });
+    useModeDone.getState().show(mode, settled);
+    useModeDone.getState().settle(mode, settled);
   }
 }
 
@@ -264,7 +279,6 @@ export async function refreshModes(): Promise<void> {
   const qc = getActiveQueryClient();
   await Promise.all([
     invalidateMailQueries(qc).catch(() => undefined),
-    qc?.invalidateQueries({ queryKey: ["todos"] }).catch(() => undefined),
     qc?.invalidateQueries({ queryKey: ["rail"] }).catch(() => undefined),
     qc?.invalidateQueries({ queryKey: MESSAGES_KEY }).catch(() => undefined),
   ]);

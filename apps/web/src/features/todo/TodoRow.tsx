@@ -52,7 +52,7 @@ function Details({
   return (
     <div
       data-testid="todo-source"
-      className="type-body mx-5 mb-2 mt-1 grid gap-2 border-l border-rule pl-3 text-text-2"
+      className="type-body mx-5 mb-2 mt-1 grid grid-cols-[minmax(0,1fr)] gap-2 border-l border-rule pl-3 text-text-2 [overflow-wrap:anywhere]"
     >
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
         {todo.source_date ? (

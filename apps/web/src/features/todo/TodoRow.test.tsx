@@ -57,6 +57,39 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
+  test("details keep one reason and disclose field sources separately from raw diagnostics", () => {
+    const quote = "We couldn't charge your card.";
+    const source = { source: "rule", source_label: "a pattern in the email", checked: true };
+    const { row } = renderRow(
+      todoFixture({
+        thread_id: null,
+        why: quote,
+        fields: [
+          { ...source, field: "title", evidence: quote },
+          { ...source, field: "kind", evidence: quote },
+          { ...source, field: "quote", evidence: quote },
+          { ...source, field: "amount", evidence: "£11.99", checked: false },
+          { ...source, field: "asks_fingerprint", evidence: "raw-input-fingerprint" },
+          { ...source, field: "asks_provenance", evidence: "raw-policy-unit-span" },
+        ],
+      }),
+      "now",
+      { details: true },
+    );
+    const details = within(row).getByTestId("todo-source");
+    const sources = within(details).getByText("Field sources");
+    expect(details.textContent?.match(/We couldn't charge your card\./g)).toHaveLength(1);
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
+    expect(within(details).getByText("£11.99", { exact: false })).not.toBeVisible();
+    fireEvent.click(sources);
+    expect(within(details).getByText("£11.99", { exact: false })).toBeVisible();
+    expect(within(details).getByTestId("todo-field-unchecked")).toBeVisible();
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
+    fireEvent.click(within(details).getByText("Diagnostics"));
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).toBeVisible();
+    expect(within(details).getByText("raw-policy-unit-span", { exact: false })).toBeVisible();
+  });
+
   test("background task revisions stay unseen until details are reopened", () => {
     const original = todoFixture({ unread: true, seen_revision: "opened" });
     const { rerender } = renderRow(original, "now", { details: true });
@@ -88,9 +121,11 @@ describe("TodoRow", () => {
     expect(view.queryByTestId("runway-bar")).toBeNull();
     expect(view.queryByTestId("todo-action")).toBeNull();
     expect(view.queryByTestId("todo-provenance")).toBeNull();
-    expect([...row.querySelectorAll("svg")].filter((icon) => !icon.closest("button:not([role='checkbox'])"))).toHaveLength(
-      0,
-    );
+    expect(
+      [...row.querySelectorAll("svg")].filter(
+        (icon) => !icon.closest("button:not([role='checkbox'])"),
+      ),
+    ).toHaveLength(0);
   });
 
   test("an unseen row reads bright and semibold; a seen one calms", () => {
@@ -341,7 +376,7 @@ describe("TodoRow", () => {
     );
     const details = within(row).getByTestId("todo-source");
     expect(within(details).getByTestId("todo-why")).toHaveTextContent(evidence);
-    expect(details.querySelector("dd:last-child")).toHaveTextContent(evidence);
+    expect(within(details).getAllByText(evidence)).toHaveLength(1);
     expect(details).toHaveClass("grid-cols-[minmax(0,1fr)]", "[overflow-wrap:anywhere]");
   });
 

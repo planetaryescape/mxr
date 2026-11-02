@@ -403,6 +403,7 @@ fn a_settled_previous_policy_is_reconciled_by_startup_and_the_first_normal_tick(
         "asks-r2c-13",
         "asks-r2c-14",
         "asks-r2c-15",
+        "asks-r2c-16",
     ] {
         assert_previous_policy_activates_once(old_policy);
     }

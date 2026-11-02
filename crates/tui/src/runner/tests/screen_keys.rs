@@ -234,7 +234,13 @@ fn screen_keys_are_what_the_definition_says() {
                 Unlisted::Shared => InputHandler::new().handle_key(*event),
                 Unlisted::Nothing => None,
             }
-            .filter(|action| action_allowed_in_context(action, context));
+            .filter(|action| action_allowed_in_context(action, context))
+            // Invites retired n/N with the mailbox lists; an expired notice
+            // does not turn the raw legacy search defaults back into bindings.
+            .filter(|action| {
+                *screen != "invites"
+                    || !matches!(action, Action::NextSearchResult | Action::PrevSearchResult)
+            });
             // Handlers that ignore Ctrl or Alt make `Ctrl+o` an echo of `o`,
             // and `q` below the root does what `Esc` does there.
             let echo = (event

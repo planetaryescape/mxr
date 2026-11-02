@@ -1504,20 +1504,43 @@ fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
 
 #[test]
 fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
-    let mut app = app_in("list");
-    app.mailbox.envelopes = make_test_envelopes(3);
-    let before = app.status_message.clone();
-    assert_eq!(press_char(&mut app, 'n'), None);
-    assert_eq!(app.mailbox.selected_index, 0);
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced(
-            "list",
-            "n",
-            "Next search result is now j",
-            before.as_deref()
-        )
-    );
+    for context in ["list", "sidebar", "place"] {
+        for (key, id, notice) in [
+            ('n', "tui.next-search-result", "Next search result is now j"),
+            ('N', "tui.prev-search-result", "Prev search result is now k"),
+        ] {
+            for (until, announced) in [("999.0.0", true), ("0.0.1", false)] {
+                let mut app = app_in(context);
+                let mut keymap = mxr_keymap::definition().clone();
+                for moved in &mut keymap
+                    .actions
+                    .iter_mut()
+                    .find(|action| action.id == id)
+                    .expect("retired search action")
+                    .moved
+                {
+                    moved.until = until.into();
+                }
+                app.keybindings
+                    .set_keymap(keymap.live_at(mxr_keymap::VERSION));
+                app.mailbox.envelopes = make_test_envelopes(3);
+                let before = app.status_message.clone();
+                assert_eq!(press_char(&mut app, key), None, "{context}: {key}");
+                assert_eq!(app.mailbox.selected_index, 0);
+                assert_eq!(
+                    app.status_message.as_deref(),
+                    if announced {
+                        Some(notice)
+                    } else {
+                        before.as_deref()
+                    },
+                    "{context}: {key}, until {until}"
+                );
+            }
+        }
+    }
+    let mut remapped = remapped_app("list", "[mail_list]\n\"n\" = \"move_down\"\n");
+    assert_eq!(press_char(&mut remapped, 'n'), Some(Action::MoveDown));
 }
 
 #[test]

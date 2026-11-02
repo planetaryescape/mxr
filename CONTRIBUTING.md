@@ -274,7 +274,7 @@ reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
 
-The shipped asks facet uses a separate `asks-r2c-16` policy in the
+The asks facet uses a separate `asks-r2c-17` policy in the
 assessment table. Its records include sent mail; home assessments remain
 inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
 in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored

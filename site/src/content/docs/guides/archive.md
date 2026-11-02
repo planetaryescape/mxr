@@ -177,7 +177,8 @@ a count and a total per currency, newest first.
 In the web app, returning through the sidebar, the phone's More menu or `g e`
 resumes your last Archive question, filters and selected record for that account
 scope while the app stays open. Clear the question to start another lookup.
-The URL also preserves the view when you refresh it or share the link.
+The URL preserves the question, filters and selected record when you refresh it
+or share the link.
 
 ```bash
 mxr records

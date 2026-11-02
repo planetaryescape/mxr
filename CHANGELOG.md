@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.202](https://github.com/planetaryescape/mxr/compare/v0.6.201...v0.6.202) (2026-11-02)
+
+
+### Bug Fixes
+
+* recover nameless-recipient asks and simplify task details ([#838](https://github.com/planetaryescape/mxr/issues/838)) ([86a031f](https://github.com/planetaryescape/mxr/commit/86a031fdfa5ca9a893bb3eb0681818dc81916755))
+
 ## [0.6.201](https://github.com/planetaryescape/mxr/compare/v0.6.200...v0.6.201) (2026-11-02)
 
 

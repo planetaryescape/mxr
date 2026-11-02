@@ -77,6 +77,8 @@ async function refreshTodos({ guide = false }: { guide?: boolean } = {}): Promis
   if (!qc) return;
   await Promise.all([
     qc.invalidateQueries({ queryKey: TODO_KEY }),
+    qc.invalidateQueries({ queryKey: ["now"] }),
+    qc.invalidateQueries({ queryKey: ["rail"] }),
     guide ? qc.invalidateQueries({ queryKey: ["mode-guide"] }) : null,
   ]).catch(() => undefined);
 }

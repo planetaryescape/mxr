@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import { useUndo } from "@/state/undoStore";
+import { setActiveQueryClient } from "@/lib/queryClient";
 
 import { todoFixture } from "./testing";
 
@@ -13,7 +15,7 @@ vi.mock("./api", async (importOriginal) => ({
   setTodoState: (...args: unknown[]) => setTodoState(...args),
 }));
 
-const { decideCatchup, letGoAll } = await import("./todoVerbs");
+const { decideCatchup, letGoAll, restoreTodos } = await import("./todoVerbs");
 
 function changed(ids: string[]) {
   return {
@@ -62,4 +64,31 @@ describe("undoing a catch-up decision", () => {
       todo_ids: ["todo_a", "todo_b"],
     });
   });
+});
+
+test("reopening a task refreshes its runway, Now and rail counts without waiting for polling", async () => {
+  const qc = new QueryClient();
+  setActiveQueryClient(qc);
+  let serverCount = 5;
+  const keys = [["rail", "all"], ["now", "all"], ["todos", "runway", "all"]];
+  const observers = keys.map((queryKey) => {
+    qc.setQueryData(queryKey, serverCount);
+    return new QueryObserver(qc, {
+      queryKey,
+      queryFn: async () => serverCount,
+      staleTime: Infinity,
+    });
+  });
+  const unsubscribes = observers.map((observer) => observer.subscribe(() => {}));
+  try {
+    setTodoState.mockImplementationOnce(async () => {
+      serverCount = 6;
+      return changed(["reopened"]);
+    });
+    await restoreTodos([todoFixture({ id: "reopened", state: "done" })]);
+    expect(observers.map((observer) => observer.getCurrentResult().data)).toEqual([6, 6, 6]);
+  } finally {
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
+    qc.clear();
+  }
 });

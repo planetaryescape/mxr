@@ -1,20 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { ReactNode } from "react";
 
 import { playSound } from "@/features/sound/player";
 
 import type { ReadingEdition } from "./api";
+import { fetchEdition } from "./api";
 import { EDITION_KEY, ReadingRoute } from "./ReadingRoute";
 
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
-  fetchEdition: async () => null,
+  fetchEdition: vi.fn<typeof fetchEdition>(),
   useAccountScope: () => null,
   useMarginaliaStatus: () => ({ data: undefined }),
 }));
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: unknown }) => children,
+  Link: ({ children, "data-testid": testId }: { children: ReactNode; "data-testid"?: string }) => (
+    <span data-testid={testId}>{children}</span>
+  ),
   Outlet: () => null,
   useNavigate: () => vi.fn<() => void>(),
   useParams: () => ({}),
@@ -94,6 +98,8 @@ const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve
 const sounds = () => vi.mocked(playSound).mock.calls.filter(([e]) => e === "low_tide").length;
 
 beforeEach(() => {
+  vi.mocked(fetchEdition).mockReset();
+  vi.mocked(fetchEdition).mockResolvedValue(cleared);
   vi.mocked(playSound).mockClear();
   Element.prototype.scrollIntoView = vi.fn<() => void>();
 });
@@ -103,6 +109,26 @@ afterEach(() => {
 });
 
 describe("Reading's finishing scene", () => {
+  test("holds edition counts and bulk actions until the skeleton gives way to content", async () => {
+    vi.mocked(fetchEdition).mockReturnValueOnce(new Promise(() => {}));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ReadingRoute />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("page-skeleton");
+    act(() => client.setQueryData(EDITION_KEY("all"), { ...withWork, later: [issue], later_count: 1 }));
+    await settle();
+    expect(screen.getByTestId("page-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("later-count")).not.toHaveTextContent("1");
+    expect(screen.queryByRole("button", { name: "Let go of all" })).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("page-skeleton")).toBeNull());
+    expect(screen.getByTestId("later-count")).toHaveTextContent("1");
+    expect(screen.getByRole("button", { name: "Let go of all" })).toBeInTheDocument();
+    expect(screen.getByTestId("reading-edition")).toBeInTheDocument();
+  });
+
   test("plays once on the first finish of the day, not again on a later visit that day", async () => {
     const first = visit(withWork);
     await screen.findByTestId("reading-edition");

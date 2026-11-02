@@ -2,6 +2,7 @@
 
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { Check } from "lucide-react";
 
 import type { RuntimeAccount } from "@/features/compose/api";
 import { AccountIdentitiesContext, identitiesFrom } from "@/features/accounts/useAccountIdentities";
@@ -53,6 +54,14 @@ function renderRow(
 }
 
 describe("Row", () => {
+  test("a phone icon action hides its keyboard chip as well as its desktop label", () => {
+    render(<RowVerb keys="e" label="done" Icon={Check} onClick={() => {}} />);
+    const button = screen.getByRole("button", { name: "done" });
+    expect(button.querySelector("kbd")).toHaveClass("max-sm:hidden");
+    expect(button.querySelector("svg")).toHaveClass("sm:hidden");
+    expect(within(button).getByText("done")).toHaveClass("hidden", "sm:inline");
+  });
+
   test("desktop-only secondary content hides its outer line on phones", () => {
     renderRow({ secondary: "left the inbox", secondaryDesktopOnly: true });
     expect(screen.getByText("left the inbox")).toHaveClass("hidden", "sm:block");

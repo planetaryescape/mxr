@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Check, Info, Mail, RotateCcw } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ModeMarks } from "@/components/ModeMark";
@@ -411,22 +412,23 @@ export const TodoRow = memo(function TodoRow({
       verbs={
         done ? (
           <>
-            <RowVerb keys="Enter" label="reopen" onClick={() => onRestore(todo)} />
-            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb keys="Enter" label="reopen" Icon={RotateCcw} onClick={() => onRestore(todo)} />
+            <RowVerb label="details" Icon={Info} onClick={() => onToggleDetails(todo)} />
           </>
         ) : (
           <>
             <RowVerb
               keys="e"
               label="done"
+              Icon={Check}
               testId="todo-tick"
               ariaLabel={`Tick off ${todo.title}`}
               onClick={() => onDone(todo, "pointer")}
             />
             {todo.thread_id ? (
-              <RowVerb keys="o" label="email" onClick={() => onOpenEmail(todo)} />
+              <RowVerb keys="o" label="email" Icon={Mail} onClick={() => onOpenEmail(todo)} />
             ) : null}
-            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb label="details" Icon={Info} onClick={() => onToggleDetails(todo)} />
           </>
         )
       }

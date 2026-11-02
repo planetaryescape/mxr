@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -60,6 +60,8 @@ import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { SectionHeading } from "@/components/SectionHeading";
 import { listMotions } from "@/features/modes/listMotions";
+import { ArchiveSkeleton } from "./ArchiveSkeleton";
+import { CARD_PANE_SIZE } from "./archiveLayout";
 
 const PAGE = 200;
 const SUBSCRIPTIONS_SEGMENT = "subscriptions";
@@ -74,8 +76,6 @@ type ArchiveSection = "ledger" | "subscriptions";
 
 /** Coming-up kinds that are about a subscription, not a dated record. */
 const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge", "renewal_approaching"]);
-/** The record card beside the ledger. */
-const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 
 /** Every ledger param stays while a record's email opens beside it. */
 const ARCHIVE_LIST_SEARCH: readonly (keyof ArchiveSearch)[] = [
@@ -171,9 +171,9 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
 
   return (
     <>
-      <ArchiveHeader ledger={ledger.data} guide={guide.data} />
+      <ArchiveHeader ledger={phase === "ready" ? ledger.data : undefined} guide={guide.data} />
       {phase !== "ready" ? (
-        <PageSkeleton framed shown={phase === "skeleton"} />
+        <ArchiveSkeleton shown={phase === "skeleton"} />
       ) : ledger.isError ? (
         <PageError
           framed

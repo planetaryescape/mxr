@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { playSound } from "@/features/sound/player";
@@ -13,7 +13,7 @@ vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   useNowQuery: () => ({
     data: state.now,
-    isLoading: false,
+    isLoading: state.now === undefined,
     isError: false,
     error: null,
     refetch: vi.fn<() => void>(),
@@ -53,6 +53,7 @@ const cleared = {
 
 const withWork = {
   ...cleared,
+  headline: "One person is waiting on you.",
   people: {
     rows: [
       {
@@ -82,7 +83,7 @@ const withWork = {
 } as unknown as Now;
 
 /** One visit: Now mounts with `now`, and its data is the fixture passed to `show`. */
-function visit(now: Now) {
+function visit(now: Now | undefined) {
   state.now = now;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui = () => (
@@ -113,6 +114,19 @@ afterEach(() => {
 });
 
 describe("Now's finishing scene", () => {
+  test("an unresolved visit shows the dashboard skeleton, then real people replace it", async () => {
+    const visitState = visit(undefined);
+    await screen.findByTestId("page-skeleton");
+    expect(screen.getByRole("status", { name: "Loading Now" })).toBeInTheDocument();
+    expect(screen.getByText("Due soon")).toBeInTheDocument();
+    visitState.show(withWork);
+    // A response arriving during the minimum hold must not append the real
+    // headline above the summary that the skeleton already reserves.
+    expect(screen.queryByTestId("now-headline")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("page-skeleton")).toBeNull());
+    expect(screen.getByTestId("now-headline")).toHaveTextContent("One person is waiting on you.");
+    expect(screen.getByText("Maya")).toBeInTheDocument();
+  });
   test("plays once on the first finish of the day, not again on a later visit that day", () => {
     const first = visit(withWork);
     first.show(cleared);

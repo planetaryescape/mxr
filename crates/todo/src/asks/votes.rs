@@ -542,8 +542,8 @@ fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Ac
     if facts.owner_authored {
         return Actor::Correspondent;
     }
-    // An explicit salutation cannot assign another person's request to the
-    // account owner merely because the email has only one To recipient.
+    // A known name mismatch is evidence for a different actor. With no owner
+    // name observed, a greeting alone cannot contradict the sole To recipient.
     let addressed = salutation(text).map(|(name, _)| name).or_else(|| {
         let mut paragraphs = prefix.rsplitn(2, "\n\n");
         let current = paragraphs.next().unwrap_or_default();
@@ -561,13 +561,26 @@ fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Ac
         })
     });
     if let Some(name) = addressed {
-        return if facts.owner_names.iter().any(|own| {
+        let matches_name = |own: &str| {
             own.eq_ignore_ascii_case(name)
                 || own
                     .split_whitespace()
                     .next()
                     .is_some_and(|first| first.eq_ignore_ascii_case(name))
-        }) {
+        };
+        let known_other = input
+            .to
+            .iter()
+            .chain(input.cc)
+            .chain(input.bcc)
+            .filter(|address| !(input.is_owner)(&address.email))
+            .filter_map(|address| address.name.as_deref())
+            .any(matches_name);
+        return if facts.owner_names.iter().any(|own| matches_name(own))
+            || facts.owner_names.is_empty()
+                && facts.recipient_role == RecipientRole::AloneTo
+                && !known_other
+        {
             Actor::Owner
         } else {
             Actor::ThirdParty

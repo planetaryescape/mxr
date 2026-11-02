@@ -268,6 +268,129 @@ fn card_expiry_and_payment_method_deadline_are_distinct_date_roles() {
     assert_eq!(date.at.date_naive().to_string(), "2026-10-30");
 }
 
+fn judge_unnamed_recipient(
+    body: &str,
+    role: RecipientRole,
+    named_other: Option<&str>,
+) -> AskAssessment {
+    let addresses =
+        mxr_core::OwnedAddresses::new(Some("alex@demo.mxr.local"), std::iter::empty::<&str>());
+    let is_owner = |email: &str| addresses.contains(email);
+    let owner = Address {
+        name: None,
+        email: "alex@demo.mxr.local".into(),
+    };
+    let other = Address {
+        name: named_other.map(str::to_string),
+        email: "other@example.com".into(),
+    };
+    let to = match role {
+        RecipientRole::AloneTo | RecipientRole::List => vec![owner.clone()],
+        RecipientRole::SharedTo => vec![owner.clone(), other.clone()],
+        _ => vec![],
+    };
+    let cc = if role == RecipientRole::Cc {
+        vec![owner.clone()]
+    } else if named_other.is_some() {
+        vec![other]
+    } else {
+        vec![]
+    };
+    let bcc = if role == RecipientRole::Bcc {
+        vec![owner]
+    } else {
+        vec![]
+    };
+    assess(
+        &AskInput {
+            message_id: &MessageId::new(),
+            account_id: &AccountId::new(),
+            subject: "Lease renewal",
+            body: Some(body),
+            from: &Address {
+                name: Some("Sam Okafor".into()),
+                email: "sam@riverside.example".into(),
+            },
+            to: &to,
+            cc: &cc,
+            bcc: &bcc,
+            list_mail: role == RecipientRole::List,
+            bulk: false,
+            owner_names: &[],
+            owner_addresses: &["alex@demo.mxr.local".into()],
+            is_owner: &is_owner,
+            sent: "2026-11-02T12:00:00Z".parse().unwrap(),
+            predecessor: None,
+            owner_replied_afterwards: false,
+            reply_capable: true,
+        },
+        &Utc,
+        "anonymous-recipient".into(),
+    )
+}
+
+#[test]
+fn a_sole_recipient_without_a_display_name_keeps_a_greeted_request() {
+    let assessment = judge_unnamed_recipient(
+        "Hi Alex,\nThe renewal is attached. Please sign and send it back by 5 November 2026.\nThanks, Sam",
+        RecipientRole::AloneTo,
+        None,
+    );
+    let asks: Vec<_> = assessment
+        .units
+        .iter()
+        .filter(|unit| unit.answer == AskAnswer::AsksYou)
+        .collect();
+    assert_eq!(asks.len(), 1, "{assessment:?}");
+    let unit = asks[0];
+    assert_eq!(
+        assessment.quote(unit),
+        Some("Please sign and send it back by 5 November 2026.")
+    );
+    let tags = unit.tags.as_ref().expect("signing request tags");
+    assert_eq!(tags.action, ActionKind::Sign);
+    let due = &assessment.facts.dates[tags.due.expect("signing deadline")];
+    assert_eq!(due.at.date_naive().to_string(), "2026-11-05");
+}
+
+#[test]
+fn an_unknown_owner_name_does_not_claim_shared_or_copied_requests() {
+    for role in [
+        RecipientRole::SharedTo,
+        RecipientRole::Cc,
+        RecipientRole::Bcc,
+        RecipientRole::List,
+    ] {
+        let assessment = judge_unnamed_recipient("Hi Alex,\nPlease sign the contract.", role, None);
+        assert!(
+            !answers(&assessment).contains(&AskAnswer::AsksYou),
+            "{role:?}: {assessment:?}"
+        );
+    }
+    let named_other = judge_unnamed_recipient(
+        "Hi Alex,\nPlease sign the contract.",
+        RecipientRole::AloneTo,
+        Some("Alex Smith"),
+    );
+    assert!(
+        !answers(&named_other).contains(&AskAnswer::AsksYou),
+        "a known copied addressee still names another actor"
+    );
+}
+
+#[test]
+fn an_unknown_owner_name_does_not_promote_quoted_or_signed_off_requests() {
+    for body in [
+        "> Hi Alex,\n> Please sign the contract.",
+        "FYI\n---------- Forwarded message ---------\nFrom: Other <other@example.com>\nHi Alex,\nPlease sign the contract.",
+        "Hi Alex,\nAn update for you.\n-- \nPlease sign the contract.",
+        "Hi Alex,\nPlease do not sign the contract.",
+    ] {
+        let assessment = judge_unnamed_recipient(body, RecipientRole::AloneTo, None);
+        assert!(!answers(&assessment).contains(&AskAnswer::AsksYou), "{body}: {assessment:?}");
+    }
+}
+
 #[test]
 fn explicit_salutations_do_not_assign_another_persons_actions_to_the_owner() {
     for body in [

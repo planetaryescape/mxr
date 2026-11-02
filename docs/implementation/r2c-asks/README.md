@@ -13,6 +13,11 @@ history. The [release workflow](https://github.com/planetaryescape/mxr/actions/r
 records artifact publication and installation checks. Earlier round notes below
 retain their original verification limits as implementation history.
 
+The current asks policy is `asks-r2c-17`. If the owner has no observed display
+name, a salutation alone no longer overrides the sole owned To recipient.
+Known name mismatches, named copied addressees, shared recipients and context-only
+quotes remain excluded. Inspect the stored answer with `mxr modes why MESSAGE_ID --format json`.
+
 ## Inspect the stored answer and correct a task
 
 ```sh
@@ -49,7 +54,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-16` covers received and sent messages in the existing assessment
+`asks-r2c-17` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -78,7 +83,7 @@ remain retained history and read pending until the current policy is stored.
 A response noun mention alone does not establish a recipient question.
 Direct requests, questions, response imperatives and reply withdrawals retain
 their evidence; exact source quotes and spans stay unchanged. Previous policies13 through15
-remain retained history and read pending until policy16 is stored. Waiting uses the first external To recipient, then Cc, with the same owned-address matching as commitment projection. A failed-payment notice and its immediate polite remediation share one task and the complete source quote. Different explicit payment references, currencies, amounts or due dates remain independent. Policy13 saved decisions retain their original rows and correction Undo snapshots when the two old units become one, including an amount-less remediation next to a priced failure.
+remain retained history and read pending until the current policy is stored. Waiting uses the first external To recipient, then Cc, with the same owned-address matching as commitment projection. A failed-payment notice and its immediate polite remediation share one task and the complete source quote. Different explicit payment references, currencies, amounts or due dates remain independent. Policy13 saved decisions retain their original rows and correction Undo snapshots when the two old units become one, including an amount-less remediation next to a priced failure.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent

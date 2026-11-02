@@ -6,6 +6,43 @@ use mxr_core::{Address, MessageDirection, ThreadId};
 use mxr_store::TodoState;
 
 #[tokio::test]
+async fn a_greeted_sole_recipient_without_a_name_gets_the_public_task() {
+    let fx = Fixture::new().await;
+    let mail = fx
+        .message(
+            &ThreadId::new(),
+            "sam@example.com",
+            ME,
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    replace(
+        &fx,
+        &mail,
+        "Hi Alex,\nThe renewal is attached. Please sign and send it back by tomorrow.\nThanks, Sam",
+    )
+    .await;
+    settle(&fx, &mail).await;
+    let ResponseData::Todos { todos } = request(
+        &fx,
+        Request::ListTodos {
+            account_id: Some(fx.account.clone()),
+            state: mxr_protocol::TodoStateData::Open,
+            limit: 100,
+        },
+    )
+    .await
+    else {
+        panic!("public todos")
+    };
+    assert_eq!(todos.len(), 1);
+    assert_eq!(todos[0].source_message_id.as_ref(), Some(&mail.id));
+    assert_eq!(todos[0].why, "Please sign and send it back by tomorrow.");
+    assert!(todos[0].due_at.is_some());
+}
+
+#[tokio::test]
 async fn review3_outgoing_cc_request_reaches_public_waiting_without_owner_task() {
     for external_to in [false, true] {
         let fx = Fixture::new().await;

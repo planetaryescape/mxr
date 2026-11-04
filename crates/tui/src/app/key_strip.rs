@@ -189,9 +189,9 @@ impl App {
     /// [`PREFIX_GUIDE_DELAY`]: crate::input::PREFIX_GUIDE_DELAY
     pub(crate) fn prefix_guide(
         &self,
-        now: std::time::Instant,
     ) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
-        if self.input.prefix_waited(now)? < crate::input::PREFIX_GUIDE_DELAY {
+        // The handler's own clock, which set the prefix's deadline.
+        if self.input.prefix_waited(self.input.now())? < crate::input::PREFIX_GUIDE_DELAY {
             return None;
         }
         self.prefix_choices()
@@ -233,9 +233,16 @@ impl App {
         Some((prefix, choices))
     }
 
-    /// Test-only: as if the waiting prefix was pressed `by` earlier.
+    /// Test-only: stop the key handler's clock, so prefix timing moves
+    /// only by [`Self::advance_input_clock_for_tests`].
     #[cfg(test)]
-    pub(crate) fn age_prefix_for_tests(&mut self, by: std::time::Duration) {
-        self.input.age_prefix_for_tests(by);
+    pub(crate) fn freeze_input_clock_for_tests(&mut self) {
+        self.input.freeze_clock_for_tests();
+    }
+
+    /// Test-only: move the key handler's frozen clock forward by `by`.
+    #[cfg(test)]
+    pub(crate) fn advance_input_clock_for_tests(&mut self, by: std::time::Duration) {
+        self.input.advance_clock_for_tests(by);
     }
 }

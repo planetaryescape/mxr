@@ -1044,7 +1044,7 @@ impl App {
         });
         // The prefix guide sits where toasts stack; a toast that arrives
         // while it is open draws over it.
-        if let Some((prefix, choices)) = self.prefix_guide(now) {
+        if let Some((prefix, choices)) = self.prefix_guide() {
             ui::prefix_guide::draw(frame, toast_area, prefix, &choices, theme);
         }
         ui::toasts::draw(frame, toast_area, &visible_toasts, now, theme);

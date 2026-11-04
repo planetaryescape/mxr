@@ -710,7 +710,6 @@ impl App {
             return None;
         }
         let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
         if page.reader_focused && page.reader.is_some() {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down if plain => {
@@ -733,11 +732,6 @@ impl App {
                 // `"` quotes the passage; h stays the move left it is elsewhere.
                 KeyCode::Char('"') if plain_or_shift(key.modifiers) => {
                     return Some(Action::ReadingHighlight)
-                }
-                // The highlights are the Highlights tab now, on `3`.
-                KeyCode::Char('H') if shifted => {
-                    self.announce_moved("reading-reader", "H");
-                    return None;
                 }
                 _ => {}
             }

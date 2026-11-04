@@ -377,13 +377,10 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
         Some(NowRow::NotSure(question)) => question.message_id.clone(),
         other => panic!("expected a question, got {other:?}"),
     };
-    // The old one-key answers say where answering went and move nothing.
+    // The old one-key answers do nothing.
     let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('r'));
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced("not-sure", "r", "Move is now X", before.as_deref())
-    );
+    assert_eq!(app.status_message, before);
     assert!(queued(&app).is_empty());
 
     press(&mut app, KeyCode::Char('X'));

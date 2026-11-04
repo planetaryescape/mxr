@@ -370,15 +370,13 @@ impl App {
             return self.run_defined_key(defined);
         }
         // A Not-sure question answers through `X` now (blueprint 35); its
-        // old one-key answers say so instead of doing done or reply here.
+        // old one-key answers do nothing rather than done or reply here.
         // `u` stays undo, as everywhere.
         if key.modifiers == KeyModifiers::NONE
             && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)))
+            && matches!(key.code, KeyCode::Char('m' | 'x' | 'r' | 'e'))
         {
-            if let KeyCode::Char(c @ ('m' | 'x' | 'r' | 'e')) = key.code {
-                self.announce_moved("not-sure", &c.to_string());
-                return None;
-            }
+            return None;
         }
         let defined = self.defined_key("now", key);
         self.run_defined_key(defined)

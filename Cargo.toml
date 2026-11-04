@@ -235,7 +235,7 @@ chrono-tz = "0.10"
 bitflags = { version = "2", features = ["serde"] }
 sha2 = "0.11"
 # Word-level diffs for writing-help proposals (already in the lockfile via insta).
-similar = "2"
+similar = "3"
 base16ct = { version = "1.0", features = ["alloc"] }
 
 # Error handling
@@ -248,7 +248,7 @@ constant_time_eq = "0.6"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 # LLM tracing to a Langfuse on this machine (OTLP over HTTP), behind the
 # `langfuse` feature. The API crate is all `mxr-llm` needs; the SDK and
@@ -290,7 +290,7 @@ keyring = { version = "3", features = ["apple-native", "sync-secret-service", "c
 security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
 base64 = "0.23"
-mail-parser = "0.11"
+mail-parser = "1.0"
 # Upstream0.2 requires its mail_parser adapter even with defaults off; verifier stays off.
 msg-auth-status = { version = "0.2.0", default-features = false, features = ["std", "mail_parser"] }
 # Charset decoding for provider body parts that arrive in their original
@@ -299,12 +299,12 @@ encoding_rs = "0.8"
 icalendar = { version = "0.17.10", default-features = true }
 url = "2"
 percent-encoding = "2"
-scraper = "0.27"
+scraper = "0.29"
 # scraper's tree type, for removing quote markers before HTML becomes text.
 ego-tree = "0.11"
 data-url = "0.3"
 mime_guess = "2"
-mail-builder = "1.0.0"
+mail-builder = "2.0.0"
 open = "5"
 
 # TUI extras
@@ -321,7 +321,7 @@ rodio = { version = "0.23.0", default-features = false, features = ["playback"] 
 
 # Compose
 serde_yaml = "0.9"
-comrak = { version = "0.56", default-features = false, features = ["shortcodes"] }
+comrak = { version = "0.59", default-features = false, features = ["shortcodes"] }
 
 # SMTP
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "hostname", "pool", "smtp-transport"] }

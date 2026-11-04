@@ -12,6 +12,8 @@ use ratatui::widgets::*;
 /// One key that completes the prefix, and what it does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Continuation {
+    /// The action the key runs, from the definition.
+    pub id: String,
     pub next: String,
     pub label: String,
 }
@@ -38,6 +40,7 @@ pub(crate) fn continuations(
                     continue;
                 }
                 found.push(Continuation {
+                    id: action.id.clone(),
                     next: next.to_string(),
                     label: action
                         .short_label

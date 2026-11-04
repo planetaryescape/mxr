@@ -17,8 +17,9 @@ impl App {
         add: &[String],
         remove: &[String],
     ) {
-        let add_provider_ids = self.resolve_label_provider_ids(add);
-        let remove_provider_ids = self.resolve_label_provider_ids(remove);
+        // Each message gets its own account's label ids: the same name is a
+        // different label on every account.
+        let labels = &self.mailbox.labels;
         for envelopes in [
             &mut self.mailbox.envelopes,
             &mut self.mailbox.all_envelopes,
@@ -32,8 +33,8 @@ impl App {
                 {
                     apply_provider_label_changes(
                         &mut envelope.label_provider_ids,
-                        &add_provider_ids,
-                        &remove_provider_ids,
+                        &label_provider_ids(labels, &envelope.account_id, add),
+                        &label_provider_ids(labels, &envelope.account_id, remove),
                     );
                 }
             }
@@ -45,11 +46,75 @@ impl App {
             {
                 apply_provider_label_changes(
                     &mut envelope.label_provider_ids,
-                    &add_provider_ids,
-                    &remove_provider_ids,
+                    &label_provider_ids(labels, &envelope.account_id, add),
+                    &label_provider_ids(labels, &envelope.account_id, remove),
                 );
             }
         }
+    }
+
+    /// Why a by-name label action must not run, or None when every target
+    /// message's account has the label. The daemon resolves the name on each
+    /// message's own account and would send an unknown name to the provider
+    /// as a label id, so the refusal names the account instead. System
+    /// mailboxes are exempt: the sidebar keeps one merged entry per mailbox
+    /// (the default account's), so the list cannot say whether another
+    /// account has it, and every account has its own Inbox, Trash and Spam.
+    /// A name no loaded label has is left to the daemon as before: the list
+    /// may not have loaded yet or may predate a label made elsewhere.
+    pub(super) fn label_refusal(
+        &self,
+        message_ids: &[MessageId],
+        label_name: &str,
+    ) -> Option<String> {
+        let mut named = self
+            .mailbox
+            .labels
+            .iter()
+            .filter(|label| label.name == label_name || label.provider_id == label_name)
+            .peekable();
+        if named.peek().is_none() || named.any(|label| label.kind == LabelKind::System) {
+            return None;
+        }
+        let mut checked: Vec<mxr_core::AccountId> = Vec::new();
+        for account_id in message_ids
+            .iter()
+            .filter_map(|message_id| self.message_account_id(message_id))
+        {
+            if checked.contains(&account_id) {
+                continue;
+            }
+            let has_label = self.mailbox.labels.iter().any(|label| {
+                label.account_id == account_id
+                    && (label.name == label_name || label.provider_id == label_name)
+            });
+            if !has_label {
+                return Some(format!(
+                    "No label '{label_name}' on {}. Nothing was changed.",
+                    self.account_display_name(&account_id)
+                ));
+            }
+            checked.push(account_id);
+        }
+        None
+    }
+
+    pub(super) fn message_account_id(&self, message_id: &MessageId) -> Option<mxr_core::AccountId> {
+        self.mailbox
+            .envelopes
+            .iter()
+            .chain(self.mailbox.all_envelopes.iter())
+            .chain(self.search.page.results.iter())
+            .chain(self.mailbox.viewed_thread_messages.iter())
+            .find(|envelope| &envelope.id == message_id)
+            .map(|envelope| envelope.account_id.clone())
+            .or_else(|| {
+                self.mailbox
+                    .viewing_envelope
+                    .as_ref()
+                    .filter(|envelope| &envelope.id == message_id)
+                    .map(|envelope| envelope.account_id.clone())
+            })
     }
 
     pub fn apply_local_flags(&mut self, message_id: &MessageId, flags: MessageFlags) {
@@ -192,11 +257,7 @@ impl App {
                 }
             }
             MutationEffect::RefreshList => {
-                if let Some(label_id) = self.mailbox.active_label.clone() {
-                    self.mailbox.pending_label_fetch = Some(label_id);
-                } else if let Some(role) = self.mailbox.active_role {
-                    self.mailbox.pending_role_fetch = Some(role);
-                }
+                crate::daemon_events::queue_active_list_fetch(self);
                 // An undo of done here puts a thread back in its modes.
                 match self.mailbox.mailbox_view {
                     MailboxView::Now => self.refresh_now(),
@@ -590,6 +651,12 @@ impl App {
             if !sending {
                 self.schedule_draft_cleanup(pending.draft_path);
             }
+            // Messages shows a conversation's unsent reply on its row, and
+            // `r` continues the draft the row names: a reply just saved or
+            // sent has to show there, or the next `r` starts another draft.
+            if self.mailbox.mailbox_view == MailboxView::People {
+                self.mailbox.messages_page.pending_refresh = true;
+            }
         }
     }
 
@@ -859,19 +926,6 @@ impl App {
             .collect()
     }
 
-    pub(super) fn resolve_label_provider_ids(&self, refs: &[String]) -> Vec<String> {
-        refs.iter()
-            .filter_map(|label_ref| {
-                self.mailbox
-                    .labels
-                    .iter()
-                    .find(|label| label.provider_id == *label_ref || label.name == *label_ref)
-                    .map(|label| label.provider_id.clone())
-                    .or_else(|| Some(label_ref.clone()))
-            })
-            .collect()
-    }
-
     pub(super) fn mutation_target_ids(&self) -> Vec<MessageId> {
         if self.desk_list_focused() {
             return self.selected_desk_row_message_ids();
@@ -1015,4 +1069,24 @@ impl App {
         self.mailbox.selected_set.clear();
         self.mailbox.selected_set.extend(ids);
     }
+}
+
+/// The provider ids of the labels a name or id refers to on one account.
+/// An unknown reference passes through unchanged, as the daemon does.
+fn label_provider_ids(
+    labels: &[Label],
+    account_id: &mxr_core::AccountId,
+    refs: &[String],
+) -> Vec<String> {
+    refs.iter()
+        .map(|label_ref| {
+            labels
+                .iter()
+                .find(|label| {
+                    &label.account_id == account_id
+                        && (label.provider_id == *label_ref || label.name == *label_ref)
+                })
+                .map_or_else(|| label_ref.clone(), |label| label.provider_id.clone())
+        })
+        .collect()
 }

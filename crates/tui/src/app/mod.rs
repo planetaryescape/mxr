@@ -33,6 +33,8 @@ pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
     account_id: None,
     limit: Some(0),
 };
+#[cfg(test)]
+mod label_accounts_tests;
 mod message_actions;
 mod messages_actions;
 mod modal_actions;
@@ -1518,6 +1520,16 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
         SnoozePreset::Weekend,
         SnoozePreset::NextMonday,
     ]
+}
+
+/// The presets whose label is still true now: "Tonight" leaves once the
+/// evening hour has passed, as it does in the web app's Not now, instead of
+/// meaning tomorrow evening.
+pub fn available_snooze_presets(config: &mxr_config::SnoozeConfig) -> Vec<SnoozePreset> {
+    snooze_presets()
+        .into_iter()
+        .filter(|preset| mxr_config::snooze::resolve_snooze_preset_time(*preset, config).is_some())
+        .collect()
 }
 
 pub fn resolve_snooze_preset(

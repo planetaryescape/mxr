@@ -558,7 +558,13 @@ fn keys_line(page: &MessagesPageState) -> String {
         .iter()
         .filter_map(|key| verb(key).map(|v| format!("{key} {v}")))
         .collect();
-    parts.push("[ ] topic".into());
+    // `[` and `]` stepped topics until K3; the definition says which keys do now.
+    let topic = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
+    parts.push(format!(
+        "{} {} topic",
+        topic("messages.prev-topic"),
+        topic("messages.next-topic")
+    ));
     parts.push("? help".into());
     parts.join("  ")
 }

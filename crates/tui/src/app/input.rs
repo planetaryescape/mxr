@@ -978,7 +978,13 @@ impl App {
                     }
                     return None;
                 }
+                // Ctrl-a is GNU screen's prefix, which a TUI default never
+                // takes (blueprint 35); it says where add-to-Cc went.
                 (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    self.announce_moved("send-review", "Ctrl+a");
+                    return None;
+                }
+                (KeyCode::Char('c'), KeyModifiers::NONE) => {
                     // Slice 5.3 (C2.7 cont): add the top "maybe
                     // include" suggestion to the draft's Cc and
                     // remove it from the suggestions list.

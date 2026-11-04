@@ -82,7 +82,10 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     let show_triage = view.rows.iter().any(|row| row.triage_verdict.is_some());
     let triage_width = if show_triage { 8 } else { 0 };
     let chip_width = view.account_marks.column_width() as u16;
-    let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + 22 + 8 + 8 + 2 + chip_width;
+    // In a narrow list (Search's results beside the preview) a full-width
+    // sender column left the subject four characters; the sender gives way.
+    let sender_width: u16 = if area.width < 100 { 14 } else { 22 };
+    let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + sender_width + 8 + 8 + 2 + chip_width;
     let column_count: u16 = if show_triage { 10 } else { 9 } + u16::from(chip_width > 0);
     let column_spacing_total: u16 = column_count - 1;
     let border_total: u16 = 2;
@@ -111,8 +114,8 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         widths.push(Constraint::Length(8)); // triage verdict token
     }
     widths.extend([
-        Constraint::Length(22), // sender
-        Constraint::Fill(1),    // subject (+ snippet preview)
+        Constraint::Length(sender_width), // sender
+        Constraint::Fill(1),              // subject (+ snippet preview)
     ]);
     if chip_width > 0 {
         widths.push(Constraint::Length(chip_width)); // account chip, only when rows mix accounts

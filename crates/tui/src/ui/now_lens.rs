@@ -341,7 +341,13 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
                 line, false, row_width, theme, view.now, chip,
             ));
         }
-        body.text("  \u{21b5} open  A let go of this digest", muted);
+        body.text(
+            format!(
+                "  \u{21b5} open  {} let go of this digest",
+                mxr_keymap::guide_key("now.let-go-digest").unwrap_or_default()
+            ),
+            muted,
+        );
         index += 1;
     }
     if let Some(pick) = &now.reading {
@@ -475,10 +481,13 @@ fn keys_line(page: &NowPageState) -> String {
             .filter(|key| !matches!(key.key.as_str(), "Enter" | "?"))
             .map(|key| format!("{} {}", key.key, key.verb))
             .collect(),
+        // Before the daemon's guide arrives, the compiled-in copy names
+        // actions by id; show their keys, as the guide would.
         None => mxr_protocol::NOW_GUIDE
             .keys
             .iter()
-            .filter(|(key, _)| !matches!(*key, "Enter" | "?"))
+            .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, verb)))
+            .filter(|(key, _)| !matches!(key.as_str(), "Enter" | "?"))
             .map(|(key, verb)| format!("{key} {verb}"))
             .collect(),
     };
@@ -561,7 +570,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
     );
 
     if let Some(preview) = &view.page.digest_preview {
-        super::updates_lens::draw_let_go_preview(frame, area, preview, theme);
+        super::updates_lens::draw_let_go_preview(
+            frame,
+            area,
+            preview,
+            " Let go of this digest ",
+            theme,
+        );
     }
 }
 

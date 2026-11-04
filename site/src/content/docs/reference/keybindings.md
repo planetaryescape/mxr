@@ -1307,7 +1307,7 @@ After you save and quit `$EDITOR`. It opens on Send.
 | `e`, `Esc` | Edit again |
 | `r` | Refine with the assistant |
 | `#` | Discard draft |
-| `Ctrl+a` | Add the suggested person to Cc |
+| `c` | Add the suggested person to Cc |
 
 #### Send later or remind me: the time
 

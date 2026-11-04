@@ -649,3 +649,27 @@ fn an_account_address_change_drops_every_cached_reply_context() {
         "a reply cached before the alias existed would still offer the old To line"
     );
 }
+
+/// Dogfood 2026-10-29: the arrivals list's footer said "K sender", but the
+/// sender's key has been `P` since K3 and `K` does nothing there.
+#[test]
+fn the_arrivals_footer_names_the_senders_key() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 0;
+    press(&mut app, KeyCode::Enter);
+    assert!(app.mailbox.trust.arrivals_list.is_some());
+    let backend = ratatui::backend::TestBackend::new(160, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let shown: String = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(shown.contains("X move  P sender"), "{shown}");
+    assert!(!shown.contains("K sender"), "{shown}");
+}

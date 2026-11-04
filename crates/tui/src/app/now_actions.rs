@@ -181,6 +181,9 @@ impl App {
         };
         match target {
             NowTarget::Arrivals => self.apply(Action::OpenArrivals),
+            // A person opens in Messages, on this conversation; `o` opens
+            // the email itself.
+            NowTarget::Person { thread_id, .. } if !email => self.open_messages_thread(thread_id),
             NowTarget::Person { message_id, .. }
             | NowTarget::Reading { message_id, .. }
             | NowTarget::NotSure { message_id } => {

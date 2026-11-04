@@ -148,7 +148,10 @@ fn modal_lines(
                 s.evidence_msg_ids.len()
             ));
         }
-        lines.push("Press Ctrl-A to add the top suggestion to Cc.".to_string());
+        lines.push(format!(
+            "Press {} to add the top suggestion to Cc.",
+            mxr_keymap::guide_key("send-review.add-cc").unwrap_or_default()
+        ));
     }
 
     if let Some(input) = send_at_input {

@@ -16,6 +16,33 @@ fn the_shipped_definition_is_sound() {
     assert_eq!(defaults().problems(), Vec::<String>::new());
 }
 
+/// Blueprint 35: TUI defaults never depend on a key a terminal cannot
+/// deliver (`Ctrl-a` is GNU screen's prefix, `Ctrl-b` tmux's, and the rest).
+/// Such a key may stay as an alias beside one that arrives everywhere, as
+/// the assistant's `Alt-Enter` does beside `Ctrl-j`.
+#[test]
+fn every_tui_binding_has_a_key_a_terminal_can_send() {
+    let undeliverable: Vec<String> = defaults()
+        .actions
+        .iter()
+        .flat_map(|action| {
+            action
+                .tui
+                .iter()
+                .filter(|binding| {
+                    !binding.keys.is_empty()
+                        && binding.keys.iter().all(|key| tui_cannot_deliver(key))
+                })
+                .map(move |binding| format!("{}: {}", action.id, binding.keys.join(", ")))
+        })
+        .collect();
+    assert!(
+        undeliverable.is_empty(),
+        "TUI bindings with only keys a terminal cannot send:\n{}",
+        undeliverable.join("\n")
+    );
+}
+
 #[test]
 fn the_clients_use_the_same_keys() {
     let differences = defaults().client_differences();

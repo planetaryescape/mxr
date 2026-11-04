@@ -151,6 +151,16 @@ describe("useDaemonEventInvalidation", () => {
     expect(keys).toContain(JSON.stringify(["mailbox"]));
   });
 
+  test("SyncCompleted refreshes the starred lens, which is listed by its flag", () => {
+    const { emit, invalidates } = setup();
+    const starredLens = ["mailbox", { lens_kind: "starred", view: "threads", limit: 150 }];
+    expect(invalidates(starredLens)).toBe(false);
+
+    emit({ type: "SyncCompleted", account_id: "acct-1", messages_synced: 2 });
+
+    expect(invalidates(starredLens)).toBe(true);
+  });
+
   test("ModesChanged (a move in any client) refreshes every mode, Now's line and Inbox's chips", () => {
     const { emit, invalidates } = setup();
     emit({ type: "ModesChanged", account_id: "acct-1" });

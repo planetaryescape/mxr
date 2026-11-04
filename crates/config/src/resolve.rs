@@ -667,7 +667,11 @@ fn render_config(
 /// Makes `target` hold the keys and values of `source`. A value that is
 /// already equal is left alone, so its formatting and comments survive; a
 /// changed one keeps its decor (leading comment and trailing comment).
-fn merge_table(target: &mut toml_edit::Table, source: &toml_edit::Table) {
+///
+/// The serializer writes every section as a regular table. Sections are merged
+/// through `TableLike`, so a section the user wrote inline stays inline and
+/// keeps its comment.
+fn merge_table(target: &mut dyn toml_edit::TableLike, source: &dyn toml_edit::TableLike) {
     let stale: Vec<String> = target
         .iter()
         .map(|(key, _)| key.to_string())
@@ -677,12 +681,12 @@ fn merge_table(target: &mut toml_edit::Table, source: &toml_edit::Table) {
         target.remove(&key);
     }
     for (key, item) in source.iter() {
-        match (target.get_mut(key), item) {
-            (Some(toml_edit::Item::Table(existing)), toml_edit::Item::Table(fresh)) => {
-                merge_table(existing, fresh);
-            }
-            (Some(existing), item) => replace_item(existing, item),
-            (None, item) => {
+        match target.get_mut(key) {
+            Some(existing) => match (existing.as_table_like_mut(), item.as_table_like()) {
+                (Some(existing), Some(fresh)) => merge_table(existing, fresh),
+                _ => replace_item(existing, item),
+            },
+            None => {
                 target.insert(key, item.clone());
             }
         }
@@ -690,15 +694,7 @@ fn merge_table(target: &mut toml_edit::Table, source: &toml_edit::Table) {
 }
 
 fn replace_item(existing: &mut toml_edit::Item, fresh: &toml_edit::Item) {
-    // The serializer writes every section as a regular table. A section the
-    // user wrote inline is compared, and kept, as an inline table.
-    let fresh_value = match (existing.is_inline_table(), fresh) {
-        (true, toml_edit::Item::Table(table)) => Some(toml_edit::Value::InlineTable(
-            table.clone().into_inline_table(),
-        )),
-        _ => fresh.as_value().cloned(),
-    };
-    match (existing.as_value_mut(), fresh_value) {
+    match (existing.as_value_mut(), fresh.as_value().cloned()) {
         (Some(existing_value), Some(fresh_value)) => {
             if same_value(existing_value, &fresh_value) {
                 return;
@@ -928,6 +924,7 @@ mod write_tests {
         let saved = std::fs::read_to_string(&path).expect("config fixture");
         assert!(saved.contains("# keep this editor"), "{saved}");
         assert!(saved.contains("editor = 'nvim'"), "{saved}");
+        assert!(!saved.contains("[general]"), "{saved}");
         let written = load_config_file_as_written(&path).expect("config fixture");
         assert_eq!(written.search.max_results, config.search.max_results);
     }

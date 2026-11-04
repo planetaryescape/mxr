@@ -18,7 +18,7 @@ pub(super) async fn page(
         .iter()
         .filter_map(|r| r.source_message_id.clone())
         .collect();
-    super::assessments::reconcile_messages(state, account, &ids).await?;
+    super::assessments::reconcile_messages_at(state, account, &ids, now).await?;
     let answers = state.store.asks_for_messages(account, &ids).await?;
     let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
     let rows = state.store.list_todo_scan_rows(&ids).await?;

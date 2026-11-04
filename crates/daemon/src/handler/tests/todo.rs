@@ -862,6 +862,37 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
     );
 }
 
+/// The post-sync scan files what its `now` would, whatever the wall clock
+/// reads: the classifier eval pins `now` and must grade the same mail the
+/// same way on any day. The sweep runs this under a shifted system clock.
+#[tokio::test]
+async fn a_pinned_post_sync_scan_files_the_same_to_do_at_any_wall_clock() {
+    let fx = Fixture::new().await;
+    let now = Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap();
+    let bill = camden_bill(&fx, now).await;
+    todos::scan_messages_at(&fx.state, std::slice::from_ref(&bill), now).await;
+
+    let rows: Vec<_> = fx
+        .state
+        .store
+        .list_runway_todos(Some(&fx.account), DateTime::UNIX_EPOCH)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.source_message_id.as_ref() == Some(&bill))
+        .collect();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let row = &rows[0];
+    assert_eq!(row.title, "Pay council tax");
+    assert_eq!(row.state, mxr_store::TodoState::Open, "{row:?}");
+    assert_eq!(row.catchup, None, "{row:?}");
+    assert_eq!(row.expired_at, None, "{row:?}");
+    assert_eq!(row.created_at, now, "{row:?}");
+    assert_eq!(row.updated_at, now, "{row:?}");
+    let surface = row.surface_at.expect("a surface time");
+    assert!(surface > now, "not yet in Now: {row:?}");
+}
+
 #[tokio::test]
 async fn a_lookalike_domain_gets_open_email_to_pay_and_its_raw_domain() {
     let fx = Fixture::new().await;

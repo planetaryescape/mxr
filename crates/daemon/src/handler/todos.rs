@@ -82,7 +82,7 @@ pub(crate) async fn scan_messages_at(
         envelopes.iter().map(|e| e.account_id.clone()).collect();
     for account in accounts {
         if let Err(error) =
-            super::assessments::reconcile_messages(state, &account, message_ids).await
+            super::assessments::reconcile_messages_at(state, &account, message_ids, now).await
         {
             tracing::warn!(%error, "asks materialization pending before to-do scan");
             return;

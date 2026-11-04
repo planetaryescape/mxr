@@ -283,3 +283,33 @@ fn an_over_budget_page_yields_no_paragraphs_or_anchors() {
     assert!(walked.paragraphs.is_empty());
     assert!(walked.anchors.is_empty());
 }
+
+#[test]
+fn a_lost_helper_reads_as_a_page_with_no_paragraphs_or_links() {
+    let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+        mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+    ));
+    let got = mxr_html_worker::with_supervisor(lost, || {
+        html(
+            "Weekly",
+            "Weekly",
+            "<p>Some real words in an issue that the extractor would normally find.</p>",
+        )
+    });
+    assert!(got.links.is_empty());
+    assert!(got
+        .paragraphs
+        .iter()
+        .all(|paragraph| !paragraph.text.contains("real words")));
+}
+
+#[test]
+fn the_walk_gives_the_same_extraction_through_its_wire_format() {
+    let source = "<h1>Title</h1><p>Body words here.</p><a href=\"https://example.test/a\">Read</a>";
+    let direct = walk_html_in_process(source);
+    let encoded = serde_json::to_vec(&direct).expect("encodes");
+    let back: Walked = serde_json::from_slice(&encoded).expect("decodes");
+    assert_eq!(back.paragraphs, direct.paragraphs);
+    assert_eq!(back.anchors.len(), direct.anchors.len());
+    assert!(!direct.paragraphs.is_empty());
+}

@@ -4465,6 +4465,7 @@ dependencies = [
  "mxr-core",
  "mxr-deliveries",
  "mxr-export",
+ "mxr-html-worker",
  "mxr-humanizer",
  "mxr-keychain",
  "mxr-keymap",
@@ -4722,6 +4723,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mxr-html-worker"
+version = "0.6.207"
+dependencies = [
+ "nix 0.30.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "mxr-humanizer"
 version = "0.6.208"
 dependencies = [
@@ -4834,8 +4846,11 @@ dependencies = [
  "lettre",
  "mail-parser 0.11.9",
  "mxr-core",
+ "mxr-html-worker",
  "regex",
  "scraper",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "uuid",
@@ -4977,10 +4992,12 @@ dependencies = [
  "html2text",
  "insta",
  "mail-parser 0.11.9",
+ "mxr-html-worker",
  "mxr-test-support",
  "once_cell",
  "regex",
  "scraper",
+ "serde",
  "serde_json",
  "tracing",
  "url",
@@ -4994,6 +5011,7 @@ dependencies = [
  "chrono",
  "dom_smoothie",
  "ego-tree",
+ "mxr-html-worker",
  "mxr-llm",
  "mxr-reader",
  "once_cell",
@@ -5073,6 +5091,7 @@ version = "0.6.208"
 dependencies = [
  "chrono",
  "mxr-core",
+ "mxr-html-worker",
  "mxr-outbound",
  "mxr-reader",
  "mxr-relationship",
@@ -5236,6 +5255,7 @@ dependencies = [
  "mxr-compose",
  "mxr-config",
  "mxr-core",
+ "mxr-html-worker",
  "mxr-keymap",
  "mxr-mail-parse",
  "mxr-protocol",

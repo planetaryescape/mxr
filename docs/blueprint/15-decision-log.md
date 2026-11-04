@@ -1616,3 +1616,14 @@ The lexical index converts HTML to text with the reader's built-in converter and
 **Freshness**: The daemon hashes stable task fields/source evidence or the update's folded message ids, fact and tracker state. Clock labels, cut placement and provider read flags are excluded. Exact revisions persist, so an old client acknowledgment cannot overwrite newer attention. `SetModeRowSeen`, the bridge's `POST /api/v1/mail/rows/seen`, `mxr modes seen` and `mxr_mode_row_seen` share the same ledger and preview path.
 
 **Trade-offs accepted**: Existing rows start unseen. Content changes can make a row unseen again; revisiting identical content keeps it calm. Seen state is local, survives restarts and portable backups, and never changes provider flags or task completion.
+
+## D191: Untrusted mail HTML is parsed in a resource-limited helper process
+
+**Chosen**: Every parse of mail HTML (reader render, quote split, TUI styled render, search and rule text, link and image extraction, the Reading and safety checks, the send-side validator and text alternative) runs in a child process, `mxr __html-worker`, which is the `mxr` executable in a hidden mode. The child limits its own memory (a watchdog at 512 MiB above its start, plus `RLIMIT_AS` on Linux) and CPU, and the parent stops it after 5 seconds. A lost child gives the caller its existing plain-text fallback, is replaced on the next request, and an input that stopped it is remembered for the life of the process. `mxr doctor` and the diagnostics page count fallbacks.
+
+**Considered**: More input limits, which the F1 review rounds kept extending without closing the class. A thread with a timeout, which cannot stop a runaway allocation that aborts the process. A fast path that parses small documents in-process, dropped because size does not predict cost: on a release build, a 57 KB document (3,000 distinct formatting elements, so about 9 million rebuilt elements) passes the reader's budget and still took the helper past its 512 MiB ceiling, and the round trip costs about 65 microseconds on top of a 430 microsecond parse of a 7 KB newsletter. A process per parse, dropped because starting the helper takes 9 to 40 ms once it is warm against a parse of under a millisecond.
+
+**Why**: BK, 2026-10-29: "Isolate it, ship limits now". html5ever and html2text have super-linear paths no cheap pre-scan bounds, and an allocation failure takes the daemon down with it.
+
+**Trade-offs accepted**: A document that is slow or large renders as its tag-stripped text, and takes a timeout the first time it is seen in a process. The child is not a sandbox: the limits are about resources, not what it may read. macOS has no enforced address-space limit, so memory there is bounded by a sampling watchdog that can overshoot by tens of megabytes. Every call is a pipe round trip.
+

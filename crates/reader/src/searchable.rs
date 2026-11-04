@@ -5,7 +5,8 @@ use crate::pipeline::normalize_whitespace;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SearchableText {
     pub text: String,
-    /// Parts whose conversion panicked and were replaced by tag-stripped text.
+    /// Parts whose conversion panicked, or whose HTML helper was lost (timed out,
+    /// crashed), and were replaced by tag-stripped text.
     pub fallbacks: usize,
 }
 

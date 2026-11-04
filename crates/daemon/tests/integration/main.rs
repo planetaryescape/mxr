@@ -20,6 +20,7 @@ mod daemon_lifecycle;
 mod demo_cli;
 mod dial_stdio_cli;
 mod forward_cli;
+mod html_helper;
 mod live_gmail_e2e;
 mod modes_cli;
 mod reset_cli;

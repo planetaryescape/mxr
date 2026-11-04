@@ -44,6 +44,7 @@ pub mod received_label;
 pub mod records_lens;
 pub mod reply_later_prompt;
 pub mod reply_queue_modal;
+pub(crate) mod rich_html;
 pub mod rules_page;
 pub mod sanitize;
 pub mod save_attachment_modal;

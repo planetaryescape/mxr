@@ -5704,6 +5704,43 @@ pub struct DoctorReport {
     /// predates the field, and from a report built without a running daemon.
     #[serde(default)]
     pub address_cache_stale: bool,
+    /// Counts for the process that parses mail HTML for this daemon. All zero
+    /// from a daemon that predates it, and from a report built without a
+    /// running daemon.
+    #[serde(default)]
+    pub html_helper: HtmlHelperStats,
+}
+
+/// How the HTML helper process has fared since its supervisor started. Counts
+/// only; no message content.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct HtmlHelperStats {
+    /// Mail HTML is parsed in a helper process. False means in-process, or no
+    /// running daemon to ask.
+    pub installed: bool,
+    pub requests: u64,
+    /// Helpers started to replace one that timed out or died.
+    pub restarts: u64,
+    pub timeouts: u64,
+    pub deaths: u64,
+    pub job_errors: u64,
+    /// Requests answered with the plain-text fallback instead of a parse.
+    pub fallbacks: u64,
+}
+
+impl HtmlHelperStats {
+    /// The one-line summary `mxr doctor` and the diagnostics page show.
+    pub fn summary(&self) -> String {
+        if !self.installed {
+            return "not reporting (parsing in-process, or no daemon)".to_string();
+        }
+        format!(
+            "{} fallbacks since start ({} requests, {} timeouts, {} helper deaths, {} restarts, {} job errors)",
+            self.fallbacks, self.requests, self.timeouts, self.deaths, self.restarts, self.job_errors
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

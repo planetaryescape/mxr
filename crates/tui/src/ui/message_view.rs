@@ -5,9 +5,9 @@ use crate::app::{
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
 use crate::ui::received_label::received_label;
+use crate::ui::rich_html::{Annotation, RichLine, RichRender, RICH_LINES};
 use crate::ui::sanitize::strip_control_chars;
 use chrono::{DateTime, Utc};
-use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
 use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
 use ratatui::prelude::*;
@@ -981,26 +981,17 @@ fn render_html_blocks(
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
     let width = usize::from(width.max(20));
-    // Over the size cap, or on a panic, the tag strip below stands in. The
-    // bounded input keeps html2text off adversarial tables (see mxr-reader's
-    // `html_limits`).
-    let rendered = mxr_reader::bounded_html(html).and_then(|bounded| {
-        mxr_reader::guard_html2text("tui html body", || {
-            let render_tree = html2text::parse(bounded.as_bytes()).ok()?;
-            html2text::config::rich()
-                .render_to_lines(render_tree, width)
-                .ok()
-        })
-    });
-    let tagged_lines = match rendered {
-        Some(Some(lines)) => lines,
-        Some(None) => {
+    // Over the size cap, on a panic, or with the HTML helper lost (timed out,
+    // crashed), the tag strip stands in.
+    let tagged_lines = match RICH_LINES.call(html, &width).unwrap_or(RichRender::Strip) {
+        RichRender::Lines(lines) => lines,
+        RichRender::Failed => {
             return vec![RenderBlock::Text(process_body_lines(
                 html, theme, false, false, false,
             ))];
         }
-        // html2text panicked; show the tag-stripped text rather than raw markup.
-        None => {
+        // Show the tag-stripped text rather than raw markup.
+        RichRender::Strip => {
             return vec![RenderBlock::Text(process_body_lines(
                 &mxr_reader::strip_html_tags(html),
                 theme,
@@ -1014,7 +1005,7 @@ fn render_html_blocks(
     let mut blocks = Vec::new();
     let mut text_lines = Vec::new();
 
-    for line in tagged_lines {
+    for line in &tagged_lines {
         for block in rich_line_to_blocks(message_id, line, theme, remote_content_enabled) {
             match block {
                 RenderBlock::Text(line) => text_lines.extend(line),
@@ -1037,41 +1028,48 @@ fn render_html_blocks(
 
 fn rich_line_to_blocks(
     message_id: &MessageId,
-    line: html2text::render::TaggedLine<Vec<RichAnnotation>>,
+    line: &RichLine,
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
-    let tagged = line.tagged_strings().collect::<Vec<_>>();
-    let image_specs = tagged
+    let image_specs = line
         .iter()
-        .filter_map(|tagged| {
-            tagged.tag.iter().find_map(|annotation| match annotation {
-                RichAnnotation::Image(source) => Some(HtmlImageBlock {
-                    message_id: message_id.clone(),
-                    source: source.clone(),
-                    label: tagged.s.trim().to_string(),
-                }),
-                _ => None,
-            })
+        .filter_map(|piece| {
+            piece
+                .annotations
+                .iter()
+                .find_map(|annotation| match annotation {
+                    Annotation::Image(source) => Some(HtmlImageBlock {
+                        message_id: message_id.clone(),
+                        source: source.clone(),
+                        label: piece.text.trim().to_string(),
+                    }),
+                    _ => None,
+                })
         })
         .collect::<Vec<_>>();
 
-    let has_non_image_text = tagged.iter().any(|tagged| {
-        let text = tagged.s.trim();
+    let has_non_image_text = line.iter().any(|piece| {
+        let text = piece.text.trim();
         !text.is_empty()
-            && !tagged
-                .tag
+            && !piece
+                .annotations
                 .iter()
-                .any(|annotation| matches!(annotation, RichAnnotation::Image(_)))
+                .any(|annotation| matches!(annotation, Annotation::Image(_)))
     });
 
     if !image_specs.is_empty() && !has_non_image_text {
         image_specs.into_iter().map(RenderBlock::Image).collect()
     } else {
-        let spans = tagged
-            .into_iter()
-            .filter_map(|tagged| {
-                let span = rich_span(tagged.s.clone(), &tagged.tag, theme, remote_content_enabled);
+        let spans = line
+            .iter()
+            .filter_map(|piece| {
+                let span = rich_span(
+                    piece.text.clone(),
+                    &piece.annotations,
+                    theme,
+                    remote_content_enabled,
+                );
                 (!span.content.is_empty()).then_some(span)
             })
             .collect::<Vec<_>>();
@@ -1086,7 +1084,7 @@ fn rich_line_to_blocks(
 
 fn rich_span(
     mut text: String,
-    annotations: &[RichAnnotation],
+    annotations: &[Annotation],
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Span<'static> {
@@ -1094,42 +1092,42 @@ fn rich_span(
 
     for annotation in annotations {
         match annotation {
-            RichAnnotation::Default => {}
-            RichAnnotation::Link(url) => {
+            Annotation::Default => {}
+            Annotation::Link(url) => {
                 style = style.fg(theme.link_fg).add_modifier(Modifier::UNDERLINED);
                 if text.is_empty() {
                     text = url.clone();
                 }
             }
-            RichAnnotation::Image(src) => {
+            Annotation::Image(src) => {
                 style = style
                     .fg(theme.success)
                     .add_modifier(Modifier::ITALIC | Modifier::BOLD);
                 text = image_placeholder(&text, src, remote_content_enabled);
             }
-            RichAnnotation::Emphasis => {
+            Annotation::Emphasis => {
                 style = style.add_modifier(Modifier::ITALIC);
             }
-            RichAnnotation::Strong => {
+            Annotation::Strong => {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            RichAnnotation::Strikeout => {
+            Annotation::Strikeout => {
                 style = style.add_modifier(Modifier::CROSSED_OUT);
             }
-            RichAnnotation::Code => {
+            Annotation::Code => {
                 style = style
                     .bg(theme.selection_bg)
                     .fg(theme.selection_fg)
                     .add_modifier(Modifier::BOLD);
             }
-            RichAnnotation::Preformat(_) => {
+            Annotation::Preformat(_) => {
                 style = style.bg(theme.hint_bar_bg);
             }
-            RichAnnotation::Colour(colour) => {
-                style = style.fg(Color::Rgb(colour.r, colour.g, colour.b));
+            Annotation::Colour(r, g, b) => {
+                style = style.fg(Color::Rgb(*r, *g, *b));
             }
-            RichAnnotation::BgColour(colour) => {
-                style = style.bg(Color::Rgb(colour.r, colour.g, colour.b));
+            Annotation::BgColour(r, g, b) => {
+                style = style.bg(Color::Rgb(*r, *g, *b));
             }
             _ => {}
         }
@@ -1540,6 +1538,21 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
         assert!(text.len() < 4 * html.len());
         assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn a_lost_helper_shows_the_message_text_not_its_markup() {
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let text = mxr_html_worker::with_supervisor(lost, || {
+            rendered_text("<table><tr><td>zzcellword</td></tr></table><script>hidden()</script>")
+        });
+        assert!(text.contains("zzcellword"));
+        assert!(
+            !text.contains("<td>") && !text.contains("hidden"),
+            "got {text:?}"
+        );
     }
 
     #[test]

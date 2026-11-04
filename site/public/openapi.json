@@ -16120,6 +16120,10 @@
             "description": "`logging.event_retention_days` as the daemon reads the config file now.\n`None` from a daemon that predates the field, or when the file cannot be\nread or parsed.",
             "minimum": 0
           },
+          "html_helper": {
+            "$ref": "#/components/schemas/HtmlHelperStats",
+            "description": "Counts for the process that parses mail HTML for this daemon. All zero\nfrom a daemon that predates it, and from a report built without a\nrunning daemon."
+          },
           "index_exists": {
             "type": "boolean"
           },
@@ -17900,6 +17904,55 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "HtmlHelperStats": {
+        "type": "object",
+        "description": "How the HTML helper process has fared since its supervisor started. Counts\nonly; no message content.",
+        "properties": {
+          "deaths": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "fallbacks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests answered with the plain-text fallback instead of a parse.",
+            "default": 0,
+            "minimum": 0
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Mail HTML is parsed in a helper process. False means in-process, or no\nrunning daemon to ask.",
+            "default": false
+          },
+          "job_errors": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "restarts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Helpers started to replace one that timed out or died.",
+            "default": 0,
+            "minimum": 0
+          },
+          "timeouts": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
           }
         }
       },

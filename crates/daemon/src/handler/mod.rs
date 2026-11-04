@@ -3563,6 +3563,11 @@ async fn find_label_by_name(
         .ok_or_else(|| format!("Label not found: {name}"))
 }
 
+/// The parses the daemon's own handlers run in the HTML helper process.
+pub(crate) fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    vec![&forward::CID_REFERENCES, &mailbox::IMAGE_SOURCES]
+}
+
 /// Fast path used for reply/forward quoted text. The user is composing a
 /// reply; they want the original content quoted, *not* the aggressive
 /// reader-view cleaning (which strips signatures, boilerplate, tracking,

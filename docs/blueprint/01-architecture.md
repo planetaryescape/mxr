@@ -174,7 +174,7 @@ mxr/
 │   │
 │   ├── outbound/                 # Shared outbound message rendering/building
 │   │                             # Markdown render, attachments, RFC 5322 assembly.
-│   │                             # Depends on: core
+│   │                             # Depends on: core, html-worker
 │   │
 │   ├── llm/                      # LLM provider clients and prompt/result DTOs
 │   │                             # Mail-model-free; callers pass plain data.
@@ -196,9 +196,14 @@ mxr/
 │   │                             # a draft did what its case required. Pure: plain text in.
 │   │                             # Depends on: compose, humanizer
 │   │
+│   ├── html-worker/              # Runs untrusted mail HTML parsing in a resource-limited
+│   │                             # helper process (`mxr __html-worker`): supervisor,
+│   │                             # wire format, limits, restart and fallback.
+│   │                             # Depends on: no mxr crates
+│   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.
-│   │                             # Depends on: no mxr crates
+│   │                             # Depends on: html-worker
 │   │
 │   ├── rules/                    # Deterministic rules engine
 │   │                             # Condition evaluation, action dispatch, dry-run, replay.
@@ -214,7 +219,7 @@ mxr/
 │   │
 │   ├── safety/                   # Local reply/composition safety checks
 │   │                             # Pure checks over caller-provided message/reply context.
-│   │                             # Depends on: core, reader, relationship, outbound
+│   │                             # Depends on: core, reader, relationship, outbound, html-worker
 │   │
 │   ├── protocol/                 # IPC types: Request, Response, Command enums
 │   │                             # Shared between daemon and all clients.
@@ -244,7 +249,7 @@ mxr/
 │   └── tui/                      # Ratatui frontend: panes, vim navigation,
 │   │                             # command palette, keybinding dispatch.
 │   │                             # Depends on: core, protocol, client, config,
-│   │                             #             compose, reader, mail-parse
+│   │                             #             compose, reader, html-worker, mail-parse
 │   │
 │   └── web/                      # HTTP/WebSocket bridge client over daemon IPC.
 │                                 # Depends on: core, protocol, client, config,
@@ -278,10 +283,11 @@ These are strict. Violations should be caught in code review:
 6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
 6a. **`assistant` owns the in-app assistant's loop, approval gate and prompt.** It depends only on `llm`. Mail reaches it only through the `ToolHost`, `ChatModel` and `TurnSink` traits the daemon implements (with the MCP tools run in-process), so it can't bypass the daemon's dispatch, safety policy or activity log.
 7. **`relationship` owns relationship analytics and recipient intelligence.** It may depend on `core`, `store`, `reader`, and `llm`. It must not depend on protocol, daemon, clients, sync, search, semantic, or provider crates.
-8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, `relationship`, and `outbound` (to check a draft as it will be rendered and sent). It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
+8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, `relationship`, `outbound` (to check a draft as it will be rendered and sent), and `html-worker`. It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
 9. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 10. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
-11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
+11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, `html-worker`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
+11a. **`html-worker` depends on no internal crate.** Every crate that parses mail HTML (`reader`, `reading`, `safety`, `outbound`, `tui` and the daemon) defines its parses as `Job`s from it, so the parse runs in a child process under memory, CPU and time limits (chapter 7). `outbound` may depend on it although it may not depend on `reader`.
 12. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
 
 ### Package surface

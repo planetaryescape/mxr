@@ -26,7 +26,9 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use base64::Engine as _;
+use mxr_html_worker::{AnyJob, Job};
 use scraper::{Html, Node};
+use serde::{Deserialize, Serialize};
 
 /// Schemes a URL-bearing attribute may use.
 ///
@@ -141,7 +143,7 @@ const URL_ATTRIBUTES: &[&str] = &[
 ];
 
 /// One reason a document was refused.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlIssue {
     pub kind: HtmlIssueKind,
     /// 1-based line in the supplied document, when it could be located.
@@ -162,7 +164,7 @@ pub struct HtmlIssue {
 /// orphan reparse is one problem and must not be. Without this, the
 /// duplicate-suppression in `orphan_table_element_issues` cannot tell the two
 /// cases apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum IssueOrigin {
     /// The document itself.
     Document,
@@ -170,7 +172,7 @@ enum IssueOrigin {
     Comment(usize),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HtmlIssueKind {
     /// An element that executes or submits, e.g. `<script>`, `<form>`.
     ForbiddenElement { tag: String },
@@ -271,7 +273,7 @@ impl fmt::Display for HtmlIssue {
 }
 
 /// Every reason a document was refused, in document order where possible.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlValidationError {
     pub issues: Vec<HtmlIssue>,
 }
@@ -312,19 +314,37 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
+    // The parses run in the HTML helper process. A helper that timed out or
+    // could not start leaves the document unchecked, which is refused like one
+    // over the budget.
+    VALIDATE
+        .call(html, &())
+        .unwrap_or_else(|| Err(too_complex_to_check()))
+}
+
+fn too_complex_to_check() -> HtmlValidationError {
+    HtmlValidationError {
+        issues: vec![HtmlIssue {
+            kind: HtmlIssueKind::TooComplexToCheck,
+            line: None,
+            detail: String::new(),
+            origin: IssueOrigin::Document,
+        }],
+    }
+}
+
+static VALIDATE: Job<(), Result<(), HtmlValidationError>> =
+    Job::new("outbound.validate_html", |html, ()| {
+        validate_html_in_process(html)
+    });
+
+fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
     // Over the parser budget the document is refused, not checked by a weaker
     // pass: a linear scan cannot see through attribute counts or entities, so
     // every check is missed for such a document. The nested parses below run on
     // parts of this same document, so they are within budget too.
     if !crate::html_limits::within_budget(html) {
-        return Err(HtmlValidationError {
-            issues: vec![HtmlIssue {
-                kind: HtmlIssueKind::TooComplexToCheck,
-                line: None,
-                detail: String::new(),
-                origin: IssueOrigin::Document,
-            }],
-        });
+        return Err(too_complex_to_check());
     }
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
@@ -423,21 +443,35 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// (`crates/reader/src/html.rs`), so the text a recipient gets matches what
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
-    // Guarded like the reader's call (html2text panics on some malformed
-    // tables). mxr-outbound cannot depend on mxr-reader, so the bounds, the span
-    // clamp and the fallback are local copies (`html_limits`). A sent message
-    // always gets its text, even if it is rougher.
-    // Bounded input first: an adversarial table costs html2text gigabytes, and
-    // an allocation failure aborts, so `catch_unwind` cannot protect against it.
-    let Some(bounded) = crate::html_limits::bounded_html(html) else {
-        return strip_tags_fallback(html);
-    };
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
-    }))
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or_else(|| strip_tags_fallback(html))
+    // A sent message always gets its text, even if it is rougher: over the
+    // budget, on a panic, or with the HTML helper lost, the tag strip stands in.
+    TEXT_ALTERNATIVE
+        .call(html, &())
+        .flatten()
+        .unwrap_or_else(|| strip_tags_fallback(html))
+}
+
+/// The render, which runs in the HTML helper process. `None` is the tag-strip
+/// fallback.
+//
+// Guarded like the reader's call (html2text panics on some malformed tables).
+// mxr-outbound cannot depend on mxr-reader, so the bounds, the span clamp and
+// the fallback are local copies (`html_limits`). Bounded input first: an
+// adversarial table costs html2text gigabytes, and an allocation failure
+// aborts, so `catch_unwind` cannot protect against it.
+static TEXT_ALTERNATIVE: Job<(), Option<String>> =
+    Job::new("outbound.text_alternative", |html, ()| {
+        let bounded = crate::html_limits::bounded_html(html)?;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
+        }))
+        .ok()
+        .and_then(Result::ok)
+    });
+
+/// Every parse this crate runs in the HTML helper process.
+pub fn html_jobs() -> Vec<&'static dyn AnyJob> {
+    vec![&VALIDATE, &TEXT_ALTERNATIVE]
 }
 
 /// Tag-stripping fallback for `generate_text_alternative` when html2text
@@ -1972,5 +2006,47 @@ mod budget_validation_tests {
         let text = generate_text_alternative(&over);
         assert!(text.contains("zzalt"));
         assert!(!text.contains('<'));
+    }
+}
+
+#[cfg(test)]
+mod lost_helper_tests {
+    use super::*;
+    use mxr_html_worker::{with_supervisor, Config, Supervisor};
+    use std::sync::Arc;
+
+    fn lost_helper() -> Arc<Supervisor> {
+        Arc::new(Supervisor::new(Config::new(
+            "/nonexistent/mxr-helper",
+            Vec::new(),
+        )))
+    }
+
+    #[test]
+    fn html_the_helper_could_not_check_is_refused_like_html_over_the_budget() {
+        let error = with_supervisor(lost_helper(), || validate_html("<p>fine</p>"))
+            .expect_err("an unchecked document must not be sent");
+        assert!(error
+            .issues
+            .iter()
+            .any(|issue| issue.kind == HtmlIssueKind::TooComplexToCheck));
+    }
+
+    #[test]
+    fn a_sent_message_still_gets_its_text_part_when_the_helper_is_lost() {
+        let text = with_supervisor(lost_helper(), || {
+            generate_text_alternative("<p>Hello&nbsp;<b>world</b></p>")
+        });
+        assert_eq!(text, "Hello world");
+    }
+
+    #[test]
+    fn a_validation_error_survives_the_trip_through_the_helper_wire_format() {
+        let error = validate_html_in_process("<script>x</script><p onclick=\"y\">z</p>")
+            .expect_err("refused");
+        let wire = serde_json::to_vec(&error).expect("encodes");
+        let back: HtmlValidationError = serde_json::from_slice(&wire).expect("decodes");
+        assert_eq!(back, error);
+        assert!(back.issues.len() >= 2);
     }
 }

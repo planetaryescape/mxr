@@ -140,7 +140,12 @@ fn palette(app: &mut App) {
 
 fn label_picker(app: &mut App) {
     *app = inbox();
-    let account_id = AccountId::new();
+    // The picker offers the labels of the selected message's account.
+    let account_id = app
+        .mailbox
+        .envelopes
+        .first()
+        .map_or_else(AccountId::new, |envelope| envelope.account_id.clone());
     app.mailbox.labels = ["Work", "Home", "Bills"]
         .into_iter()
         .map(|name| Label {

@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageFlags, SortOrder, UnsubscribeMethod};
 use mxr_search::{parse_query, MxrSchema, QueryBuilder, SearchIndex};
+use std::hint::black_box;
 
 fn bench_search_query(c: &mut Criterion) {
     let mut index = SearchIndex::in_memory().expect("search index");

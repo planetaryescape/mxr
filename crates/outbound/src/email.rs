@@ -386,7 +386,6 @@ pub enum EmailBuildError {
 mod tests {
     use super::*;
     use base64::Engine as _;
-    use mail_parser::MimeHeaders as _;
 
     #[test]
     fn calendar_reply_message_contains_imip_reply_part() {
@@ -723,8 +722,7 @@ mod tests {
     /// empty one.
     fn part_index(parsed: &mail_parser::Message<'_>, ctype: &str, subtype: &str) -> usize {
         let found: Vec<usize> = parsed
-            .parts
-            .iter()
+            .parts()
             .enumerate()
             .filter(|(_, part)| part.is_content_type(ctype, subtype))
             .map(|(index, _)| index)
@@ -746,7 +744,7 @@ mod tests {
     /// does not: siblings and children read the same way.
     fn mime_tree(raw: &[u8]) -> String {
         fn walk(parsed: &mail_parser::Message<'_>, index: usize, depth: usize, out: &mut String) {
-            let part = &parsed.parts[index];
+            let part = parsed.part(index as mail_parser::PartId).unwrap();
             let ctype = part.content_type().map_or_else(
                 || "(none)".to_string(),
                 |content_type| match content_type.subtype() {
@@ -757,10 +755,8 @@ mod tests {
             out.push_str(&"  ".repeat(depth));
             out.push_str(&ctype);
             out.push('\n');
-            if let mail_parser::PartType::Multipart(children) = &part.body {
-                for child in children {
-                    walk(parsed, *child as usize, depth + 1, out);
-                }
+            for child in part.children() {
+                walk(parsed, child.id() as usize, depth + 1, out);
             }
         }
 
@@ -777,14 +773,14 @@ mod tests {
     fn html_part_bytes(raw: &[u8]) -> Vec<u8> {
         let parsed = parse(raw);
         let index = part_index(&parsed, "text", "html");
-        let part = &parsed.parts[index];
+        let part = parsed.part(index as mail_parser::PartId).unwrap();
         assert_eq!(
             part.content_transfer_encoding(),
             Some("base64"),
             "text/html must be base64: quoted-printable rewrites line endings"
         );
 
-        let body = &raw[part.offset_body as usize..part.offset_end as usize];
+        let body = &raw[part.offset_body() as usize..part.offset_end() as usize];
         let encoded: Vec<u8> = body
             .iter()
             .copied()
@@ -798,8 +794,9 @@ mod tests {
     fn text_part(raw: &[u8]) -> String {
         let parsed = parse(raw);
         let index = part_index(&parsed, "text", "plain");
-        match &parsed.parts[index].body {
-            mail_parser::PartType::Text(text) => text.to_string(),
+        let part = parsed.part(index as mail_parser::PartId).unwrap();
+        match part.kind() {
+            mail_parser::PartKind::Text => part.text().unwrap().into_owned(),
             other => panic!("text/plain part was not text: {other:?}"),
         }
     }
@@ -907,11 +904,16 @@ mod tests {
         let parsed = parse(&raw);
         let index = part_index(&parsed, "text", "html");
         assert_eq!(
-            parsed.parts[index].content_transfer_encoding(),
+            parsed
+                .part(index as mail_parser::PartId)
+                .unwrap()
+                .content_transfer_encoding(),
             Some("quoted-printable")
         );
-        match &parsed.parts[index].body {
-            mail_parser::PartType::Html(html) => {
+        let part = parsed.part(index as mail_parser::PartId).unwrap();
+        match part.kind() {
+            mail_parser::PartKind::Html => {
+                let html = part.text().unwrap();
                 assert!(
                     html.contains("<strong>world</strong>"),
                     "markdown was not rendered: {html}"
@@ -1001,16 +1003,18 @@ mod tests {
         );
 
         let parsed = parse(&raw);
-        let part = &parsed.parts[part_index(&parsed, "image", "png")];
+        let part = parsed
+            .part(part_index(&parsed, "image", "png") as mail_parser::PartId)
+            .unwrap();
         assert_eq!(
             part.content_disposition()
-                .map(mail_parser::ContentType::ctype),
+                .map(|content_type| content_type.ctype()),
             Some("inline"),
             "the image would render as an attachment, not in the layout"
         );
-        match &part.body {
-            mail_parser::PartType::Binary(bytes) | mail_parser::PartType::InlineBinary(bytes) => {
-                assert_eq!(bytes.as_ref(), logo.bytes.as_slice());
+        match part.kind() {
+            mail_parser::PartKind::Binary | mail_parser::PartKind::InlineBinary => {
+                assert_eq!(part.decoded().as_ref(), logo.bytes.as_slice());
             }
             other => panic!("inline image part was not binary: {other:?}"),
         }

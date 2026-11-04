@@ -7,8 +7,9 @@
 //! numbers are best-case. Real-disk numbers should still meet the same
 //! gates because the indexes carry the heavy lifting.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use mxr_store::{ActivityFilter, ActivityInsert, Store, Tier};
+use std::hint::black_box;
 
 fn seed_rows(store: &Store, n: usize) {
     let rt = tokio::runtime::Handle::current();

@@ -49,7 +49,8 @@ use std::time::{Duration, Instant};
 pub use service::SemanticServiceHandle;
 
 #[cfg(feature = "local")]
-const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
+// Changing the backend invalidates reuse until a complete reindex stores this revision.
+const FASTEMBED_REVISION: &str = "fastembed-7.5.0";
 
 /// Messages an index job processes per step. Bounds peak memory (envelopes,
 /// bodies and chunks for one page) and how long the semantic worker can go
@@ -530,7 +531,13 @@ impl SemanticEngine {
         }
 
         let profile = self.config.active_profile;
-        self.install_profile(profile).await?;
+        let record = self.install_profile(profile).await?;
+        if record.model_revision != FASTEMBED_REVISION {
+            return Err(anyhow!(
+                "semantic profile {} needs a backend upgrade; run `mxr semantic reindex`",
+                profile.as_str()
+            ));
+        }
         // An index older than the last finished pass cannot show what that
         // pass indexed, so this query waits for its rebuild - or fails, rather
         // than answer from it. An index that is merely behind on ingest keeps
@@ -632,7 +639,13 @@ impl SemanticEngine {
         let profile = self.config.active_profile;
         let limit = limit.max(1);
         let stored = self.store.get_semantic_profile(profile).await?;
+        let revision_changed = stored
+            .as_ref()
+            .is_some_and(|record| record.model_revision != FASTEMBED_REVISION);
         let mut targets = match stored.as_ref() {
+            // A revision belongs to the whole profile, so a limited pass cannot
+            // stamp the new backend while leaving older vectors behind.
+            Some(_) if revision_changed => self.all_message_ids().await?,
             Some(record) => {
                 self.store
                     .list_message_ids_missing_semantic_embeddings(&record.id, limit)
@@ -651,7 +664,7 @@ impl SemanticEngine {
                 targets.push(message_id);
             }
         }
-        if targets.is_empty() {
+        if targets.is_empty() && !revision_changed {
             // With no row yet there is no status or error to preserve, and the
             // caller still needs a record to answer with.
             let record = match stored {
@@ -3126,6 +3139,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_backend_upgrade_backfills_the_whole_profile_even_when_nothing_is_missing() {
+        for count in [0, 8] {
+            let store = Arc::new(Store::in_memory().await.unwrap());
+            let account = test_account();
+            store.insert_account(&account).await.unwrap();
+            seed_messages(&store, &account.id, count).await;
+            let data_dir = tempdir().unwrap();
+            let (mut engine, calls) =
+                engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+            let mut legacy = engine.reindex_active().await.unwrap();
+            legacy.model_revision = "fastembed-5.13.0".into();
+            store.upsert_semantic_profile(&legacy).await.unwrap();
+            calls.lock().unwrap().clear();
+
+            let current = engine.backfill_active_limited(1).await.unwrap();
+            assert_eq!(current.model_revision, FASTEMBED_REVISION);
+            assert_eq!(current.progress_total, count as u32);
+            assert!(
+                embed_call_sizes(&calls).iter().sum::<usize>() >= message_chunk_total(&store).await
+            );
+            assert!(engine
+                .search("invoice", 3, &[SemanticChunkSourceKind::Body])
+                .await
+                .is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn search_refuses_vectors_from_an_older_embedding_backend() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        seed_messages(&store, &account.id, 3).await;
+        let data_dir = tempdir().unwrap();
+        let (mut engine, _) = engine_with_recording_embedder(store.clone(), data_dir.path()).await;
+        let mut legacy = engine.reindex_active().await.unwrap();
+        legacy.model_revision = "fastembed-5.13.0".into();
+        store.upsert_semantic_profile(&legacy).await.unwrap();
+
+        let error = engine
+            .search("invoice", 3, &[SemanticChunkSourceKind::Body])
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("mxr semantic reindex"));
+    }
+
+    #[tokio::test]
     async fn reindex_persists_progress_between_pages() {
         let message_count = INDEX_PAGE_MESSAGES + 6;
         let store = Arc::new(Store::in_memory().await.unwrap());
@@ -3369,7 +3429,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        stale.model_revision = "fastembed-0.0.0".into();
+        stale.model_revision = "fastembed-5.13.0".into();
         store.upsert_semantic_profile(&stale).await.unwrap();
 
         // Start the migration pass and abandon it after one page.
@@ -3383,7 +3443,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            mid.model_revision, "fastembed-0.0.0",
+            mid.model_revision, "fastembed-5.13.0",
             "an unfinished pass must not claim the new revision"
         );
 

@@ -228,13 +228,16 @@ async fn gmail_cooldown_defers_approved_send_without_dispatch_or_false_uncertain
             .as_deref()
             .map(|id| id.trim_matches(['<', '>']))
     );
-    assert_eq!(parsed.in_reply_to().as_text(), Some("parent@example.com"));
+    assert_eq!(
+        parsed.in_reply_to().and_then(|ids| ids.first()),
+        Some("parent@example.com")
+    );
     assert_eq!(
         parsed.to().unwrap().first().unwrap().address(),
         Some("recipient@example.com")
     );
     assert_eq!(
-        parsed.attachments().next().unwrap().contents(),
+        parsed.attachments().next().unwrap().decoded().as_ref(),
         b"approved attachment bytes"
     );
 }

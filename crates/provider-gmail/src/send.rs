@@ -344,12 +344,12 @@ mod tests {
         let parsed = MessageParser::default().parse(&raw).unwrap();
         let from = parsed.from().unwrap().first().unwrap();
 
-        assert_eq!(from.name.as_deref(), Some("Me"));
-        assert_eq!(from.address.as_deref(), Some("me@example.com"));
+        assert_eq!(from.name(), Some("Me"));
+        assert_eq!(from.address(), Some("me@example.com"));
         assert!(!msg.contains("\nTo:"));
         assert!(msg.contains("Subject: \r\n"));
         assert!(msg.contains("Content-Type: multipart/alternative"));
-        assert!(parsed.subject().is_none());
+        assert_eq!(parsed.subject(), Some(""));
         assert!(parsed.to().is_none());
         let body_text = parsed.body_text(0).unwrap();
         assert!(body_text.contains("Hello"));

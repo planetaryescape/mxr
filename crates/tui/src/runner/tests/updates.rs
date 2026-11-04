@@ -623,3 +623,45 @@ fn esc_closes_an_open_peek_before_anything_else() {
         queued(&app)
     );
 }
+
+/// Dogfood 2026-10-29: the digest's header named the retired `A`, and `e`
+/// on one source opened a preview titled "Let go of this digest".
+#[test]
+fn the_header_names_e_and_one_sources_preview_says_source() {
+    let mut app = updates_app();
+    let shown = screen(&mut app);
+    assert!(shown.contains("E let go all"), "{shown}");
+    assert!(!shown.contains("A let go all"), "{shown}");
+
+    select_source(&mut app, "Strava");
+    press(&mut app, KeyCode::Char('e'));
+    app.show_updates_let_go_preview(super::now::let_go_preview(&[ThreadId::new()]));
+    let shown = screen(&mut app);
+    assert!(shown.contains("Let go of this source"), "{shown}");
+    assert!(!shown.contains("Let go of this digest"), "{shown}");
+
+    let mut app = updates_app();
+    press(&mut app, KeyCode::Char('E'));
+    app.show_updates_let_go_preview(super::now::let_go_preview(&[ThreadId::new()]));
+    assert!(screen(&mut app).contains("Let go of this digest"));
+}
+
+/// Dogfood 2026-10-29: `o` opened the email in a reader Updates never
+/// drew. It opens full width now, and Esc comes back to the line.
+#[test]
+fn o_opens_the_email_full_width_and_esc_comes_back() {
+    let mut app = updates_app();
+    select_source(&mut app, "Strava");
+    let selected = app.mailbox.selected_index;
+    press(&mut app, KeyCode::Char('o'));
+    assert!(app.mailbox.pending_invite_open.take().is_some());
+    let envelope = make_test_envelopes(1).remove(0);
+    let subject = envelope.subject.clone();
+    app.open_invite_envelope(envelope);
+    assert_eq!(app.mailbox.layout_mode, LayoutMode::FullScreen);
+    assert!(screen(&mut app).contains(&subject));
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Updates);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert_eq!(app.mailbox.selected_index, selected);
+}

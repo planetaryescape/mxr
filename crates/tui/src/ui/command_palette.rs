@@ -714,7 +714,8 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
         "Diagnostics" => ("!", theme.warning),
         "Accounts" => ("=", theme.accent_dim),
         "Sync" => ("*", theme.success),
-        _ => ("?", theme.text_muted),
+        // Not `?`: in a list of keys it reads as the help key.
+        _ => ("\u{b7}", theme.text_muted),
     }
 }
 

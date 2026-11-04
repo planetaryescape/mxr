@@ -248,6 +248,9 @@ fn sender_kind_picker(app: &mut App) {
 fn not_now(app: &mut App) {
     *app = inbox();
     app.apply(Action::Snooze);
+    // Every preset, whatever the hour of the run: after the evening hour
+    // Tonight leaves the picker, and `4` would have no time behind it.
+    app.modals.snooze_panel.presets = None;
     app.modals.snooze_panel.selected_index = 1;
 }
 

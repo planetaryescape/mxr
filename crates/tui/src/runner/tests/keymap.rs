@@ -1666,3 +1666,24 @@ fn with_single_keys_off_a_tool_screen_ignores_its_letters() {
         Some(Action::OpenCommandPalette)
     );
 }
+
+/// Dogfood 2026-10-29: help's "How do I…" questions ran into their
+/// answers ("Repair an unhealthy accountgC → …") because the first column
+/// was 20 characters whatever it held.
+#[test]
+fn help_questions_never_run_into_their_answers() {
+    let mut app = App::new();
+    let lines = rendered_help_lines(&mut app, "");
+    for question in [
+        "Search and save a search",
+        "Repair an unhealthy account",
+        "Undo a destructive action",
+    ] {
+        let line = lines
+            .iter()
+            .find(|line| line.starts_with(question))
+            .unwrap_or_else(|| panic!("{question} in help:\n{}", lines.join("\n")));
+        let rest = &line[question.len()..];
+        assert!(rest.starts_with(' '), "{line}");
+    }
+}

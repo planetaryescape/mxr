@@ -209,10 +209,28 @@ impl App {
             config: &self.keybindings,
             view: self.keybinding_context(),
         };
-        Some((
-            prefix,
-            crate::ui::prefix_guide::continuations(&keys, &places, prefix),
-        ))
+        let mut choices = crate::ui::prefix_guide::continuations(&keys, &places, prefix);
+        // `g 1`…`g 9` open the saved searches in sidebar order: name each
+        // one, and leave out the digits with no saved search behind them.
+        let saved = &self.mailbox.saved_searches;
+        choices.retain_mut(|choice| {
+            let Some(slot) = choice.id.strip_prefix("nav.saved-search-") else {
+                return true;
+            };
+            let search = slot
+                .parse::<usize>()
+                .ok()
+                .and_then(|slot| slot.checked_sub(1))
+                .and_then(|index| saved.get(index));
+            match search {
+                Some(search) => {
+                    choice.label = search.name.clone();
+                    true
+                }
+                None => false,
+            }
+        });
+        Some((prefix, choices))
     }
 
     /// Test-only: as if the waiting prefix was pressed `by` earlier.

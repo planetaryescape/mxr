@@ -97,8 +97,8 @@ Use the `correction_undo` token from the correction response. Automatic
 rows name who asked, or say you promised, and quote the authored request.
 Reply-only requests stay in Messages' Your turn. Requests you sent and
 promises someone made to you feed Waiting on. Uncertain requests appear in
-the collapsed `Might need you` section; in the TUI, press `m` to review
-those source emails. They do not enter Now's urgent tasks.
+the collapsed `Might need you` section; in the TUI, run **Review what might
+need you** from the palette (`:`) to review those source emails. They do not enter Now's urgent tasks.
 
 ## Add or correct a task yourself
 

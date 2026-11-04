@@ -101,7 +101,11 @@ jobs:
           git ls-files -z | tar --null -T - -cf - | tar -x -C "${scan_dir}"
           gitleaks dir "${scan_dir}" --redact=20 --verbose --max-target-megabytes=2
       - name: Scan git history
-        run: gitleaks git . --redact=20 --verbose
+        # Only the history behind the commit under test: with fetch-depth 0 the
+        # checkout has every remote branch, and gitleaks' default log covers
+        # them all, so one secret-shaped string on someone's open branch failed
+        # this check on every PR, release PRs included.
+        run: gitleaks git . --redact=20 --verbose --log-opts="HEAD"
 
   architecture:
     name: Architecture Boundaries

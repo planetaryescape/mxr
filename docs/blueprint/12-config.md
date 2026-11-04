@@ -363,6 +363,8 @@ Later wins:
 2. active `config.toml`
 3. environment overrides such as `MXR_EDITOR`, `MXR_SYNC_INTERVAL`, `MXR_DEFAULT_ACCOUNT`, `MXR_ATTACHMENT_DIR`, `MXR_DOWNLOAD_DIR`, and `MXR_SAFETY_POLICY`
 
+Environment overrides apply to the process that reads them and are never saved into the file. Every write to `config.toml` (settings changes, account forms, `mxr accounts identity`, `mxr config set`) reads the file as written, changes only what was asked, and keeps the comments and layout of the keys it leaves alone. Keys mxr doesn't recognise are dropped on save. The new file is written to a temporary file in the same directory, synced and renamed over the old one, so an interrupted save leaves the old file.
+
 Path roots are resolved outside the TOML model:
 
 - `MXR_INSTANCE` picks the runtime identity (`mxr`, `mxr-dev`, `mxr-demo`, or custom)

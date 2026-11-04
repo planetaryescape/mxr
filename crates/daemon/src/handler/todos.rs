@@ -1149,7 +1149,7 @@ pub(super) fn apply_edits(
 
 /// Act-by, surface time and window again from the table, after the user
 /// changed the due date or the kind.
-fn retime_record(record: &mut TodoRecord, fields: &mut FieldSources, morning_hour: u8) {
+pub(super) fn retime_record(record: &mut TodoRecord, fields: &mut FieldSources, morning_hour: u8) {
     let kind = TodoKind::parse(&record.kind).unwrap_or(TodoKind::Other);
     let input = TimingInput {
         kind,

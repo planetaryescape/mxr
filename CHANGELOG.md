@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.206](https://github.com/planetaryescape/mxr/compare/v0.6.205...v0.6.206) (2026-11-04)
+
+
+### Bug Fixes
+
+* keep an in-memory store's database when sqlx replaces its connection ([#853](https://github.com/planetaryescape/mxr/issues/853)) ([8a5407d](https://github.com/planetaryescape/mxr/commit/8a5407dd016e50cf63c79ec2222015a2ae98ae76))
+
 ## [0.6.205](https://github.com/planetaryescape/mxr/compare/v0.6.204...v0.6.205) (2026-11-04)
 
 

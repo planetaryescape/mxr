@@ -174,4 +174,9 @@ for file in .github/workflows/*.yml .github/workflows/*.yaml; do
   fi
 done
 
+if ! grep -Fq 'gitleaks git . --redact=20 --verbose --log-opts="HEAD"' .github/workflows/ci.yml; then
+  echo "Secret Scan's history step must scan only HEAD's history, not every fetched branch." >&2
+  exit 1
+fi
+
 echo "ci_workflow_test: ok"

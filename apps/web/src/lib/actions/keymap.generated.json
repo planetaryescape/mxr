@@ -1875,15 +1875,6 @@
             "search-preview"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "desk"
-          ],
-          "until": "0.6.206"
-        }
       ]
     },
     {
@@ -4506,15 +4497,6 @@
           "contexts": [
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.206"
         }
       ]
     },

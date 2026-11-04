@@ -817,12 +817,6 @@ name = "Archive"
 keys = ["e"]
 contexts = ["list", "reader", "search", "search-preview"]
 
-# The web's desk ran Done (its archive) on `w` too; `w` is Wake now.
-[[action.moved]]
-key = "w"
-contexts = ["desk"]
-until = "0.6.206"
-
 [[action]]
 id = "mail.read-archive"
 label = "Mark read and archive"
@@ -2155,11 +2149,6 @@ palette_only = true
 name = "FocusRemind"
 keys = []
 contexts = ["focus"]
-
-[[action.moved]]
-key = "w"
-contexts = ["focus"]
-until = "0.6.206"
 
 [[action]]
 id = "focus.draft"

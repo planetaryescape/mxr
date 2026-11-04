@@ -4752,6 +4752,7 @@ export interface components {
             device_code_user_code?: string | null;
             ok: boolean;
             save?: components["schemas"]["AccountOperationStep"] | null;
+            saved?: boolean;
             send?: components["schemas"]["AccountOperationStep"] | null;
             summary: string;
             sync?: components["schemas"]["AccountOperationStep"] | null;

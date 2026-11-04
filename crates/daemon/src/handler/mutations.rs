@@ -3907,10 +3907,16 @@ pub(super) async fn ensure_reply_draft(
         .await;
 
     let mut drafts = state.store.list_drafts(&source.account_id).await?;
-    // Legacy duplicates stay intact; choose the oldest, then the stable id.
+    // Legacy duplicates stay intact; choose one with text first, as
+    // Messages shows only those on a row (`messages_drafts`), so `r`
+    // continues the draft the row names; then the oldest, then the id.
+    let empty = |draft: &mxr_core::types::Draft| {
+        super::messages_view::preview_text(draft.content.analysis_text()).is_empty()
+    };
     drafts.sort_by(|left, right| {
-        left.created_at
-            .cmp(&right.created_at)
+        empty(left)
+            .cmp(&empty(right))
+            .then_with(|| left.created_at.cmp(&right.created_at))
             .then_with(|| left.id.as_str().cmp(&right.id.as_str()))
     });
     for candidate in drafts {

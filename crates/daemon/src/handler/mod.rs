@@ -3904,6 +3904,29 @@ pub(crate) async fn apply_snooze(
     message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<(), String> {
+    // Snoozed again (Not now from Snoozed): the email is already out of the
+    // inbox, so only the wake time moves. Its labels from before the first
+    // snooze are the ones waking restores; reading them now would lose INBOX.
+    if let Some(existing) = state
+        .store
+        .get_snooze(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        state
+            .store
+            .remove_snooze(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        return state
+            .store
+            .insert_snooze(&Snoozed {
+                wake_at: *wake_at,
+                ..existing
+            })
+            .await
+            .map_err(|e| e.to_string());
+    }
     let envelope = state
         .store
         .get_envelope(message_id)

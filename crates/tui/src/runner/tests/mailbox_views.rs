@@ -1425,3 +1425,90 @@ fn status_bar_names_search_mode_only_while_a_query_is_active() {
         Some(mxr_core::SearchMode::Semantic)
     );
 }
+
+/// The demo names the system mailboxes `Inbox`, `Sent`, `Starred`.
+fn titlecase_labels() -> Vec<Label> {
+    let mut labels = make_test_labels();
+    for label in &mut labels {
+        let lower = label.name.to_lowercase();
+        let mut chars = lower.chars();
+        label.name = chars
+            .next()
+            .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+            .unwrap_or_default();
+    }
+    labels
+}
+
+/// Dogfood 2026-10-29: on the demo `g i`, `g t`, `g d`, `g #` and `g !`
+/// did nothing, because the system label was `Inbox`, not `INBOX`.
+#[test]
+fn g_keys_find_system_mailboxes_whatever_their_case() {
+    for (action, name) in [
+        (Action::GoToInbox, "Inbox"),
+        (Action::GoToSent, "Sent"),
+        (Action::GoToTrash, "Trash"),
+        (Action::GoToSpam, "Spam"),
+        (Action::GoToStarred, "Starred"),
+    ] {
+        let mut app = App::new();
+        app.mailbox.labels = titlecase_labels();
+        app.apply(action.clone());
+        let label = app
+            .mailbox
+            .labels
+            .iter()
+            .find(|l| l.name == name)
+            .unwrap_or_else(|| panic!("a {name} label"));
+        assert_eq!(
+            app.mailbox.pending_active_label.as_ref(),
+            Some(&label.id),
+            "{action:?}"
+        );
+    }
+}
+
+/// Dogfood 2026-10-29: with no Starred label, `g s` listed starred mail
+/// under the title "All Mail".
+#[test]
+fn starred_by_flag_is_titled_starred() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(3);
+    app.apply(Action::GoToStarred);
+    assert_eq!(app.mailbox.active_role, Some(mxr_core::Role::Starred));
+    let title = app.mail_list_title();
+    assert!(title.starts_with("Starred "), "{title}");
+    app.apply(Action::GoToAllMail);
+    assert!(app.mail_list_title().starts_with("All Mail "));
+}
+
+/// Dogfood 2026-10-29: in Search's results at 160 columns the subject
+/// column was four characters ("Re:… +1"); a full-width sender column took
+/// the room. A narrow list gives the subject the width.
+#[test]
+fn search_results_keep_room_for_the_subject() {
+    let mut app = App::new();
+    app.screen = Screen::Search;
+    app.search.page.results = vec![TestEnvelopeBuilder::new()
+        .subject("Contract renewal for next year")
+        .with_from_address("Samir Patel", "samir@example.com")
+        .build()];
+    app.search.page.session_active = true;
+    app.search.page.editing = false;
+    let backend = ratatui::backend::TestBackend::new(160, 20);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let rows: Vec<String> = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect();
+    assert!(
+        rows.iter().any(|row| row.contains("Contract renewal")),
+        "{}",
+        rows.join("\n")
+    );
+}

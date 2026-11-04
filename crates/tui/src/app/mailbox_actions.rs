@@ -226,14 +226,14 @@ impl App {
             }
             // Search
             Action::GoToInbox => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "INBOX") {
+                if let Some(label) = self.system_label("INBOX") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("INBOX".into());
                 }
             }
             Action::GoToStarred => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "STARRED") {
+                if let Some(label) = self.system_label("STARRED") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     // No Starred label on any account: list by the starred flag.
@@ -249,14 +249,14 @@ impl App {
                 }
             }
             Action::GoToSent => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "SENT") {
+                if let Some(label) = self.system_label("SENT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("SENT".into());
                 }
             }
             Action::GoToDrafts => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "DRAFT") {
+                if let Some(label) = self.system_label("DRAFT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("DRAFT".into());
@@ -268,7 +268,7 @@ impl App {
                 } else {
                     "SPAM"
                 };
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == name) {
+                if let Some(label) = self.system_label(name) {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some(name.into());

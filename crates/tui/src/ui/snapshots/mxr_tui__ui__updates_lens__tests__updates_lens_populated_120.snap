@@ -3,7 +3,7 @@ source: crates/tui/src/ui/updates_lens.rs
 expression: rendered
 ---
 "╭ Updates ─ Notifications gathered twice a day. Read the digest, then let go. ─────────────────────────────────────────╮"
-"│  This morning's digest · 08:00 · 26 updates from 10 sources                                             A let go all │"
+"│  This morning's digest · 08:00 · 26 updates from 10 sources                                             E let go all │"
 "│  2 need a look, 2 changed. 22 routine from 6 sources.                                                                │"
 "│                                                                                                                      │"
 "│ ── Needs a look ──────────────────────────────────────────────────────────────────────────────────────────────────── │"

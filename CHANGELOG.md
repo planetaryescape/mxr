@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.207](https://github.com/planetaryescape/mxr/compare/v0.6.206...v0.6.207) (2026-11-04)
+
+
+### Bug Fixes
+
+* refresh Starred on sync and apply labels by each message's account ([#850](https://github.com/planetaryescape/mxr/issues/850)) ([a347309](https://github.com/planetaryescape/mxr/commit/a3473091ea367b6db52535c368516ab44f8c9165))
+
+## [0.6.206](https://github.com/planetaryescape/mxr/compare/v0.6.205...v0.6.206) (2026-11-04)
+
+
+### Bug Fixes
+
+* keep an in-memory store's database when sqlx replaces its connection ([#853](https://github.com/planetaryescape/mxr/issues/853)) ([8a5407d](https://github.com/planetaryescape/mxr/commit/8a5407dd016e50cf63c79ec2222015a2ae98ae76))
+
+## [0.6.205](https://github.com/planetaryescape/mxr/compare/v0.6.204...v0.6.205) (2026-11-04)
+
+
+### Bug Fixes
+
+* what a key-only triage of the TUI found ([#844](https://github.com/planetaryescape/mxr/issues/844)) ([cfc334a](https://github.com/planetaryescape/mxr/commit/cfc334a45a4c8115062f8aee8e0ef26904fea5ab))
+
+
+### Documentation
+
+* record macOS jobs cancelled before a runner was assigned ([7cc4067](https://github.com/planetaryescape/mxr/commit/7cc40675f5bcc469f9b220444b5a09f0cee63766))
+
 ## [0.6.204](https://github.com/planetaryescape/mxr/compare/v0.6.203...v0.6.204) (2026-11-04)
 
 

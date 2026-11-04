@@ -24,17 +24,27 @@ pub enum NotNowRow {
 /// then Custom.
 pub struct NotNowRows {
     later: bool,
+    presets: Vec<SnoozePreset>,
 }
 
 impl NotNowRows {
+    /// Every preset, for `target`.
     pub fn of(target: &NotNowTarget) -> Self {
         Self {
             later: target.later_label().is_some(),
+            presets: snooze_presets().to_vec(),
         }
     }
 
     pub fn len(&self) -> usize {
-        usize::from(self.later) + snooze_presets().len() + 1
+        usize::from(self.later) + self.presets.len() + 1
+    }
+
+    /// The Nth preset, as its digit picks it.
+    pub fn preset(&self, nth: usize) -> Option<SnoozePreset> {
+        nth.checked_sub(1)
+            .and_then(|index| self.presets.get(index))
+            .copied()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -42,7 +52,7 @@ impl NotNowRows {
     }
 
     pub fn row(&self, index: usize) -> NotNowRow {
-        let presets = snooze_presets();
+        let presets = &self.presets;
         let index = if self.later {
             match index.checked_sub(1) {
                 None => return NotNowRow::Later,
@@ -58,13 +68,21 @@ impl NotNowRows {
     }
 }
 
-/// Rows for a panel; a panel opened without a target (tests, a stale
-/// state) behaves as mail.
-fn rows_of(panel: &SnoozePanelState) -> NotNowRows {
-    panel
-        .target
-        .as_ref()
-        .map_or(NotNowRows { later: false }, NotNowRows::of)
+/// Rows for a panel, with the presets it opened with; a panel opened
+/// without a target (tests, a stale state) behaves as mail.
+pub fn rows_of(panel: &SnoozePanelState) -> NotNowRows {
+    let mut rows = panel.target.as_ref().map_or(
+        NotNowRows {
+            later: false,
+            presets: Vec::new(),
+        },
+        NotNowRows::of,
+    );
+    rows.presets = panel
+        .presets
+        .clone()
+        .unwrap_or_else(|| snooze_presets().to_vec());
+    rows
 }
 
 /// How many rows the open panel has, for the cursor's wrap.
@@ -161,7 +179,7 @@ pub fn draw(
     frame.render_widget(
         Paragraph::new(format!(
             "Enter pick  1-{} a time  j/k move  Esc cancel",
-            snooze_presets().len()
+            rows.presets.len()
         ))
         .style(Style::default().fg(theme.text_secondary)),
         chunks[1],

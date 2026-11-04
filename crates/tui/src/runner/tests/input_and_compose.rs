@@ -727,11 +727,11 @@ fn dormant_hint_fires_at_30d_3msgs_and_nothing_below() {
     );
 }
 
-/// Slice 5.3 (C2.7 cont): Ctrl-A on the compose-confirm modal
+/// Slice 5.3 (C2.7 cont): `c` on the compose-confirm modal
 /// adds the top "maybe include" suggestion to the draft's Cc
 /// and removes it from the list.
 #[test]
-fn ctrl_a_adds_top_suggestion_to_cc() {
+fn c_adds_top_suggestion_to_cc() {
     let mut app = App::new();
     app.compose.pending_send_confirm = Some(PendingSend {
         draft_revision: None,
@@ -769,7 +769,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         }],
     });
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
 
     let pending = app.compose.pending_send_confirm.as_ref().unwrap();
     assert_eq!(pending.fm.cc, "bob@example.com");
@@ -2866,4 +2866,56 @@ fn a_resumed_drafts_review_edits_it_again_and_never_discards_it() {
         Some(stored.id)
     );
     assert!(app.compose.pending_compose.is_none());
+}
+
+/// Dogfood 2026-10-29: `r` in Messages, then `d` in the send review, then
+/// `r` again started a second draft, because the row didn't know about the
+/// first. Saving (or sending) a reply refetches Messages, so the row names
+/// the draft and `r` continues it.
+#[test]
+fn a_reply_saved_from_messages_refreshes_the_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut app = App::new();
+    app.mailbox.mailbox_view = MailboxView::People;
+    app.compose.pending_send_confirm = Some(recovery_pending(directory.path().join("reply.md")));
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().unwrap();
+    assert!(matches!(queued.request, Request::SaveDraftToServer { .. }));
+    app.mailbox.messages_page.pending_refresh = false;
+    app.finish_compose_mutation(queued.id);
+    assert!(app.mailbox.messages_page.pending_refresh);
+}
+
+/// Dogfood 2026-10-29: the send review added a suggested person to Cc on
+/// `Ctrl-a`, GNU screen's prefix, which a TUI default never takes
+/// (blueprint 35). It is `c` now, printed on the review; `Ctrl-a` says so.
+#[test]
+fn c_adds_the_suggested_person_to_cc_and_ctrl_a_says_where_it_went() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut app = App::new();
+    let mut pending = recovery_pending(directory.path().join("reply.md"));
+    pending.suggested_collaborators = vec![mxr_protocol::SuggestedRecipientData {
+        email: "ana@example.com".into(),
+        display_name: None,
+        reason: "often copied".into(),
+        confidence: "high".into(),
+        evidence_msg_ids: Vec::new(),
+    }];
+    app.compose.pending_send_confirm = Some(pending);
+    let before = app.status_message.clone();
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced(
+            "send-review",
+            "Ctrl+a",
+            "Add the suggested person to Cc is now c",
+            before.as_deref()
+        )
+    );
+    assert_eq!(app.compose.pending_send_confirm.as_ref().unwrap().fm.cc, "");
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    let pending = app.compose.pending_send_confirm.as_ref().unwrap();
+    assert_eq!(pending.fm.cc, "ana@example.com");
+    assert!(pending.suggested_collaborators.is_empty());
 }

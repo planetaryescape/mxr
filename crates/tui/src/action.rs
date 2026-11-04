@@ -229,6 +229,9 @@ pub enum Action {
     TodoEdit,
     /// `X`: not a to-do; kept as a correction.
     TodoDismiss,
+    /// The palette's "Review what might need you": open or close the asks
+    /// mxr wasn't sure were for you.
+    TodoMightNeedYou,
     /// `o`: open the email the to-do came from.
     TodoOpenEmail,
     /// Inspect a later-mail resolution, then explicitly accept it (`,` on

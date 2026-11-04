@@ -19,7 +19,7 @@ mxr-llm = { workspace = true }
 chrono = { workspace = true }
 # Readability.js port for fetched web articles (chosen over readability,
 # readabilityrs and readability-rust: maintained, MIT, pure Rust).
-dom_smoothie = "0.18"
+dom_smoothie = "0.19"
 # scraper's tree type, for the one-pass walk over an issue's HTML.
 ego-tree = "0.11"
 once_cell = { workspace = true }

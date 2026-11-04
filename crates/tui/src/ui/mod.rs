@@ -26,6 +26,7 @@ pub mod focus_lens;
 pub(crate) mod help_keys;
 pub mod help_modal;
 pub mod hint_bar;
+pub mod key_footer;
 pub mod label_picker;
 pub mod mail_list;
 pub mod message_view;

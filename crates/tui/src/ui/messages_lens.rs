@@ -10,6 +10,7 @@
 //! wiring lives in `app/messages_actions.rs`.
 
 use crate::ui::account_mark::AccountMarks;
+use crate::ui::key_footer::FooterKey;
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
@@ -537,8 +538,9 @@ fn person_body(
     body
 }
 
-/// The footer keys, with their verbs, from the guide.
-fn keys_line(page: &MessagesPageState) -> String {
+/// The footer keys, with their verbs, from the guide, in `width`: help
+/// always shows, and the last keys go first when space runs short.
+fn keys_line(page: &MessagesPageState, width: usize) -> String {
     let wanted = ["f", "r", ".", "e", "t", "b", "c"];
     let verb = |key: &str| -> Option<String> {
         match &page.guide {
@@ -554,13 +556,13 @@ fn keys_line(page: &MessagesPageState) -> String {
                 .map(|(_, v)| (*v).to_string()),
         }
     };
-    let mut parts: Vec<String> = wanted
+    let mut parts: Vec<FooterKey> = wanted
         .iter()
-        .filter_map(|key| verb(key).map(|v| format!("{key} {v}")))
+        .filter_map(|key| verb(key).map(|v| FooterKey::optional(format!("{key} {v}"))))
         .collect();
-    parts.push("[ ] topic".into());
-    parts.push("? help".into());
-    parts.join("  ")
+    parts.push(FooterKey::optional("[ ] topic"));
+    parts.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&parts, "  ", width)
 }
 
 fn render_scrolled(frame: &mut Frame, area: Rect, body: Body) {
@@ -711,10 +713,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, theme: &crat
         Paragraph::new(vec![
             Line::from(Span::styled(truncate(&first, width), first_style)),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

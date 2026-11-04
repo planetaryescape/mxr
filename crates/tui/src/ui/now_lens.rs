@@ -12,6 +12,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, NowPageState, NowRow};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -467,22 +468,38 @@ fn arrivals_lines(
     }
 }
 
-fn keys_line(page: &NowPageState) -> String {
-    let rest: Vec<String> = match &page.guide {
+/// The footer's keys in `width`: Enter, undo and help always; the rest in
+/// the guide's order, the last ones dropped first when space runs short.
+fn keys_line(page: &NowPageState, width: usize) -> String {
+    let rest: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
             .keys
             .iter()
-            .filter(|key| !matches!(key.key.as_str(), "Enter" | "?"))
-            .map(|key| format!("{} {}", key.key, key.verb))
+            .map(|key| (key.key.clone(), key.verb.clone()))
             .collect(),
         None => mxr_protocol::NOW_GUIDE
             .keys
             .iter()
-            .filter(|(key, _)| !matches!(*key, "Enter" | "?"))
-            .map(|(key, verb)| format!("{key} {verb}"))
+            // Before the daemon's guide arrives, the compiled-in copy names
+            // actions by id; show their keys, as the guide would.
+            .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, (*verb).to_string())))
             .collect(),
     };
-    format!("\u{21b5} open in its mode  {}  ? keys", rest.join("  "))
+    let mut entries = vec![FooterKey::keep("\u{21b5} open in its mode")];
+    entries.extend(
+        rest.into_iter()
+            .filter(|(key, _)| !matches!(key.as_str(), "Enter" | "?"))
+            .map(|(key, verb)| {
+                let text = format!("{key} {verb}");
+                if key == "u" {
+                    FooterKey::keep(text)
+                } else {
+                    FooterKey::optional(text)
+                }
+            }),
+    );
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::theme::Theme) {
@@ -550,10 +567,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),
@@ -925,5 +939,16 @@ pub(crate) mod tests {
         assert_eq!(age_label(30), "1m");
         assert_eq!(age_label(22 * 3600), "22h");
         assert_eq!(age_label(3 * 86_400), "3d");
+    }
+
+    #[test]
+    fn the_footer_keeps_undo_and_help_at_every_width() {
+        let page = page(populated(), true);
+        for width in [80, 100, 120] {
+            let rendered = render_at(&page, width, 0);
+            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
+        }
+        // The last verbs in the guide's order give way first.
+        assert!(!render_at(&page, 80, 0).contains("f forward"));
     }
 }

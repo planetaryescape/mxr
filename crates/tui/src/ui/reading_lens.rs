@@ -18,6 +18,7 @@ use ratatui::widgets::*;
 use crate::app::{
     ActivePane, ReadingConfirm, ReadingPageState, ReadingRow, ReadingView, READING_LINKS_SHOWN,
 };
+use crate::ui::key_footer::FooterKey;
 use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -54,7 +55,7 @@ const LIST_KEYS: &[(&str, &str)] = &[
     ("reading.later-shelf", "Later"),
     ("reading.highlights", "highlights"),
     ("reading.marginalia", "Marginalia"),
-    ("shell.help", "help"),
+    ("shell.help", "keys"),
 ];
 const READER_KEYS: &[(&str, &str)] = &[
     ("reading.reader-back", "back"),
@@ -67,38 +68,29 @@ const READER_KEYS: &[(&str, &str)] = &[
     ("reading.original", "original"),
     ("reading.marginalia", "Marginalia"),
     ("reading.open-email", "email"),
+    ("shell.help", "keys"),
 ];
 
-fn footer_keys(keys: &[(&str, &str)]) -> String {
+/// "key verb" entries for the footer. The first (the place's primary verb)
+/// and help always show; the rest go last-first when space runs short.
+fn footer_keys(keys: &[(&str, &str)]) -> Vec<FooterKey> {
     keys.iter()
-        .filter_map(|(id, word)| {
+        .enumerate()
+        .filter_map(|(at, (id, word))| {
             let key = mxr_keymap::guide_key(id)?;
             let key = if key == "Escape" {
                 "Esc".to_string()
             } else {
                 key
             };
-            Some(format!("{key} {word}"))
+            let text = format!("{key} {word}");
+            Some(if at == 0 || *id == "shell.help" {
+                FooterKey::keep(text)
+            } else {
+                FooterKey::optional(text)
+            })
         })
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ")
-}
-
-/// As many whole "key verb" items as fit in `width`.
-fn fit_keys(keys: &str, width: usize) -> String {
-    let mut out = String::new();
-    for item in keys.split(" \u{b7} ") {
-        let next = if out.is_empty() {
-            item.to_string()
-        } else {
-            format!("{out} \u{b7} {item}")
-        };
-        if next.chars().count() > width {
-            break;
-        }
-        out = next;
-    }
-    out
+        .collect()
 }
 
 fn dot() -> &'static str {
@@ -713,11 +705,14 @@ pub fn draw(
     let keys = if reading {
         // j and k scroll in place, so no action carries them.
         let (back, rest) = READER_KEYS.split_at(1);
-        format!(
-            "{} \u{b7} j/k scroll \u{b7} {}",
-            footer_keys(back),
-            footer_keys(rest)
-        )
+        let mut keys = footer_keys(back);
+        keys.push(FooterKey::keep("j/k scroll"));
+        keys.extend(footer_keys(rest).into_iter().map(|mut key| {
+            // `rest` starts mid-list: only help is kept there.
+            key.keep = key.text.starts_with("? ");
+            key
+        }));
+        keys
     } else {
         footer_keys(LIST_KEYS)
     };
@@ -728,7 +723,10 @@ pub fn draw(
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(" {}", fit_keys(&keys, width.saturating_sub(2))),
+                format!(
+                    " {}",
+                    crate::ui::key_footer::fit(&keys, " \u{b7} ", width.saturating_sub(2))
+                ),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

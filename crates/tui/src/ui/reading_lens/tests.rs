@@ -505,3 +505,21 @@ fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
     });
     assert!(render(&reading, 6, 100).contains("Note: new"));
 }
+
+#[test]
+fn the_footer_keeps_help_at_every_width() {
+    let mut reading = page();
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(rendered.contains("? keys"), "list at {width}:\n{rendered}");
+    }
+    reading.reader = Some(detail(false));
+    reading.reader_focused = true;
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(
+            rendered.contains("? keys"),
+            "reader at {width}:\n{rendered}"
+        );
+    }
+}

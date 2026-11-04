@@ -1693,3 +1693,73 @@ async fn a_pre_108_source_with_duplicate_identity_tags_backs_up_and_restores_dis
     assert!(newer_tag.is_some());
     assert_ne!(newer_tag, older_tag);
 }
+
+#[tokio::test]
+async fn a_pre_105_source_with_duplicate_tags_and_no_label_roles_backs_up_both_repairs() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let older = crate::test_fixtures::test_account();
+    let newer = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Newer".into(),
+        email: "newer@example.com".into(),
+        ..older.clone()
+    };
+    store.insert_account(&older).await.unwrap();
+    store.insert_account(&newer).await.unwrap();
+    // Put the source back to schema 104: no label role, and a duplicate tag.
+    sqlx::query("ALTER TABLE labels DROP COLUMN role")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    sqlx::query("DROP INDEX idx_accounts_identity_tag")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE accounts SET identity_tag = 'DUP', created_at = CASE WHEN id = ?1 THEN 10 ELSE 20 END")
+        .bind(older.id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM schema_migrations WHERE version >= 105")
+        .execute(store.writer())
+        .await
+        .unwrap();
+    store.writer().close().await;
+
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 106);
+    inspect(stage.path()).await.unwrap();
+    std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
+    retire_restored(&restored.path().join("mxr.db"))
+        .await
+        .unwrap();
+
+    let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
+    let older_tag = restored_store
+        .list_account_identity_slots()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|slot| slot.account_id == older.id)
+        .unwrap()
+        .tag;
+    let newer_tag = restored_store
+        .list_account_identity_slots()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|slot| slot.account_id == newer.id)
+        .unwrap()
+        .tag;
+    assert_eq!(older_tag.as_deref(), Some("DUP"));
+    assert!(newer_tag.is_some());
+    assert_ne!(newer_tag, older_tag);
+}

@@ -132,15 +132,9 @@ mod tests {
     use mxr_core::types::{DraftSafetyIssue, DraftSafetySeverity};
 
     async fn temp_store() -> Store {
-        let temp_dir = std::env::temp_dir().join(format!(
-            "mxr-safety-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&temp_dir).unwrap();
+        // A directory named from the clock was shared by tests started in the
+        // same microsecond, which then locked or re-migrated one database.
+        let temp_dir = tempfile::tempdir().unwrap().keep();
         Store::new(&temp_dir.join("mxr.db")).await.unwrap()
     }
 

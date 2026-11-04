@@ -493,7 +493,10 @@ only in the accounts the search reaches. The search can be at most 2,048 bytes
 and a label edit can name at most 8 labels of at most 512 bytes each.
 
 `mxr undo JOB_ID` on an `--all` job refuses with an error that says the job
-ran with `--all` and cannot be undone, not that the id was not found. To
+ran with `--all` and cannot be undone, not that the id was not found;
+`mxr undo JOB_ID --dry-run` refuses with the same error and exit code. An agent
+or MCP profile gets that refusal only when it is allowed every account the job
+touched; otherwise it gets the usual not-found. To
 reverse a run, act on a search the other way (`unlabel --all` after
 `label --all`).
 

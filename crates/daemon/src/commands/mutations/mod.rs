@@ -25,12 +25,26 @@ pub async fn undo(
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
     if dry_run {
+        // An `--all` job keeps no undo, so its dry run refuses exactly as the
+        // real undo does instead of promising one (D191).
+        if let Response::Ok {
+            data: ResponseData::Job { job },
+        } = client
+            .request(Request::GetJob {
+                job_id: mutation_id.clone(),
+            })
+            .await?
+        {
+            if job.selection.is_some() {
+                anyhow::bail!(crate::handler::mutations::all_job_undo_refusal(&job.job_id));
+            }
+        }
         print_undo_output(&mutation_id, true, format)?;
         return Ok(());
     }
 
-    let mut client = IpcClient::connect().await?;
     let resp = client
         .request(Request::UndoMutation {
             mutation_id: mutation_id.clone(),

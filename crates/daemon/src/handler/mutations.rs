@@ -2035,12 +2035,24 @@ async fn selection_job_undo_refusal(
     let Ok(job) = serde_json::from_str::<JobData>(&json) else {
         return Ok(None);
     };
-    Ok(job.selection.is_some().then(|| {
-        format!(
-            "undo: job `{}` ran with --all, and an --all job cannot be undone: it keeps no undo, so its preview was the check. `mxr jobs {}` shows what it changed",
-            job.job_id, job.job_id
-        )
-    }))
+    Ok(job
+        .selection
+        .is_some()
+        .then(|| all_job_undo_refusal(&job.job_id)))
+}
+
+/// Why `job_id`, an `--all` job, cannot be undone. One wording for the daemon's
+/// refusal and the CLI's `mxr undo --dry-run`, so the preview and the real
+/// path say the same thing.
+pub(crate) fn all_job_undo_refusal(job_id: &str) -> String {
+    format!(
+        "undo: job `{job_id}` ran with --all, and an --all job cannot be undone: it keeps no undo, so its preview was the check. `mxr jobs {job_id}` shows what it changed"
+    )
+}
+
+/// What an undo says about an id with no undo entry.
+pub(crate) fn undo_not_found(mutation_id: &str) -> String {
+    format!("undo: mutation `{mutation_id}` not found (expired or already undone)")
 }
 
 enum SnapshotError {

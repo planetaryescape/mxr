@@ -1480,6 +1480,62 @@ async fn undoing_an_all_job_is_refused_as_such() {
     assert!(unknown.contains("not found"), "{unknown}");
 }
 
+/// An agent or MCP caller cleared for the `--all` job's accounts reaches the
+/// same refusal the CLI gets. One that is not cleared gets the not-found an
+/// unknown id gets, so the job's existence does not leak outside its accounts.
+#[tokio::test]
+async fn a_scoped_caller_gets_the_refusal_only_for_an_all_job_in_its_accounts() {
+    use mxr_config::SafetyPolicy;
+    let fx = Fixture::new().await;
+    let other = fx.other_account(true).await;
+    fx.many(3, "invoice").await;
+    let job = fx.archive_job("invoice").await;
+
+    let undo_as_mcp = |allowed: AccountId| {
+        let state = fx.state.clone();
+        let job_id = job.job_id.clone();
+        async move {
+            let mut config = state.config_snapshot();
+            config.agent_surfaces.profiles.insert(
+                "mcp".into(),
+                mxr_config::AgentProfileConfig {
+                    safety_policy: SafetyPolicy::Full,
+                    allowed_accounts: vec![allowed.as_str()],
+                    allow_send: false,
+                    allow_destructive: true,
+                    allowed_destructive_actions: vec![],
+                },
+            );
+            state.set_config_for_test(config).await;
+            let msg = IpcMessage {
+                expected_workspace: None,
+                id: 1,
+                source: ::mxr_protocol::ClientKind::Mcp,
+                payload: IpcPayload::Request(Request::UndoMutation {
+                    mutation_id: job_id,
+                }),
+            };
+            match handle_request(&state, &msg).await.payload {
+                IpcPayload::Response(Response::Error { message, .. }) => message,
+                other => panic!("expected a refusal, got {other:?}"),
+            }
+        }
+    };
+
+    let cleared = undo_as_mcp(fx.account.clone()).await;
+    assert_eq!(
+        cleared,
+        super::super::mutations::all_job_undo_refusal(&job.job_id)
+    );
+
+    let outside = undo_as_mcp(other).await;
+    assert_eq!(
+        outside,
+        super::super::mutations::undo_not_found(&job.job_id)
+    );
+    assert!(!outside.contains("--all"), "{outside}");
+}
+
 // ---------------------------------------------------------------------------
 // Label counts
 // ---------------------------------------------------------------------------

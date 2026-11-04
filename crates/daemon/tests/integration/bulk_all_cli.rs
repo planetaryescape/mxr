@@ -254,6 +254,18 @@ fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     assert!(stderr.contains("--all"), "{stderr}");
     assert!(!stderr.contains("not found"), "{stderr}");
     assert!(inbox_ids(&instance, &data_dir, &config_dir).is_empty());
+
+    // Its dry run refuses the same way, with the same message and exit code,
+    // and never says it would undo.
+    let dry = run_failing(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["undo", &job_id, "--dry-run"],
+    );
+    assert_eq!(dry.status.code(), undo.status.code());
+    assert_eq!(String::from_utf8_lossy(&dry.stderr), stderr);
+    assert!(!String::from_utf8_lossy(&dry.stdout).contains("Would undo"));
 }
 
 #[test]

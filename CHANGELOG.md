@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.208](https://github.com/planetaryescape/mxr/compare/v0.6.207...v0.6.208) (2026-11-04)
+
+
+### Features
+
+* reply-all and forward in Now, To do peek, keyboard highlights, and footers that keep ? keys ([#847](https://github.com/planetaryescape/mxr/issues/847)) ([8201548](https://github.com/planetaryescape/mxr/commit/82015486c15c37c90ada01fa0aed40a10b35f05d))
+
+
+### Bug Fixes
+
+* account config writes save only what the user asked ([#856](https://github.com/planetaryescape/mxr/issues/856)) ([35bf853](https://github.com/planetaryescape/mxr/commit/35bf85365a9ae90c9b72b9bc882ed1e5aff40cea))
+
 ## [0.6.207](https://github.com/planetaryescape/mxr/compare/v0.6.206...v0.6.207) (2026-11-04)
 
 

@@ -1232,8 +1232,8 @@ and its key line is no longer shown on its own.
 - Clear for now: "Nothing needs you. Next: renew car insurance shows up Mon
   19 Oct."
 - Card: "Each row is one thing to do, written as what to do, not the
-  email's subject. Act by the first date; Space ticks it off and o opens
-  the email it came from."
+  email's subject. Act by the first date; e ticks it off, Space peeks at
+  why it is here and o opens the email it came from."
   Keys: `Enter` do it · `e` tick off · `Z` schedule · `X` not a to-do
 - Why line: "Here because: \"payment due 9 October\" (rule). Once you pay,
   the receipt files itself in Archive."

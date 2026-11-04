@@ -2451,11 +2451,16 @@ contexts = ["todo", "catchup", "expired"]
 
 [[action]]
 id = "todo.details"
-label = "Why it is here and where each field came from"
-short_label = "Details"
+label = "Peek: why it is here, its email and where each field came from"
+short_label = "Peek"
 group = "Triage"
 scopes = ["todo"]
-palette_only = true
+keys = ["Space"]
+
+[[action.tui]]
+name = "TodoPeek"
+keys = ["Space"]
+contexts = ["todo"]
 
 # To do's tabs are digits, in the order they show (blueprint 35, D166).
 [[action]]
@@ -2840,11 +2845,12 @@ contexts = ["archive"]
 
 [[action]]
 id = "archive.filter"
-label = "Filters…"
-short_label = "Filters"
+label = "Filter by kind"
+short_label = "Filter"
 group = "Triage"
 scopes = ["archive"]
 keys = ["g f"]
+note = "The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked"
 
 # The TUI steps through the kinds; the web opens every filter at once.
 [[action.tui]]
@@ -3148,7 +3154,8 @@ keys = ["R"]
 
 [[action]]
 id = "reading.reader-highlight"
-label = "Highlight the selection"
+label = "Highlight the paragraph at the top, or the selection"
+description = "A selection, on the web, wins over the paragraph at the top of the reader"
 short_label = "Highlight"
 group = "Read"
 scopes = ["reading-reader"]
@@ -3260,6 +3267,34 @@ keys = ["r"]
 [[action.tui]]
 name = "Reply"
 keys = ["r"]
+contexts = ["now"]
+
+# Reply all and forward act on the person row `r` replies on (blueprint
+# 35's verb table lists r, a and f for Now).
+[[action]]
+id = "now.reply-all"
+label = "Reply all"
+short_label = "Reply all"
+group = "Triage"
+scopes = ["now"]
+keys = ["a"]
+
+[[action.tui]]
+name = "ReplyAll"
+keys = ["a"]
+contexts = ["now"]
+
+[[action]]
+id = "now.forward"
+label = "Forward"
+short_label = "Forward"
+group = "Triage"
+scopes = ["now"]
+keys = ["f"]
+
+[[action.tui]]
+name = "Forward"
+keys = ["f"]
 contexts = ["now"]
 
 [[action]]
@@ -4742,7 +4777,7 @@ actions = ["messages.cycle-filter", "messages.open"]
 
 [[strip]]
 id = "todo"
-actions = ["todo.done", "todo.open-email", "todo.schedule", "todo.dismiss", "todo.edit"]
+actions = ["todo.done", "todo.open-email", "todo.details", "todo.schedule", "todo.dismiss", "todo.edit"]
 
 [[strip]]
 id = "todo.done"

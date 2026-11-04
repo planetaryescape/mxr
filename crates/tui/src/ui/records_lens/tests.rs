@@ -616,3 +616,12 @@ fn the_subscription_card_has_history_price_changes_and_provenance() {
         "{text}"
     );
 }
+
+#[test]
+fn the_footer_keeps_help_at_every_width() {
+    let page = page(vec![apple(), dell(), octopus()], true);
+    for width in [80, 100, 120] {
+        let rendered = render_at(&page, width);
+        assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
+    }
+}

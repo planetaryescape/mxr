@@ -650,6 +650,40 @@ fn an_account_address_change_drops_every_cached_reply_context() {
     );
 }
 
+#[test]
+fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('m'));
+    let loaded =
+        crate::ui::messages_lens::tests::page(crate::ui::messages_lens::tests::populated(), true);
+    app.set_messages(loaded.messages.unwrap(), loaded.guide);
+    let (row_id, topic) = app
+        .mailbox
+        .messages_page
+        .pending_person
+        .take()
+        .expect("the selected row's page");
+    app.set_person_page(row_id, topic, crate::ui::messages_lens::tests::samir_page());
+    press(&mut app, KeyCode::Char('X'));
+    let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
+    assert_eq!(menu.current, Some(ModeKindData::Messages));
+    assert!(!menu.not_sure, "an ordinary move is not a Not-sure answer");
+    assert_eq!(menu.selected, 0, "the highlight starts on the first option");
+
+    // Now marks the mode the lit row is from.
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('h'));
+    let loaded = page(populated(), true);
+    app.set_now(loaded.now.unwrap(), loaded.guide);
+    press(&mut app, KeyCode::Char('X'));
+    assert_eq!(
+        app.mailbox.trust.move_menu.as_ref().and_then(|m| m.current),
+        Some(ModeKindData::Messages)
+    );
+}
+
 /// Dogfood 2026-10-29: the arrivals list's footer said "K sender", but the
 /// sender's key has been `P` since K3 and `K` does nothing there.
 #[test]

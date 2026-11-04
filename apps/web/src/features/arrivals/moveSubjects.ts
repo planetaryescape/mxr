@@ -24,6 +24,7 @@ export function nowMoveSubject(item: NowItem): MoveSubject | null {
         label: row.subject || "(no subject)",
         senderLabel,
         newSender: question ? { question, label: senderLabel } : undefined,
+        here: "messages",
       };
     }
     case "todo": {
@@ -33,6 +34,7 @@ export function nowMoveSubject(item: NowItem): MoveSubject | null {
         messageId: todo.source_message_id,
         label: todo.title,
         senderLabel: todo.counterparty ?? undefined,
+        here: "todo",
       };
     }
     case "reading":
@@ -40,6 +42,7 @@ export function nowMoveSubject(item: NowItem): MoveSubject | null {
         messageId: item.pick.message_id,
         label: item.pick.subject || "(no subject)",
         senderLabel: item.pick.sender_name || item.pick.sender_email,
+        here: "reading",
       };
     case "updates":
       return null;
@@ -61,7 +64,7 @@ export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
   const messageId = line.latest_message_id ?? line.fact_message_id;
   if (!messageId) return null;
   const label = displaySourceName(line.source_name);
-  return { messageId, label, senderLabel: label };
+  return { messageId, label, senderLabel: label, here: "updates" };
 }
 
 /** A Reading item, or the issue a digest link came from. */
@@ -71,6 +74,7 @@ export function readingMoveSubject(entry: EditionEntry): MoveSubject | null {
     messageId: item.message_id,
     label: entry.kind === "item" ? item.title : entry.link.title,
     senderLabel: item.source || item.sender_email,
+    here: "reading",
   };
 }
 

@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import { playSound } from "@/features/sound/player";
+import { runCommand } from "@/lib/keys/controllers";
 
 import type { Now } from "./api";
 import { NowRoute } from "./NowRoute";
@@ -38,6 +40,10 @@ vi.mock("@/features/modes/membership", async (importOriginal) => ({
   useThreadModesMap: () => ({ data: undefined }),
 }));
 vi.mock("@/features/sound/player", () => ({ playSound: vi.fn<typeof playSound>(() => true) }));
+vi.mock("@/lib/daemonAvailability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/daemonAvailability")>()),
+  refuseWhileDaemonDown: () => false,
+}));
 
 const cleared = {
   generated_at: "2026-10-03T09:00:00Z",
@@ -150,5 +156,20 @@ describe("Now's finishing scene", () => {
     visit(withWork).unmount();
     visit(cleared).unmount();
     expect(sounds()).toBe(2);
+  });
+});
+
+describe("Now's mail verbs", () => {
+  afterEach(() => useComposeUi.getState().closeCompose());
+
+  test.each([
+    ["reply", "reply"],
+    ["replyAll", "reply_all"],
+    ["forward", "forward"],
+  ])("%s on the lit person opens the composer on their email", (command, kind) => {
+    const page = visit(withWork);
+    expect(runCommand("now", command)).toBe(true);
+    expect(useComposeUi.getState().intent).toMatchObject({ kind, messageId: "m-t1" });
+    page.unmount();
   });
 });

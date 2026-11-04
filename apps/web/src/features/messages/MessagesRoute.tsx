@@ -805,6 +805,7 @@ function MessagesBody({
             newSender: newSender
               ? { question: newSender, label: selected?.title ?? "" }
               : undefined,
+            here: "messages" as const,
           }
         : null;
     }),

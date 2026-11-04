@@ -113,9 +113,27 @@ pub struct TodoPageState {
     pub microsoft_sync_review_visible: std::cell::Cell<bool>,
     pub microsoft_scroll_max: std::cell::Cell<u16>,
     pub microsoft_scroll: u16,
+    /// The to-do whose details Space opened under it, by id. It stays with
+    /// that row as the cursor moves, as Updates' peek does.
+    pub peek: Option<String>,
 }
 
 impl TodoPageState {
+    /// The peeked to-do's source email as plain text, once the reader's
+    /// fetch has it. Takes the body cache, not the app, so drawing can
+    /// borrow the page and the cache side by side.
+    pub fn peek_body<'a>(
+        &self,
+        bodies: &'a std::collections::HashMap<MessageId, mxr_core::MessageBody>,
+    ) -> Option<&'a str> {
+        let peek = self.peek.as_deref()?;
+        let todo = self.rows().into_iter().find(|todo| todo.id == peek)?;
+        bodies
+            .get(todo.source_message_id.as_ref()?)?
+            .text_plain
+            .as_deref()
+    }
+
     /// The runway's selectable rows in display order: Now, Coming up by
     /// week, Later, then Whenever.
     pub fn runway_rows(&self) -> Vec<&TodoData> {

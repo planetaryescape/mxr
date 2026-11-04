@@ -186,6 +186,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "TodoEdit" => Action::TodoEdit,
         "TodoOpenCatchup" => Action::TodoOpenCatchup,
         "TodoOpenEmail" => Action::TodoOpenEmail,
+        "TodoPeek" => Action::TodoPeek,
         "TodoOpenExpired" => Action::TodoOpenExpired,
         "TodoPrimary" => Action::TodoPrimary,
         "TodoRestore" => Action::TodoRestore,

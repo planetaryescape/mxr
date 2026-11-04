@@ -94,7 +94,10 @@ export function MoveToModeDialog({
       : Object.entries(MOVE_KEYS).filter(([, mode]) => SENDER_MODES.includes(mode))
     : Object.entries(MOVE_KEYS);
   const who = subject.senderLabel ?? newSender?.label ?? "this sender";
+  // A Not-sure answer starts on where it is now, since keeping it there
+  // answers too; an ordinary move only marks it.
   const start = subject.notSure?.mode;
+  const here = start ?? subject.here;
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -170,13 +173,13 @@ export function MoveToModeDialog({
                   {...{ [OPTION]: "" }}
                   data-mode={mode}
                   data-testid={`move-choice-${mode}`}
-                  aria-current={mode === start ? "true" : undefined}
+                  aria-current={mode === here ? "true" : undefined}
                   onClick={() => choose(mode, sender)}
                   className={optionClass}
                 >
                   <span className="flex-1 font-medium">
                     {MODE_NAMES[mode]}
-                    {mode === start ? (
+                    {mode === here ? (
                       <span className="ml-2 text-2xs font-normal text-muted-foreground">
                         here now
                       </span>

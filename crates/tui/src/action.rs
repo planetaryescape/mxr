@@ -234,6 +234,9 @@ pub enum Action {
     TodoMightNeedYou,
     /// `o`: open the email the to-do came from.
     TodoOpenEmail,
+    /// `Space`: open the lit to-do's details under it (why it is here, its
+    /// email's first lines, where each field came from), or close them.
+    TodoPeek,
     /// Inspect a later-mail resolution, then explicitly accept it (`,` on
     /// a to-do with one waiting).
     TodoReviewResolution,

@@ -45,6 +45,21 @@ pub(super) fn chosen() -> chrono::DateTime<Utc> {
         .and_utc()
 }
 
+/// The first day of the month `months` after this one, written the way mail
+/// writes it ("1 December 2026"). Fixed dates lapsed once the clock passed them.
+pub(super) fn month_start(months: u32) -> chrono::NaiveDate {
+    use chrono::Datelike as _;
+    Utc::now()
+        .date_naive()
+        .with_day(1)
+        .and_then(|day| day.checked_add_months(chrono::Months::new(months)))
+        .unwrap()
+}
+
+pub(super) fn written(day: chrono::NaiveDate) -> String {
+    day.format("%-d %B %Y").to_string()
+}
+
 pub(super) async fn accept(fx: &Fixture, mail: &Envelope) -> String {
     let ResponseData::RecordedPromise { commitment, .. } = request(
         fx,
@@ -627,7 +642,9 @@ async fn public_record_promise_preserves_closed_and_user_edited_task_decisions()
                         },
                         mxr_protocol::TodoEditData {
                             field: "due".into(),
-                            value: "2026-11-06T12:00:00Z".into(),
+                            // Ahead of the clock, and a day apart from the accepted one.
+                            value: (chosen() - Duration::days(7))
+                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
                         },
                     ],
                     time_zone: Some("UTC".into()),

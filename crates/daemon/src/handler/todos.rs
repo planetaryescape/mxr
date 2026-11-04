@@ -82,7 +82,7 @@ pub(crate) async fn scan_messages_at(
         envelopes.iter().map(|e| e.account_id.clone()).collect();
     for account in accounts {
         if let Err(error) =
-            super::assessments::reconcile_messages(state, &account, message_ids).await
+            super::assessments::reconcile_messages_at(state, &account, message_ids, now).await
         {
             tracing::warn!(%error, "asks materialization pending before to-do scan");
             return;
@@ -1149,7 +1149,7 @@ pub(super) fn apply_edits(
 
 /// Act-by, surface time and window again from the table, after the user
 /// changed the due date or the kind.
-fn retime_record(record: &mut TodoRecord, fields: &mut FieldSources, morning_hour: u8) {
+pub(super) fn retime_record(record: &mut TodoRecord, fields: &mut FieldSources, morning_hour: u8) {
     let kind = TodoKind::parse(&record.kind).unwrap_or(TodoKind::Other);
     let input = TimingInput {
         kind,

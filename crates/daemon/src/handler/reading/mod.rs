@@ -840,13 +840,13 @@ async fn accounts(
     }
 }
 
-/// After a sync: extract the new Reading mail and expire what faded, so
-/// Now and the rail agree with the edition without it being opened.
-pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId) {
+/// After a sync: extract the new Reading mail and expire what faded as of
+/// `now`, so Now and the rail agree with the edition without it being opened.
+pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId, now: DateTime<Utc>) {
     let accounts = [account_id.clone()];
     let result = async {
         let visits = load_visits(state, &accounts).await?;
-        let planned = plan(state, &accounts, &visits, Utc::now()).await?;
+        let planned = plan(state, &accounts, &visits, now).await?;
         expire(state, &planned.expired).await
     }
     .await;

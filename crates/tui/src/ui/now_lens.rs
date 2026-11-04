@@ -602,6 +602,14 @@ pub(crate) mod tests {
     };
     use mxr_test_support::render_to_string;
 
+    /// The clock the views render against. The fixtures' mail is from
+    /// October 2026, and the snapshots show it as earlier this year; on the
+    /// wall clock they change on 1 January.
+    fn fixture_now() -> chrono::DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+    }
+
     fn person(name: &str, subject: &str, hours: i64) -> NowPersonData {
         let thread_id = ThreadId::new();
         NowPersonData {
@@ -618,7 +626,7 @@ pub(crate) mod tests {
                 counterparty_name: Some(name.into()),
                 subject: subject.into(),
                 reason: "replied to your message".into(),
-                since: Utc::now(),
+                since: fixture_now(),
                 age_seconds: hours * 3600,
                 usual_seconds: None,
                 usual_samples: 0,
@@ -659,7 +667,7 @@ pub(crate) mod tests {
         lease.when_label = "act by Mon 13 Oct \u{b7} due Wed 15 Oct".into();
         lease.person_label = Some("Sam".into());
         NowData {
-            generated_at: Utc::now(),
+            generated_at: fixture_now(),
             header: NOW_GUIDE.header.into(),
             headline: "Friday afternoon. 3 people, 2 things to act on.".into(),
             people: NowPeopleData {
@@ -695,7 +703,7 @@ pub(crate) mod tests {
                 source_count: 9,
                 top_sources: Vec::new(),
                 line: "23 updates from 9 sources. Most from GitHub, Vercel and Stripe.".into(),
-                since: Utc::now(),
+                since: fixture_now(),
                 thread_ids: vec![ThreadId::new()],
                 early: false,
                 title: "This morning's digest".into(),
@@ -750,7 +758,9 @@ pub(crate) mod tests {
     pub(crate) fn page(now: NowData, hints_seen: bool) -> NowPageState {
         NowPageState {
             now: Some(now),
-            guide: Some(NOW_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
+            guide: Some(
+                NOW_GUIDE.to_data(|_| hints_seen.then(fixture_now), &mxr_keymap::guide_key),
+            ),
             ..NowPageState::default()
         }
     }
@@ -761,7 +771,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 34),
                 &NowView {
-                    now: chrono::Utc::now(),
+                    now: fixture_now(),
                     page,
                     selected_index,
                     active_pane: &ActivePane::MailList,
@@ -847,7 +857,7 @@ pub(crate) mod tests {
 
     fn arrivals(questions: usize) -> mxr_protocol::ArrivalsData {
         use mxr_protocol::{ArrivalBucketData, ArrivalCountData, ModeKindData, MoveChoiceData};
-        let now = Utc::now();
+        let now = fixture_now();
         let count = |bucket, count: u32, label: &str| ArrivalCountData {
             bucket,
             count,

@@ -5130,13 +5130,26 @@
     },
     {
       "id": "todo.details",
-      "label": "Why it is here and where each field came from",
-      "short_label": "Details",
+      "label": "Peek: why it is here, its email and where each field came from",
+      "short_label": "Peek",
       "group": "Triage",
       "scopes": [
         "todo"
       ],
-      "palette_only": true
+      "keys": [
+        "Space"
+      ],
+      "tui": [
+        {
+          "name": "TodoPeek",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "todo"
+          ]
+        }
+      ]
     },
     {
       "id": "todo.runway",
@@ -5846,8 +5859,8 @@
     },
     {
       "id": "archive.filter",
-      "label": "Filters…",
-      "short_label": "Filters",
+      "label": "Filter by kind",
+      "short_label": "Filter",
       "group": "Triage",
       "scopes": [
         "archive"
@@ -5855,6 +5868,7 @@
       "keys": [
         "g f"
       ],
+      "note": "The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked",
       "tui": [
         {
           "name": "RecordsNextKind",
@@ -6411,8 +6425,9 @@
     },
     {
       "id": "reading.reader-highlight",
-      "label": "Highlight the selection",
+      "label": "Highlight the paragraph at the top, or the selection",
       "short_label": "Highlight",
+      "description": "A selection, on the web, wins over the paragraph at the top of the reader",
       "group": "Read",
       "scopes": [
         "reading-reader"
@@ -6606,6 +6621,52 @@
           "name": "Reply",
           "keys": [
             "r"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "now.reply-all",
+      "label": "Reply all",
+      "short_label": "Reply all",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "a"
+      ],
+      "tui": [
+        {
+          "name": "ReplyAll",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "now.forward",
+      "label": "Forward",
+      "short_label": "Forward",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "f"
+      ],
+      "tui": [
+        {
+          "name": "Forward",
+          "keys": [
+            "f"
           ],
           "contexts": [
             "now"
@@ -15117,6 +15178,7 @@
       "actions": [
         "todo.done",
         "todo.open-email",
+        "todo.details",
         "todo.schedule",
         "todo.dismiss",
         "todo.edit"

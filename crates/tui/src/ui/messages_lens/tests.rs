@@ -530,3 +530,12 @@ fn paragraph_blocks_treats_a_run_of_blank_lines_as_one_break() {
 fn paragraph_blocks_keeps_single_newlines_in_one_paragraph() {
     assert_eq!(paragraph_blocks("a\nb\nc"), vec!["a\nb\nc"]);
 }
+
+#[test]
+fn the_footer_keeps_help_at_every_width() {
+    let page = page(populated(), true);
+    for width in [80, 100, 120] {
+        let rendered = render_at(&page, width, 0);
+        assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
+    }
+}

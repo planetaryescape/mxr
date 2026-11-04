@@ -27,7 +27,7 @@ import {
   type Band,
 } from "./todoRows";
 
-/** Under a row on `v`: reason and source email first, field evidence and diagnostics on demand. */
+/** Under a row on `Space`: reason and source email first, field evidence and diagnostics on demand. */
 function Details({
   todo,
   onOpenEmail,
@@ -289,7 +289,7 @@ export interface TodoRowProps {
   /** The lamp is on this row. */
   lit: boolean;
   via: LampVia;
-  /** The details are open under the row (`v`). */
+  /** The details are open under the row (`Space`). */
   details: boolean;
   /** The other modes holding this row's email, for its marks. */
   modes?: ThreadModes;
@@ -308,7 +308,7 @@ export interface TodoRowProps {
  * (with the amount), who it is from, and the window in words ("act by Fri",
  * in the cue colour once it is today or past). The lit row's trail becomes
  * `Space done` and `o email`. Why it is here is the status bar's; the field
- * sources and a later email's offer are one key (`v`) away.
+ * sources and a later email's offer are one key (`Space`) away.
  */
 export const TodoRow = memo(function TodoRow({
   todo,

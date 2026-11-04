@@ -5,7 +5,7 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
   {
-    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; Space ticks it off and o opens the email it came from.",
+    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; e ticks it off, Space peeks at why it is here and o opens the email it came from.",
     "add_one": "Press `t` on any email to add one yourself.",
     "clear_for_now": "Nothing needs you.",
     "first_run_line": "What email asked you to do",
@@ -56,6 +56,10 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
       {
         "key": "o",
         "verb": "open the email"
+      },
+      {
+        "key": "Space",
+        "verb": "peek"
       },
       {
         "key": "u",

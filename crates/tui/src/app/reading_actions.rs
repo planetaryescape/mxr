@@ -583,14 +583,25 @@ impl App {
         );
     }
 
-    /// `h`: the paragraph at the top of the reader becomes a highlight.
+    /// `"`: highlight the paragraph at the top of the reader. A terminal has
+    /// no text selection, so the paragraph you scrolled to is the passage;
+    /// the status line names it, and `3` lists it with `x` to remove it.
     fn reading_highlight(&mut self) {
         let page = &self.mailbox.reading_page;
         let Some(reader) = &page.reader else {
             self.status_message = Some("Open an item first: Enter reads it".into());
             return;
         };
-        let Some(quote) = crate::ui::reading_lens::paragraph_at_top(
+        // Before the article is fetched the reader shows a note about it,
+        // which is not the article's text.
+        if page.view == ReadingView::Article && reader.article.is_none() {
+            self.status_message = Some(format!(
+                "Fetch the article first: {} fetches it",
+                mxr_keymap::guide_key("reading.reader-article").unwrap_or_default()
+            ));
+            return;
+        }
+        let Some((index, quote)) = crate::ui::reading_lens::paragraph_at_top(
             page,
             chrono::Utc::now(),
             crate::ui::received_label::DisplayZone::Local,
@@ -599,9 +610,17 @@ impl App {
             return;
         };
         let view = match page.view {
-            ReadingView::Article if reader.article.is_some() => "article",
-            _ => "issue",
+            ReadingView::Article => "article",
+            ReadingView::Issue => "issue",
         };
+        // The sender's layout splits its text its own way, so its numbering
+        // is not the daemon's: the quote alone finds the passage there.
+        let paragraph = page
+            .original_text
+            .is_none()
+            .then(|| u32::try_from(index).ok())
+            .flatten();
+        let saved = format!("Highlighted \u{201c}{}\u{201d}", quote_opening(&quote));
         let key = reader.item.item_key.clone();
         self.queue_mutation(
             Request::SaveHighlight {
@@ -609,9 +628,9 @@ impl App {
                 quote,
                 note: None,
                 view: Some(view.into()),
-                paragraph: None,
+                paragraph,
             },
-            MutationEffect::ModeDone("Highlight saved".into()),
+            MutationEffect::ModeDone(saved),
             "Saving the highlight...".into(),
         );
     }
@@ -734,4 +753,15 @@ impl App {
         let defined = self.defined_key("reading", key);
         self.run_defined_key(defined)
     }
+}
+
+/// The first words of a highlighted passage, for the status line.
+fn quote_opening(quote: &str) -> String {
+    const WORDS: usize = 8;
+    let line = crate::ui::sanitize::one_line(quote);
+    let words: Vec<&str> = line.split_whitespace().collect();
+    if words.len() <= WORDS {
+        return words.join(" ");
+    }
+    format!("{}\u{2026}", words[..WORDS].join(" "))
 }

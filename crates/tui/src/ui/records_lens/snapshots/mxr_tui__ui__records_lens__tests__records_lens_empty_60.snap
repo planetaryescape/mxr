@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
-assertion_line: 459
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask f╮"
@@ -35,5 +34,5 @@ expression: rendered
 "│                                                          │"
 "│                                                          │"
 "│                                                          │"
-"│ / ask  y copy reference  Y copy amount  Enter open docu… │"
+"│ / ask  y copy reference  Y copy amount  ? keys           │"
 "╰──────────────────────────────────────────────────────────╯"

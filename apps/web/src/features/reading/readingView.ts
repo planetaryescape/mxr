@@ -156,6 +156,12 @@ export function highlightPayload(
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
+/** The first words of a highlighted passage, for the toast that names it. */
+export function quoteOpening(quote: string, words = 8): string {
+  const all = squash(quote).split(" ");
+  return all.length <= words ? all.join(" ") : `${all.slice(0, words).join(" ")}…`;
+}
+
 /**
  * The saved highlight a selection is exactly, comparing words not spacing,
  * or undefined. Clicking a drawn highlight selects its text, so this is

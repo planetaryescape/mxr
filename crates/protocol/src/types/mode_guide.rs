@@ -228,6 +228,7 @@ const TODO_KEYS: &[(&str, &str)] = &[
     ("todo.edit", "edit"),
     ("todo.dismiss", "correct to-do"),
     ("todo.open-email", "open the email"),
+    ("todo.details", "peek"),
     ("mail.undo", "undo"),
     ("todo.catchup", "catch up"),
     ("shell.help", "what is this"),
@@ -269,6 +270,8 @@ const NOW_KEYS: &[(&str, &str)] = &[
     ("now.reply", "reply"),
     ("now.open-email", "open the email"),
     ("now.let-go-digest", "let go of digest"),
+    ("now.reply-all", "reply all"),
+    ("now.forward", "forward"),
     ("mail.undo", "undo"),
     ("shell.help", "what is this"),
 ];

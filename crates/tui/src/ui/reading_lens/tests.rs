@@ -401,7 +401,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
         chrono::Utc::now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("We rebuilt")));
+    .is_some_and(|(index, p)| index == 0 && p.starts_with("We rebuilt")));
     // Past the first paragraph and the heading, the third one is on top.
     let (_, owners) = reader_lines(
         &reading,
@@ -420,7 +420,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
         chrono::Utc::now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("A delete is")));
+    .is_some_and(|(index, p)| index == 2 && p.starts_with("A delete is")));
 }
 
 #[test]
@@ -504,4 +504,22 @@ fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
         step: crate::app::HighlightStep::Note("new".into()),
     });
     assert!(render(&reading, 6, 100).contains("Note: new"));
+}
+
+#[test]
+fn the_footer_keeps_help_at_every_width() {
+    let mut reading = page();
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(rendered.contains("? keys"), "list at {width}:\n{rendered}");
+    }
+    reading.reader = Some(detail(false));
+    reading.reader_focused = true;
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(
+            rendered.contains("? keys"),
+            "reader at {width}:\n{rendered}"
+        );
+    }
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.207](https://github.com/planetaryescape/mxr/compare/v0.6.206...v0.6.207) (2026-11-04)
+
+
+### Bug Fixes
+
+* refresh Starred on sync and apply labels by each message's account ([#850](https://github.com/planetaryescape/mxr/issues/850)) ([a347309](https://github.com/planetaryescape/mxr/commit/a3473091ea367b6db52535c368516ab44f8c9165))
+
 ## [0.6.206](https://github.com/planetaryescape/mxr/compare/v0.6.205...v0.6.206) (2026-11-04)
 
 

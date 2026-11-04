@@ -79,7 +79,7 @@ const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
  * To do: things email asked you to do, as a runway of instructions
  * ordered by when to act. Not a list of emails: each row is an action titled
  * verb plus object, with its dates and primary action visible; supporting
- * details and the source email are one key away (`o`).
+ * details peek under the row on `Space`, and `o` opens the source email.
  */
 export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
   const { runway, expiredOnOpen } = useRunway();
@@ -403,7 +403,11 @@ function Bands({
     runway: () => undefined,
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
-    closeHint,
+    // Escape closes an open peek first, then a hint, as in Updates.
+    closeHint: () => {
+      if (expandedId !== null) setExpandedId(null);
+      else closeHint?.();
+    },
   });
 
   // The status bar says why the lit row is here and which keys work on it.

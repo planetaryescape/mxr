@@ -28,6 +28,8 @@ pub struct TodoView<'a> {
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: crate::ui::account_mark::AccountMarks,
+    /// The peeked to-do's source email as plain text, once fetched.
+    pub peek_body: Option<&'a str>,
 }
 
 /// Cells in the runway bar.
@@ -308,6 +310,8 @@ struct Body {
     lines: Vec<Line<'static>>,
     selected_line: usize,
     sync_preview_end: Option<usize>,
+    /// The line after the lit row's peek, so scrolling can show all of it.
+    peek_end: Option<usize>,
 }
 
 impl Body {
@@ -316,6 +320,7 @@ impl Body {
             lines: Vec::new(),
             selected_line: 0,
             sync_preview_end: None,
+            peek_end: None,
         }
     }
 
@@ -347,6 +352,21 @@ impl Body {
             let chip = view.account_marks.row_cell(&todo.account_id, theme);
             let width = width.saturating_sub(view.account_marks.column_width());
             self.push(row_line(todo, selected, dim, width, theme, chip));
+            if view.page.peek.as_deref() == Some(todo.id.as_str()) {
+                let peek =
+                    crate::ui::todo_peek::peek_lines(todo, view.peek_body, view.now, view.zone);
+                for item in peek {
+                    for text in wrap(&item, width.saturating_sub(8)) {
+                        self.text(
+                            format!("  \u{2502} {text}"),
+                            Style::default().fg(theme.text_secondary),
+                        );
+                    }
+                }
+                if selected {
+                    self.peek_end = Some(self.lines.len());
+                }
+            }
             if selected {
                 if let Some(preview) = view
                     .page
@@ -693,8 +713,15 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
     let body_height = inner.height.saturating_sub(footer_height) as usize;
     let scroll = body.sync_preview_end.map_or_else(
         || {
-            body.selected_line
-                .saturating_sub(body_height.saturating_sub(2))
+            let row = body
+                .selected_line
+                .saturating_sub(body_height.saturating_sub(2));
+            // An open peek under the lit row shows whole, as far as the
+            // row itself can stay on screen.
+            body.peek_end.map_or(row, |end| {
+                row.max(end.saturating_sub(body_height))
+                    .min(body.selected_line)
+            })
         },
         |end| end.saturating_sub(body_height),
     );
@@ -1107,6 +1134,7 @@ pub(crate) mod tests {
                     selected_index,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1155,6 +1183,7 @@ pub(crate) mod tests {
                             selected_index: 39,
                             active_pane: &ActivePane::MailList,
                             account_marks: crate::ui::account_mark::AccountMarks::default(),
+                            peek_body: None,
                         },
                         &crate::theme::Theme::default(),
                     );
@@ -1183,6 +1212,7 @@ pub(crate) mod tests {
                     selected_index: 39,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1268,6 +1298,7 @@ pub(crate) mod tests {
                         selected_index: 0,
                         active_pane: &ActivePane::MailList,
                         account_marks: crate::ui::account_mark::AccountMarks::default(),
+                        peek_body: None,
                     },
                     &theme,
                 );
@@ -1466,6 +1497,7 @@ pub(crate) mod tests {
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );

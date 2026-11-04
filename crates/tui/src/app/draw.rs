@@ -397,6 +397,10 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self
+                                        .mailbox
+                                        .todo_page
+                                        .peek_body(&self.mailbox.body_cache),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,
@@ -582,6 +586,10 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self
+                                        .mailbox
+                                        .todo_page
+                                        .peek_body(&self.mailbox.body_cache),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,

@@ -399,7 +399,7 @@ fn quote_in_the_reader_highlights_the_top_paragraph() {
     key(&mut app, '"');
     assert!(queued(&app).iter().any(|request| matches!(
         request,
-        Request::SaveHighlight { quote, view: Some(view), .. }
+        Request::SaveHighlight { quote, view: Some(view), paragraph: Some(0), .. }
             if quote.starts_with("Every reader") && view == "issue"
     )));
 }

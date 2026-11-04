@@ -177,12 +177,18 @@ emails you moved; mail you never opened isn't checked.
 | `Enter` | Open the row in its own mode, on that row: a person in Messages, a to-do in To do, the card's first line in Updates, the pick in Reading's reader |
 | `e` | Done here, in the row's mode |
 | `r` | Reply to a person |
+| `a` | Reply all to a person |
+| `f` | Forward a person's email |
 | `o` | Open the email |
 | `E` | Let go of the Updates card, after a preview |
 | `X` | Move this email to another mode |
 | `P` | Move everything from this sender to a mode |
 | `u` | Undo |
 | `?` | What Now is for, then its keys |
+
+`r`, `a` and `f` work on a person's row, where the conversation is. A to-do,
+the Updates card and the reading pick are not conversations: `o` opens the
+email first, and the reader's `r`, `a` and `f` work there.
 
 Done here takes the conversation out of that one mode until a new message
 arrives. Other modes keep it, and the email is archived in your mail

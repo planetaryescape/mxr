@@ -25,7 +25,7 @@ import {
   syncMarginaliaHighlights,
   type ReadingFetch,
 } from "./api";
-import { domainLabel, highlightPayload } from "./readingView";
+import { domainLabel, highlightPayload, quoteOpening } from "./readingView";
 
 export async function refreshReading(): Promise<void> {
   await getActiveQueryClient()
@@ -145,22 +145,34 @@ export async function letGo(threadIds: readonly string[]): Promise<boolean> {
   return done;
 }
 
-/** `"`: save the selected passage. */
+/**
+ * `"`: save the selected passage. With nothing selected, `top` is the
+ * paragraph at the top of the reader, so the key works without a mouse;
+ * the toast names it, since nothing on screen was picked by hand.
+ */
 export async function highlightSelection(
   selection: string,
   itemKey: string,
   view: "issue" | "article",
   note?: string,
   paragraph?: number | null,
+  top?: { index: number; text: string } | null,
 ): Promise<boolean> {
-  const payload = highlightPayload(selection, itemKey, view);
+  const selected = highlightPayload(selection, itemKey, view);
+  const payload = selected ?? (top ? highlightPayload(top.text, itemKey, view) : null);
   if (!payload) {
-    toast.info(`Select some text first, then press ${definedShortcut("reading.reader-highlight")}`);
+    toast.info(
+      `Scroll to a paragraph or select some text, then press ${definedShortcut("reading.reader-highlight")}`,
+    );
     return false;
   }
   try {
-    await saveHighlight({ ...payload, note: note?.trim() || undefined, paragraph });
-    toast.success("Highlight saved");
+    await saveHighlight({
+      ...payload,
+      note: note?.trim() || undefined,
+      paragraph: selected ? paragraph : top?.index,
+    });
+    toast.success(selected ? "Highlight saved" : `Highlighted “${quoteOpening(payload.quote)}”`);
     await getActiveQueryClient()?.invalidateQueries({
       queryKey: [...READING_KEY, "item", itemKey],
     });

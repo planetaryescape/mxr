@@ -35,7 +35,7 @@ the due date. Use a row's ID from the JSON output for the CLI commands below.
 
 ## Check the source and act
 
-Open a task's email with `o`, or open **details**, to mark that row seen.
+Open a task's email with `o`, or peek at it with `Space`, to mark that row seen.
 Unseen tasks are bold and bright; seen tasks use normal-weight grey text,
 even while unfinished. Moving the selection alone does not mark a task seen.
 This state is local to mxr and shared by its clients, not the email's read
@@ -55,19 +55,21 @@ as seen. Neither command ticks the task off or marks its email read.
 mxr todo why TODO_ID --format json
 ```
 
-Inspect where the title, amount, payment method and dates came from. In the web app, press
-`o` to open the source email beside the list, **details** on the row (or
-in the palette) for why the row is here and where each field came from (a
-field mxr wasn't sure of reads "unchecked"), `,` to fix a field,
-or `Enter` for the selected row's primary action (the email with its link
-marked, or a reply to a promise). Check extracted details against that source
-before relying on them. Use the
-row's edit control, or `,` on the web, to correct what mxr read.
+Inspect where the title, amount, payment method and dates came from. Press
+`Space` to peek under the lit row: its dates in full, when the email arrived,
+why the row is here and what happens next, where its link goes, the email's
+first lines and where each field came from (a field mxr wasn't sure of reads
+"unchecked"). `Space` again or `Esc` closes it. The web app also opens it
+from **details** on the row. Press `o` to open the source email, `,` to fix a
+field, or `Enter` for the selected row's primary action (the email with its
+link marked, or a reply to a promise). Check extracted details against that
+source before relying on them.
 
-Web details show the reason and next step above the field sources. Expand **Field sources** to
-check each field's source and any unchecked values. Repeated evidence appears
-once. Raw assessment fingerprints and policy/unit identifiers are under
-**Diagnostics**; they remain available in `mxr todo why TODO_ID --format json`.
+On the web, the peek shows the reason and next step above the field sources.
+Expand **Field sources** to check each field's source and any unchecked
+values. Repeated evidence appears once. Raw assessment fingerprints and
+policy/unit identifiers are under **Diagnostics**; the TUI's peek leaves them
+out, and they remain available in `mxr todo why TODO_ID --format json`.
 
 Bills, failed payments, sign or verification requests, promises and annual
 renewal reviews can become tasks automatically. An alert in Updates offers

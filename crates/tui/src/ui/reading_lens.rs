@@ -567,12 +567,13 @@ pub(crate) fn reader_lines(
     (lines, owners)
 }
 
-/// The paragraph at the top of the reader, for `h`.
+/// The paragraph at the top of the reader, for `"`: its index in the
+/// reader's paragraph list and its text.
 pub(crate) fn paragraph_at_top(
     page: &ReadingPageState,
     now: DateTime<Utc>,
     zone: crate::ui::received_label::DisplayZone,
-) -> Option<String> {
+) -> Option<(usize, String)> {
     let (_, owners) = reader_lines(
         page,
         READER_WIDTH,
@@ -585,8 +586,7 @@ pub(crate) fn paragraph_at_top(
         .iter()
         .skip(usize::from(page.scroll))
         .find_map(|owner| *owner)
-        .and_then(|index| paragraphs.get(index))
-        .map(|paragraph| paragraph.text.clone())
+        .and_then(|index| Some((index, paragraphs.get(index)?.text.clone())))
 }
 
 /// How many lines the reader holds, for progress.

@@ -136,6 +136,7 @@ impl App {
             | Action::TodoEdit
             | Action::TodoDismiss
             | Action::TodoOpenEmail
+            | Action::TodoPeek
             | Action::TodoReviewResolution
             | Action::TodoSendToMicrosoft
             | Action::TodoSyncMicrosoft

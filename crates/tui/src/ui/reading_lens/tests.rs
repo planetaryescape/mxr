@@ -401,7 +401,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
         chrono::Utc::now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("We rebuilt")));
+    .is_some_and(|(index, p)| index == 0 && p.starts_with("We rebuilt")));
     // Past the first paragraph and the heading, the third one is on top.
     let (_, owners) = reader_lines(
         &reading,
@@ -420,7 +420,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
         chrono::Utc::now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("A delete is")));
+    .is_some_and(|(index, p)| index == 2 && p.starts_with("A delete is")));
 }
 
 #[test]

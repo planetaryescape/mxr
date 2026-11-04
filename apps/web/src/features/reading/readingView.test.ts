@@ -16,6 +16,7 @@ import {
   marksForParagraph,
   marksForView,
   minutesLeft,
+  quoteOpening,
   scrollProgress,
   shownLinks,
   unsubscribeMethodLine,
@@ -145,6 +146,13 @@ describe("h", () => {
     });
     expect(highlightPayload("   \n ", "m:0", "article")).toBeNull();
     expect(highlightPayload("x".repeat(5000), "m:0", "article")?.quote).toHaveLength(4000);
+  });
+
+  test("a saved passage is named by its first eight words", () => {
+    expect(quoteOpening("Short  and\nsweet")).toBe("Short and sweet");
+    expect(quoteOpening("one two three four five six seven eight nine ten")).toBe(
+      "one two three four five six seven eight…",
+    );
   });
 });
 

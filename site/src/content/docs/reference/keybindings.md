@@ -412,6 +412,8 @@ The front page the TUI opens on. Acting on a row does it in that row's own mode.
 | `Enter` | Open in its mode |
 | `e` | Done here |
 | `r` | Reply |
+| `a` | Reply all |
+| `f` | Forward |
 | `t` | Make it a to-do |
 | `o` | Open the email |
 | `E` | Let go of the Updates digest… |
@@ -477,6 +479,7 @@ See [Act on To dos](/guides/todo/).
 | `,` | Edit what mxr read… |
 | `X` | Correct to-do |
 | `o` | Open the email it came from |
+| `Space` | Peek: why it is here, its email and where each field came from |
 | `1` | Runway |
 | `3` | Expired list |
 | `2` | Catch-up |
@@ -619,7 +622,7 @@ One item from the edition, open.
 | `2` | Later |
 | `3` | Highlights |
 | `O` | Open in Marginalia |
-| `"` | Highlight the selection |
+| `"` | Highlight the paragraph at the top, or the selection |
 | `←`, `Esc`, `q` | Back to the edition |
 | `X` | Move to… |
 
@@ -649,7 +652,7 @@ The records lens, with the answer box focused.
 | `,` | Fix a field… |
 | `X` | Not a record |
 | `t` | Make a to-do from this record |
-| `g f` | Filters… |
+| `g f` | Filter by kind |
 | `Esc` | Close |
 | `q` | Quit view |
 | `→` | Records open card |
@@ -1908,6 +1911,8 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `Enter` | Open in its mode |  |
 | `e` | Done here |  |
 | `r` | Reply |  |
+| `a` | Reply all |  |
+| `f` | Forward |  |
 | `t` | Make it a to-do |  |
 | `o` | Open the email |  |
 | `E` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
@@ -1963,6 +1968,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `,` | Edit what mxr read… |  |
 | `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
+| `Space` | Peek: why it is here, its email and where each field came from |  |
 | `1` | Runway |  |
 | `3` | Expired list |  |
 | `2` | Catch-up |  |
@@ -2073,7 +2079,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `e` | Let go and go back |  |
 | `n` | Next item |  |
 | `R` | Sender's layout or cleaned |  |
-| `"` | Highlight the selection |  |
+| `"` | Highlight the paragraph at the top, or the selection |  |
 | `D` | Unsubscribe… |  |
 | `o` | Open the email as sent |  |
 | `O` | Open in Marginalia |  |
@@ -2101,7 +2107,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `,` | Fix a field… |  |
 | `X` | Not a record |  |
 | `t` | Make a to-do from this record |  |
-| `g f` | Filters… |  |
+| `g f` | Filter by kind | The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked |
 | `Esc` | Close |  |
 
 ### Arrivals

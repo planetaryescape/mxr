@@ -37,6 +37,7 @@ impl App {
             Action::TodoSchedule => self.open_not_now(),
             Action::TodoEdit => self.open_todo_edit_prompt(),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
+            Action::TodoPeek => self.todo_toggle_peek(),
             Action::TodoReviewResolution => self.review_selected_resolution(),
             Action::TodoSendToMicrosoft => self.microsoft_todo_request(false),
             Action::TodoSyncMicrosoft => self.microsoft_todo_request(true),
@@ -310,6 +311,27 @@ impl App {
                 self.mark_todo_row_seen(todo);
                 self.status_message = Some("This to-do has no email to open".into());
             }
+        }
+    }
+
+    /// Space: open the lit to-do's details under it, or close them. One
+    /// peek at a time. Peeking is a look at the row, so it counts as seen,
+    /// as the web's details do; the source email is fetched as the reader
+    /// fetches it, so the peek can show its first lines and `o` finds it
+    /// ready.
+    fn todo_toggle_peek(&mut self) {
+        let Some(todo) = self.selected_todo().cloned() else {
+            return;
+        };
+        let page = &mut self.mailbox.todo_page;
+        if page.peek.as_deref() == Some(todo.id.as_str()) {
+            page.peek = None;
+            return;
+        }
+        page.peek = Some(todo.id.clone());
+        self.mark_todo_row_seen(&todo);
+        if let Some(message_id) = todo.source_message_id {
+            self.queue_priority_body_fetch(message_id);
         }
     }
 
@@ -809,6 +831,13 @@ impl App {
             TodoPanel::Catchup => "catchup",
             TodoPanel::Expired => "expired",
         };
+        // An open peek closes before the hint, as in Updates.
+        if key.code == KeyCode::Esc
+            && context == "todo"
+            && self.mailbox.todo_page.peek.take().is_some()
+        {
+            return None;
+        }
         if key.code == KeyCode::Esc && self.active_hint().is_some() {
             return Some(Action::DismissHint);
         }

@@ -65,6 +65,7 @@ pub mod thread_context_view;
 pub mod time_preview;
 pub mod toasts;
 pub mod todo_lens;
+pub mod todo_peek;
 pub mod unsubscribe_modal;
 pub mod updates_lens;
 pub mod updates_peek;

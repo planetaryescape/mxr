@@ -24,7 +24,7 @@ pub mod todo_copy {
     /// Oct."
     pub const CLEAR_FOR_NOW: &str = "Nothing needs you.";
     /// The full explanation `?` leads with. Nothing shows it unasked.
-    pub const ABOUT: &str = "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; Space ticks it off and o opens the email it came from.";
+    pub const ABOUT: &str = "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; e ticks it off, Space peeks at why it is here and o opens the email it came from.";
     /// The first run's summary card title.
     pub const FIRST_RUN_TITLE: &str = "Your last two weeks, sorted";
     /// The first run's summary line for To do, after the counts.

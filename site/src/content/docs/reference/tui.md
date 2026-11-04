@@ -92,8 +92,12 @@ the message came to.
 
 Press `gh` for [Now](/guides/now/), the front page of people waiting on you,
 tasks due soon, the Updates digest and an evening Reading pick. Open a row to
-continue in its mode. `gm` opens [Messages](/guides/messages/), `gx` opens
-[To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/).
+continue in its mode; on a person, `r`, `a` and `f` reply, reply all and
+forward. `gm` opens [Messages](/guides/messages/), `gx` opens
+[To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/). In To do,
+`Space` opens the lit row's details under it, as the web app's do: its dates,
+why it is here, the email's first lines and where each field came from.
+`Space` again or `Esc` closes them.
 
 `mxr desk` remains available from the CLI for the full You owe, Due,
 Waiting on and New from people lanes. See the
@@ -136,7 +140,8 @@ it away again. `mxr snoozed` and `mxr unsnooze` do the same from the CLI.
 ## Reading and Paper trail
 
 Reading (`gr`) is the [edition](/guides/reading/): the bands, a reader, the
-tabs `1` Edition, `2` Later and `3` Highlights, and `"` to highlight in the reader. Its keys are in
+tabs `1` Edition, `2` Later and `3` Highlights, and `"` to highlight the
+paragraph at the top of the reader. Its keys are in
 the [keybindings reference](/reference/keybindings/#reading).
 
 Paper trail is a lens
@@ -321,8 +326,8 @@ them too.
   schedules a to-do. `j` and `k`, the arrows, or `Ctrl-n` and `Ctrl-p` move,
   as in the web app's Not now. `Z` says where it went until 0.6.197.
 - Move to (`X`): a lowercase letter moves this email to a mode, a capital
-  moves the sender; on Now it also answers a Not-sure question and a new
-  sender's question (`D` blocks). `T` and the new-sender digits say where
+  moves the sender, and the mode it is in now says "here now"; on Now it
+  also answers a Not-sure question and a new sender's question (`D` blocks). `T` and the new-sender digits say where
   they went until 0.6.197.
   Tab switches between readings of an ambiguous phrase such as `fri 3`;
   the send-at and remind prompts work the same way

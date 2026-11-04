@@ -539,3 +539,44 @@ fn the_hint_bar_offers_nows_verbs_for_a_lit_person_not_the_mailboxes() {
         "the same verbs as the web's now.person strip, with the TUI's keys"
     );
 }
+
+#[test]
+fn r_a_and_f_answer_or_forward_the_lit_person_and_nothing_else() {
+    let person = |app: &App| {
+        app.mailbox.now_page.now.as_ref().unwrap().people.rows[0]
+            .row
+            .message_id
+            .clone()
+    };
+    for (key, expected) in [('r', "reply"), ('a', "reply all"), ('f', "forward")] {
+        let mut app = now_app(true);
+        let message = person(&app);
+        press(&mut app, KeyCode::Char(key));
+        let composed = match app.compose.pending_compose.as_ref() {
+            Some(crate::app::ComposeAction::Reply { message_id, .. }) => {
+                Some(("reply", message_id.clone()))
+            }
+            Some(crate::app::ComposeAction::ReplyAll { message_id, .. }) => {
+                Some(("reply all", message_id.clone()))
+            }
+            Some(crate::app::ComposeAction::Forward { message_id, .. }) => {
+                Some(("forward", message_id.clone()))
+            }
+            _ => None,
+        };
+        assert_eq!(composed, Some((expected, message)), "{key}");
+    }
+
+    // A to-do row is not a conversation: `o` opens its email first.
+    for key in ['a', 'f'] {
+        let mut app = now_app(true);
+        app.mailbox.selected_index = 3;
+        assert!(matches!(
+            app.selected_now_row(),
+            Some(crate::app::NowRow::Todo(_))
+        ));
+        press(&mut app, KeyCode::Char(key));
+        assert!(app.compose.pending_compose.is_none(), "{key}");
+        assert!(queued(&app).is_empty(), "{key}");
+    }
+}

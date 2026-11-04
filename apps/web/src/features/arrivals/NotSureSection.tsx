@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { toast } from "sonner";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { definedShortcut, movedOverlayKey } from "@/lib/actions/definition";
-import { useKeyScope } from "@/state/keyScopeStore";
+import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import { markModeDone } from "@/features/modes/modeDone";
+import { definedShortcut } from "@/lib/actions/definition";
 
 import { openMovePicker, performMove } from "./moves";
-import { modeForKey, SENDER_MODES, type ModeId, type NotSure } from "./types";
+import { SENDER_MODES, type ModeId, type NotSure } from "./types";
 import { useTrustHint } from "./useTrustHint";
 import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
@@ -118,6 +120,27 @@ export function NotSureSection({
 
 /** The move picker's key, which answers a question now. */
 const MOVE_KEY = definedShortcut("modes.move");
+/**
+ * Now's own verbs, which act on the question's email as on any Now row
+ * (one verb per key, blueprint 35). The row owns its keys, so it runs them.
+ */
+const NOW_KEYS: ReadonlyMap<string, (question: NotSure) => void> = new Map([
+  [definedShortcut("now.done"), doneWithEmail],
+  [
+    definedShortcut("now.reply"),
+    (question: NotSure) =>
+      useComposeUi.getState().openCompose(replyIntent(question.message_id, "single"), "overlay"),
+  ],
+]);
+
+/** Done with the email where it is for now; only an answer settles the question. */
+function doneWithEmail(question: NotSure) {
+  if (question.mode === "archive") {
+    toast.info("Archive has no done: records stay filed.");
+    return;
+  }
+  void markModeDone(question.mode, [question.thread_id]);
+}
 
 function NotSureRow({
   question,
@@ -143,12 +166,11 @@ function NotSureRow({
       });
       return;
     }
-    // The old one-key answers answer nothing, and say where they went while
-    // the definition still announces it (until 0.6.197, D171). `u` is undo
-    // everywhere, so it can't be announced.
-    if (event.shiftKey || event.key === "u" || !modeForKey(event.key)) return;
-    event.preventDefault();
-    if (movedOverlayKey("not-sure", event.key)) useKeyScope.getState().showMoved("Move", MOVE_KEY);
+    const nowVerb = event.shiftKey ? undefined : NOW_KEYS.get(event.key);
+    if (nowVerb) {
+      event.preventDefault();
+      nowVerb(question);
+    }
   };
   return (
     <div

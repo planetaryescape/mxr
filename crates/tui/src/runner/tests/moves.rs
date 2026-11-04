@@ -359,6 +359,52 @@ fn navigation_chords_on_a_not_sure_question_never_answer_it() {
     }
 }
 
+/// One verb per key (blueprint 35): on a Not-sure question, Now's `e` and
+/// `r` act on its email as on any other Now row. Only `X` answers it.
+#[test]
+fn now_keys_on_a_not_sure_question_act_on_its_email() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 1;
+    let question = match app.selected_now_row() {
+        Some(NowRow::NotSure(question)) => question.clone(),
+        other => panic!("expected a question, got {other:?}"),
+    };
+
+    press(&mut app, KeyCode::Char('r'));
+    assert!(
+        matches!(
+            &app.compose.pending_compose,
+            Some(crate::app::ComposeAction::Reply { message_id, .. })
+                if *message_id == question.message_id
+        ),
+        "r replies to the question's email"
+    );
+    app.compose.pending_compose = None;
+
+    press(&mut app, KeyCode::Char('e'));
+    assert!(
+        matches!(
+            queued(&app).as_slice(),
+            [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false, .. }]
+                if *thread_ids == vec![question.thread_id.clone()]
+        ),
+        "e is done here, in the mode it is in for now: {:?}",
+        queued(&app)
+    );
+    assert!(
+        app.mailbox.trust.move_menu.is_none(),
+        "neither key opens the move picker"
+    );
+
+    for key in ['m', 'x'] {
+        let mut app = now_with_questions();
+        app.mailbox.selected_index = 1;
+        press(&mut app, KeyCode::Char(key));
+        assert!(queued(&app).is_empty(), "{key} is not a Now key");
+        assert!(app.compose.pending_compose.is_none(), "{key}");
+    }
+}
+
 #[test]
 fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
@@ -377,15 +423,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
         Some(NowRow::NotSure(question)) => question.message_id.clone(),
         other => panic!("expected a question, got {other:?}"),
     };
-    // The old one-key answers say where answering went and move nothing.
-    let before = app.status_message.clone();
-    press(&mut app, KeyCode::Char('r'));
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced("not-sure", "r", "Move is now X", before.as_deref())
-    );
-    assert!(queued(&app).is_empty());
-
     press(&mut app, KeyCode::Char('X'));
     let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
     assert!(menu.not_sure);

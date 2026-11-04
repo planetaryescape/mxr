@@ -86,12 +86,15 @@ impl App {
     }
 
     /// The email `r`, `a` and `f` act on in Now: a person row's latest
-    /// message. The other rows are a to-do, a digest or a reading pick, which
-    /// `o` opens first.
+    /// message, or a Not-sure question's email. The other rows are a to-do, a
+    /// digest or a reading pick, which `o` opens first.
     fn now_person_email(&self) -> Option<(mxr_core::MessageId, mxr_core::AccountId)> {
         match self.selected_now_row()? {
             NowRow::Person(person) => {
                 Some((person.row.message_id.clone(), person.row.account_id.clone()))
+            }
+            NowRow::NotSure(question) => {
+                Some((question.message_id.clone(), question.account_id.clone()))
             }
             _ => None,
         }

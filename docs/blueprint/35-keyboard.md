@@ -525,11 +525,12 @@ Docs ship with each rung: the guides that name keys, `reference/keybindings.md`,
 
 ## Gaps the key-only runs left (4 November 2026)
 
-The web and TUI key-only runs of 29 October (`docs/dogfooding-log.md`) left four gaps. They were closed in both clients with these calls:
+The web and TUI key-only runs of 29 October (`docs/dogfooding-log.md`) left four gaps, and a fifth came after. They were closed in both clients with these calls:
 
 - **Now's `a` and `f`** act on a person's row, as `r` does: reply all and forward through the same compose paths as the mail list. A to-do, the Updates card and the reading pick are not conversations, so `o` opens the email first.
 - **To do's `Space`** peeks under the lit row, as Updates' `Space` does. The web's details panel was already this peek, on the palette only; the TUI draws the same lines from the runway and the reader's body fetch. `Esc` closes an open peek before a hint, and a peek marks the row seen, as opening it does.
 - **`"` highlights the paragraph at the top of the Reading reader** when nothing is selected, in both clients; a selection still wins on the web. The TUI already worked this way. `j` and `k` keep scrolling lines, because the verb table gives them lines in the reader, and a paragraph cursor would give them a second meaning there. The toast names the paragraph's first words, the highlight is anchored to that paragraph, and `3` lists it to remove a wrong one. A palette action alone was rejected: highlighting is the reader's daily verb. The web's sender's layout (`R`) has no paragraphs, so it says to switch back.
+- **A Not-sure question on Now takes Now's keys** (one verb per key, D163): `e` is done with its email in the mode it is in for now (Archive has no done, so it says so) and `r` replies to it, in both clients; `m` and `x` are not Now keys and do nothing. Only `X` answers the question, so it stays asked after `e`.
 - **Copy.** Archive's `g f` is "Filter by kind", true in both clients, with a note that the web's filters take more. The `X` picker marks the mode the email is in now as "here now" in every place it opens from, as the web's Not-sure picker did, without moving the highlight. The TUI reply queue's title names `j/k`.
 
 ## Decisions

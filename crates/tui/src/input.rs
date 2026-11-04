@@ -81,6 +81,10 @@ pub struct InputHandler {
     used_this_turn: bool,
     /// A sequence that completed nothing, spelled for the status line.
     dead_end: Option<String>,
+    /// Test-only: the time the handler reads instead of the wall clock, so
+    /// timing tests move it by hand and cannot race a loaded machine.
+    #[cfg(test)]
+    frozen_now: Option<Instant>,
 }
 
 struct ConfiguredChord {
@@ -102,7 +106,18 @@ impl InputHandler {
             configured: None,
             used_this_turn: false,
             dead_end: None,
+            #[cfg(test)]
+            frozen_now: None,
         }
+    }
+
+    /// The time every deadline is set and checked against.
+    pub(crate) fn now(&self) -> Instant {
+        #[cfg(test)]
+        if let Some(now) = self.frozen_now {
+            return now;
+        }
+        Instant::now()
     }
 
     /// The last sequence that completed nothing, spelled as typed
@@ -142,15 +157,15 @@ impl InputHandler {
     pub fn is_pending(&self) -> bool {
         self.configured
             .as_ref()
-            .is_some_and(|chord| Instant::now() <= chord.deadline)
-            || matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if Instant::now() <= deadline)
+            .is_some_and(|chord| self.now() <= chord.deadline)
+            || matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if self.now() <= deadline)
     }
 
     /// First key of an in-progress multi-key chord, if any. Lets the
     /// hint bar surface "g …" while the handler waits for the second key.
     pub fn pending_prefix(&self) -> Option<char> {
         if let Some(chord) = &self.configured {
-            if Instant::now() <= chord.deadline {
+            if self.now() <= chord.deadline {
                 return chord.keys.first().and_then(|key| match key.code {
                     KeyCode::Char(c) => Some(c),
                     _ => None,
@@ -179,15 +194,20 @@ impl InputHandler {
             .map(|waited| MULTI_KEY_TIMEOUT.saturating_sub(waited))
     }
 
-    /// Test-only: as if the waiting prefix was pressed `by` earlier.
+    /// Test-only: stop the handler's clock; it moves only by
+    /// [`Self::advance_clock_for_tests`].
     #[cfg(test)]
-    pub(crate) fn age_prefix_for_tests(&mut self, by: Duration) {
-        if let Some(chord) = &mut self.configured {
-            chord.deadline -= by;
-        }
-        if let KeyState::WaitingForSecond { deadline, .. } = &mut self.state {
-            *deadline -= by;
-        }
+    pub(crate) fn freeze_clock_for_tests(&mut self) {
+        self.frozen_now = Some(Instant::now());
+    }
+
+    /// Test-only: move the frozen clock forward by `by`.
+    #[cfg(test)]
+    pub(crate) fn advance_clock_for_tests(&mut self, by: Duration) {
+        let now = self
+            .frozen_now
+            .expect("freeze the clock before advancing it");
+        self.frozen_now = Some(now + by);
     }
 
     /// Wait for the second key of a sequence the key definition knows
@@ -197,7 +217,7 @@ impl InputHandler {
         self.configured = None;
         self.state = KeyState::WaitingForSecond {
             first,
-            deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+            deadline: self.now() + MULTI_KEY_TIMEOUT,
         };
     }
 
@@ -295,7 +315,7 @@ impl InputHandler {
             self.configured = Some(ConfiguredChord {
                 context,
                 keys: sequence,
-                deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                deadline: self.now() + MULTI_KEY_TIMEOUT,
             });
             return Some(None);
         }
@@ -328,12 +348,12 @@ impl InputHandler {
         if self
             .configured
             .as_ref()
-            .is_some_and(|chord| Instant::now() > chord.deadline)
+            .is_some_and(|chord| self.now() > chord.deadline)
         {
             self.reset();
         }
         if let KeyState::WaitingForSecond { deadline, .. } = &self.state {
-            if Instant::now() > *deadline {
+            if self.now() > *deadline {
                 self.state = KeyState::Normal;
                 return None;
             }
@@ -350,7 +370,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('g'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: 'g',
-                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                    deadline: self.now() + MULTI_KEY_TIMEOUT,
                 };
                 None
             }
@@ -477,7 +497,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('i'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: 'i',
-                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                    deadline: self.now() + MULTI_KEY_TIMEOUT,
                 };
                 None
             }
@@ -539,7 +559,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('*'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: '*',
-                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+                    deadline: self.now() + MULTI_KEY_TIMEOUT,
                 };
                 None
             }

@@ -277,6 +277,14 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Option<Action> {
         let action = self.input.handle_key(key)?;
+        // Expiring a moved-key notice must not restore these legacy defaults
+        // in mailbox lists. Reader/search keys and explicit remaps stay intact.
+        if matches!(action, Action::NextSearchResult | Action::PrevSearchResult)
+            && self.screen == Screen::Mailbox
+            && self.mailbox.active_pane != ActivePane::MessageView
+        {
+            return None;
+        }
         if matches!(
             self.current_ui_context(),
             UiContext::MailboxList

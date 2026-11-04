@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.203](https://github.com/planetaryescape/mxr/compare/v0.6.202...v0.6.203) (2026-11-02)
+
+
+### Bug Fixes
+
+* avoid downloading unchanged Gmail draft attachments during sync ([#841](https://github.com/planetaryescape/mxr/issues/841)) ([2e0983b](https://github.com/planetaryescape/mxr/commit/2e0983bc8344504e15aa38635cb30636b85dbcf5))
+
+## [0.6.202](https://github.com/planetaryescape/mxr/compare/v0.6.201...v0.6.202) (2026-11-02)
+
+
+### Bug Fixes
+
+* recover nameless-recipient asks and simplify task details ([#838](https://github.com/planetaryescape/mxr/issues/838)) ([86a031f](https://github.com/planetaryescape/mxr/commit/86a031fdfa5ca9a893bb3eb0681818dc81916755))
+
+## [0.6.201](https://github.com/planetaryescape/mxr/compare/v0.6.200...v0.6.201) (2026-11-02)
+
+
+### Bug Fixes
+
+* resolve post-release navigation and task QA findings ([#834](https://github.com/planetaryescape/mxr/issues/834)) ([a00dea9](https://github.com/planetaryescape/mxr/commit/a00dea9a39b95a4c0f0d6d7ca8d7d3e3c4a2feeb))
+
 ## [0.6.200](https://github.com/planetaryescape/mxr/compare/v0.6.199...v0.6.200) (2026-11-02)
 
 

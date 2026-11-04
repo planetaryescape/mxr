@@ -223,6 +223,17 @@ pub trait MailSendProvider: Send + Sync {
         ))
     }
 
+    /// Read the current revision without downloading draft contents when the
+    /// provider supports metadata-only lookups. `Ok(None)` means the draft no
+    /// longer exists; lookup failures must remain errors, never deletions.
+    /// The fallback supports adapters that only expose full snapshots.
+    async fn fetch_draft_revision(&self, provider_draft_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .fetch_draft(provider_draft_id)
+            .await?
+            .map(|snapshot| snapshot.revision))
+    }
+
     /// Fetch the provider's current raw MIME draft plus its revision marker.
     /// `Ok(None)` means the provider draft no longer exists.
     async fn fetch_draft(&self, _provider_draft_id: &str) -> Result<Option<ServerDraftSnapshot>> {

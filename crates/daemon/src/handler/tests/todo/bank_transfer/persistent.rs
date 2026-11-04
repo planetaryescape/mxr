@@ -54,7 +54,7 @@ fn published_projection_replays_once_after_reopen() {
                         .asks_for_messages(&fx.account, std::slice::from_ref(&id))
                         .await
                         .unwrap();
-                    assert!(answers.values().all(|a| a.policy_version == "asks-r2c-16"));
+                    assert!(answers.values().all(|a| a.policy_version == "asks-r2c-17"));
                     state
                         .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
                         .await;

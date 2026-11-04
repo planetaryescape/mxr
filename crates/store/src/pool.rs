@@ -1,6 +1,6 @@
 use mxr_core::types::Role;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::SqlitePool;
+use sqlx::{ConnectOptions, SqlitePool};
 
 use crate::ChangeFeed;
 use std::path::Path;
@@ -53,6 +53,10 @@ pub struct Store {
     /// Reads and writes share the writer's one connection (in-memory and
     /// backup stores), so dropping it would lose an in-memory database.
     shared_connection: bool,
+    /// An idle connection to an in-memory database, held so the database
+    /// outlives whichever connection the pool currently has. `None` for a
+    /// database on disk.
+    _memory_anchor: Option<sqlx::SqliteConnection>,
     /// Serialises the cleanup of a deleted message's files and index
     /// entries with sync storing messages, so a message id that comes back
     /// (an IMAP UID reused for a new message) is never cleaned up as the
@@ -117,6 +121,7 @@ impl Store {
             changes,
             reader,
             shared_connection: false,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -146,6 +151,7 @@ impl Store {
             changes: Arc::new(ChangeFeed::default()),
             reader: pool,
             shared_connection: true,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -154,16 +160,23 @@ impl Store {
     }
 
     pub async fn in_memory() -> Result<Self, sqlx::Error> {
-        let opts = SqliteConnectOptions::from_str("sqlite::memory:")?
+        // A named shared-cache memory database lives while any connection to
+        // it is open. The unique name keeps each store's database its own.
+        let opts = SqliteConnectOptions::new()
+            .filename(format!("file:mxr-memory-{}", uuid::Uuid::now_v7()))
+            .in_memory(true)
+            .shared_cache(true)
             .journal_mode(SqliteJournalMode::Wal)
             .pragma("foreign_keys", "ON");
 
+        // sqlx replaces a pooled connection on its own: one whose acquire is
+        // cancelled mid-ping, one that fails its ping on release, one dropped
+        // while connecting. Without another open connection, the replacement
+        // would open an empty database.
+        let memory_anchor = opts.connect().await?;
+
         let changes = Arc::new(ChangeFeed::default());
-        // The database lives only inside this one connection, so the pool
-        // must never close it: sqlx's defaults recycle a connection after
-        // 30 minutes and close one idle for 10, and either would leave an
-        // empty database. The full-set classifier eval can run past 30
-        // minutes (its CI limit is 45).
+        // Recycling on age or idleness buys nothing for a memory database.
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .max_lifetime(None)
@@ -179,6 +192,7 @@ impl Store {
             changes,
             reader: pool,
             shared_connection: true,
+            _memory_anchor: Some(memory_anchor),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
@@ -1596,6 +1610,7 @@ pub(crate) mod tests {
             changes: std::sync::Arc::new(crate::ChangeFeed::default()),
             reader: writer,
             shared_connection: true,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -1674,6 +1689,35 @@ pub(crate) mod tests {
         let options = store.writer().options();
         assert_eq!(options.get_max_lifetime(), None);
         assert_eq!(options.get_idle_timeout(), None);
+    }
+
+    #[tokio::test]
+    async fn the_in_memory_store_keeps_its_data_when_the_pool_replaces_its_connection() {
+        let store = Store::in_memory().await.unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE survivor (id INTEGER PRIMARY KEY); INSERT INTO survivor VALUES (7)",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        // sqlx closes a pooled connection on its own too: after a query or
+        // acquire is cancelled mid-flight, or when a ping fails.
+        store
+            .writer()
+            .acquire()
+            .await
+            .unwrap()
+            .close()
+            .await
+            .unwrap();
+
+        let (id,): (i64,) = sqlx::query_as("SELECT id FROM survivor")
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(id, 7);
+        assert!(test_table_exists(store.writer(), "accounts").await);
     }
 
     #[tokio::test]

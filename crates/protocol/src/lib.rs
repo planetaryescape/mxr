@@ -176,7 +176,7 @@ mod tests {
                 skipped: 0,
                 failed: 1,
             },
-            undo_ids: vec!["undo-1".into()],
+            undo_ids: Vec::new(),
             error: Some("stopped".into()),
             started_at: 1,
             finished_at: Some(2),
@@ -190,8 +190,6 @@ mod tests {
                 error: "provider said no".into(),
             }],
             paused_until: Some(3),
-            undo_expires_at: Some(4),
-            undo_of: None,
             action: None,
             undo_id_count: 0,
             failure_count: 0,
@@ -220,7 +218,6 @@ mod tests {
                 mutation,
                 client_correlation_id: None,
             },
-            Request::UndoJob { job_id: "j".into() },
         ];
         for request in requests {
             let wire = serde_json::to_value(&request).unwrap();
@@ -248,14 +245,11 @@ mod tests {
         plain.selection = None;
         plain.failures.clear();
         plain.paused_until = None;
-        plain.undo_expires_at = None;
         let plain_wire = serde_json::to_value(&plain).unwrap();
         for key in [
             "selection",
             "failures",
             "paused_until",
-            "undo_expires_at",
-            "undo_of",
             "action",
             "undo_id_count",
         ] {
@@ -1478,8 +1472,6 @@ mod tests {
                         selection: None,
                         failures: Vec::new(),
                         paused_until: None,
-                        undo_expires_at: None,
-                        undo_of: None,
                         action: None,
                         undo_id_count: 0,
                         failure_count: 0,

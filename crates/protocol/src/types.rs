@@ -1313,7 +1313,8 @@ pub enum Request {
     /// as one background job. `job_id` is chosen by the client and makes the
     /// request idempotent: a repeat returns the existing job, so a lost reply
     /// is recovered with `GetJob`. `mutation.message_ids` must be empty and
-    /// `selection` and `mutation` must equal the preview's.
+    /// `selection` and `mutation` must equal the preview's. The job keeps no
+    /// undo: it cannot be undone, so the preview is the check.
     StartSelectionJob {
         job_id: String,
         preview_token: String,
@@ -1321,12 +1322,6 @@ pub enum Request {
         mutation: MutationCommand,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_correlation_id: Option<String>,
-    },
-    /// Reverse a finished job as its own background job: every message the job
-    /// changed goes back to the state it had before the job ran. Available
-    /// for one hour after the job finishes.
-    UndoJob {
-        job_id: String,
     },
     ListJobs,
     /// Inspect one daemon-side job by id.
@@ -3111,7 +3106,6 @@ impl Request {
             | Self::StartMutationJob { .. }
             | Self::PreviewSelection { .. }
             | Self::StartSelectionJob { .. }
-            | Self::UndoJob { .. }
             | Self::GetArchiveWorkspace
             | Self::GetRecoveryStatus
             | Self::ActivateRecovery { .. }
@@ -3549,20 +3543,13 @@ pub struct JobData {
     /// it resumes by itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_until: Option<i64>,
-    /// Unix milliseconds. `UndoJob` works until then; set when the job ends.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub undo_expires_at: Option<i64>,
-    /// The job this one reverses (`UndoJob`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub undo_of: Option<String>,
     /// What a selection job does to its messages, with `message_ids` empty.
     /// A repeated start under the same job id must name the same action.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<MutationCommand>,
-    /// How many undo ids the job holds. `ListJobs` carries none. `GetJob`
-    /// carries a selection job's newest 100, so a job over half a million
-    /// messages stays small on the wire (it is undone as a whole by its own
-    /// id), and every other job's all, since clients undo those from the list.
+    /// How many undo ids the job holds. `ListJobs` carries none; `GetJob`
+    /// carries them all, since clients undo a job's chunks from that list. A
+    /// selection job (`StartSelectionJob`) has none: it cannot be undone.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub undo_id_count: u32,
     /// How many failure records the job holds. `ListJobs` leaves `failures`

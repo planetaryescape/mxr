@@ -396,7 +396,7 @@ fn write_progress(job: &JobData, what: &str, terminal: bool) {
 }
 
 /// A job that ended failed is a failed command, with its counts and its first
-/// failing message, and the undo that is still open.
+/// failing message.
 pub(super) fn fail_if_job_failed(job: &JobData) -> anyhow::Result<()> {
     if job.status != JobStatusData::Failed {
         return Ok(());
@@ -420,12 +420,6 @@ pub(super) fn fail_if_job_failed(job: &JobData) -> anyhow::Result<()> {
             first.error
         ));
     }
-    if job.undo_expires_at.is_some() && job.progress.succeeded > 0 && job.undo_of.is_none() {
-        message.push_str(&format!(
-            " Reverse what it did with: mxr undo {}",
-            job.job_id
-        ));
-    }
     anyhow::bail!("{message}")
 }
 
@@ -443,6 +437,9 @@ fn capitalise(text: &str) -> String {
 
 /// How many sample rows the table shows.
 const TABLE_SAMPLE: usize = 8;
+
+/// Said wherever an `--all` run is previewed or confirmed (D191).
+const NO_UNDO: &str = "An --all job cannot be undone: this preview is the check.";
 
 fn preview_lines(action: &BulkAction, preview: &SelectionPreviewData) -> Vec<String> {
     let mut lines = vec![format!(
@@ -495,13 +492,15 @@ fn preview_lines(action: &BulkAction, preview: &SelectionPreviewData) -> Vec<Str
             ));
         }
     }
+    lines.push(String::new());
+    lines.push(NO_UNDO.to_string());
     lines
 }
 
 fn confirm(action: &BulkAction, preview: &SelectionPreviewData) -> anyhow::Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         anyhow::bail!(
-            "Confirmation required to {} {} message(s). Re-run with --yes, or inspect with --dry-run.",
+            "Confirmation required to {} {} message(s). {NO_UNDO} Inspect it with --dry-run, then re-run with --yes.",
             action.would(),
             format_thousands(preview.count as usize)
         );
@@ -525,6 +524,8 @@ struct PreviewOutput<'a> {
     messages: &'a [SelectionSampleData],
     sample_size: u32,
     capped: bool,
+    /// Always false: an `--all` job keeps no undo.
+    undoable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     preview_token: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -579,6 +580,7 @@ fn print_preview(
                 messages: &preview.sample,
                 sample_size: preview.sample_size,
                 capped: preview.capped,
+                undoable: false,
                 preview_token: token,
                 expires_at: token.map(|_| preview.expires_at),
             })?
@@ -708,9 +710,6 @@ fn print_job_table(action: &BulkAction, job: &JobData, waited: bool) {
         ),
     }
     println!("Job: {}", job.job_id);
-    if job.progress.succeeded > 0 {
-        println!("Undo with: mxr undo {} (works for one hour)", job.job_id);
-    }
 }
 
 #[cfg(test)]
@@ -747,8 +746,6 @@ mod tests {
                 error: "provider said no".into(),
             }],
             paused_until: None,
-            undo_expires_at: Some(3),
-            undo_of: None,
             action: None,
             undo_id_count: 0,
             failure_count: 0,
@@ -829,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_job_is_an_error_naming_its_counts_first_failure_and_undo() {
+    fn a_failed_job_is_an_error_naming_its_counts_and_first_failure() {
         let failed = job(JobStatusData::Failed);
         let error = fail_if_job_failed(&failed).unwrap_err().to_string();
         assert!(
@@ -846,20 +843,15 @@ mod tests {
             error.contains(&failed.failures[0].message_id.as_str()),
             "{error}"
         );
-        assert!(error.contains("mxr undo job-1"), "{error}");
+        assert!(
+            !error.contains("mxr undo"),
+            "an --all job has no undo: {error}"
+        );
     }
 
     #[test]
     fn a_finished_job_is_not_an_error() {
         fail_if_job_failed(&job(JobStatusData::Succeeded)).unwrap();
-    }
-
-    #[test]
-    fn a_failed_undo_does_not_offer_to_undo_itself() {
-        let mut undo = job(JobStatusData::Failed);
-        undo.undo_of = Some("job-0".into());
-        let error = fail_if_job_failed(&undo).unwrap_err().to_string();
-        assert!(!error.contains("mxr undo"), "{error}");
     }
 
     fn preview(count: u32, accounts: usize) -> SelectionPreviewData {
@@ -909,6 +901,8 @@ mod tests {
         assert!(lines.contains("| Alice | Subject 0"), "{lines}");
         assert!(lines.contains("| Alice | (no subject)"), "{lines}");
         assert!(lines.contains("... and 70,409 more"), "{lines}");
+        assert!(lines.ends_with(NO_UNDO), "{lines}");
+        assert!(NO_UNDO.contains("cannot be undone"));
     }
 
     #[test]

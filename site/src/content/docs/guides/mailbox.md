@@ -148,7 +148,7 @@ exhausted.
 
 A `--search` batch stops at the newest 1,000 matches. Add `--all` to
 `archive`, `read-archive`, `label` or `unlabel` to act on every match as one
-job; `mxr undo JOB_ID` reverses it for an hour (see
+job. An `--all` job cannot be undone, so check its dry run first (see
 [Recipes](/guides/recipes/#act-on-every-match-of-a-search)).
 
 Preview auto-mark-read is quieter because it is background behavior. It

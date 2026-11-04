@@ -121,7 +121,6 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 | `mxr unsnooze` | message(s) or `--all` | ✓ | — | ✓ |
 | `mxr unsubscribe` | message(s) | ✓ | ✓ | ✓ |
 | `mxr undo MUTATION_ID` | one mutation | ✓ | — | — |
-| `mxr undo JOB_ID` | a whole `--all` job, within an hour of its end | ✓ | — | — |
 | `mxr send DRAFT_ID` | a draft | ✓ (`--at` conflicts) | — | — |
 | `mxr unsend DRAFT_ID` | a scheduled send | — | — | — |
 | `mxr drafts delete DRAFT_ID` | one local draft | ✓ | — | — |
@@ -149,7 +148,6 @@ holds or sends a list of IDs. The loop is the same as for any batch:
 ```bash
 mxr archive --search 'from:noreply@example.com' --all --dry-run --format json
 mxr archive --search 'from:noreply@example.com' --all --yes --format json
-mxr undo JOB_ID
 ```
 
 The dry run reports `selected_messages`, `selected_threads`, the per-account
@@ -160,10 +158,8 @@ arrives after the preview is left alone. `--no-wait` returns once the daemon has
 accepted the job (follow it with `mxr jobs JOB_ID`), and
 `--preview-token TOKEN` runs exactly what an earlier dry run counted. `label --all` and `unlabel --all` accept only labels you created in each account they reach: a system label such as `INBOX`, `TRASH` or `SPAM` (which move, trash or spam mail at the provider), a provider folder, an IMAP flag or a name that matches no label is refused. The dry run pins each name to that label, so a rename afterwards does not change which label the job edits, and a label deleted before the job starts refuses the start ("preview again"). Trashing and spamming are not available for `--all` yet. The exit
 status is non-zero when the job ends `failed`, whatever it had done by then.
-`mxr undo JOB_ID` reverses the whole job for an hour after it ends, as a job of
-its own, and reports the messages it had to skip. It and `mxr undo
-MUTATION_ID` on one of the job's batches never restore a message twice: a
-batch one of them is restoring is refused or skipped by the other. A daemon restart ends a
+An `--all` job cannot be undone: it keeps no undo, so the dry run is the check,
+and `mxr undo JOB_ID` on one refuses and says so. A daemon restart ends a
 running job as `failed` ("interrupted") with its persisted counts; running the
 same search again finishes what is left. The shapes are in the
 [JSON output reference](/reference/json-output/#acting-on-every-match-with---all).

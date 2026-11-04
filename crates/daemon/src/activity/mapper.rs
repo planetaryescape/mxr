@@ -895,7 +895,7 @@ pub fn map_request(
                 "mutation job enqueue is currently outside request-mapper capture"
             );
         }
-        Request::StartSelectionJob { .. } | Request::UndoJob { .. } => {
+        Request::StartSelectionJob { .. } => {
             skip_activity!(
                 "selection_job_handler_records",
                 "the handler records these once the daemon has accepted the job, with counts and no ids"

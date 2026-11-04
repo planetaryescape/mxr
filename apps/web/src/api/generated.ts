@@ -8098,21 +8098,13 @@ export interface components {
             started_at: number;
             status: components["schemas"]["JobStatusData"];
             /**
-             * Format: int64
-             * @description Unix milliseconds. `UndoJob` works until then; set when the job ends.
-             */
-            undo_expires_at?: number | null;
-            /**
              * Format: int32
-             * @description How many undo ids the job holds. `ListJobs` carries none. `GetJob`
-             *     carries a selection job's newest 100, so a job over half a million
-             *     messages stays small on the wire (it is undone as a whole by its own
-             *     id), and every other job's all, since clients undo those from the list.
+             * @description How many undo ids the job holds. `ListJobs` carries none; `GetJob`
+             *     carries them all, since clients undo a job's chunks from that list. A
+             *     selection job (`StartSelectionJob`) has none: it cannot be undone.
              */
             undo_id_count?: number;
             undo_ids?: string[];
-            /** @description The job this one reverses (`UndoJob`). */
-            undo_of?: string | null;
         };
         /** @description A message a job could not change, with why. */
         JobFailureData: {
@@ -11784,11 +11776,6 @@ export interface components {
                   mutation: components["schemas"]["MutationCommand"];
                   preview_token: string;
                   selection: components["schemas"]["SelectionData"];
-              }
-            | {
-                  /** @enum {string} */
-                  cmd: "UndoJob";
-                  job_id: string;
               }
             | {
                   /** @enum {string} */

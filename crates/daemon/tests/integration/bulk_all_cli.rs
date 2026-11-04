@@ -1,6 +1,6 @@
 //! `mxr archive --search … --all` end to end: the real binary, a fake-provider
-//! daemon and its store. The job, its undo and the dry run are read back
-//! through the CLI.
+//! daemon and its store. The job and the dry run are read back through the
+//! CLI, and an undo of the job is refused.
 
 #![expect(
     clippy::unwrap_used,
@@ -196,7 +196,7 @@ fn the_dry_run_refuses_formats_that_need_the_whole_list() {
 }
 
 #[test]
-fn a_run_is_one_job_with_one_id_and_undo_by_that_id_restores_everything() {
+fn a_run_is_one_job_with_one_id_that_cannot_be_undone() {
     let _guard = daemon_lock();
     let temp = tempfile::tempdir().unwrap();
     let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
@@ -228,7 +228,7 @@ fn a_run_is_one_job_with_one_id_and_undo_by_that_id_restores_everything() {
         job["progress"]["total"].as_u64().unwrap() as usize,
         before.len()
     );
-    assert!(job["undo_expires_at"].as_i64().is_some());
+    assert_eq!(job["undo_ids"], serde_json::json!([]), "{output:#}");
     let job_id = job["job_id"].as_str().unwrap().to_owned();
     // One job id, in one place.
     assert_eq!(run.stdout.matches(&job_id).count(), 1, "{}", run.stdout);
@@ -236,38 +236,31 @@ fn a_run_is_one_job_with_one_id_and_undo_by_that_id_restores_everything() {
     assert!(run.stderr.contains("one job"), "{}", run.stderr);
     assert!(inbox_ids(&instance, &data_dir, &config_dir).is_empty());
 
-    // `mxr jobs` shows the job without printing every undo id.
+    // `mxr jobs` shows the job and offers no undo.
     let jobs = run_status_only(
         &instance,
         &data_dir,
         &config_dir,
         &["jobs", &job_id, "--format", "table"],
     );
-    assert!(
-        jobs.stdout.contains(&format!("mxr undo {job_id}")),
-        "{}",
-        jobs.stdout
-    );
+    assert!(jobs.stdout.contains(&job_id), "{}", jobs.stdout);
+    assert!(!jobs.stdout.contains("mxr undo"), "{}", jobs.stdout);
 
-    let undo = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["undo", &job_id, "--format", "json"],
-    );
-    assert_eq!(undo["undone"], true, "{undo:#}");
-    assert_eq!(undo["job"]["kind"], "mutation.undo");
-    assert_eq!(undo["job"]["undo_of"], job_id.as_str());
-    assert_eq!(
-        undo["job"]["progress"]["succeeded"].as_u64().unwrap() as usize,
-        before.len()
-    );
-    let mut after = inbox_ids(&instance, &data_dir, &config_dir);
-    let mut expected = before.clone();
-    after.sort();
-    expected.sort();
-    assert_eq!(after, expected);
+    // `mxr undo JOB_ID` says the job cannot be undone, not "not found", and
+    // changes nothing.
+    let undo = run_failing(&instance, &data_dir, &config_dir, &["undo", &job_id]);
+    let stderr = String::from_utf8_lossy(&undo.stderr);
+    assert!(stderr.contains("cannot be undone"), "{stderr}");
+    assert!(stderr.contains("--all"), "{stderr}");
+    assert!(!stderr.contains("not found"), "{stderr}");
+    assert!(inbox_ids(&instance, &data_dir, &config_dir).is_empty());
+}
 
+#[test]
+fn format_ids_prints_the_job_id_alone() {
+    let _guard = daemon_lock();
+    let temp = tempfile::tempdir().unwrap();
+    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
     // `--format ids` prints that job's id and nothing else.
     let ids = run_status_only(
         &instance,
@@ -435,6 +428,7 @@ fn without_yes_and_without_a_terminal_it_asks_for_yes_and_changes_nothing() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Confirmation required"), "{stderr}");
+    assert!(stderr.contains("cannot be undone"), "{stderr}");
     assert!(
         stderr.contains(&format!("{} message(s)", before.len())),
         "{stderr}"

@@ -220,15 +220,6 @@ pub fn file_metadata(root: &Path, relative: &str) -> BackupResult<BackupFile> {
 /// `user_activity` as migrations 035 and 036 created it, before 089 widened
 /// its sources. Run against a migrated schema, it restores that definition.
 pub(crate) const PRE_ASSESSMENT_SCHEMA: &str = include_str!("backup/pre_assessment.sql");
-/// Gives every open-ended undo entry (a running selection job's) a deadline of
-/// now, which also makes it unclaimable. `Store::close_open_undo_entries` is
-/// the same statement for daemon startup.
-pub(crate) const CLOSE_OPEN_UNDO_ENTRIES: &str =
-    "UPDATE mutation_undo_log SET expires_at = unixepoch() WHERE expires_at = 9223372036854775807";
-
-/// Schema 106 and older: no undo entry claims (migration 107).
-pub(crate) const PRE_UNDO_CLAIMS_SCHEMA: &str =
-    "ALTER TABLE mutation_undo_log DROP COLUMN claimed_by";
 
 pub(crate) const PRE_APPROVED_SENDS_SCHEMA: &str = "DROP TRIGGER IF EXISTS approved_send_draft_edited; DROP TABLE IF EXISTS approved_send_attempts; DROP TABLE IF EXISTS approved_sends;";
 
@@ -245,7 +236,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=107).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=106).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -302,11 +293,6 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
-    if manifest.schema_version < 107 {
-        sqlx::query(PRE_UNDO_CLAIMS_SCHEMA)
-            .execute(expected.writer())
-            .await?;
-    }
     if manifest.schema_version < 106 {
         sqlx::query("DROP TABLE mode_row_seen")
             .execute(expected.writer())
@@ -585,7 +571,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=107).contains(&version) {
+    if !(80..=106).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -704,7 +690,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:107, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:106, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 
@@ -846,13 +832,6 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
     }
     sqlx::query("INSERT OR IGNORE INTO restored_intentions SELECT draft_id,'previous-preparation',account_id,'retired',prepared_draft_id,json_object('prepared_draft_id',prepared_draft_id) FROM restored_draft_holds WHERE prepared_draft_id IS NOT NULL").execute(&mut *tx).await?;
     sqlx::raw_sql("UPDATE restored_draft_holds SET prepared_draft_id=NULL; UPDATE drafts SET send_at=NULL,scheduled_send_revision=NULL,provider_draft_id=NULL,provider_draft_revision=NULL,status='draft'; UPDATE rules SET enabled=0; UPDATE message_flags SET reply_later_due_at=NULL; DELETE FROM snoozed; UPDATE auto_reminders SET cancelled_at=unixepoch() WHERE triggered_at IS NULL AND cancelled_at IS NULL; DELETE FROM mutation_jobs; UPDATE accounts SET enabled=0;").execute(&mut *tx).await?;
-    // A selection job's undo entries stay open (`expires_at` at its maximum)
-    // until the job ends and anchors them. The job rows are gone above, so
-    // nothing would ever anchor these: close them, so a restored workspace
-    // cannot undo a chunk of a job that ended elsewhere.
-    sqlx::query(CLOSE_OPEN_UNDO_ENTRIES)
-        .execute(&mut *tx)
-        .await?;
     tx.commit().await?;
     validate(&mut db).await?;
     db.close().await?;

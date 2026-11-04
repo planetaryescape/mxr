@@ -18165,18 +18165,10 @@
           "status": {
             "$ref": "#/components/schemas/JobStatusData"
           },
-          "undo_expires_at": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Unix milliseconds. `UndoJob` works until then; set when the job ends."
-          },
           "undo_id_count": {
             "type": "integer",
             "format": "int32",
-            "description": "How many undo ids the job holds. `ListJobs` carries none. `GetJob`\ncarries a selection job's newest 100, so a job over half a million\nmessages stays small on the wire (it is undone as a whole by its own\nid), and every other job's all, since clients undo those from the list.",
+            "description": "How many undo ids the job holds. `ListJobs` carries none; `GetJob`\ncarries them all, since clients undo a job's chunks from that list. A\nselection job (`StartSelectionJob`) has none: it cannot be undone.",
             "minimum": 0
           },
           "undo_ids": {
@@ -18184,13 +18176,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "undo_of": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The job this one reverses (`UndoJob`)."
           }
         }
       },
@@ -29389,7 +29374,7 @@
           },
           {
             "type": "object",
-            "description": "Run `mutation` over exactly the messages a `PreviewSelection` counted,\nas one background job. `job_id` is chosen by the client and makes the\nrequest idempotent: a repeat returns the existing job, so a lost reply\nis recovered with `GetJob`. `mutation.message_ids` must be empty and\n`selection` and `mutation` must equal the preview's.",
+            "description": "Run `mutation` over exactly the messages a `PreviewSelection` counted,\nas one background job. `job_id` is chosen by the client and makes the\nrequest idempotent: a repeat returns the existing job, so a lost reply\nis recovered with `GetJob`. `mutation.message_ids` must be empty and\n`selection` and `mutation` must equal the preview's. The job keeps no\nundo: it cannot be undone, so the preview is the check.",
             "required": [
               "job_id",
               "preview_token",
@@ -29421,25 +29406,6 @@
               },
               "selection": {
                 "$ref": "#/components/schemas/SelectionData"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Reverse a finished job as its own background job: every message the job\nchanged goes back to the state it had before the job ran. Available\nfor one hour after the job finishes.",
-            "required": [
-              "job_id",
-              "cmd"
-            ],
-            "properties": {
-              "cmd": {
-                "type": "string",
-                "enum": [
-                  "UndoJob"
-                ]
-              },
-              "job_id": {
-                "type": "string"
               }
             }
           },

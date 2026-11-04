@@ -1237,7 +1237,7 @@ async fn a_failing_message_ends_the_job_with_exact_counts_and_its_details() {
     assert_eq!(job.failures.len(), 1);
     assert_eq!(job.failures[0].message_id, msgs[150].id);
     assert!(job.failures[0].error.contains("fake: mutation failed"));
-    assert_eq!(job.undo_ids.len(), 2, "both chunks that changed anything");
+    assert!(job.undo_ids.is_empty(), "an --all job keeps no undo");
     assert_eq!(job.result.as_ref().unwrap().accounts[0].failed, 1);
 
     // No later chunk ran.
@@ -1322,28 +1322,20 @@ async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
     let reached = fx.many(100, "alpha").await;
     let never_reached = fx.many(105, "beta").await;
 
-    // A real job over the first 100 leaves a real undo entry and real counts.
+    // A real job over the first 100 leaves real counts.
     let preview = fx.preview("alpha", &archive()).await;
     let started = fx.start("alpha", &preview.preview_token, &archive()).await;
     let done = fx.wait_for_job(&started.job_id).await;
     assert_eq!(done.status, JobStatusData::Succeeded);
-    assert_eq!(done.undo_ids.len(), 1);
 
     // The row is then written as the previous daemon would have left it
-    // after its first chunk of a 205-message job: still running, and the
-    // chunk's undo entry open-ended.
+    // after its first chunk of a 205-message job: still running.
     let mut running = done.clone();
     running.status = JobStatusData::Running;
     running.finished_at = None;
     running.error = None;
-    running.undo_expires_at = None;
     running.progress.total = 205;
     super::super::mutations::persist_job(&fx.state, &running).await;
-    fx.state
-        .store
-        .set_undo_entries_expiry(&running.undo_ids, i64::MAX)
-        .await
-        .unwrap();
 
     let marked = super::super::job_recovery::mark_interrupted_mutation_jobs(&fx.state).await;
     assert_eq!(marked, 1);
@@ -1362,19 +1354,7 @@ async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
         (100, 100, 205),
         "the counts the job had persisted, not guessed"
     );
-    assert_eq!(job.undo_ids, done.undo_ids);
     assert!(job.finished_at.is_some());
-    let expires = job.undo_expires_at.expect("its undo window starts");
-    let in_an_hour = chrono::Utc::now().timestamp_millis() + 3_600_000;
-    assert!((expires - in_an_hour).abs() < 5_000);
-    let entry = fx
-        .state
-        .store
-        .read_undo_entry(&job.undo_ids[0])
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(entry.expires_at, expires / 1000);
 
     // Nothing is left running to mark again.
     assert_eq!(
@@ -1397,7 +1377,7 @@ async fn a_restart_marks_a_running_job_interrupted_with_the_counts_it_had() {
 }
 
 // ---------------------------------------------------------------------------
-// Undo
+// No undo (D191)
 // ---------------------------------------------------------------------------
 
 impl Fixture {
@@ -1410,327 +1390,94 @@ impl Fixture {
         job
     }
 
-    pub(super) async fn undo(&self, job_id: &str) -> JobData {
-        let ResponseData::JobStarted { job } = self
-            .send(Request::UndoJob {
-                job_id: job_id.into(),
-            })
+    /// Rows in the undo log, whoever wrote them.
+    pub(super) async fn undo_entries(&self) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM mutation_undo_log")
+            .fetch_one(self.state.store.reader())
             .await
-        else {
-            panic!("expected an undo job");
-        };
-        job
-    }
-
-    pub(super) fn restores(&self) -> usize {
-        self.fake
-            .mutations()
-            .into_iter()
-            .filter(|mutation| {
-                matches!(mutation, RecordedMutation::LabelsModified { added, .. } if added.iter().any(|label| label == "INBOX"))
-            })
-            .count()
+            .unwrap()
     }
 }
 
+/// An `--all` job keeps no undo: no snapshot is taken and no undo entry is
+/// written, for any of its actions, over several chunks, nor for a message a
+/// rate limit stopped part way.
 #[tokio::test]
-async fn a_job_anchors_every_chunks_undo_to_one_hour_after_it_ends() {
+async fn an_all_job_writes_no_undo_entries() {
     let fx = Fixture::new().await;
+    fx.label(&fx.account, "Label_work", "Work").await;
     fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    assert_eq!(job.undo_ids.len(), 3);
-    let expires = job.undo_expires_at.expect("an undo window");
-    let finished = job.finished_at.unwrap();
-    assert_eq!(
-        expires - finished,
-        3_600_000 - (finished % 1000),
-        "an hour after the end"
-    );
-    for undo_id in &job.undo_ids {
-        let entry = fx
-            .state
-            .store
-            .read_undo_entry(undo_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            entry.expires_at,
-            expires / 1000,
-            "every chunk, not 60 s each"
-        );
+    fx.many(3, "receipt").await;
+    let jobs = [
+        ("invoice", edit_labels(&["Work"], &[])),
+        ("invoice", edit_labels(&[], &["Work"])),
+        ("invoice", archive()),
+    ];
+    for (query, mutation) in jobs {
+        let preview = fx.preview(query, &mutation).await;
+        let started = fx.start(query, &preview.preview_token, &mutation).await;
+        let job = fx.wait_for_job(&started.job_id).await;
+        assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+        assert_eq!(job.progress.succeeded, 250);
+        assert!(job.undo_ids.is_empty(), "{job:?}");
+        assert_eq!(job.undo_id_count, 0);
+        assert!(job.result.as_ref().unwrap().mutation_id.is_none());
     }
-}
-
-#[tokio::test]
-async fn undoing_a_job_puts_every_message_back_as_its_own_job() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    assert_eq!(fx.archived_provider_ids().len(), 250);
-    for message in &msgs {
-        assert!(!fx.in_inbox(&message.id).await);
-    }
-
-    let undo = fx.undo(&job.job_id).await;
-    assert_ne!(undo.job_id, job.job_id);
-    assert_eq!(undo.kind, "mutation.undo");
-    assert_eq!(undo.undo_of.as_deref(), Some(job.job_id.as_str()));
-    assert_eq!(undo.progress.total, 250);
-    // Readable by a scoped caller from the first poll.
-    assert_eq!(
-        undo.result.as_ref().unwrap().accounts[0].account_id,
-        fx.account
-    );
-
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(undo.error, None);
-    assert_eq!(
-        (
-            undo.progress.succeeded,
-            undo.progress.skipped,
-            undo.progress.failed
-        ),
-        (250, 0, 0)
-    );
-
-    // The per-account rows keep step with the totals.
-    let rows = &undo.result.as_ref().unwrap().accounts;
-    assert_eq!(rows.len(), 1);
-    assert_eq!(
-        (
-            rows[0].account_id.clone(),
-            rows[0].succeeded,
-            rows[0].skipped,
-            rows[0].failed
-        ),
-        (fx.account.clone(), 250, 0, 0)
-    );
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-    assert_eq!(fx.restores(), 250);
-    for undo_id in &job.undo_ids {
-        assert!(fx
-            .state
-            .store
-            .read_undo_entry(undo_id)
-            .await
-            .unwrap()
-            .is_none());
-    }
-
-    // Undoing again finds nothing left, and says so instead of reporting success.
-    let again = fx.undo(&job.job_id).await;
-    let again = fx.wait_for_job(&again.job_id).await;
-    assert_eq!(again.status, JobStatusData::Failed);
-    assert!(again.error.unwrap().contains("nothing was restored"));
-    assert_eq!(again.progress.skipped, 250);
-}
-
-#[tokio::test]
-async fn the_undo_window_closes_an_hour_after_the_job_ends() {
-    let fx = Fixture::new().await;
-    fx.many(3, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    let closes = job.undo_expires_at.unwrap();
-    let start = |at: i64| {
-        let state = fx.state.clone();
-        let id = job.job_id.clone();
-        async move {
-            super::super::job_undo::start_undo_job_at(
-                &state,
-                ::mxr_protocol::ClientKind::Cli,
-                &id,
-                at,
-            )
-            .await
-        }
+    // Read-archive with the archive refused once after the mark-read: the
+    // retry finishes it, and nothing is kept for undo.
+    let read_archive = MutationCommand::ReadAndArchive {
+        message_ids: Vec::new(),
     };
-    let refused = start(closes).await.unwrap_err().to_string();
-    assert!(refused.contains("closed"), "{refused}");
-    assert!(start(closes + 60_000).await.is_err());
-    let ResponseData::JobStarted { job: undo } = start(closes - 1).await.unwrap() else {
-        panic!("one millisecond inside the window starts the undo");
-    };
-    assert_eq!(fx.wait_for_job(&undo.job_id).await.progress.succeeded, 3);
-}
-
-#[tokio::test]
-async fn an_undo_counts_the_messages_whose_snapshot_expired_or_is_missing() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    // Chunk 0 (messages 0..100) expired; chunk 1 (100..200) is gone.
-    fx.state
-        .store
-        .set_undo_entries_expiry(&job.undo_ids[..1], 1)
-        .await
-        .unwrap();
-    fx.state
-        .store
-        .delete_undo_entry(&job.undo_ids[1])
-        .await
-        .unwrap();
-
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(
-        (
-            undo.progress.succeeded,
-            undo.progress.skipped,
-            undo.progress.failed
-        ),
-        (50, 200, 0)
-    );
-    assert!(
-        undo.error
-            .as_deref()
-            .unwrap()
-            .contains("200 message(s) were not restored"),
-        "{undo:?}"
-    );
-    // Skipped for an expired snapshot and for a missing one are both
-    // attributed to the account the job changed them in.
-    let rows = &undo.result.as_ref().unwrap().accounts;
-    assert_eq!(
-        (rows[0].succeeded, rows[0].skipped, rows[0].failed),
-        (50, 200, 0),
-        "{rows:?}"
-    );
-    for restored in &msgs[200..] {
-        assert!(fx.in_inbox(&restored.id).await);
-    }
-    for left in &msgs[..200] {
-        assert!(!fx.in_inbox(&left.id).await);
-    }
-}
-
-#[tokio::test]
-async fn a_single_chunk_undo_still_works_and_the_job_undo_counts_it_as_done() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    assert!(matches!(
-        fx.send(Request::UndoMutation {
-            mutation_id: job.undo_ids[0].clone(),
-        })
-        .await,
-        ResponseData::Ack
-    ));
-    for restored in &msgs[..100] {
-        assert!(fx.in_inbox(&restored.id).await);
-    }
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(
-        (undo.progress.succeeded, undo.progress.skipped),
-        (150, 100),
-        "the chunk already undone is counted, not repeated or dropped"
-    );
-}
-
-#[tokio::test]
-async fn undoing_a_partly_failed_job_restores_what_it_changed() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(250, "invoice").await;
-    let preview = fx.preview("invoice", &archive()).await;
-    fx.fake.fail_mutations_of(Some(&msgs[150].provider_id));
+    let preview = fx.preview("receipt", &read_archive).await;
+    fx.fake.rate_limit_mutations_after(1, 1, 5);
     let started = fx
-        .start("invoice", &preview.preview_token, &archive())
+        .start("receipt", &preview.preview_token, &read_archive)
         .await;
     let job = fx.wait_for_job(&started.job_id).await;
-    assert_eq!(job.status, JobStatusData::Failed);
-    fx.fake.fail_mutations_of(None);
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert!(job.undo_ids.is_empty());
+    assert_eq!(fx.undo_entries().await, 0, "an --all job writes no undo");
 
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    // The 150 it archived and the one whose outcome was uncertain.
-    assert_eq!(undo.progress.total, 151);
-    assert_eq!(undo.progress.succeeded, 151);
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-}
-
-#[tokio::test]
-async fn an_undo_that_cannot_reach_the_provider_keeps_what_it_could_not_restore() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(5, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    fx.fake.fail_mutations_of(Some(&msgs[2].provider_id));
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Failed);
-    assert_eq!((undo.progress.succeeded, undo.progress.failed), (4, 1));
-    assert_eq!(undo.failures[0].message_id, msgs[2].id);
-    assert!(undo.error.unwrap().contains("again to retry"));
-
-    // The same job id retries just that message.
-    fx.fake.fail_mutations_of(None);
-    let retry = fx.undo(&job.job_id).await;
-    let retry = fx.wait_for_job(&retry.job_id).await;
-    assert_eq!(retry.progress.succeeded, 1);
-    assert!(fx.in_inbox(&msgs[2].id).await);
-}
-
-#[tokio::test]
-async fn an_undo_waits_out_a_rate_limit() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(120, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    fx.fake.rate_limit_next_mutations(2, 5);
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(undo.progress.succeeded, 120);
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-}
-
-#[tokio::test]
-async fn jobs_that_cannot_be_undone_as_a_whole_say_why() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(4, "invoice").await;
-
-    assert!(fx
-        .refused(Request::UndoJob {
-            job_id: "nope".into()
-        })
-        .await
-        .contains("job not found"));
-
-    // A job started the old way has no one-hour window.
-    let ResponseData::JobStarted { job: plain } = fx
-        .send(Request::start_mutation_job(MutationCommand::Archive {
-            message_ids: vec![msgs[0].id.clone()],
+    // An ordinary mutation still keeps its undo, as before.
+    let mail = fx.many(1, "letter").await;
+    let ResponseData::MutationResult { result } = fx
+        .send(Request::mutation(MutationCommand::Archive {
+            message_ids: vec![mail[0].id.clone()],
         }))
         .await
     else {
-        panic!("expected a job");
+        panic!("expected a mutation result");
     };
-    let plain = fx.wait_for_job(&plain.job_id).await;
-    let refusal = fx
-        .refused(Request::UndoJob {
-            job_id: plain.job_id.clone(),
-        })
-        .await;
-    assert!(refusal.contains("no whole-job undo"), "{refusal}");
+    assert!(result.mutation_id.is_some());
+    assert_eq!(fx.undo_entries().await, 1);
+}
 
-    // An undo cannot be undone.
-    let job = fx.archive_job("in:inbox").await;
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
+/// `UndoMutation` with an `--all` job's id says that such a job cannot be
+/// undone and why, rather than "not found". Other unknown ids keep the
+/// not-found error.
+#[tokio::test]
+async fn undoing_an_all_job_is_refused_as_such() {
+    let fx = Fixture::new().await;
+    let msgs = fx.many(3, "invoice").await;
+    let job = fx.archive_job("invoice").await;
     let refusal = fx
-        .refused(Request::UndoJob {
-            job_id: undo.job_id,
+        .refused(Request::UndoMutation {
+            mutation_id: job.job_id.clone(),
         })
         .await;
-    assert!(refusal.contains("is an undo"), "{refusal}");
+    assert!(refusal.contains("cannot be undone"), "{refusal}");
+    assert!(refusal.contains("--all"), "{refusal}");
+    assert!(!refusal.contains("not found"), "{refusal}");
+    for message in &msgs {
+        assert!(!fx.in_inbox(&message.id).await, "and nothing came back");
+    }
+
+    let unknown = fx
+        .refused(Request::UndoMutation {
+            mutation_id: "nope".into(),
+        })
+        .await;
+    assert!(unknown.contains("not found"), "{unknown}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1752,9 +1499,9 @@ async fn inbox_count(fx: &Fixture) -> u32 {
 
 /// Refreshing label counts scans the whole mailbox, so a batch does it once
 /// rather than per message (70,000 messages took over an hour that way). The
-/// counts must still be right when the job ends, and after its undo.
+/// counts must still be right when the job ends.
 #[tokio::test]
-async fn a_job_leaves_label_counts_right_and_so_does_its_undo() {
+async fn a_job_leaves_label_counts_right() {
     let fx = Fixture::new().await;
     fx.many(120, "invoice").await;
     fx.state
@@ -1764,12 +1511,8 @@ async fn a_job_leaves_label_counts_right_and_so_does_its_undo() {
         .unwrap();
     assert_eq!(inbox_count(&fx).await, 120);
 
-    let job = fx.archive_job("invoice").await;
+    fx.archive_job("invoice").await;
     assert_eq!(inbox_count(&fx).await, 0);
-
-    let undo = fx.undo(&job.job_id).await;
-    fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(inbox_count(&fx).await, 120);
 }
 
 #[tokio::test]
@@ -1852,14 +1595,9 @@ async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
     check(preview(Some(&fx.account))).await.unwrap();
     check(start(Some(&fx.account))).await.unwrap();
 
-    // The job it started is readable at once, and so is its undo.
+    // The job it started is readable at once.
     let finished = fx.archive_job("invoice").await;
     check(Request::GetJob {
-        job_id: finished.job_id.clone(),
-    })
-    .await
-    .unwrap();
-    check(Request::UndoJob {
         job_id: finished.job_id.clone(),
     })
     .await
@@ -1868,13 +1606,6 @@ async fn a_scoped_profile_reaches_only_selections_of_its_own_account() {
     // A read-only profile may preview and may not start.
     assert!(enforce_safety_policy(SafetyPolicy::ReadOnly, &preview(Some(&fx.account))).is_ok());
     assert!(enforce_safety_policy(SafetyPolicy::ReadOnly, &start(Some(&fx.account))).is_err());
-    assert!(enforce_safety_policy(
-        SafetyPolicy::ReadOnly,
-        &Request::UndoJob {
-            job_id: finished.job_id
-        }
-    )
-    .is_err());
 }
 
 #[tokio::test]
@@ -1966,18 +1697,6 @@ async fn a_job_records_one_accepted_and_one_finished_entry_without_ids() {
             assert!(!text.contains(&message.id.as_str()), "{text}");
         }
     }
-
-    // An undo records its own pair, marked as one.
-    let undo = fx.undo(&job.job_id).await;
-    fx.wait_for_job(&undo.job_id).await;
-    let rows = job_activity(&fx).await;
-    assert_eq!(rows.len(), 4);
-    assert_eq!(
-        rows.iter()
-            .filter(|row| row.context_json.as_deref().unwrap().contains("\"undo\""))
-            .count(),
-        2
-    );
 }
 
 #[tokio::test]
@@ -2036,7 +1755,7 @@ async fn a_job_records_nothing_under_the_activity_kill_switch() {
 }
 
 // ---------------------------------------------------------------------------
-// One start per job id, one undo per job
+// One start per job id
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -2260,44 +1979,12 @@ async fn a_start_after_another_job_took_the_token_is_refused() {
     assert!(jobs.iter().all(|job| job.job_id != j));
 }
 
-#[tokio::test]
-async fn concurrent_undos_of_one_job_share_one_undo() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(150, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-
-    let request = || Request::UndoJob {
-        job_id: job.job_id.clone(),
-    };
-    let (a, b, c) = tokio::join!(fx.send(request()), fx.send(request()), fx.send(request()));
-    let mut undo_ids = Vec::new();
-    for reply in [a, b, c] {
-        let ResponseData::JobStarted { job } = reply else {
-            panic!("expected the undo job");
-        };
-        undo_ids.push(job.job_id);
-    }
-    undo_ids.dedup();
-    assert_eq!(undo_ids.len(), 1, "one undo, handed to every caller");
-
-    let undo = fx.wait_for_job(&undo_ids[0]).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(undo.progress.succeeded, 150);
-    assert_eq!(fx.restores(), 150, "each message restored once");
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-    // Once it has ended, a later undo is its own.
-    let later = fx.undo(&job.job_id).await;
-    assert_ne!(later.job_id, undo_ids[0]);
-}
-
 // ---------------------------------------------------------------------------
 // A rate limit between the two calls of read-archive
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn undo_restores_the_unread_state_after_a_rate_limit_between_read_and_archive() {
+async fn a_rate_limit_between_read_and_archive_is_finished_by_the_retry() {
     let fx = Fixture::new().await;
     let msgs = fx.many(3, "invoice").await;
     let read_archive = MutationCommand::ReadAndArchive {
@@ -2330,17 +2017,7 @@ async fn undo_restores_the_unread_state_after_a_rate_limit_between_read_and_arch
         assert!(read(&message.id).await);
         assert!(!fx.in_inbox(&message.id).await);
     }
-
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-        assert!(
-            !read(&message.id).await,
-            "the message that was part done must come back unread too"
-        );
-    }
+    assert!(job.undo_ids.is_empty(), "an --all job keeps no undo");
 }
 
 // ---------------------------------------------------------------------------
@@ -2389,11 +2066,7 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
         job.started_at += n as i64;
         job.finished_at = Some(job.started_at + 1);
         job.paused_until = Some(job.started_at);
-        job.undo_expires_at = Some(job.started_at + 3_600_000);
         job.error = Some(huge(4_000));
-        job.undo_ids = (0..5_000)
-            .map(|_| uuid::Uuid::now_v7().to_string())
-            .collect();
         job.failures = (0..80)
             .map(|_| mxr_protocol::JobFailureData {
                 message_id: MessageId::new(),
@@ -2434,11 +2107,6 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
         assert!(row.account_name.len() <= 128);
         assert!(row.error.as_ref().unwrap().len() <= 512);
     }
-    assert_eq!(
-        stored.undo_ids.len(),
-        5_000,
-        "undo keeps every id in the store"
-    );
 
     let ResponseData::Jobs { jobs } = fx.send(Request::ListJobs).await else {
         panic!("expected jobs");
@@ -2448,21 +2116,19 @@ async fn the_largest_job_records_stay_under_four_mib_on_the_wire() {
     assert!(wire.len() < FOUR_MIB, "listing: {} bytes", wire.len());
     for job in &jobs {
         assert!(job.undo_ids.is_empty() && job.failures.is_empty());
-        assert_eq!((job.undo_id_count, job.failure_count), (5_000, 50));
+        assert_eq!((job.undo_id_count, job.failure_count), (0, 50));
     }
 
     let one = fx.job(&first_id).await;
     let wire = serde_json::to_vec(&ResponseData::Job { job: one.clone() }).unwrap();
     assert!(wire.len() < FOUR_MIB, "detail: {} bytes", wire.len());
-    assert_eq!((one.undo_ids.len(), one.undo_id_count), (100, 5_000));
     assert_eq!((one.failures.len(), one.failure_count), (50, 50));
 
-    // A sweep or plain job has no whole-job undo, so its detail carries every
-    // undo id. The largest: a sweep over two million messages, 20,001 ids.
+    // A sweep or plain job is undone from its list, so its detail carries
+    // every undo id. The largest: a sweep over two million messages, 20,001.
     let mut plain = template(100);
     plain.selection = None;
     plain.action = None;
-    plain.undo_expires_at = None;
     plain.undo_ids = (0..20_001)
         .map(|_| uuid::Uuid::now_v7().to_string())
         .collect();
@@ -2518,375 +2184,9 @@ async fn a_selection_past_the_record_bounds_is_refused() {
     assert!(too_long.contains("at most 512 bytes"), "{too_long}");
 }
 
-#[tokio::test]
-async fn a_small_job_still_lists_all_its_undo_ids() {
-    let fx = Fixture::new().await;
-    fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    assert_eq!(job.undo_ids.len(), 3);
-    assert_eq!(job.undo_id_count, 3);
-}
-
-#[tokio::test]
-async fn undo_works_from_the_stored_ids_whatever_the_response_carries() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(250, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    // Pretend the job had far more chunks than a response carries: 300
-    // entries that no longer exist ahead of the real three.
-    let mut stored: JobData = serde_json::from_str(
-        &fx.state
-            .store
-            .get_mutation_job(&job.job_id)
-            .await
-            .unwrap()
-            .unwrap(),
-    )
-    .unwrap();
-    let mut padded: Vec<String> = (0..300).map(|n| format!("gone-{n}")).collect();
-    padded.append(&mut stored.undo_ids);
-    stored.undo_ids = padded;
-    super::super::mutations::persist_job(&fx.state, &stored).await;
-    let seen = fx.job(&job.job_id).await;
-    assert_eq!((seen.undo_ids.len(), seen.undo_id_count), (100, 303));
-
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.progress.succeeded, 250);
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-}
-
 // ---------------------------------------------------------------------------
-// The window, checked again after a wait
+// Bounded previews, plain-job undo ids, frozen labels
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn a_snapshot_that_expires_while_the_undo_waits_out_a_rate_limit_is_skipped() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(50, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    let closes = job.undo_expires_at.unwrap();
-    let calls_before = fx.fake.mutations().len();
-    // The first 10 restore, the 11th is refused: the undo waits, and by the
-    // time it looks again the window has closed.
-    fx.fake.rate_limit_mutations_after(10, 1, 5);
-    // Open until the provider has refused, closed from then on.
-    let clock: super::super::job_undo::UndoClock = {
-        let fake = fx.fake.clone();
-        Arc::new(move || {
-            if fake.pending_rate_limits() > 0 {
-                closes - 60_000
-            } else {
-                closes + 1_000
-            }
-        })
-    };
-    let ResponseData::JobStarted { job: undo } = super::super::job_undo::start_undo_job_with(
-        &fx.state,
-        ::mxr_protocol::ClientKind::Cli,
-        &job.job_id,
-        closes - 60_000,
-        clock,
-    )
-    .await
-    .unwrap() else {
-        panic!("expected an undo job");
-    };
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(
-        (
-            undo.progress.succeeded,
-            undo.progress.skipped,
-            undo.progress.failed
-        ),
-        (10, 40, 0),
-        "{undo:?}"
-    );
-    assert_eq!(
-        fx.fake.mutations().len() - calls_before,
-        10,
-        "nothing restored late"
-    );
-    let mut restored = 0;
-    for message in &msgs {
-        if fx.in_inbox(&message.id).await {
-            restored += 1;
-        }
-    }
-    assert_eq!(restored, 10);
-    // The expired entry is gone, not left to be retried past its window.
-    assert!(fx
-        .state
-        .store
-        .read_undo_entry(&job.undo_ids[0])
-        .await
-        .unwrap()
-        .is_none());
-}
-
-/// The window is checked before every message, not only between entries
-/// and after waits: an undo that reaches the end of the window part way
-/// through an entry stops there, counts the rest skipped, and drops the
-/// entry.
-#[tokio::test]
-async fn the_window_closing_between_two_restores_stops_the_undo_there() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(50, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    let closes = job.undo_expires_at.unwrap();
-    let calls_before = fx.fake.mutations().len();
-    // Open for the first ten restores, closed from the eleventh on.
-    let clock: super::super::job_undo::UndoClock = {
-        let fake = fx.fake.clone();
-        Arc::new(move || {
-            if fake.mutations().len() - calls_before < 10 {
-                closes - 60_000
-            } else {
-                closes + 1_000
-            }
-        })
-    };
-    let ResponseData::JobStarted { job: undo } = super::super::job_undo::start_undo_job_with(
-        &fx.state,
-        ::mxr_protocol::ClientKind::Cli,
-        &job.job_id,
-        closes - 60_000,
-        clock,
-    )
-    .await
-    .unwrap() else {
-        panic!("expected an undo job");
-    };
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(
-        (
-            undo.progress.succeeded,
-            undo.progress.skipped,
-            undo.progress.failed
-        ),
-        (10, 40, 0),
-        "{undo:?}"
-    );
-    assert_eq!(fx.fake.mutations().len() - calls_before, 10);
-    let restored = {
-        let mut restored = 0;
-        for message in &msgs {
-            if fx.in_inbox(&message.id).await {
-                restored += 1;
-            }
-        }
-        restored
-    };
-    assert_eq!(restored, 10);
-    assert!(fx
-        .state
-        .store
-        .read_undo_entry(&job.undo_ids[0])
-        .await
-        .unwrap()
-        .is_none());
-}
-
-/// The same check in a chunk's own undo.
-#[tokio::test]
-async fn a_chunk_undo_stops_where_the_window_closes() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(5, "invoice").await;
-    let ResponseData::MutationResult { result } = fx
-        .send(Request::mutation(MutationCommand::Archive {
-            message_ids: msgs.iter().map(|m| m.id.clone()).collect(),
-        }))
-        .await
-    else {
-        panic!("expected a mutation result");
-    };
-    let mutation_id = result.mutation_id.unwrap();
-    let calls_before = fx.fake.mutations().len();
-    let now = chrono::Utc::now().timestamp_millis();
-    let clock: super::super::job_undo::UndoClock = {
-        let fake = fx.fake.clone();
-        Arc::new(move || {
-            if fake.mutations().len() - calls_before < 2 {
-                now
-            } else {
-                now + 3_600_000
-            }
-        })
-    };
-    let error = super::super::mutations::undo_mutation_with(&fx.state, &mutation_id, clock)
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.contains("window closed part way: restored 2, 3 not restored"),
-        "{error}"
-    );
-    assert_eq!(fx.fake.mutations().len() - calls_before, 2);
-    assert!(fx
-        .state
-        .store
-        .read_undo_entry(&mutation_id)
-        .await
-        .unwrap()
-        .is_none());
-}
-
-/// Round 2's race: a whole-job undo paused on a rate limit, a chunk undo in
-/// the meantime, and a message archived again. The chunk the paused undo is
-/// in cannot be undone under it; a chunk it has not reached can, and the
-/// paused undo then leaves that chunk alone, so the message archived again
-/// stays archived.
-#[tokio::test]
-async fn a_chunk_undo_and_a_paused_job_undo_never_restore_one_message_twice() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(150, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    assert_eq!(job.undo_ids.len(), 2);
-    // Newest chunk first: the undo takes the second entry (messages 100..150),
-    // restores five, and waits a while on the sixth.
-    let (older, newer) = (job.undo_ids[0].clone(), job.undo_ids[1].clone());
-    fx.fake.rate_limit_mutations_after(5, 1, 100);
-    let undo = fx.undo(&job.job_id).await;
-    for _ in 0..2_000 {
-        if fx.fake.pending_rate_limits() == 0 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-    }
-    assert_eq!(fx.fake.pending_rate_limits(), 0, "the undo is waiting");
-
-    let held = fx
-        .refused(Request::UndoMutation {
-            mutation_id: newer.clone(),
-        })
-        .await;
-    assert!(held.contains("being undone already"), "{held}");
-
-    assert!(matches!(
-        fx.send(Request::UndoMutation {
-            mutation_id: older.clone(),
-        })
-        .await,
-        ResponseData::Ack
-    ));
-    let again = &msgs[0];
-    assert!(fx.in_inbox(&again.id).await);
-    fx.send(Request::mutation(MutationCommand::Archive {
-        message_ids: vec![again.id.clone()],
-    }))
-    .await;
-    assert!(!fx.in_inbox(&again.id).await);
-
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(
-        (
-            undo.progress.succeeded,
-            undo.progress.skipped,
-            undo.progress.failed
-        ),
-        (50, 100, 0),
-        "{undo:?}"
-    );
-    assert!(
-        !fx.in_inbox(&again.id).await,
-        "the message archived again stays archived"
-    );
-    assert_eq!(fx.restores(), 150, "each message restored once");
-}
-
-/// A claim held by a daemon that died is released at the next start.
-#[tokio::test]
-async fn a_claim_left_by_a_dead_daemon_is_released_at_startup() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(3, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-    let entry = &job.undo_ids[0];
-    let now = chrono::Utc::now().timestamp();
-    assert!(fx
-        .state
-        .store
-        .claim_undo_entry(entry, "undo-of-a-dead-daemon", now)
-        .await
-        .unwrap()
-        .is_some());
-    let held = fx
-        .refused(Request::UndoMutation {
-            mutation_id: entry.clone(),
-        })
-        .await;
-    assert!(held.contains("being undone already"), "{held}");
-
-    assert_eq!(
-        super::super::job_recovery::recover_undo_entries_of_dead_daemon(&fx.state).await,
-        (1, 0)
-    );
-    assert!(matches!(
-        fx.send(Request::UndoMutation {
-            mutation_id: entry.clone(),
-        })
-        .await,
-        ResponseData::Ack
-    ));
-    for message in &msgs {
-        assert!(fx.in_inbox(&message.id).await);
-    }
-}
-
-/// Round 2's count gap: read-archive marks a message read, then the provider
-/// refuses the archive until the job gives up. The message may have changed,
-/// so the job counts it as failed, and its undo counts and restores it.
-#[tokio::test]
-async fn a_message_left_part_done_when_the_job_gives_up_is_counted_and_undone() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(1, "invoice").await;
-    let read_archive = MutationCommand::ReadAndArchive {
-        message_ids: Vec::new(),
-    };
-    let preview = fx.preview("invoice", &read_archive).await;
-    fx.fake.rate_limit_mutations_after(1, 10_000, 1);
-    let started = fx
-        .start("invoice", &preview.preview_token, &read_archive)
-        .await;
-    let job = fx.wait_for_job(&started.job_id).await;
-    assert_eq!(job.status, JobStatusData::Failed, "{job:?}");
-    assert!(
-        job.error
-            .as_deref()
-            .unwrap()
-            .contains("kept rate limiting it (0 succeeded, 0 skipped, 1 failed)"),
-        "{job:?}"
-    );
-    assert_eq!((job.progress.succeeded, job.progress.failed), (0, 1));
-    assert_eq!(job.result.as_ref().unwrap().accounts[0].failed, 1);
-    assert_eq!(job.failures.len(), 1);
-    assert!(job.failures[0].error.contains("may have changed"));
-    assert_eq!(job.undo_ids.len(), 1);
-
-    fx.fake.rate_limit_next_mutations(0, 0);
-    let undo = fx.undo(&job.job_id).await;
-    assert_eq!(
-        undo.progress.total, 1,
-        "the undo counts what the job counted"
-    );
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(
-        (undo.progress.total, undo.progress.succeeded),
-        (1, 1),
-        "one restored out of one"
-    );
-    let envelope = fx
-        .state
-        .store
-        .get_envelope(&msgs[0].id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(!envelope.flags.contains(MessageFlags::READ));
-    assert!(fx.in_inbox(&msgs[0].id).await);
-}
 
 /// A preview carries text from stored mail and the account list: each field
 /// is cut to its bound, so even 100 samples of enormous subjects and senders
@@ -2956,144 +2256,8 @@ async fn a_preview_of_mail_with_huge_subjects_and_senders_stays_small() {
     eprintln!("worst case: preview of 100 samples {wire} bytes");
 }
 
-/// Round 3: read-archive marks a message read, the archive is refused, and
-/// the account goes away during the wait. The retry cannot reach it, but the
-/// message keeps its pre-run snapshot: it counts as failed, and the job's
-/// undo puts it back unread once the account is back.
-#[tokio::test]
-async fn a_half_done_message_whose_account_goes_away_keeps_its_undo() {
-    let fx = Fixture::new().await;
-    let msgs = fx.many(3, "invoice").await;
-    let read_archive = MutationCommand::ReadAndArchive {
-        message_ids: Vec::new(),
-    };
-    let preview = fx.preview("invoice", &read_archive).await;
-    // The first message's mark-read goes through, its archive waits a while.
-    fx.fake.rate_limit_mutations_after(1, 1, 100);
-    let started = fx
-        .start("invoice", &preview.preview_token, &read_archive)
-        .await;
-    for _ in 0..2_000 {
-        if fx.fake.pending_rate_limits() == 0 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-    }
-    assert_eq!(fx.fake.pending_rate_limits(), 0, "the job is waiting");
-    let provider = fx
-        .state
-        .remove_sync_provider_for_test(&fx.account)
-        .expect("the account had a provider");
-
-    let job = fx.wait_for_job(&started.job_id).await;
-    assert_eq!(job.status, JobStatusData::Failed, "{job:?}");
-    assert_eq!(
-        (
-            job.progress.succeeded,
-            job.progress.skipped,
-            job.progress.failed
-        ),
-        (0, 2, 1),
-        "{job:?}"
-    );
-    assert_eq!(job.failures.len(), 1);
-    assert_eq!(job.failures[0].message_id, msgs[0].id);
-    assert!(job.failures[0].error.contains("may have changed"));
-    let read = |id: &MessageId| {
-        let state = fx.state.clone();
-        let id = id.clone();
-        async move {
-            state
-                .store
-                .get_envelope(&id)
-                .await
-                .unwrap()
-                .unwrap()
-                .flags
-                .contains(MessageFlags::READ)
-        }
-    };
-    assert!(read(&msgs[0].id).await, "marked read before the refusal");
-
-    fx.state.add_sync_provider_for_test(provider);
-    let undo = fx.undo(&job.job_id).await;
-    assert_eq!(undo.progress.total, 1);
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    assert_eq!(undo.progress.succeeded, 1);
-    assert!(!read(&msgs[0].id).await, "the undo puts it back unread");
-    assert!(fx.in_inbox(&msgs[0].id).await);
-}
-
-/// Round 3: an entry a running selection job wrote has no deadline. At the
-/// next start, the interrupted job's entries get their hour; one whose job
-/// row is gone (pruned, or a restored workspace) is closed instead of
-/// staying claimable forever.
-#[tokio::test]
-async fn startup_closes_open_undo_entries_no_job_can_anchor() {
-    let fx = Fixture::new().await;
-    for id in ["anchored", "orphan"] {
-        fx.state
-            .store
-            .write_undo_entry(&mxr_store::UndoEntry {
-                mutation_id: id.into(),
-                kind: mxr_store::UndoableMutationKind::Archive,
-                snapshots: Vec::new(),
-                desk: None,
-                applied_at: 1,
-                expires_at: i64::MAX,
-            })
-            .await
-            .unwrap();
-    }
-    let mut running = super::super::mutations::queued_job(
-        uuid::Uuid::now_v7().to_string(),
-        &archive(),
-        100,
-        Some(&Fixture::selection("invoice", None)),
-        &[],
-    );
-    running.status = JobStatusData::Running;
-    running.undo_ids = vec!["anchored".into()];
-    super::super::mutations::persist_job(&fx.state, &running).await;
-
-    super::super::job_recovery::mark_interrupted_mutation_jobs(&fx.state).await;
-    assert_eq!(
-        super::super::job_recovery::recover_undo_entries_of_dead_daemon(&fx.state).await,
-        (0, 1)
-    );
-    let now = chrono::Utc::now().timestamp();
-    let anchored = fx
-        .state
-        .store
-        .read_undo_entry("anchored")
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        anchored.expires_at > now + 3_500 && anchored.expires_at <= now + 3_600,
-        "an hour from the interruption: {}",
-        anchored.expires_at
-    );
-    assert!(fx
-        .state
-        .store
-        .claim_undo_entry("orphan", "undo", now)
-        .await
-        .unwrap()
-        .is_none());
-    assert_eq!(
-        fx.state
-            .store
-            .undo_entry_state("orphan", now)
-            .await
-            .unwrap(),
-        mxr_store::UndoEntryState::Expired
-    );
-}
-
-/// Round 3: a sweep or plain job has no whole-job undo, so clients undo it
-/// from its list: `GetJob` returns every undo id, however many there are.
+/// A sweep or plain job is undone from its list of chunk undo ids, so
+/// `GetJob` returns every one, however many there are.
 #[tokio::test]
 async fn a_plain_job_returns_every_undo_id() {
     let fx = Fixture::new().await;
@@ -3133,9 +2297,9 @@ async fn a_plain_job_returns_every_undo_id() {
     assert_eq!(listed.undo_id_count, 101);
 }
 
-/// Round 3: a label *named* like another label's provider id. The edit and
-/// its undo find labels by provider id only, so the provider and the local
-/// copy get the same label, and the undo takes off that one.
+/// Round 3: a label *named* like another label's provider id. The edit finds
+/// labels by provider id only, so the provider and the local copy get the
+/// same label.
 #[tokio::test]
 async fn a_label_named_like_another_labels_id_is_never_picked() {
     let fx = Fixture::new().await;
@@ -3171,34 +2335,6 @@ async fn a_label_named_like_another_labels_id_is_never_picked() {
             .unwrap();
         assert!(labels.contains(&work), "the local copy has Work");
         assert!(!labels.contains(&decoy), "and not the decoy");
-    }
-
-    let undo = fx.undo(&job.job_id).await;
-    let undo = fx.wait_for_job(&undo.job_id).await;
-    assert_eq!(undo.status, JobStatusData::Succeeded, "{undo:?}");
-    let removed: Vec<Vec<String>> = fx
-        .fake
-        .mutations()
-        .into_iter()
-        .filter_map(|mutation| match mutation {
-            RecordedMutation::LabelsModified { removed, .. } if !removed.is_empty() => {
-                Some(removed)
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(removed.len(), 3);
-    assert!(removed
-        .iter()
-        .all(|labels| labels == &vec!["Label_200".to_string()]));
-    for message in &msgs {
-        let labels = fx
-            .state
-            .store
-            .get_message_label_ids(&message.id)
-            .await
-            .unwrap();
-        assert!(!labels.contains(&work) && !labels.contains(&decoy));
     }
 }
 

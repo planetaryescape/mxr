@@ -65,7 +65,6 @@ mod home_projection;
 mod humanizer;
 mod job_records;
 pub(crate) mod job_recovery;
-mod job_undo;
 mod keymap;
 mod llm_routes;
 mod mail_kind;
@@ -1406,7 +1405,6 @@ async fn dispatch(
             )
             .await
         }
-        Request::UndoJob { job_id } => job_undo::start_undo_job(state, source, job_id).await,
         Request::GetArchiveWorkspace => archive_recovery::workspace(state).await,
         Request::PreviewArchive { identity, mutation } => {
             archive_recovery::preview(state, identity, mutation)
@@ -2925,7 +2923,6 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DeleteSavedSearch { .. }
         | Request::UpdateSavedSearch { .. }
         | Request::UndoMutation { .. }
-        | Request::UndoJob { .. }
         | Request::Snooze { .. }
         | Request::Unsnooze { .. }
         | Request::SetReplyLater { .. }
@@ -3164,7 +3161,6 @@ fn request_kind(req: &Request) -> &'static str {
         Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
         Request::PreviewSelection { .. } => "preview_selection",
         Request::StartSelectionJob { .. } => "start_selection_job",
-        Request::UndoJob { .. } => "undo_job",
         Request::GetRecoveryStatus => "recovery_status",
         Request::ActivateRecovery { .. } => "recovery_activate",
         Request::PrepareRecoveredDraft { .. } => "recovery_prepare_draft",

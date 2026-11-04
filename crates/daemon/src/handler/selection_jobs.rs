@@ -228,8 +228,6 @@ pub(super) struct JobActivity {
     pub action: &'static str,
     pub account_id: Option<String>,
     pub query: Option<String>,
-    /// Set on an undo job: the job it reverses.
-    pub undo_of: Option<String>,
 }
 
 fn action_token(mutation: &MutationCommand) -> &'static str {
@@ -278,10 +276,6 @@ fn add_description(context: &mut serde_json::Value, activity: &JobActivity) {
     };
     if let Some(query) = &activity.query {
         fields.insert("query".into(), query.clone().into());
-    }
-    if let Some(undo_of) = &activity.undo_of {
-        fields.insert("kind".into(), "undo".into());
-        fields.insert("undo_of".into(), undo_of.clone().into());
     }
 }
 
@@ -646,7 +640,6 @@ pub(super) async fn start_selection_job(
         action: action_token(mutation),
         account_id: account_id.as_ref().map(AccountId::as_str),
         query: Some(query.clone()),
-        undo_of: None,
     });
     Ok(mutations::run_claimed_job(state.clone(), job, spec))
 }

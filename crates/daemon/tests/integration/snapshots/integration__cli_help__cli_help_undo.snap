@@ -2,22 +2,14 @@
 source: crates/daemon/tests/integration/cli_help.rs
 expression: stdout
 ---
-Undo a recent destructive mutation by its id (~60s window), or a whole `--all` run by its job id (for an hour after the job ends).
+Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, `read-archive` and `desk done`; copy it from there. A job started with `--all` cannot be undone
 
-The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, `read-archive` and `desk done`; copy it from there. `archive --all` and its siblings print a job id instead. Undoing a job is a background job of its own: this command waits for it and says how many messages came back, and how many it had to skip.
-
-Usage: mxr undo [OPTIONS] <ID>
+Usage: mxr undo [OPTIONS] <MUTATION_ID>
 
 Arguments:
-  <ID>
-
+  <MUTATION_ID>
 
 Options:
-      --dry-run
-          Show which undo would run without mutating state
-
-      --format <FORMAT>
-          [possible values: table, json, jsonl, csv, ids]
-
-  -h, --help
-          Print help (see a summary with '-h')
+      --dry-run          Show which undo would run without mutating state
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

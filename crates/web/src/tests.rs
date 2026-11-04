@@ -5910,8 +5910,6 @@ async fn parity_routes_dispatch_daemon_requests() {
                         selection: None,
                         failures: Vec::new(),
                         paused_until: None,
-                        undo_expires_at: None,
-                        undo_of: None,
                         action: None,
                         undo_id_count: 0,
                         failure_count: 0,

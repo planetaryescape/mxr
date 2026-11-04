@@ -16,12 +16,10 @@ pub use compose::{
     send_outcome, ComposeOptions, ForwardCommand, ReplyCommand, SavedSendReview,
 };
 
-/// CLI surface for `mxr undo <id>`.
+/// CLI surface for `mxr undo <mutation_id>`.
 ///
-/// A job id (from `--all`) undoes the whole job as a background job of its
-/// own, which this waits for. Any other id is a mutation id: sends
-/// `Request::UndoMutation` and prints the success message or the daemon's
-/// specific failure (NotFound / WindowExpired / Irreversible).
+/// Sends `Request::UndoMutation` and prints the success message or the
+/// daemon's specific failure (NotFound / WindowExpired / Irreversible).
 pub async fn undo(
     mutation_id: String,
     dry_run: bool,
@@ -33,17 +31,6 @@ pub async fn undo(
     }
 
     let mut client = IpcClient::connect().await?;
-    let known_job = client
-        .request(Request::GetJob {
-            job_id: mutation_id.clone(),
-        })
-        .await?;
-    if let Response::Ok {
-        data: ResponseData::Job { .. },
-    } = known_job
-    {
-        return undo_job(&mut client, &mutation_id, format).await;
-    }
     let resp = client
         .request(Request::UndoMutation {
             mutation_id: mutation_id.clone(),
@@ -59,92 +46,6 @@ pub async fn undo(
         Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
-}
-
-/// Reverses a whole job, then waits for the undo job and reports how many
-/// messages came back and how many had to be skipped.
-async fn undo_job(
-    client: &mut IpcClient,
-    job_id: &str,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
-    let resp = client
-        .request(Request::UndoJob {
-            job_id: job_id.to_owned(),
-        })
-        .await?;
-    let started = match resp {
-        Response::Ok {
-            data: ResponseData::JobStarted { job },
-        } => job,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
-    };
-    let undo = bulk_all::wait_for_job(client, started, "undo").await?;
-    print_undo_job_output(job_id, &undo, format)?;
-    bulk_all::fail_if_job_failed(&undo)
-}
-
-#[derive(Serialize)]
-struct UndoJobOutput<'a> {
-    /// The job that was undone.
-    mutation_id: &'a str,
-    dry_run: bool,
-    undone: bool,
-    /// The undo's own job.
-    job: &'a JobData,
-}
-
-fn print_undo_job_output(
-    undone_job_id: &str,
-    undo: &JobData,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
-    let output = UndoJobOutput {
-        mutation_id: undone_job_id,
-        dry_run: false,
-        undone: undo.status == JobStatusData::Succeeded,
-        job: undo,
-    };
-    match resolve_format(format) {
-        OutputFormat::Table => {
-            println!(
-                "Restored {} of {} message(s).",
-                undo.progress.succeeded, undo.progress.total
-            );
-            if undo.progress.skipped > 0 {
-                println!(
-                    "Skipped {} message(s): their snapshot expired or is missing, or the mail is gone.",
-                    undo.progress.skipped
-                );
-            }
-            println!("Undo job: {}", undo.job_id);
-        }
-        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
-        OutputFormat::Jsonl => println!("{}", serde_json::to_string(&output)?),
-        OutputFormat::Csv => {
-            let mut writer = csv::Writer::from_writer(Vec::new());
-            writer.write_record([
-                "mutation_id",
-                "job_id",
-                "status",
-                "restored",
-                "skipped",
-                "failed",
-            ])?;
-            writer.write_record([
-                undone_job_id.to_owned(),
-                undo.job_id.clone(),
-                format!("{:?}", undo.status).to_ascii_lowercase(),
-                undo.progress.succeeded.to_string(),
-                undo.progress.skipped.to_string(),
-                undo.progress.failed.to_string(),
-            ])?;
-            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
-        }
-        OutputFormat::Ids => println!("{}", undo.job_id),
-    }
-    Ok(())
 }
 
 use crate::cli::OutputFormat;
@@ -250,26 +151,13 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
 
 /// The table's undo column. A job over thousands of messages has one undo id
 /// per batch of 100: listing them all made a single row hundreds of KB wide,
-/// so a long list is a count and the command that reverses the whole job.
+/// so a long list is a count and the command that lists them.
 fn undo_summary(job: &JobData) -> String {
     const LISTED: usize = 3;
-    // `mxr jobs JOB_ID` carries the newest undo ids only and a listing none;
-    // the daemon says how many there were.
+    // A listing carries no undo ids; the daemon says how many there are.
     let count = (job.undo_id_count as usize).max(job.undo_ids.len());
     if count == 0 {
         return String::new();
-    }
-    if let Some(until) = job
-        .undo_expires_at
-        .and_then(chrono::DateTime::from_timestamp_millis)
-    {
-        return format!(
-            "mxr undo {} (until {})",
-            job.job_id,
-            until
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M:%S")
-        );
     }
     if count <= LISTED && job.undo_ids.len() == count {
         return job.undo_ids.join(",");
@@ -1802,7 +1690,7 @@ mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
 
-    fn job_with_undo_ids(count: usize, anchored: bool) -> JobData {
+    fn job_with_undo_ids(count: usize) -> JobData {
         JobData {
             job_id: "job-1".into(),
             kind: "mutation.archive".into(),
@@ -1822,8 +1710,6 @@ mod tests {
             selection: None,
             failures: Vec::new(),
             paused_until: None,
-            undo_expires_at: anchored.then_some(1_761_600_000_000),
-            undo_of: None,
             action: None,
             undo_id_count: 0,
             failure_count: 0,
@@ -1832,12 +1718,9 @@ mod tests {
 
     #[test]
     fn the_jobs_table_names_a_few_undo_ids_and_counts_a_long_list() {
-        assert_eq!(undo_summary(&job_with_undo_ids(0, false)), "");
-        assert_eq!(
-            undo_summary(&job_with_undo_ids(3, false)),
-            "undo-0,undo-1,undo-2"
-        );
-        let long = undo_summary(&job_with_undo_ids(5_000, false));
+        assert_eq!(undo_summary(&job_with_undo_ids(0)), "");
+        assert_eq!(undo_summary(&job_with_undo_ids(3)), "undo-0,undo-1,undo-2");
+        let long = undo_summary(&job_with_undo_ids(5_000));
         assert!(long.starts_with("5000 undo ids"), "{long}");
         assert!(
             long.len() < 120,
@@ -1850,7 +1733,7 @@ mod tests {
     #[test]
     fn a_listing_without_undo_ids_or_failures_counts_them() {
         // `ListJobs` carries the counts, not the lists.
-        let mut listed = job_with_undo_ids(0, false);
+        let mut listed = job_with_undo_ids(0);
         listed.undo_id_count = 2;
         listed.failure_count = 3;
         let undo = undo_summary(&listed);
@@ -1859,14 +1742,7 @@ mod tests {
             failure_summary(&listed),
             "  failures=3 (see mxr jobs job-1)"
         );
-        assert_eq!(failure_summary(&job_with_undo_ids(0, false)), "");
-    }
-
-    #[test]
-    fn a_job_with_a_whole_job_undo_points_at_the_one_command() {
-        let summary = undo_summary(&job_with_undo_ids(5_000, true));
-        assert!(summary.starts_with("mxr undo job-1 (until "), "{summary}");
-        assert!(!summary.contains("undo-0"));
+        assert_eq!(failure_summary(&job_with_undo_ids(0)), "");
     }
 
     #[test]

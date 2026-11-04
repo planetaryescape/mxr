@@ -427,12 +427,15 @@ messages (`capped` is always `false`):
   ],
   "sample_size": 20,
   "capped": false,
+  "undoable": false,
   "preview_token": "<preview-token>",
   "expires_at": 1761600000000
 }
 ```
 
 `selection.account_id` appears when `--account` names one. `selected_messages` is the exact number of messages the job will change.
+`undoable` is always `false`: an `--all` job cannot be undone, so this preview
+is the check. The table output and the confirmation prompt say so too.
 `messages` is the sample, never the whole selection, and there is no
 `message_ids` or `requested` field. `preview_token` is absent when nothing
 matched. It is single use and valid for 10 minutes: `--all --preview-token
@@ -459,10 +462,9 @@ is the only place its ID appears:
     "kind": "mutation.archive",
     "status": "succeeded",
     "progress": { "total": 70412, "completed": 70412, "succeeded": 70412, "skipped": 0, "failed": 0 },
-    "undo_ids": ["…one per batch of 100…"],
+    "undo_ids": [],
     "started_at": 1761600001000,
-    "finished_at": 1761603601000,
-    "undo_expires_at": 1761607201000
+    "finished_at": 1761603601000
   },
   "capped": false
 }
@@ -471,10 +473,10 @@ is the only place its ID appears:
 `--format ids` prints the job ID alone and `--format csv` has a `job_id`
 column. A job that ends `failed` makes the command exit non-zero, with the
 counts and the first failing message in the error. `skipped` counts messages
-that left the mailbox after the preview. `failed` also counts a message a
-provider's rate limit stopped half way when the job gave up (read-archive
-marked it read, then the archive was refused): it may have changed, its
-failure says so, and `mxr undo JOB_ID` restores it. `mxr jobs JOB_ID` shows
+that left the mailbox after the preview. `undo_ids` is always empty: the job
+keeps no undo. A message a provider's rate limit stopped half way
+(read-archive marked it read, then the archive was refused) is finished when
+the job retries after the wait. `mxr jobs JOB_ID` shows
 the same job later: `failures` holds the first 50 failing messages with the
 provider's error (the exact total is `progress.failed`), `paused_until` is set
 while the job waits out a provider rate limit and resumes by itself, and a
@@ -490,24 +492,15 @@ is no longer one you created) before the job starts, `--yes` is refused with
 only in the accounts the search reaches. The search can be at most 2,048 bytes
 and a label edit can name at most 8 labels of at most 512 bytes each.
 
-`mxr undo JOB_ID` reverses the whole job as a job of its own, for one hour
-after the job ends (`undo_expires_at`). It restores every message to the state
-it had before the job, waits for the undo job and prints it, with `job.undo_of`
-naming the original. The window is checked before each message, so a message
-reached after it closes is not restored. Messages whose snapshot has expired
-or is missing, whose mail is gone, or that another undo is restoring, are
-counted under `progress.skipped` and named in `job.error`; messages a retry
-could still restore are `progress.failed`, and undoing the same job again
-retries just those. A batch the undo job is restoring cannot be undone on its
-own at the same time (`mxr undo MUTATION_ID` says it `is being undone
-already`); a batch undone on its own first is skipped by the undo job.
+`mxr undo JOB_ID` on an `--all` job refuses with an error that says the job
+ran with `--all` and cannot be undone, not that the id was not found. To
+reverse a run, act on a search the other way (`unlabel --all` after
+`label --all`).
 
-`mxr jobs JOB_ID` carries the first 50 `failures` and, for an `--all` job, at
-most the newest 100 `undo_ids`; `undo_id_count` and `failure_count` say how
-many the job holds (a job over half a million messages has 5,000 undo ids),
-and an `--all` job is undone as a whole with `mxr undo JOB_ID`. Other jobs (a
-sweep, `--async`) are undone from their list, so `mxr jobs JOB_ID` carries all
-of their `undo_ids`. The `mxr jobs` listing carries
+`mxr jobs JOB_ID` carries the first 50 `failures` and every `undo_id`;
+`undo_id_count` and `failure_count` say how many the job holds. Jobs other
+than `--all` (a sweep, `--async`) are undone from that list. The `mxr jobs`
+listing carries
 neither list: `undo_ids` and `failures` are empty there, and the two counts say
 how many `mxr jobs JOB_ID` shows. Every error and failure reason is cut to 512
 bytes (an account name to 128) when the job is saved, so a listing of the 100

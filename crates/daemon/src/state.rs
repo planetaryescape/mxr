@@ -544,8 +544,6 @@ pub struct AppState {
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
     pub(crate) selection_previews: crate::handler::selection_jobs::SelectionPreviews,
-    /// Whole-job undos running, by the job they undo (see `job_undo`).
-    pub(crate) undo_claims: TokioMutex<HashMap<String, String>>,
     pub(crate) category_rule_previews: crate::handler::category_rules::CategoryRulePreviews,
     pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
     /// Writing-help proposals waiting to be accepted (`ComposeAssist`).
@@ -941,7 +939,6 @@ impl AppState {
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
             selection_previews: Default::default(),
-            undo_claims: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2227,15 +2224,6 @@ impl AppState {
             .collect()
     }
 
-    /// Take an account's sync provider away, as disabling the account does.
-    #[cfg(test)]
-    pub fn remove_sync_provider_for_test(
-        &self,
-        account_id: &AccountId,
-    ) -> Option<Arc<dyn MailSyncProvider>> {
-        self.runtime.write().providers.remove(account_id)
-    }
-
     #[cfg(test)]
     pub fn add_sync_provider_for_test(&self, provider: Arc<dyn MailSyncProvider>) {
         self.runtime
@@ -2434,7 +2422,6 @@ impl AppState {
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
             selection_previews: Default::default(),
-            undo_claims: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2537,7 +2524,6 @@ impl AppState {
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
             selection_previews: Default::default(),
-            undo_claims: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2688,7 +2674,6 @@ impl AppState {
                 sweep_previews: Default::default(),
                 purge_previews: Default::default(),
                 selection_previews: Default::default(),
-                undo_claims: Default::default(),
                 category_rule_previews: Default::default(),
                 category_previews: Default::default(),
                 compose_proposals: Default::default(),

@@ -508,7 +508,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
         Request::GetArchiveWorkspace | Request::GetMicrosoftTodoStatus => Unscoped,
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
-        Request::GetJob { job_id } | Request::UndoJob { job_id } => Targets(vec![T::Job(job_id)]),
+        Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 
         Request::ExplainCategoryMembership { message_id, .. } => Targets(vec![T::Message(message_id)]),
         Request::RuleCategories {form,..} | Request::RuleTreatment {form,..} => {

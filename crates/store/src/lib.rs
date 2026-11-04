@@ -271,7 +271,7 @@ pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{
     CommitmentPrior, DeskUndo, HighlightPrior, TodoTickPrior, UndoEntry, UndoEntrySnapshot,
-    UndoEntryState, UndoableMutationKind,
+    UndoableMutationKind,
 };
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,

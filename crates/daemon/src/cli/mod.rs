@@ -2051,16 +2051,11 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
 
-    /// Undo a recent destructive mutation by its id (~60s window), or a whole
-    /// `--all` run by its job id (for an hour after the job ends).
-    ///
+    /// Undo a recent destructive mutation by its id (~60s window).
     /// The mutation id is printed by `archive`, `trash`, `spam`,
     /// `mark-read`, `read-archive` and `desk done`; copy it from there.
-    /// `archive --all` and its siblings print a job id instead. Undoing a job
-    /// is a background job of its own: this command waits for it and says how
-    /// many messages came back, and how many it had to skip.
+    /// A job started with `--all` cannot be undone.
     Undo {
-        #[arg(value_name = "ID")]
         mutation_id: String,
         /// Show which undo would run without mutating state.
         #[arg(long)]
@@ -2074,8 +2069,8 @@ pub enum Command {
     /// Job history is persisted locally and survives a daemon restart; the
     /// most recent jobs are retained. A job still running when the daemon
     /// stops is marked failed ("interrupted") at the next start, with the
-    /// counts it had reached. An `--all` job shows its first failures, when
-    /// it is waiting out a provider rate limit, and the command that undoes it.
+    /// counts it had reached. An `--all` job shows its first failures and when
+    /// it is waiting out a provider rate limit.
     Jobs {
         /// Optional job id to inspect. Omit to list recent jobs.
         job_id: Option<String>,
@@ -3626,8 +3621,8 @@ pub struct BulkAllArgs {
     /// Act on every message the search matches, not only the newest 1,000.
     /// The daemon resolves the whole set, so the exact count is shown before
     /// anything changes, and runs it as one background job that this command
-    /// waits for. `mxr undo <JOB_ID>` reverses the whole job for an hour after
-    /// it ends. Preview with --dry-run first.
+    /// waits for. An --all job cannot be undone: preview it with --dry-run
+    /// first, since the preview is the check.
     #[arg(
         long,
         requires = "search",

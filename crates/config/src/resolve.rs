@@ -739,7 +739,7 @@ fn merge_table(
         match target.get_mut(key) {
             Some(existing) => match (existing.as_table_like_mut(), item.as_table_like()) {
                 (Some(existing), Some(fresh)) => {
-                    merge_table(existing, fresh, default.and_then(|d| d.as_table_like()))
+                    merge_table(existing, fresh, default.and_then(|d| d.as_table_like()));
                 }
                 _ => replace_item(existing, item),
             },

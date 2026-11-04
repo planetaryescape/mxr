@@ -627,7 +627,9 @@ async fn public_record_promise_preserves_closed_and_user_edited_task_decisions()
                         },
                         mxr_protocol::TodoEditData {
                             field: "due".into(),
-                            value: "2026-11-06T12:00:00Z".into(),
+                            // Ahead of the clock, and a day apart from the accepted one.
+                            value: (chosen() - Duration::days(7))
+                                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
                         },
                     ],
                     time_zone: Some("UTC".into()),

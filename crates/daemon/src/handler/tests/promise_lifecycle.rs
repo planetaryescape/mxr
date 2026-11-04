@@ -690,8 +690,12 @@ async fn review6_accepted_dates_keep_independent_fields_and_closed_decisions() {
             .await
             .unwrap()
             .remove(0);
+        // The user's own day: ahead of the clock, apart from both accepted ones.
+        let user_due = (chosen() + Duration::days(20))
+            .format("%-d %B %Y")
+            .to_string();
         let fields = if control == "due" {
-            vec![("due", "1 April 2027")]
+            vec![("due", user_due.as_str())]
         } else if control == "mixed" {
             vec![
                 ("title", "My outline"),

@@ -587,6 +587,13 @@ pub(crate) mod tests {
     };
     use mxr_test_support::render_to_string;
 
+    /// The clock the view renders against. The fixture's mail is from
+    /// October 2026, and the snapshots show it as earlier this year; on the
+    /// wall clock they change on 1 January.
+    fn fixture_now() -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+    }
+
     pub(crate) fn line(
         section: UpdateSectionData,
         source: &str,
@@ -778,7 +785,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 30),
                 &UpdatesView {
-                    now: chrono::Utc::now(),
+                    now: fixture_now(),
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
@@ -806,7 +813,7 @@ pub(crate) mod tests {
             ..Default::default()
         };
         let view = UpdatesView {
-            now: Utc::now(),
+            now: fixture_now(),
             page: &page,
             selected_index: 0,
             active_pane: &ActivePane::MailList,

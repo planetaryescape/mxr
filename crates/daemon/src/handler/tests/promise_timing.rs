@@ -7,7 +7,15 @@ use mxr_todo::provenance::{FieldSource, FieldSources};
 use mxr_todo::timing::{lead_time, window, TimingInput};
 use mxr_todo::TodoKind;
 
-const TEXT: &str = "I'll send the tenancy notice by 28 February 2027.";
+/// A promise dated four months ahead of the clock. A fixed date lapsed into
+/// the catch-up once the wall clock passed it.
+fn text() -> &'static str {
+    static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TEXT.get_or_init(|| {
+        let by = chrono::Utc::now().date_naive() + Duration::days(120);
+        format!("I'll send the tenancy notice by {}.", by.format("%-d %B %Y"))
+    })
+}
 
 async fn record(
     fx: &Fixture,
@@ -32,7 +40,7 @@ async fn record(
 }
 
 async fn corrected_kind_journey(fx: &Fixture) -> (mxr_core::Envelope, mxr_store::TodoRecord) {
-    let mail = source(fx, TEXT).await;
+    let mail = source(fx, text()).await;
     settle(fx, &mail).await;
     let tasks = fx
         .state
@@ -58,9 +66,9 @@ async fn corrected_kind_journey(fx: &Fixture) -> (mxr_core::Envelope, mxr_store:
         .filter(|unit| unit.answer == mxr_core::asks::AskAnswer::YouPromised)
         .collect();
     assert_eq!(promises.len(), 1);
-    assert_eq!(answer.quote(promises[0]), Some(TEXT));
+    assert_eq!(answer.quote(promises[0]), Some(text()));
     let a = chosen() + Duration::days(120);
-    let id = record(fx, &mail, TEXT, a).await;
+    let id = record(fx, &mail, text(), a).await;
     let ResponseData::TodoChange { change } = request(
         fx,
         Request::CorrectTodo {
@@ -97,7 +105,7 @@ async fn corrected_kind_journey(fx: &Fixture) -> (mxr_core::Envelope, mxr_store:
         fx,
         Request::RecordPromise {
             message_id: mail.id.clone(),
-            what: TEXT.into(),
+            what: text().into(),
             due_at: b,
             dry_run: true,
         },
@@ -110,7 +118,7 @@ async fn corrected_kind_journey(fx: &Fixture) -> (mxr_core::Envelope, mxr_store:
             .unwrap(),
         changes
     );
-    assert_eq!(record(fx, &mail, TEXT, b).await, id);
+    assert_eq!(record(fx, &mail, text(), b).await, id);
     let ResponseData::Todo { todo } = request(
         fx,
         Request::GetTodo {
@@ -141,7 +149,7 @@ async fn corrected_kind_journey(fx: &Fixture) -> (mxr_core::Envelope, mxr_store:
     eprintln!("REVIEW8_IMMEDIATE actual={actual:?} expected={timing:?} window={relevant:?}");
     assert_eq!(actual.id, original.id);
     assert_eq!(actual.commitment_id.as_deref(), Some(id.as_str()));
-    assert_eq!(actual.reason, TEXT);
+    assert_eq!(actual.reason, text());
     assert_eq!(todo.kind, "lease");
     assert_eq!(todo.due_at, Some(b));
     assert_eq!(todo.act_by_at, timing.act_by);
@@ -321,7 +329,7 @@ fn corrected_kind_timing_survives_real_reopen() {
 #[tokio::test]
 async fn unchanged_canonical_and_corrected_accepted_only_kinds_keep_their_own_timing() {
     for (text, kind, canonical) in [
-        (TEXT, TodoKind::Promise, true),
+        (text(), TodoKind::Promise, true),
         ("I'll prepare the tenancy outline.", TodoKind::Lease, false),
     ] {
         let fx = Fixture::new().await;

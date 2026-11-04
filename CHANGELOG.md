@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.205](https://github.com/planetaryescape/mxr/compare/v0.6.204...v0.6.205) (2026-11-04)
+
+
+### Bug Fixes
+
+* what a key-only triage of the TUI found ([#844](https://github.com/planetaryescape/mxr/issues/844)) ([cfc334a](https://github.com/planetaryescape/mxr/commit/cfc334a45a4c8115062f8aee8e0ef26904fea5ab))
+
+
+### Documentation
+
+* record macOS jobs cancelled before a runner was assigned ([7cc4067](https://github.com/planetaryescape/mxr/commit/7cc40675f5bcc469f9b220444b5a09f0cee63766))
+
 ## [0.6.204](https://github.com/planetaryescape/mxr/compare/v0.6.203...v0.6.204) (2026-11-04)
 
 

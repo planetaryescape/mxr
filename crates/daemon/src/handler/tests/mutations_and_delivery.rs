@@ -4396,8 +4396,12 @@ fn a_removal_whose_cached_mail_update_fails_reports_the_config_change_as_saved()
     with_config_file(THREE_ACCOUNTS, None, |config_file| {
         Box::pin(async move {
             let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-            // The config write commits; the store write after it cannot.
-            state.store.writer().close().await;
+            // The config write commits; the store write after it cannot. The
+            // in-memory store reads on the same connection, so reads still work.
+            sqlx::query("PRAGMA query_only = ON")
+                .execute(state.store.writer())
+                .await
+                .expect("make the store read-only");
 
             let result =
                 crate::handler::account_config::remove_account_config(&state, "work", false, false)

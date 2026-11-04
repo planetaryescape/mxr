@@ -773,7 +773,10 @@ pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
 }
 
 /// Apply environment variable overrides to the config.
-fn apply_env_overrides(config: &mut MxrConfig) {
+/// Applies the `MXR_*` environment overrides on top of a config. A config
+/// read as written gets these before the daemon runs with it, so the daemon's
+/// copy matches [`load_config`] while the file keeps only what was written.
+pub fn apply_env_overrides(config: &mut MxrConfig) {
     if let Ok(val) = std::env::var("MXR_EDITOR") {
         config.general.editor = Some(val);
     }

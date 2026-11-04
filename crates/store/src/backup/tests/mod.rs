@@ -1711,7 +1711,12 @@ async fn a_pre_105_source_with_duplicate_tags_and_no_label_roles_backs_up_both_r
     };
     store.insert_account(&older).await.unwrap();
     store.insert_account(&newer).await.unwrap();
-    // Put the source back to schema 104: no label role, and a duplicate tag.
+    // Put the source back to schema 104: no label role, no mode_row_seen, and
+    // a duplicate tag.
+    sqlx::query("DROP TABLE mode_row_seen")
+        .execute(store.writer())
+        .await
+        .unwrap();
     sqlx::query("ALTER TABLE labels DROP COLUMN role")
         .execute(store.writer())
         .await
@@ -1735,7 +1740,7 @@ async fn a_pre_105_source_with_duplicate_tags_and_no_label_roles_backs_up_both_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 106);
+    assert_eq!(manifest.schema_version, 108);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))

@@ -236,9 +236,6 @@ pub(super) async fn upsert_account_config(
     }
 }
 
-/// Writes one account to config under the config file lock. The lock covers
-/// the tag clash check as well, so a tag another account claims between the
-/// check and the write is refused.
 /// Runs one config write as a synchronous section: the file lock is taken,
 /// the file is read as written, `apply` changes it, and the result is saved
 /// atomically. Nothing awaits while the file lock is held, so the blocking lock

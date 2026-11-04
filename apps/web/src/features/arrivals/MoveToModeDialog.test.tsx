@@ -91,6 +91,21 @@ describe("the move picker's keys", () => {
     expect(messages).toHaveFocus();
   });
 
+  test("an ordinary move marks the mode it is in now but starts on the first option", async () => {
+    render(
+      <MoveToModeDialog
+        subject={{ messageId: "msg-1", label: "Q4 plan", here: "reading" }}
+        sender={false}
+        onClose={() => {}}
+      />,
+    );
+    const reading = screen.getByTestId("move-choice-reading");
+    expect(reading).toHaveTextContent("here now");
+    expect(reading).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("move-choice-messages")).not.toHaveTextContent("here now");
+    await waitFor(() => expect(screen.getByTestId("move-choice-messages")).toHaveFocus());
+  });
+
   test("a Not-sure email starts on where it is now, and a key answers the question", async () => {
     const answer = vi.fn<(mode: string, sender: boolean) => void>();
     render(

@@ -188,6 +188,29 @@ impl App {
         })
     }
 
+    /// The mode the email `X` moves is in now, as the place it was opened
+    /// from shows it: the menu marks that option, as the web's does.
+    fn move_here(&self) -> Option<ModeKindData> {
+        if self.now_list_focused() {
+            return match self.selected_now_row()? {
+                NowRow::Person(_) => Some(ModeKindData::Messages),
+                NowRow::Todo(_) => Some(ModeKindData::Todo),
+                NowRow::Reading(_) => Some(ModeKindData::Reading),
+                NowRow::NotSure(question) => Some(question.mode),
+                NowRow::Arrivals(_) | NowRow::Updates(_) => None,
+            };
+        }
+        if self.messages_list_focused() {
+            Some(ModeKindData::Messages)
+        } else if self.updates_list_focused() {
+            Some(ModeKindData::Updates)
+        } else if self.reading_lens_focused() {
+            Some(ModeKindData::Reading)
+        } else {
+            None
+        }
+    }
+
     fn open_move_menu(&mut self, sender_only: bool) {
         let Some((message_id, display)) = self.move_target() else {
             self.status_message = Some(
@@ -204,7 +227,7 @@ impl App {
             .now_list_focused()
             .then(|| self.selected_now_row())
             .flatten();
-        let current = match row {
+        let not_sure = match row {
             Some(NowRow::NotSure(question)) => Some(question.mode),
             _ => None,
         };
@@ -216,13 +239,13 @@ impl App {
             message_id,
             display,
             sender_only,
-            not_sure: current.is_some(),
-            current,
+            not_sure: not_sure.is_some(),
+            current: not_sure.or_else(|| self.move_here()),
             new_sender,
             selected: 0,
         };
         // Keeping a Not-sure email where it is answers too: start there.
-        if let Some(current) = current {
+        if let Some(current) = not_sure {
             menu.selected = menu
                 .options()
                 .iter()

@@ -51,7 +51,7 @@ pub fn draw_move_menu(
         let label = match option {
             MoveOption::Email(mode) => {
                 if menu.current == Some(*mode) {
-                    format!("{} (keep it here)", mode.name())
+                    format!("{} (here now)", mode.name())
                 } else {
                     mode.name().to_string()
                 }
@@ -313,7 +313,7 @@ mod tests {
             selected: 2,
             ..menu()
         });
-        assert!(rendered.contains("u  Updates (keep it here)"), "{rendered}");
+        assert!(rendered.contains("u  Updates (here now)"), "{rendered}");
     }
 
     #[test]

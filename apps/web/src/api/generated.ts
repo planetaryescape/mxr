@@ -7399,6 +7399,12 @@ export interface components {
              *     read or parsed.
              */
             history_retention_days?: number | null;
+            /**
+             * @description Counts for the process that parses mail HTML for this daemon. All zero
+             *     from a daemon that predates it, and from a report built without a
+             *     running daemon.
+             */
+            html_helper?: components["schemas"]["HtmlHelperStats"];
             index_exists: boolean;
             index_lock_error?: string | null;
             index_lock_held: boolean;
@@ -7999,6 +8005,50 @@ export interface components {
             hosting_available: boolean;
             recovery_generation?: string | null;
             workspace_id?: string | null;
+        };
+        /**
+         * @description How the HTML helper process has fared since its supervisor started. Counts
+         *     only; no message content.
+         */
+        HtmlHelperStats: {
+            /**
+             * Format: int64
+             * @default 0
+             */
+            deaths: number;
+            /**
+             * Format: int64
+             * @description Requests answered with the plain-text fallback instead of a parse.
+             * @default 0
+             */
+            fallbacks: number;
+            /**
+             * @description Mail HTML is parsed in a helper process. False means in-process, or no
+             *     running daemon to ask.
+             * @default false
+             */
+            installed: boolean;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            job_errors: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            requests: number;
+            /**
+             * Format: int64
+             * @description Helpers started to replace one that timed out or died.
+             * @default 0
+             */
+            restarts: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            timeouts: number;
         };
         HtmlImageAsset: {
             detail?: string | null;

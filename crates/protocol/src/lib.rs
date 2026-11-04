@@ -1389,6 +1389,7 @@ mod tests {
                 ResponseData::AccountOperation {
                     result: AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: "ok".into(),
                         save: None,
                         auth: None,

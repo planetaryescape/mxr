@@ -1326,6 +1326,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 104, name: "conversation_summaries", kind: MigrationKind::Sql(include_str!("../migrations/104_conversation_summaries.sql")) },
     Migration { version: 105, name: "label_role", kind: MigrationKind::LabelRole },
     Migration { version: 106, name: "mode_row_seen", kind: MigrationKind::Sql(include_str!("../migrations/106_mode_row_seen.sql")) },
+    Migration { version: 108, name: "account_identity_tag_unique", kind: MigrationKind::Sql(include_str!("../migrations/108_account_identity_tag_unique.sql")) },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -2216,7 +2217,7 @@ pub(crate) mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=106).collect::<Vec<_>>(),
+                (83..=106).chain([108]).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

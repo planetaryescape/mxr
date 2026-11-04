@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.206"
+    "version": "0.6.207"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -8398,6 +8398,10 @@
                 "type": "null"
               }
             ]
+          },
+          "saved": {
+            "type": "boolean",
+            "description": "True when the config change was written to disk even though `ok` is\nfalse, because a later phase (runtime reload, cached mail) failed. The\nchange is saved but not fully applied."
           },
           "send": {
             "oneOf": [

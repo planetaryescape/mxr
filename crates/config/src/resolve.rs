@@ -23,6 +23,11 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::ser::Error,
     },
+    #[error("failed to re-read the serialized TOML config for {path}")]
+    ReparseToml {
+        path: PathBuf,
+        source: toml_edit::TomlError,
+    },
 }
 
 /// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
@@ -410,6 +415,13 @@ pub fn load_config() -> Result<MxrConfig, ConfigError> {
     load_config_from_path(&config_file_path())
 }
 
+/// The default config file as written on disk, without environment overrides.
+/// Every read-modify-write must start here: a value taken from `MXR_*` in the
+/// environment would otherwise be saved into the file.
+pub fn load_config_as_written() -> Result<MxrConfig, ConfigError> {
+    load_config_file_as_written(&config_file_path())
+}
+
 /// Save config to the default config file path.
 pub fn save_config(config: &MxrConfig) -> Result<(), ConfigError> {
     save_config_to_path(config, &config_file_path())
@@ -464,7 +476,7 @@ pub fn update_config_at_path<T, E: From<ConfigError>>(
     mutate: impl FnOnce(&mut MxrConfig) -> Result<T, E>,
 ) -> Result<T, E> {
     let _lock = lock_config_file_at(path)?;
-    let mut config = load_config_from_path(path)?;
+    let mut config = load_config_file_as_written(path)?;
     let out = mutate(&mut config)?;
     save_config_to_path(&config, path)?;
     Ok(out)
@@ -558,9 +570,18 @@ fn warn_legacy_draft_models_once(table: &toml::Table) {
     }
 }
 
-/// Load config from a specific file path. Returns defaults if file doesn't exist.
+/// Load config from a specific file path, with environment overrides applied.
+/// Returns defaults if the file doesn't exist.
 pub fn load_config_from_path(path: &Path) -> Result<MxrConfig, ConfigError> {
-    let mut config = match std::fs::read_to_string(path) {
+    let mut config = load_config_file_as_written(path)?;
+    apply_env_overrides(&mut config);
+    Ok(config)
+}
+
+/// Load the config file at `path` exactly as written. Returns defaults if the
+/// file doesn't exist. Environment overrides are not applied.
+pub fn load_config_file_as_written(path: &Path) -> Result<MxrConfig, ConfigError> {
+    let config = match std::fs::read_to_string(path) {
         Ok(contents) => {
             warn_retired_config_keys_once(&contents);
             load_config_from_str(&contents).map_err(|e| match e {
@@ -586,11 +607,15 @@ pub fn load_config_from_path(path: &Path) -> Result<MxrConfig, ConfigError> {
         }
     };
 
-    apply_env_overrides(&mut config);
     Ok(config)
 }
 
 /// Save config to a specific path.
+///
+/// The file is rewritten in place of the old one, not replaced wholesale: keys
+/// the config still sets take their new values and keep their comments and
+/// layout, and keys it no longer sets are removed. The write goes through a
+/// temporary file and a rename, so an interrupted save leaves the old file.
 pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|source| ConfigError::ReadFile {
@@ -598,14 +623,160 @@ pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), Config
             source,
         })?;
     }
-    let contents = toml::to_string_pretty(config).map_err(|source| ConfigError::SerializeToml {
+    let existing = match std::fs::read_to_string(path) {
+        Ok(contents) => Some(contents),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => None,
+        Err(source) => {
+            return Err(ConfigError::ReadFile {
+                path: path.to_path_buf(),
+                source,
+            })
+        }
+    };
+    let contents = render_config(config, existing.as_deref(), path)?;
+    write_file_atomically(path, contents.as_bytes())
+}
+
+/// The file text for `config`, laid over `existing` when that parses. An
+/// existing file that does not parse is replaced: nothing in it could be kept.
+fn render_config(
+    config: &MxrConfig,
+    existing: Option<&str>,
+    path: &Path,
+) -> Result<String, ConfigError> {
+    let serialized =
+        toml::to_string_pretty(config).map_err(|source| ConfigError::SerializeToml {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let fresh: toml_edit::DocumentMut =
+        serialized
+            .parse()
+            .map_err(|source| ConfigError::ReparseToml {
+                path: path.to_path_buf(),
+                source,
+            })?;
+    let Some(mut document) = existing.and_then(|text| text.parse::<toml_edit::DocumentMut>().ok())
+    else {
+        return Ok(fresh.to_string());
+    };
+    merge_table(document.as_table_mut(), fresh.as_table());
+    Ok(document.to_string())
+}
+
+/// Makes `target` hold the keys and values of `source`. A value that is
+/// already equal is left alone, so its formatting and comments survive; a
+/// changed one keeps its decor (leading comment and trailing comment).
+///
+/// The serializer writes every section as a regular table. Sections are merged
+/// through `TableLike`, so a section the user wrote inline stays inline and
+/// keeps its comment.
+fn merge_table(target: &mut dyn toml_edit::TableLike, source: &dyn toml_edit::TableLike) {
+    let stale: Vec<String> = target
+        .iter()
+        .map(|(key, _)| key.to_string())
+        .filter(|key| !source.contains_key(key))
+        .collect();
+    for key in stale {
+        target.remove(&key);
+    }
+    for (key, item) in source.iter() {
+        match target.get_mut(key) {
+            Some(existing) => match (existing.as_table_like_mut(), item.as_table_like()) {
+                (Some(existing), Some(fresh)) => merge_table(existing, fresh),
+                _ => replace_item(existing, item),
+            },
+            None => {
+                target.insert(key, item.clone());
+            }
+        }
+    }
+}
+
+fn replace_item(existing: &mut toml_edit::Item, fresh: &toml_edit::Item) {
+    match (existing.as_value_mut(), fresh.as_value().cloned()) {
+        (Some(existing_value), Some(fresh_value)) => {
+            if same_value(existing_value, &fresh_value) {
+                return;
+            }
+            let decor = existing_value.decor().clone();
+            let mut replacement = fresh_value;
+            *replacement.decor_mut() = decor;
+            *existing_value = replacement;
+        }
+        _ => *existing = fresh.clone(),
+    }
+}
+
+/// Whether two TOML values mean the same thing, whatever their formatting.
+/// Comments and whitespace inside an array or inline table are formatting, so
+/// a value that only differs in those is left as the user wrote it. toml_edit
+/// has no formatting-blind equality, so each value is read back as data.
+fn same_value(existing: &toml_edit::Value, fresh: &toml_edit::Value) -> bool {
+    let as_data = |value: &toml_edit::Value| {
+        let mut bare = value.clone();
+        *bare.decor_mut() = toml_edit::Decor::default();
+        toml::from_str::<toml::Table>(&format!("value = {bare}\n")).ok()
+    };
+    match (as_data(existing), as_data(fresh)) {
+        (Some(existing), Some(fresh)) => existing == fresh,
+        _ => false,
+    }
+}
+
+/// Writes `contents` to `path` through a temporary file in the same directory:
+/// write, fsync, rename, then fsync the directory so the rename is durable. A
+/// failure before the rename removes the temporary file and leaves `path` as it was.
+fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<(), ConfigError> {
+    write_file_atomically_with(path, contents, || Ok(()))
+}
+
+/// [`write_file_atomically`] with a hook that runs after the temporary file is
+/// durable and before the rename. The hook is the seam tests use to fail an
+/// interrupted save.
+fn write_file_atomically_with(
+    path: &Path,
+    contents: &[u8],
+    before_rename: impl FnOnce() -> std::io::Result<()>,
+) -> Result<(), ConfigError> {
+    use std::io::Write;
+
+    let io = |source| ConfigError::ReadFile {
         path: path.to_path_buf(),
         source,
-    })?;
-    std::fs::write(path, contents).map_err(|source| ConfigError::ReadFile {
-        path: path.to_path_buf(),
-        source,
-    })
+    };
+    let dir = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    name.push(format!(".tmp-{}-{stamp}", std::process::id()));
+    let temp = dir.join(name);
+
+    let write = || -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        if let Ok(existing) = std::fs::metadata(path) {
+            file.set_permissions(existing.permissions())?;
+        }
+        file.write_all(contents)?;
+        file.sync_all()?;
+        before_rename()?;
+        std::fs::rename(&temp, path)
+    };
+    if let Err(source) = write() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(io(source));
+    }
+    if let Ok(directory) = std::fs::File::open(dir) {
+        let _ = directory.sync_all();
+    }
+    Ok(())
 }
 
 /// Load config from a TOML string.
@@ -618,7 +789,10 @@ pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
 }
 
 /// Apply environment variable overrides to the config.
-fn apply_env_overrides(config: &mut MxrConfig) {
+/// Applies the `MXR_*` environment overrides on top of a config. A config
+/// read as written gets these before the daemon runs with it, so the daemon's
+/// copy matches [`load_config`] while the file keeps only what was written.
+pub fn apply_env_overrides(config: &mut MxrConfig) {
     if let Ok(val) = std::env::var("MXR_EDITOR") {
         config.general.editor = Some(val);
     }
@@ -667,5 +841,113 @@ mod tests {
         let saved = toml::to_string(&config).expect("config serializes");
         assert!(saved.contains("models = [\"local-one\"]"));
         assert!(!saved.contains("assistant_models"));
+    }
+}
+
+#[cfg(test)]
+mod write_tests {
+    use super::*;
+
+    #[test]
+    fn env_override_is_not_saved_by_a_file_only_read_modify_write() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[accounts.work]\nname = \"Work\"\nemail = \"w@example.com\"\nenabled = true\n",
+        )
+        .expect("config fixture");
+
+        temp_env::with_var("MXR_DEFAULT_ACCOUNT", Some("work"), || {
+            update_config_at_path(&path, |config| {
+                config
+                    .accounts
+                    .get_mut("work")
+                    .expect("config fixture")
+                    .enabled = false;
+                Ok::<_, ConfigError>(())
+            })
+            .expect("config fixture");
+        });
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        let written = load_config_from_str(&saved).expect("config fixture");
+        assert_eq!(written.general.default_account, None, "{saved}");
+        assert!(!written.accounts["work"].enabled);
+    }
+
+    #[test]
+    fn a_save_keeps_comments_and_layout_of_keys_it_keeps() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let original = "# my mail setup\n[general]\n# the editor I use\neditor = \"nvim\"\nsync_interval = 60\n";
+        std::fs::write(&path, original).expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.general.sync_interval = 120;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# my mail setup"), "{saved}");
+        assert!(saved.contains("# the editor I use"), "{saved}");
+        assert!(saved.contains("sync_interval = 120"), "{saved}");
+        assert!(saved.contains("editor = \"nvim\""), "{saved}");
+    }
+
+    #[test]
+    fn a_save_keeps_comments_inside_an_array_it_does_not_change() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let original = "[general]\nsync_interval = 60\n\n[bridge]\ncors_allowlist = [\n    \"http://localhost:5173\", # local dev\n]\n";
+        std::fs::write(&path, original).expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.general.sync_interval = 120;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# local dev"), "{saved}");
+        assert!(saved.contains("sync_interval = 120"), "{saved}");
+    }
+
+    #[test]
+    fn a_save_keeps_a_section_written_as_an_inline_table() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let original = "general = { editor = 'nvim' } # keep this editor\n";
+        std::fs::write(&path, original).expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.search.max_results += 1;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# keep this editor"), "{saved}");
+        assert!(saved.contains("editor = 'nvim'"), "{saved}");
+        assert!(!saved.contains("[general]"), "{saved}");
+        let written = load_config_file_as_written(&path).expect("config fixture");
+        assert_eq!(written.search.max_results, config.search.max_results);
+    }
+
+    #[test]
+    fn a_failed_write_before_the_rename_leaves_the_old_file_and_no_temp_file() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[general]\neditor = \"vim\"\n").expect("config fixture");
+
+        let result = write_file_atomically_with(&path, b"[general]\neditor = \"emacs\"\n", || {
+            Err(std::io::Error::other("interrupted"))
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("config fixture"),
+            "[general]\neditor = \"vim\"\n"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("config fixture")
+            .map(|entry| entry.expect("config fixture").file_name())
+            .collect();
+        assert_eq!(leftovers, vec![std::ffi::OsString::from("config.toml")]);
     }
 }

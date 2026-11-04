@@ -33,6 +33,8 @@ pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
     account_id: None,
     limit: Some(0),
 };
+#[cfg(test)]
+mod label_accounts_tests;
 mod message_actions;
 mod messages_actions;
 mod modal_actions;

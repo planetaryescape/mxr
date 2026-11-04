@@ -131,6 +131,13 @@ Common bulk actions:
 - Apply label
 - Move to label
 
+A label is applied, moved to or routed to by name, on each message's own
+account. The picker lists the labels of the accounts the selection comes from,
+one entry per name. When a selection spans two accounts that both have a
+"Work" label, each message gets its own account's "Work". When one of the
+accounts has no label of that name, nothing changes and the status line names
+that account.
+
 ## Mutation feedback
 
 The TUI applies mailbox mutations optimistically: rows move, flags flip,

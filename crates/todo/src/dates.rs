@@ -9,7 +9,7 @@
 //! likely order is used and the date is marked unchecked.
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
-use mxr_core::natural_time::{resolve_time, TimePrefs};
+use mxr_core::natural_time::{resolve_time, TimePrefs, TimeResolveErrorKind};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -204,9 +204,25 @@ where
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    let resolution = resolve_time(&normalized, anchor, &TimePrefs::default()).ok()?;
-    let mut day = resolution.at.with_timezone(&anchor.timezone()).date_naive();
     let year_guessed = !HAS_YEAR.is_match(&normalized) && MONTH_NAME.is_match(&normalized);
+    let resolution = match resolve_time(&normalized, anchor, &TimePrefs::default()) {
+        Ok(resolution) => resolution,
+        // The resolver only looks ahead. A date that states its year is that
+        // day even when it has passed ("was due 1 November 2026", or the
+        // email's own day after the resolver's morning hour), as a numeric
+        // date already is; read it from before any year it can name.
+        Err(error)
+            if error.kind == TimeResolveErrorKind::InPast && HAS_YEAR.is_match(&normalized) =>
+        {
+            let before = anchor
+                .timezone()
+                .with_ymd_and_hms(1900, 1, 1, 0, 0, 0)
+                .earliest()?;
+            resolve_time(&normalized, &before, &TimePrefs::default()).ok()?
+        }
+        Err(_) => return None,
+    };
+    let mut day = resolution.at.with_timezone(&anchor.timezone()).date_naive();
     // The parser takes the next occurrence after the message; a date said
     // to have passed means the one just gone.
     if year_guessed && intent == YearIntent::JustGone && day > anchor.date_naive() {
@@ -279,6 +295,31 @@ mod tests {
 
     fn due_regex() -> Regex {
         trigger_regex(r"payment\s+due|due|pay\s+by|by")
+    }
+
+    #[test]
+    fn a_worded_date_with_its_year_is_that_day_even_once_it_has_passed() {
+        let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).expect("valid date");
+        for (text, sent_on, expected) in [
+            ("1 November 2026", sent(2026, 11, 4), day(2026, 11, 1)),
+            ("Friday 30 October 2026", sent(2026, 11, 4), day(2026, 10, 30)),
+            // The email's own day, read after the resolver's morning hour.
+            ("1 December 2026", sent(2026, 12, 1), day(2026, 12, 1)),
+            ("1 December 2026", sent(2027, 6, 15), day(2026, 12, 1)),
+            // Ahead of the email it was always read.
+            ("1 December 2026", sent(2026, 11, 4), day(2026, 12, 1)),
+        ] {
+            assert_eq!(
+                parse_date(text, &sent_on, DateOrder::DayFirst, YearIntent::Next),
+                Some((expected, true)),
+                "{text} sent {sent_on}"
+            );
+        }
+        // A yearless date still means the next one.
+        assert_eq!(
+            parse_date("1 November", &sent(2026, 11, 4), DateOrder::DayFirst, YearIntent::Next),
+            Some((day(2027, 11, 1), false))
+        );
     }
 
     #[test]

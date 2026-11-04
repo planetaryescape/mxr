@@ -51,7 +51,8 @@ pub struct Store {
     resource_dir: std::path::PathBuf,
     reader: SqlitePool,
     /// Reads and writes share the writer's one connection (in-memory and
-    /// backup stores), so dropping it would lose an in-memory database.
+    /// backup stores). An in-memory database survives that connection
+    /// being replaced because `_memory_anchor` keeps it open.
     shared_connection: bool,
     /// An idle connection to an in-memory database, held so the database
     /// outlives whichever connection the pool currently has. `None` for a
@@ -432,9 +433,9 @@ impl Store {
     /// done with it, a cancelled or closing commit included. Holding it,
     /// nothing can be mid-commit, so every commit in the count is visible.
     ///
-    /// A store whose one connection serves reads too waits without a limit:
-    /// sqlx drops a connection whose acquire is cancelled mid-ping, which
-    /// would lose an in-memory database.
+    /// A store whose one connection serves reads too waits without a limit.
+    /// That guarded an in-memory database before `_memory_anchor` kept it
+    /// alive across a dropped connection; the limit could now apply here too.
     pub async fn changes_landed(&self, wait: Duration) -> Option<u64> {
         let writer = if self.shared_connection {
             self.writer.acquire().await.ok()?

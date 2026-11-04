@@ -12781,22 +12781,6 @@
             "unsubscribe"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "a",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        },
-        {
-          "key": "A",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        }
       ]
     },
     {

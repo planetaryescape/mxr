@@ -6945,14 +6945,6 @@ keys = ["e", "E"]
 name = "ConfirmUnsubscribeAndArchiveSender"
 keys = ["e", "E"]
 contexts = ["unsubscribe"]
-[[action.moved]]
-key = "a"
-contexts = ["unsubscribe"]
-until = "0.6.204"
-[[action.moved]]
-key = "A"
-contexts = ["unsubscribe"]
-until = "0.6.204"
 
 [[action]]
 id = "move-picker.messages"

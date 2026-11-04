@@ -249,6 +249,39 @@ fn a_helper_that_burns_its_cpu_budget_is_stopped_by_the_os() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn the_cpu_budget_is_armed_under_an_inherited_hard_cpu_limit() {
+    // `ulimit -t` sets the soft and hard limits, as a shell or service manager
+    // with a CPU cap would. Raising that hard limit is refused, so a re-arm
+    // that asked for an unlimited hard limit left the budget unarmed and the
+    // spin ran until the wall clock.
+    let mut config = Config::new(
+        "/bin/sh",
+        vec![
+            "-c".into(),
+            format!(
+                "ulimit -t 120 && exec '{}'",
+                env!("CARGO_BIN_EXE_mxr-html-worker-fixture")
+            )
+            .into(),
+        ],
+    );
+    config.max_helpers = 1;
+    config.cpu_seconds_per_request = 1;
+    config.request_timeout = Duration::from_secs(60);
+    let supervisor = Supervisor::new(config);
+    let started = Instant::now();
+    assert_eq!(SPIN.call_on(&supervisor, "", &()), None);
+    assert!(
+        started.elapsed() < Duration::from_secs(20),
+        "the per-request CPU budget ended the spin, took {:?}",
+        started.elapsed()
+    );
+    assert!(supervisor.stats().deaths >= 1);
+    assert_eq!(supervisor.stats().timeouts, 0);
+}
+
 #[test]
 fn the_cpu_budget_is_per_request_not_for_the_helpers_life() {
     let supervisor = supervisor_with(|config| {

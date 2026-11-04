@@ -51,7 +51,7 @@ The child limits itself before it reads a request:
 | Limit | Value | Where it holds |
 |---|---|---|
 | Memory | 512 MiB above the child's starting size | A watchdog thread aborts the child when its peak resident size passes the ceiling (Linux and macOS). On Linux `RLIMIT_AS` also caps the child's address space at its starting size plus the same headroom. macOS refuses a cap near real usage (every process reserves hundreds of gigabytes of address space) and does not enforce `RLIMIT_DATA`, so the watchdog is its only memory limit. |
-| CPU | 8 s per request | `RLIMIT_CPU`, re-armed before each request. A backstop behind the wall-clock limit. |
+| CPU | 8 s per request | `RLIMIT_CPU`, re-armed before each request. The soft limit moves and never passes an inherited hard limit (`ulimit -t`), which cannot be raised. A backstop behind the wall-clock limit. |
 | Wall clock | 5 s per request | The parent. It kills and reaps the child when a reply is late. |
 | Stack | 64 MiB for the job thread | Deeply nested documents recurse; stack is address space, not memory, until used. |
 
@@ -59,7 +59,7 @@ When a request times out or the child dies, the caller gets `None` and uses the 
 
 Two children serve at most two requests at once; more callers queue. Callers block: on a multi-thread tokio runtime the wait runs under `block_in_place`, so other tasks keep running. A document is never sent to the child when its job refuses its size (2 MiB for mail; 5 MiB for a fetched web page, the fetch policy's cap).
 
-The child sees nothing from the environment but its limits. It exits when its stdin closes, so a parent that is killed leaves no child behind. On Linux the child is started from `/proc/self/exe`, so a daemon that outlives an upgrade starts the binary it is running.
+The child sees nothing from the environment but its limits. It exits when its stdin closes, so a parent that is killed leaves no child behind. On Linux the child is started from `/proc/self/exe`, so a daemon that outlives an upgrade starts the binary it is running. Elsewhere it is the path of the running executable, or the name the process was started as when that path is unknown. A child that cannot be started gives every parse its fallback; parsing never returns to the parent.
 
 `mxr doctor` and the diagnostics page show one line from the daemon, for example `HTML helper: 2 fallbacks since start (4012 requests, 1 timeouts, 1 helper deaths, 2 restarts, 0 job errors)`. The counts hold no message content. `installed: false` means parsing is in-process, or there is no daemon to ask.
 

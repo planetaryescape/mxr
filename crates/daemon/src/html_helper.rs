@@ -34,29 +34,34 @@ pub fn run_helper() -> ExitCode {
 }
 
 /// Makes this process parse mail HTML in a helper. Nothing starts until the
-/// first parse. If the executable cannot be found the process keeps parsing
-/// in-process, as before.
+/// first parse. A helper that cannot be started gives every parse its
+/// fallback; parsing never moves back into this process.
 pub fn install() {
-    let program = match helper_program() {
-        Ok(program) => program,
-        Err(error) => {
-            tracing::warn!(%error, "HTML helper not installed; mail HTML is parsed in-process");
-            return;
-        }
-    };
-    mxr_html_worker::install(Config::new(program, vec![OsString::from(HELPER_ARG)]));
+    mxr_html_worker::install(Config::new(
+        helper_program(),
+        vec![OsString::from(HELPER_ARG)],
+    ));
 }
 
-fn helper_program() -> std::io::Result<PathBuf> {
+fn helper_program() -> PathBuf {
     // A daemon that outlives an upgrade must start the binary it is running,
     // not the one now on disk: the two could speak different frame layouts.
     // On Linux `/proc/self/exe` is the running image even after its file is
     // replaced; elsewhere the path is the best there is.
     #[cfg(target_os = "linux")]
     if std::path::Path::new("/proc/self/exe").exists() {
-        return Ok(PathBuf::from("/proc/self/exe"));
+        return PathBuf::from("/proc/self/exe");
     }
-    std::env::current_exe()
+    // Without a known path the name this process was started as is tried
+    // (through PATH when it has no slash). If that fails to start too, the
+    // supervisor answers with fallbacks, which is safe; an unlimited parse
+    // here is not.
+    std::env::current_exe().unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not find this executable; starting the HTML helper by name");
+        std::env::args_os()
+            .next()
+            .map_or_else(|| PathBuf::from("mxr"), PathBuf::from)
+    })
 }
 
 /// Counts for `mxr doctor` and the diagnostics page.

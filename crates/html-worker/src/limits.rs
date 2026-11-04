@@ -58,17 +58,34 @@ pub(crate) fn apply(limits: Limits) {
 /// used so far. Called before each request.
 #[cfg(unix)]
 pub(crate) fn rearm_cpu(limits: Limits) {
-    use nix::sys::resource::{getrusage, setrlimit, Resource, UsageWho, RLIM_INFINITY};
-    let Ok(usage) = getrusage(UsageWho::RUSAGE_SELF) else {
+    use nix::sys::resource::{getrlimit, getrusage, setrlimit, Resource, UsageWho};
+    let (Ok(usage), Ok((_, hard))) = (
+        getrusage(UsageWho::RUSAGE_SELF),
+        getrlimit(Resource::RLIMIT_CPU),
+    ) else {
         return;
     };
     let used = |time: nix::sys::time::TimeVal| {
         u64::try_from(time.tv_sec()).unwrap_or(0) + u64::from(time.tv_usec() > 0)
     };
-    let soft = used(usage.user_time()) + used(usage.system_time()) + limits.cpu_seconds;
-    // The hard limit stays unlimited: lowering it could never be undone, and
-    // the soft limit's SIGXCPU already ends the process.
-    let _ = setrlimit(Resource::RLIMIT_CPU, soft, RLIM_INFINITY);
+    let soft = cpu_soft_limit(
+        used(usage.user_time()) + used(usage.system_time()),
+        limits.cpu_seconds,
+        hard,
+    );
+    // The hard limit is kept as inherited: raising a finite one is refused
+    // (EPERM), which would leave the per-request budget unarmed, and lowering
+    // it could never be undone. The soft limit's SIGXCPU ends the process.
+    if let Err(error) = setrlimit(Resource::RLIMIT_CPU, soft, hard) {
+        eprintln!("html helper: could not re-arm the CPU limit: {error}");
+    }
+}
+
+/// The soft CPU limit for the next request: what has been used plus the
+/// budget, never above the hard limit the process inherited.
+#[cfg(unix)]
+fn cpu_soft_limit(used_seconds: u64, budget_seconds: u64, hard: u64) -> u64 {
+    used_seconds.saturating_add(budget_seconds).min(hard)
 }
 
 #[cfg(target_os = "linux")]
@@ -132,3 +149,19 @@ pub(crate) fn apply(_limits: Limits) {}
 
 #[cfg(not(unix))]
 pub(crate) fn rearm_cpu(_limits: Limits) {}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cpu_budget_is_counted_from_what_has_been_used() {
+        assert_eq!(cpu_soft_limit(3, 8, nix::sys::resource::RLIM_INFINITY), 11);
+    }
+
+    #[test]
+    fn the_cpu_budget_never_asks_past_an_inherited_hard_limit() {
+        assert_eq!(cpu_soft_limit(55, 8, 60), 60);
+        assert_eq!(cpu_soft_limit(u64::MAX, 8, 60), 60);
+    }
+}

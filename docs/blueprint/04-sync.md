@@ -20,6 +20,7 @@ Semantic chunk prep is intentionally **not** part of `mxr-sync` itself. The daem
 2. Fetch all labels/folders → upsert into `labels` table
 3. Fetch messages in batches (newest first, paginated)
    - Gmail: `messages.list` with `maxResults=100`, paging through all messages
+   - Generic IMAP: pages of at most 500 messages, INBOX first and then the other folders in LIST order, each folder from its highest UID downward. Between pages the cursor is a `"v":"2"` envelope recording, per folder, the UIDVALIDITY, the frozen `UIDNEXT` at the folder's start and the highest UID not yet fetched; a finished folder becomes a normal per-folder delta cursor with `uid_next` at the frozen value, so mail that arrived during the backfill is fetched by the first delta sync. An older binary cannot decode `"v":"2"` and does a full resync rather than treating a half-finished cursor as complete. A UIDVALIDITY change restarts only that folder
    - Store each batch of envelopes + bodies in SQLite
    - Populate label associations
    - Index each batch in Tantivy with body text

@@ -10,6 +10,9 @@ pub mod config;
 mod cursor;
 pub mod error;
 pub mod folders;
+mod generic_backfill;
+#[cfg(test)]
+mod generic_backfill_tests;
 pub mod parse;
 pub mod session;
 pub mod types;
@@ -30,12 +33,6 @@ use crate::types::{FolderInfo, ImapCapabilities};
 
 const IMAP_FETCH_UID_BATCH_SIZE: usize = 100;
 const GMAIL_ALL_MAIL_SYNC_PAGE_UID_SPAN: u32 = 500;
-
-struct InitialFolderSyncResult {
-    folder_index: usize,
-    mailbox: ImapMailboxCursor,
-    synced: Vec<SyncedMessage>,
-}
 
 struct DeltaFolderSyncResult {
     folder_index: usize,
@@ -480,7 +477,7 @@ impl ImapProvider {
         Ok(())
     }
 
-    /// Initial sync: fetch all messages from syncable mailboxes via UID FETCH.
+    /// Initial sync: first page of the newest-first backfill (see `generic_backfill`).
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
@@ -511,109 +508,8 @@ impl ImapProvider {
             warn!("Gmail IMAP extension advertised but no All Mail folder was discovered; falling back to folder sync");
         }
         let sync_folders = Self::syncable_folders(&folders);
-        let _ = session.logout().await;
-
-        let folder_concurrency = sync_folders.len().clamp(1, self.max_connections.max(1));
-        let mut folder_results = stream::iter(sync_folders.into_iter().enumerate())
-            .map(|(folder_index, folder)| {
-                let capabilities = capabilities.clone();
-                async move {
-                    self.initial_sync_folder(folder_index, folder, capabilities)
-                        .await
-                }
-            })
-            .buffer_unordered(folder_concurrency)
-            .try_collect::<Vec<_>>()
-            .await?;
-        folder_results.sort_by_key(|result| result.folder_index);
-
-        let mut synced = Vec::new();
-        let mut mailboxes = Vec::with_capacity(folder_results.len());
-        for result in folder_results {
-            mailboxes.push(result.mailbox);
-            synced.extend(result.synced);
-        }
-
-        debug!("IMAP initial sync complete: {} messages", synced.len());
-
-        Ok(SyncBatch {
-            upserted: synced,
-            deleted_provider_ids: vec![],
-            label_changes: vec![],
-            next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
-            has_more: false,
-            threads_changed: vec![],
-            remaining_estimate: None,
-        })
-    }
-
-    async fn initial_sync_folder(
-        &self,
-        folder_index: usize,
-        folder: FolderInfo,
-        capabilities: ImapCapabilities,
-    ) -> mxr_core::provider::Result<InitialFolderSyncResult> {
-        let mut session = self
-            .session_factory
-            .create_session()
+        self.generic_backfill_page(session, capabilities, sync_folders, None)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        Self::enable_session(&mut *session, &capabilities).await?;
-
-        let mailbox_info = session
-            .select(&folder.name)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-        let mut mailbox = ImapMailboxCursor {
-            mailbox: folder.name.clone(),
-            uid_validity: mailbox_info.uid_validity,
-            uid_next: mailbox_info.uid_next,
-            highest_modseq: mailbox_info.highest_modseq,
-        };
-
-        let mut synced = Vec::new();
-        let mut min_failed_uid = None;
-        if mailbox_info.exists > 0 {
-            let mut uids = session
-                .uid_search("ALL")
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
-            uids.sort_unstable();
-            uids.dedup();
-            let mut seen_uids = HashSet::new();
-
-            for uids in uids.chunks(IMAP_FETCH_UID_BATCH_SIZE) {
-                let uid_set = uids
-                    .iter()
-                    .map(u32::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",");
-                session = self
-                    .collect_synced_messages(
-                        session,
-                        &capabilities,
-                        CollectSyncedMessages {
-                            mailbox: &folder.name,
-                            uid_set: &uid_set,
-                            query: Self::imap_fetch_query(),
-                            min_uid: 1,
-                            seen_uids: &mut seen_uids,
-                            account_id: &self.account_id,
-                            synced: &mut synced,
-                            min_failed_uid: &mut min_failed_uid,
-                        },
-                    )
-                    .await?;
-            }
-        }
-        Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
-
-        let _ = session.logout().await;
-        Ok(InitialFolderSyncResult {
-            folder_index,
-            mailbox,
-            synced,
-        })
     }
 
     async fn initial_gmail_all_mail_sync(
@@ -1310,6 +1206,9 @@ impl MailSyncProvider for ImapProvider {
                     .cloned()
                 {
                     return self.continue_gmail_backfill(&backfill).await;
+                }
+                if let Some(state) = decoded.clone().into_generic_backfill() {
+                    return self.continue_generic_backfill(state).await;
                 }
                 let mailboxes = decoded.into_mailboxes();
                 self.delta_sync(&mailboxes).await
@@ -2090,20 +1989,20 @@ mod tests {
     }
 
     fn decoded_imap_inbox(cursor: &SyncCursor) -> ImapMailboxCursor {
-        let crate::cursor::ImapCursor::V1(v) = crate::cursor::ImapCursor::decode(cursor)
+        crate::cursor::ImapCursor::decode(cursor)
             .expect("test cursor must decode")
-            .expect("test cursor must not be Initial");
-        v.mailboxes
+            .expect("test cursor must not be Initial")
+            .into_mailboxes()
             .into_iter()
             .find(|m| m.mailbox.eq_ignore_ascii_case("INBOX"))
             .expect("INBOX entry missing")
     }
 
     fn decoded_imap_mailboxes(cursor: &SyncCursor) -> Vec<ImapMailboxCursor> {
-        let crate::cursor::ImapCursor::V1(v) = crate::cursor::ImapCursor::decode(cursor)
+        crate::cursor::ImapCursor::decode(cursor)
             .expect("test cursor must decode")
-            .expect("test cursor must not be Initial");
-        v.mailboxes
+            .expect("test cursor must not be Initial")
+            .into_mailboxes()
     }
 
     // -- sync_labels ----------------------------------------------------------
@@ -2268,7 +2167,7 @@ mod tests {
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands
             .iter()
-            .any(|command| command.contains("UID FETCH 1,2,3")));
+            .any(|command| command.contains("UID FETCH 1:3 ")));
         assert!(commands
             .iter()
             .any(|command| command.contains("UID FETCH 2 ")));
@@ -2287,9 +2186,10 @@ mod tests {
         let messages = (1..=101)
             .map(|uid| make_fetched_message(uid, &format!("Message {uid}"), "alice@example.com"))
             .collect::<Vec<_>>();
+        // Newest-first windows of 100 UIDs: 2..=101, then 1.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 102, 101),
-            vec![messages[..100].to_vec(), messages[100..].to_vec()],
+            vec![messages[1..].to_vec(), messages[..1].to_vec()],
             vec![],
         );
         let log = factory.log.clone();
@@ -2305,8 +2205,8 @@ mod tests {
             .filter(|command| command.starts_with("UID FETCH "))
             .collect::<Vec<_>>();
         assert_eq!(fetch_commands.len(), 2);
-        assert!(fetch_commands[0].contains("UID FETCH 1,2,3,"));
-        assert!(fetch_commands[1].contains("UID FETCH 101 "));
+        assert!(fetch_commands[0].starts_with("UID FETCH 2:101 "));
+        assert!(fetch_commands[1].starts_with("UID FETCH 1:1 "));
     }
 
     #[tokio::test]
@@ -2443,7 +2343,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initial_sync_overlaps_multi_folder_fetches() {
+    async fn initial_sync_fetches_folders_one_at_a_time_inbox_first() {
         let overlap = Arc::new(FetchOverlapState::default());
         let factory = ConcurrentInitialSyncFactory {
             folders: vec![
@@ -2481,9 +2381,11 @@ mod tests {
         let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 2);
-        assert!(
-            overlap.max_active_fetches.load(Ordering::SeqCst) >= 2,
-            "multi-folder sync should overlap folder fetches instead of serializing them"
+        assert_eq!(batch.upserted[0].envelope.provider_id, "INBOX:1");
+        assert_eq!(
+            overlap.max_active_fetches.load(Ordering::SeqCst),
+            1,
+            "the newest-first backfill walks one folder at a time so INBOX lands first"
         );
     }
 

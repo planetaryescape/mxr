@@ -7,7 +7,7 @@ IMAP and SMTP are first-party adapters in mxr, shipped alongside Gmail. Any emai
 
 They sync into the same local runtime and IPC surface as Gmail accounts. The daemon still speaks the internal mxr model; IMAP folder semantics are handled in the adapter.
 
-For Gmail-over-IMAP, mxr detects Gmail's All Mail folder (`\\All`, `[Gmail]/All Mail`, or `[Google Mail]/All Mail`) and uses it as the canonical sync source when available. Archived Gmail messages are just messages without `INBOX`; syncing All Mail prevents archived-only mail from disappearing from local search. Non-Gmail IMAP servers continue to sync normal folders and map archive/move operations to provider folder operations.
+For Gmail-over-IMAP, mxr detects Gmail's All Mail folder (`\\All`, `[Gmail]/All Mail`, or `[Google Mail]/All Mail`) and uses it as the canonical sync source when available. Archived Gmail messages are just messages without `INBOX`; syncing All Mail prevents archived-only mail from disappearing from local search. Non-Gmail IMAP servers sync their normal folders and map archive/move operations to provider folder operations. The first sync fetches the newest INBOX mail first, 500 messages at a time, then the other folders from newest to oldest, so recent mail is searchable while older mail is still arriving.
 
 ## Add an IMAP/SMTP account
 

@@ -13,7 +13,10 @@ fn text() -> &'static str {
     static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     TEXT.get_or_init(|| {
         let by = chrono::Utc::now().date_naive() + Duration::days(120);
-        format!("I'll send the tenancy notice by {}.", by.format("%-d %B %Y"))
+        format!(
+            "I'll send the tenancy notice by {}.",
+            by.format("%-d %B %Y")
+        )
     })
 }
 

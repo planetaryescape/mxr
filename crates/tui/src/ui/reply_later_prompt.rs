@@ -128,7 +128,13 @@ mod tests {
     fn unwrapped(rendered: &str) -> String {
         rendered
             .lines()
-            .map(|line| line.trim().trim_matches('"').trim().trim_matches('│').trim())
+            .map(|line| {
+                line.trim()
+                    .trim_matches('"')
+                    .trim()
+                    .trim_matches('│')
+                    .trim()
+            })
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
             .join(" ")

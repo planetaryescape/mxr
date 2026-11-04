@@ -302,7 +302,11 @@ mod tests {
         let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).expect("valid date");
         for (text, sent_on, expected) in [
             ("1 November 2026", sent(2026, 11, 4), day(2026, 11, 1)),
-            ("Friday 30 October 2026", sent(2026, 11, 4), day(2026, 10, 30)),
+            (
+                "Friday 30 October 2026",
+                sent(2026, 11, 4),
+                day(2026, 10, 30),
+            ),
             // The email's own day, read after the resolver's morning hour.
             ("1 December 2026", sent(2026, 12, 1), day(2026, 12, 1)),
             ("1 December 2026", sent(2027, 6, 15), day(2026, 12, 1)),
@@ -317,7 +321,12 @@ mod tests {
         }
         // A yearless date still means the next one.
         assert_eq!(
-            parse_date("1 November", &sent(2026, 11, 4), DateOrder::DayFirst, YearIntent::Next),
+            parse_date(
+                "1 November",
+                &sent(2026, 11, 4),
+                DateOrder::DayFirst,
+                YearIntent::Next
+            ),
             Some((day(2027, 11, 1), false))
         );
     }

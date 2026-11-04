@@ -690,13 +690,21 @@ fn merge_table(target: &mut toml_edit::Table, source: &toml_edit::Table) {
 }
 
 fn replace_item(existing: &mut toml_edit::Item, fresh: &toml_edit::Item) {
-    match (existing.as_value_mut(), fresh.as_value()) {
+    // The serializer writes every section as a regular table. A section the
+    // user wrote inline is compared, and kept, as an inline table.
+    let fresh_value = match (existing.is_inline_table(), fresh) {
+        (true, toml_edit::Item::Table(table)) => Some(toml_edit::Value::InlineTable(
+            table.clone().into_inline_table(),
+        )),
+        _ => fresh.as_value().cloned(),
+    };
+    match (existing.as_value_mut(), fresh_value) {
         (Some(existing_value), Some(fresh_value)) => {
-            if same_value(existing_value, fresh_value) {
+            if same_value(existing_value, &fresh_value) {
                 return;
             }
             let decor = existing_value.decor().clone();
-            let mut replacement = fresh_value.clone();
+            let mut replacement = fresh_value;
             *replacement.decor_mut() = decor;
             *existing_value = replacement;
         }
@@ -904,6 +912,24 @@ mod write_tests {
         let saved = std::fs::read_to_string(&path).expect("config fixture");
         assert!(saved.contains("# local dev"), "{saved}");
         assert!(saved.contains("sync_interval = 120"), "{saved}");
+    }
+
+    #[test]
+    fn a_save_keeps_a_section_written_as_an_inline_table() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let original = "general = { editor = 'nvim' } # keep this editor\n";
+        std::fs::write(&path, original).expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.search.max_results += 1;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# keep this editor"), "{saved}");
+        assert!(saved.contains("editor = 'nvim'"), "{saved}");
+        let written = load_config_file_as_written(&path).expect("config fixture");
+        assert_eq!(written.search.max_results, config.search.max_results);
     }
 
     #[test]

@@ -4724,7 +4724,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-html-worker"
-version = "0.6.207"
+version = "0.6.208"
 dependencies = [
  "nix 0.30.1",
  "serde",

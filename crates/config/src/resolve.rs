@@ -614,7 +614,9 @@ pub fn load_config_file_as_written(path: &Path) -> Result<MxrConfig, ConfigError
 ///
 /// The file is rewritten in place of the old one, not replaced wholesale: keys
 /// the config still sets take their new values and keep their comments and
-/// layout, and keys it no longer sets are removed. The write goes through a
+/// layout, and keys it no longer sets are removed. A key the file lacks is
+/// added only when its value differs from the default; a missing file gets
+/// every setting. The write goes through a
 /// temporary file and a rename, so an interrupted save leaves the old file.
 pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), ConfigError> {
     if let Some(parent) = path.parent() {
@@ -639,29 +641,74 @@ pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), Config
 
 /// The file text for `config`, laid over `existing` when that parses. An
 /// existing file that does not parse is replaced: nothing in it could be kept.
+///
+/// A missing file gets every setting, so `mxr config edit` opens a template.
+/// An existing file gains only keys whose value differs from the default: a
+/// default left out keeps following mxr's default (and any environment it is
+/// derived from) instead of being pinned by an unrelated save.
 fn render_config(
     config: &MxrConfig,
     existing: Option<&str>,
     path: &Path,
 ) -> Result<String, ConfigError> {
+    let fresh = serialize_document(config, path)?;
+    let Some(document) = existing.and_then(|text| text.parse::<toml_edit::DocumentMut>().ok())
+    else {
+        return Ok(fresh.to_string());
+    };
+    let defaults = serialize_document(&MxrConfig::default(), path)?;
+
+    let mut complete = document.clone();
+    merge_table(complete.as_table_mut(), fresh.as_table(), None);
+    let complete = complete.to_string();
+    let mut sparse = document;
+    merge_table(
+        sparse.as_table_mut(),
+        fresh.as_table(),
+        Some(defaults.as_table()),
+    );
+    let sparse = sparse.to_string();
+
+    // A key left out of a section that is present takes that field's serde
+    // default, which a type may define apart from its `Default`. Keep the
+    // sparse file only when it loads exactly as the complete one does.
+    if loads_alike(&sparse, &complete) {
+        Ok(sparse)
+    } else {
+        tracing::warn!("config save kept default values: leaving them out would change the config");
+        Ok(complete)
+    }
+}
+
+fn serialize_document(
+    config: &MxrConfig,
+    path: &Path,
+) -> Result<toml_edit::DocumentMut, ConfigError> {
     let serialized =
         toml::to_string_pretty(config).map_err(|source| ConfigError::SerializeToml {
             path: path.to_path_buf(),
             source,
         })?;
-    let fresh: toml_edit::DocumentMut =
-        serialized
-            .parse()
-            .map_err(|source| ConfigError::ReparseToml {
-                path: path.to_path_buf(),
-                source,
-            })?;
-    let Some(mut document) = existing.and_then(|text| text.parse::<toml_edit::DocumentMut>().ok())
-    else {
-        return Ok(fresh.to_string());
+    serialized
+        .parse()
+        .map_err(|source| ConfigError::ReparseToml {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
+/// Whether two config texts load to the same settings. Compared as TOML data,
+/// so map order does not count.
+fn loads_alike(left: &str, right: &str) -> bool {
+    let as_data = |text: &str| {
+        load_config_from_str(text)
+            .ok()
+            .and_then(|config| toml::Value::try_from(config).ok())
     };
-    merge_table(document.as_table_mut(), fresh.as_table());
-    Ok(document.to_string())
+    match (as_data(left), as_data(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
 }
 
 /// Makes `target` hold the keys and values of `source`. A value that is
@@ -671,7 +718,14 @@ fn render_config(
 /// The serializer writes every section as a regular table. Sections are merged
 /// through `TableLike`, so a section the user wrote inline stays inline and
 /// keeps its comment.
-fn merge_table(target: &mut dyn toml_edit::TableLike, source: &dyn toml_edit::TableLike) {
+///
+/// With `defaults`, a key `target` lacks is added only where it differs from
+/// the default at the same place.
+fn merge_table(
+    target: &mut dyn toml_edit::TableLike,
+    source: &dyn toml_edit::TableLike,
+    defaults: Option<&dyn toml_edit::TableLike>,
+) {
     let stale: Vec<String> = target
         .iter()
         .map(|(key, _)| key.to_string())
@@ -681,15 +735,45 @@ fn merge_table(target: &mut dyn toml_edit::TableLike, source: &dyn toml_edit::Ta
         target.remove(&key);
     }
     for (key, item) in source.iter() {
+        let default = defaults.and_then(|defaults| defaults.get(key));
         match target.get_mut(key) {
             Some(existing) => match (existing.as_table_like_mut(), item.as_table_like()) {
-                (Some(existing), Some(fresh)) => merge_table(existing, fresh),
+                (Some(existing), Some(fresh)) => {
+                    merge_table(existing, fresh, default.and_then(|d| d.as_table_like()))
+                }
                 _ => replace_item(existing, item),
             },
             None => {
-                target.insert(key, item.clone());
+                if let Some(item) = without_defaults(item, default) {
+                    target.insert(key, item);
+                }
             }
         }
+    }
+}
+
+/// `item` without the parts equal to `default`, or `None` when nothing is
+/// left. A section keeps its header only while it holds a key of its own.
+fn without_defaults(
+    item: &toml_edit::Item,
+    default: Option<&toml_edit::Item>,
+) -> Option<toml_edit::Item> {
+    let Some(default) = default else {
+        return Some(item.clone());
+    };
+    if let (toml_edit::Item::Table(fresh), Some(default)) = (item, default.as_table_like()) {
+        let mut kept = toml_edit::Table::new();
+        kept.set_implicit(true);
+        for (key, child) in fresh.iter() {
+            if let Some(child) = without_defaults(child, default.get(key)) {
+                kept.insert(key, child);
+            }
+        }
+        return (!kept.is_empty()).then_some(toml_edit::Item::Table(kept));
+    }
+    match (item.as_value(), default.as_value()) {
+        (Some(fresh), Some(default)) if same_value(default, fresh) => None,
+        _ => Some(item.clone()),
     }
 }
 
@@ -927,6 +1011,68 @@ mod write_tests {
         assert!(!saved.contains("[general]"), "{saved}");
         let written = load_config_file_as_written(&path).expect("config fixture");
         assert_eq!(written.search.max_results, config.search.max_results);
+    }
+
+    #[test]
+    fn a_save_into_an_existing_file_adds_only_what_differs_from_the_default() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[general]\neditor = \"vim\"\n").expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.search.max_results = 77;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert_eq!(
+            saved,
+            "[general]\neditor = \"vim\"\n\n[search]\nmax_results = 77\n"
+        );
+        let written = load_config_file_as_written(&path).expect("config fixture");
+        let defaults = MxrConfig::default();
+        assert_eq!(written.search.max_results, 77);
+        assert_eq!(
+            written.general.sync_interval,
+            defaults.general.sync_interval
+        );
+        assert_eq!(
+            written.general.attachment_dir,
+            defaults.general.attachment_dir
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_a_default_value_the_file_already_writes() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let interval = MxrConfig::default().general.sync_interval;
+        std::fs::write(
+            &path,
+            format!("[general]\nsync_interval = {interval} # on purpose\n"),
+        )
+        .expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.search.max_results = 77;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(
+            saved.contains(&format!("sync_interval = {interval} # on purpose")),
+            "{saved}"
+        );
+    }
+
+    #[test]
+    fn the_first_save_writes_every_setting_as_a_template() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+
+        save_config_to_path(&MxrConfig::default(), &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("sync_interval = "), "{saved}");
+        assert!(saved.contains("[search]"), "{saved}");
     }
 
     #[test]

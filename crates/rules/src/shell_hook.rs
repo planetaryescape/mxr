@@ -185,12 +185,19 @@ mod tests {
         let mut payload = sample_payload();
         payload.body_text = Some("x".repeat(2 * 1024 * 1024));
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
-        // The finite sleep bounds the red test even before stdin has a timeout.
+        // The sleep outlives the deadline, so only the timeout can end the child,
+        // and still bounds the red test when stdin has no timeout.
+        let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
+        // The deadline must outlast spawning `sh` and running `echo` on a loaded
+        // machine, or the child dies before recording its pid. 200 ms lost that
+        // race under load.
+        let deadline = Duration::from_secs(2);
         let started = std::time::Instant::now();
-        let result = execute_shell_hook(&command, &payload, Some(Duration::from_millis(200))).await;
+        let result = execute_shell_hook(&command, &payload, Some(deadline)).await;
         let elapsed = started.elapsed();
-        let pid = std::fs::read_to_string(&pid_file).expect("hook recorded its pid");
+        let pid = std::fs::read_to_string(&pid_file).unwrap_or_else(|error| {
+            panic!("hook did not record its pid before the {deadline:?} deadline: {error}")
+        });
         std::fs::remove_file(pid_file).expect("remove owned fixture pid file");
         let alive = std::process::Command::new("kill")
             .args(["-0", pid.trim()])
@@ -203,21 +210,26 @@ mod tests {
             matches!(result, Err(ShellHookError::Timeout { .. })),
             "{result:?}"
         );
+        // Deadline plus the hook's 1 s reap bound, with slack. A stdin write the
+        // deadline missed would block until the 30 s sleep ends.
         assert!(
-            elapsed < Duration::from_secs(1),
-            "stdin exceeded the hook deadline"
+            elapsed < deadline + Duration::from_secs(3),
+            "stdin exceeded the hook deadline: {elapsed:?}"
         );
     }
 
     #[tokio::test]
     async fn cancelling_hook_kills_owned_child() {
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
+        // The sleep outlives the waits below, so only the abort can end the child.
+        let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
         let task =
             tokio::spawn(
                 async move { execute_shell_hook(&command, &sample_payload(), None).await },
             );
-        let pid = timeout(Duration::from_secs(1), async {
+        // Generous waits: `sh` can take over a second to start on a loaded
+        // machine, and a passing run returns as soon as the poll succeeds.
+        let pid = timeout(Duration::from_secs(10), async {
             loop {
                 if let Ok(pid) = std::fs::read_to_string(&pid_file) {
                     if !pid.trim().is_empty() {
@@ -231,7 +243,7 @@ mod tests {
         .expect("hook started");
         task.abort();
         let _ = task.await;
-        let gone = timeout(Duration::from_secs(1), async {
+        let gone = timeout(Duration::from_secs(10), async {
             loop {
                 let alive = std::process::Command::new("kill")
                     .args(["-0", pid.trim()])

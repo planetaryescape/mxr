@@ -1502,27 +1502,20 @@ fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
     assert_eq!(app.mailbox.selected_index, 0);
 }
 
+/// `n` and `N` step through search results in the reader only. In the
+/// list, sidebar and place they run nothing, and while a move announces
+/// them they say where it went (D171). The move here is made up, so the
+/// test holds whichever moves this release still ships.
 #[test]
 fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
     for context in ["list", "sidebar", "place"] {
         for (key, id, notice) in [
-            ('n', "tui.next-search-result", "Next search result is now j"),
-            ('N', "tui.prev-search-result", "Prev search result is now k"),
+            ('n', "list.down", "Next is now j"),
+            ('N', "list.up", "Previous is now k"),
         ] {
             for (until, announced) in [("999.0.0", true), ("0.0.1", false)] {
                 let mut app = app_in(context);
-                let mut keymap = mxr_keymap::definition().clone();
-                for moved in &mut keymap
-                    .actions
-                    .iter_mut()
-                    .find(|action| action.id == id)
-                    .expect("retired search action")
-                    .moved
-                {
-                    moved.until = until.into();
-                }
-                app.keybindings
-                    .set_keymap(keymap.live_at(mxr_keymap::VERSION));
+                with_move(&mut app, id, &key.to_string(), &[context], until);
                 app.mailbox.envelopes = make_test_envelopes(3);
                 let before = app.status_message.clone();
                 assert_eq!(press_char(&mut app, key), None, "{context}: {key}");

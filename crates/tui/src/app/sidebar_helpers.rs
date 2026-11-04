@@ -11,25 +11,41 @@ impl App {
         (account.enabled || restored_profile) && account.sync_kind.is_some()
     }
 
-    /// The labels the picker applies, moves or routes by name. Those names
-    /// resolve in the default account, so the picker keeps that account's user
-    /// labels; system labels are shared as before. The sidebar lists every
-    /// account's user labels instead.
+    /// The labels the picker applies, moves or routes by name. The daemon
+    /// resolves a name on each message's own account, so the picker offers
+    /// the user labels of the accounts the action targets (the default
+    /// account's when none is known), one entry per name; an account that
+    /// lacks the picked name is refused when the action is confirmed.
     pub(crate) fn label_picker_labels(&self) -> Vec<Label> {
-        let default_account = self
-            .accounts
-            .page
-            .accounts
-            .iter()
-            .find(|account| account.is_default)
-            .map(|account| &account.account_id);
+        let mut target_accounts: Vec<mxr_core::AccountId> = Vec::new();
+        for message_id in self.mutation_target_ids() {
+            if let Some(account_id) = self.message_account_id(&message_id) {
+                if !target_accounts.contains(&account_id) {
+                    target_accounts.push(account_id);
+                }
+            }
+        }
+        if target_accounts.is_empty() {
+            if let Some(default_account) = self
+                .accounts
+                .page
+                .accounts
+                .iter()
+                .find(|account| account.is_default)
+            {
+                target_accounts.push(default_account.account_id.clone());
+            }
+        }
+        let mut names = std::collections::HashSet::new();
         self.mailbox
             .labels
             .iter()
             .filter(|label| {
                 label.kind == LabelKind::System
-                    || default_account.is_none_or(|id| id == &label.account_id)
+                    || target_accounts.is_empty()
+                    || target_accounts.contains(&label.account_id)
             })
+            .filter(|label| names.insert(label.name.clone()))
             .cloned()
             .collect()
     }

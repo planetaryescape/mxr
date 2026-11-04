@@ -2012,8 +2012,10 @@ fn command_palette_includes_major_mail_actions() {
 #[test]
 fn local_label_changes_update_open_message() {
     let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
     app.mailbox.envelopes = make_test_envelopes(1);
+    // A label applies on the message's own account.
+    app.mailbox.labels =
+        crate::test_fixtures::test_system_labels(&app.mailbox.envelopes[0].account_id);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
     app.apply(Action::OpenSelected);
 

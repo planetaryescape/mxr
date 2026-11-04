@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.209](https://github.com/planetaryescape/mxr/compare/v0.6.208...v0.6.209) (2026-11-04)
+
+
+### Bug Fixes
+
+* parse untrusted mail HTML in a resource-limited helper process ([#858](https://github.com/planetaryescape/mxr/issues/858)) ([5d6994e](https://github.com/planetaryescape/mxr/commit/5d6994e5d805eae9ce38d994527d077aea41eaab))
+* steady the prefix guide tests, drop dead move notices, and let e and r work on Not-sure rows ([#860](https://github.com/planetaryescape/mxr/issues/860)) ([4df11fe](https://github.com/planetaryescape/mxr/commit/4df11fe7c088acf7f3e21931afb23e7c9bc4df98))
+
 ## [0.6.208](https://github.com/planetaryescape/mxr/compare/v0.6.207...v0.6.208) (2026-11-04)
 
 

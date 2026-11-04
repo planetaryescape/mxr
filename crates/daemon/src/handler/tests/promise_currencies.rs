@@ -1,22 +1,35 @@
 use super::desk::{request, Fixture};
-use super::promise_projection::{settle, source};
+use super::promise_projection::{month_start, settle, source, written};
 use super::*;
 use mxr_store::{CommitmentStatus, TodoState};
 
-const GBP: &str = "I'll pay invoice #A123 amount due £25 by 1 November 2026.";
-const EUR: &str = "I'll pay invoice #A123 amount due €40 by 1 November 2026.";
+/// Both promises fall due on the first of next month, so they stay open
+/// whatever day the tests run.
+fn gbp_text() -> String {
+    format!(
+        "I'll pay invoice #A123 amount due £25 by {}.",
+        written(month_start(1))
+    )
+}
+
+fn eur_text() -> String {
+    format!(
+        "I'll pay invoice #A123 amount due €40 by {}.",
+        written(month_start(1))
+    )
+}
 
 #[tokio::test]
 async fn review4_currency_distinct_promises_keep_independent_public_lifecycles() {
     for accepted_before_assessment in [false, true] {
         let fx = Fixture::new().await;
-        let mail = source(&fx, &format!("{GBP}\n\n{EUR}")).await;
+        let mail = source(&fx, &format!("{}\n\n{}", gbp_text(), eur_text())).await;
         let accepted = if accepted_before_assessment {
             let ResponseData::RecordedPromise { commitment, .. } = request(
                 &fx,
                 Request::RecordPromise {
                     message_id: mail.id.clone(),
-                    what: GBP.into(),
+                    what: gbp_text(),
                     due_at: super::promise_projection::chosen(),
                     dry_run: false,
                 },
@@ -25,7 +38,7 @@ async fn review4_currency_distinct_promises_keep_independent_public_lifecycles()
             else {
                 panic!("accepted promise")
             };
-            assert_eq!(commitment.what, GBP);
+            assert_eq!(commitment.what, gbp_text());
             Some(commitment.id)
         } else {
             None
@@ -87,16 +100,20 @@ async fn review4_currency_distinct_promises_keep_independent_public_lifecycles()
             assert!(active.iter().any(|row| row.id == task.id));
         }
         if let Some(id) = accepted {
-            let gbp = commitments.iter().find(|c| c.what == GBP).unwrap();
+            let gbp = commitments.iter().find(|c| c.what == gbp_text()).unwrap();
             assert_eq!(gbp.id, id);
             assert_eq!(gbp.by_when, Some(super::promise_projection::chosen()));
             assert_eq!(gbp.by_when_source, Some(mxr_store::ByWhenSource::User));
             assert_eq!(
-                tasks.iter().find(|t| t.reason == GBP).unwrap().due_at,
+                tasks
+                    .iter()
+                    .find(|t| t.reason == gbp_text())
+                    .unwrap()
+                    .due_at,
                 gbp.by_when
             );
         }
-        for quote in [GBP, EUR] {
+        for quote in [gbp_text(), eur_text()] {
             let commitment = commitments.iter().find(|c| c.what == quote).unwrap();
             let task = tasks.iter().find(|t| t.reason == quote).unwrap();
             assert_eq!(task.commitment_id.as_deref(), Some(commitment.id.as_str()));
@@ -189,20 +206,29 @@ async fn review4_currency_distinct_promises_keep_independent_public_lifecycles()
 async fn review4_payment_commitments_separate_references_and_periods_but_reuse_reminders() {
     for (other, expected) in [
         (
-            "I will pay invoice #A123 amount due £25 by 1 November 2026.",
+            format!(
+                "I will pay invoice #A123 amount due £25 by {}.",
+                written(month_start(1))
+            ),
             1,
         ),
         (
-            "I'll pay invoice #B456 amount due £25 by 1 November 2026.",
+            format!(
+                "I'll pay invoice #B456 amount due £25 by {}.",
+                written(month_start(1))
+            ),
             2,
         ),
         (
-            "I'll pay invoice #A123 amount due £25 by 1 December 2026.",
+            format!(
+                "I'll pay invoice #A123 amount due £25 by {}.",
+                written(month_start(2))
+            ),
             2,
         ),
     ] {
         let fx = Fixture::new().await;
-        let mail = source(&fx, &format!("{GBP}\n\n{other}")).await;
+        let mail = source(&fx, &format!("{}\n\n{other}", gbp_text())).await;
         settle(&fx, &mail).await;
         let rows = fx
             .state
@@ -227,7 +253,7 @@ async fn review4_payment_commitments_separate_references_and_periods_but_reuse_r
 async fn review4_policy14_currency_collision_keeps_closed_user_history_and_task_ids() {
     for dismissed in [false, true] {
         let fx = Fixture::new().await;
-        let mail = source(&fx, &format!("{GBP}\n\n{EUR}")).await;
+        let mail = source(&fx, &format!("{}\n\n{}", gbp_text(), eur_text())).await;
         settle(&fx, &mail).await;
         let tasks = fx
             .state
@@ -235,13 +261,14 @@ async fn review4_policy14_currency_collision_keeps_closed_user_history_and_task_
             .list_promise_todos(&fx.account)
             .await
             .unwrap();
-        let gbp = tasks.iter().find(|t| t.reason == GBP).unwrap();
-        let eur = tasks.iter().find(|t| t.reason == EUR).unwrap();
+        let gbp = tasks.iter().find(|t| t.reason == gbp_text()).unwrap();
+        let eur = tasks.iter().find(|t| t.reason == eur_text()).unwrap();
         let old_id = format!(
             "ask_{}",
             mxr_store::assessment_fingerprint(&format!(
-                "{}|nora@example.com|yours|Pay|invoice:a123|2026-11",
-                fx.account
+                "{}|nora@example.com|yours|Pay|invoice:a123|{}",
+                fx.account,
+                month_start(1).format("%Y-%m")
             ))
         );
         // Reproduce policy14's one surviving EUR commitment and unlinked GBP task.
@@ -261,7 +288,7 @@ async fn review4_policy14_currency_collision_keeps_closed_user_history_and_task_
             &fx,
             Request::RecordPromise {
                 message_id: mail.id.clone(),
-                what: EUR.into(),
+                what: eur_text(),
                 due_at: super::promise_projection::chosen(),
                 dry_run: false,
             },

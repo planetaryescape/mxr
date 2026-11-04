@@ -692,11 +692,7 @@ fn merge_table(target: &mut toml_edit::Table, source: &toml_edit::Table) {
 fn replace_item(existing: &mut toml_edit::Item, fresh: &toml_edit::Item) {
     match (existing.as_value_mut(), fresh.as_value()) {
         (Some(existing_value), Some(fresh_value)) => {
-            let mut bare_existing = existing_value.clone();
-            *bare_existing.decor_mut() = toml_edit::Decor::default();
-            let mut bare_fresh = fresh_value.clone();
-            *bare_fresh.decor_mut() = toml_edit::Decor::default();
-            if bare_existing.to_string() == bare_fresh.to_string() {
+            if same_value(existing_value, fresh_value) {
                 return;
             }
             let decor = existing_value.decor().clone();
@@ -705,6 +701,22 @@ fn replace_item(existing: &mut toml_edit::Item, fresh: &toml_edit::Item) {
             *existing_value = replacement;
         }
         _ => *existing = fresh.clone(),
+    }
+}
+
+/// Whether two TOML values mean the same thing, whatever their formatting.
+/// Comments and whitespace inside an array or inline table are formatting, so
+/// a value that only differs in those is left as the user wrote it. toml_edit
+/// has no formatting-blind equality, so each value is read back as data.
+fn same_value(existing: &toml_edit::Value, fresh: &toml_edit::Value) -> bool {
+    let as_data = |value: &toml_edit::Value| {
+        let mut bare = value.clone();
+        *bare.decor_mut() = toml_edit::Decor::default();
+        toml::from_str::<toml::Table>(&format!("value = {bare}\n")).ok()
+    };
+    match (as_data(existing), as_data(fresh)) {
+        (Some(existing), Some(fresh)) => existing == fresh,
+        _ => false,
     }
 }
 
@@ -876,6 +888,22 @@ mod write_tests {
         assert!(saved.contains("# the editor I use"), "{saved}");
         assert!(saved.contains("sync_interval = 120"), "{saved}");
         assert!(saved.contains("editor = \"nvim\""), "{saved}");
+    }
+
+    #[test]
+    fn a_save_keeps_comments_inside_an_array_it_does_not_change() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let original = "[general]\nsync_interval = 60\n\n[bridge]\ncors_allowlist = [\n    \"http://localhost:5173\", # local dev\n]\n";
+        std::fs::write(&path, original).expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.general.sync_interval = 120;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# local dev"), "{saved}");
+        assert!(saved.contains("sync_interval = 120"), "{saved}");
     }
 
     #[test]

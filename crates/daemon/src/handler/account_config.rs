@@ -308,11 +308,14 @@ async fn save_account_config(
         }
     }
 
-    let effective_default = mxr_config::load_config()
-        .map_err(|e| e.to_string())?
-        .general
-        .default_account;
     write_config_as_written(|config| {
+        // The effective default comes from the copy read under the file lock,
+        // so a default another process wrote a moment ago is seen.
+        let effective_default = {
+            let mut effective = config.clone();
+            mxr_config::apply_env_overrides(&mut effective);
+            effective.general.default_account
+        };
         persist_account_passwords(account).map_err(|e| e.to_string())?;
 
         // Omitted identity fields keep what config already has. The TUI and
@@ -478,22 +481,17 @@ async fn plan_identity(
     ))
 }
 
-pub(super) async fn set_default_account(
-    state: &Arc<AppState>,
-    key: &str,
-) -> Result<String, String> {
-    {
-        let _writing = state.config_write.lock().await;
-        write_config_as_written(|config| {
-            if !config.accounts.contains_key(key) {
-                return Err(format!("Account '{key}' cannot be set as default"));
-            }
-            config.general.default_account = Some(key.to_string());
-            Ok(())
-        })?;
-    }
-    state.reload_accounts_from_disk().await?;
-    Ok(format!("Default account set to '{key}'."))
+/// Writes `general.default_account`. The caller reloads the runtime, so a
+/// reload failure can be reported as saved but not applied.
+pub(super) async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<(), String> {
+    let _writing = state.config_write.lock().await;
+    write_config_as_written(|config| {
+        if !config.accounts.contains_key(key) {
+            return Err(format!("Account '{key}' cannot be set as default"));
+        }
+        config.general.default_account = Some(key.to_string());
+        Ok(())
+    })
 }
 
 pub(super) async fn remove_account_config(
@@ -607,13 +605,9 @@ pub(super) async fn remove_account_config(
             .map_err(|e| e.to_string())
     };
     if let Err(error) = local_result {
-        return account_operation_result(
-            false,
+        return saved_but_not_applied(
             format!("Removed account '{key}' from config but failed to update cached mail."),
-            Some(account_step(false, error)),
-            None,
-            None,
-            None,
+            account_step(false, error),
         );
     }
 
@@ -635,13 +629,9 @@ pub(super) async fn remove_account_config(
             None,
             None,
         ),
-        Err(error) => account_operation_result(
-            false,
+        Err(error) => saved_but_not_applied(
             format!("Removed account '{key}' but failed to reload runtime."),
-            Some(account_step(false, error)),
-            None,
-            None,
-            None,
+            account_step(false, error),
         ),
     }
 }

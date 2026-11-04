@@ -4029,6 +4029,7 @@ fn merge_account_operation_result(
     next: mxr_protocol::AccountOperationResult,
 ) {
     base.ok &= next.ok;
+    base.saved |= next.saved;
     if !next.summary.is_empty() {
         base.summary = next.summary;
     }

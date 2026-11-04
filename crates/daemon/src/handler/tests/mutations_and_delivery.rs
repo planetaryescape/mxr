@@ -4392,6 +4392,27 @@ where
 }
 
 #[test]
+fn a_removal_whose_cached_mail_update_fails_reports_the_config_change_as_saved() {
+    with_config_file(THREE_ACCOUNTS, None, |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            // The config write commits; the store write after it cannot.
+            state.store.writer().close().await;
+
+            let result =
+                crate::handler::account_config::remove_account_config(&state, "work", false, false)
+                    .await;
+
+            assert!(!result.ok, "{}", result.summary);
+            assert!(result.saved, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert!(!written.accounts.contains_key("work"));
+        })
+    });
+}
+
+#[test]
 fn two_config_writes_on_one_worker_both_finish() {
     with_config_file(THREE_ACCOUNTS, None, |config_file| {
         Box::pin(async move {

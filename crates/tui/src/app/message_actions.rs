@@ -79,6 +79,11 @@ impl App {
                             self.status_message = Some("Showing full message view".into());
                         }
                     }
+                } else if self.mailbox.layout_mode == LayoutMode::FullScreen
+                    && !self.view_draws_reader()
+                {
+                    // A mode has no split view: the reader stays full width.
+                    self.status_message = Some("Esc goes back".into());
                 } else if self.mailbox.layout_mode == LayoutMode::FullScreen {
                     self.mailbox.layout_mode = LayoutMode::ThreePane;
                     self.mailbox.active_pane = ActivePane::MessageView;

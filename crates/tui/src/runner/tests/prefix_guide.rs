@@ -165,3 +165,32 @@ fn g_still_waits_four_seconds() {
     app.tick();
     assert!(!app.input_pending());
 }
+
+/// Dogfood 2026-10-29: with four saved searches the guide listed `g 1` to
+/// `g 9` as "Saved search 1" to "Saved search 9", five of them dead. It
+/// names the saved searches there are, and only those.
+#[test]
+fn the_g_guide_names_the_saved_searches_and_leaves_out_empty_digits() {
+    let mut app = mailbox(MailboxView::Messages);
+    app.mailbox.saved_searches = ["Unread today", "From boss"]
+        .into_iter()
+        .enumerate()
+        .map(|(position, name)| mxr_core::SavedSearch {
+            id: mxr_core::SavedSearchId::new(),
+            account_id: None,
+            name: name.into(),
+            query: "is:unread".into(),
+            search_mode: mxr_core::SearchMode::Lexical,
+            sort: mxr_core::SortOrder::DateDesc,
+            icon: None,
+            position: position as i32,
+            created_at: chrono::Utc::now(),
+        })
+        .collect();
+    assert_eq!(press(&mut app, 'g'), None);
+    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+    let shown = screen(&mut app);
+    assert!(lists(&shown, "1", "Unread today"), "{shown}");
+    assert!(lists(&shown, "2", "From boss"), "{shown}");
+    assert!(!shown.contains("Saved search"), "{shown}");
+}

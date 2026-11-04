@@ -173,9 +173,23 @@ impl App {
         self.select_requested_messages_row();
     }
 
-    /// Select the row `open_messages_person` asked for, once it is shown.
-    /// Someone Messages doesn't list gets a note instead.
+    /// Open Messages on the person a conversation is with, their page on
+    /// that conversation, as the web's `/messages/<thread>` does.
+    pub(crate) fn open_messages_thread(&mut self, thread_id: ThreadId) {
+        self.open_messages();
+        self.mailbox.messages_page.select_row = None;
+        self.mailbox.messages_page.select_thread = Some(thread_id);
+        self.select_requested_messages_row();
+    }
+
+    /// Select the row `open_messages_person` or `open_messages_thread`
+    /// asked for, once it is shown. Someone Messages doesn't list gets a
+    /// note instead.
     fn select_requested_messages_row(&mut self) {
+        if self.mailbox.messages_page.select_thread.is_some() {
+            self.select_requested_messages_thread();
+            return;
+        }
         let page = &mut self.mailbox.messages_page;
         let Some(row_id) = page.select_row.clone() else {
             return;
@@ -205,6 +219,41 @@ impl App {
             self.mailbox.selected_index = index;
         }
         self.sync_messages_page();
+    }
+
+    /// `select_requested_messages_row` for a conversation: the row whose
+    /// topics hold it, focused on its page at that topic.
+    fn select_requested_messages_thread(&mut self) {
+        let page = &mut self.mailbox.messages_page;
+        let (Some(thread_id), Some(messages)) = (page.select_thread.clone(), &page.messages) else {
+            return;
+        };
+        if page.pending_refresh {
+            return;
+        }
+        page.select_thread = None;
+        let row = messages
+            .your_turn
+            .iter()
+            .chain(&messages.pinned)
+            .chain(&messages.recent)
+            .chain(&messages.quiet)
+            .find(|row| row.topics.iter().any(|topic| topic.thread_id == thread_id));
+        let Some(row) = row else {
+            self.status_message = Some("They aren't in Messages right now".into());
+            return;
+        };
+        let (key, id) = (row_key(row), row.id.clone());
+        if page.in_quiet(&key) {
+            page.quiet_open = true;
+        }
+        if let Some(index) = page.index_of(&key) {
+            self.mailbox.selected_index = index;
+        }
+        let page = &mut self.mailbox.messages_page;
+        page.focus = MessagesFocus::Person;
+        page.expanded.clear();
+        page.ask_person(id, Some(thread_id));
     }
 
     /// Put the selection back on `selected` after the bands changed, or on

@@ -560,7 +560,13 @@ fn keys_line(page: &MessagesPageState, width: usize) -> String {
         .iter()
         .filter_map(|key| verb(key).map(|v| FooterKey::optional(format!("{key} {v}"))))
         .collect();
-    parts.push(FooterKey::optional("[ ] topic"));
+    // `[` and `]` stepped topics until K3; the definition says which keys do now.
+    let topic = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
+    parts.push(FooterKey::optional(format!(
+        "{} {} topic",
+        topic("messages.prev-topic"),
+        topic("messages.next-topic")
+    )));
     parts.push(FooterKey::keep("? keys"));
     crate::ui::key_footer::fit(&parts, "  ", width)
 }

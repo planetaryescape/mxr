@@ -92,12 +92,14 @@ the message came to.
 
 Press `gh` for [Now](/guides/now/), the front page of people waiting on you,
 tasks due soon, the Updates digest and an evening Reading pick. Open a row to
-continue in its mode; on a person, `r`, `a` and `f` reply, reply all and
-forward. `gm` opens [Messages](/guides/messages/), `gx` opens
-[To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/). In To do,
-`Space` opens the lit row's details under it, as the web app's do: its dates,
-why it is here, the email's first lines and where each field came from.
-`Space` again or `Esc` closes them.
+continue in its mode: `Enter` on a person opens Messages on that
+conversation, and `r`, `a` and `f` reply, reply all and forward. `o` opens the
+email itself, full width, since the modes draw no reader beside their list;
+`Esc` comes back to the mode. `gm` opens [Messages](/guides/messages/), `gx`
+opens [To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/). In
+To do, `Space` opens the lit row's details under it, as the web app's do: its
+dates, why it is here, the email's first lines and where each field came
+from. `Space` again or `Esc` closes them.
 
 `mxr desk` remains available from the CLI for the full You owe, Due,
 Waiting on and New from people lanes. See the
@@ -293,7 +295,9 @@ them too.
   `[#]` discards it. When the safety check returns an override token, `[O]`
   overrides that block and sends once; a gap block has no override. A bare
   `Enter` runs the option marked `›`: Send, or Edit again when the safety
-  check found something or the draft can't go as it is.
+  check found something or the draft can't go as it is. When it suggests
+  someone to copy in, `[c]` adds the first suggestion to Cc (`Ctrl-a` says
+  where it went until 0.6.225).
 - Drafts (`g d`): `Enter` opens the selected draft in `$EDITOR`, as `r` does
   for a conversation's unsent reply in Messages. Closing the editor saves your
   changes to that draft and opens the compose confirmation for it. `[s]`,

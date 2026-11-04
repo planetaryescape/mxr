@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.206](https://github.com/planetaryescape/mxr/compare/v0.6.205...v0.6.206) (2026-11-04)
+
+
+### Bug Fixes
+
+* keep an in-memory store's database when sqlx replaces its connection ([#853](https://github.com/planetaryescape/mxr/issues/853)) ([8a5407d](https://github.com/planetaryescape/mxr/commit/8a5407dd016e50cf63c79ec2222015a2ae98ae76))
+
+## [0.6.205](https://github.com/planetaryescape/mxr/compare/v0.6.204...v0.6.205) (2026-11-04)
+
+
+### Bug Fixes
+
+* what a key-only triage of the TUI found ([#844](https://github.com/planetaryescape/mxr/issues/844)) ([cfc334a](https://github.com/planetaryescape/mxr/commit/cfc334a45a4c8115062f8aee8e0ef26904fea5ab))
+
+
+### Documentation
+
+* record macOS jobs cancelled before a runner was assigned ([7cc4067](https://github.com/planetaryescape/mxr/commit/7cc40675f5bcc469f9b220444b5a09f0cee63766))
+
+## [0.6.204](https://github.com/planetaryescape/mxr/compare/v0.6.203...v0.6.204) (2026-11-04)
+
+
+### Bug Fixes
+
+* clear the calamine advisory gate, a test that fails from 5 November, and serialize-javascript ([#845](https://github.com/planetaryescape/mxr/issues/845)) ([707a714](https://github.com/planetaryescape/mxr/commit/707a7143f5b6194b0337caa0bfe0787429324b86))
+* scan only the commit's own history for secrets ([#849](https://github.com/planetaryescape/mxr/issues/849)) ([0a2aa53](https://github.com/planetaryescape/mxr/commit/0a2aa5305251bf4a8644bd39949f2bba11940982))
+
+
+### Documentation
+
+* mark R2c shipped in v0.6.163 with the real-mail week still to run ([#843](https://github.com/planetaryescape/mxr/issues/843)) ([3a34612](https://github.com/planetaryescape/mxr/commit/3a34612dbba8b4b52975bcb3cdefd2c7a0831611))
+
 ## [0.6.203](https://github.com/planetaryescape/mxr/compare/v0.6.202...v0.6.203) (2026-11-02)
 
 

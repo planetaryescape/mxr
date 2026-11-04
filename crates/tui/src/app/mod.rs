@@ -1520,6 +1520,16 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
     ]
 }
 
+/// The presets whose label is still true now: "Tonight" leaves once the
+/// evening hour has passed, as it does in the web app's Not now, instead of
+/// meaning tomorrow evening.
+pub fn available_snooze_presets(config: &mxr_config::SnoozeConfig) -> Vec<SnoozePreset> {
+    snooze_presets()
+        .into_iter()
+        .filter(|preset| mxr_config::snooze::resolve_snooze_preset_time(*preset, config).is_some())
+        .collect()
+}
+
 pub fn resolve_snooze_preset(
     preset: SnoozePreset,
     config: &mxr_config::SnoozeConfig,

@@ -186,8 +186,15 @@ pub fn draw_arrivals_list(
         }
     }
     lines.push(Line::from(""));
+    // The sender's key moved from `K` to `P` in K3; the definition says
+    // which keys these are, so the line can't name a retired one.
+    let key = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
     lines.push(Line::from(Span::styled(
-        "Tab next count  Enter open  X move  K sender  u undo  Esc close",
+        format!(
+            "Tab next count  Enter open  {} move  {} sender  u undo  Esc close",
+            key("modes.move"),
+            key("modes.move-sender")
+        ),
         Style::default().fg(theme.text_muted),
     )));
     frame.render_widget(Paragraph::new(lines), inner);

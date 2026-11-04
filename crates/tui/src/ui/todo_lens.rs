@@ -502,7 +502,7 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
     if !runway.might_need_you.is_empty() {
         body.text(
             format!(
-                "Might need you · {} · m review",
+                "Might need you · {} · review from the palette (:)",
                 runway.might_need_you.len()
             ),
             muted,

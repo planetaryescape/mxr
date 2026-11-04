@@ -25,7 +25,7 @@ pub(super) async fn conversation_drafts(
     for account in accounts {
         let mut drafts = state.store.list_drafts(account).await?;
         // `ensure_reply_draft`'s order: when legacy duplicates answer the same
-        // conversation, the oldest is the one opening it resumes.
+        // conversation, the oldest with text is the one opening it resumes.
         drafts.sort_by(|left, right| {
             left.created_at
                 .cmp(&right.created_at)

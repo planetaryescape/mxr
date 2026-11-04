@@ -5076,6 +5076,34 @@
       ]
     },
     {
+      "id": "todo.might-need-you",
+      "label": "Review what might need you",
+      "group": "Triage",
+      "palette_only": true,
+      "note": "The web app lists these under the runway, with no key",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "TodoMightNeedYou",
+          "keys": [],
+          "contexts": [
+            "todo"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "m",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.225"
+        }
+      ]
+    },
+    {
       "id": "todo.open-email",
       "label": "Open the email it came from",
       "short_label": "Email",
@@ -14044,11 +14072,20 @@
         {
           "name": "inline:add_cc",
           "keys": [
-            "Ctrl+a"
+            "c"
           ],
           "contexts": [
             "send-review"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "Ctrl+a",
+          "contexts": [
+            "send-review"
+          ],
+          "until": "0.6.225"
         }
       ]
     },

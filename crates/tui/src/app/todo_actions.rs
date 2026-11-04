@@ -33,6 +33,10 @@ impl App {
                     ));
                 }
             }
+            Action::TodoMightNeedYou => {
+                let page = &mut self.mailbox.todo_page;
+                page.uncertain_open = !page.uncertain_open;
+            }
             Action::TodoRestore => self.set_selected_todo_state(TodoStateActionData::Undo),
             Action::TodoSchedule => self.open_not_now(),
             Action::TodoEdit => self.open_todo_edit_prompt(),
@@ -708,10 +712,6 @@ impl App {
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if plain_or_shift(key.modifiers) {
             let page = &mut self.mailbox.todo_page;
-            if key.code == KeyCode::Char('m') && self.input.pending_prefix().is_none() {
-                page.uncertain_open = !page.uncertain_open;
-                return None;
-            }
             if page.uncertain_open {
                 let items = page
                     .runway

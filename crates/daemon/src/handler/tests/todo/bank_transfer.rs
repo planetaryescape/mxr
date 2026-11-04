@@ -369,6 +369,12 @@ fn replay_preserves_saved_fields_closed_decisions_and_exact_correction_undo() {
             let (id, current) = bank_journey(&fx).await;
             seed_published_row(&fx, &current).await;
             let original = stored(&fx, &id).await;
+            // The correction and schedule handlers reject past times against the
+            // wall clock, so their dates follow it. Fixed dates here failed once
+            // they passed (2026-11-05 and 2026-12-10, 09:00 UTC).
+            let due = (Utc::now() + chrono::Duration::days(36))
+                .format("%Y-%m-%d")
+                .to_string();
             if decision == "fields" {
                 let ResponseData::TodoChange { change } = request(
                     &fx,
@@ -379,7 +385,7 @@ fn replay_preserves_saved_fields_closed_decisions_and_exact_correction_undo() {
                             ("title", "My payment"),
                             ("kind", "lease"),
                             ("amount", "£140"),
-                            ("due", "2026-12-10"),
+                            ("due", due.as_str()),
                         ]
                         .into_iter()
                         .map(|(field, value)| mxr_protocol::TodoEditData {
@@ -416,7 +422,7 @@ fn replay_preserves_saved_fields_closed_decisions_and_exact_correction_undo() {
                     &fx,
                     Request::ScheduleTodo {
                         todo_id: current.id.clone(),
-                        when: Some("2026-11-05T09:00:00Z".into()),
+                        when: Some((Utc::now() + chrono::Duration::days(1)).to_rfc3339()),
                         time_zone: Some("UTC".into()),
                         dry_run: false,
                     },

@@ -809,8 +809,9 @@ fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
 fn not_now_schedules_a_typed_time_as_previewed() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char('b'));
-    // The last row types a time.
-    for _ in 0..crate::app::snooze_presets().len() {
+    // The last row types a time. The presets offered depend on the hour:
+    // Tonight leaves once the evening has passed.
+    for _ in 1..crate::ui::snooze_modal::rows_count(&app.modals.snooze_panel) {
         press(&mut app, KeyCode::Char('j'));
     }
     press(&mut app, KeyCode::Enter);
@@ -825,10 +826,45 @@ fn not_now_schedules_a_typed_time_as_previewed() {
     ));
 }
 
+/// Dogfood 2026-10-29: `m` opened "Might need you" without being in the
+/// definition, borrowing the mail verb Mark read and archive. The review is
+/// in the palette now, and `m` says so.
+#[test]
+fn might_need_you_opens_from_the_palette_and_m_says_where_it_went() {
+    let mut app = todo_app(true);
+    let before = app.status_message.clone();
+    press(&mut app, KeyCode::Char('m'));
+    assert!(!app.mailbox.todo_page.uncertain_open, "m runs nothing");
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced(
+            "todo",
+            "m",
+            "Review what might need you has no key now; find it in the palette",
+            before.as_deref()
+        )
+    );
+    app.apply(Action::OpenCommandPalette);
+    let palette = &app.command_palette.palette;
+    let offered = palette
+        .commands
+        .iter()
+        .find(|command| command.label == "Review what might need you")
+        .map(|command| command.action.clone());
+    assert_eq!(
+        offered,
+        Some(Action::TodoMightNeedYou),
+        "the palette offers it in To do"
+    );
+    app.apply(Action::CloseCommandPalette);
+    app.apply(Action::TodoMightNeedYou);
+    assert!(app.mailbox.todo_page.uncertain_open);
+}
+
 #[test]
 fn the_uncertain_picker_does_not_capture_the_messages_key_sequence() {
     let mut app = todo_app(true);
-    press(&mut app, KeyCode::Char('m'));
+    app.apply(Action::TodoMightNeedYou);
     assert!(app.mailbox.todo_page.uncertain_open);
     press(&mut app, KeyCode::Esc);
     assert!(!app.mailbox.todo_page.uncertain_open);

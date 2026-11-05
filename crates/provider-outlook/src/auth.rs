@@ -161,14 +161,7 @@ impl OutlookAuth {
             std::fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(tokens)?;
-        let tmp_path = path.with_extension("json.tmp");
-        std::fs::write(&tmp_path, &content)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600))?;
-        }
-        std::fs::rename(&tmp_path, &path)?;
+        crate::token_cache_file::write(&path, &content)?;
         Ok(())
     }
 
@@ -361,5 +354,31 @@ mod tests {
         .with_token_root(token_root.clone());
 
         assert_eq!(auth.token_path(), token_root.join("mxr_work-outlook.json"));
+    }
+
+    #[test]
+    fn failed_save_leaves_no_temporary_file_behind() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let auth = OutlookAuth::new("client".into(), "work".into(), OutlookTenant::Work)
+            .with_token_root(directory.path().to_path_buf());
+        // A directory at the destination lets the temporary file be written and then fails the rename.
+        std::fs::create_dir(directory.path().join("work.json"))?;
+
+        assert!(auth.save_tokens(&sample_tokens()).is_err());
+
+        let mut names = std::fs::read_dir(directory.path())?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<Result<Vec<_>, _>>()?;
+        names.sort();
+        assert_eq!(names, vec![std::ffi::OsString::from("work.json")]);
+        Ok(())
+    }
+
+    fn sample_tokens() -> OutlookTokens {
+        OutlookTokens {
+            access_token: "access".into(),
+            refresh_token: "refresh".into(),
+            expires_at: 0,
+        }
     }
 }

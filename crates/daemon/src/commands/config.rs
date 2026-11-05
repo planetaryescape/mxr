@@ -123,6 +123,11 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "llm.allow_cloud_relationship_data" => {
             Ok(config.llm.allow_cloud_relationship_data.to_string())
         }
+        "llm.fallback.model" => Ok(config
+            .llm
+            .fallback
+            .as_ref()
+            .map_or_else(|| "(no fallback)".into(), |fallback| fallback.model.clone())),
         // snooze
         "snooze.morning_hour" => Ok(config.snooze.morning_hour.to_string()),
         "snooze.evening_hour" => Ok(config.snooze.evening_hour.to_string()),
@@ -233,6 +238,16 @@ fn set_config_value(
         }
         "llm.allow_cloud_relationship_data" => {
             config.llm.allow_cloud_relationship_data = parse_bool(value)?;
+        }
+        // An empty value turns the fallback off.
+        "llm.fallback.model" => {
+            if value.trim().is_empty() {
+                config.llm.fallback = None;
+            } else {
+                let fallback = config.llm.fallback.get_or_insert_with(Default::default);
+                fallback.model = value.trim().to_string();
+                crate::state::llm_fallback(&config.llm).map_err(|error| anyhow::anyhow!(error))?;
+            }
         }
         // snooze
         "snooze.morning_hour" => {
@@ -349,6 +364,29 @@ mod tests {
         assert_eq!(config.llm.context_window, 80_000);
         assert_eq!(config.llm.request_timeout_secs, 30);
         assert!(config.llm.allow_cloud_relationship_data);
+    }
+
+    #[test]
+    fn fallback_model_is_checked_and_an_empty_value_turns_it_off() {
+        let mut config = mxr_config::MxrConfig::default();
+        assert_eq!(
+            get_config_value(&config, "llm.fallback.model").unwrap(),
+            "(no fallback)"
+        );
+        set_config_value(&mut config, "llm.fallback.model", " gpt-6-luna ").unwrap();
+        assert_eq!(
+            config.llm.fallback.as_ref().map(|f| f.model.as_str()),
+            Some("gpt-6-luna")
+        );
+        let error = set_config_value(&mut config, "llm.fallback.model", "gemma4:latest")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("`gemma4:latest` is not a hosted model mxr can route"),
+            "{error}"
+        );
+        set_config_value(&mut config, "llm.fallback.model", "").unwrap();
+        assert!(config.llm.fallback.is_none());
     }
 
     #[test]

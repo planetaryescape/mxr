@@ -70,7 +70,14 @@ impl DraftPolicy {
         let mut effective = crate::state::base_llm_config(&config.llm);
         effective.model = model.trim().to_string();
         let health = mxr_llm::RouteHealth::default();
-        let provider = crate::state::build_llm_provider(&effective, &health);
+        let fallback = crate::state::llm_fallback(&config.llm).ok().flatten();
+        let chain = crate::state::llm_fallback_chain(
+            &config.llm,
+            fallback.as_ref(),
+            Some(feature),
+            &effective,
+        );
+        let provider = crate::state::build_llm_provider(&effective, chain.as_ref(), &health);
         let runtime = std::sync::Arc::new(mxr_llm::LlmRuntime::with_route_health(provider, health));
         let llm = runtime.for_feature(feature).pin();
         let share_history = relationship_data_allowed(&config.llm, &llm);

@@ -387,6 +387,10 @@ pub struct LlmConfig {
     /// One persistent default for new drafts. When unset, legacy feature
     /// overrides continue to apply and otherwise drafting inherits `[llm]`.
     pub compose: Option<LlmComposeConfig>,
+    /// A hosted model to use while `base_url` is out. Off unless the
+    /// `[llm.fallback]` table is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<LlmFallbackConfig>,
     /// Optional feature-specific provider overrides. Each override inherits
     /// unspecified fields from this base `[llm]` section.
     pub overrides: LlmOverrides,
@@ -406,7 +410,37 @@ impl Default for LlmConfig {
             gist_concurrency: 1,
             models: DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec(),
             compose: None,
+            fallback: None,
             overrides: LlmOverrides::default(),
+        }
+    }
+}
+
+/// `[llm.fallback]`: the hosted model requests go to while the model on
+/// `base_url` (or a feature override's own endpoint) is out, after one
+/// failed attempt, until it answers again. It applies only to models
+/// `base_url` serves; a model mxr already routes (`claude-*`, `gpt-*`) has
+/// its own fallback through OpenRouter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmFallbackConfig {
+    /// A model id mxr routes to a hosted provider with a stored key, e.g.
+    /// `gpt-6-luna` (OpenAI, then OpenRouter).
+    pub model: String,
+    /// The fallback model's context window. Prompts are built to fit the
+    /// smaller of this and the endpoint's. Defaults to the endpoint's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+}
+
+/// The fallback model when `[llm.fallback]` names none.
+pub const DEFAULT_LLM_FALLBACK_MODEL: &str = "gpt-6-luna";
+
+impl Default for LlmFallbackConfig {
+    fn default() -> Self {
+        Self {
+            model: DEFAULT_LLM_FALLBACK_MODEL.to_string(),
+            context_window: None,
         }
     }
 }

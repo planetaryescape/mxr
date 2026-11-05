@@ -10,7 +10,7 @@
 //! State is in memory only. A restart costs one failed attempt per bad route.
 
 use crate::background::RecoverySignal;
-use crate::route::{Route, RouteProvider};
+use crate::route::{RouteKey, RouteProvider};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -147,7 +147,7 @@ impl Entry {
 #[derive(Debug, Default)]
 struct Book {
     last_epoch: u64,
-    entries: HashMap<Route, Entry>,
+    entries: HashMap<RouteKey, Entry>,
 }
 
 impl Book {
@@ -183,7 +183,7 @@ enum TicketKind {
 #[must_use = "report the outcome with succeeded() or failed()"]
 pub(crate) struct Ticket {
     health: RouteHealth,
-    route: Route,
+    route: RouteKey,
     epoch: u64,
     kind: TicketKind,
     settled: bool,
@@ -204,7 +204,8 @@ impl RouteHealth {
 
     /// Decide, as one step under the lock, whether a request may go to
     /// `route`. Two callers can never both be handed the probe.
-    pub(crate) fn admit(&self, route: &Route) -> Admission {
+    pub(crate) fn admit(&self, route: impl Into<RouteKey>) -> Admission {
+        let route = route.into();
         let now = Instant::now();
         let mut book = self.book();
         let fresh_epoch = book.next_epoch();
@@ -234,31 +235,35 @@ impl RouteHealth {
 
     /// A ticket for a route that is out, for the last resort when every
     /// route is.
-    pub(crate) fn force(&self, route: &Route) -> Ticket {
+    pub(crate) fn force(&self, route: impl Into<RouteKey>) -> Ticket {
+        let route = route.into();
         let mut book = self.book();
         let fresh_epoch = book.next_epoch();
         let epoch = book
             .entries
-            .get(route)
+            .get(&route)
             .map_or(fresh_epoch, |entry| entry.epoch);
+        drop(book);
         self.ticket(route, epoch, TicketKind::Forced)
     }
 
-    fn ticket(&self, route: &Route, epoch: u64, kind: TicketKind) -> Ticket {
+    fn ticket(&self, route: RouteKey, epoch: u64, kind: TicketKind) -> Ticket {
         Ticket {
             health: self.clone(),
-            route: route.clone(),
+            route,
             epoch,
             kind,
             settled: false,
         }
     }
 
-    pub fn view(&self, route: &Route) -> RouteView {
+    /// A hosted route (`&Route`) or the user's endpoint (`&EndpointRoute`).
+    pub fn view(&self, route: impl Into<RouteKey>) -> RouteView {
+        let route = route.into();
         let now = Instant::now();
         self.book()
             .entries
-            .get(route)
+            .get(&route)
             .map_or(RouteView::OK, |entry| entry.view(now))
     }
 
@@ -275,15 +280,15 @@ impl RouteHealth {
     /// Forget one provider's routes: its key was stored, replaced or
     /// removed, so a "bad key" verdict no longer applies.
     pub fn forget_provider(&self, provider: RouteProvider) {
-        self.book()
-            .entries
-            .retain(|route, _| route.provider != provider);
+        self.book().entries.retain(
+            |route, _| !matches!(route, RouteKey::Hosted(route) if route.provider == provider),
+        );
     }
 
     /// Record a failure as an HTTP reply with `status` would, so tests in
     /// other crates can put a route in a known state without a server.
     #[doc(hidden)]
-    pub fn record_http_failure_for_test(&self, route: &Route, status: u16) {
+    pub fn record_http_failure_for_test(&self, route: impl Into<RouteKey>, status: u16) {
         use crate::failure::{classify_status, ErrorClass};
         if let Admission::Use(ticket) | Admission::Probe(ticket) = self.admit(route) {
             if let ErrorClass::Route(failure) = classify_status(status, None, "") {
@@ -316,8 +321,8 @@ impl RouteHealth {
             None => {
                 if entry.unhealthy.is_some() {
                     tracing::info!(
-                        provider = %ticket.route.provider,
-                        model = %ticket.route.model,
+                        provider = ticket.route.provider_name(),
+                        model = ticket.route.model(),
                         "LLM route recovered"
                     );
                     entry.unhealthy = None;
@@ -351,8 +356,8 @@ impl RouteHealth {
                 });
                 entry.epoch = next_epoch;
                 tracing::warn!(
-                    provider = %ticket.route.provider,
-                    model = %ticket.route.model,
+                    provider = ticket.route.provider_name(),
+                    model = ticket.route.model(),
                     %reason,
                     retry_secs = delay.as_secs(),
                     broken,
@@ -405,6 +410,7 @@ impl Drop for Ticket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::route::Route;
 
     fn route(provider: RouteProvider) -> Route {
         Route {

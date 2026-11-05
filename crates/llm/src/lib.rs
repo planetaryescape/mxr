@@ -11,7 +11,9 @@
 //!
 //! Claude models (`claude-*`) are the exception: they go to Anthropic's own
 //! API first and to OpenRouter when Anthropic isn't working, with the keys
-//! mxr stores, not `llm.base_url`. See [`RoutedProvider`].
+//! mxr stores, not `llm.base_url`. See [`RoutedProvider`], which also
+//! puts a cloud fallback behind `llm.base_url` when `[llm.fallback]` names
+//! one.
 //!
 //! mxr stays local-first by default: the recommended config points at
 //! a local Ollama or LM Studio instance, and no completions ever leave
@@ -73,9 +75,12 @@ use observations::CompletionObservations;
 pub use observations::{CompletionObservation, LlmFailureKind};
 pub use route::{
     is_claude_model, is_openai_model, openai_tools_need_no_reasoning, routes_for_model, ApiKey,
-    ApiKeySource, Endpoint, Route, RouteProvider,
+    ApiKeySource, Endpoint, EndpointRoute, Route, RouteKey, RouteProvider,
 };
-pub use routed::{route_statuses, RouteStatus, RoutedProvider, RoutedProviderConfig};
+pub use routed::{
+    chain_statuses, route_statuses, EndpointStatus, RouteStatus, RoutedProvider,
+    RoutedProviderConfig,
+};
 /// Called with the whole reply text so far while a reply streams in.
 pub type TextCallback<'a> = &'a (dyn for<'t> Fn(&'t str) + Send + Sync);
 
@@ -1545,10 +1550,18 @@ impl OpenAiCompatibleProvider {
     /// up, so that counts as answering; the real request then shows whether
     /// the model works.
     async fn list_models(&self, timeout: Duration) -> Result<(), LlmError> {
+        self.probe_attempt(timeout)
+            .await
+            .map_err(AttemptError::into_error)
+    }
+
+    /// [`Self::list_models`] with what a failure says about the route, for
+    /// route health's half-open step on the user's endpoint.
+    pub(crate) async fn probe_attempt(&self, timeout: Duration) -> Result<(), AttemptError> {
         let client = self
             .client
             .as_ref()
-            .map_err(|error| LlmError::Other(error.clone()))?;
+            .map_err(|error| AttemptError::request(LlmError::Other(error.clone())))?;
         let api_key = self.api_key.as_deref();
         let budget = timeout.min(self.request_timeout);
         let mut request = client
@@ -1559,11 +1572,17 @@ impl OpenAiCompatibleProvider {
         }
         let response = request.send().await.map_err(|e| {
             if e.is_timeout() {
-                LlmError::Timeout(budget)
+                AttemptError::timed_out(budget)
             } else if e.is_connect() {
-                LlmError::Unreachable(redact_key(e.to_string(), api_key))
+                AttemptError::unreachable(redact_key(e.to_string(), api_key))
             } else {
-                LlmError::Endpoint(redact_key(e.to_string(), api_key))
+                AttemptError::route(
+                    LlmError::Endpoint(redact_key(e.to_string(), api_key)),
+                    RouteFailure::Cooling {
+                        reason: FailureReason::plain("unreachable"),
+                        retry_after: None,
+                    },
+                )
             }
         })?;
         let status = response.status();
@@ -1571,10 +1590,15 @@ impl OpenAiCompatibleProvider {
             return Ok(());
         }
         if status.is_redirection() {
-            return Err(LlmError::Endpoint(format!(
-                "the LLM endpoint redirected its model listing ({status}); set llm.base_url to \
-                 the final address"
-            )));
+            return Err(AttemptError::route(
+                LlmError::Endpoint(format!(
+                    "the LLM endpoint redirected its model listing ({status}); set llm.base_url \
+                     to the final address"
+                )),
+                RouteFailure::Broken {
+                    reason: FailureReason::plain("unexpected redirect"),
+                },
+            ));
         }
         let retry_after = parse_retry_after(
             response
@@ -1582,22 +1606,34 @@ impl OpenAiCompatibleProvider {
                 .get(reqwest::header::RETRY_AFTER)
                 .and_then(|v| v.to_str().ok()),
         );
+        let class = classify_status(status.as_u16(), retry_after, "");
         match status.as_u16() {
-            401 => return Err(LlmError::Unauthorized),
+            401 => {
+                return Err(AttemptError {
+                    error: LlmError::Unauthorized,
+                    class,
+                })
+            }
             429 => {
-                return Err(LlmError::RateLimited {
-                    retry_after_secs: retry_after.map_or(30, |after| after.as_secs()),
+                return Err(AttemptError {
+                    error: LlmError::RateLimited {
+                        retry_after_secs: retry_after.map_or(30, |after| after.as_secs()),
+                    },
+                    class,
                 })
             }
             404 => return Ok(()),
             _ => {}
         }
-        match classify_status(status.as_u16(), retry_after, "") {
-            ErrorClass::Route(_) => Err(LlmError::Endpoint(format!(
-                "{} {}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or("")
-            ))),
+        match class {
+            ErrorClass::Route(failure) => Err(AttemptError::route(
+                LlmError::Endpoint(format!(
+                    "{} {}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("")
+                )),
+                failure,
+            )),
             ErrorClass::Request => Ok(()),
         }
     }

@@ -996,6 +996,11 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
             .and_then(|name| std::env::var(name).ok())
             .is_some_and(|value| !value.is_empty())
     };
+    let fallback_model = config
+        .fallback
+        .as_ref()
+        .map(|fallback| fallback.model.trim().to_string());
+    let fallback_error = crate::state::llm_fallback(&config).err();
     let snapshot = mxr_protocol::LlmStatusSnapshot {
         enabled: config.enabled,
         provider: if !config.enabled {
@@ -1048,6 +1053,8 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
             .collect(),
         features,
         keys,
+        fallback_model,
+        fallback_error,
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }
@@ -1185,6 +1192,7 @@ fn normalize_llm_config(
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
         // Config-file only, like the background timeout.
         gist_concurrency: current.gist_concurrency,
+        fallback: current.fallback.clone(),
         models,
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,

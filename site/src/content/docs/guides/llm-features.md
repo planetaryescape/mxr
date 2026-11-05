@@ -1,6 +1,6 @@
 ---
 title: LLM features (summarize, draft assist)
-description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
+description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint, with an optional cloud fallback, for thread summarisation and draft assist in mxr.
 ---
 
 ## Configure mxr-native model features
@@ -174,6 +174,95 @@ take tool calls on Chat Completions only with reasoning off, so requests with
 tools to those ids carry `reasoning_effort: "none"`; no other id gets the
 field.
 
+## Fall back to a cloud model when your endpoint is out
+
+A model on a server of your own (Ollama on a laptop that sleeps, a machine
+reached over Tailscale) has no second route. Add `[llm.fallback]` and mxr
+sends requests to a hosted model while that server is out, then moves back
+when it answers:
+
+```toml
+[llm]
+enabled = true
+base_url = "https://ollama.example.net/v1"
+model = "gemma4:latest"
+context_window = 32768
+
+[llm.fallback]
+model = "gpt-6-luna"        # the default when the table is present
+# context_window = 128000   # defaults to llm.context_window
+```
+
+The fallback goes through the same providers as that model on its own:
+`gpt-6-luna` to OpenAI, then to OpenRouter as `openai/gpt-6-luna`, each only
+with a key. An OpenRouter key alone is enough:
+
+```bash
+op read "op://<vault>/<item>/credential" | mxr llm key set openrouter
+mxr config set llm.fallback.model gpt-6-luna
+```
+
+`mxr config set llm.fallback.model ''` turns it off. The fallback is off
+unless the table is there.
+
+`base_url` is the first route, and mxr remembers its health the way it does
+a provider's ([what mxr remembers](#what-mxr-remembers-about-each-provider)):
+
+- The first failure (no connection, a timeout, a 5xx, a rate limit) sends
+  that request on to the fallback in the same call, and every request after
+  it skips `base_url` for 1 minute, doubling to 30 minutes. A batch of
+  background work makes one failed attempt on `base_url`, not one per item.
+- When the wait is over, the next request checks `GET <base_url>/models`
+  before sending any mail. If the server answers, the request and the ones
+  after it go to `base_url` again; if not, that request goes to the fallback
+  and the wait doubles. Other requests keep using the fallback while the one
+  check runs.
+- Commands you run and background work both fall back. Background work
+  shares its `background_request_timeout_secs` among the routes it may still
+  try, so with one fallback provider `base_url` gets about 20 seconds of the
+  default 45 before it counts as out. Raise the setting if your model is slow
+  to answer background work.
+
+It applies to every feature whose model `base_url` serves, including a
+per-feature override with its own `base_url`. A `claude-*` or `gpt-*` model
+already has OpenRouter behind it and ignores `[llm.fallback]`. Answers from
+the fallback are labelled with the provider (`gpt-6-luna via OpenAI`,
+`openai/gpt-6-luna via OpenRouter`); answers from `base_url` keep the model's
+name. Prompts are built to fit the smaller context window of the two.
+
+The fallback is a cloud service, so a configured fallback counts as cloud
+for what each request may carry, even while `base_url` answers: drafts carry
+your other emails only with `llm.allow_cloud_relationship_data = true`.
+Relationship summaries, commitments, voice matching, answer coverage,
+briefings, decisions, experts, `mxr ask` and the assistant use the fallback
+only with that setting. Without it they stay on `base_url`, and their
+background work [waits for it](#background-work-waits-out-an-endpoint-outage)
+and runs when it answers again. With a `base_url` off this machine they are
+refused without the setting, as before.
+
+`mxr llm status` shows the chain for each feature:
+
+```text
+fallback=gpt-6-luna
+
+features:
+  summarize             gemma4:latest  base_url: cooling until 14:32 (unreachable) → openai: no key → openrouter: ok  [now: openrouter]
+```
+
+With `base_url` on this machine, a relationship feature shows where it
+stays:
+
+```text
+  relationship_summary  gemma4:latest  base_url: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
+```
+
+`--format json` adds `fallback_model` and, under each feature, `endpoint`
+(`base_url`'s `state`, `reason`, `retry_at` and `next`), `fallback` (the
+providers, shaped like `routes`) and `fallback_withheld`. A fallback model mxr
+can't route, such as a local model name, is refused by `mxr config set`. A
+daemon that loads one from a hand edit runs without the fallback, and status
+prints `fallback not used:` with the reason (`fallback_error` in JSON).
+
 ## Pick the assistant's model
 
 The [assistant](/guides/assistant/#pick-the-model) has a model picker: the web
@@ -247,8 +336,10 @@ contact being processed is not blamed for it:
   each soon after a check succeeds, without waiting for new mail. A parcel
   email seen during the outage keeps its heuristic result until then.
 
-With Claude or GPT through mxr's own routes there is no separate pause: work
-skipped while every provider was out runs once one of them is back (see
+With Claude or GPT through mxr's own routes, or with a
+[fallback](#fall-back-to-a-cloud-model-when-your-endpoint-is-out) configured,
+there is no separate pause: work skipped while every route was out runs once
+one of them is back (see
 [what mxr remembers about each provider](#what-mxr-remembers-about-each-provider)).
 
 For relationship summaries and delivery confirmation, a reply mxr can't use,
@@ -296,7 +387,10 @@ mxr llm status --format json
 
 `base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
 local; anything else is cloud. A `claude-*` model, and a `gpt-*` model
-routed to OpenAI, have no `base_url` and are always cloud.
+routed to OpenAI, have no `base_url` and are always cloud. With
+`[llm.fallback]`, mail goes to OpenAI or OpenRouter while `base_url` is out,
+so each feature that may fall back shows `cloud: true`; use a provider whose
+API data terms cover other people's mail.
 
 ## Send one feature to a different model
 

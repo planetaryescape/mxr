@@ -1364,6 +1364,8 @@ mod tests {
                         observations: Vec::new(),
                         features: Vec::new(),
                         keys: Vec::new(),
+                        fallback_model: None,
+                        fallback_error: None,
                     },
                 },
                 IpcCategory::MxrPlatform,

@@ -1,6 +1,6 @@
 # A local model needs a cloud fallback, and endpoint outages use up an input's retries
 
-Checked at `origin/main` `3bb328db2` (release 0.6.209) on 2026-11-04. The outage half was fixed on 2026-11-05; see "What shipped" below. The fallback chain is still open.
+Checked at `origin/main` `3bb328db2` (release 0.6.209) on 2026-11-04. Both halves shipped on 2026-11-05: the outage half first, then the fallback chain; see "What shipped" below each section. The OpenRouter data-terms question is still open.
 
 The planned setup runs the daemon on an always-on home server and sends model work to Ollama on BK's MacBook over Tailscale. The MacBook is often asleep or away, so the endpoint is unavailable for hours or days at a time. Two gaps make that setup lose work.
 
@@ -15,6 +15,15 @@ The change needed is an ordered, opt-in chain for compatible-endpoint models, fo
 - Each route can name its own model and context window, because the local and cloud models differ.
 - Output keeps the existing label naming the model and provider that answered.
 - `mxr llm status` shows the chain and the route in use.
+
+### What shipped, 2026-11-05 (rung 2)
+
+- `[llm.fallback]` (`model`, default `gpt-6-luna`; optional `context_window`) is opt-in: no table, no fallback (`crates/config/src/types.rs`, `LlmFallbackConfig`). `mxr config set llm.fallback.model <id>` sets it and refuses an id `routes_for_model(.., Endpoint::Default)` doesn't route; an empty value removes it.
+- It applies to any effective config (base or per-feature override) whose model `base_url` serves. `RoutedProvider` takes the endpoint as its first route (`RoutedProviderConfig::endpoint`), keyed in the shared `RouteHealth` as `RouteKey::Endpoint` (base URL and model), so a batch makes one failed attempt on it. The endpoint needs no stored key and never appears in the key store. Hosted answers are labelled `<model> via <Provider>`; endpoint answers keep the model's own name.
+- When the endpoint's wait ends, the request that takes the half-open probe checks `GET <base_url>/models` before sending the prompt. A failed check spends no prompt and that request continues to the fallback; a passed check recovers the route and fires the recovery signal.
+- Privacy (`crates/daemon/src/state.rs`, `llm_fallback_chain`): relationship features without `allow_cloud_relationship_data` get the endpoint alone under the same `RouteHealth`, so their background work is put off with `CircuitOpen` while it is out and resumes on it. With a remote `base_url` they stay blocked, as before. Any provider with a fallback reports `leaves_machine() = true`, so drafts carry relationship data only with the opt-in.
+- Background budget: the endpoint gets its share of the background timeout like any route (about 20 s of the default 45 with one fallback provider). A slow local model that times out counts as out.
+- `mxr llm status` and its JSON show `fallback_model`, `fallback_error`, and per feature `endpoint`, `fallback` and `fallback_withheld` (all additive with serde defaults). An unroutable fallback is refused on reload; a daemon that loads one runs without it and says why.
 
 ## Endpoint outages are charged to the input being processed
 
@@ -50,7 +59,7 @@ The to-do resolution worker had the same charging problem in its own durable que
 - A daemon loop (`crates/daemon/src/llm_background.rs`) re-runs put-off inputs once each: relationship contacts go back to the relationship worker, and messages go back through the delivery scan, so a delivery that fell back to the heuristic during an outage is enriched once the endpoint answers. It runs when the breaker closes after an outage, when a `RouteHealth` route recovers, or, every 30 s, once the cooldown is over and the cheap check passes.
 - The breaker, the ledger and the put-off inputs are saved to `llm-background.json` in the data directory: wall-clock times, atomic write, mode 0600, at most every 30 s when changed and once on shutdown. A missing, corrupt or other-version file is logged and ignored. Tests and the demo instance never write it.
 
-What remains: the fallback chain for compatible-endpoint models (the first section; rung 2). `RouteHealth` is still in memory only. Recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns.
+What remained after this: the fallback chain, since shipped (see the first section). `RouteHealth` is still in memory only. Recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns.
 
 ## Acceptance
 

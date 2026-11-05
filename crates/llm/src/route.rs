@@ -67,6 +67,64 @@ pub struct Route {
     pub model: String,
 }
 
+/// The user's own OpenAI-compatible server (`llm.base_url`) and the model
+/// it serves, when a cloud fallback stands behind it. It needs no stored key
+/// (it reads `api_key_env` as before), so it never appears among the
+/// keyable providers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EndpointRoute {
+    pub base_url: String,
+    pub model: String,
+}
+
+impl EndpointRoute {
+    /// Normalised the way the HTTP client normalises its URL, so the
+    /// provider and `mxr llm status` name the same route.
+    pub fn new(base_url: &str, model: &str) -> Self {
+        Self {
+            base_url: base_url.trim().trim_end_matches('/').to_string(),
+            model: model.trim().to_string(),
+        }
+    }
+}
+
+/// What route health is kept for: a hosted provider's route or the user's
+/// own endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RouteKey {
+    Hosted(Route),
+    Endpoint(EndpointRoute),
+}
+
+impl RouteKey {
+    /// For logs: the provider's key, or `base_url` for the user's endpoint.
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            Self::Hosted(route) => route.provider.key(),
+            Self::Endpoint(_) => "base_url",
+        }
+    }
+
+    pub fn model(&self) -> &str {
+        match self {
+            Self::Hosted(route) => &route.model,
+            Self::Endpoint(endpoint) => &endpoint.model,
+        }
+    }
+}
+
+impl From<&Route> for RouteKey {
+    fn from(route: &Route) -> Self {
+        Self::Hosted(route.clone())
+    }
+}
+
+impl From<&EndpointRoute> for RouteKey {
+    fn from(endpoint: &EndpointRoute) -> Self {
+        Self::Endpoint(endpoint.clone())
+    }
+}
+
 /// An API key. `Debug` never shows it, so it can sit in a struct that gets
 /// logged.
 #[derive(Clone)]

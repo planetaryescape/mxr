@@ -11,6 +11,8 @@ use mxr_protocol::{
 use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
+    /// An HTML parse the loop stopped waiting for has landed: draw again.
+    HtmlRendered,
     /// An answer to one of the assistant pane's requests.
     Assistant {
         call: crate::app::AssistantCall,

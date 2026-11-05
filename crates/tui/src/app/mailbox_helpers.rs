@@ -790,6 +790,14 @@ impl App {
         self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_sub(1);
     }
 
+    /// A deferred HTML parse landed. The open message's body state was built
+    /// from its stand-in, so build it again; a thread view rebuilds every frame.
+    pub(crate) fn html_render_landed(&mut self) {
+        if self.mailbox.viewing_envelope.is_some() {
+            self.ensure_current_body_state();
+        }
+    }
+
     pub(super) fn ensure_current_body_state(&mut self) {
         if let Some(env) = self.mailbox.viewing_envelope.clone() {
             if !self.mailbox.body_cache.contains_key(&env.id) {

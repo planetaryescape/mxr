@@ -2492,7 +2492,8 @@ pub async fn mutation_dedup_prune_loop(
     // Mutation dedup rows have a 24h TTL; prune hourly so the table
     // stays bounded under heavy mutation traffic. The undo log gets
     // pruned alongside since both tables share the daemon's
-    // maintenance cadence.
+    // maintenance cadence. `PRAGMA optimize` rides the same tick: SQLite
+    // recommends it hourly or daily on a long-lived connection.
     let mut ticker = interval(Duration::from_secs(3600));
     loop {
         tokio::select! {
@@ -2515,6 +2516,9 @@ pub async fn mutation_dedup_prune_loop(
             Ok(0) => {}
             Ok(n) => tracing::debug!(rows = n, "mutation undo prune deleted rows"),
             Err(e) => tracing::warn!(error = %e, "mutation undo prune failed"),
+        }
+        if let Err(e) = state.store.optimize().await {
+            tracing::warn!(error = %e, "PRAGMA optimize failed");
         }
     }
 }

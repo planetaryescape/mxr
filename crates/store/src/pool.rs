@@ -127,7 +127,36 @@ impl Store {
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
+        // Migrations may have just added indexes; give the planner statistics
+        // before the first read. Not fatal: a store without statistics still works.
+        if let Err(error) = store.optimize_all_tables().await {
+            tracing::warn!(%error, "initial PRAGMA optimize failed");
+        }
         Ok(store)
+    }
+
+    /// `PRAGMA optimize=0x10002`: SQLite's advice for a long-lived connection on
+    /// open. 0x10000 checks every table, not only those this connection has
+    /// queried, so the first run after an upgrade analyses tables the new
+    /// indexes touch. SQLite caps the ANALYZE it runs with a temporary
+    /// `analysis_limit`, so this holds the single writer connection briefly.
+    async fn optimize_all_tables(&self) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql("PRAGMA optimize=0x10002")
+            .execute(&self.writer)
+            .await?;
+        Ok(())
+    }
+
+    /// `PRAGMA optimize`: the periodic form for a long-lived connection. Usually
+    /// a no-op; when a table has changed size enough it re-analyses it under a
+    /// capped `analysis_limit`. It writes `sqlite_stat1`, so it goes through the
+    /// writer (the readers are read-only) and queues behind other writes like
+    /// any of them.
+    pub async fn optimize(&self) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql("PRAGMA optimize")
+            .execute(&self.writer)
+            .await?;
+        Ok(())
     }
 
     // Only private staging databases use this constructor; the offline caller owns the workspace lease.
@@ -1619,6 +1648,36 @@ pub(crate) mod tests {
     use std::str::FromStr;
     use tempfile::tempdir;
 
+    /// The planner picked an account-wide index in the reader-pool starvation
+    /// incident because the store had no statistics. A file store must have
+    /// gathered them by the time `Store::new` returns, and the periodic form
+    /// must keep working on the writer.
+    #[tokio::test]
+    async fn optimize_gathers_planner_statistics() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("mxr.db");
+        let store = Store::new(&db_path).await.unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE optimize_probe (a INTEGER, b INTEGER);
+             CREATE INDEX optimize_probe_a ON optimize_probe(a);
+             WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000)
+             INSERT INTO optimize_probe SELECT i % 10, i FROM n;",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        store.optimize_all_tables().await.unwrap();
+        store.optimize().await.unwrap();
+
+        let analysed: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'optimize_probe'")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert!(analysed > 0, "optimize left the probe table unanalysed");
+    }
+
     async fn open_test_writer(db_path: &Path) -> sqlx::SqlitePool {
         let url = format!("sqlite:{}", db_path.display());
         let opts = SqliteConnectOptions::from_str(&url)
@@ -1689,10 +1748,15 @@ pub(crate) mod tests {
     }
 
     async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
-        sqlx::query_as("SELECT type, name, sql FROM sqlite_schema ORDER BY type, name")
-            .fetch_all(pool)
-            .await
-            .unwrap()
+        // `sqlite_stat1` appears once PRAGMA optimize has analysed a table; it
+        // holds planner statistics, not schema.
+        sqlx::query_as(
+            "SELECT type, name, sql FROM sqlite_schema \
+             WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
     }
 
     /// In-memory stores load a copy of one migrated database, so the copy

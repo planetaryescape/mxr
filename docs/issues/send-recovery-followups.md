@@ -156,10 +156,6 @@ These source-checked observations are nonblocking follow-ups from review of
   be refused by the send safety check. Show the no-recipient blocker during
   preview (`crates/daemon/src/commands/mutations/compose.rs::send_draft`,
   `crates/daemon/src/handler/mutations.rs::check_draft_safety`).
-- The startup event for an interrupted scheduled send prints a literal
-  `<account-id>` in its outcome-query command. Include the actual account or a
-  usable account-selection instruction (`crates/daemon/src/server.rs`,
-  scheduled-send recovery event).
 - `tui-send-recovery.json` keeps an operation entry per draft and a list of
   compose paths; the write path has no pruning policy. A draft deleted outside
   the recovery flow also cannot be reconstructed from a retained revision

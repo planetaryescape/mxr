@@ -1981,6 +1981,28 @@ fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()
     })
 }
 
+/// Event text for a scheduled send that may not have finished before a restart.
+///
+/// The outcome query needs the account. The draft row normally still holds it,
+/// so the text names it. Without the row, the text says where to find the
+/// account instead of printing a placeholder to copy.
+fn lost_scheduled_send_message(
+    draft_id: &mxr_core::DraftId,
+    account_id: Option<&mxr_core::AccountId>,
+) -> String {
+    let query = match account_id {
+        Some(account_id) => {
+            format!("Query mxr send-outcome 'draft:{draft_id}' --account {account_id}")
+        }
+        None => format!(
+            "The draft is no longer stored. Find its account with mxr accounts, then query mxr send-outcome 'draft:{draft_id}' with that account"
+        ),
+    };
+    format!(
+        "Scheduled send for draft {draft_id} may not have completed (daemon restarted mid-send). {query}; do not resend blindly."
+    )
+}
+
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     // Decisions whose cited mail was deleted before decision evidence was
     // tracked are invisible to every later delete; clear them once.
@@ -2006,19 +2028,23 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
                     "startup: scheduled send may not have completed before a daemon restart; \
                      query the send outcome; do not resend blindly"
                 );
+                let account_id = match state.store.get_draft(&entry.draft_id).await {
+                    Ok(draft) => draft.map(|draft| draft.account_id),
+                    Err(error) => {
+                        tracing::warn!(%error, "startup: could not read the draft for a lost scheduled send");
+                        None
+                    }
+                };
                 let _ = state
-                .store
-                .insert_event(
-                    "warn",
-                    "scheduled_send",
-                    &format!(
-                        "Scheduled send for draft {} may not have completed (daemon restarted mid-send). Query mxr send-outcome 'draft:{}' --account <account-id>; do not resend blindly.",
-                        entry.draft_id, entry.draft_id
-                    ),
-                    None,
-                    Some(&format!("draft_id={}", entry.draft_id)),
-                )
-                .await;
+                    .store
+                    .insert_event(
+                        "warn",
+                        "scheduled_send",
+                        &lost_scheduled_send_message(&entry.draft_id, account_id.as_ref()),
+                        None,
+                        Some(&format!("draft_id={}", entry.draft_id)),
+                    )
+                    .await;
                 let _ = state
                     .store
                     .record_scheduled_send_outcome(
@@ -2202,8 +2228,8 @@ fn detach_daemon_child(_command: &mut std::process::Command) {}
 mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_ping,
-        daemon_responds_to_status, is_index_lock_error, request_shutdown_to,
-        run_startup_maintenance, spawn_startup_maintenance,
+        daemon_responds_to_status, is_index_lock_error, lost_scheduled_send_message,
+        request_shutdown_to, run_startup_maintenance, spawn_startup_maintenance,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -3361,5 +3387,30 @@ mod tests {
             state.search.availability(),
             mxr_search::IndexAvailability::Ready { .. }
         ));
+    }
+
+    #[test]
+    fn lost_send_event_names_the_account_to_query() {
+        let draft_id = mxr_core::DraftId::new();
+        let account_id = mxr_core::AccountId::new();
+
+        let message = lost_scheduled_send_message(&draft_id, Some(&account_id));
+
+        assert!(
+            message.contains(&format!("--account {account_id}")),
+            "{message}"
+        );
+        assert!(!message.contains("<account-id>"), "{message}");
+    }
+
+    #[test]
+    fn lost_send_event_without_a_stored_draft_says_where_to_find_the_account() {
+        let draft_id = mxr_core::DraftId::new();
+
+        let message = lost_scheduled_send_message(&draft_id, None);
+
+        assert!(message.contains("mxr accounts"), "{message}");
+        assert!(!message.contains("<account-id>"), "{message}");
+        assert!(message.contains("do not resend blindly"), "{message}");
     }
 }

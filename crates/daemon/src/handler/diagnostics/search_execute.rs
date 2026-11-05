@@ -213,10 +213,16 @@ async fn execute_search_indexed(
         CompiledQuery::Structured {
             ast,
             needs_owed_filter,
-        } => (
-            execute_search_ast(state, query, &ast, options).await?,
-            needs_owed_filter,
-        ),
+        } => {
+            // Lexical paging applies the owed filter inside its page loop, so a
+            // page fills with owed rows. Other modes filter the fused window
+            // after the fact.
+            let owed_in_stream = needs_owed_filter && options.mode == SearchMode::Lexical;
+            (
+                execute_search_ast(state, query, &ast, options, owed_in_stream).await?,
+                needs_owed_filter && !owed_in_stream,
+            )
+        }
         CompiledQuery::TextFallback { parse_error } => {
             let page = lexical_text_search(
                 state,
@@ -254,7 +260,11 @@ async fn execute_search_indexed(
             (execution, false)
         }
     };
-    filter_to_cached_mail_accounts(state, &mut execution).await?;
+    // Lexical pages already drop hidden accounts row by row in
+    // `filter_live_search_results`, so only the other modes need this pass.
+    if options.mode != SearchMode::Lexical {
+        filter_to_cached_mail_accounts(state, &mut execution).await?;
+    }
     if needs_owed_filter {
         filter_to_owed_threads(state, &mut execution).await?;
     }
@@ -376,6 +386,38 @@ pub(super) async fn owed_thread_ids(
     (owed_thread_ids, failures)
 }
 
+/// Owed-reply thread ids for the accounts a lexical page has met so far. A
+/// page asks the store once per account, not once per raw chunk.
+#[derive(Default)]
+struct OwedThreads {
+    accounts_loaded: HashSet<String>,
+    thread_ids: HashSet<String>,
+}
+
+impl OwedThreads {
+    async fn retain_owed(&mut self, state: &AppState, results: &mut Vec<SearchResult>) {
+        let unseen: Vec<String> = results
+            .iter()
+            .map(|result| result.account_id.clone())
+            .filter(|account_id| !self.accounts_loaded.contains(account_id))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !unseen.is_empty() {
+            let (owed, failures) = owed_thread_ids(state, &unseen, OWED_REPLY_FETCH_CAP).await;
+            for (account_id, error) in failures {
+                tracing::warn!(
+                    account_id = %account_id,
+                    "owed-reply filter: list_owed_replies failed: {error}"
+                );
+            }
+            self.thread_ids.extend(owed);
+            self.accounts_loaded.extend(unseen);
+        }
+        results.retain(|result| self.thread_ids.contains(&result.thread_id));
+    }
+}
+
 /// Pull at most this many owed-reply rows per account when serving an
 /// `is:owed-reply` query. The owed-reply lens is intended for human
 /// triage; capping at a few thousand keeps the filter cheap even on
@@ -424,6 +466,7 @@ async fn execute_search_ast(
     _query: &str,
     ast: &QueryNode,
     options: &SearchExecutionOptions,
+    owed_in_stream: bool,
 ) -> Result<SearchExecution, String> {
     let requested_window = options
         .limit
@@ -453,6 +496,7 @@ async fn execute_search_ast(
         } else {
             SortOrder::Relevance
         },
+        owed_in_stream,
     )
     .await?;
     let lexical_results = lexical_page.results.clone();
@@ -696,24 +740,32 @@ pub(super) async fn lexical_search(
     limit: usize,
     offset: usize,
     sort: SortOrder,
+    owed_only: bool,
 ) -> Result<SearchPage, String> {
-    live_lexical_page(state, limit, offset, sort, |raw_limit, raw_offset, sort| {
-        let schema = MxrSchema::build();
-        let builder = QueryBuilder::new(&schema);
-        let tantivy_query = if let Some(account_id) = account_id {
-            let account_id = account_id.as_str();
-            builder.build_in_account(ast, &account_id)
-        } else {
-            builder.build(ast)
-        };
-        async move {
-            state
-                .search
-                .search_ast(tantivy_query, raw_limit, raw_offset, sort)
-                .await
-                .map_err(|e| e.to_string())
-        }
-    })
+    live_lexical_page(
+        state,
+        limit,
+        offset,
+        sort,
+        owed_only,
+        |raw_limit, raw_offset, sort| {
+            let schema = MxrSchema::build();
+            let builder = QueryBuilder::new(&schema);
+            let tantivy_query = if let Some(account_id) = account_id {
+                let account_id = account_id.as_str();
+                builder.build_in_account(ast, &account_id)
+            } else {
+                builder.build(ast)
+            };
+            async move {
+                state
+                    .search
+                    .search_ast(tantivy_query, raw_limit, raw_offset, sort)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        },
+    )
     .await
 }
 
@@ -730,6 +782,7 @@ async fn lexical_text_search(
         limit,
         offset,
         sort,
+        false,
         |raw_limit, raw_offset, sort| async move {
             let account_id = account_id.map(AccountId::as_str);
             state
@@ -742,11 +795,15 @@ async fn lexical_text_search(
     .await
 }
 
+/// Pages a lexical stream: raw index rows are fetched chunk by chunk, live
+/// and (when `owed_only`) owed-reply rows are kept, and the loop stops once the
+/// page and one extra row are in hand. The one extra row sets `has_more`.
 async fn live_lexical_page<F, Fut>(
     state: &AppState,
     limit: usize,
     offset: usize,
     sort: SortOrder,
+    owed_only: bool,
     mut fetch_raw_page: F,
 ) -> Result<SearchPage, String>
 where
@@ -768,12 +825,16 @@ where
     let mut live_results = Vec::new();
     let mut raw_total: usize;
     let mut exhausted_raw = false;
+    let mut owed = OwedThreads::default();
 
     loop {
         let raw_page = fetch_raw_page(raw_chunk, raw_offset, sort.clone()).await?;
         raw_total = raw_page.total;
         let raw_len = raw_page.results.len();
-        let live_page = filter_live_search_results(state, raw_page.results).await?;
+        let mut live_page = filter_live_search_results(state, raw_page.results).await?;
+        if owed_only {
+            owed.retain_owed(state, &mut live_page).await;
+        }
         live_results.extend(live_page);
 
         if live_results.len() >= target_live {
@@ -1268,6 +1329,197 @@ mod owed_reply_filter_tests {
             !searched_threads.contains(&thread_id.as_str().clone()),
             "thread with later outbound reply must not match is:owed-reply, got {searched_threads:?}"
         );
+    }
+
+    /// Seeds `owed` threads whose inbound is unanswered and `answered` threads
+    /// whose inbound has a newer outbound reply. The answered rows are all
+    /// newer than the owed rows, so newest-first paging meets them first.
+    /// Returns the owed thread ids.
+    async fn seed_owed_and_answered(
+        state: &AppState,
+        account_id: &AccountId,
+        owed: usize,
+        answered: usize,
+    ) -> HashSet<String> {
+        let mut owed_threads = HashSet::new();
+        for i in 0..owed {
+            let thread_id = ThreadId::new();
+            let envelope =
+                envelope_inbound(account_id, &thread_id, "alice@example.com", 3 + i as i64);
+            state
+                .store
+                .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            index_envelope(state, &envelope).await;
+            owed_threads.insert(thread_id.as_str().clone());
+        }
+        let now = chrono::Utc::now();
+        for i in 0..answered {
+            let thread_id = ThreadId::new();
+            let mut inbound = envelope_inbound(account_id, &thread_id, "bob@example.com", 0);
+            inbound.date = now - chrono::Duration::hours(2) - chrono::Duration::minutes(i as i64);
+            state
+                .store
+                .upsert_envelope_with_direction(&inbound, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            index_envelope(state, &inbound).await;
+
+            let mut reply = envelope_inbound(account_id, &thread_id, "user@example.com", 0);
+            reply.from = Address {
+                name: None,
+                email: "user@example.com".into(),
+            };
+            reply.to = vec![Address {
+                name: None,
+                email: "bob@example.com".into(),
+            }];
+            reply.date = now - chrono::Duration::minutes(i as i64);
+            state
+                .store
+                .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
+                .await
+                .unwrap();
+            index_envelope(state, &reply).await;
+        }
+        state.store.refresh_contacts().await.unwrap();
+        owed_threads
+    }
+
+    async fn owed_page(state: &AppState, limit: usize, offset: usize) -> SearchExecution {
+        execute_search(
+            state,
+            "is:owed-reply",
+            limit,
+            offset,
+            None,
+            SearchMode::Lexical,
+            SortOrder::DateDesc,
+            false,
+        )
+        .await
+        .unwrap()
+    }
+
+    /// Owed rows are a minority of the newest-first candidates. Before
+    /// the filter ran inside the page loop, the first page took the newest
+    /// `limit` candidates, dropped every answered row, and came back empty.
+    #[tokio::test]
+    async fn lexical_owed_page_fills_when_most_candidates_are_answered() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let owed = seed_owed_and_answered(&state, &account_id, 7, 30).await;
+
+        let first = owed_page(&state, 5, 0).await;
+
+        assert_eq!(first.results.len(), 5, "page must fill with owed rows");
+        assert!(first.results.iter().all(|r| owed.contains(&r.thread_id)));
+        assert!(first.has_more);
+        assert_eq!(first.next_offset, Some(5));
+    }
+
+    /// Paging through an owed lens with a small limit returns each owed
+    /// row exactly once, in the same order as one unpaged request, and
+    /// `has_more` is true until the last page.
+    #[tokio::test]
+    async fn lexical_owed_pages_continue_without_gaps_or_repeats() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let owed = seed_owed_and_answered(&state, &account_id, 7, 30).await;
+
+        let everything: Vec<String> = owed_page(&state, 100, 0)
+            .await
+            .results
+            .into_iter()
+            .map(|r| r.message_id)
+            .collect();
+        assert_eq!(everything.len(), 7);
+
+        let mut paged = Vec::new();
+        let mut offset = 0;
+        loop {
+            let page = owed_page(&state, 3, offset).await;
+            assert!(page.results.iter().all(|r| owed.contains(&r.thread_id)));
+            paged.extend(page.results.iter().map(|r| r.message_id.clone()));
+            let remaining = 7 - paged.len();
+            assert_eq!(
+                page.has_more,
+                remaining > 0,
+                "has_more must be false only once nothing remains (remaining {remaining})"
+            );
+            match page.next_offset {
+                Some(next) => {
+                    assert_eq!(page.results.len(), 3, "a page with more to come is full");
+                    offset = next;
+                }
+                None => break,
+            }
+            assert!(paged.len() <= 7, "paging ran past the owed set");
+        }
+        assert_eq!(paged, everything);
+        assert_eq!(owed.len(), 7);
+    }
+
+    /// Hidden accounts are dropped row by row inside the page loop, so a
+    /// page still fills after many hidden rows. Lexical paging already did
+    /// this before the owed change; this test keeps it that way.
+    #[tokio::test]
+    async fn lexical_pages_skip_hidden_account_rows_and_fill() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let visible_account = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let hidden_account = AccountId::new();
+        let mut hidden = crate::test_fixtures::test_account_with_id(hidden_account.clone());
+        hidden.enabled = false;
+        state.store.insert_account(&hidden).await.unwrap();
+
+        let now = chrono::Utc::now();
+        let mut visible_ids = Vec::new();
+        for i in 0..20 {
+            let mut envelope =
+                envelope_inbound(&hidden_account, &ThreadId::new(), "alice@example.com", 0);
+            envelope.subject = "friday hidden".into();
+            envelope.date = now - chrono::Duration::minutes(i);
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+        }
+        for i in 0..5 {
+            let mut envelope =
+                envelope_inbound(&visible_account, &ThreadId::new(), "alice@example.com", 0);
+            envelope.date = now - chrono::Duration::days(1) - chrono::Duration::minutes(i);
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+            visible_ids.push(envelope.id.as_str());
+        }
+
+        let mut paged = Vec::new();
+        let mut offset = 0;
+        loop {
+            let page = execute_search(
+                &state,
+                "friday",
+                3,
+                offset,
+                None,
+                SearchMode::Lexical,
+                SortOrder::DateDesc,
+                false,
+            )
+            .await
+            .unwrap();
+            if page.has_more {
+                assert_eq!(page.results.len(), 3, "a page with more to come is full");
+            }
+            paged.extend(page.results.iter().map(|r| r.message_id.clone()));
+            match page.next_offset {
+                Some(next) => offset = next,
+                None => {
+                    assert!(!page.has_more);
+                    break;
+                }
+            }
+        }
+        assert_eq!(paged, visible_ids);
     }
 
     /// Regression: searching `label:<display name>` must hit the

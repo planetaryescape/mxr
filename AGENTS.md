@@ -33,9 +33,10 @@ Cargo/rustc or test daemons globally to free a slot. Build persistent daemons in
 the queue, then launch the binary outside it. Setup and limits:
 `~/.dotfiles/docs/agent-work.md`.
 Cargo never deletes old artifacts, and a bloated `target-cli` slows every
-compile. `agent-work` cleans a target directory over 50 GiB before the day's
-first build in it. Take a worktree with `agent-worktree new <branch>`: it reuses
-an idle pool slot whose `target-cli` is already built (a fresh worktree's first
-`cargo test -p mxr --tests` takes about 20 minutes). When you finish, run
-`agent-worktree release`; remove any other worktree you created, and in the
-main checkout run `agent-work sweep`.
+compile. `agent-work` trims a target directory over 50 GiB before the day's
+first build in it, deleting the builds no recent build used. Take a worktree
+with `agent-worktree new <branch>`: it reuses an idle pool slot whose
+`target-cli` is already built, or clones a sibling slot's into a new one (a
+cold worktree's first `cargo test -p mxr --tests` takes about 20 minutes). When
+you finish, run `agent-worktree release`; remove any other worktree you
+created, and in the main checkout run `agent-work sweep`.

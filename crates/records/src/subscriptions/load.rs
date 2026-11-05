@@ -11,6 +11,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, Default)]
 pub struct Loaded {
     pub detection: Detection,
+    /// Each account's one-off receipts and invoices, by (account, issuer).
+    /// An issuer's one-offs in one mailbox don't count against another's
+    /// subscription, even when both mailboxes pay that issuer.
+    pub one_offs: HashMap<(AccountId, String), Vec<String>>,
     /// The receipts and invoices it read, by id, for the clients' cards.
     pub records: HashMap<String, ArchiveRecord>,
 }
@@ -56,18 +60,26 @@ pub async fn load<Tz: TimeZone>(
     }
     let cancellations = cancellations(store, &records, &first).await?;
 
-    let mut out = Detection::default();
+    let mut subscriptions = Vec::new();
+    let mut one_offs: HashMap<(AccountId, String), Vec<String>> = HashMap::new();
     for (account, inputs, _) in first {
         let mine = cancellations.get(account).map_or(&[][..], Vec::as_slice);
         let found = detect(inputs, mine, today, tz);
-        out.subscriptions.extend(found.subscriptions);
+        subscriptions.extend(found.subscriptions);
         for (issuer, ids) in found.one_offs {
-            out.one_offs.entry(issuer).or_default().extend(ids);
+            one_offs
+                .entry((account.clone(), issuer))
+                .or_default()
+                .extend(ids);
         }
     }
-    super::sort(&mut out.subscriptions);
+    super::sort(&mut subscriptions);
     Ok(Loaded {
-        detection: out,
+        detection: Detection {
+            subscriptions,
+            ..Detection::default()
+        },
+        one_offs,
         records: records.into_iter().map(|r| (r.id.clone(), r)).collect(),
     })
 }

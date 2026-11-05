@@ -3,7 +3,7 @@
 //! cancellation email, and an approaching yearly renewal review task.
 
 use super::desk::{request, Fixture};
-use super::records::put;
+use super::records::{put, put_in};
 use super::*;
 use chrono::{Duration, Utc};
 use mxr_core::id::MessageId;
@@ -25,12 +25,24 @@ async fn receipts(
     total: &str,
     days_ago: &[i64],
 ) -> Vec<MessageId> {
+    receipts_in(fx, &fx.account, from, subject, total, days_ago).await
+}
+
+async fn receipts_in(
+    fx: &Fixture,
+    account: &mxr_core::AccountId,
+    from: (&str, &str),
+    subject: &str,
+    total: &str,
+    days_ago: &[i64],
+) -> Vec<MessageId> {
     let now = Utc::now();
     let mut ids = Vec::new();
     for days in days_ago {
         ids.push(
-            put(
+            put_in(
                 fx,
+                account,
                 from,
                 subject,
                 &format!("Thanks for your payment.\nTotal: {total}"),
@@ -389,4 +401,57 @@ async fn a_yearly_charge_months_away_is_not_a_signal_yet() {
     scan(&fx, &ids).await;
     let data = subscriptions(&fx).await;
     assert!(data.signals.is_empty(), "{:#?}", data.signals);
+}
+
+/// Two mailboxes paying the same issuer are two subscriptions, and each
+/// one counts only the one-off receipts in its own mailbox.
+#[tokio::test]
+async fn one_offs_count_per_account_when_two_accounts_share_an_issuer() {
+    let fx = Fixture::new().await;
+    let second = mxr_core::AccountId::new();
+    fx.state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(second.clone()))
+        .await
+        .unwrap();
+    let from = ("Spotify", "no-reply@spotify.com");
+    let mut ids = receipts(
+        &fx,
+        from,
+        "Your Spotify Premium receipt",
+        "£11.99",
+        &[92, 61, 31, 1],
+    )
+    .await;
+    ids.extend(receipts(&fx, from, "Your Spotify receipt", "£30.00", &[45]).await);
+    ids.extend(
+        receipts_in(
+            &fx,
+            &second,
+            from,
+            "Your Spotify Premium receipt",
+            "£11.99",
+            &[92, 61, 31, 1],
+        )
+        .await,
+    );
+    let mut second_one_offs = Vec::new();
+    for (total, days) in [("£5.00", 70), ("£7.00", 40), ("£9.00", 4)] {
+        second_one_offs
+            .extend(receipts_in(&fx, &second, from, "Your Spotify receipt", total, &[days]).await);
+    }
+    ids.extend(second_one_offs);
+    scan(&fx, &ids).await;
+
+    let data = subscriptions(&fx).await;
+    assert_eq!(data.subscriptions.len(), 2, "{data:#?}");
+    let one_offs_in = |account: &mxr_core::AccountId| {
+        data.subscriptions
+            .iter()
+            .find(|s| &s.account_id == account)
+            .unwrap_or_else(|| panic!("no subscription in {account}"))
+            .one_offs
+    };
+    assert_eq!(one_offs_in(&fx.account), 1);
+    assert_eq!(one_offs_in(&second), 3);
 }

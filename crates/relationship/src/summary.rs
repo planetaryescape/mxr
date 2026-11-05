@@ -27,7 +27,7 @@ pub(crate) fn attempt_key(account_id: &AccountId, email: &str) -> String {
     format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase())
 }
 
-/// The contact an [`attempt_key`] names, for re-running work an LLM outage
+/// The contact an `attempt_key` names, for re-running work an LLM outage
 /// put off.
 pub fn parse_attempt_key(key: &str) -> Option<(AccountId, String)> {
     let (account_id, email) = key.split_once(':')?;

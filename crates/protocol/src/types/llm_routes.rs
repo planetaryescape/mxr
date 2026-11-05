@@ -109,6 +109,25 @@ pub struct LlmRouteStatusData {
     pub next: bool,
 }
 
+/// The user's own endpoint (`base_url`) as the first route of a fallback
+/// chain. It needs no stored key, so it has no provider.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LlmEndpointStatusData {
+    pub base_url: String,
+    pub model: String,
+    /// Never `no_key`.
+    pub state: LlmRouteStateData,
+    /// When a cooling or broken endpoint may be tried again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Why it is out, e.g. `unreachable`. Fixed phrases only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// A request would go here now.
+    pub next: bool,
+}
+
 /// One AI feature's model and where its requests go.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -131,6 +150,18 @@ pub struct LlmFeatureStatusData {
     /// Privacy settings keep this feature from its model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked: Option<String>,
+    /// `base_url`'s standing when `[llm.fallback]` stands behind it. Absent
+    /// without a fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<LlmEndpointStatusData>,
+    /// The fallback model's routes, tried in order while `base_url` is out.
+    /// Empty without a fallback or when `fallback_withheld` says why.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback: Vec<LlmRouteStatusData>,
+    /// Why this feature keeps to `base_url` although a fallback is
+    /// configured: its data may not go to a cloud model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_withheld: Option<String>,
 }
 
 /// The outcome of storing or removing a provider key.

@@ -232,8 +232,15 @@ impl RuntimeTasks {
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
+///
+/// With a `chain` (from `[llm.fallback]`, see [`llm_fallback_chain`]) a
+/// model `base_url` serves becomes the first route of a `RoutedProvider`,
+/// the hosted fallback's routes behind it; an empty chain keeps the
+/// endpoint alone but under route health (a feature whose data must not
+/// reach the fallback). `chain` is ignored for a model mxr routes itself.
 pub(crate) fn build_llm_provider(
     config: &mxr_config::EffectiveLlmConfig,
+    chain: Option<&LlmFallbackChain>,
     health: &mxr_llm::RouteHealth,
 ) -> Arc<dyn mxr_llm::LlmProvider> {
     if mxr_config::is_demo_instance() {
@@ -242,13 +249,14 @@ pub(crate) fn build_llm_provider(
     if !config.enabled {
         return Arc::new(mxr_llm::NoopProvider);
     }
+    let timeout = std::time::Duration::from_secs(config.request_timeout_secs);
     if let Some(routes) = llm_model_routes(config) {
         return Arc::new(mxr_llm::RoutedProvider::new(
             mxr_llm::RoutedProviderConfig::new(
                 config.model.trim().to_string(),
                 routes,
                 config.context_window,
-                std::time::Duration::from_secs(config.request_timeout_secs),
+                timeout,
                 Arc::new(crate::llm_keys::LlmKeys::at_default_path()),
                 health.clone(),
             ),
@@ -261,15 +269,118 @@ pub(crate) fn build_llm_provider(
             .ok()
             .filter(|s| !s.is_empty())
     };
-    Arc::new(mxr_llm::OpenAiCompatibleProvider::new(
-        mxr_llm::OpenAiCompatibleConfig {
-            base_url: config.base_url.clone(),
-            api_key,
-            model: config.model.clone(),
-            context_window: config.context_window,
-            request_timeout: std::time::Duration::from_secs(config.request_timeout_secs),
-        },
-    ))
+    let endpoint = mxr_llm::OpenAiCompatibleConfig {
+        base_url: config.base_url.clone(),
+        api_key,
+        model: config.model.clone(),
+        context_window: config.context_window,
+        request_timeout: timeout,
+    };
+    let Some(chain) = chain else {
+        return Arc::new(mxr_llm::OpenAiCompatibleProvider::new(endpoint));
+    };
+    let mut routed = mxr_llm::RoutedProviderConfig::new(
+        chain.model.clone(),
+        chain.routes.clone(),
+        chain.context_window.unwrap_or(config.context_window),
+        timeout,
+        Arc::new(crate::llm_keys::LlmKeys::at_default_path()),
+        health.clone(),
+    );
+    routed.endpoint = Some(endpoint);
+    Arc::new(mxr_llm::RoutedProvider::new(routed))
+}
+
+/// The hosted model `[llm.fallback]` names and the routes it goes through,
+/// in order. `routes` is empty for a feature withheld from the fallback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LlmFallbackChain {
+    pub model: String,
+    pub routes: Vec<mxr_llm::Route>,
+    pub context_window: Option<u32>,
+}
+
+impl LlmFallbackChain {
+    /// The same chain with nothing behind the endpoint.
+    fn withheld(&self) -> Self {
+        Self {
+            routes: Vec::new(),
+            ..self.clone()
+        }
+    }
+}
+
+/// `[llm.fallback]` resolved to routes, `Ok(None)` when it is absent, or why
+/// it can't be used. The model must be one mxr routes to a hosted provider
+/// itself; anything else would go to `base_url`, the endpoint it stands in
+/// for.
+pub(crate) fn llm_fallback(
+    config: &mxr_config::LlmConfig,
+) -> std::result::Result<Option<LlmFallbackChain>, String> {
+    let Some(fallback) = &config.fallback else {
+        return Ok(None);
+    };
+    let model = fallback.model.trim();
+    if model.is_empty() {
+        return Err(format!(
+            "llm.fallback.model is empty; name a hosted model such as {} or remove [llm.fallback]",
+            mxr_config::DEFAULT_LLM_FALLBACK_MODEL
+        ));
+    }
+    let Some(routes) = mxr_llm::routes_for_model(model, mxr_llm::Endpoint::Default) else {
+        return Err(format!(
+            "llm.fallback.model `{model}` is not a hosted model mxr can route: use an OpenAI id \
+             (gpt-6-luna), an Anthropic id (claude-haiku-5-5) or an OpenRouter vendor/model id, \
+             or remove [llm.fallback]"
+        ));
+    };
+    if fallback.context_window == Some(0) {
+        // The chain advertises the smallest window, so a zero would shrink
+        // every prompt to the minimum budget even while the endpoint works.
+        return Err(
+            "llm.fallback.context_window is 0; set the fallback model's window or remove the key"
+                .to_string(),
+        );
+    }
+    Ok(Some(LlmFallbackChain {
+        model: model.to_string(),
+        routes,
+        context_window: fallback.context_window,
+    }))
+}
+
+/// The chain `feature` runs with under `effective`: none when there is no
+/// usable fallback or the model is one mxr routes itself (it has its own
+/// fallback); the endpoint alone when the feature's data may not reach the
+/// fallback. A step from the user's endpoint to the cloud passes the same
+/// gate a cloud model does: relationship data needs
+/// `llm.allow_cloud_relationship_data`.
+pub(crate) fn llm_fallback_chain(
+    config: &mxr_config::LlmConfig,
+    fallback: Option<&LlmFallbackChain>,
+    feature: Option<mxr_llm::LlmFeature>,
+    effective: &mxr_config::EffectiveLlmConfig,
+) -> Option<LlmFallbackChain> {
+    let fallback = fallback?;
+    if !effective.enabled || llm_model_routes(effective).is_some() {
+        return None;
+    }
+    let withheld =
+        feature.is_some_and(relationship_data_feature) && !config.allow_cloud_relationship_data;
+    Some(if withheld {
+        fallback.withheld()
+    } else {
+        fallback.clone()
+    })
+}
+
+/// [`llm_fallback`], with an unusable fallback logged and left out: the
+/// daemon still runs every feature on its own model.
+fn usable_llm_fallback(config: &mxr_config::LlmConfig) -> Option<LlmFallbackChain> {
+    llm_fallback(config).unwrap_or_else(|error| {
+        tracing::warn!(%error, "LLM fallback not used");
+        None
+    })
 }
 
 /// Why a locked config update did not happen.
@@ -318,7 +429,7 @@ pub(crate) fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::Eff
 fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime> {
     let health = mxr_llm::RouteHealth::default();
     let runtime = Arc::new(mxr_llm::LlmRuntime::with_route_health(
-        build_llm_provider(&base_llm_config(config), &health),
+        Arc::new(mxr_llm::NoopProvider),
         health,
     ));
     apply_llm_config_to_runtime(&runtime, config);
@@ -327,7 +438,10 @@ fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime>
 
 fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_config::LlmConfig) {
     let health = runtime.route_health().clone();
-    runtime.replace(build_llm_provider(&base_llm_config(config), &health));
+    let fallback = usable_llm_fallback(config);
+    let base = base_llm_config(config);
+    let base_chain = llm_fallback_chain(config, fallback.as_ref(), None, &base);
+    let base_provider = build_llm_provider(&base, base_chain.as_ref(), &health);
     runtime.set_background_timeout(std::time::Duration::from_secs(
         config.background_request_timeout_secs,
     ));
@@ -339,18 +453,28 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
             blocked.insert(feature, reason);
             continue;
         }
-        providers.insert(feature, build_llm_provider(&effective, &health));
+        let chain = llm_fallback_chain(config, fallback.as_ref(), Some(feature), &effective);
+        providers.insert(
+            feature,
+            build_llm_provider(&effective, chain.as_ref(), &health),
+        );
     }
     for feature in relationship_data_features() {
         if providers.contains_key(&feature) || blocked.contains_key(&feature) {
             continue;
         }
-        let effective = base_llm_config(config);
-        if let Some(reason) = relationship_data_block_reason(feature, config, &effective) {
+        if let Some(reason) = relationship_data_block_reason(feature, config, &base) {
             blocked.insert(feature, reason);
+            continue;
+        }
+        // The base provider may fall back to the cloud; this feature keeps
+        // the endpoint alone unless its data is allowed there.
+        let chain = llm_fallback_chain(config, fallback.as_ref(), Some(feature), &base);
+        if chain != base_chain {
+            providers.insert(feature, build_llm_provider(&base, chain.as_ref(), &health));
         }
     }
-    runtime.replace_feature_providers(providers, blocked);
+    runtime.install(base_provider, providers, blocked);
 }
 
 /// The settings a feature runs with: its `[llm.overrides.<feature>]` section
@@ -2024,6 +2148,9 @@ impl AppState {
     /// holds `config_write`.
     fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        // Said now, while someone is waiting on the edit; at startup the
+        // daemon runs without the fallback and `mxr llm status` says why.
+        llm_fallback(&config.llm)?;
         self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;

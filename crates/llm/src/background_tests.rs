@@ -595,6 +595,11 @@ async fn the_cheap_check_lists_models_and_reads_failures_like_a_request() {
     let cases = [
         ("200", ResponseTemplate::new(200), Some(true)),
         ("no listing", ResponseTemplate::new(404), Some(true)),
+        (
+            "listing not permitted",
+            ResponseTemplate::new(403),
+            Some(true),
+        ),
         ("503", ResponseTemplate::new(503), Some(false)),
         ("bad key", ResponseTemplate::new(401), Some(false)),
         ("rate limited", ResponseTemplate::new(429), Some(false)),

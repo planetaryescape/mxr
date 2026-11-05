@@ -18714,6 +18714,47 @@
           }
         }
       },
+      "LlmEndpointStatusData": {
+        "type": "object",
+        "description": "The user's own endpoint (`base_url`) as the first route of a fallback\nchain. It needs no stored key, so it has no provider.",
+        "required": [
+          "base_url",
+          "model",
+          "state",
+          "next"
+        ],
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "next": {
+            "type": "boolean",
+            "description": "A request would go here now."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is out, e.g. `unreachable`. Fixed phrases only."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a cooling or broken endpoint may be tried again."
+          },
+          "state": {
+            "$ref": "#/components/schemas/LlmRouteStateData",
+            "description": "Never `no_key`."
+          }
+        }
+      },
       "LlmFailureKindData": {
         "type": "string",
         "enum": [
@@ -18756,6 +18797,31 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "endpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LlmEndpointStatusData",
+                "description": "`base_url`'s standing when `[llm.fallback]` stands behind it. Absent\nwithout a fallback."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmRouteStatusData"
+            },
+            "description": "The fallback model's routes, tried in order while `base_url` is out.\nEmpty without a fallback or when `fallback_withheld` says why."
+          },
+          "fallback_withheld": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this feature keeps to `base_url` although a fallback is\nconfigured: its data may not go to a cloud model."
           },
           "feature": {
             "type": "string",
@@ -19209,6 +19275,20 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "fallback_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the configured fallback isn't used, e.g. a model mxr can't route."
+          },
+          "fallback_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hosted model `[llm.fallback]` names, used while `base_url` is\nout. Absent when no fallback is configured."
           },
           "features": {
             "type": "array",

@@ -419,3 +419,231 @@ fn a_reload_forgets_what_the_old_setup_taught_about_a_route() {
         );
     });
 }
+
+// --- `[llm.fallback]`: a hosted model behind the user's endpoint ----------
+
+const GEMMA: &str = "gemma4:latest";
+
+async fn with_fallback(state: &Arc<AppState>, base_url: &str, allow_cloud_relationship_data: bool) {
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    config.llm.model = GEMMA.to_string();
+    config.llm.base_url = base_url.to_string();
+    config.llm.allow_cloud_relationship_data = allow_cloud_relationship_data;
+    config.llm.fallback = Some(mxr_config::LlmFallbackConfig::default());
+    state.set_config_for_test(config).await;
+}
+
+fn row<'a>(snapshot: &'a LlmStatusSnapshot, name: &str) -> &'a mxr_protocol::LlmFeatureStatusData {
+    snapshot
+        .features
+        .iter()
+        .find(|row| row.feature == name)
+        .unwrap_or_else(|| panic!("no {name} row"))
+}
+
+#[test]
+fn a_fallback_puts_gpt_6_luna_behind_the_endpoint_but_keeps_relationship_data_local() {
+    isolated(|state| async move {
+        with_fallback(&state, LOCAL, false).await;
+
+        // Drafting may fall back, so it counts as cloud for what it may carry.
+        let draft = state.llm.for_feature(LlmFeature::DraftNew).pin();
+        assert_eq!(draft.model_name(), GEMMA);
+        assert!(draft.leaves_machine());
+        assert!(!relationship_data_allowed(
+            &state.config_snapshot().llm,
+            &draft
+        ));
+        // Relationship features keep the endpoint alone: not blocked, not cloud.
+        for feature in [LlmFeature::RelationshipSummary, LlmFeature::Assistant] {
+            assert_eq!(state.llm.feature_block_reason(feature), None);
+            let pinned = state.llm.for_feature(feature).pin();
+            assert!(!pinned.leaves_machine(), "{feature:?}");
+            assert_eq!(pinned.base_url(), Some(LOCAL), "{feature:?}");
+        }
+
+        let snapshot = status(&state).await;
+        assert_eq!(snapshot.fallback_model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(snapshot.fallback_error, None);
+        let summarize = row(&snapshot, "summarize");
+        assert!(summarize.cloud && !summarize.routed);
+        let endpoint = summarize.endpoint.as_ref().expect("the endpoint leads");
+        assert_eq!(
+            (endpoint.base_url.as_str(), endpoint.model.as_str()),
+            (LOCAL, GEMMA)
+        );
+        assert_eq!(endpoint.state, LlmRouteStateData::Ok);
+        assert!(endpoint.next);
+        let fallback: Vec<_> = summarize
+            .fallback
+            .iter()
+            .map(|route| (route.provider, route.model.as_str(), route.next))
+            .collect();
+        assert_eq!(
+            fallback,
+            [
+                (LlmProviderData::Openai, "gpt-6-luna", false),
+                (LlmProviderData::Openrouter, "openai/gpt-6-luna", false)
+            ]
+        );
+        assert_eq!(summarize.fallback_withheld, None);
+
+        let relationship = row(&snapshot, "relationship_summary");
+        assert!(!relationship.cloud);
+        assert!(relationship.endpoint.is_some());
+        assert!(relationship.fallback.is_empty());
+        assert!(relationship
+            .fallback_withheld
+            .as_deref()
+            .is_some_and(|reason| reason.contains("allow_cloud_relationship_data")));
+    });
+}
+
+#[test]
+fn with_the_opt_in_relationship_features_fall_back_too() {
+    isolated(|state| async move {
+        with_fallback(&state, LOCAL, true).await;
+        let pinned = state.llm.for_feature(LlmFeature::RelationshipSummary).pin();
+        assert!(pinned.leaves_machine());
+        let snapshot = status(&state).await;
+        let relationship = row(&snapshot, "relationship_summary");
+        assert!(relationship.cloud);
+        assert_eq!(relationship.fallback.len(), 2);
+        assert_eq!(relationship.fallback_withheld, None);
+    });
+}
+
+#[test]
+fn a_remote_endpoint_without_the_opt_in_still_blocks_relationship_features() {
+    isolated(|state| async move {
+        with_fallback(&state, "https://ollama.example/v1", false).await;
+        assert!(state
+            .llm
+            .feature_block_reason(LlmFeature::RelationshipSummary)
+            .is_some());
+        let snapshot = status(&state).await;
+        let relationship = row(&snapshot, "relationship_summary");
+        assert!(relationship.blocked.is_some());
+        assert!(relationship.endpoint.is_none() && relationship.fallback.is_empty());
+        assert_eq!(row(&snapshot, "summarize").fallback.len(), 2);
+    });
+}
+
+#[test]
+fn status_shows_which_route_is_in_use_while_the_endpoint_is_out() {
+    isolated(|state| async move {
+        with_fallback(&state, LOCAL, false).await;
+        send(
+            &state,
+            Request::SetLlmKey {
+                provider: LlmProviderData::Openrouter,
+                key: LlmKeySecret::new("sk-or-test".into()),
+                dry_run: false,
+            },
+        )
+        .await;
+        state
+            .llm
+            .route_health()
+            .record_http_failure_for_test(&mxr_llm::EndpointRoute::new(LOCAL, GEMMA), 503);
+
+        let snapshot = status(&state).await;
+        let summarize = row(&snapshot, "summarize");
+        let endpoint = summarize.endpoint.as_ref().unwrap();
+        assert_eq!(endpoint.state, LlmRouteStateData::Cooling);
+        assert_eq!(endpoint.reason.as_deref(), Some("503 server error"));
+        assert!(endpoint.retry_at.is_some() && !endpoint.next);
+        assert_eq!(summarize.fallback[0].state, LlmRouteStateData::NoKey);
+        assert_eq!(summarize.fallback[1].state, LlmRouteStateData::Ok);
+        assert!(summarize.fallback[1].next);
+        // The withheld feature shares the endpoint's health and has nowhere
+        // else to go.
+        let relationship = row(&snapshot, "relationship_summary");
+        assert_eq!(
+            relationship.endpoint.as_ref().unwrap().state,
+            LlmRouteStateData::Cooling
+        );
+
+        // Status JSON an older client reads still parses, and the new
+        // fields are absent when there is no fallback.
+        let json = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(json["fallback_model"], "gpt-6-luna");
+        let mut config = state.config_snapshot();
+        config.llm.fallback = None;
+        state.set_config_for_test(config).await;
+        let plain = serde_json::to_value(status(&state).await).unwrap();
+        assert!(plain.get("fallback_model").is_none());
+        assert!(plain["features"][0].get("endpoint").is_none());
+        assert!(plain["features"][0].get("fallback").is_none());
+    });
+}
+
+#[test]
+fn without_a_fallback_nothing_changes() {
+    isolated(|state| async move {
+        use_model(&state, GEMMA, LOCAL).await;
+        let pinned = state.llm.for_feature(LlmFeature::Summarize).pin();
+        assert!(!pinned.leaves_machine());
+        assert_eq!(pinned.base_url(), Some(LOCAL));
+        let snapshot = status(&state).await;
+        assert_eq!(snapshot.fallback_model, None);
+        assert!(snapshot
+            .features
+            .iter()
+            .all(|row| row.endpoint.is_none() && row.fallback.is_empty() && !row.cloud));
+    });
+}
+
+#[test]
+fn a_routed_model_keeps_its_own_fallback() {
+    isolated(|state| async move {
+        with_fallback(&state, LOCAL, false).await;
+        let mut config = state.config_snapshot();
+        config.llm.model = "claude-haiku-5-5".into();
+        state.set_config_for_test(config).await;
+        let snapshot = status(&state).await;
+        let summarize = row(&snapshot, "summarize");
+        assert!(summarize.routed);
+        assert!(summarize.endpoint.is_none() && summarize.fallback.is_empty());
+    });
+}
+
+#[test]
+fn an_unroutable_fallback_model_is_an_error_on_reload_and_in_status() {
+    isolated(|state| async move {
+        let mut on_disk = state.config_snapshot();
+        on_disk.llm.enabled = true;
+        on_disk.llm.model = GEMMA.into();
+        on_disk.llm.fallback = Some(mxr_config::LlmFallbackConfig {
+            model: "llama3.2".into(),
+            context_window: None,
+        });
+        mxr_config::save_config(&on_disk).unwrap();
+        let Response::Error { message, .. } = send(&state, Request::ReloadLlmConfig).await else {
+            panic!("a fallback mxr can't route is refused");
+        };
+        assert!(
+            message.contains("llm.fallback.model `llama3.2` is not a hosted model mxr can route"),
+            "{message}"
+        );
+
+        // A daemon that starts with it runs without the fallback and says why.
+        state.set_config_for_test(on_disk).await;
+        let snapshot = status(&state).await;
+        assert_eq!(snapshot.fallback_model.as_deref(), Some("llama3.2"));
+        assert!(snapshot
+            .fallback_error
+            .as_deref()
+            .is_some_and(|error| error.contains("not a hosted model")));
+        assert!(snapshot
+            .features
+            .iter()
+            .all(|row| row.endpoint.is_none() && !row.cloud));
+        assert!(!state
+            .llm
+            .for_feature(LlmFeature::Summarize)
+            .pin()
+            .leaves_machine());
+    });
+}

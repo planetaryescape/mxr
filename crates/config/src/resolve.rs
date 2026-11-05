@@ -926,6 +926,42 @@ mod tests {
         assert!(saved.contains("models = [\"local-one\"]"));
         assert!(!saved.contains("assistant_models"));
     }
+
+    #[test]
+    fn an_llm_fallback_table_turns_the_fallback_on_with_gpt_6_luna_by_default() {
+        let none =
+            load_config_from_str("[llm]\nmodel = \"gemma4:latest\"\n").expect("config loads");
+        assert_eq!(none.llm.fallback, None, "no table, no fallback");
+        assert!(!toml::to_string(&none)
+            .expect("config serializes")
+            .contains("fallback"));
+
+        let bare = load_config_from_str("[llm]\n[llm.fallback]\n").expect("config loads");
+        assert_eq!(
+            bare.llm.fallback,
+            Some(crate::types::LlmFallbackConfig {
+                model: "gpt-6-luna".into(),
+                context_window: None,
+            })
+        );
+
+        let named = load_config_from_str(
+            "[llm]\n[llm.fallback]\nmodel = \"claude-haiku-5-5\"\ncontext_window = 200000\n",
+        )
+        .expect("config loads");
+        let saved = toml::to_string(&named).expect("config serializes");
+        assert_eq!(
+            load_config_from_str(&saved)
+                .expect("saved config loads")
+                .llm
+                .fallback,
+            named.llm.fallback
+        );
+        assert_eq!(
+            named.llm.fallback.expect("fallback kept").context_window,
+            Some(200_000)
+        );
+    }
 }
 
 #[cfg(test)]

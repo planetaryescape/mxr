@@ -211,6 +211,13 @@ pub struct LlmStatusSnapshot {
     /// Which providers have a key. Presence only, never the key.
     #[serde(default)]
     pub keys: Vec<LlmKeyStatusData>,
+    /// The hosted model `[llm.fallback]` names, used while `base_url` is
+    /// out. Absent when no fallback is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_model: Option<String>,
+    /// Why the configured fallback isn't used, e.g. a model mxr can't route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

@@ -303,6 +303,7 @@ expression: summary
     "LabelKind",
     "LargestMessageRow",
     "LlmConfigData",
+    "LlmEndpointStatusData",
     "LlmFailureKindData",
     "LlmFeatureStatusData",
     "LlmKeyChangeData",

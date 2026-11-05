@@ -86,6 +86,7 @@ changes the wait in seconds; `0` turns it off.
 [transports.tcp]
 [notifications.chimes]
 [llm]
+[llm.fallback]
 [llm.overrides.answer_coverage]
 [safety.recipients]
 [safety.tone]
@@ -169,6 +170,11 @@ api_key_env = ""                          # name of env var; empty for Ollama / 
 context_window = 8192
 request_timeout_secs = 120
 allow_cloud_relationship_data = false     # true lets relationship features use a cloud endpoint
+
+# [llm.fallback]
+# Optional. A hosted model used while base_url is out. Off unless present.
+# model = "gpt-6-luna"                    # the default when the table is present
+# context_window = 128000                 # defaults to llm.context_window
 
 [llm.overrides.answer_coverage]
 # Optional per-feature LLM override. Same shape as [llm] above. Useful
@@ -663,6 +669,11 @@ models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "c
 [llm.compose]
 # Omit to inherit llm.model. A per-draft choice never changes this default.
 model = "gemma4:latest"
+
+[llm.fallback]
+# Omit the table for no fallback. Used while base_url is out.
+model = "gpt-6-luna"                # the default when the table is present
+# context_window = 128000           # defaults to llm.context_window
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
@@ -683,6 +694,18 @@ llm.compose.model <id> --dry-run` to preview the same catalogue-checked change
 without writing it. Legacy drafting overrides keep working when this setting
 is absent and warn that `[llm.compose] model` is the replacement.
 
+`[llm.fallback]` puts a hosted model behind a model that `base_url` serves:
+after one failed attempt on `base_url`, requests go to the fallback through
+the providers it routes to (`gpt-6-luna`: OpenAI, then OpenRouter, each with
+a stored key) until `base_url` answers again. `model` defaults to
+`gpt-6-luna` and must be an id mxr routes itself (`gpt-<number>`,
+`claude-*`, or an OpenRouter `vendor/model` id); `context_window` defaults to
+`llm.context_window`, and prompts are built to fit the smaller of the two.
+Relationship features use the fallback only with
+`allow_cloud_relationship_data = true`. `mxr config set llm.fallback.model
+<id>` sets it and refuses an id mxr can't route; an empty value removes the
+table. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
+
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
 time; raise it for a hosted endpoint.
@@ -698,8 +721,9 @@ apply: mxr restart`.
 
 Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
-is present. It lists each feature's model and, for Claude models, the
-providers in order with their health. It also reports process-local model request outcomes by provider
+is present. It lists each feature's model and, for Claude and GPT models, the
+providers in order with their health. With `[llm.fallback]` it shows
+`base_url`'s health first and the fallback's providers after it. It also reports process-local model request outcomes by provider
 route: initially no observation, then a typed success or failure. A successful
 request on one feature route does not clear another route's failure, and a
 provider reload clears the old outcomes. Status never probes the model endpoint.

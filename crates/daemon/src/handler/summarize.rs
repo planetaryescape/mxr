@@ -3,7 +3,10 @@
 //! the configured LLM for a per-message conversation summary.
 
 use super::{relationship_profile, HandlerResult};
-use crate::state::{owned_addresses_for, owned_addresses_revision, AppState};
+use crate::state::{
+    llm_endpoint_is_local, owned_addresses_for, owned_addresses_revision,
+    relationship_data_allowed, AppState,
+};
 use mxr_core::id::ThreadId;
 use mxr_core::types::{Address, Envelope, OwnedAddresses};
 use mxr_llm::{
@@ -80,27 +83,46 @@ The verdict line must stand alone and be machine-parseable: one token, one em
 dash, one clause. No hedging ("possibly", "might be"), no second sentence."#;
 
 pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
-    let summary =
-        summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id).await?;
+    let summary = summarize_thread_cached(
+        state.store.clone(),
+        state.llm.clone(),
+        state.config_snapshot().llm.allow_cloud_relationship_data,
+        thread_id,
+    )
+    .await?;
     Ok(ResponseData::ThreadSummary {
         text: summary.text,
         model: summary.model,
     })
 }
 
+/// Whether a summary written now may carry the stored relationship summaries
+/// of the thread's people. The cache check must ask the same question as the
+/// writer, or every summary written without them would miss.
+pub(crate) fn summary_shares_relationship(state: &AppState) -> bool {
+    let llm = state.llm.for_feature(LlmFeature::Summarize).pin();
+    relationship_data_allowed(&state.config_snapshot().llm, &llm)
+}
+
 pub(crate) async fn valid_cached_summary(
     store: &Store,
     thread_id: &ThreadId,
     envelopes: &[Envelope],
+    share_relationship: bool,
 ) -> Option<ThreadSummaryData> {
     // The writer summarizes for the thread's account, so the check must read the
     // same one. A failed read is a miss, not an empty owner set.
     let account_id = store.get_thread(thread_id).await.ok().flatten()?.account_id;
     let owned_addresses = owned_addresses_for(store, &account_id).await.ok()?;
-    let relationship_hash =
-        relationship_context_for_summary(store, &account_id, &owned_addresses, envelopes)
-            .await
-            .1;
+    let relationship_hash = relationship_context_for_summary(
+        store,
+        &account_id,
+        &owned_addresses,
+        envelopes,
+        share_relationship,
+    )
+    .await
+    .1;
     let owned_revision = owned_addresses_revision(&owned_addresses);
     // The owner's addresses are in the prompt, so a new alias must miss. Rows
     // written under the old key miss once and are replaced in place (one row per
@@ -117,12 +139,20 @@ pub(crate) async fn valid_cached_summary(
     })
 }
 
+/// `allow_cloud_relationship_data` is `llm.allow_cloud_relationship_data`.
+/// Stored relationship summaries are other people's mail condensed, so they
+/// go only to a model on this machine unless that setting allows the cloud.
 pub(crate) async fn summarize_thread_cached(
     store: Arc<Store>,
     llm: Arc<LlmRuntime>,
+    allow_cloud_relationship_data: bool,
     thread_id: &ThreadId,
 ) -> Result<ThreadSummaryData, String> {
-    let context = load_summary_context(&store, thread_id).await?;
+    // Pin once so the decision about what the prompt carries and the call
+    // itself use the same endpoint, even if a config reload lands meanwhile.
+    let llm = llm.for_feature(LlmFeature::Summarize).pin();
+    let share_relationship = allow_cloud_relationship_data || llm_endpoint_is_local(&llm);
+    let context = load_summary_context(&store, thread_id, share_relationship).await?;
     if let Some(record) = store
         .get_thread_summary(thread_id)
         .await
@@ -147,11 +177,7 @@ pub(crate) async fn summarize_thread_cached(
         temperature: Some(0.2),
     };
 
-    let response = match llm
-        .for_feature(LlmFeature::Summarize)
-        .complete(request)
-        .await
-    {
+    let response = match llm.complete(request).await {
         Ok(response) => response,
         Err(LlmError::Disabled) => {
             return Err(
@@ -202,6 +228,7 @@ struct SummaryContext {
 async fn load_summary_context(
     store: &Store,
     thread_id: &ThreadId,
+    share_relationship: bool,
 ) -> Result<SummaryContext, String> {
     let thread = store
         .get_thread(thread_id)
@@ -246,9 +273,14 @@ async fn load_summary_context(
         thread.id,
         envelopes.len()
     ));
-    let (relationship_prompt, relationship_hash) =
-        relationship_context_for_summary(store, &thread.account_id, &owned_addresses, &envelopes)
-            .await;
+    let (relationship_prompt, relationship_hash) = relationship_context_for_summary(
+        store,
+        &thread.account_id,
+        &owned_addresses,
+        &envelopes,
+        share_relationship,
+    )
+    .await;
 
     // Everything derived from mail — the subject, the relationship context
     // (itself summarized from prior mail), and the message transcript — is
@@ -313,7 +345,13 @@ async fn relationship_context_for_summary(
     account_id: &mxr_core::AccountId,
     owned_addresses: &OwnedAddresses,
     envelopes: &[Envelope],
+    share_relationship: bool,
 ) -> (String, String) {
+    if !share_relationship {
+        // A hash of its own, so a summary written with the context misses
+        // once the context is withheld, and the other way round.
+        return (String::new(), "withheld".to_string());
+    }
     let owned = owned_addresses
         .iter()
         .map(str::to_ascii_lowercase)
@@ -415,6 +453,8 @@ mod tests {
     #[derive(Default)]
     struct CapturingLlm {
         requests: Mutex<Vec<CompletionRequest>>,
+        /// `None` answers on this machine; a remote URL makes it a cloud model.
+        base_url: Option<String>,
     }
 
     #[async_trait::async_trait]
@@ -438,6 +478,10 @@ mod tests {
 
         fn model_name(&self) -> &str {
             "test-llm"
+        }
+
+        fn base_url(&self) -> Option<&str> {
+            self.base_url.as_deref()
         }
     }
 
@@ -694,7 +738,7 @@ mod tests {
             );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
             .await
             .is_some());
 
@@ -712,7 +756,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
             .await
             .is_none());
 
@@ -722,6 +766,73 @@ mod tests {
         assert!(requests[1].messages[1]
             .content
             .contains("Alice now wants launch risks called out first."));
+    }
+
+    #[tokio::test]
+    async fn a_cloud_summary_leaves_out_relationship_summaries_unless_allowed() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm {
+            base_url: Some("https://llm.example.com/v1".to_string()),
+            ..CapturingLlm::default()
+        });
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let thread_id = mxr_core::ThreadId::new();
+        let message = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("first")
+            .sender_address("Alice", "alice@example.com")
+            .subject("Launch")
+            .snippet("Can you review the launch note?")
+            .build();
+        state.store.upsert_envelope(&message).await.unwrap();
+        state
+            .store
+            .insert_body(&body(message.id.clone(), "Can you review the launch note?"))
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id,
+                email: "alice@example.com".to_string(),
+                text: "Alice prefers launch context before asks.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["launch".to_string()],
+                computed_at: chrono::Utc::now(),
+                source_hash: "relationship-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        assert!(!state.config_snapshot().llm.allow_cloud_relationship_data);
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        {
+            let requests = llm.requests.lock().expect("requests");
+            let prompt = &requests[0].messages[1].content;
+            assert!(prompt.contains("Can you review the launch note?"));
+            assert!(!prompt.contains("Alice prefers launch context"));
+            assert!(!prompt.contains("Relationship context"));
+        }
+        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
+        assert!(!summary_shares_relationship(&state));
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes, false)
+                .await
+                .is_some(),
+            "the reader's cache check must match what the writer sent"
+        );
+
+        summarize_thread_cached(state.store.clone(), state.llm.clone(), true, &thread_id)
+            .await
+            .unwrap();
+        let requests = llm.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 2, "allowing the context misses the old cache");
+        assert!(requests[1].messages[1]
+            .content
+            .contains("Alice prefers launch context before asks."));
     }
 
     #[tokio::test]
@@ -781,7 +892,7 @@ mod tests {
         summarize_thread(&state, &thread_id).await.unwrap();
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
         assert!(
-            valid_cached_summary(&state.store, &thread_id, &envelopes)
+            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
                 .await
                 .is_some(),
             "a summary must validate against the account it was written for"
@@ -812,7 +923,7 @@ mod tests {
 
         summarize_thread(&state, &thread_id).await.unwrap();
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
             .await
             .is_some());
 
@@ -823,7 +934,7 @@ mod tests {
             .add_account_address(&account_id, "new-alias@example.com", false)
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
             .await
             .is_none());
     }

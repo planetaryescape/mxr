@@ -1540,7 +1540,13 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
         .into_iter()
         .filter(|message| accounts.contains(&message.account_id))
         .collect::<Vec<_>>();
-    let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
+    let summary = super::summarize::valid_cached_summary(
+        &state.store,
+        thread_id,
+        &messages,
+        super::summarize::summary_shares_relationship(state),
+    )
+    .await;
     Ok(ResponseData::Thread {
         thread,
         messages,

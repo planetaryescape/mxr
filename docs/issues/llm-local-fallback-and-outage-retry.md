@@ -91,3 +91,13 @@ From CodeRabbit's review of the fallback PR, 2026-11-05. Fixed in the PR: the ba
 - `prompt_budget_chars` doesn't reserve the hosted routes' thinking headroom.
 - The status chain label shows `base_url:` without the URL, and marks no route `next` when only the foreground forced attempt would run.
 
+
+## Gaps found in the docs-parity audit, 2026-11-05
+
+The docs now describe what the code does. Fixed alongside: `mxr summarize` sent stored relationship summaries to a cloud model without `allow_cloud_relationship_data`; the web reader showed a `y` key on Summarize that does nothing; `mxr config get`'s key list left out `llm.fallback.model`. Not fixed:
+
+- A `gpt-*` model with `base_url = "https://api.openai.com/v1"` isn't routed, so the plain client sends `max_tokens` and a temperature, which current OpenAI models reject. Unconfirmed against the live API; the docs no longer use that example.
+- The OpenRouter route for `openai/gpt-6-luna` is built without the OpenAI dialect, so tool calls there carry no `reasoning_effort: "none"`. Unconfirmed whether OpenRouter needs it.
+- The background pause shows nowhere in `mxr llm status`, only in the daemon log.
+- `voice_match` and `expert` are accepted override keys with no model call behind them.
+- An `[llm.overrides.*]` table silently ignores keys it doesn't take (`deny_unknown_fields` is off).

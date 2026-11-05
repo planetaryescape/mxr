@@ -154,7 +154,7 @@ describe("SearchPalette", () => {
 
     expect(router.navigate).toHaveBeenCalledWith({
       to: "/search",
-      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+      search: { q: "invoice", mode: "lexical" },
     });
     expect(router.navigate).not.toHaveBeenCalledWith(
       expect.objectContaining({ to: "/m/$mailbox/$threadId" }),
@@ -173,7 +173,7 @@ describe("SearchPalette", () => {
 
     expect(router.navigate).toHaveBeenCalledWith({
       to: "/search",
-      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+      search: { q: "invoice", mode: "lexical" },
     });
   });
 });

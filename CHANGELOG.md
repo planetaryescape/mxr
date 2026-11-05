@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.214](https://github.com/planetaryescape/mxr/compare/v0.6.213...v0.6.214) (2026-11-05)
+
+
+### Bug Fixes
+
+* count subscription one-offs per account ([#881](https://github.com/planetaryescape/mxr/issues/881)) ([bedea43](https://github.com/planetaryescape/mxr/commit/bedea4367fee975eec48ea505c437b56a541c61f))
+
+
+### Documentation
+
+* note that agent-work trims targets and seeds new pool slots ([#880](https://github.com/planetaryescape/mxr/issues/880)) ([d3fc900](https://github.com/planetaryescape/mxr/commit/d3fc900c31795712dc5ae154f9bc6bd91407bcd6))
+
 ## [0.6.213](https://github.com/planetaryescape/mxr/compare/v0.6.212...v0.6.213) (2026-11-05)
 
 

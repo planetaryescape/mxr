@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.213"
+    "version": "0.6.214"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {

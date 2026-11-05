@@ -768,8 +768,7 @@ request outcomes per feature (`default` for the base model): initially no
 observation, then a typed success or failure. A success on one feature does
 not clear another feature's failure, and a provider reload clears the old
 outcomes. While background calls are paused after repeated endpoint failures,
-status says when the endpoint is checked next (`background_paused_until` in
-JSON). Status never probes the model endpoint. Feature health reports the
+status says until when (`background_paused_until` in JSON). Status never probes the model endpoint. Feature health reports the
 same observations; core mail stays usable when an optional model is
 unavailable.
 

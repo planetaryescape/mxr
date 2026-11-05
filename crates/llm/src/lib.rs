@@ -798,7 +798,8 @@ impl LlmRuntime {
     }
 
     /// When the pause on background calls after repeated endpoint failures
-    /// ends and the endpoint is checked again, or `None` while they run.
+    /// ends, or `None` while they run. The first background call after it
+    /// checks the endpoint first.
     pub fn background_paused_until(&self) -> Option<std::time::SystemTime> {
         let clocks = Clocks::current();
         let remaining = self.breaker().remaining(clocks.now)?;

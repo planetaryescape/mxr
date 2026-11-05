@@ -19243,7 +19243,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the pause on background model calls after repeated endpoint\nfailures ends and the endpoint is checked again. Absent while they\nrun, and for routed models, whose routes show their own health."
+            "description": "When the pause on background model calls after repeated endpoint\nfailures ends; the first background call after it checks the endpoint\nbefore sending mail. Absent while they run. Features on a routed model\nor with `[llm.fallback]` are never paused; their routes show their\nown health."
           },
           "base_url": {
             "type": [

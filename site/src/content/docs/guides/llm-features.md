@@ -343,8 +343,8 @@ contact being processed is not blamed for it:
 - After five endpoint failures in a row, background model calls pause for 5
   minutes, doubling to 10 minutes while the endpoint stays out. Commands you run
   are not paused. `mxr llm status` prints `background calls paused after
-  repeated endpoint failures; next check 14:37`, and `--format json` carries
-  the time as `background_paused_until`.
+  repeated endpoint failures until 14:37`, and `--format json` carries the
+  time as `background_paused_until`.
 - When a pause ends, mxr checks a `base_url` endpoint with `GET
   <base_url>/models`, which sends no mail. One check runs at a time, and a
   failed check starts the next, longer pause.

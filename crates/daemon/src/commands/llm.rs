@@ -140,7 +140,7 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
             }
             if let Some(until) = snapshot.background_paused_until {
                 println!(
-                    "background calls paused after repeated endpoint failures; next check {}",
+                    "background calls paused after repeated endpoint failures until {}",
                     until.with_timezone(&chrono::Local).format("%H:%M")
                 );
             }

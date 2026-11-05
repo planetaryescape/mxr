@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.222](https://github.com/planetaryescape/mxr/compare/v0.6.221...v0.6.222) (2026-11-05)
+
+
+### Bug Fixes
+
+* provenance follows the route that answered, and the other LLM review follow-ups ([#903](https://github.com/planetaryescape/mxr/issues/903)) ([78bf619](https://github.com/planetaryescape/mxr/commit/78bf619a5991e548224a01ee51e3f6c0fa84ee06))
+
 ## [0.6.221](https://github.com/planetaryescape/mxr/compare/v0.6.220...v0.6.221) (2026-11-05)
 
 

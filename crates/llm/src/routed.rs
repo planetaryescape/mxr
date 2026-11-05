@@ -672,7 +672,7 @@ impl LlmProvider for RoutedProvider {
     }
 
     /// The endpoint answers under its own name and a hosted route under
-    /// [`answered_by`]'s label, so the label says which one this was.
+    /// `answered_by`'s label, so the label says which one this was.
     fn answered_on_this_machine(&self, answered_model: &str) -> bool {
         !hosted_answer(answered_model)
             && self

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.215](https://github.com/planetaryescape/mxr/compare/v0.6.214...v0.6.215) (2026-11-05)
+
+
+### Features
+
+* fall back to a cloud model when the local LLM endpoint is out ([#883](https://github.com/planetaryescape/mxr/issues/883)) ([dcbfdb0](https://github.com/planetaryescape/mxr/commit/dcbfdb0f6f7898a79a9689716fdfe564cf83d40a))
+
+
+### Bug Fixes
+
+* point diagnostics at mxr restart and fix the records and scheduled-send hints ([#884](https://github.com/planetaryescape/mxr/issues/884)) ([b26468b](https://github.com/planetaryescape/mxr/commit/b26468b15049e605b3b6f1f5c764617adaa0ff4d))
+
 ## [0.6.214](https://github.com/planetaryescape/mxr/compare/v0.6.213...v0.6.214) (2026-11-05)
 
 

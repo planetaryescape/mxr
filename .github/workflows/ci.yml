@@ -294,7 +294,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.classifier == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # About 12 minutes on a usual runner; a runner 2.5 times slower took 29
-    # (docs/issues/classify-eval-full-near-timeout.md). The limit only stops a
+    # (2026-10-28, on #735). The limit only stops a
     # hung job: a slower classifier fails the test's work-per-sync budget,
     # which a slow runner doesn't move.
     timeout-minutes: 45

@@ -287,7 +287,7 @@ A child inherits its parent's bindings and may override one only with the same v
 | Destroy | Only an option named with its object ("Discard draft", "Delete rule") destroys, and never on `Esc` or a bare `Enter` default. |
 | Toggle | The key that opened a toggle sheet (`?`, `A`) also closes it. |
 
-A closing overlay stops owning keys as soon as it starts to close. This fixes `docs/issues/menu-exit-swallows-keys.md`, where a menu in its exit animation swallowed the next `u`.
+A closing overlay stops owning keys as soon as it starts to close. This fixed a bug where a menu in its exit animation swallowed the next `u`.
 
 ## Prefixes show what can follow
 

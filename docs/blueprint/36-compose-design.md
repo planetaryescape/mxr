@@ -31,8 +31,7 @@ screenshots of the web app:
 - Each reply attempt makes a new draft; Compose reopens the last unsent one.
 - The Rich text/Markdown toggle changes the setting for every draft.
 - No reply composer shows the message it answers.
-- Typing a known contact in To crashes the app
-  (`docs/issues/compose-recipient-autocomplete-crash.md`).
+- Typing a known contact in To crashed the app (fixed 2026-10).
 
 The screen is noisy because too many things have equal weight, and
 confusing because one job has several shapes. The design removes and merges

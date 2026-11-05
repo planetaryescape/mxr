@@ -304,7 +304,7 @@ describe("installKeyDispatcher", () => {
       expect(undo.run).not.toHaveBeenCalled();
     });
 
-    // docs/issues/menu-exit-swallows-keys.md: Radix keeps a menu mounted,
+    // Radix keeps a menu mounted,
     // with focus inside it, through its exit animation.
     test("a menu animating closed does not swallow keys", () => {
       const undo = runAction("undo", "u");

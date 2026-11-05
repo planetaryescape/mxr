@@ -1517,7 +1517,7 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: A sender that puts no reference in its mail still merges two accounts with the same due day; the not-sure path is the fallback.
 
-**Amended 2026-10-29: same email, same to-do.** The due period keeps next month's bill, which arrives in a new email, a new to-do. A rescan of the same email that moves the due date into another month (a corrected 31 October that becomes 1 November) now keeps that email's row: the row takes the new key with its id, state, snooze and edits, and shows the new due date unless the user edited the row. Before, the rescan made a second row with the new date; an untouched old row dropped out of the list, while a snoozed or edited one stayed open beside it with the old date. One email with two dated items keeps one row per item. The key format is unchanged, so existing rows need no migration (`Store::adopt_asks_same_source`, `docs/issues/todo-bill-key-crosses-month.md`).
+**Amended 2026-10-29: same email, same to-do.** The due period keeps next month's bill, which arrives in a new email, a new to-do. A rescan of the same email that moves the due date into another month (a corrected 31 October that becomes 1 November) now keeps that email's row: the row takes the new key with its id, state, snooze and edits, and shows the new due date unless the user edited the row. Before, the rescan made a second row with the new date; an untouched old row dropped out of the list, while a snoozed or edited one stayed open beside it with the old date. One email with two dated items keeps one row per item. The key format is unchanged, so existing rows need no migration (`Store::adopt_asks_same_source`).
 
 ## D181: The eval grades asks per kind and field on the positives
 
@@ -1579,7 +1579,7 @@ The lexical index converts HTML to text with the reader's built-in converter and
 
 **Considered**: Keeping the reply in a full sheet over the list (b2ea14e8b); a docked title bar above the tab bar (before b2ea14e8b); a first Back that closes the reply and a second that reaches the list.
 
-**Why**: BK, 2026-10-29: "close the draft, show draft on the message in the message list in the accent color, similar to what whatsapp does, I think imessage does the same, if they open the message, their draft is there and they can continue". On a phone the sheet looked like Back had done nothing (docs/issues/phone-back-reopens-draft.md).
+**Why**: BK, 2026-10-29: "close the draft, show draft on the message in the message list in the accent color, similar to what whatsapp does, I think imessage does the same, if they open the message, their draft is there and they can continue". On a phone the sheet looked like Back had done nothing.
 
 **Trade-offs accepted**: The same rule applies on wide layouts, where b2ea14e8b had already replaced the docked window with the sheet. Moving the lamp with `j` and `k` does not resume the reply, so the keys stay with the list; the reply box under the conversation shows the draft instead.
 

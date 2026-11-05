@@ -366,8 +366,7 @@ pub(super) fn search_worker_failed(state: &AppState) -> bool {
 fn search_feature_health(worker_failed: bool) -> FeatureHealth {
     if worker_failed {
         FeatureHealth::Degraded {
-            reason: "search index worker stopped; restart the daemon (`mxr daemon --restart`)"
-                .to_string(),
+            reason: "search index worker stopped; restart the daemon (`mxr restart`)".to_string(),
         }
     } else {
         FeatureHealth::Healthy
@@ -474,7 +473,7 @@ pub(crate) fn build_doctor_findings(
             category: DoctorFindingCategory::SearchIndex,
             severity: DoctorFindingSeverity::Error,
             message: "Search index worker stopped — search is unavailable".into(),
-            remediation: vec!["mxr daemon --restart".into()],
+            remediation: vec!["mxr restart".into()],
         });
     }
     if !inputs.index_exists || inputs.repair_required {
@@ -506,7 +505,7 @@ pub(crate) fn build_doctor_findings(
             category: DoctorFindingCategory::Daemon,
             severity: DoctorFindingSeverity::Warning,
             message: "Daemon protocol changed — restart needed".into(),
-            remediation: vec!["mxr daemon --restart".into()],
+            remediation: vec!["mxr restart".into()],
         });
     }
 
@@ -545,14 +544,12 @@ pub(crate) fn build_doctor_findings(
 
     for line in inputs.recent_errors {
         // The sync loop logs each failure it also records in sync status, so a
-        // line that carries a status error is the same failure, already reported
-        // above with its account and a more precise severity.
-        let mirrors_sync_status = inputs.sync_statuses.iter().any(|status| {
-            status
-                .last_error
-                .as_deref()
-                .is_some_and(|err| !err.is_empty() && line.contains(err))
-        });
+        // line that is that account's status error is the same failure, already
+        // reported above with its account and a more precise severity.
+        let mirrors_sync_status = inputs
+            .sync_statuses
+            .iter()
+            .any(|status| log_line_mirrors_sync_status(line, status));
         if mirrors_sync_status {
             continue;
         }
@@ -565,6 +562,25 @@ pub(crate) fn build_doctor_findings(
     }
 
     findings
+}
+
+/// Whether a logged line is the failure this account's sync status reports.
+///
+/// The account and the whole message must match. Two accounts can hit the same
+/// error text, and one account's status must not hide the other's log line.
+/// The daemon writes JSON logs with the account in `fields.account` and the
+/// message in `fields.message` (`crates/daemon/src/loops.rs`, "Sync error:").
+fn log_line_mirrors_sync_status(line: &str, status: &mxr_protocol::AccountSyncStatus) -> bool {
+    let Some(err) = status.last_error.as_deref().filter(|err| !err.is_empty()) else {
+        return false;
+    };
+    let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    let account = status.account_id.as_str();
+    let message = format!("Sync error: {err}");
+    entry["fields"]["account"].as_str() == Some(account.as_str())
+        && entry["fields"]["message"].as_str() == Some(message.as_str())
 }
 
 fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding {
@@ -1069,11 +1085,11 @@ mod tests {
             healthy: false,
             progress: None,
         };
-        let logged = format!("2026-10-21T10:00:00Z ERROR mxr: Sync error: {error}");
+        let logged = sync_error_log_line(&status.account_id, error);
         let unrelated = "ERROR oauth token expired for another account";
 
         let findings = build_doctor_findings(DoctorFindingInputs {
-            sync_statuses: &[status],
+            sync_statuses: std::slice::from_ref(&status),
             recent_errors: &[
                 logged.clone(),
                 logged,
@@ -1235,6 +1251,66 @@ mod tests {
 
         assert_eq!(finding.category, DoctorFindingCategory::Sync);
         assert!(finding.remediation.is_empty());
+    }
+
+    /// A sync failure line as the daemon writes it: the account rides in
+    /// its own field, the error in the message.
+    fn sync_error_log_line(account: &mxr_core::id::AccountId, error: &str) -> String {
+        serde_json::json!({
+            "timestamp": "2026-10-21T10:00:00Z",
+            "level": "ERROR",
+            "fields": {
+                "message": format!("Sync error: {error}"),
+                "account": account.as_str(),
+            },
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_status_error_does_not_hide_another_accounts_log_line() {
+        let error = "Provider error: Auth error: Token refresh temporarily unavailable: token endpoint connection failed";
+        let status = mxr_protocol::AccountSyncStatus {
+            account_id: mxr_core::id::AccountId::new(),
+            account_name: "work".into(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: Some(error.to_string()),
+            failure_class: Some("network".into()),
+            consecutive_failures: 1,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: false,
+            progress: None,
+        };
+        // Another account hit the same failure text and has no status of its
+        // own, so its log line is the only report it gets.
+        let other_account = mxr_core::id::AccountId::new();
+        let other_line = sync_error_log_line(&other_account, error);
+
+        let findings = build_doctor_findings(DoctorFindingInputs {
+            sync_statuses: std::slice::from_ref(&status),
+            recent_errors: &[other_line],
+            data_dir_exists: true,
+            database_exists: true,
+            index_exists: true,
+            socket_exists: true,
+            repair_required: false,
+            restart_required: false,
+            semantic_enabled: false,
+            search_worker_stopped: false,
+            address_cache_stale: false,
+            data_stats: &mxr_protocol::DoctorDataStats::default(),
+        });
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.message == "Connection issue in recent logs"),
+            "the other account's log line must still surface: {findings:?}"
+        );
     }
 
     #[test]

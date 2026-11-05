@@ -150,7 +150,7 @@ mxr records ask "octopus"
 ```text
 Octopus Energy · 3 records · £368.35
 9 Jul 2026 to 9 Sep 2026
-Issuer page: mxr records --issuer "Octopus Energy"
+Issuer page: mxr records list --issuer "Octopus Energy"
 Best match: rec_1fdbbc766c9442a29ebb06000bf735f1
 ```
 

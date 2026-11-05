@@ -183,7 +183,7 @@ Search is limited while the index is unavailable: subject, sender and preview on
 
 On the command line the line goes to stderr, so piped results are unchanged, and `--format json` adds a `degraded` field. Limited results are newest first and do not look inside message bodies. Words match the subject, the sender's name and the preview; `from:` matches the whole address; `in:anywhere` still works and includes Trash and Spam.
 
-A query that uses anything else (`is:`, `has:`, `label:`, dates, `to:`, `OR`, `-term`) is refused with the same message, naming the part that cannot run, instead of returning a looser answer. Counts, grouping and `--search` selections for archive, label and other changes are refused too. Restart the daemon (`mxr daemon --restart`) and full search comes back.
+A query that uses anything else (`is:`, `has:`, `label:`, dates, `to:`, `OR`, `-term`) is refused with the same message, naming the part that cannot run, instead of returning a looser answer. Counts, grouping and `--search` selections for archive, label and other changes are refused too. Restart the daemon (`mxr restart`) and full search comes back.
 
 ## TUI flow
 

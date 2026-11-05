@@ -75,15 +75,20 @@ pub struct Route {
 pub struct EndpointRoute {
     pub base_url: String,
     pub model: String,
+    /// The name of the variable its key is read from, never the key. Two
+    /// overrides on one server with different keys are separate routes: one
+    /// key failing says nothing about the other.
+    pub api_key_env: String,
 }
 
 impl EndpointRoute {
     /// Normalised the way the HTTP client normalises its URL, so the
     /// provider and `mxr llm status` name the same route.
-    pub fn new(base_url: &str, model: &str) -> Self {
+    pub fn new(base_url: &str, model: &str, api_key_env: &str) -> Self {
         Self {
             base_url: base_url.trim().trim_end_matches('/').to_string(),
             model: model.trim().to_string(),
+            api_key_env: api_key_env.trim().to_string(),
         }
     }
 }

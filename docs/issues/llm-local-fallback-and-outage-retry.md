@@ -101,6 +101,16 @@ The docs now describe what the code does. Fixed alongside: `mxr summarize` sent 
 - `mxr llm status` shows the background pause and when the endpoint is checked next (`background_paused_until`).
 - `llm.overrides.voice_match` and `llm.overrides.expert` are retired keys: ignored, and named once in the log.
 
-Not fixed:
+- Unknown keys in `[llm.overrides]` (a setting an override doesn't take, or a feature mxr doesn't know) are named once in the log. Loading still succeeds, so a typo can't stop the daemon.
 
-- An `[llm.overrides.*]` table silently ignores keys it doesn't take (`deny_unknown_fields` is off).
+The review follow-ups deferred from #883 above were fixed on 2026-11-05 (fix/llm-deferred-review-items):
+
+- Draft, gist and promise provenance follow the route that answered: the endpoint on this machine is local even with a hosted fallback behind it.
+- Compose-model drafts share the daemon's route health.
+- `mxr llm status` shows the compose model on the drafting rows.
+- A bad `[llm.fallback]` no longer holds back the rest of a reload; `mxr config set` reports it.
+- Endpoint route health is kept per `api_key_env`.
+- A model listing that answers no longer resets a failing endpoint's wait; the real request decides.
+- The thinking-model retry spends what is left of the attempt's time.
+- Draft prompt budgets reserve the hosted routes' thinking headroom.
+- The status chain names the endpoint by URL and, when every route is out, the route a command would still try.

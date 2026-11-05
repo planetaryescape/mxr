@@ -725,8 +725,10 @@ only with `allow_cloud_relationship_data = true`.
 
 `mxr config set llm.fallback.model <id>` sets it and refuses an id mxr can't
 route; an empty value removes the table. A bad `[llm.fallback]` in a
-hand-edited file doesn't stop the daemon: it starts without the fallback,
-logs why, and `mxr llm status` prints `fallback not used: <reason>`. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
+hand-edited file doesn't stop the daemon or hold back the rest of `[llm]`: it
+runs without the fallback, logs why, `mxr llm status` prints `fallback not
+used: <reason>`, and `mxr config set llm.<key>` prints the reason after
+applying a change. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
@@ -760,10 +762,11 @@ Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
 is present. It lists each feature's model and, for a model in the routing
 table, the providers in order with their health. With `[llm.fallback]` it
-shows `base_url`'s health first and the fallback's providers after it. With
-`[llm.compose] model` set, the drafting rows (`draft_assist`, `draft_new`,
-`draft_refine`, `humanize_rewrite`) still show the override or base model,
-though drafts use the compose model. Status also reports process-local
+shows `base_url`'s health first, named by its URL, and the fallback's
+providers after it. With `[llm.compose] model` set, the drafting rows
+(`draft_assist`, `draft_new`, `draft_refine`, `humanize_rewrite`) show the
+compose model. When every route is out, status names the one a command you run
+would still try once. Status also reports process-local
 request outcomes per feature (`default` for the base model): initially no
 observation, then a typed success or failure. A success on one feature does
 not clear another feature's failure, and a provider reload clears the old
@@ -792,7 +795,8 @@ model = "gpt-6-luna"        # key from `mxr llm key set openai`
 
 An override takes `enabled`, `base_url`, `model`, `api_key_env`,
 `context_window` and `request_timeout_secs`. Any field you leave out comes
-from `[llm]`. Other keys in an override table are ignored. Feature keys: `summarize` (also row gists and `mxr triage`),
+from `[llm]`. Any other key in an override table, or a feature name not
+listed here, is ignored and named once in the daemon log. Feature keys: `summarize` (also row gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
 `draft_refine`, `humanize_rewrite`, `answer_coverage`,
 `archive_ask`, `decision_log`, `briefing`,

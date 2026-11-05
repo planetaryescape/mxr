@@ -546,7 +546,7 @@ fn status_shows_which_route_is_in_use_while_the_endpoint_is_out() {
         state
             .llm
             .route_health()
-            .record_http_failure_for_test(&mxr_llm::EndpointRoute::new(LOCAL, GEMMA), 503);
+            .record_http_failure_for_test(&mxr_llm::EndpointRoute::new(LOCAL, GEMMA, ""), 503);
 
         let snapshot = status(&state).await;
         let summarize = row(&snapshot, "summarize");
@@ -610,7 +610,7 @@ fn a_routed_model_keeps_its_own_fallback() {
 }
 
 #[test]
-fn an_unroutable_fallback_model_is_an_error_on_reload_and_in_status() {
+fn an_unroutable_fallback_model_is_left_out_on_reload_and_named_in_status() {
     isolated(|state| async move {
         let mut on_disk = state.config_snapshot();
         on_disk.llm.enabled = true;
@@ -620,22 +620,16 @@ fn an_unroutable_fallback_model_is_an_error_on_reload_and_in_status() {
             context_window: None,
         });
         mxr_config::save_config(&on_disk).unwrap();
-        let Response::Error { message, .. } = send(&state, Request::ReloadLlmConfig).await else {
-            panic!("a fallback mxr can't route is refused");
-        };
-        assert!(
-            message.contains("llm.fallback.model `llama3.2` is not a hosted model mxr can route"),
-            "{message}"
-        );
-
-        // A daemon that starts with it runs without the fallback and says why.
-        state.set_config_for_test(on_disk).await;
+        // The rest of `[llm]` applies; the daemon runs without the fallback,
+        // as it does when it starts with one, and status says why.
+        let reloaded = send(&state, Request::ReloadLlmConfig).await;
+        assert!(matches!(reloaded, Response::Ok { .. }), "{reloaded:?}");
+        assert_eq!(state.config_snapshot().llm.model, GEMMA);
         let snapshot = status(&state).await;
         assert_eq!(snapshot.fallback_model.as_deref(), Some("llama3.2"));
-        assert!(snapshot
-            .fallback_error
-            .as_deref()
-            .is_some_and(|error| error.contains("not a hosted model")));
+        assert!(snapshot.fallback_error.as_deref().is_some_and(|error| {
+            error.contains("llm.fallback.model `llama3.2` is not a hosted model mxr can route")
+        }));
         assert!(snapshot
             .features
             .iter()
@@ -645,5 +639,39 @@ fn an_unroutable_fallback_model_is_an_error_on_reload_and_in_status() {
             .for_feature(LlmFeature::Summarize)
             .pin()
             .leaves_machine());
+    });
+}
+
+#[test]
+fn a_fallback_mxr_cannot_use_does_not_hold_back_turning_ai_off() {
+    isolated(|state| async move {
+        let mut config = state.config_snapshot();
+        config.llm.enabled = true;
+        config.llm.base_url = LOCAL.to_string();
+        config.llm.model = "gemma4:latest".to_string();
+        mxr_config::save_config(&config).unwrap();
+        state.set_config_for_test(config.clone()).await;
+
+        // A hand edit turns AI off and also names a fallback mxr can't route.
+        config.llm.enabled = false;
+        config.llm.fallback = Some(mxr_config::LlmFallbackConfig {
+            model: "gemma4:latest".to_string(),
+            context_window: None,
+        });
+        mxr_config::save_config(&config).unwrap();
+
+        let reloaded = send(&state, Request::ReloadLlmConfig).await;
+        assert!(matches!(reloaded, Response::Ok { .. }), "{reloaded:?}");
+        assert!(!state.config_snapshot().llm.enabled);
+        let snapshot = status(&state).await;
+        assert!(!snapshot.enabled);
+        assert!(
+            snapshot
+                .fallback_error
+                .as_deref()
+                .is_some_and(|error| error.contains("gemma4:latest")),
+            "{:?}",
+            snapshot.fallback_error
+        );
     });
 }

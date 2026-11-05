@@ -16,7 +16,7 @@ use super::thread_context::owned_addresses;
 use super::thread_gist::{json_object, plain_text};
 use super::time::{due_words_in_zone, parse_zone};
 use super::{HandlerError, HandlerResult};
-use crate::state::{llm_endpoint_is_local, AppState};
+use crate::state::{llm_answer_locality, AppState};
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
 use mxr_core::text::find_verbatim;
@@ -26,7 +26,7 @@ use mxr_llm::{
     LlmFeature,
 };
 use mxr_protocol::{
-    AiLocalityData, AiProvenanceData, AiSourceData, DetectedPromiseData, PromiseDetectionData,
+    AiProvenanceData, AiSourceData, DetectedPromiseData, PromiseDetectionData,
     PromiseDetectionStatusData, PromiseSourceData, ResponseData,
 };
 use mxr_reader::{clean, ReaderConfig};
@@ -158,11 +158,6 @@ async fn detect(
     }
     // Pin once: the provenance label and the call follow the same endpoint.
     let llm = state.llm.for_feature(FEATURE).pin();
-    let locality = if llm_endpoint_is_local(&llm) {
-        AiLocalityData::Local
-    } else {
-        AiLocalityData::Cloud
-    };
     let mut body = outgoing.body.clone();
     mxr_core::text::truncate_to_char_boundary(&mut body, TEXT_MAX_CHARS);
     let recipients = outgoing
@@ -253,8 +248,8 @@ async fn detect(
         PromiseDetectionStatusData::Ready,
         promises,
         Some(AiProvenanceData {
+            locality: llm_answer_locality(&llm, &model),
             model,
-            locality,
             sources: vec![AiSourceData::YourMessage],
         }),
     ))

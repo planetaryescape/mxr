@@ -106,7 +106,7 @@ impl Rig {
             keys,
             health,
             runtime,
-            endpoint: EndpointRoute::new(&base_url, LOCAL_MODEL),
+            endpoint: EndpointRoute::new(&base_url, LOCAL_MODEL, ""),
         }
     }
 
@@ -332,6 +332,86 @@ async fn traffic_returns_to_the_endpoint_after_its_wait_with_a_cheap_check() {
     assert!(recovered.has_changed().unwrap(), "recovery is signalled");
     assert_eq!(rig.endpoint_state(), RouteState::Ok);
     assert_eq!(bodies(&rig.openrouter).await.len(), 2);
+}
+
+/// A server whose model listing answers while its completions fail is not
+/// back: the failure counts on top of the one before, so the wait doubles
+/// instead of starting over at a minute.
+#[tokio::test]
+async fn a_listing_that_answers_does_not_reset_a_failing_endpoints_wait() {
+    let rig = Rig::new().await;
+    local_is_out(&rig, out_for_a_second()).await;
+    openrouter_answers(&rig).await;
+    rig.background(LlmFeature::Summarize).await.unwrap();
+
+    rig.local.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+        .mount(&rig.local)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&rig.local)
+        .await;
+    wait_past_the_retry_after().await;
+
+    assert_eq!(
+        rig.background(LlmFeature::Summarize).await.unwrap().content,
+        "from openrouter"
+    );
+    assert_eq!(
+        rig.local_calls().await,
+        ["GET /v1/models", "POST /v1/chat/completions"]
+    );
+    let view = rig.health.view(&rig.endpoint);
+    assert_eq!(view.state, RouteState::Cooling);
+    assert!(
+        view.retry_in > Duration::from_secs(60),
+        "second failure in a row waits two minutes, not one: {:?}",
+        view.retry_in
+    );
+}
+
+/// Which side answered decides the label a client shows: the endpoint on
+/// this machine is local even though a hosted fallback stands behind it.
+#[tokio::test]
+async fn an_answer_says_whether_it_came_from_this_machine() {
+    let rig = Rig::new().await;
+    local_answers(&rig).await;
+    openrouter_answers(&rig).await;
+    let pinned = rig.runtime.for_feature(LlmFeature::Summarize).pin();
+    assert!(pinned.leaves_machine(), "the fallback may take a request");
+    // The hosted routes add room for thinking, so prompts reserve it too;
+    // the endpoint alone takes only what was asked.
+    assert_eq!(pinned.answer_tokens(400), 400 + 2048);
+    let withheld = Rig::withheld().await;
+    assert_eq!(
+        withheld
+            .runtime
+            .for_feature(LlmFeature::Summarize)
+            .pin()
+            .answer_tokens(400),
+        400
+    );
+
+    let local = rig.foreground().await.unwrap();
+    assert!(
+        pinned.answered_on_this_machine(&local.model),
+        "{}",
+        local.model
+    );
+
+    rig.local.reset().await;
+    local_is_out(&rig, out_for_a_second()).await;
+    let hosted = rig.foreground().await.unwrap();
+    assert_eq!(hosted.content, "from openrouter");
+    assert!(
+        !pinned.answered_on_this_machine(&hosted.model),
+        "{}",
+        hosted.model
+    );
 }
 
 #[tokio::test]

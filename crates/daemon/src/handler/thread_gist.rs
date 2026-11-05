@@ -13,7 +13,7 @@ use super::gist_kind::{style_of, GistStyle};
 use super::gist_numbers::NumberSource;
 use super::thread_context::{build_thread_context, owned_addresses};
 use super::{HandlerError, HandlerResult};
-use crate::state::{llm_endpoint_is_local, AppState};
+use crate::state::{llm_answer_locality, llm_endpoint_is_local, AppState};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::text::{collapse_whitespace, find_normalized, fold_quotes};
 use mxr_core::types::Envelope;
@@ -22,8 +22,8 @@ use mxr_llm::{
     LlmFeature, PinnedLlm,
 };
 use mxr_protocol::{
-    AiLocalityData, AiProvenanceData, AiSourceData, ResponseData, ThreadAskData, ThreadContextData,
-    ThreadGistData, ThreadGistStatusData, VerifiedQuoteData,
+    AiProvenanceData, AiSourceData, ResponseData, ThreadAskData, ThreadContextData, ThreadGistData,
+    ThreadGistStatusData, VerifiedQuoteData,
 };
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{new_briefing_id, BriefingKind, ContextBriefing};
@@ -188,24 +188,14 @@ pub(super) struct GistPolicy {
     /// config reload swaps the runtime mid-request.
     pub llm: PinnedLlm,
     share_history: bool,
-    locality: AiLocalityData,
 }
 
 impl GistPolicy {
     pub fn pin(state: &AppState) -> Self {
         let llm = state.llm.for_feature(FEATURE).pin();
-        let local = llm_endpoint_is_local(&llm);
-        let share_history = local || state.config_snapshot().llm.allow_cloud_relationship_data;
-        let locality = if local {
-            AiLocalityData::Local
-        } else {
-            AiLocalityData::Cloud
-        };
-        Self {
-            llm,
-            share_history,
-            locality,
-        }
+        let share_history = llm_endpoint_is_local(&llm)
+            || state.config_snapshot().llm.allow_cloud_relationship_data;
+        Self { llm, share_history }
     }
 }
 
@@ -385,8 +375,8 @@ async fn thread_gist(
         gist: parsed.0,
         ask: parsed.1,
         provenance: AiProvenanceData {
+            locality: llm_answer_locality(&setup.policy.llm, &model),
             model,
-            locality: setup.policy.locality,
             sources,
         },
         snippet_ids: texts
@@ -743,6 +733,7 @@ mod tests {
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::{MessageBody, MessageDirection, MessageMetadata};
     use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
+    use mxr_protocol::AiLocalityData;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 

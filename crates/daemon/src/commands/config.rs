@@ -72,7 +72,20 @@ async fn apply_llm_change_to_running_daemon() {
         return;
     };
     match client.request(Request::ReloadLlmConfig).await {
-        Ok(Response::Ok { .. }) => println!("Applied to the running daemon."),
+        Ok(Response::Ok { .. }) => {
+            println!("Applied to the running daemon.");
+            // A hand-edited `[llm.fallback]` mxr can't use is left out
+            // rather than holding back the change; say so while someone is
+            // looking.
+            if let Ok(Response::Ok {
+                data: mxr_protocol::ResponseData::LlmStatus { snapshot },
+            }) = client.request(Request::GetLlmStatus).await
+            {
+                if let Some(error) = snapshot.fallback_error {
+                    println!("[llm.fallback] is not used: {error}");
+                }
+            }
+        }
         Ok(Response::Error { message, .. }) => println!(
             "Saved, but the running daemon did not apply it ({message}). Restart the daemon to apply: mxr restart"
         ),

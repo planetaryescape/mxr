@@ -177,7 +177,14 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
                 .collect::<Vec<_>>()
                 .join(" → ")
                 + &feature.routes.iter().find(|route| route.next).map_or_else(
-                    || "  (no route available)".to_string(),
+                    || {
+                        none_available(
+                            feature
+                                .routes
+                                .iter()
+                                .map(|route| (route.provider.key(), route.state, route.retry_at)),
+                        )
+                    },
                     |route| format!("  [now: {}]", route.provider.key()),
                 )
         } else {
@@ -202,7 +209,8 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
 /// `base_url` first, then the fallback's routes, and which is in use.
 fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData) -> String {
     let mut parts = vec![format!(
-        "base_url: {}",
+        "{}: {}",
+        endpoint.base_url,
         state_label(
             endpoint.state,
             endpoint.reason.as_deref(),
@@ -223,7 +231,16 @@ fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData)
             .iter()
             .find(|route| route.next)
             .map_or_else(
-                || "  (no route available)".to_string(),
+                || {
+                    none_available(
+                        std::iter::once(("base_url", endpoint.state, endpoint.retry_at)).chain(
+                            feature
+                                .fallback
+                                .iter()
+                                .map(|route| (route.provider.key(), route.state, route.retry_at)),
+                        ),
+                    )
+                },
                 |route| format!("  [now: {}]", route.provider.key()),
             )
     };
@@ -232,6 +249,33 @@ fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData)
         .as_ref()
         .map_or_else(String::new, |reason| format!("  [no fallback: {reason}]"));
     parts.join(" → ") + &now + &withheld
+}
+
+/// Every route is out. Background work waits, but a command you run still
+/// tries the one that comes back soonest, once; name it. A route already due
+/// or being checked comes first; a route with no key is never tried.
+fn none_available<'a>(
+    routes: impl Iterator<
+        Item = (
+            &'a str,
+            LlmRouteStateData,
+            Option<chrono::DateTime<chrono::Utc>>,
+        ),
+    >,
+) -> String {
+    routes
+        .filter(|(_, state, _)| *state != LlmRouteStateData::NoKey)
+        .filter_map(|(name, state, at)| match state {
+            LlmRouteStateData::Recovering | LlmRouteStateData::Probing => {
+                Some((name, at.unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC)))
+            }
+            _ => Some((name, at?)),
+        })
+        .min_by_key(|(_, at)| *at)
+        .map_or_else(
+            || "  (no route available)".to_string(),
+            |(name, _)| format!("  (no route available; a command you run tries {name} once)"),
+        )
 }
 
 fn route_label(route: &LlmRouteStatusData) -> String {
@@ -522,6 +566,17 @@ mod tests {
                 Vec::new(),
                 Some("relationship data stays off the cloud fallback"),
             ),
+            chained(
+                "commitments",
+                endpoint(LlmRouteStateData::Cooling, Some("unreachable"), false),
+                vec![route(
+                    LlmProviderData::Openai,
+                    LlmRouteStateData::NoKey,
+                    None,
+                    false,
+                )],
+                None,
+            ),
         ];
         let table = features_table(&features);
         let summarize = table
@@ -529,7 +584,7 @@ mod tests {
             .find(|line| line.contains("summarize"))
             .unwrap();
         assert!(
-            summarize.contains("base_url: cooling until "),
+            summarize.contains("https://ollama.example/v1: cooling until "),
             "{summarize}"
         );
         assert!(
@@ -541,9 +596,19 @@ mod tests {
             .lines()
             .find(|line| line.contains("briefing"))
             .unwrap();
+        // Nothing is available now, but a command still tries the endpoint,
+        // the only route with a time to come back.
+        let commitments = table
+            .lines()
+            .find(|line| line.contains("commitments"))
+            .unwrap();
+        assert!(
+            commitments.ends_with("(no route available; a command you run tries base_url once)"),
+            "{commitments}"
+        );
         assert!(
             briefing.ends_with(
-                "base_url: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback]"
+                "https://ollama.example/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback]"
             ),
             "{briefing}"
         );

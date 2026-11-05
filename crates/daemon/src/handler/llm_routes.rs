@@ -142,7 +142,11 @@ pub(crate) fn feature_statuses(state: &AppState) -> Vec<LlmFeatureStatusData> {
                     .collect()
             });
             let (endpoint, fallback_routes) = chain.as_ref().map_or((None, Vec::new()), |chain| {
-                let endpoint = mxr_llm::EndpointRoute::new(&effective.base_url, &effective.model);
+                let endpoint = mxr_llm::EndpointRoute::new(
+                    &effective.base_url,
+                    &effective.model,
+                    &effective.api_key_env,
+                );
                 let (endpoint, routes) = mxr_llm::chain_statuses(
                     &endpoint,
                     &chain.routes,

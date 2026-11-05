@@ -38,6 +38,8 @@ struct World {
     fetches: Vec<(String, String)>,
     /// Mailboxes SELECTed, in order.
     selects: Vec<String>,
+    /// Every UID SEARCH query, in order.
+    searches: Vec<String>,
     /// Fail the Nth (1-based) FETCH once.
     fail_fetch_number: Option<usize>,
 }
@@ -145,10 +147,20 @@ impl ImapSession for FakeSession {
         }
         Ok(out)
     }
-    async fn uid_search(&mut self, _q: &str) -> crate::session::Result<Vec<u32>> {
-        let w = self.world.lock().unwrap();
+    async fn uid_search(&mut self, query: &str) -> crate::session::Result<Vec<u32>> {
+        let mut w = self.world.lock().unwrap();
+        w.searches.push(query.to_string());
         let m = w.mailboxes.get(self.selected.as_ref().unwrap()).unwrap();
-        Ok(m.uids.iter().copied().collect())
+        match query.strip_prefix("UID ") {
+            Some(set) => {
+                let max = m.uid_next.saturating_sub(1);
+                Ok(parse_set(set, max)
+                    .into_iter()
+                    .flat_map(|(lo, hi)| m.uids.range(lo..=hi).copied())
+                    .collect())
+            }
+            None => Ok(m.uids.iter().copied().collect()),
+        }
     }
     async fn uid_store(&mut self, _s: &str, _f: &str) -> crate::session::Result<()> {
         Ok(())
@@ -469,13 +481,14 @@ async fn resume_from_stored_cursor_does_not_refetch_completed_pages() {
         "page 1 UIDs 701+ are not refetched"
     );
     let w = h2.world.lock().unwrap();
-    assert!(w.fetches.iter().all(|(_, set)| set
-        .split(':')
-        .next_back()
-        .unwrap()
-        .parse::<u32>()
-        .unwrap()
-        <= 700));
+    assert!(w
+        .fetches
+        .iter()
+        .all(|(_, set)| set.split(',').all(|uid| uid.parse::<u32>().unwrap() <= 700)));
+    assert!(w
+        .searches
+        .iter()
+        .all(|q| { q.rsplit(':').next().unwrap().parse::<u32>().unwrap() <= 700 }));
 }
 
 #[tokio::test]
@@ -564,10 +577,7 @@ async fn sparse_uid_ranges_and_empty_folders_still_finish() {
         all,
         BTreeSet::from(["INBOX:5".to_string(), "INBOX:30000".to_string()])
     );
-    assert!(
-        batches.len() > 1,
-        "the empty-window cap yields between pages"
-    );
+    assert_eq!(batches.len(), 1, "sparse UIDs do not cost extra pages");
     assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 30_001);
     assert_eq!(completed_mailbox(&cursor, "Empty").uid_next, 1);
 }
@@ -592,4 +602,31 @@ async fn a_folder_deleted_mid_backfill_is_dropped_instead_of_wedging() {
         .map(|m| m.mailbox)
         .collect();
     assert_eq!(names, vec!["INBOX"]);
+}
+
+#[tokio::test]
+async fn a_sparse_folder_costs_tens_of_commands_not_thousands() {
+    let h = harness(vec![folder("INBOX", Some("\\Inbox"))]);
+    // UIDNEXT 200,000 with 50 messages scattered across the whole range.
+    let uids: Vec<u32> = (0..50).map(|i| 3 + i * 3_990).collect();
+    add_mailbox(&h.world, "INBOX", uids.clone());
+    h.world
+        .lock()
+        .unwrap()
+        .mailboxes
+        .get_mut("INBOX")
+        .unwrap()
+        .uid_next = 200_000;
+
+    let (batches, cursor) = run_all_pages(&h.provider).await;
+
+    let got: Vec<u32> = batches.iter().flat_map(ids).map(|id| uid_of(&id)).collect();
+    let mut expected = uids;
+    expected.sort_unstable_by(|a, b| b.cmp(a));
+    assert_eq!(got, expected, "newest first, each UID once");
+    assert_eq!(completed_mailbox(&cursor, "INBOX").uid_next, 200_000);
+    let w = h.world.lock().unwrap();
+    let commands = w.selects.len() + w.searches.len() + w.fetches.len();
+    // SELECT + geometric searches (2k, 8k, 32k, 128k, rest) + one FETCH chunk.
+    assert!(commands <= 12, "{commands} commands: {:?}", w.searches);
 }

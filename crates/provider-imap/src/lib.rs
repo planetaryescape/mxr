@@ -1126,6 +1126,17 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
+    /// True only for the `"v":"2"` newest-first generic backfill cursor. The
+    /// daemon uses this to skip label re-sync and defer analytics and
+    /// relationship work until the last page. Gmail-over-IMAP's v1 backfill
+    /// cursor is deliberately not reported here (out of scope for G11a).
+    fn is_backfill_cursor(&self, cursor: &SyncCursor) -> bool {
+        ImapCursor::decode(cursor)
+            .ok()
+            .flatten()
+            .is_some_and(|decoded| decoded.into_generic_backfill().is_some())
+    }
+
     /// Phase 3.1: open a dedicated IDLE watcher on a fresh
     /// authenticated session. Delegates to the session factory's
     /// `create_idle_watcher`, which checks the IDLE capability and
@@ -2167,7 +2178,7 @@ mod tests {
         let commands = log.lock().unwrap().commands.clone();
         assert!(commands
             .iter()
-            .any(|command| command.contains("UID FETCH 1:3 ")));
+            .any(|command| command.contains("UID FETCH 3,2,1 ")));
         assert!(commands
             .iter()
             .any(|command| command.contains("UID FETCH 2 ")));
@@ -2186,7 +2197,7 @@ mod tests {
         let messages = (1..=101)
             .map(|uid| make_fetched_message(uid, &format!("Message {uid}"), "alice@example.com"))
             .collect::<Vec<_>>();
-        // Newest-first windows of 100 UIDs: 2..=101, then 1.
+        // Newest-first chunks of 100 UIDs: 101..=2, then 1.
         let factory = MockImapSessionFactory::new(
             mailbox_info(1, 102, 101),
             vec![messages[1..].to_vec(), messages[..1].to_vec()],
@@ -2205,8 +2216,9 @@ mod tests {
             .filter(|command| command.starts_with("UID FETCH "))
             .collect::<Vec<_>>();
         assert_eq!(fetch_commands.len(), 2);
-        assert!(fetch_commands[0].starts_with("UID FETCH 2:101 "));
-        assert!(fetch_commands[1].starts_with("UID FETCH 1:1 "));
+        assert!(fetch_commands[0].starts_with("UID FETCH 101,100,"));
+        assert!(fetch_commands[0].contains(",3,2 "));
+        assert!(fetch_commands[1].starts_with("UID FETCH 1 "));
     }
 
     #[tokio::test]
@@ -3137,6 +3149,28 @@ mod tests {
     }
 
     // -- incompatible cursor --------------------------------------------------
+
+    #[test]
+    fn is_backfill_cursor_is_true_only_for_the_generic_in_progress_cursor() {
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+        let in_progress = ImapCursor::new_generic_backfill(
+            vec![],
+            vec![crate::cursor::ImapFolderBackfill {
+                mailbox: "INBOX".into(),
+                started: None,
+                next_high: 0,
+                min_failed_uid: None,
+            }],
+            None,
+        )
+        .encode();
+
+        assert!(provider.is_backfill_cursor(&in_progress));
+        assert!(!provider.is_backfill_cursor(&imap_cursor(1, 10)));
+        assert!(!provider.is_backfill_cursor(&SyncCursor::empty()));
+    }
 
     #[tokio::test]
     async fn sync_messages_rejects_gmail_cursor() {

@@ -34,10 +34,13 @@ use crate::{CollectSyncedMessages, ImapProvider, IMAP_FETCH_UID_BATCH_SIZE};
 /// progress at the same grain.
 pub(crate) const GENERIC_BACKFILL_PAGE_MESSAGES: usize = 500;
 
-/// Consecutive FETCH windows that returned nothing before the page yields
-/// anyway. Sparse UID ranges (mass-deleted mail) would otherwise stall one
-/// call on thousands of empty round trips; the cursor still advances.
-const MAX_EMPTY_WINDOWS_PER_PAGE: u32 = 200;
+/// First `UID SEARCH` window below `next_high`, in UIDs. Mailboxes are often
+/// sparse (archived-out INBOX, emptied Trash), so existing UIDs are found by
+/// search and only those are fetched; the window grows by
+/// [`DISCOVERY_WINDOW_GROWTH`] while it finds too few, which bounds a folder
+/// with UIDNEXT 200,000 and 50 messages to a handful of searches.
+const DISCOVERY_WINDOW_START: u32 = 2_000;
+const DISCOVERY_WINDOW_GROWTH: u32 = 4;
 
 impl ImapProvider {
     pub(crate) async fn continue_generic_backfill(&self, state: ImapCursorV2) -> Result<SyncBatch> {
@@ -168,44 +171,76 @@ impl ImapProvider {
             folder.next_high = 0;
         }
 
-        let mut empty_windows = 0u32;
-        while folder.next_high >= 1
-            && synced.len() < GENERIC_BACKFILL_PAGE_MESSAGES
-            && empty_windows < MAX_EMPTY_WINDOWS_PER_PAGE
-        {
+        while folder.next_high >= 1 && synced.len() < GENERIC_BACKFILL_PAGE_MESSAGES {
             let room = GENERIC_BACKFILL_PAGE_MESSAGES - synced.len();
-            // A window never spans more UIDs than there is room for messages,
-            // so the page cannot overshoot its bound.
-            let span = u32::try_from(room.min(IMAP_FETCH_UID_BATCH_SIZE)).unwrap_or(1);
-            let high = folder.next_high;
-            let low = high.saturating_sub(span - 1).max(1);
-            let uid_set = format!("{low}:{high}");
-            let before = synced.len();
-            let mut seen_uids = HashSet::new();
-            session = self
-                .collect_synced_messages(
-                    session,
-                    capabilities,
-                    CollectSyncedMessages {
-                        mailbox: &folder.mailbox,
-                        uid_set: &uid_set,
-                        query: Self::imap_fetch_query(),
-                        min_uid: low,
-                        seen_uids: &mut seen_uids,
-                        account_id: &self.account_id,
-                        synced,
-                        min_failed_uid: &mut folder.min_failed_uid,
-                    },
-                )
-                .await?;
-            folder.next_high = low - 1;
-            empty_windows = if synced.len() == before {
-                empty_windows + 1
-            } else {
-                0
-            };
+            let (found, next_high) = discover_uids(&mut *session, folder.next_high, room).await?;
+            for chunk in found.chunks(IMAP_FETCH_UID_BATCH_SIZE) {
+                let uid_set = chunk
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let mut seen_uids = HashSet::new();
+                session = self
+                    .collect_synced_messages(
+                        session,
+                        capabilities,
+                        CollectSyncedMessages {
+                            mailbox: &folder.mailbox,
+                            uid_set: &uid_set,
+                            query: Self::imap_fetch_query(),
+                            min_uid: 1,
+                            seen_uids: &mut seen_uids,
+                            account_id: &self.account_id,
+                            synced,
+                            min_failed_uid: &mut folder.min_failed_uid,
+                        },
+                    )
+                    .await?;
+            }
+            folder.next_high = next_high;
         }
         Ok(session)
+    }
+}
+
+/// UIDs that exist at or below `high`, highest first, at most `room` of them,
+/// plus the new `next_high` (just below the lowest UID covered). A window that
+/// finds fewer than `room` UIDs is followed by a larger one below it until the
+/// folder's bottom is reached.
+async fn discover_uids(
+    session: &mut dyn ImapSession,
+    high: u32,
+    room: usize,
+) -> Result<(Vec<u32>, u32)> {
+    let mut found: Vec<u32> = Vec::new();
+    let mut window_high = high;
+    let mut window = DISCOVERY_WINDOW_START;
+    loop {
+        let low = window_high.saturating_sub(window - 1).max(1);
+        let mut uids = session
+            .uid_search(&format!("UID {low}:{window_high}"))
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        // Servers only return UIDs in range; filtering keeps the walk correct
+        // against one that does not.
+        uids.retain(|uid| (low..=window_high).contains(uid));
+        uids.sort_unstable_by(|a, b| b.cmp(a));
+        uids.dedup();
+        found.extend(uids);
+
+        if found.len() >= room {
+            found.truncate(room);
+            // Everything above the lowest kept UID has been seen; the rest of
+            // this window below it stays for the next page.
+            let lowest = found.last().copied().unwrap_or(low);
+            return Ok((found, lowest - 1));
+        }
+        if low <= 1 {
+            return Ok((found, 0));
+        }
+        window_high = low - 1;
+        window = window.saturating_mul(DISCOVERY_WINDOW_GROWTH);
     }
 }
 

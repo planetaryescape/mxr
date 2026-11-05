@@ -26,7 +26,10 @@ use tokio::time::Instant;
 /// nothing a failing endpoint was delivering anyway.
 pub(crate) const BREAKER_THRESHOLD: u32 = 5;
 pub(crate) const BREAKER_MIN_COOLDOWN: Duration = Duration::from_secs(5 * 60);
-const BREAKER_MAX_COOLDOWN: Duration = Duration::from_secs(60 * 60);
+/// Kept short because what ends a pause is a cheap `GET /models` check, not
+/// a real input: a longer pause would only delay recovery once the endpoint
+/// (a laptop that went to sleep) is back.
+const BREAKER_MAX_COOLDOWN: Duration = Duration::from_secs(10 * 60);
 /// The most a cheap endpoint probe may take. A probe is a listing request, so
 /// anything slower says the endpoint isn't ready for real work either.
 pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(10);

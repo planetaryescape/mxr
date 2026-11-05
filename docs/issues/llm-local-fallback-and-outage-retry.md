@@ -50,7 +50,7 @@ The to-do resolution worker had the same charging problem in its own durable que
 - A daemon loop (`crates/daemon/src/llm_background.rs`) re-runs put-off inputs once each: relationship contacts go back to the relationship worker, and messages go back through the delivery scan, so a delivery that fell back to the heuristic during an outage is enriched once the endpoint answers. It runs when the breaker closes after an outage, when a `RouteHealth` route recovers, or, every 30 s, once the cooldown is over and the cheap check passes.
 - The breaker, the ledger and the put-off inputs are saved to `llm-background.json` in the data directory: wall-clock times, atomic write, mode 0600, at most every 30 s when changed and once on shutdown. A missing, corrupt or other-version file is logged and ignored. Tests and the demo instance never write it.
 
-What remains: the fallback chain for compatible-endpoint models (the first section; rung 2). `RouteHealth` is still in memory only. Recovery can take up to one breaker cooldown (at most 60 minutes) after the endpoint returns, because the cheap check runs once per cooldown.
+What remains: the fallback chain for compatible-endpoint models (the first section; rung 2). `RouteHealth` is still in memory only. Recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns.
 
 ## Acceptance
 

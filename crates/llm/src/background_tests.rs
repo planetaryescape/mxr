@@ -179,9 +179,9 @@ async fn a_two_day_outage_gives_up_no_input_and_runs_each_once_after() {
         BREAKER_THRESHOLD as usize,
         "after the breaker opened only the cheap check reached the endpoint"
     );
-    // One check per cooldown: 5, 10, 20, 40, then hourly.
+    // One check per cooldown: 5 minutes, then every 10 for two days.
     assert!(
-        (40..=60).contains(&endpoint.probes()),
+        (280..=290).contains(&endpoint.probes()),
         "{} probes",
         endpoint.probes()
     );
@@ -199,7 +199,7 @@ async fn a_two_day_outage_gives_up_no_input_and_runs_each_once_after() {
     while !recovery_tick(&runtime).await {
         tokio::time::advance(tick).await;
         assert!(
-            back.elapsed() <= Duration::from_secs(60 * 60) + tick,
+            back.elapsed() <= Duration::from_secs(10 * 60) + tick,
             "recovery waits at most the longest cooldown"
         );
     }

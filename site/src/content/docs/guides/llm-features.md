@@ -238,7 +238,7 @@ timeout, a rate limit, a 5xx, a bad key or an unknown model), the email or
 contact being processed is not blamed for it:
 
 - After five endpoint failures in a row, background model calls pause for 5
-  minutes, doubling to an hour while the endpoint stays out. Commands you run
+  minutes, doubling to 10 minutes while the endpoint stays out. Commands you run
   are not paused.
 - When a pause ends, mxr checks a `base_url` endpoint with `GET
   <base_url>/models`, which sends no mail. One check runs at a time, and a

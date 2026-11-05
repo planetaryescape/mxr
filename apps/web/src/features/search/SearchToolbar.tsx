@@ -47,7 +47,8 @@ export function SearchToolbar({
   setDraft: (value: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
   mode: SearchMode;
-  sort: SearchSort;
+  /** Undefined is Default: the daemon's `[search] default_sort` applies. */
+  sort: SearchSort | undefined;
   scope: Scope;
   verdict: Verdict | undefined;
   groupBy: SearchGroupBy;
@@ -73,7 +74,7 @@ export function SearchToolbar({
   // What the filters have been moved off, so a closed panel still says it is narrowing.
   const narrowed = [
     scope !== "threads",
-    sort !== (scope === "triage" ? "verdict" : "relevance"),
+    sort !== undefined && sort !== (scope === "triage" ? "verdict" : "relevance"),
     verdict !== undefined,
     account !== undefined,
   ].filter(Boolean).length;
@@ -196,7 +197,7 @@ export function SearchToolbar({
             onChange={(value) =>
               update({
                 scope: value as Scope,
-                sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
+                sort: value === "triage" ? "verdict" : sort === "verdict" ? null : sort,
               })
             }
             options={[
@@ -208,9 +209,12 @@ export function SearchToolbar({
           />
           <CompactSelect
             label="Sort"
-            value={sort}
-            onChange={(value) => update({ sort: value as SearchSort })}
+            value={sort ?? "default"}
+            onChange={(value) =>
+              update({ sort: value === "default" ? null : (value as SearchSort) })
+            }
             options={[
+              ["default", "Default"],
               ["relevance", "Best match"],
               ["newest", "Newest"],
               ["oldest", "Oldest"],

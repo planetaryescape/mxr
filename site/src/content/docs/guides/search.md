@@ -257,3 +257,7 @@ The results page is titled with your query and counts what its rows are
 Account and the sender, list or category chips are behind **Filters** (`g f`).
 The chips show a count only when the rows are messages, since the counts are
 messages.
+
+Sort starts at Default, which uses `default_sort` from your config. Picking
+Best match, Newest or Oldest overrides it; choosing Default again goes back to
+the config. Page size comes from `max_results` in the same way.

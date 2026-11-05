@@ -3,7 +3,7 @@ use crate::state::AppState;
 use mxr_core::{
     DraftAttachment, DraftAttachmentId, DraftContent, DraftId, Envelope, ForwardSource, MessageBody,
 };
-use mxr_html_worker::Job;
+use mxr_html_worker::{FallbackReason, Job};
 use sha2::{Digest, Sha256};
 
 pub(super) async fn prepare_source(
@@ -172,18 +172,26 @@ pub(super) async fn prepare_source(
 /// be checked, so the forward is refused rather than sent with its references
 /// unchecked.
 fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
-    let Some(values) = CID_REFERENCES.call(html, &()).flatten() else {
-        return Err(HandlerError::Message(
-            "Cannot forward original HTML: the HTML is too complex to check safely, so it \
-             cannot be forwarded: simplify it (fewer tags, attributes or table cells) and \
-             try again"
-                .to_string(),
-        ));
-    };
+    let values = CID_REFERENCES
+        .try_call(html, &())
+        .and_then(|values| values.ok_or(FallbackReason::Oversize))
+        .map_err(|reason| HandlerError::Message(unchecked_forward_message(reason).to_string()))?;
     for value in &values {
         validate_cid_reference(body, value)?;
     }
     Ok(())
+}
+
+/// No helper would start: the original may be fine, so the fix is a retry.
+fn unchecked_forward_message(reason: FallbackReason) -> &'static str {
+    if reason == FallbackReason::Unavailable {
+        "Cannot forward original HTML yet: mxr's HTML helper process did not start, so \
+         the HTML could not be checked: try again in a few seconds"
+    } else {
+        "Cannot forward original HTML: the HTML is too complex to check safely, so it \
+         cannot be forwarded: simplify it (fewer tags, attributes or table cells) and \
+         try again"
+    }
 }
 
 /// The attribute values that start `cid:`, from a parse in the HTML helper
@@ -380,10 +388,28 @@ mod budget_tests {
         let error =
             mxr_html_worker::with_supervisor(lost, || validate_html_cid_references(&body, html))
                 .expect_err("an unchecked forward is not sent");
+        // The original may be fine; the helper never saw it.
         assert!(
-            error.to_string().contains("too complex to check safely"),
+            error.to_string().contains("try again in a few seconds"),
             "got {error}"
         );
+        assert!(!error.to_string().contains("simplify"), "got {error}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_refused_as_too_complex_to_forward() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert!(
+                unchecked_forward_message(reason).contains("too complex to check safely"),
+                "{reason:?}"
+            );
+        }
     }
 
     #[test]

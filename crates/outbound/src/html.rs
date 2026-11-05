@@ -26,7 +26,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use base64::Engine as _;
-use mxr_html_worker::{AnyJob, Job};
+use mxr_html_worker::{AnyJob, FallbackReason, Job};
 use scraper::{Html, Node};
 use serde::{Deserialize, Serialize};
 
@@ -199,6 +199,10 @@ pub enum HtmlIssueKind {
     /// or table shape), so it cannot be checked safely. It is refused, and the
     /// fix is to simplify the HTML.
     TooComplexToCheck,
+    /// The HTML helper process could not be started, so nothing was checked.
+    /// It is refused like a document that is too complex, but the fix is to
+    /// wait and try again, not to change the HTML.
+    CheckerUnavailable,
 }
 
 impl fmt::Display for HtmlIssue {
@@ -212,6 +216,11 @@ impl fmt::Display for HtmlIssue {
                 f,
                 "HTML is too complex to check safely, so it cannot be sent{where_}: \
                  simplify it (fewer tags, attributes or table cells) and try again"
+            ),
+            HtmlIssueKind::CheckerUnavailable => write!(
+                f,
+                "HTML could not be checked because mxr's HTML helper process did not \
+                 start, so it cannot be sent yet: try again in a few seconds"
             ),
             HtmlIssueKind::ForbiddenElement { tag } => {
                 write!(
@@ -314,18 +323,33 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
-    // The parses run in the HTML helper process. A helper that timed out or
-    // could not start leaves the document unchecked, which is refused like one
-    // over the budget.
+    // The parses run in the HTML helper process. A document the helper timed
+    // out or died on is refused like one over the budget; one it never saw,
+    // because no helper would start, is refused with a retry.
     VALIDATE
-        .call(html, &())
-        .unwrap_or_else(|| Err(too_complex_to_check()))
+        .try_call(html, &())
+        .unwrap_or_else(|reason| Err(unchecked(unchecked_kind(reason))))
+}
+
+fn unchecked_kind(reason: FallbackReason) -> HtmlIssueKind {
+    match reason {
+        FallbackReason::Unavailable => HtmlIssueKind::CheckerUnavailable,
+        FallbackReason::Oversize
+        | FallbackReason::KnownBad
+        | FallbackReason::Timeout
+        | FallbackReason::HelperDied
+        | FallbackReason::JobFailed => HtmlIssueKind::TooComplexToCheck,
+    }
 }
 
 fn too_complex_to_check() -> HtmlValidationError {
+    unchecked(HtmlIssueKind::TooComplexToCheck)
+}
+
+fn unchecked(kind: HtmlIssueKind) -> HtmlValidationError {
     HtmlValidationError {
         issues: vec![HtmlIssue {
-            kind: HtmlIssueKind::TooComplexToCheck,
+            kind,
             line: None,
             detail: String::new(),
             origin: IssueOrigin::Document,
@@ -2023,13 +2047,37 @@ mod lost_helper_tests {
     }
 
     #[test]
-    fn html_the_helper_could_not_check_is_refused_like_html_over_the_budget() {
+    fn html_no_helper_could_check_is_refused_with_a_retry_not_a_rewrite() {
         let error = with_supervisor(lost_helper(), || validate_html("<p>fine</p>"))
             .expect_err("an unchecked document must not be sent");
-        assert!(error
-            .issues
-            .iter()
-            .any(|issue| issue.kind == HtmlIssueKind::TooComplexToCheck));
+        assert_eq!(
+            error
+                .issues
+                .iter()
+                .map(|issue| &issue.kind)
+                .collect::<Vec<_>>(),
+            vec![&HtmlIssueKind::CheckerUnavailable]
+        );
+        let message = error.to_string();
+        assert!(message.contains("try again"), "{message}");
+        assert!(!message.contains("simplify"), "{message}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_refused_as_too_complex() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert_eq!(
+                unchecked_kind(reason),
+                HtmlIssueKind::TooComplexToCheck,
+                "{reason:?}"
+            );
+        }
     }
 
     #[test]

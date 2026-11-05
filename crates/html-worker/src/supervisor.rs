@@ -504,14 +504,18 @@ impl Helper {
             replies: reply_rx,
         };
         match helper.replies.recv_timeout(config.startup_timeout) {
-            Ok(Reply::Frame(frame)) => {
-                let ready = wire::decode_response(&frame).is_ok_and(|reply| {
-                    reply.status == Status::Ready && reply.payload == wire::READY
-                });
-                if !ready {
-                    return Err(io::Error::other("helper sent an unexpected handshake"));
+            Ok(Reply::Frame(frame)) => match wire::decode_response(&frame) {
+                Ok(reply) if reply.status == Status::Ready && reply.payload == wire::READY => {}
+                Ok(reply)
+                    if reply.status == Status::Ready
+                        && reply.payload.starts_with(b"mxr-html-worker/") =>
+                {
+                    return Err(io::Error::other(
+                        "helper is from a different mxr build (upgraded while running)",
+                    ));
                 }
-            }
+                _ => return Err(io::Error::other("helper sent an unexpected handshake")),
+            },
             Ok(Reply::Closed) | Err(RecvTimeoutError::Disconnected) => {
                 return Err(io::Error::other("helper exited before it was ready"));
             }

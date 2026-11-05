@@ -394,7 +394,9 @@ impl App {
 
         let output = match source {
             BodySource::Plain => mxr_reader::clean(Some(raw), None, &self.reader_config()),
-            BodySource::Html => mxr_reader::clean(None, Some(raw), &self.reader_config()),
+            // Parsed in the HTML helper, off the event loop: until the text
+            // lands the view shows the tag strip, with no reader stats.
+            BodySource::Html => return Self::render_html_body(raw, self.reader_config()),
             BodySource::Fallback => mxr_reader::clean(Some(raw), None, &self.reader_config()),
             BodySource::Snippet => unreachable!("snippet bodies bypass reader mode"),
         };
@@ -403,6 +405,33 @@ impl App {
             output.content,
             Some((output.original_lines, output.cleaned_lines)),
         )
+    }
+
+    fn render_html_body(
+        raw: &str,
+        config: mxr_reader::ReaderConfig,
+    ) -> (String, Option<(usize, usize)>) {
+        let key = (
+            raw,
+            &config.html_command,
+            config.strip_signatures,
+            config.collapse_quotes,
+            config.strip_boilerplate,
+            config.strip_tracking,
+        );
+        let html = raw.to_string();
+        let parse_config = config.clone();
+        let rendered = crate::deferred_html::answer(&key, move || {
+            let output = mxr_reader::clean(None, Some(&html), &parse_config);
+            (
+                output.content,
+                (output.original_lines, output.cleaned_lines),
+            )
+        });
+        match rendered {
+            Some(rendered) => (rendered.0.clone(), Some(rendered.1)),
+            None => (mxr_reader::strip_html_tags(raw), None),
+        }
     }
 
     pub(super) fn body_inline_images(body: &MessageBody) -> bool {

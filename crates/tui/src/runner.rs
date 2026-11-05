@@ -465,6 +465,12 @@ pub async fn run() -> anyhow::Result<()> {
     let html_assets =
         crate::terminal_images::spawn_html_image_asset_worker(bg.clone(), result_tx.clone());
     let html_decodes = crate::terminal_images::spawn_html_image_decode_worker(result_tx.clone());
+    {
+        let result_tx = result_tx.clone();
+        crate::deferred_html::install(move || {
+            let _ = result_tx.send(AsyncResult::HtmlRendered);
+        });
+    }
     let replaceable = spawn_replaceable_request_worker(bg.clone(), result_tx.clone());
     let queued = spawn_task_worker(result_tx.clone());
     let local_io = spawn_task_worker(result_tx.clone());
@@ -4471,6 +4477,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.mailbox.pending_active_label = None;
                             app.status_message = Some(format!("Label filter failed: {e}"));
                         }
+                        AsyncResult::HtmlRendered => app.html_render_landed(),
                         AsyncResult::Bodies {
                             requested,
                             result: Ok((bodies, failures)),

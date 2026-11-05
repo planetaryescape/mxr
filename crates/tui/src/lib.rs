@@ -17,6 +17,7 @@ pub mod client;
 mod compose_flow;
 mod compose_persistence;
 mod daemon_events;
+mod deferred_html;
 mod editor;
 mod export_output;
 pub use export_output::copy_to_clipboard;

@@ -67,7 +67,29 @@ static DIE_ON_INPUT: Job<(), String> = Job::new("fixture.die_on_input", |html, (
     html.to_string()
 });
 
+/// Answers the handshake the way a helper from another release would: the
+/// right protocol, a different version. Written by hand because the frame
+/// encoder is private to the crate. Then waits for its stdin to close.
+fn pretend_to_be_another_release() -> std::process::ExitCode {
+    use std::io::{Read, Write};
+    let payload = b"mxr-html-worker/1 0.0.0-another-release";
+    let mut body = Vec::new();
+    body.extend_from_slice(&0u64.to_le_bytes());
+    body.push(3); // Status::Ready
+    body.extend_from_slice(payload);
+    let mut out = std::io::stdout().lock();
+    let length = u32::try_from(body.len()).unwrap_or(u32::MAX);
+    let _ = out.write_all(&length.to_le_bytes());
+    let _ = out.write_all(&body);
+    let _ = out.flush();
+    let _ = std::io::stdin().read_to_end(&mut Vec::new());
+    std::process::ExitCode::SUCCESS
+}
+
 fn main() -> std::process::ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("--another-release") {
+        return pretend_to_be_another_release();
+    }
     let jobs: [&dyn AnyJob; 10] = [
         &BURN,
         &ECHO,

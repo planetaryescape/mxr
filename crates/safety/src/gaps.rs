@@ -8,7 +8,7 @@
 use mxr_core::types::{
     Draft, DraftContent, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetySeverity,
 };
-use mxr_html_worker::{AnyJob, Job};
+use mxr_html_worker::{AnyJob, FallbackReason, Job};
 use serde::{Deserialize, Serialize};
 
 const OPEN: &str = "[[?:";
@@ -30,16 +30,18 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
         (DraftContent::Markdown { .. }, None) => "",
     };
     // Over the parser budget, or when the HTML helper could not read it (it
-    // timed out or was unavailable), the HTML cannot be read, so the gap check
-    // cannot run. That is a blocker with no override: a gap hidden in such HTML
-    // must not be sent.
-    let Some(views) = html_views(html) else {
-        return vec![DraftSafetyIssue::new(
-            DraftSafetyIssueCode::UnfilledGap,
-            DraftSafetySeverity::Blocker,
-            "HTML is too complex to check for unfilled gaps, so it cannot be sent: simplify \
-             it (fewer tags, attributes or table cells) and try again",
-        )];
+    // timed out, died or would not start), the HTML cannot be read, so the gap
+    // check cannot run. That is a blocker with no override: a gap hidden in
+    // such HTML must not be sent.
+    let views = match html_views(html) {
+        Ok(views) => views,
+        Err(reason) => {
+            return vec![DraftSafetyIssue::new(
+                DraftSafetyIssueCode::UnfilledGap,
+                DraftSafetySeverity::Blocker,
+                unchecked_message(reason),
+            )];
+        }
     };
     let body_views: Vec<String> = match &draft.content {
         DraftContent::Markdown { source } => {
@@ -105,10 +107,24 @@ struct HtmlViews {
     attribute_text: String,
 }
 
-/// `None` when the document is over the parser budget or the HTML helper could
-/// not read it.
-fn html_views(html: &str) -> Option<HtmlViews> {
-    HTML_VIEWS.call(html, &()).flatten()
+/// Why not, when the document is over the parser budget or the HTML helper
+/// could not read it.
+fn html_views(html: &str) -> Result<HtmlViews, FallbackReason> {
+    HTML_VIEWS
+        .try_call(html, &())
+        .and_then(|views| views.ok_or(FallbackReason::Oversize))
+}
+
+/// No helper would start: the HTML is fine as far as anyone knows, so the fix
+/// is to wait, not to simplify it.
+fn unchecked_message(reason: FallbackReason) -> &'static str {
+    if reason == FallbackReason::Unavailable {
+        "HTML could not be checked for unfilled gaps because mxr's HTML helper process did \
+         not start, so it cannot be sent yet: try again in a few seconds"
+    } else {
+        "HTML is too complex to check for unfilled gaps, so it cannot be sent: simplify it \
+         (fewer tags, attributes or table cells) and try again"
+    }
 }
 
 /// One parse for both views, run in the HTML helper process.
@@ -388,6 +404,28 @@ mod tests {
             mxr_core::types::DraftSafetySeverity::Blocker
         );
         assert!(issues[0].override_token.is_none());
+        // The HTML may be fine; the helper never saw it, so the fix is a retry.
+        assert!(
+            issues[0].message.contains("try again in a few seconds"),
+            "{issues:?}"
+        );
+        assert!(!issues[0].message.contains("simplify"), "{issues:?}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_called_too_complex() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert!(
+                unchecked_message(reason).contains("too complex"),
+                "{reason:?}"
+            );
+        }
     }
 }
 
@@ -405,6 +443,6 @@ mod budget_tests {
     #[test]
     fn an_over_budget_document_has_no_views_so_the_check_blocks_it() {
         let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
-        assert!(html_views(&html).is_none());
+        assert_eq!(html_views(&html).err(), Some(FallbackReason::Oversize));
     }
 }

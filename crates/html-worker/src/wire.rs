@@ -17,9 +17,16 @@ pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
 /// Sent once by a helper after its limits are set, so a spawn that "worked"
 /// but never became a helper is caught before the first request. Bump the
-/// suffix when the frame layout changes: a helper left running from an older
-/// binary then fails the handshake instead of misreading frames.
-pub(crate) const READY: &[u8] = b"mxr-html-worker/1";
+/// `/1` when the frame layout changes.
+///
+/// It names the release too. The parent starts its helper from its own path,
+/// and on macOS an upgrade replaces that file under a running daemon or TUI, so
+/// the helper can be a newer build whose jobs answer in other shapes. A
+/// different release fails the handshake and the parent uses its fallbacks;
+/// builds of one release share the line, and a result that does not decode is
+/// a fallback too. (Linux starts the helper from `/proc/self/exe`, the
+/// parent's own file.)
+pub(crate) const READY: &[u8] = concat!("mxr-html-worker/1 ", env!("CARGO_PKG_VERSION")).as_bytes();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -163,6 +170,14 @@ fn u64_from(bytes: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_handshake_names_the_release() {
+        assert_eq!(
+            READY,
+            format!("mxr-html-worker/1 {}", env!("CARGO_PKG_VERSION")).as_bytes()
+        );
+    }
 
     #[test]
     fn a_request_survives_a_frame_round_trip() {

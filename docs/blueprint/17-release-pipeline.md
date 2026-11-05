@@ -124,6 +124,34 @@ When the scoped diff affects CLI artifacts, the same workflow also builds binari
 
 For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap. They are published without tarballs by design, and with `--latest=false`, so `releases/latest` and Homebrew keep pointing at the newest release that has tarballs. The guarantee is that Latest and the tap never point at a release missing its assets, not that no release is ever visible without them.
 
+### A new crate and a release can race on Cargo.lock
+
+Every package in this repository takes the workspace version, and the release
+PR bumps all of their `Cargo.lock` entries. A branch that adds a crate carries
+its lock entry at the version the branch was cut from. If a release merges
+before the branch does, `main` gets the new crate one version behind the rest
+and every `--locked` build there fails, although the branch's own CI was green:
+it ran before the release (v0.6.208 and #858, 2026-11-04).
+
+Right before merging a PR, check the merge it would make:
+
+```bash
+git fetch origin main
+scripts/check_lockfile_versions.sh --merge-with origin/main
+```
+
+It reads the merge from `git merge-tree`, so nothing is checked out or built,
+and names any in-repo package off the workspace version. The fix is to rebase,
+run `cargo update --workspace --offline` (it rewrites only those versions),
+commit `Cargo.lock` and let CI run again. CI also runs the plain form on every
+PR.
+
+If the race reaches `main` anyway, the next release PR repairs it. Do not
+hand-edit the line on `main` while a release PR is open: that conflicts the
+release PR, and release-please leaves a PR whose notes have not changed as it
+is. If it does conflict, close it and run `gh workflow run release-please.yml
+--ref main`, which opens a fresh one from `main`.
+
 ### What a failed release run leaves behind
 
 A run that fails before publication leaves a draft. A re-run on an already published release is different: it writes nothing and fails on purpose when its rebuilt checksums differ from the published ones (or when the asset or checksum lookup fails), leaving the published release untouched and Homebrew not updated.

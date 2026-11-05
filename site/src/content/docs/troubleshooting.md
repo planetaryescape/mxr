@@ -132,7 +132,7 @@ mxr doctor --format table | grep '^HTML helper:'
 # HTML helper:  2 fallbacks since start (4012 requests, 1 timeouts, 1 helper deaths, 2 restarts, 0 job errors)
 ```
 
-Each fallback is one request that got flat text. A count that climbs with ordinary mail suggests the helper cannot start: check that the `mxr` binary the daemon runs still exists, then restart the daemon. `HTML helper: not reporting` means the daemon is not running or predates the helper. Open the message in your browser (`O` in the TUI) to see the original.
+Each fallback is one request that got flat text. A count that climbs with ordinary mail suggests the helper cannot start: check that the `mxr` binary the daemon runs still exists, then restart the daemon. After an upgrade on macOS, a TUI or daemon that was already running keeps showing flat text until it is restarted, because it will not use a helper from the new release. While the helper cannot start, sending or forwarding an HTML message is refused with "try again in a few seconds"; a refusal that says the HTML is too complex means the helper gave up on that HTML, and simplifying it is the fix. `HTML helper: not reporting` means the daemon is not running or predates the helper. Open the message in your browser (`O` in the TUI) to see the original.
 
 ## Agent access or model feature is refused
 

@@ -438,7 +438,7 @@ fn capitalise(text: &str) -> String {
 /// How many sample rows the table shows.
 const TABLE_SAMPLE: usize = 8;
 
-/// Said wherever an `--all` run is previewed or confirmed (D191).
+/// Said wherever an `--all` run is previewed or confirmed (D192).
 const NO_UNDO: &str = "An --all job cannot be undone: this preview is the check.";
 
 fn preview_lines(action: &BulkAction, preview: &SelectionPreviewData) -> Vec<String> {

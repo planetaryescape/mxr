@@ -15,6 +15,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, TodoPageState, TodoPanel, TodoPromptKind, TodoPromptState};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 
@@ -28,6 +29,8 @@ pub struct TodoView<'a> {
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
     pub account_marks: crate::ui::account_mark::AccountMarks,
+    /// The peeked to-do's source email as plain text, once fetched.
+    pub peek_body: Option<&'a str>,
 }
 
 /// Cells in the runway bar.
@@ -103,46 +106,74 @@ pub(crate) fn primary_label(todo: &TodoData) -> String {
     }
 }
 
-fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
-    match page.panel {
+/// The footer's keys in `width`. Enter, undo, a waiting review and help
+/// always show; the rest follow the guide's order, the last ones dropped
+/// first when space runs short.
+fn keys_line(page: &TodoPageState, selected: Option<&TodoData>, width: usize) -> String {
+    let entries = match page.panel {
         TodoPanel::Runway => {
             let enter = selected.map_or_else(|| "do it".to_string(), primary_label);
             // The mode's own key table, so the footer says what web and CLI say.
-            let rest: Vec<String> = match &page.guide {
+            let rest: Vec<(String, String)> = match &page.guide {
                 Some(guide) => guide
                     .keys
                     .iter()
-                    .filter(|key| !matches!(key.key.as_str(), "Enter" | "t" | "u" | "?"))
-                    .map(|key| format!("{} {}", key.key, key.verb))
+                    .map(|key| (key.key.clone(), key.verb.clone()))
                     .collect(),
                 None => mxr_protocol::TODO_GUIDE
                     .keys
                     .iter()
-                    .filter(|(key, _)| !matches!(*key, "Enter" | "t" | "u" | "?"))
-                    .map(|(key, verb)| format!("{key} {verb}"))
+                    // Before the daemon's guide arrives, the compiled-in copy names
+                    // actions by id; show their keys, as the guide would.
+                    .filter_map(|(id, verb)| {
+                        Some((mxr_keymap::guide_key(id)?, (*verb).to_string()))
+                    })
                     .collect(),
             };
-            let rest = rest.join("  ");
-            let review = selected
+            let mut entries = vec![FooterKey::keep(format!("\u{21b5} {enter}"))];
+            entries.extend(
+                rest.into_iter()
+                    .filter(|(key, _)| !matches!(key.as_str(), "Enter" | "t" | "?"))
+                    .map(|(key, verb)| {
+                        let text = format!("{key} {verb}");
+                        if key == "u" {
+                            FooterKey::keep(text)
+                        } else {
+                            FooterKey::optional(text)
+                        }
+                    }),
+            );
+            if selected
                 .and_then(|todo| todo.resolution.as_ref())
-                .filter(|resolution| resolution.status == "pending")
-                .map_or_else(String::new, |_| "  , review the resolution first".into());
-            let microsoft = if page
+                .is_some_and(|resolution| resolution.status == "pending")
+            {
+                entries.push(FooterKey::keep(", review the resolution first"));
+            }
+            if page
                 .microsoft_status
                 .as_ref()
                 .is_some_and(|status| status.installed)
             {
-                "  : Microsoft To Do"
-            } else {
-                ""
-            };
-            format!("\u{21b5} {enter}  {rest}{review}{microsoft}  ? keys")
+                entries.push(FooterKey::optional(": Microsoft To Do"));
+            }
+            entries
         }
-        TodoPanel::Expired => "\u{21b5} restore  o email  Esc back to the runway".to_string(),
-        TodoPanel::Catchup => {
-            "\u{21b5} keep  e let go  E let go of all  o email  Esc back".to_string()
-        }
-    }
+        TodoPanel::Expired => vec![
+            FooterKey::keep("\u{21b5} restore"),
+            FooterKey::optional("o email"),
+            FooterKey::keep("Esc back to the runway"),
+        ],
+        TodoPanel::Catchup => vec![
+            FooterKey::keep("\u{21b5} keep"),
+            FooterKey::keep("e let go"),
+            FooterKey::optional("E let go of all"),
+            FooterKey::optional("o email"),
+            FooterKey::keep("Esc back"),
+        ],
+    };
+    let mut entries = entries;
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 /// Greedy word wrap for the cards and catch-up copy, which are plain text.
@@ -308,6 +339,8 @@ struct Body {
     lines: Vec<Line<'static>>,
     selected_line: usize,
     sync_preview_end: Option<usize>,
+    /// The line after the lit row's peek, so scrolling can show all of it.
+    peek_end: Option<usize>,
 }
 
 impl Body {
@@ -316,6 +349,7 @@ impl Body {
             lines: Vec::new(),
             selected_line: 0,
             sync_preview_end: None,
+            peek_end: None,
         }
     }
 
@@ -347,6 +381,21 @@ impl Body {
             let chip = view.account_marks.row_cell(&todo.account_id, theme);
             let width = width.saturating_sub(view.account_marks.column_width());
             self.push(row_line(todo, selected, dim, width, theme, chip));
+            if view.page.peek.as_deref() == Some(todo.id.as_str()) {
+                let peek =
+                    crate::ui::todo_peek::peek_lines(todo, view.peek_body, view.now, view.zone);
+                for item in peek {
+                    for text in wrap(&item, width.saturating_sub(8)) {
+                        self.text(
+                            format!("  \u{2502} {text}"),
+                            Style::default().fg(theme.text_secondary),
+                        );
+                    }
+                }
+                if selected {
+                    self.peek_end = Some(self.lines.len());
+                }
+            }
             if selected {
                 if let Some(preview) = view
                     .page
@@ -693,8 +742,15 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
     let body_height = inner.height.saturating_sub(footer_height) as usize;
     let scroll = body.sync_preview_end.map_or_else(
         || {
-            body.selected_line
-                .saturating_sub(body_height.saturating_sub(2))
+            let row = body
+                .selected_line
+                .saturating_sub(body_height.saturating_sub(2));
+            // An open peek under the lit row shows whole, as far as the
+            // row itself can stay on screen.
+            body.peek_end.map_or(row, |end| {
+                row.max(end.saturating_sub(body_height))
+                    .min(body.selected_line)
+            })
         },
         |end| end.saturating_sub(body_height),
     );
@@ -729,7 +785,10 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(" {}", keys_line(view.page, selected)),
+                format!(
+                    " {}",
+                    keys_line(view.page, selected, width.saturating_sub(2))
+                ),
                 Style::default().fg(theme.text_muted),
             )),
         ]),
@@ -1107,6 +1166,7 @@ pub(crate) mod tests {
                     selected_index,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1155,6 +1215,7 @@ pub(crate) mod tests {
                             selected_index: 39,
                             active_pane: &ActivePane::MailList,
                             account_marks: crate::ui::account_mark::AccountMarks::default(),
+                            peek_body: None,
                         },
                         &crate::theme::Theme::default(),
                     );
@@ -1183,6 +1244,7 @@ pub(crate) mod tests {
                     selected_index: 39,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1268,6 +1330,7 @@ pub(crate) mod tests {
                         selected_index: 0,
                         active_pane: &ActivePane::MailList,
                         account_marks: crate::ui::account_mark::AccountMarks::default(),
+                        peek_body: None,
                     },
                     &theme,
                 );
@@ -1466,6 +1529,7 @@ pub(crate) mod tests {
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1498,5 +1562,15 @@ pub(crate) mod tests {
             .find(|line| line.contains("Pay council") && !line.contains("need you"))
             .unwrap();
         assert!(bill.contains('\u{2593}'), "{bill}");
+    }
+
+    #[test]
+    fn the_footer_keeps_undo_and_help_at_every_width() {
+        let page = page(runway(vec![council_tax()], vec![]), true);
+        for width in [80, 100, 120] {
+            let rendered = render_at(&page, width);
+            assert!(rendered.contains("u undo"), "{width}:\n{rendered}");
+            assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
+        }
     }
 }

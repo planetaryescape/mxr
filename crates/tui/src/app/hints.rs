@@ -250,7 +250,12 @@ impl App {
         let acts = match id.as_str() {
             "now.from_mode" => matches!(
                 action,
-                Action::NowOpen | Action::NowDone | Action::NowOpenEmail | Action::Reply
+                Action::NowOpen
+                    | Action::NowDone
+                    | Action::NowOpenEmail
+                    | Action::Reply
+                    | Action::ReplyAll
+                    | Action::Forward
             ),
             "updates.let_go" => matches!(
                 action,

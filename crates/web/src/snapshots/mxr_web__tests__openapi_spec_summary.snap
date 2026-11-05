@@ -277,6 +277,7 @@ expression: summary
     "HintData",
     "HintSeenBody",
     "HostAuthority",
+    "HtmlHelperStats",
     "HtmlImageAsset",
     "HtmlImageAssetStatus",
     "HtmlImageSourceKind",

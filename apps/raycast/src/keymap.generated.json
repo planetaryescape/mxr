@@ -356,6 +356,12 @@
     ],
     "key": "j"
   },
+  "now.forward": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "f"
+  },
   "now.let-go-digest": {
     "modifiers": [
       "cmd",
@@ -374,6 +380,12 @@
       "cmd"
     ],
     "key": "r"
+  },
+  "now.reply-all": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "a"
   },
   "now.to-do": {
     "modifiers": [

@@ -30,6 +30,39 @@ use serde::{Deserialize, Serialize};
 pub(crate) enum ImapCursor {
     #[serde(rename = "1")]
     V1(ImapCursorV1),
+    /// Written only while a generic (non-Gmail) newest-first initial backfill
+    /// is in progress. An older binary only knows `"1"`, fails to decode this,
+    /// and takes the `SyncCursorExpired` full-resync path. Decoding it as a
+    /// v1 cursor instead would delta-sync upward from the newest page and
+    /// never fetch the older mail.
+    #[serde(rename = "2")]
+    V2(ImapCursorV2),
+}
+
+/// Per-folder newest-first backfill state, in the order folders are fetched.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ImapCursorV2 {
+    #[serde(default)]
+    pub(crate) capabilities: Option<ImapCapabilityState>,
+    /// Folders fully fetched; each is already a normal delta cursor.
+    pub(crate) completed: Vec<ImapMailboxCursor>,
+    /// Folders still to fetch. The first entry is the one in progress.
+    pub(crate) pending: Vec<ImapFolderBackfill>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ImapFolderBackfill {
+    pub(crate) mailbox: String,
+    /// SELECT-time state captured when this folder's backfill began. Its
+    /// `uid_next` is the frozen horizon: mail above it is left to the first
+    /// delta sync. `None` until the folder's first page.
+    pub(crate) started: Option<ImapMailboxCursor>,
+    /// Highest UID not yet fetched; the walk goes downward. 0 means done.
+    pub(crate) next_high: u32,
+    /// Lowest UID that failed to parse so far. At completion the folder's
+    /// `uid_next` is floored to it so the first delta re-fetches it.
+    #[serde(default)]
+    pub(crate) min_failed_uid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,18 +156,50 @@ impl ImapCursor {
         })
     }
 
+    pub(crate) fn new_generic_backfill(
+        completed: Vec<ImapMailboxCursor>,
+        pending: Vec<ImapFolderBackfill>,
+        capabilities: Option<ImapCapabilityState>,
+    ) -> Self {
+        Self::V2(ImapCursorV2 {
+            capabilities,
+            completed,
+            pending,
+        })
+    }
+
     pub(crate) fn into_mailboxes(self) -> Vec<ImapMailboxCursor> {
-        let Self::V1(v) = self;
-        v.mailboxes
+        match self {
+            Self::V1(v) => v.mailboxes,
+            Self::V2(v) => v.completed,
+        }
     }
 
     pub(crate) fn backfill(&self) -> Option<&ImapBackfillCursor> {
-        let Self::V1(v) = self;
-        v.backfill.as_ref()
+        match self {
+            Self::V1(v) => v.backfill.as_ref(),
+            Self::V2(_) => None,
+        }
+    }
+
+    pub(crate) fn into_generic_backfill(self) -> Option<ImapCursorV2> {
+        match self {
+            Self::V1(_) => None,
+            Self::V2(v) => Some(v),
+        }
     }
 
     pub(crate) fn describe(&self) -> String {
-        let Self::V1(v) = self;
+        let v = match self {
+            Self::V1(v) => v,
+            Self::V2(v) => {
+                return format!(
+                    "imap generic_backfill completed={} pending={}",
+                    v.completed.len(),
+                    v.pending.len()
+                );
+            }
+        };
         let fallback = v
             .mailboxes
             .iter()
@@ -279,6 +344,75 @@ mod tests {
         let legacy = SyncCursor::from_bytes(br#"{"Gmail":{"history_id":12345}}"#.to_vec());
         let err = ImapCursor::decode(&legacy).unwrap_err();
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
+    }
+
+    /// The enum as the previous release shipped it: only `"1"`.
+    #[derive(Deserialize)]
+    #[serde(tag = "v")]
+    enum PreviousReleaseCursor {
+        #[serde(rename = "1")]
+        V1(ImapCursorV1),
+    }
+
+    fn previous_release_decode(bytes: &[u8]) -> Option<usize> {
+        match serde_json::from_slice::<PreviousReleaseCursor>(bytes) {
+            Ok(PreviousReleaseCursor::V1(v)) => Some(v.mailboxes.len()),
+            Err(_) => None,
+        }
+    }
+
+    fn in_progress_backfill() -> ImapCursor {
+        ImapCursor::new_generic_backfill(
+            vec![sample_mailbox()],
+            vec![ImapFolderBackfill {
+                mailbox: "Archive".into(),
+                started: Some(sample_mailbox()),
+                next_high: 50,
+                min_failed_uid: Some(7),
+            }],
+            None,
+        )
+    }
+
+    #[test]
+    fn in_progress_backfill_is_undecodable_by_the_previous_release() {
+        let encoded = in_progress_backfill().encode();
+        assert_eq!(previous_release_decode(encoded.as_bytes()), None);
+        // The previous release then tries its legacy shim, which also rejects
+        // it, so it reports SyncCursorExpired and runs a full resync.
+        assert!(decode_legacy(encoded.as_bytes()).is_none());
+    }
+
+    #[test]
+    fn in_progress_backfill_round_trips() {
+        let decoded = ImapCursor::decode(&in_progress_backfill().encode())
+            .unwrap()
+            .unwrap()
+            .into_generic_backfill()
+            .unwrap();
+        assert_eq!(decoded.completed.len(), 1);
+        assert_eq!(decoded.pending[0].next_high, 50);
+        assert_eq!(decoded.pending[0].min_failed_uid, Some(7));
+    }
+
+    #[test]
+    fn v1_fixtures_still_decode_as_before() {
+        let completed = SyncCursor::from_bytes(
+            br#"{"v":"1","mailboxes":[{"mailbox":"INBOX","uid_validity":1,"uid_next":100,"highest_modseq":null}]}"#.to_vec(),
+        );
+        assert_eq!(previous_release_decode(completed.as_bytes()), Some(1));
+        let decoded = ImapCursor::decode(&completed).unwrap().unwrap();
+        assert!(decoded.backfill().is_none());
+        assert!(decoded.clone().into_generic_backfill().is_none());
+        assert_eq!(decoded.into_mailboxes()[0].uid_next, 100);
+
+        let gmail_backfill = SyncCursor::from_bytes(
+            br#"{"v":"1","mailboxes":[{"mailbox":"All Mail","uid_validity":1,"uid_next":900,"highest_modseq":null}],"backfill":{"mailbox":{"mailbox":"All Mail","uid_validity":1,"uid_next":900,"highest_modseq":null},"next_uid":501,"end_uid":899,"gmail_all_mail":true}}"#.to_vec(),
+        );
+        let decoded = ImapCursor::decode(&gmail_backfill).unwrap().unwrap();
+        let backfill = decoded.backfill().expect("gmail backfill kept");
+        assert!(backfill.gmail_all_mail);
+        assert_eq!(backfill.next_uid, 501);
     }
 
     #[test]

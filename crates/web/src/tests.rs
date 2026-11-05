@@ -7272,6 +7272,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                 data: ResponseData::AccountOperation {
                     result: mxr_protocol::AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: format!("{key} {color:?} {tag:?} dry_run={dry_run}"),
                         save: None,
                         auth: None,
@@ -7323,4 +7324,18 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[test]
+fn an_account_step_that_saved_before_failing_keeps_the_combined_result_saved() {
+    let mut combined = empty_account_operation_result();
+    let mut saved_then_failed = empty_account_operation_result();
+    saved_then_failed.ok = false;
+    saved_then_failed.saved = true;
+
+    merge_account_operation_result(&mut combined, saved_then_failed);
+    merge_account_operation_result(&mut combined, empty_account_operation_result());
+
+    assert!(!combined.ok);
+    assert!(combined.saved);
 }

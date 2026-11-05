@@ -118,6 +118,17 @@ if ! grep -Fq 'run: scripts/prune_expired_key_moves' "$prune_workflow"; then
   echo "The key-move prune must run scripts/prune_expired_key_moves." >&2
   exit 1
 fi
+# A prune that breaks a test tied to a real move must fail the run, not
+# open a red PR: the TUI and web tests run between the prune and the PR.
+prune_line="$(grep -n 'run: scripts/prune_expired_key_moves' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+tui_line="$(grep -n 'cargo test --quiet -p mxr-tui --lib' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+web_line="$(grep -n 'npx vitest run' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+pr_line="$(grep -n 'gh pr create' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+if [[ -z "$tui_line" || -z "$web_line" || -z "$pr_line" ]] \
+  || (( tui_line < prune_line || web_line < prune_line || tui_line > pr_line || web_line > pr_line )); then
+  echo "The key-move prune must run the TUI and web tests after pruning and before it opens the PR." >&2
+  exit 1
+fi
 
 # The workspace runs once in full, with the feature release.yml ships; the
 # no-feature job tests only the crates the feature changes.

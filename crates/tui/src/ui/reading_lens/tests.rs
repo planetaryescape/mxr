@@ -8,6 +8,13 @@ use mxr_protocol::{
 };
 use mxr_test_support::render_to_string;
 
+/// The clock the views render against. The fixture's mail is from October
+/// 2026, and the snapshots show it as earlier this year; on the wall clock
+/// they change on 1 January.
+fn fixture_now() -> chrono::DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+}
+
 fn at() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 6, 7, 0, 0)
         .single()
@@ -266,7 +273,7 @@ fn render(page: &ReadingPageState, selected: usize, width: u16) -> String {
                 zone: crate::ui::received_label::DisplayZone::Fixed(
                     chrono::FixedOffset::east_opt(3600).unwrap(),
                 ),
-                now: chrono::Utc::now(),
+                now: fixture_now(),
                 page,
                 selected_index: selected,
                 active_pane: &ActivePane::MailList,
@@ -398,16 +405,16 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
     reading.reader = Some(detail(false));
     assert!(paragraph_at_top(
         &reading,
-        chrono::Utc::now(),
+        fixture_now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("We rebuilt")));
+    .is_some_and(|(index, p)| index == 0 && p.starts_with("We rebuilt")));
     // Past the first paragraph and the heading, the third one is on top.
     let (_, owners) = reader_lines(
         &reading,
         READER_WIDTH,
         &crate::theme::Theme::default(),
-        chrono::Utc::now(),
+        fixture_now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap()),
     );
     let third = owners
@@ -417,10 +424,10 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
     reading.scroll = u16::try_from(third).expect("small");
     assert!(paragraph_at_top(
         &reading,
-        chrono::Utc::now(),
+        fixture_now(),
         crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
     )
-    .is_some_and(|p| p.starts_with("A delete is")));
+    .is_some_and(|(index, p)| index == 2 && p.starts_with("A delete is")));
 }
 
 #[test]
@@ -504,4 +511,22 @@ fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
         step: crate::app::HighlightStep::Note("new".into()),
     });
     assert!(render(&reading, 6, 100).contains("Note: new"));
+}
+
+#[test]
+fn the_footer_keeps_help_at_every_width() {
+    let mut reading = page();
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(rendered.contains("? keys"), "list at {width}:\n{rendered}");
+    }
+    reading.reader = Some(detail(false));
+    reading.reader_focused = true;
+    for width in [80, 100, 120] {
+        let rendered = render(&reading, 0, width);
+        assert!(
+            rendered.contains("? keys"),
+            "reader at {width}:\n{rendered}"
+        );
+    }
 }

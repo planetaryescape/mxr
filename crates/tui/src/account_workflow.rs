@@ -155,6 +155,7 @@ pub(crate) async fn run_post_auth_save_workflow(
 pub(crate) fn empty_account_operation_result() -> AccountOperationResult {
     AccountOperationResult {
         ok: true,
+        saved: false,
         summary: String::new(),
         save: None,
         auth: None,
@@ -170,6 +171,7 @@ pub(crate) fn merge_account_operation_result(
     next: AccountOperationResult,
 ) {
     base.ok &= next.ok;
+    base.saved |= next.saved;
     if !next.summary.is_empty() {
         if base.summary.is_empty() {
             base.summary = next.summary;
@@ -188,5 +190,24 @@ pub(crate) fn merge_account_operation_result(
     }
     if next.send.is_some() {
         base.send = next.send;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_step_that_saved_before_failing_keeps_the_combined_result_saved() {
+        let mut combined = empty_account_operation_result();
+        let mut saved_then_failed = empty_account_operation_result();
+        saved_then_failed.ok = false;
+        saved_then_failed.saved = true;
+
+        merge_account_operation_result(&mut combined, saved_then_failed);
+        merge_account_operation_result(&mut combined, empty_account_operation_result());
+
+        assert!(!combined.ok);
+        assert!(combined.saved);
     }
 }

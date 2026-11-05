@@ -31,6 +31,18 @@ For the active `<instance>`, the default roots are:
 `MXR_SOCKET_PATH`, `MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH`
 override individual paths when needed.
 
+`MXR_EDITOR`, `MXR_SYNC_INTERVAL`, `MXR_DEFAULT_ACCOUNT`, `MXR_ATTACHMENT_DIR`,
+`MXR_DOWNLOAD_DIR` and `MXR_SAFETY_POLICY` override the matching `[general]`
+keys for the process that reads them. They are never saved into the file.
+Settings changes, account forms and `mxr config set` read `config.toml` as
+written, change only what you asked, and keep the comments and layout of the
+keys they leave alone. A save adds a setting your file doesn't have only when
+its value differs from the default, so settings you never wrote keep following
+mxr's defaults; a setting you wrote stays, even at its default value. If there
+is no file yet, the first save writes every setting, so `mxr config edit` opens
+a full template. Keys mxr doesn't recognise are dropped on save. Each save
+replaces the file atomically, so an interrupted save leaves the old one.
+
 IMAP/SMTP passwords are stored in `secrets.toml` at mode `0600`, not in
 `config.toml`. The OS keychain is an optional migration fallback. Set
 `MXR_KEYCHAIN=off` when IMAP/SMTP password handling must not touch it, such as

@@ -119,7 +119,25 @@ mod tests {
         prompt.time.update(&prompt.input, &SnoozeConfig::default());
         let typed = render(&prompt);
         assert!(typed.contains("→ "), "the resolved time shows:\n{typed}");
-        assert!(typed.contains("in 2 days"), "{typed}");
+        // A long date ("Saturday 2 January 2027") wraps the preview, so the
+        // check reads the text across lines.
+        assert!(unwrapped(&typed).contains("(in 2 days)"), "{typed}");
+    }
+
+    /// The popup's text, its borders and line breaks taken out.
+    fn unwrapped(rendered: &str) -> String {
+        rendered
+            .lines()
+            .map(|line| {
+                line.trim()
+                    .trim_matches('"')
+                    .trim()
+                    .trim_matches('│')
+                    .trim()
+            })
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     #[test]

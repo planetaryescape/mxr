@@ -16,4 +16,4 @@ A client that pages through results while the index stops or starts can get a pa
 
 ## Very large or structurally complex documents lose their layout on the read side
 
-The read side does not parse a document over the mail-HTML budget in `crates/reader/src/html_limits.rs` (2 MiB, 20,000 tags, 64 attributes in a tag, 20,000 cells, 64 cells in a row, 200,000 grid slots). It shows the tag-stripped text instead, so tables and lists lose their layout. The send side refuses such a document; see `docs/issues/html-render-isolation.md` for the read-side gaps that remain until process isolation ships.
+The read side does not parse a document over the mail-HTML budget in `crates/reader/src/html_limits.rs` (2 MiB, 20,000 tags, 64 attributes in a tag, 20,000 cells, 64 cells in a row, 200,000 grid slots). It shows the tag-stripped text instead, so tables and lists lose their layout. The send side refuses such a document; the read-side gaps in that budget are closed by running every parse in a helper process (`docs/issues/html-render-isolation.md`).

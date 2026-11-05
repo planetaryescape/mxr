@@ -1,5 +1,5 @@
 use super::desk::{request, Fixture, ME};
-use super::promise_projection::{replace, settle};
+use super::promise_projection::{month_start, replace, settle, written};
 use super::*;
 use chrono::Duration;
 use mxr_core::{Address, MessageDirection, ThreadId};
@@ -230,15 +230,15 @@ async fn review3_failed_payment_and_polite_remediation_have_one_stored_task() {
 #[tokio::test]
 async fn review3_independent_payment_remediations_keep_their_own_tasks() {
     for (text, expected) in [
-        ("Your payment failed. Please update your payment details. Please sign the contract.", 2),
-        ("Your payment failed.\n\nPlease update your payment details.", 2),
-        ("Your payment of £25 for account #A123 failed. Please update your payment details for account #B456, amount due €40 by 1 December 2026.", 2),
-        ("Your payment of £25 due by 1 November 2026 failed. Please update your payment details for £25 due by 1 December 2026.", 2),
-        ("Your payment failed last month but is now resolved.", 0),
+        ("Your payment failed. Please update your payment details. Please sign the contract.".to_string(), 2),
+        ("Your payment failed.\n\nPlease update your payment details.".to_string(), 2),
+        (format!("Your payment of £25 for account #A123 failed. Please update your payment details for account #B456, amount due €40 by {}.", written(month_start(2))), 2),
+        (format!("Your payment of £25 due by {} failed. Please update your payment details for £25 due by {}.", written(month_start(1)), written(month_start(2))), 2),
+        ("Your payment failed last month but is now resolved.".to_string(), 0),
     ] {
         let fx = Fixture::new().await;
         let mail = fx.message(&ThreadId::new(), "billing@example.com", ME, Duration::minutes(5), None).await;
-        replace(&fx, &mail, text).await;
+        replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         let tasks = fx.state.store.list_todos_in_state(Some(&fx.account), TodoState::Open, 100).await.unwrap();
         eprintln!("REVIEW3_INDEPENDENT {text:?} tasks={tasks:?}");

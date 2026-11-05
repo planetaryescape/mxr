@@ -1232,8 +1232,8 @@ and its key line is no longer shown on its own.
 - Clear for now: "Nothing needs you. Next: renew car insurance shows up Mon
   19 Oct."
 - Card: "Each row is one thing to do, written as what to do, not the
-  email's subject. Act by the first date; Space ticks it off and o opens
-  the email it came from."
+  email's subject. Act by the first date; e ticks it off, Space peeks at
+  why it is here and o opens the email it came from."
   Keys: `Enter` do it · `e` tick off · `Z` schedule · `X` not a to-do
 - Why line: "Here because: \"payment due 9 October\" (rule). Once you pay,
   the receipt files itself in Archive."
@@ -1590,11 +1590,13 @@ same set in JSON.
 ### The first run classifies newest first and lets windows clear history
 
 1. **Newest first.** Classification reads a queue ordered by message date,
-   not by sync order: IMAP's initial sync fetches ascending UIDs, oldest
-   first, and returns the folder in one batch
-   (`crates/provider-imap/src/lib.rs`), and Gmail's list order is
-   undocumented. The IMAP adapter pages newest first so a first IMAP sync
-   shows something before the whole folder lands. The first slice, the
+   not by sync order: Gmail's list order is undocumented, and Gmail over
+   IMAP still pages All Mail oldest first. A generic IMAP account pages
+   newest first (`crates/provider-imap/src/generic_backfill.rs`): batches of
+   at most 500 messages, INBOX first, then the other folders in LIST order,
+   each folder from its highest UID downward, so a first IMAP sync shows
+   the newest INBOX mail in its first batch instead of nothing until every
+   folder has landed. The first slice, the
    last 14 days (917 messages on BK's store), runs through rules and the
    fast tier before anything else, so Now has People, Due soon and the
    Updates card within minutes.

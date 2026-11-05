@@ -35,6 +35,8 @@ export interface MoveSubject {
    * where it is now. `answer` sends the move as that answer.
    */
   notSure?: { mode: ModeId; answer: (mode: ModeId, sender: boolean) => void };
+  /** The mode it is in now, as the view it was opened from shows it: marked "here now". */
+  here?: ModeId;
   /**
    * A first-time sender's question on this row: the picker's capitals (or
    * `P`'s picker) answer it with the sender's kind, as its digits did.

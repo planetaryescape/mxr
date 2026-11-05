@@ -359,6 +359,52 @@ fn navigation_chords_on_a_not_sure_question_never_answer_it() {
     }
 }
 
+/// One verb per key (blueprint 35): on a Not-sure question, Now's `e` and
+/// `r` act on its email as on any other Now row. Only `X` answers it.
+#[test]
+fn now_keys_on_a_not_sure_question_act_on_its_email() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 1;
+    let question = match app.selected_now_row() {
+        Some(NowRow::NotSure(question)) => question.clone(),
+        other => panic!("expected a question, got {other:?}"),
+    };
+
+    press(&mut app, KeyCode::Char('r'));
+    assert!(
+        matches!(
+            &app.compose.pending_compose,
+            Some(crate::app::ComposeAction::Reply { message_id, .. })
+                if *message_id == question.message_id
+        ),
+        "r replies to the question's email"
+    );
+    app.compose.pending_compose = None;
+
+    press(&mut app, KeyCode::Char('e'));
+    assert!(
+        matches!(
+            queued(&app).as_slice(),
+            [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false, .. }]
+                if *thread_ids == vec![question.thread_id.clone()]
+        ),
+        "e is done here, in the mode it is in for now: {:?}",
+        queued(&app)
+    );
+    assert!(
+        app.mailbox.trust.move_menu.is_none(),
+        "neither key opens the move picker"
+    );
+
+    for key in ['m', 'x'] {
+        let mut app = now_with_questions();
+        app.mailbox.selected_index = 1;
+        press(&mut app, KeyCode::Char(key));
+        assert!(queued(&app).is_empty(), "{key} is not a Now key");
+        assert!(app.compose.pending_compose.is_none(), "{key}");
+    }
+}
+
 #[test]
 fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
@@ -377,15 +423,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
         Some(NowRow::NotSure(question)) => question.message_id.clone(),
         other => panic!("expected a question, got {other:?}"),
     };
-    // The old one-key answers say where answering went and move nothing.
-    let before = app.status_message.clone();
-    press(&mut app, KeyCode::Char('r'));
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced("not-sure", "r", "Move is now X", before.as_deref())
-    );
-    assert!(queued(&app).is_empty());
-
     press(&mut app, KeyCode::Char('X'));
     let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
     assert!(menu.not_sure);
@@ -647,6 +684,40 @@ fn an_account_address_change_drops_every_cached_reply_context() {
     assert!(
         !app.compose.reply_context_cache.contains_key(&message),
         "a reply cached before the alias existed would still offer the old To line"
+    );
+}
+
+#[test]
+fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('m'));
+    let loaded =
+        crate::ui::messages_lens::tests::page(crate::ui::messages_lens::tests::populated(), true);
+    app.set_messages(loaded.messages.unwrap(), loaded.guide);
+    let (row_id, topic) = app
+        .mailbox
+        .messages_page
+        .pending_person
+        .take()
+        .expect("the selected row's page");
+    app.set_person_page(row_id, topic, crate::ui::messages_lens::tests::samir_page());
+    press(&mut app, KeyCode::Char('X'));
+    let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
+    assert_eq!(menu.current, Some(ModeKindData::Messages));
+    assert!(!menu.not_sure, "an ordinary move is not a Not-sure answer");
+    assert_eq!(menu.selected, 0, "the highlight starts on the first option");
+
+    // Now marks the mode the lit row is from.
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('h'));
+    let loaded = page(populated(), true);
+    app.set_now(loaded.now.unwrap(), loaded.guide);
+    press(&mut app, KeyCode::Char('X'));
+    assert_eq!(
+        app.mailbox.trust.move_menu.as_ref().and_then(|m| m.current),
+        Some(ModeKindData::Messages)
     );
 }
 

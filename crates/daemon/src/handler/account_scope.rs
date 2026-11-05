@@ -952,7 +952,7 @@ async fn resolve_undo(
 
 /// The accounts of an `--all` job, for an undo sent its id. `None` when the id
 /// has an undo entry (an ordinary undo, scoped by its snapshots) or is not an
-/// `--all` job. An `--all` job keeps no undo entry (D191); its accounts are
+/// `--all` job. An `--all` job keeps no undo entry (D192); its accounts are
 /// the ones its result recorded, or its selection's account. Empty means
 /// every account.
 async fn all_job_accounts_without_undo(

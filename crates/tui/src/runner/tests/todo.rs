@@ -154,6 +154,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
                     selected_index: app.mailbox.selected_index,
                     active_pane: &crate::app::ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -241,6 +242,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -260,6 +262,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -331,6 +334,7 @@ fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirma
                 selected_index: 0,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -1262,6 +1266,7 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
         vec![
             ("e", "Done"),
             ("o", "Email"),
+            ("Space", "Peek"),
             ("b", "Schedule"),
             ("X", "Correct…"),
             (",", "Edit"),
@@ -1387,4 +1392,87 @@ fn correction_stale_failure_keeps_replacement_input_and_pending_owner() {
     let effect = app.with_done_note(second.id, second.effect);
     app.apply_mutation_completion(effect, true);
     assert!(app.mailbox.todo_page.prompt.is_none());
+}
+
+fn todo_screen(app: &mut App) -> String {
+    let backend = ratatui::backend::TestBackend::new(140, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn space_peeks_under_the_lit_to_do_with_its_email_and_esc_closes_it_first() {
+    let mut app = todo_app(true);
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.unread = Some(true);
+    row.seen_revision = Some("peeked-revision".into());
+    let todo = row.clone();
+    let message_id = todo.source_message_id.clone().expect("a source email");
+    assert!(
+        !todo_screen(&mut app).contains("o opens the email"),
+        "no peek yet"
+    );
+
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(
+        app.mailbox.todo_page.peek.as_deref(),
+        Some(todo.id.as_str())
+    );
+    assert!(
+        app.mailbox.priority_body_fetches.contains(&message_id),
+        "the peek fetches the source email the way the reader does"
+    );
+    assert!(
+        queued(&app).iter().any(|r| matches!(
+            r,
+            Request::SetModeRowSeen { row_id, revision, .. }
+                if *row_id == todo.id && revision == "peeked-revision"
+        )),
+        "a peek is a look at the row, as the web's details are"
+    );
+    let shown = todo_screen(&mut app);
+    assert!(shown.contains("Here because"), "{shown}");
+    assert!(shown.contains("o opens the email"), "{shown}");
+
+    app.mailbox.body_cache.insert(
+        message_id.clone(),
+        mxr_core::MessageBody {
+            message_id,
+            text_plain: Some(
+                "Dear resident,\nYour council tax of £1,234 is due\nUnsubscribe".into(),
+            ),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+    let shown = todo_screen(&mut app);
+    assert!(
+        shown.contains("Your council tax of £1,234 is due"),
+        "{shown}"
+    );
+
+    // Space again closes it; Esc closes an open one before the hint.
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.mailbox.todo_page.peek, None);
+    press(&mut app, KeyCode::Char(' '));
+    assert!(app.mailbox.todo_page.peek.is_some());
+    let before = queued(&app).len();
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.todo_page.peek, None);
+    assert_eq!(
+        queued(&app).len(),
+        before,
+        "closing the peek dismisses no hint"
+    );
 }

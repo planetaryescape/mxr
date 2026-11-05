@@ -10,7 +10,8 @@ mod signatures;
 mod tracking;
 
 pub use html::{
-    guard_html2text, html_to_plain_text, in_guarded_render, strip_html_tags, MAX_TABLE_SPAN,
+    catch_html2text_panic, guard_html2text, html_to_plain_text, in_guarded_render, strip_html_tags,
+    MAX_TABLE_SPAN,
 };
 pub use html_limits::{bounded_html, clamp_table_spans, within_budget, MAX_HTML_BYTES, MAX_SPAN};
 pub use html_quote::{split_html_quote, split_html_quote_keeping_signature, HtmlParts};
@@ -20,3 +21,9 @@ pub use new_text::{
 pub use pipeline::{clean, ReaderConfig, ReaderOutput};
 pub use quotes::QuotedBlock;
 pub use searchable::{body_match_parts, searchable_text, SearchableText};
+
+/// Every parse this crate runs in the HTML helper process. The `mxr` binary
+/// registers them in its helper mode.
+pub fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    vec![&html::RENDER, &html_quote::SPLIT]
+}

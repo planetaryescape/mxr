@@ -626,7 +626,7 @@ pub struct AppState {
     /// Held from snapshot to install by everything that rewrites the
     /// in-memory config, so one writer's stale snapshot can never replace
     /// another's change (a revoked cloud-data setting above all).
-    config_write: tokio::sync::Mutex<()>,
+    pub(crate) config_write: tokio::sync::Mutex<()>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
     /// Live progress of the sync pass running for each account, plus the
     /// contacts a mid-backfill account still owes the relationship worker.
@@ -2062,12 +2062,18 @@ impl AppState {
             mutator(config).map_err(ConfigChangeError::Refused)?;
             Ok::<_, ConfigChangeError>(config.clone())
         });
+        // The file is read and saved as written. The daemon runs with the
+        // environment overrides on top, the way a reload loads it.
         match result {
-            Ok(saved) => self.install_config(saved).await,
+            Ok(mut saved) => {
+                mxr_config::apply_env_overrides(&mut saved);
+                self.install_config(saved).await
+            }
             Err(ConfigChangeError::Refused(reason)) => {
                 // Looking at the file taught the daemon what it has now, even
                 // though nothing was changed: keep its copy in step.
-                if let Some(on_disk) = seen {
+                if let Some(mut on_disk) = seen {
+                    mxr_config::apply_env_overrides(&mut on_disk);
                     if let Err(error) = self.install_config(on_disk).await {
                         tracing::warn!(%error, "couldn't apply the config found on disk");
                     }
@@ -3080,6 +3086,49 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_config_change_saves_the_file_as_written_and_keeps_env_overrides_running() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp_dir.path().join("config");
+        let data_dir = temp_dir.path().join("data");
+        let socket_path = temp_dir.path().join("mxr.sock");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+        let config_path = config_dir.join("config.toml");
+        std::fs::write(&config_path, "[general]\neditor = \"file-editor\"\n").expect("config");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir.as_os_str())),
+                ("MXR_DATA_DIR", Some(data_dir.as_os_str())),
+                ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
+                ("MXR_EDITOR", Some(std::ffi::OsStr::new("env-editor"))),
+            ],
+            || {
+                runtime.block_on(async {
+                    let state = AppState::in_memory_without_accounts().await.expect("state");
+                    let installed = state
+                        .mutate_config(|config| config.general.sync_interval = 120)
+                        .await
+                        .expect("config change");
+
+                    assert_eq!(installed.general.editor.as_deref(), Some("env-editor"));
+                    assert_eq!(
+                        state.config.read().general.editor.as_deref(),
+                        Some("env-editor")
+                    );
+                    let written =
+                        mxr_config::load_config_file_as_written(&config_path).expect("config");
+                    assert_eq!(written.general.editor.as_deref(), Some("file-editor"));
+                    assert_eq!(written.general.sync_interval, 120);
+                });
+            },
+        );
+    }
 
     #[test]
     fn owned_addresses_revision_ignores_case_and_order_and_follows_the_set() {

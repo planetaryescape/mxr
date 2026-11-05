@@ -181,13 +181,18 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
 /// October") counted from its email's date and time, and stays open until
 /// that day ends. On the wall clock, which bills had already lapsed depended
 /// on the hour the job ran, and the snapshot moved with it. Pinned to a time
-/// of day, the same mail gets the same answers on any run.
+/// of day, the same mail gets the same answers on any run. Read once per
+/// process, so a run that crosses midnight grades as of the day it built the
+/// demo.
 fn pinned_now() -> chrono::DateTime<chrono::Utc> {
-    chrono::Utc::now()
-        .date_naive()
-        .and_hms_opt(12, 0, 0)
-        .expect("noon is a valid time")
-        .and_utc()
+    static NOW: std::sync::OnceLock<chrono::DateTime<chrono::Utc>> = std::sync::OnceLock::new();
+    *NOW.get_or_init(|| {
+        chrono::Utc::now()
+            .date_naive()
+            .and_hms_opt(12, 0, 0)
+            .expect("noon is a valid time")
+            .and_utc()
+    })
 }
 
 /// The correspondence history the classifier reads exists: every message has
@@ -221,7 +226,7 @@ async fn eval(
 ) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
     for account in state.store.list_accounts().await.unwrap() {
         if account_id.is_none_or(|id| id == &account.id) {
-            crate::handler::assessments::reconcile_account(state, &account.id)
+            crate::handler::assessments::reconcile_account_at(state, &account.id, pinned_now())
                 .await
                 .unwrap();
         }

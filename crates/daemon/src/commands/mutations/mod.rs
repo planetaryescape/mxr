@@ -28,7 +28,7 @@ pub async fn undo(
     let mut client = IpcClient::connect().await?;
     if dry_run {
         // An `--all` job keeps no undo, so its dry run refuses exactly as the
-        // real undo does instead of promising one (D191).
+        // real undo does instead of promising one (D192).
         if let Response::Ok {
             data: ResponseData::Job { job },
         } = client

@@ -46,7 +46,7 @@ import {
 } from "./api";
 import { HighlightToolbar, NoteComposer } from "./HighlightToolbar";
 import { ReaderArticle, useReaderHtml } from "./ReaderArticle";
-import { PARAGRAPH_ATTRIBUTE, selectionParagraph } from "./paragraphAnchor";
+import { PARAGRAPH_ATTRIBUTE, paragraphAtTop, selectionParagraph } from "./paragraphAnchor";
 import { ReaderSettingsMenu } from "./ReaderSettingsMenu";
 import { readingRootProps, useAppTheme } from "./readerAppearance";
 import { ReadingUnsubscribeDialog } from "./ReadingDialogs";
@@ -204,6 +204,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     void rememberLayout(source.account_id, source.sender_email, value);
   }, [original, setView, source.account_id, source.sender_email]);
 
+  // With nothing selected, `"` takes the paragraph at the top of the
+  // reader, as the TUI does: a keyboard has no other way to pick one.
   const highlight = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";
     void highlightSelection(
@@ -212,6 +214,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
       showingArticle ? "article" : "issue",
       undefined,
       selectionParagraph(bodyRef.current),
+      paragraphAtTop(bodyRef.current, columnRef.current),
     );
   }, [item.item_key, showingArticle]);
 
@@ -239,7 +242,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const showHighlights = useCallback(() => {
     if (highlightCount === 0) {
       toast(
-        `No highlights in this issue yet: select a passage and press ${definedShortcut("reading.reader-highlight")}.`,
+        `No highlights in this issue yet: ${definedShortcut("reading.reader-highlight")} highlights the paragraph at the top, or a passage you select.`,
       );
       return;
     }

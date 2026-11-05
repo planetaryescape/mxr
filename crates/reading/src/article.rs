@@ -9,12 +9,14 @@
 //! sanitize it before showing it, as they do any email.
 
 use crate::extract::{paragraphs_from_html, word_count, Paragraph};
+use mxr_html_worker::Job;
+use serde::{Deserialize, Serialize};
 
 /// Readability on fewer words than this is a paywall, a login wall or a
 /// page that only renders in a browser.
 const MIN_ARTICLE_WORDS: usize = 120;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Article {
     pub title: String,
     pub byline: Option<String>,
@@ -27,7 +29,7 @@ pub struct Article {
     pub words: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Deserialize)]
 pub enum ArticleError {
     #[error("no article found on the page")]
     NotFound,
@@ -36,7 +38,24 @@ pub enum ArticleError {
 }
 
 /// The article in `html`, fetched from `url`.
+///
+/// Readability's parse runs in the HTML helper process. If the helper is lost
+/// (timeout, crash) the page has no readable article.
 pub fn extract_article(html: &str, url: Option<&str>) -> Result<Article, ArticleError> {
+    ARTICLE
+        .call(html, &url.map(str::to_string))
+        .unwrap_or(Err(ArticleError::NotFound))
+}
+
+/// A fetched page is capped at 5 MiB by the fetch policy, above the mail
+/// budget, so this job accepts what that policy lets through.
+static ARTICLE: Job<Option<String>, Result<Article, ArticleError>> =
+    Job::new("reading.article", |html, url: &Option<String>| {
+        extract_article_in_process(html, url.as_deref())
+    })
+    .max_html_bytes(5 * 1024 * 1024);
+
+fn extract_article_in_process(html: &str, url: Option<&str>) -> Result<Article, ArticleError> {
     let mut readability =
         dom_smoothie::Readability::new(html, url, None).map_err(|_| ArticleError::NotFound)?;
     let article = readability.parse().map_err(|_| ArticleError::NotFound)?;
@@ -60,10 +79,22 @@ pub fn extract_article(html: &str, url: Option<&str>) -> Result<Article, Article
 /// half of the words the extractor found; table layouts sometimes defeat
 /// it, and then the reader shows the extractor's paragraphs instead.
 pub fn issue_reader_html(html: &str, issue_words: u32) -> Option<String> {
+    ISSUE_READER_HTML.call(html, &issue_words).flatten()
+}
+
+static ISSUE_READER_HTML: Job<u32, Option<String>> =
+    Job::new("reading.issue_reader_html", issue_reader_html_in_process);
+
+fn issue_reader_html_in_process(html: &str, issue_words: &u32) -> Option<String> {
     let mut readability = dom_smoothie::Readability::new(html, None, None).ok()?;
     let article = readability.parse().ok()?;
     let words = word_count(&article.text_content);
-    (words * 2 >= issue_words as usize && words > 0).then(|| article.content.to_string())
+    (words * 2 >= *issue_words as usize && words > 0).then(|| article.content.to_string())
+}
+
+/// The Readability parses run in the HTML helper process.
+pub(crate) fn jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    vec![&ARTICLE, &ISSUE_READER_HTML]
 }
 
 #[cfg(test)]

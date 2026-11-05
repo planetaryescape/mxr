@@ -690,7 +690,7 @@ pub(super) enum ChunkMode {
     /// A selection job's chunk: a message missing from the store is skipped,
     /// a rate limit hands the rest back to the caller to retry, and the
     /// failing message is counted as failed (the rest of its account's batch
-    /// stays skipped). It keeps no undo (D191): no snapshots, no entry.
+    /// stays skipped). It keeps no undo (D192): no snapshots, no entry.
     Job,
 }
 
@@ -778,7 +778,7 @@ async fn mutation_checked(
     labels: Option<&FrozenLabelEdits>,
 ) -> Result<ChunkOutcome, HandlerError> {
     let message_ids = mutation_message_ids(cmd);
-    // A selection job's chunk keeps no undo (D191).
+    // A selection job's chunk keeps no undo (D192).
     let undoable_kind = undoable_kind(cmd).filter(|_| !mode.is_job());
     // One id per MutationCommand batch — drives both the dedup log
     // (retry safety) and the undo log (user-undo). Generated up-front
@@ -983,7 +983,7 @@ async fn apply_mutation_batch_with(
     mode: ChunkMode,
     labels: Option<&FrozenLabelEdits>,
 ) -> Result<BatchOutcome, HandlerError> {
-    // A selection job's chunk keeps no undo (D191), so it takes no snapshots.
+    // A selection job's chunk keeps no undo (D192), so it takes no snapshots.
     let undoable = undoable_kind(cmd).is_some() && !mode.is_job();
     let mut left_out = 0u32;
     // Snapshot the prior state of every envelope so that undoable
@@ -1286,7 +1286,7 @@ pub(super) struct JobSpec {
     /// Client-chosen id; `None` makes one.
     pub job_id: Option<String>,
     /// Set for a selection job: it waits out rate limits, keeps no undo
-    /// (D191), and is persisted before it is acknowledged.
+    /// (D192), and is persisted before it is acknowledged.
     pub selection: Option<SelectionData>,
     /// The accounts the job will touch, so a scoped caller can read it from
     /// the first poll.
@@ -1468,7 +1468,7 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         ..
     } = spec;
     // A selection job waits out rate limits and skips mail that left the
-    // store, and keeps no undo (D191). Every other job (`StartMutationJob`, a
+    // store, and keeps no undo (D192). Every other job (`StartMutationJob`, a
     // sweep) keeps the immediate rules and its per-chunk undo.
     let mode = if job.selection.is_some() {
         ChunkMode::Job
@@ -2023,7 +2023,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     .into())
 }
 
-/// An `--all` job keeps no undo (D191). Its id sent to undo is refused for
+/// An `--all` job keeps no undo (D192). Its id sent to undo is refused for
 /// that reason, rather than as an id nobody knows.
 async fn selection_job_undo_refusal(
     state: &AppState,

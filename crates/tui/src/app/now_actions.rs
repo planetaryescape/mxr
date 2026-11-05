@@ -15,9 +15,12 @@ pub(crate) const NOW_MODE: &str = mxr_protocol::NOW_GUIDE.mode;
 enum NowTarget {
     /// The arrivals line: Enter lists the emails behind it.
     Arrivals,
-    /// A Not-sure question: Enter opens the email; a mode key answers it.
+    /// A Not-sure question: Enter opens the email, `X` answers it, and
+    /// Now's own keys act on its email as on any row.
     NotSure {
+        thread_id: ThreadId,
         message_id: MessageId,
+        mode: ModeKindData,
     },
     Person {
         thread_id: ThreadId,
@@ -40,7 +43,9 @@ impl From<NowRow<'_>> for NowTarget {
         match row {
             NowRow::Arrivals(_) => Self::Arrivals,
             NowRow::NotSure(question) => Self::NotSure {
+                thread_id: question.thread_id.clone(),
                 message_id: question.message_id.clone(),
+                mode: question.mode,
             },
             NowRow::Person(person) => Self::Person {
                 thread_id: person.row.thread_id.clone(),
@@ -186,7 +191,7 @@ impl App {
             NowTarget::Person { thread_id, .. } if !email => self.open_messages_thread(thread_id),
             NowTarget::Person { message_id, .. }
             | NowTarget::Reading { message_id, .. }
-            | NowTarget::NotSure { message_id } => {
+            | NowTarget::NotSure { message_id, .. } => {
                 self.mailbox.pending_invite_open = Some(message_id);
                 self.status_message = Some("Opening conversation…".into());
             }
@@ -212,13 +217,20 @@ impl App {
             return;
         };
         match target {
-            // Nothing to be done with the line, and a question is
-            // answered with a mode's key.
+            // Nothing to be done with the line.
             NowTarget::Arrivals => {}
-            NowTarget::NotSure { .. } => {
-                self.status_message = Some(
-                    "Answer with m Messages, x To do, u Updates, r Reading or e Archive".into(),
-                );
+            // One verb per key: done with the email where it is for now.
+            // Only `X` answers the question, so it stays asked.
+            NowTarget::NotSure {
+                mode: ModeKindData::Archive,
+                ..
+            } => {
+                self.status_message = Some("Archive has no done: records stay filed.".into());
+            }
+            NowTarget::NotSure {
+                thread_id, mode, ..
+            } => {
+                self.queue_mode_done(mode, thread_id);
             }
             NowTarget::Person { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
@@ -368,17 +380,6 @@ impl App {
         if self.input.is_pending() {
             let defined = self.defined_key("now", key);
             return self.run_defined_key(defined);
-        }
-        // A Not-sure question answers through `X` now (blueprint 35); its
-        // old one-key answers say so instead of doing done or reply here.
-        // `u` stays undo, as everywhere.
-        if key.modifiers == KeyModifiers::NONE
-            && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)))
-        {
-            if let KeyCode::Char(c @ ('m' | 'x' | 'r' | 'e')) = key.code {
-                self.announce_moved("not-sure", &c.to_string());
-                return None;
-            }
         }
         let defined = self.defined_key("now", key);
         self.run_defined_key(defined)

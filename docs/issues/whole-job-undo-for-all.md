@@ -1,7 +1,7 @@
 # Whole-job undo for --all was dropped after four undo defects
 
 **Status:** open, not scheduled · **Found:** 2026-11-04, verifier round 4 on
-`feat/bulk-search-all` at `213d92667` · **Decision:** D191
+`feat/bulk-search-all` at `213d92667` · **Decision:** D192
 
 `mxr archive|read-archive|label|unlabel --search … --all` shipped without
 undo. Whole-job undo was built for it first: an `UndoJob` request and

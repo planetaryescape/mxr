@@ -11,6 +11,7 @@ use mxr_core::types::{
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
     InlineCalendarReply, MessageBody, MessageFlags, Role,
 };
+use mxr_html_worker::Job;
 use mxr_protocol::{
     AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
     CalendarInviteData, CalendarInviteResponsePreview, CalendarInviteResponseResult, ResponseData,
@@ -904,28 +905,35 @@ pub(super) async fn read_attachment_chunk(
 }
 
 fn collect_html_image_sources(html: &str) -> Vec<String> {
-    // Over the parser budget no image list is offered for the message; the
-    // document is not parsed.
-    if !mxr_reader::within_budget(html) {
-        return Vec::new();
-    }
-    static IMG_SELECTOR: std::sync::OnceLock<Selector> = std::sync::OnceLock::new();
-    let selector = IMG_SELECTOR.get_or_init(|| Selector::parse("img").expect("valid img selector"));
-
-    let document = Html::parse_fragment(html);
-    let mut seen = HashSet::new();
-    let mut sources = Vec::new();
-    for image in document.select(selector) {
-        let Some(src) = image.value().attr("src").map(str::trim) else {
-            continue;
-        };
-        if src.is_empty() || !seen.insert(src.to_string()) {
-            continue;
-        }
-        sources.push(src.to_string());
-    }
-    sources
+    // Over the parser budget, or with the HTML helper lost, no image list is
+    // offered for the message; the document is not parsed here.
+    IMAGE_SOURCES.call(html, &()).unwrap_or_default()
 }
+
+/// The parse, which runs in the HTML helper process.
+pub(crate) static IMAGE_SOURCES: Job<(), Vec<String>> =
+    Job::new("daemon.image_sources", |html, ()| {
+        if !mxr_reader::within_budget(html) {
+            return Vec::new();
+        }
+        static IMG_SELECTOR: std::sync::OnceLock<Selector> = std::sync::OnceLock::new();
+        let selector =
+            IMG_SELECTOR.get_or_init(|| Selector::parse("img").expect("valid img selector"));
+
+        let document = Html::parse_fragment(html);
+        let mut seen = HashSet::new();
+        let mut sources = Vec::new();
+        for image in document.select(selector) {
+            let Some(src) = image.value().attr("src").map(str::trim) else {
+                continue;
+            };
+            if src.is_empty() || !seen.insert(src.to_string()) {
+                continue;
+            }
+            sources.push(src.to_string());
+        }
+        sources
+    });
 
 async fn load_body_for_message(
     state: &AppState,
@@ -1688,5 +1696,15 @@ mod image_budget_tests {
             collect_html_image_sources(html),
             vec!["https://example.test/a.png".to_string()]
         );
+    }
+
+    #[test]
+    fn no_image_list_is_offered_when_the_helper_is_lost() {
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let html = r#"<p><img src="https://example.test/a.png"></p>"#;
+        let sources = mxr_html_worker::with_supervisor(lost, || collect_html_image_sources(html));
+        assert!(sources.is_empty());
     }
 }

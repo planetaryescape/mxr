@@ -1515,6 +1515,7 @@ mod tests {
                 ResponseData::AccountOperation {
                     result: AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: "ok".into(),
                         save: None,
                         auth: None,
@@ -1590,6 +1591,7 @@ mod tests {
                         log_total_bytes: 0,
                         history_retention_days: None,
                         address_cache_stale: false,
+                        html_helper: HtmlHelperStats::default(),
                     },
                 },
                 IpcCategory::AdminMaintenance,

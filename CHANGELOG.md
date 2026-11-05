@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.6.210](https://github.com/planetaryescape/mxr/compare/v0.6.209...v0.6.210) (2026-11-05)
+
+
+### Bug Fixes
+
+* a config save adds only settings that differ from the default ([#866](https://github.com/planetaryescape/mxr/issues/866)) ([d2aebf4](https://github.com/planetaryescape/mxr/commit/d2aebf4cca0d0de81783fddc6d78cb7211f0e755))
+* keep past due dates and pin the post-sync clock ([#867](https://github.com/planetaryescape/mxr/issues/867)) ([5598256](https://github.com/planetaryescape/mxr/commit/55982566cd67381b3860ad5187fef1858ff6c2a0))
+
+
+### Documentation
+
+* record local LLM fallback and outage retry gaps ([c805e14](https://github.com/planetaryescape/mxr/commit/c805e1402eeeb7d46be8c08af4ae333d524d3e29))
+
+## [0.6.209](https://github.com/planetaryescape/mxr/compare/v0.6.208...v0.6.209) (2026-11-04)
+
+
+### Bug Fixes
+
+* parse untrusted mail HTML in a resource-limited helper process ([#858](https://github.com/planetaryescape/mxr/issues/858)) ([5d6994e](https://github.com/planetaryescape/mxr/commit/5d6994e5d805eae9ce38d994527d077aea41eaab))
+* steady the prefix guide tests, drop dead move notices, and let e and r work on Not-sure rows ([#860](https://github.com/planetaryescape/mxr/issues/860)) ([4df11fe](https://github.com/planetaryescape/mxr/commit/4df11fe7c088acf7f3e21931afb23e7c9bc4df98))
+
+## [0.6.208](https://github.com/planetaryescape/mxr/compare/v0.6.207...v0.6.208) (2026-11-04)
+
+
+### Features
+
+* reply-all and forward in Now, To do peek, keyboard highlights, and footers that keep ? keys ([#847](https://github.com/planetaryescape/mxr/issues/847)) ([8201548](https://github.com/planetaryescape/mxr/commit/82015486c15c37c90ada01fa0aed40a10b35f05d))
+
+
+### Bug Fixes
+
+* account config writes save only what the user asked ([#856](https://github.com/planetaryescape/mxr/issues/856)) ([35bf853](https://github.com/planetaryescape/mxr/commit/35bf85365a9ae90c9b72b9bc882ed1e5aff40cea))
+
 ## [0.6.207](https://github.com/planetaryescape/mxr/compare/v0.6.206...v0.6.207) (2026-11-04)
 
 

@@ -1194,7 +1194,7 @@ pub(crate) async fn post_sync_fanout(
 /// the second half of [`post_sync_fanout`], split out so `mxr classify eval
 /// --set full` can run exactly this over a 50,000-message demo. The indexing
 /// and profile building before it decide nothing the eval grades and are most
-/// of the time. The to-do and record scans run as of `now`; the eval pins it.
+/// of the time. Every scan that reads the clock runs as of `now`; the eval pins it.
 pub(crate) async fn post_sync_classification(
     state: &AppState,
     account_id: &AccountId,
@@ -1233,7 +1233,7 @@ pub(crate) async fn post_sync_classification(
 
     // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {
-        Box::pin(crate::handler::reading::after_sync(state, account_id)).await;
+        Box::pin(crate::handler::reading::after_sync(state, account_id, now)).await;
     }
 
     // Facts for new Updates mail, so the next digest reads them cached.
@@ -1241,9 +1241,13 @@ pub(crate) async fn post_sync_classification(
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
-    if let Err(error) =
-        crate::handler::assessments::reconcile_messages(state, account_id, upserted_message_ids)
-            .await
+    if let Err(error) = crate::handler::assessments::reconcile_messages_at(
+        state,
+        account_id,
+        upserted_message_ids,
+        now,
+    )
+    .await
     {
         tracing::warn!(account = %account_id, %error, "assessment reconciliation pending after sync");
     }

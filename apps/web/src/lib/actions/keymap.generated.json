@@ -1875,15 +1875,6 @@
             "search-preview"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "desk"
-          ],
-          "until": "0.6.206"
-        }
       ]
     },
     {
@@ -2135,17 +2126,6 @@
             "now"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -2247,18 +2227,6 @@
             "reader",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "T",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
         }
       ]
     },
@@ -2410,18 +2378,6 @@
             "reader",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "W",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197",
-          "to": "mail.sender-profile"
         }
       ]
     },
@@ -4290,15 +4246,6 @@
             "screener"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
-        }
       ]
     },
     {
@@ -4320,15 +4267,6 @@
           "contexts": [
             "screener"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
         }
       ]
     },
@@ -4352,15 +4290,6 @@
             "screener"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
-        }
       ]
     },
     {
@@ -4382,15 +4311,6 @@
           "contexts": [
             "screener"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
         }
       ]
     },
@@ -4559,15 +4479,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -4586,15 +4497,6 @@
           "contexts": [
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.206"
         }
       ]
     },
@@ -5018,15 +4920,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -5130,13 +5023,26 @@
     },
     {
       "id": "todo.details",
-      "label": "Why it is here and where each field came from",
-      "short_label": "Details",
+      "label": "Peek: why it is here, its email and where each field came from",
+      "short_label": "Peek",
       "group": "Triage",
       "scopes": [
         "todo"
       ],
-      "palette_only": true
+      "keys": [
+        "Space"
+      ],
+      "tui": [
+        {
+          "name": "TodoPeek",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "todo"
+          ]
+        }
+      ]
     },
     {
       "id": "todo.runway",
@@ -5190,15 +5096,6 @@
             "expired"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "E",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -5225,15 +5122,6 @@
             "catchup",
             "expired"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "C",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
         }
       ]
     },
@@ -5846,8 +5734,8 @@
     },
     {
       "id": "archive.filter",
-      "label": "Filters…",
-      "short_label": "Filters",
+      "label": "Filter by kind",
+      "short_label": "Filter",
       "group": "Triage",
       "scopes": [
         "archive"
@@ -5855,6 +5743,7 @@
       "keys": [
         "g f"
       ],
+      "note": "The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked",
       "tui": [
         {
           "name": "RecordsNextKind",
@@ -6208,16 +6097,6 @@
             "reading-reader"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "B",
-          "contexts": [
-            "reading",
-            "reading-reader"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -6243,15 +6122,6 @@
             "reading",
             "reading-reader"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "H",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.197"
         }
       ]
     },
@@ -6349,17 +6219,7 @@
       "scopes": [
         "reading-reader"
       ],
-      "palette_only": true,
-      "moved": [
-        {
-          "key": "I",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.197",
-          "to": "reading.reader-article"
-        }
-      ]
+      "palette_only": true
     },
     {
       "id": "reading.reader-later",
@@ -6411,8 +6271,9 @@
     },
     {
       "id": "reading.reader-highlight",
-      "label": "Highlight the selection",
+      "label": "Highlight the paragraph at the top, or the selection",
       "short_label": "Highlight",
+      "description": "A selection, on the web, wins over the paragraph at the top of the reader",
       "group": "Read",
       "scopes": [
         "reading-reader"
@@ -6614,6 +6475,52 @@
       ]
     },
     {
+      "id": "now.reply-all",
+      "label": "Reply all",
+      "short_label": "Reply all",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "a"
+      ],
+      "tui": [
+        {
+          "name": "ReplyAll",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "now.forward",
+      "label": "Forward",
+      "short_label": "Forward",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "f"
+      ],
+      "tui": [
+        {
+          "name": "Forward",
+          "keys": [
+            "f"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
       "id": "now.to-do",
       "label": "Make it a to-do",
       "short_label": "To-do",
@@ -6714,17 +6621,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-2",
@@ -6734,17 +6631,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-3",
@@ -6754,17 +6641,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-4",
@@ -6774,17 +6651,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.down",
@@ -7250,17 +7117,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-2",
@@ -7270,17 +7127,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-3",
@@ -7290,17 +7137,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-4",
@@ -7310,17 +7147,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "updates.down",
@@ -7684,36 +7511,6 @@
             "arrivals-list"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "m",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "x",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "r",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "e",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -8049,27 +7846,6 @@
       ]
     },
     {
-      "id": "tui.prev-search-result",
-      "label": "Prev search result",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "N",
-          "contexts": [
-            "list",
-            "sidebar",
-            "place",
-            "invites"
-          ],
-          "until": "0.6.200",
-          "to": "list.up"
-        }
-      ]
-    },
-    {
       "id": "tui.switch-pane",
       "label": "Switch pane",
       "group": "TUI",
@@ -8089,27 +7865,6 @@
             "sidebar",
             "place"
           ]
-        }
-      ]
-    },
-    {
-      "id": "tui.next-search-result",
-      "label": "Next search result",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "list",
-            "sidebar",
-            "place",
-            "invites"
-          ],
-          "until": "0.6.200",
-          "to": "list.down"
         }
       ]
     },
@@ -13097,22 +12852,6 @@
             "unsubscribe"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "a",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        },
-        {
-          "key": "A",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        }
       ]
     },
     {
@@ -15117,6 +14856,7 @@
       "actions": [
         "todo.done",
         "todo.open-email",
+        "todo.details",
         "todo.schedule",
         "todo.dismiss",
         "todo.edit"

@@ -160,11 +160,48 @@ impl Store {
         Ok(store)
     }
 
+    /// A freshly migrated database that lives only in memory.
+    ///
+    /// Migrating takes about a second, and a test process opens hundreds of
+    /// these, so the first call migrates once and every call copies that
+    /// database into its own.
     pub async fn in_memory() -> Result<Self, sqlx::Error> {
+        static MIGRATED: tokio::sync::OnceCell<Vec<u8>> = tokio::sync::OnceCell::const_new();
+        let migrated = MIGRATED
+            .get_or_try_init(|| async {
+                let (store, _) = Self::empty_in_memory().await?;
+                store.run_migrations().await?;
+                let mut connection = store.writer.acquire().await?;
+                Ok::<_, sqlx::Error>(connection.serialize(None).await?.to_vec())
+            })
+            .await?;
+
+        let (store, name) = Self::empty_in_memory().await?;
+        // A deserialized database belongs to the one connection that loaded
+        // it, so the copy goes into a scratch connection first. VACUUM INTO
+        // then writes it into the shared database every connection opens.
+        let mut scratch = SqliteConnectOptions::from_str("sqlite::memory:")?
+            .connect()
+            .await?;
+        scratch
+            .deserialize(None, migrated.as_slice().try_into()?, false)
+            .await?;
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "VACUUM INTO 'file:{name}?mode=memory&cache=shared'"
+        )))
+        .execute(&mut scratch)
+        .await?;
+        sqlx::Connection::close(scratch).await?;
+        Ok(store)
+    }
+
+    /// An empty memory database and the name it is shared under.
+    async fn empty_in_memory() -> Result<(Self, String), sqlx::Error> {
         // A named shared-cache memory database lives while any connection to
         // it is open. The unique name keeps each store's database its own.
+        let name = format!("mxr-memory-{}", uuid::Uuid::now_v7());
         let opts = SqliteConnectOptions::new()
-            .filename(format!("file:mxr-memory-{}", uuid::Uuid::now_v7()))
+            .filename(format!("file:{name}"))
             .in_memory(true)
             .shared_cache(true)
             .journal_mode(SqliteJournalMode::Wal)
@@ -196,8 +233,7 @@ impl Store {
             _memory_anchor: Some(memory_anchor),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
-        store.run_migrations().await?;
-        Ok(store)
+        Ok((store, name))
     }
 
     pub(crate) async fn run_migrations(&self) -> Result<(), sqlx::Error> {
@@ -1326,6 +1362,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 104, name: "conversation_summaries", kind: MigrationKind::Sql(include_str!("../migrations/104_conversation_summaries.sql")) },
     Migration { version: 105, name: "label_role", kind: MigrationKind::LabelRole },
     Migration { version: 106, name: "mode_row_seen", kind: MigrationKind::Sql(include_str!("../migrations/106_mode_row_seen.sql")) },
+    Migration { version: 108, name: "account_identity_tag_unique", kind: MigrationKind::Sql(include_str!("../migrations/108_account_identity_tag_unique.sql")) },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -1649,6 +1686,59 @@ pub(crate) mod tests {
                 .await
                 .unwrap();
         row.is_some()
+    }
+
+    async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
+        sqlx::query_as("SELECT type, name, sql FROM sqlite_schema ORDER BY type, name")
+            .fetch_all(pool)
+            .await
+            .unwrap()
+    }
+
+    /// In-memory stores load a copy of one migrated database, so the copy
+    /// must match what migrating a new database file produces.
+    #[tokio::test]
+    async fn an_in_memory_store_has_the_schema_migrations_produce() {
+        let temp = tempdir().unwrap();
+        let migrated = Store::new(&temp.path().join("fresh.db")).await.unwrap();
+        let copied = Store::in_memory().await.unwrap();
+
+        assert_eq!(
+            schema_of(copied.writer()).await,
+            schema_of(migrated.writer()).await
+        );
+        let versions = "SELECT version FROM schema_migrations ORDER BY version";
+        let copied_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(copied.writer())
+            .await
+            .unwrap();
+        let migrated_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(migrated.writer())
+            .await
+            .unwrap();
+        assert_eq!(copied_versions, migrated_versions);
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(copied.writer())
+            .await
+            .unwrap();
+        assert_eq!(foreign_keys, 1);
+    }
+
+    #[tokio::test]
+    async fn in_memory_stores_do_not_share_writes() {
+        let first = Store::in_memory().await.unwrap();
+        let second = Store::in_memory().await.unwrap();
+
+        sqlx::raw_sql("CREATE TABLE only_in_first (id INTEGER)")
+            .execute(first.writer())
+            .await
+            .unwrap();
+
+        assert!(test_table_exists(first.writer(), "only_in_first").await);
+        assert!(!test_table_exists(second.writer(), "only_in_first").await);
+        assert!(
+            !test_table_exists(Store::in_memory().await.unwrap().writer(), "only_in_first").await
+        );
     }
 
     #[tokio::test]
@@ -2216,7 +2306,7 @@ pub(crate) mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=106).collect::<Vec<_>>(),
+                (83..=106).chain([108]).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

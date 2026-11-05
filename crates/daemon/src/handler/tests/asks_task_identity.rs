@@ -1,5 +1,5 @@
 use super::desk::{request, Fixture, ME};
-use super::promise_projection::{replace, settle, source};
+use super::promise_projection::{month_start, replace, settle, source, written};
 use super::*;
 use chrono::Duration;
 use mxr_core::ThreadId;
@@ -559,19 +559,59 @@ async fn review6_payment_documents_retain_the_observed_speaker() {
 #[tokio::test]
 async fn review6_financial_speakers_keep_remediation_and_independent_owner_work() {
     for (text, expected) in [
-        ("I can update your payment details.", 0),
-        ("She will update your payment details.", 0),
-        ("Please update your payment details.", 1),
-        ("Your payment failed. Please update your payment details.", 1),
-        ("We couldn't charge your card. Update your payment details.", 1),
-        ("I can pay invoice #K918 £25 by 1 November 2026.\n\nPlease sign the contract.", 1),
-        ("She will pay invoice #K918 £25 by 1 November 2026.\n\nPlease pay invoice #Q222 €40 by 1 December 2026.", 1),
+        ("I can update your payment details.".to_string(), 0),
+        ("She will update your payment details.".to_string(), 0),
+        ("Please update your payment details.".to_string(), 1),
+        (
+            "Your payment failed. Please update your payment details.".to_string(),
+            1,
+        ),
+        (
+            "We couldn't charge your card. Update your payment details.".to_string(),
+            1,
+        ),
+        (
+            format!(
+                "I can pay invoice #K918 £25 by {}.\n\nPlease sign the contract.",
+                written(month_start(1))
+            ),
+            1,
+        ),
+        (
+            format!(
+                "She will pay invoice #K918 £25 by {}.\n\nPlease pay invoice #Q222 €40 by {}.",
+                written(month_start(1)),
+                written(month_start(2))
+            ),
+            1,
+        ),
     ] {
-        let fx=Fixture::new().await;
-        let mail=fx.message(&ThreadId::new(),"nora@example.com",ME,Duration::minutes(5),None).await;
-        replace(&fx,&mail,text).await; settle(&fx,&mail).await;
-        let rows=fx.state.store.list_todos_in_state(Some(&fx.account),TodoState::Open,100).await.unwrap();
-        assert_eq!(rows.len(),expected,"{text}");
-        for row in rows {assert!(text.contains(&row.reason));assert!(row.reason.starts_with("Please") || row.reason.starts_with("Your payment") || row.reason.starts_with("We couldn't"));}
+        let fx = Fixture::new().await;
+        let mail = fx
+            .message(
+                &ThreadId::new(),
+                "nora@example.com",
+                ME,
+                Duration::minutes(5),
+                None,
+            )
+            .await;
+        replace(&fx, &mail, &text).await;
+        settle(&fx, &mail).await;
+        let rows = fx
+            .state
+            .store
+            .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), expected, "{text}");
+        for row in rows {
+            assert!(text.contains(&row.reason));
+            assert!(
+                row.reason.starts_with("Please")
+                    || row.reason.starts_with("Your payment")
+                    || row.reason.starts_with("We couldn't")
+            );
+        }
     }
 }

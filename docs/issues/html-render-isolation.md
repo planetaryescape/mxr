@@ -1,6 +1,10 @@
-# Read-side HTML budget gaps, until render isolation ships
+# Read-side HTML budget gaps, closed by render isolation
 
-The send side refuses an HTML body over the budget in `crates/reader/src/html_limits.rs`. The read side (reader, TUI, search index, links, images) keeps the budget as a guard, not a boundary. The budget is a linear byte scan, and the parsers behind it (html5ever, html2text) can still be driven past it, so a message can still cost the reader more than the budget implies. Process isolation of HTML rendering, in a separate slice, is the fix. Until it ships, these are known to remain:
+**Status:** fixed · **Fixed by:** HTML parsing runs in a resource-limited helper process (D191, blueprint 7)
+
+The three gaps below are still gaps in the byte scan, and the scan stays as the first line. They no longer reach a parser in the daemon, the TUI or the CLI: every parse of mail HTML runs in `mxr __html-worker` under a memory ceiling, a CPU backstop and a 5 second timeout. A document that gets past the scan and is slow or large costs one stopped helper and the caller's plain-text fallback, and is not tried again in that process. `crates/daemon/tests/integration/html_helper.rs` holds each document below, and the other hostile ones from the F1 reviews, as a test.
+
+The send side refuses an HTML body over the budget in `crates/reader/src/html_limits.rs`. The read side (reader, TUI, search index, links, images) keeps the budget as a guard, not a boundary. The budget is a linear byte scan, and the parsers behind it (html5ever, html2text) can still be driven past it, so a message can still cost the reader more than the budget implies. These were the known gaps before isolation shipped:
 
 ## Formatting-element reconstruction is not counted
 

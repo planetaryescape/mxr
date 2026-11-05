@@ -16,6 +16,7 @@ use ratatui::widgets::*;
 
 use super::now_lens::{section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::mail_list::format_date_relative;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -338,22 +339,37 @@ fn body_for(
     body
 }
 
-fn keys_line(page: &UpdatesPageState) -> String {
-    let keys: Vec<String> = match &page.guide {
+/// The footer's keys in `width`: undo and help always, the rest in the
+/// guide's order, the last ones dropped first when space runs short.
+fn keys_line(page: &UpdatesPageState, width: usize) -> String {
+    let keys: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
             .keys
             .iter()
-            .filter(|key| key.key != "?")
-            .map(|key| format!("{} {}", key.key, key.verb))
+            .map(|key| (key.key.clone(), key.verb.clone()))
             .collect(),
         None => UPDATES_GUIDE
             .keys
             .iter()
-            .filter(|(key, _)| *key != "?")
-            .map(|(key, verb)| format!("{key} {verb}"))
+            // Before the daemon's guide arrives, the compiled-in copy names
+            // actions by id; show their keys, as the guide would.
+            .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, (*verb).to_string())))
             .collect(),
     };
-    format!("{}  ? keys", keys.join("  "))
+    let mut entries: Vec<FooterKey> = keys
+        .into_iter()
+        .filter(|(key, _)| key != "?")
+        .map(|(key, verb)| {
+            let text = format!("{key} {verb}");
+            if key == "u" {
+                FooterKey::keep(text)
+            } else {
+                FooterKey::optional(text)
+            }
+        })
+        .collect();
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 /// The selected row's why line, with where its link goes.
@@ -429,10 +445,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &UpdatesView<'_>, theme: &crate
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),
@@ -573,6 +586,13 @@ pub(crate) mod tests {
         UpdateTrackerData, UpdatesCutData, UpdatesSinceData,
     };
     use mxr_test_support::render_to_string;
+
+    /// The clock the view renders against. The fixture's mail is from
+    /// October 2026, and the snapshots show it as earlier this year; on the
+    /// wall clock they change on 1 January.
+    fn fixture_now() -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+    }
 
     pub(crate) fn line(
         section: UpdateSectionData,
@@ -765,7 +785,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 30),
                 &UpdatesView {
-                    now: chrono::Utc::now(),
+                    now: fixture_now(),
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
@@ -793,7 +813,7 @@ pub(crate) mod tests {
             ..Default::default()
         };
         let view = UpdatesView {
-            now: Utc::now(),
+            now: fixture_now(),
             page: &page,
             selected_index: 0,
             active_pane: &ActivePane::MailList,
@@ -857,5 +877,17 @@ pub(crate) mod tests {
         assert!(matches!(page.rows()[8], UpdatesRow::MoreRoutine(2)));
         page.routine_open = true;
         assert_eq!(page.row_count(), 10);
+    }
+
+    #[test]
+    fn the_footer_keeps_undo_and_help_at_every_width() {
+        let page = UpdatesPageState {
+            digest: Some(populated()),
+            ..Default::default()
+        };
+        for width in [80, 100, 120] {
+            let rendered = render(&page, width);
+            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
+        }
     }
 }

@@ -1289,10 +1289,6 @@ impl App {
                 (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
-                (KeyCode::Char(c @ ('a' | 'A')), modifiers) if plain_or_shift(modifiers) => {
-                    self.announce_moved("unsubscribe", &c.to_string());
-                    None
-                }
                 // A yes or no question: n is Esc, and q closes too.
                 (KeyCode::Esc | KeyCode::Char('n' | 'q'), _) => Some(Action::CancelUnsubscribe),
                 _ => None,

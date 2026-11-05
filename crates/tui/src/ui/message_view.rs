@@ -302,21 +302,14 @@ pub fn draw(
                     blocks.push(RenderBlock::Text(text_lines));
                     // As the web reader's formatted view: the quoted
                     // conversation stays folded until `Q`.
-                    let parts = (!message.quotes_expanded)
-                        .then(|| mxr_reader::split_html_quote_keeping_signature(raw))
-                        .filter(|parts| parts.has_quote);
-                    blocks.extend(render_html_blocks(
+                    blocks.extend(html_body_blocks(
                         &message.envelope.id,
-                        parts
-                            .as_ref()
-                            .map_or(raw.as_str(), |parts| parts.main.as_str()),
+                        raw,
                         inner.width,
+                        !message.quotes_expanded,
                         theme,
                         metadata.remote_content_enabled,
                     ));
-                    if parts.is_some() {
-                        blocks.push(RenderBlock::Text(vec![folded_quote_line(theme)]));
-                    }
                 } else {
                     let body = process_body_lines(
                         rendered,
@@ -973,6 +966,76 @@ fn max_image_height(viewport_height: u16) -> u16 {
     viewport_height.saturating_sub(4).clamp(6, 18)
 }
 
+/// What an HTML body draws from: its quote split and styled render, both
+/// parsed in the HTML helper off the event loop (see `deferred_html`).
+struct HtmlBody {
+    /// The part shown: the whole body, or what is above a folded quote.
+    main: String,
+    has_folded_quote: bool,
+    rendered: RichRender,
+}
+
+impl HtmlBody {
+    fn parse(html: &str, width: u16, fold_quotes: bool) -> Self {
+        let parts = fold_quotes
+            .then(|| mxr_reader::split_html_quote_keeping_signature(html))
+            .filter(|parts| parts.has_quote);
+        let main = parts
+            .as_ref()
+            .map_or_else(|| html.to_string(), |parts| parts.main.clone());
+        // Over the size cap, on a panic, or with the HTML helper lost (timed
+        // out, crashed), the tag strip stands in.
+        let rendered = RICH_LINES
+            .call(&main, &html_width(width))
+            .unwrap_or(RichRender::Strip);
+        Self {
+            main,
+            has_folded_quote: parts.is_some(),
+            rendered,
+        }
+    }
+}
+
+fn html_width(width: u16) -> usize {
+    usize::from(width.max(20))
+}
+
+/// The blocks for an HTML body; the tag strip while its parse is on its way.
+fn html_body_blocks(
+    message_id: &MessageId,
+    html: &str,
+    width: u16,
+    fold_quotes: bool,
+    theme: &Theme,
+    remote_content_enabled: bool,
+) -> Vec<RenderBlock> {
+    let key = (html, width, fold_quotes);
+    let source = html.to_string();
+    let Some(body) =
+        crate::deferred_html::answer(&key, move || HtmlBody::parse(&source, width, fold_quotes))
+    else {
+        return vec![RenderBlock::Text(process_body_lines(
+            &mxr_reader::strip_html_tags(html),
+            theme,
+            false,
+            false,
+            false,
+        ))];
+    };
+    let mut blocks = rendered_html_blocks(
+        message_id,
+        &body.main,
+        &body.rendered,
+        theme,
+        remote_content_enabled,
+    );
+    if body.has_folded_quote {
+        blocks.push(RenderBlock::Text(vec![folded_quote_line(theme)]));
+    }
+    blocks
+}
+
+#[cfg(test)]
 fn render_html_blocks(
     message_id: &MessageId,
     html: &str,
@@ -980,10 +1043,20 @@ fn render_html_blocks(
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
-    let width = usize::from(width.max(20));
-    // Over the size cap, on a panic, or with the HTML helper lost (timed out,
-    // crashed), the tag strip stands in.
-    let tagged_lines = match RICH_LINES.call(html, &width).unwrap_or(RichRender::Strip) {
+    let rendered = RICH_LINES
+        .call(html, &html_width(width))
+        .unwrap_or(RichRender::Strip);
+    rendered_html_blocks(message_id, html, &rendered, theme, remote_content_enabled)
+}
+
+fn rendered_html_blocks(
+    message_id: &MessageId,
+    html: &str,
+    rendered: &RichRender,
+    theme: &Theme,
+    remote_content_enabled: bool,
+) -> Vec<RenderBlock> {
+    let tagged_lines = match rendered {
         RichRender::Lines(lines) => lines,
         RichRender::Failed => {
             return vec![RenderBlock::Text(process_body_lines(
@@ -1005,7 +1078,7 @@ fn render_html_blocks(
     let mut blocks = Vec::new();
     let mut text_lines = Vec::new();
 
-    for line in &tagged_lines {
+    for line in tagged_lines {
         for block in rich_line_to_blocks(message_id, line, theme, remote_content_enabled) {
             match block {
                 RenderBlock::Text(line) => text_lines.extend(line),

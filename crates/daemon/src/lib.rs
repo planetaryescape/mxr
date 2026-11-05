@@ -44,6 +44,8 @@ pub mod unsubscribe;
 
 use clap::Parser;
 use cli::{unsupported_command_guidance, Cli, Command, DaemonAction, DemoAction, KeysAction};
+use std::future::Future;
+use std::pin::Pin;
 
 pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(guidance) = unsupported_command_guidance(&args) {
@@ -69,6 +71,21 @@ fn ensure_web_target_supported(
 }
 
 // Keep Clap's command construction outside the large debug dispatch poll frame.
+/// One command's future, built by [`boxed`].
+type CommandFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'a>>;
+
+/// Builds `make`'s future in a frame of its own and boxes it. A debug build
+/// gives every local of an async fn its own stack slot, so the command futures
+/// `run_parsed_cli` used to build inline, one per arm of its match, made a
+/// 6.4 MB poll frame (2026-11-04, arm64); built here, they never share one.
+fn boxed<'a, F, Fut>(make: F) -> CommandFuture<'a>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = anyhow::Result<()>> + 'a,
+{
+    Box::pin(make())
+}
+
 async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
     match cli.command.take() {
@@ -115,7 +132,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         init_tracing(owns_terminal)?;
     }
 
-    match cli.command {
+    let command = match cli.command {
         Some(Command::Connect {
             allow_send,
             url,
@@ -125,7 +142,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             confirm,
             format,
-        }) => {
+        }) => boxed(move || async move {
             commands::connect::run(commands::connect::ConnectCommand {
                 url,
                 local,
@@ -137,14 +154,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Serve {
             action,
             format,
             foreground,
             listen,
             dry_run,
-        }) => {
+        }) => boxed(move || async move {
             if dry_run && action.is_some() {
                 anyhow::bail!("`mxr serve --dry-run` previews only the foreground gateway; put `--dry-run` after the serve action to preview pairing or client changes (for example, `mxr serve pair approve <request-id> --dry-run`)");
             }
@@ -166,54 +184,69 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             } else {
                 commands::serve::run(action, format).await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Daemon {
             action: Some(DaemonAction::DialStdio),
             ..
-        }) => {
+        }) => boxed(move || async move {
             commands::daemon::run().await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Daemon {
             action: None,
             stdio: true,
             ..
-        }) => {
+        }) => boxed(move || async move {
             crate::server::run_stdio().await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Daemon {
             action: None,
             no_bridge,
             bridge_port,
             ..
-        }) => {
+        }) => boxed(move || async move {
             crate::server::run_daemon_with_overrides(crate::server::BridgeOverrides {
                 disabled: no_bridge,
                 port: bridge_port,
             })
             .await?;
-        }
-        Some(Command::Restart) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Restart) => boxed(move || async move {
             crate::server::restart_daemon().await?;
-        }
-        Some(Command::Mcp { action }) => match action {
-            cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
-        },
+            anyhow::Ok(())
+        }),
+        Some(Command::Mcp { action }) => boxed(move || async move {
+            match action {
+                cli::McpCommand::Serve => mxr_mcp::serve_stdio().await?,
+            }
+            anyhow::Ok(())
+        }),
 
-        Some(Command::Recovery { action }) => {
+        Some(Command::Recovery { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::recovery::run(action).await?;
-        }
-        Some(Command::Backup { action }) => commands::backup::run(action).await?,
-        Some(Command::Version) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Backup { action }) => boxed(move || async move {
+            commands::backup::run(action).await?;
+            anyhow::Ok(())
+        }),
+        Some(Command::Version) => boxed(move || async move {
             commands::version::run();
-        }
-        Some(Command::Config { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Config { action }) => boxed(move || async move {
             commands::config::run(action).await?;
-        }
-        Some(Command::Completions { shell }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Completions { shell }) => boxed(move || async move {
             // Clap builds the whole command tree; do not nest its debug frame in dispatch.
             tokio::task::spawn_blocking(move || commands::completions::run(shell)).await??;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Doctor {
             reindex,
             reindex_semantic,
@@ -227,7 +260,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             refresh_contacts,
             recompute_link_counts,
             format,
-        }) => {
+        }) => boxed(move || async move {
             commands::doctor::run(commands::doctor::DoctorRunOptions {
                 reindex,
                 reindex_semantic,
@@ -243,7 +276,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Logs {
             no_follow,
             level,
@@ -253,7 +287,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             purge,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             commands::logs::run(commands::logs::LogRunOptions {
                 no_follow,
                 level,
@@ -265,13 +299,14 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Reset {
             hard,
             dry_run,
             including_config,
             yes_i_understand_this_destroys_local_state,
-        }) => {
+        }) => boxed(move || async move {
             commands::reset::run(commands::reset::ResetOptions {
                 require_hard: true,
                 hard,
@@ -280,12 +315,13 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 yes_i_understand_this_destroys_local_state,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Burn {
             dry_run,
             including_config,
             yes_i_understand_this_destroys_local_state,
-        }) => {
+        }) => boxed(move || async move {
             commands::reset::run(commands::reset::ResetOptions {
                 require_hard: false,
                 hard: true,
@@ -294,7 +330,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 yes_i_understand_this_destroys_local_state,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::BugReport {
             edit,
             stdout,
@@ -305,7 +342,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             full_logs,
             no_sanitize,
             since,
-        }) => {
+        }) => boxed(move || async move {
             commands::bug_report::run(commands::bug_report::BugReportOptions {
                 edit,
                 stdout,
@@ -318,13 +355,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 since,
             })
             .await?;
-        }
-        Some(Command::Accounts { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Accounts { action, format }) => boxed(move || async move {
             if !matches!(action, Some(cli::AccountsAction::Repair { .. })) {
                 crate::server::ensure_daemon_running().await?;
             }
             commands::accounts::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
 
         Some(Command::Search {
             query,
@@ -337,13 +376,14 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             group_by,
             explain,
             triage,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::search::run(
                 query, account, format, limit, offset, mode, sort, group_by, explain, triage,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Triage {
             query,
             account,
@@ -352,10 +392,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             mode,
             sort,
             verdict,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::triage::run(query, account, format, limit, mode, sort, verdict).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Count {
             query,
             account,
@@ -363,10 +404,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             quiet,
             group_by,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::count::run(query, account, mode, group_by, format, quiet).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Cat {
             message_id,
             search,
@@ -378,7 +420,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             raw,
             html,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::cat::run(commands::cat::CatRunOptions {
                 message_id,
@@ -393,7 +435,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Thread {
             thread_id,
             search,
@@ -401,14 +444,16 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             first,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::thread::run(thread_id, search, account, first, limit, format).await?;
-        }
-        Some(Command::ThreadPreview { thread_ids, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::ThreadPreview { thread_ids, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::thread_preview::run(thread_ids, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Threads {
             account,
             label,
@@ -416,20 +461,22 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             offset,
             sort,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::threads::run(account, label, limit, offset, sort, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Export {
             thread_id,
             search,
             account,
             format,
             output,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::export::run(thread_id, search, account, format, output).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Headers {
             message_id,
             search,
@@ -437,85 +484,96 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             first,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::headers::run(message_id, search, account, first, limit, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Saved {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::saved::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Replies {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::replies::run(action, account, format).await?;
-        }
-        Some(Command::Snippets { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Snippets { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::snippets::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Todo {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::todo::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Messages {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::messages::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Records {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::records::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Updates {
             action,
             cut,
             expired,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::updates::run(action, cut, expired, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Code {
             all,
             copy,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::code::run(account, all, copy, format).await?;
-        }
-        Some(Command::Now { account, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Now { account, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::now::run(account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Arrivals {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::arrivals::run_arrivals(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Move {
             message_id,
             mode,
@@ -523,75 +581,87 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             not_sure,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::arrivals::run_move(message_id, mode, sender, dry_run, not_sure, format)
                 .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Corrections {
             action,
             account,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::arrivals::run_corrections(action, account, limit, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Keys {
             action: Some(KeysAction::Check { file }),
             format,
             ..
-        }) => commands::keys::check(file, format)?,
+        }) => boxed(move || async move {
+            commands::keys::check(file, format)?;
+            anyhow::Ok(())
+        }),
         Some(Command::Keys {
             action,
             client,
             context,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::keys::run(action, client, context, format).await?;
-        }
-        Some(Command::Modes { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Modes { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::modes::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Deliveries {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::deliveries::run(action, account, format).await?;
-        }
-        Some(Command::Signatures { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Signatures { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::signatures::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Sender {
             action,
             email,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match (action, email) {
                 (Some(action), _) => commands::places::sender_action(action).await?,
                 (None, Some(email)) => commands::sender::run(email, account, format).await?,
                 (None, None) => anyhow::bail!("give a sender's email address"),
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Reading {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::reading::run(action, account, format).await?;
-        }
-        Some(Command::PaperTrail { args }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::PaperTrail { args }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::places::list(mxr_protocol::MailPlaceData::PaperTrail, args).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Sweep {
             place,
             sender,
@@ -599,47 +669,53 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             yes,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::places::sweep(place, sender, account, dry_run, yes, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Pin {
             message_ids,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::places::pin(message_ids, true, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unpin {
             message_ids,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::places::pin(message_ids, false, format).await?;
-        }
-        Some(Command::Why { message_id, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Why { message_id, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::places::why(message_id, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Profile {
             email,
             account,
             rebuild,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::profile::run(email, account, rebuild, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Commitments {
             action,
             contact,
             status,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::commitments::run(action, contact, status, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Owed {
             account,
             older_than_days,
@@ -647,23 +723,25 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             limit,
             all,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::owed::run(account, older_than_days, within_days, limit, all, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Desk {
             action,
             account,
             limit,
             gists,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
                 Some(action) => commands::desk::run_action(action).await?,
                 None => commands::desk::run(account, limit, gists, format).await?,
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::SuggestRecipients {
             draft,
             subject,
@@ -671,11 +749,12 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             account,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::suggest_recipients::run(draft, subject, body_stdin, account, limit, format)
                 .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Expert {
             message_id,
             query,
@@ -683,44 +762,50 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             account,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::expert::run(message_id, query, include_self, account, limit, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Whois {
             query,
             account,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::whois::run(query, account, limit, format).await?;
-        }
-        Some(Command::Briefing { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Briefing { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::briefing::run(action).await?;
-        }
-        Some(Command::Cadence { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Cadence { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::cadence::run(action).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::SendTime {
             recipients,
             account,
             at,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::send_time::run(recipients, account, at, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Time {
             phrase,
             now,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::time::run(phrase.join(" "), now, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Decisions {
             action,
             account,
@@ -728,10 +813,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             since_days,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::decisions::run(action, account, topic, since_days, limit, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Ask {
             question,
             account,
@@ -742,7 +828,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             mode,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::ask::run(commands::ask::ArchiveAskRunOptions {
                 question,
@@ -756,45 +842,53 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Voice {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::voice::run(action, account, format).await?;
-        }
-        Some(Command::Humanize { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Humanize { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::humanize::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Screener {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::screener::run(action, account, format).await?;
-        }
-        Some(Command::Setup { demo, key, force }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Setup { demo, key, force }) => boxed(move || async move {
             // Setup writes config; doesn't need a running daemon.
             commands::setup::run(demo, key, force).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Demo {
             action,
             messages,
             no_tui,
             ..
-        }) => match action {
-            None => commands::demo::run(messages, no_tui).await?,
-            Some(DemoAction::Stop) => commands::demo::stop().await?,
-            Some(DemoAction::Status) => commands::demo::status()?,
-            Some(DemoAction::Reset) => {
-                commands::demo::reset_profile().await?;
-                println!("Demo profile wiped. Run `mxr demo` to re-seed.");
+        }) => boxed(move || async move {
+            match action {
+                None => commands::demo::run(messages, no_tui).await?,
+                Some(DemoAction::Stop) => commands::demo::stop().await?,
+                Some(DemoAction::Status) => commands::demo::status()?,
+                Some(DemoAction::Reset) => {
+                    commands::demo::reset_profile().await?;
+                    println!("Demo profile wiped. Run `mxr demo` to re-seed.");
+                }
             }
-        },
+            anyhow::Ok(())
+        }),
         Some(Command::Summarize {
             thread_id,
             search,
@@ -802,10 +896,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             first,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::summarize::run(thread_id, search, account, first, limit, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::DraftAssist {
             thread_id,
             instruction,
@@ -817,7 +912,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             register,
             length,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             // Either source of the instruction is fine; --instruct wins
             // when both are supplied so the long form is the canonical
@@ -839,7 +934,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Draft {
             action,
             to,
@@ -848,70 +944,80 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             register,
             length,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::draft::run(action, to, purpose, account, register, length, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Classify {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::classify::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Remind {
             message_id,
             account,
             when,
             cancel,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::remind::run(message_id, account, when, cancel).await?;
-        }
-        Some(Command::Semantic { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Semantic { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::semantic::run(action, format).await?;
-        }
-        Some(Command::Assistant { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Assistant { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::assistant::run(action, format).await?;
-        }
-        Some(Command::Llm { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Llm { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::llm::run(action, format).await?;
-        }
-        Some(Command::Chimes { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Chimes { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::chimes::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Subscriptions {
             limit,
             account,
             rank,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::subscriptions::run(limit, account, rank, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Senders {
             top,
             account,
             since,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::senders::run(top, account, since, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Storage {
             by,
             limit,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::storage::run(by, limit, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Stale {
             mine,
             theirs,
@@ -920,7 +1026,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             limit,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::stale::run(
                 mine,
@@ -932,31 +1038,35 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             )
             .await?;
-        }
-        Some(Command::Contacts { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Contacts { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::contacts::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::ResponseTime {
             theirs,
             counterparty,
             since_days,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::response_time::run(theirs, counterparty, since_days, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Wrapped {
             ytd,
             year,
             since_days,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::wrapped::run(ytd, year, since_days, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Sync {
             account,
             all,
@@ -965,7 +1075,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             wait,
             wait_timeout_secs,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::sync_cmd::run(
                 account,
@@ -977,14 +1087,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Status {
             format,
             watch,
             freshness,
             account,
             limit,
-        }) => {
+        }) => boxed(move || async move {
             // Diagnostics against an explicitly selected daemon must report
             // that target's reachability without starting or repairing a
             // same-machine daemon as a fallback.
@@ -996,7 +1107,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             } else {
                 commands::status::run(format, watch).await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Web {
             action,
             host,
@@ -1008,7 +1120,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             remote_host,
             foreground,
             detached_child,
-        }) => {
+        }) => boxed(move || async move {
             ensure_web_target_supported(remote_host.as_deref(), action.as_ref())?;
             if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
                 crate::server::ensure_daemon_running().await?;
@@ -1026,15 +1138,18 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 detached_child,
             })
             .await?;
-        }
-        Some(Command::Events { event_type, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Events { event_type, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::events::run(event_type, format).await?;
-        }
-        Some(Command::Activity { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Activity { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::activity::run(action).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::History {
             category,
             category_prefix,
@@ -1045,7 +1160,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             offset,
             limit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::history::run(commands::history::HistoryRunOptions {
                 category,
@@ -1059,31 +1174,36 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
-        Some(Command::Notify { format, watch }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Notify { format, watch }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::notify::run(format, watch).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Labels {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::labels::run(action, account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Categories {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::categories::run(action, account, format).await?;
-        }
-        Some(Command::Rules { action, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Rules { action, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::rules::run(action, format).await?;
-        }
+            anyhow::Ok(())
+        }),
 
         Some(Command::Compose {
             to,
@@ -1109,7 +1229,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             check,
             no_llm,
             action,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if let Some(action) = action {
                 commands::compose_assist::run(*action, format).await?;
@@ -1142,7 +1262,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                     commands::mutations::compose(options).await?;
                 }
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Reply {
             message_id,
             account,
@@ -1157,7 +1278,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             remind_after,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::reply(commands::mutations::ReplyCommand {
                 message_id,
@@ -1175,7 +1296,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::ReplyAll {
             message_id,
             account,
@@ -1190,7 +1312,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             remind_after,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::reply_all(commands::mutations::ReplyCommand {
                 message_id,
@@ -1208,7 +1330,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Forward {
             message_id,
             account,
@@ -1223,7 +1346,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             draft,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::forward(commands::mutations::ForwardCommand {
                 message_id,
@@ -1241,12 +1364,13 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             })
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Drafts {
             action,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
                 Some(crate::cli::DraftsAction::Reply {
@@ -1313,7 +1437,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                     commands::mutations::drafts_edit(draft_id, account).await?;
                 }
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::SendOutcome {
             recover_known_not_submitted,
             dry_run,
@@ -1322,7 +1447,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             operation_id,
             account,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if recover_known_not_submitted {
                 commands::mutations::recover_send_outcome(
@@ -1347,7 +1472,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                     .transpose()?,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Send {
             expected_workspace,
             expected_revision,
@@ -1361,7 +1487,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             check,
             override_safety,
             no_llm,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if check {
                 commands::mutations::check_send(draft_id, account, format, no_llm).await?;
@@ -1394,11 +1520,13 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
-        Some(Command::Unsend { draft_id, account }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Unsend { draft_id, account }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::cancel_scheduled_send(draft_id, account).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Archive {
             message_ids,
             search,
@@ -1408,7 +1536,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             async_job,
             bulk,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if bulk.all {
                 commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
@@ -1433,27 +1561,31 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Undo {
             mutation_id,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::undo(mutation_id, dry_run, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::ArchiveOperation {
             operation_id,
             submit,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::archive_operation(operation_id, submit, format).await?;
-        }
-        Some(Command::Jobs { job_id, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Jobs { job_id, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::jobs(job_id, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::ReadArchive {
             message_ids,
             search,
@@ -1463,7 +1595,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             async_job,
             bulk,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if bulk.all {
                 commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
@@ -1488,7 +1620,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Route {
             message_ids,
             search,
@@ -1499,7 +1632,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::route(
                 message_ids,
@@ -1513,7 +1646,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Trash {
             message_ids,
             search,
@@ -1522,7 +1656,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::trash(
                 message_ids,
@@ -1534,7 +1668,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Spam {
             message_ids,
             search,
@@ -1543,7 +1678,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::spam(
                 message_ids,
@@ -1555,7 +1690,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Star {
             message_ids,
             search,
@@ -1564,7 +1700,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::star(
                 message_ids,
@@ -1576,7 +1712,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unstar {
             message_ids,
             search,
@@ -1585,7 +1722,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::unstar(
                 message_ids,
@@ -1597,7 +1734,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::MarkRead {
             message_ids,
             search,
@@ -1606,7 +1744,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::mark_read(
                 message_ids,
@@ -1618,7 +1756,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unread {
             message_ids,
             search,
@@ -1627,7 +1766,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::unread(
                 message_ids,
@@ -1639,7 +1778,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Label {
             name,
             message_ids,
@@ -1650,7 +1790,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             async_job,
             bulk,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if bulk.all {
                 commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
@@ -1676,7 +1816,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unlabel {
             name,
             message_ids,
@@ -1687,7 +1828,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             async_job,
             bulk,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             if bulk.all {
                 commands::mutations::bulk_all(commands::mutations::BulkAllRun::from_flags(
@@ -1713,7 +1854,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::MoveMsg {
             label,
             message_ids,
@@ -1723,7 +1865,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             dry_run,
             format,
             async_job,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::move_msg(
                 label,
@@ -1736,7 +1878,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 async_job,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Snooze {
             message_ids,
             until,
@@ -1745,25 +1888,28 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             yes,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::snooze(message_ids, until, search, account, yes, dry_run, format)
                 .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unsnooze {
             message_ids,
             account,
             all,
             dry_run,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::unsnooze(message_ids, account, all, dry_run, format).await?;
-        }
-        Some(Command::Snoozed { account, format }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Snoozed { account, format }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::snoozed(account, format).await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Unsubscribe {
             message_ids,
             yes,
@@ -1775,7 +1921,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             keep_mail,
             preview_token,
             format,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::unsubscribe(
                 message_ids,
@@ -1790,7 +1936,8 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 format,
             )
             .await?;
-        }
+            anyhow::Ok(())
+        }),
         Some(Command::Open {
             message_id,
             search,
@@ -1798,12 +1945,13 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             first,
             limit,
             yes,
-        }) => {
+        }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::open_in_browser(message_id, search, account, first, limit, yes)
                 .await?;
-        }
-        Some(Command::Attachments { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Attachments { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
                 cli::AttachmentAction::List {
@@ -1841,8 +1989,9 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                         .await?;
                 }
             }
-        }
-        Some(Command::Invite { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Invite { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
                 cli::InviteAction::Show {
@@ -1863,8 +2012,9 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                         .await?;
                 }
             }
-        }
-        Some(Command::Invites { action }) => {
+            anyhow::Ok(())
+        }),
+        Some(Command::Invites { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
                 cli::InvitesAction::List {
@@ -1878,14 +2028,17 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                     commands::invites::backfill(account, format).await?;
                 }
             }
-        }
+            anyhow::Ok(())
+        }),
 
-        None => {
+        None => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             crate::server::ensure_daemon_supports_tui().await?;
             mxr_tui::run().await?;
-        }
-    }
+            anyhow::Ok(())
+        }),
+    };
+    command.await?;
 
     mxr_client::remote_connection::finish_cleanup().await;
     Ok(())

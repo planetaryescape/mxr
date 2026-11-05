@@ -175,6 +175,8 @@ jobs:
       - run: bash scripts/v1_launch_proof_cleanup_test.sh
       - run: bash scripts/ci_change_scope_test.sh
       - run: bash scripts/ci_workflow_test.sh
+      - run: bash scripts/check_lockfile_versions_test.sh
+      - run: bash scripts/check_lockfile_versions.sh
 
   fmt:
     name: Format

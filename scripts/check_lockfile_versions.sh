@@ -63,7 +63,9 @@ stale="$(read_file Cargo.lock | awk -v want="${workspace_version}" -v excluded="
     }
     name = ""; version = ""; from_registry = 0
   }
-  /^\[\[package\]\]$/ { flush(); next }
+  # Only [[package]] tables; [[patch.unused]] and [metadata] also have names.
+  /^\[/ { flush(); in_package = ($0 == "[[package]]"); next }
+  !in_package { next }
   /^name = "/ { name = $3; gsub(/"/, "", name); next }
   /^version = "/ { version = $3; gsub(/"/, "", version); next }
   /^source = / { from_registry = 1; next }

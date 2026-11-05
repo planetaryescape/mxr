@@ -49,6 +49,10 @@ git config user.name "CI"
 write_workspace 0.6.1 mxr:0.6.1 mxr-core:0.6.1 serde:1.0.200:registry hnsw_rs:0.3.4
 output="$(bash "${script}")" || fail "a consistent lock was refused: ${output}"
 
+# An unused patch is not a package, whatever its version.
+printf '\n[[patch.unused]]\nname = "mxr-patched"\nversion = "9.9.9"\n' >> Cargo.lock
+output="$(bash "${script}")" || fail "an unused patch was read as a package: ${output}"
+
 # One in-repo package behind is refused, by name.
 write_workspace 0.6.2 mxr:0.6.2 mxr-core:0.6.1
 if output="$(bash "${script}" 2>&1)"; then

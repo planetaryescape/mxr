@@ -354,6 +354,23 @@ fn a_missing_helper_program_falls_back_and_is_not_respawned_on_every_request() {
 }
 
 #[test]
+fn a_helper_from_another_release_is_refused_at_the_handshake() {
+    // What macOS gives a daemon or TUI whose binary was upgraded under it: the
+    // helper starts from the new file. Its answers may not match this build's
+    // types, so it gets no requests and the caller uses its fallback.
+    let supervisor = Supervisor::new(Config::new(
+        env!("CARGO_BIN_EXE_mxr-html-worker-fixture"),
+        vec!["--another-release".into()],
+    ));
+    let outcome = supervisor.run("fixture.echo", b"x", b"null", usize::MAX);
+    assert!(
+        fell_back(&outcome, FallbackReason::Unavailable),
+        "{outcome:?}"
+    );
+    assert_eq!(ECHO.call_on(&supervisor, "x", &()), None);
+}
+
+#[test]
 fn a_program_that_exits_before_the_handshake_is_unavailable() {
     let supervisor = Supervisor::new(Config::new("/usr/bin/true", Vec::new()));
     let outcome = supervisor.run("fixture.echo", b"x", b"null", usize::MAX);

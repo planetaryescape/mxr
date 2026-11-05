@@ -36,8 +36,12 @@ override individual paths when needed.
 keys for the process that reads them. They are never saved into the file.
 Settings changes, account forms and `mxr config set` read `config.toml` as
 written, change only what you asked, and keep the comments and layout of the
-keys they leave alone. Keys mxr doesn't recognise are dropped on save. Each
-save replaces the file atomically, so an interrupted save leaves the old one.
+keys they leave alone. A save adds a setting your file doesn't have only when
+its value differs from the default, so settings you never wrote keep following
+mxr's defaults; a setting you wrote stays, even at its default value. If there
+is no file yet, the first save writes every setting, so `mxr config edit` opens
+a full template. Keys mxr doesn't recognise are dropped on save. Each save
+replaces the file atomically, so an interrupted save leaves the old one.
 
 IMAP/SMTP passwords are stored in `secrets.toml` at mode `0600`, not in
 `config.toml`. The OS keychain is an optional migration fallback. Set

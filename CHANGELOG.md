@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.210](https://github.com/planetaryescape/mxr/compare/v0.6.209...v0.6.210) (2026-11-05)
+
+
+### Bug Fixes
+
+* a config save adds only settings that differ from the default ([#866](https://github.com/planetaryescape/mxr/issues/866)) ([d2aebf4](https://github.com/planetaryescape/mxr/commit/d2aebf4cca0d0de81783fddc6d78cb7211f0e755))
+* keep past due dates and pin the post-sync clock ([#867](https://github.com/planetaryescape/mxr/issues/867)) ([5598256](https://github.com/planetaryescape/mxr/commit/55982566cd67381b3860ad5187fef1858ff6c2a0))
+
+
+### Documentation
+
+* record local LLM fallback and outage retry gaps ([c805e14](https://github.com/planetaryescape/mxr/commit/c805e1402eeeb7d46be8c08af4ae333d524d3e29))
+
 ## [0.6.209](https://github.com/planetaryescape/mxr/compare/v0.6.208...v0.6.209) (2026-11-04)
 
 

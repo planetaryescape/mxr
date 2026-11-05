@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.219](https://github.com/planetaryescape/mxr/compare/v0.6.218...v0.6.219) (2026-11-05)
+
+
+### Bug Fixes
+
+* a client that leaves stops its reads, and the store keeps its query statistics ([#893](https://github.com/planetaryescape/mxr/issues/893)) ([2265a7e](https://github.com/planetaryescape/mxr/commit/2265a7edb55c8ff16f6cb2c175f33e73110ea761))
+
 ## [0.6.218](https://github.com/planetaryescape/mxr/compare/v0.6.217...v0.6.218) (2026-11-05)
 
 

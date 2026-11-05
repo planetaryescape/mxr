@@ -28,19 +28,21 @@ mod archive;
 mod codec;
 mod remote;
 mod search_degraded;
+mod selection;
 mod types;
 
 pub use archive::*;
 pub use codec::IpcCodec;
 pub use remote::*;
 pub use search_degraded::*;
+pub use selection::*;
 pub use types::*;
 
 /// Wire revision of the IPC protocol. Bumped when a client needs a daemon
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 27;
+pub const IPC_PROTOCOL_VERSION: u32 = 28;
 
 #[cfg(test)]
 mod tests {
@@ -137,6 +139,124 @@ mod tests {
                 assert!(!explain);
             }
         }
+    }
+
+    /// The requests and job shape before selection jobs (protocol 27).
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "cmd")]
+    #[allow(dead_code, reason = "fields are read through the decode only")]
+    enum PreSelectionRequest {
+        GetJob { job_id: String },
+    }
+
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code, reason = "fields are read through the decode only")]
+    struct PreSelectionJob {
+        job_id: String,
+        kind: String,
+        status: JobStatusData,
+        progress: JobProgressData,
+        #[serde(default)]
+        undo_ids: Vec<String>,
+        error: Option<String>,
+        started_at: i64,
+        finished_at: Option<i64>,
+        result: Option<MutationResultData>,
+    }
+
+    fn selection_job() -> JobData {
+        JobData {
+            job_id: "job-1".into(),
+            kind: "mutation.archive".into(),
+            status: JobStatusData::Failed,
+            progress: JobProgressData {
+                total: 10,
+                completed: 4,
+                succeeded: 3,
+                skipped: 0,
+                failed: 1,
+            },
+            undo_ids: Vec::new(),
+            error: Some("stopped".into()),
+            started_at: 1,
+            finished_at: Some(2),
+            result: None,
+            selection: Some(SelectionData::Search {
+                query: "from:x".into(),
+                account_id: None,
+            }),
+            failures: vec![JobFailureData {
+                message_id: MessageId::new(),
+                error: "provider said no".into(),
+            }],
+            paused_until: Some(3),
+            action: None,
+            undo_id_count: 0,
+            failure_count: 0,
+        }
+    }
+
+    #[test]
+    fn an_older_daemon_rejects_the_selection_requests() {
+        let mutation = MutationCommand::Archive {
+            message_ids: Vec::new(),
+        };
+        let selection = SelectionData::Search {
+            query: "from:x".into(),
+            account_id: None,
+        };
+        let requests = [
+            Request::PreviewSelection {
+                selection: selection.clone(),
+                mutation: mutation.clone(),
+                sample_size: None,
+            },
+            Request::StartSelectionJob {
+                job_id: "j".into(),
+                preview_token: "t".into(),
+                selection,
+                mutation,
+                client_correlation_id: None,
+            },
+        ];
+        for request in requests {
+            let wire = serde_json::to_value(&request).unwrap();
+            // Round-trips on this version.
+            serde_json::from_value::<Request>(wire.clone()).unwrap();
+            // A protocol 27 daemon has no such variant and refuses it.
+            assert!(
+                serde_json::from_value::<PreSelectionRequest>(wire).is_err(),
+                "{request:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn job_fields_added_for_selection_jobs_are_optional_both_ways() {
+        let job = selection_job();
+        let wire = serde_json::to_value(&job).unwrap();
+        // A protocol 27 client ignores the added fields.
+        let old: PreSelectionJob = serde_json::from_value(wire).unwrap();
+        assert_eq!(old.progress.failed, 1);
+
+        // A job written before them decodes with the fields empty, and a plain
+        // job does not put them on the wire.
+        let mut plain = selection_job();
+        plain.selection = None;
+        plain.failures.clear();
+        plain.paused_until = None;
+        let plain_wire = serde_json::to_value(&plain).unwrap();
+        for key in [
+            "selection",
+            "failures",
+            "paused_until",
+            "action",
+            "undo_id_count",
+        ] {
+            assert!(plain_wire.get(key).is_none(), "{key} should be omitted");
+        }
+        let decoded: JobData = serde_json::from_value(plain_wire).unwrap();
+        assert_eq!(decoded, plain);
     }
 
     /// The request shapes before `label_role` / `all_accounts` existed.
@@ -1349,6 +1469,12 @@ mod tests {
                         started_at: 1,
                         finished_at: None,
                         result: None,
+                        selection: None,
+                        failures: Vec::new(),
+                        paused_until: None,
+                        action: None,
+                        undo_id_count: 0,
+                        failure_count: 0,
                     },
                 },
                 IpcCategory::CoreMail,

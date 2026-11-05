@@ -385,6 +385,141 @@ confirmation prompt in table output:
 More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.
 ```
 
+`archive`, `read-archive`, `label` and `unlabel` can act on every match instead
+([below](#acting-on-every-match-with---all)); their notice says so:
+
+```text
+More than 1,000 messages match; only the newest 1,000 are selected. Pass --all to act on every match, or narrow the search.
+```
+
+### Acting on every match with --all
+
+`mxr archive`, `read-archive`, `label` and `unlabel` take `--all` with
+`--search`. The daemon resolves the whole search, lexically and newest first,
+with the same visibility and trash/spam rules as `mxr search`. No message ID
+list crosses the socket in either direction, so the output below is the same
+size for ten matches and for half a million. `--all` conflicts with message IDs
+and `--async`. Other commands keep the newest-1,000 cap.
+
+`--all --dry-run` prints the exact count and a sample of the 20 newest
+messages (`capped` is always `false`):
+
+```json
+{
+  "action": "archive",
+  "dry_run": true,
+  "all": true,
+  "selection": { "kind": "search", "query": "from:noreply@example.com" },
+  "selected_messages": 70412,
+  "selected_threads": 51870,
+  "accounts": [
+    { "account_id": "019706f4-0000-7000-8000-000000000001", "account_name": "Work", "count": 70412 }
+  ],
+  "messages": [
+    {
+      "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
+      "account_id": "019706f4-0000-7000-8000-000000000001",
+      "thread_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b92",
+      "from": "Alice",
+      "subject": "Quarterly review",
+      "date": "2026-10-28T09:12:00Z"
+    }
+  ],
+  "sample_size": 20,
+  "capped": false,
+  "undoable": false,
+  "preview_token": "<preview-token>",
+  "expires_at": 1761600000000
+}
+```
+
+`selection.account_id` appears when `--account` names one. `selected_messages` is the exact number of messages the job will change.
+`undoable` is always `false`: an `--all` job cannot be undone, so this preview
+is the check. The table output and the confirmation prompt say so too.
+`messages` is the sample, never the whole selection, and there is no
+`message_ids` or `requested` field. `preview_token` is absent when nothing
+matched. It is single use and valid for 10 minutes: `--all --preview-token
+TOKEN` runs exactly the messages that preview counted, and mail that arrives
+later is left alone. `--format jsonl` prints one line per sample message, each
+carrying `selected_messages`, `selected_threads` and `capped`. `--format csv`
+and `--format ids` are refused with `--dry-run`, because they would need the
+full list.
+
+`--all --yes` starts one job, waits for it (progress goes to stderr) and
+prints it. `--no-wait` prints it as soon as the daemon has accepted it. The job
+is the only place its ID appears:
+
+```json
+{
+  "action": "archive",
+  "dry_run": false,
+  "all": true,
+  "selection": { "kind": "search", "query": "from:noreply@example.com" },
+  "selected_messages": 70412,
+  "selected_threads": 51870,
+  "job": {
+    "job_id": "<job-id>",
+    "kind": "mutation.archive",
+    "status": "succeeded",
+    "progress": { "total": 70412, "completed": 70412, "succeeded": 70412, "skipped": 0, "failed": 0 },
+    "undo_ids": [],
+    "started_at": 1761600001000,
+    "finished_at": 1761603601000
+  },
+  "capped": false
+}
+```
+
+`--format ids` prints the job ID alone and `--format csv` has a `job_id`
+column. A job that ends `failed` makes the command exit non-zero, with the
+counts and the first failing message in the error. `skipped` counts messages
+that left the mailbox after the preview. `undo_ids` is always empty: the job
+keeps no undo. A message a provider's rate limit stopped half way
+(read-archive marked it read, then the archive was refused) is finished when
+the job retries after the wait. `mxr jobs JOB_ID` shows
+the same job later: `failures` holds the first 50 failing messages with the
+provider's error (the exact total is `progress.failed`), `paused_until` is set
+while the job waits out a provider rate limit and resumes by itself, and a
+daemon restart ends a running job as `failed` ("interrupted") with the counts
+it had persisted.
+
+A label edit acts on the labels the dry run resolved, in each account the
+search reaches, whatever they are called by the time the job runs: renaming
+`Work` after the preview, or making a new label called `Work`, does not
+change which label is edited. If a label the preview resolved is deleted (or
+is no longer one you created) before the job starts, `--yes` is refused with
+`the label … changed since the preview …; preview again`. Labels are checked
+only in the accounts the search reaches. The search can be at most 2,048 bytes
+and a label edit can name at most 8 labels of at most 512 bytes each.
+
+`mxr undo JOB_ID` on an `--all` job refuses with an error that says the job
+ran with `--all` and cannot be undone, not that the id was not found;
+`mxr undo JOB_ID --dry-run` refuses with the same error and exit code. An agent
+or MCP profile gets that refusal only when it is allowed every account the job
+touched; otherwise it gets the usual not-found. To
+reverse a run, act on a search the other way (`unlabel --all` after
+`label --all`).
+
+`mxr jobs JOB_ID` carries the first 50 `failures` and every `undo_id`;
+`undo_id_count` and `failure_count` say how many the job holds. Jobs other
+than `--all` (a sweep, `--async`) are undone from that list. The `mxr jobs`
+listing carries
+neither list: `undo_ids` and `failures` are empty there, and the two counts say
+how many `mxr jobs JOB_ID` shows. Every error and failure reason is cut to 512
+bytes (an account name to 128) when the job is saved, so a listing of the 100
+retained jobs stays well under the 16 MiB frame limit. A selection job also
+carries `action`, the label edit or archive it applies, so a start repeated
+under the same job id with a different action is refused. A job id is only
+ever returned for a job the daemon has recorded: a start that loses the
+preview token to another start is refused and leaves no job. If the
+connection drops before the daemon replies to `--all --yes`, the command looks
+for the job under its id for 10 seconds; if it still has not appeared, the
+command exits non-zero saying the outcome is unknown, with the job id and
+`mxr jobs JOB_ID` to check it, because the start may still be in progress.
+
+The dry run's sample cuts each message's `from` and `subject` to 256 bytes,
+and account names to 128, so a preview stays small whatever the mail holds.
+
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address
 does. With `--format jsonl`, each dry-run line of a capped address carries

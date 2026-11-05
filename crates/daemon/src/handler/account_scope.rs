@@ -14,7 +14,7 @@ use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
     AuthSessionId, ClientKind, DaemonEvent, JobData, MutationCommand, PromiseSourceData, Request,
-    ResponseData, ThreadSummaryData,
+    ResponseData, SelectionData, ThreadSummaryData,
 };
 use mxr_store::SignatureScope;
 use std::sync::Arc;
@@ -207,6 +207,18 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExportRecords { account_id, .. }
         | Request::ListPlace { account_id, .. }
         | Request::SweepPlace { account_id, .. } => optional_account(account_id.as_ref()),
+        // A selection names its account, not its messages: the id list is
+        // empty and never crosses IPC, so classifying by messages would let
+        // it past every scoped profile. No account is `AllAccounts`, denied
+        // to a scoped profile like a search with no account.
+        Request::PreviewSelection {
+            selection: SelectionData::Search { account_id, .. },
+            ..
+        }
+        | Request::StartSelectionJob {
+            selection: SelectionData::Search { account_id, .. },
+            ..
+        } => optional_account(account_id.as_ref()),
         Request::PreviewSyncAll | Request::SyncAll => AllAllowedSyncAccounts,
         Request::ArchiveAsk { filters, .. } => optional_account(filters.account_id.as_ref()),
         Request::GetPerson {
@@ -938,6 +950,84 @@ async fn resolve_undo(
     Ok(())
 }
 
+/// The accounts of an `--all` job, for an undo sent its id. `None` when the id
+/// has an undo entry (an ordinary undo, scoped by its snapshots) or is not an
+/// `--all` job. An `--all` job keeps no undo entry (D192); its accounts are
+/// the ones its result recorded, or its selection's account. Empty means
+/// every account.
+async fn all_job_accounts_without_undo(
+    state: &Arc<AppState>,
+    id: &str,
+) -> Result<Option<Vec<AccountId>>, String> {
+    if state
+        .store
+        .read_undo_entry(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let Some(json) = state
+        .store
+        .get_mutation_job(id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let Ok(job) = serde_json::from_str::<JobData>(&json) else {
+        return Ok(None);
+    };
+    let Some(selection) = job.selection else {
+        return Ok(None);
+    };
+    let mut accounts: Vec<AccountId> = job
+        .result
+        .map(|result| {
+            result
+                .accounts
+                .into_iter()
+                .map(|account| account.account_id)
+                .collect()
+        })
+        .unwrap_or_default();
+    if accounts.is_empty() {
+        let SelectionData::Search { account_id, .. } = selection;
+        accounts.extend(account_id);
+    }
+    Ok(Some(accounts))
+}
+
+/// A caller cleared for every account of the `--all` job reaches the
+/// handler's refusal, which says why it cannot be undone. Any other caller
+/// gets the not-found an unknown id gets, so the job's existence does not
+/// leak outside its accounts.
+async fn all_job_undo_scope(
+    state: &Arc<AppState>,
+    profile: &AgentProfileConfig,
+    mutation_id: &str,
+    accounts: Vec<AccountId>,
+) -> Result<(), String> {
+    let cleared = if accounts.is_empty() {
+        profile_covers_all_accounts(state, profile).await?
+    } else {
+        let mut cleared = true;
+        for account_id in &accounts {
+            if !account_id_allowed(state, profile, account_id).await? {
+                cleared = false;
+                break;
+            }
+        }
+        cleared
+    };
+    if cleared {
+        Ok(())
+    } else {
+        Err(super::mutations::undo_not_found(mutation_id))
+    }
+}
+
 /// A job only knows its accounts once its result is in; until then it
 /// can't be attributed, so a scoped agent can't read it.
 async fn job_accounts(state: &Arc<AppState>, job_id: &str) -> Result<Vec<AccountId>, String> {
@@ -1029,6 +1119,12 @@ pub(super) async fn enforce_account_allowlist(
             if !state.store.personal_category_exists(category_id).await? {
                 return Err(format!("Category {category_id} not found"));
             }
+        }
+    }
+
+    if let Request::UndoMutation { mutation_id } = req {
+        if let Some(accounts) = all_job_accounts_without_undo(state, mutation_id).await? {
+            return all_job_undo_scope(state, profile, mutation_id, accounts).await;
         }
     }
 

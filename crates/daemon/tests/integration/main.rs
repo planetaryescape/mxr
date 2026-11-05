@@ -10,6 +10,7 @@ mod activity_invariants;
 mod archive_intelligence_cli;
 mod bounded_logs;
 mod bug_report_cli;
+mod bulk_all_cli;
 mod cli_auth_exit_cli;
 mod cli_exit_codes_cli;
 mod cli_help;

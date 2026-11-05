@@ -77,7 +77,9 @@ function JobRow({ job }: { job: JobData }) {
           <span className="text-destructive">{progress.failed.toLocaleString()} failed</span>
         ) : null}
         <span>started {formatRelative(new Date(job.started_at))}</span>
-        {job.undo_ids.length > 0 ? <span>{plural(job.undo_ids.length, "undo id")}</span> : null}
+        {Math.max(job.undo_ids.length, job.undo_id_count ?? 0) > 0 ? (
+          <span>{plural(Math.max(job.undo_ids.length, job.undo_id_count ?? 0), "undo id")}</span>
+        ) : null}
       </div>
       {job.error ? <p className="mt-1.5 text-xs text-destructive">{job.error}</p> : null}
     </li>

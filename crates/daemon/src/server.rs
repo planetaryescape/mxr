@@ -245,6 +245,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             tracing::warn!(%error, "could not mark interrupted assistant turns");
         }
 
+        // A bulk job the previous daemon was running died with it. Mark it,
+        // with the counts it had, instead of leaving it running forever.
+        crate::handler::job_recovery::mark_interrupted_mutation_jobs(&state).await;
+
         // Cleanup a previous daemon owed for deleted mail (it failed or died
         // between the delete and the cleanup). Off the startup path: it only
         // touches files and the semantic worker.

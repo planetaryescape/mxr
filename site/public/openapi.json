@@ -18140,11 +18140,35 @@
           "started_at"
         ],
         "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MutationCommand",
+                "description": "What a selection job does to its messages, with `message_ids` empty.\nA repeated start under the same job id must name the same action."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "failure_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many failure records the job holds. `ListJobs` leaves `failures`\n(and `undo_ids`) empty and says how many there are here; `GetJob`\ncarries them.",
+            "minimum": 0
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFailureData"
+            },
+            "description": "The first messages that failed, with why (at most 50); the exact total\nis in `progress.failed`."
           },
           "finished_at": {
             "type": [
@@ -18159,6 +18183,14 @@
           "kind": {
             "type": "string"
           },
+          "paused_until": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix milliseconds. Set while the job waits out a provider rate limit;\nit resumes by itself."
+          },
           "progress": {
             "$ref": "#/components/schemas/JobProgressData"
           },
@@ -18172,6 +18204,17 @@
               }
             ]
           },
+          "selection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelectionData",
+                "description": "The selection a `StartSelectionJob` ran over."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "started_at": {
             "type": "integer",
             "format": "int64"
@@ -18179,11 +18222,33 @@
           "status": {
             "$ref": "#/components/schemas/JobStatusData"
           },
+          "undo_id_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many undo ids the job holds. `ListJobs` carries none; `GetJob`\ncarries them all, since clients undo a job's chunks from that list. A\nselection job (`StartSelectionJob`) has none: it cannot be undone.",
+            "minimum": 0
+          },
           "undo_ids": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "JobFailureData": {
+        "type": "object",
+        "description": "A message a job could not change, with why.",
+        "required": [
+          "message_id",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           }
         }
       },
@@ -29334,6 +29399,75 @@
           },
           {
             "type": "object",
+            "description": "Resolve `selection` in the daemon and report what `mutation` would\ncover: an exact count, thread and account counts, a sample of the\nnewest messages, and a single-use token. `mutation.message_ids` must be\nempty. Changes nothing; no message id list is returned.",
+            "required": [
+              "selection",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewSelection"
+                ]
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              "sample_size": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Sample size; the daemon defaults to 20 and caps at 100.",
+                "minimum": 0
+              },
+              "selection": {
+                "$ref": "#/components/schemas/SelectionData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Run `mutation` over exactly the messages a `PreviewSelection` counted,\nas one background job. `job_id` is chosen by the client and makes the\nrequest idempotent: a repeat returns the existing job, so a lost reply\nis recovered with `GetJob`. `mutation.message_ids` must be empty and\n`selection` and `mutation` must equal the preview's. The job keeps no\nundo: it cannot be undone, so the preview is the check.",
+            "required": [
+              "job_id",
+              "preview_token",
+              "selection",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "client_correlation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "StartSelectionJob"
+                ]
+              },
+              "job_id": {
+                "type": "string"
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              "preview_token": {
+                "type": "string"
+              },
+              "selection": {
+                "$ref": "#/components/schemas/SelectionData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "cmd"
             ],
@@ -36835,6 +36969,24 @@
           {
             "type": "object",
             "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SelectionPreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/SelectionPreviewData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "result",
               "kind"
             ],
@@ -41179,6 +41331,152 @@
           "score": {
             "type": "number",
             "format": "float"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "SelectionAccountData": {
+        "type": "object",
+        "description": "How many messages of a selection one account holds.",
+        "required": [
+          "account_id",
+          "account_name",
+          "count"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SelectionData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "query",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "search"
+                ]
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What a bulk action covers. The daemon resolves it lexically, newest first,\nwith the same visibility and trash/spam rules as `Request::Search`."
+      },
+      "SelectionPreviewData": {
+        "type": "object",
+        "description": "What a selection covers right now, and the token that starts a job over\nexactly that set.",
+        "required": [
+          "count",
+          "threads",
+          "accounts",
+          "sample",
+          "sample_size",
+          "capped",
+          "preview_token",
+          "expires_at"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectionAccountData"
+            }
+          },
+          "capped": {
+            "type": "boolean",
+            "description": "Always false: a selection is never cut to a cap. Present so one parser\nreads both this shape and the capped one."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Exact: messages the user can see, still in the store, after the same\nfilters `Request::Search` applies.",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix milliseconds; the token stops working at this time."
+          },
+          "preview_token": {
+            "type": "string",
+            "description": "Single use. `StartSelectionJob` acts on exactly the messages counted\nhere: mail that arrives later is left alone."
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectionSampleData"
+            },
+            "description": "The newest messages, newest first."
+          },
+          "sample_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "threads": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SelectionSampleData": {
+        "type": "object",
+        "description": "One of the newest messages in a selection, for the confirmation table.",
+        "required": [
+          "message_id",
+          "account_id",
+          "thread_id",
+          "from",
+          "subject",
+          "date"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "subject": {
+            "type": "string"
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"

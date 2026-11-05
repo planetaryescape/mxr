@@ -5907,6 +5907,12 @@ async fn parity_routes_dispatch_daemon_requests() {
                         started_at: 0,
                         finished_at: None,
                         result: None,
+                        selection: None,
+                        failures: Vec::new(),
+                        paused_until: None,
+                        action: None,
+                        undo_id_count: 0,
+                        failure_count: 0,
                     },
                 },
                 // Whois, send-time, archive-ask and (un)watch payloads are

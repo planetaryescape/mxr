@@ -1,5 +1,7 @@
 mod archive;
 pub use archive::archive_operation;
+mod bulk_all;
+pub use bulk_all::{run as bulk_all, BulkAction, BulkAllRun};
 mod attachments;
 mod compose;
 mod compose_html;
@@ -23,12 +25,26 @@ pub async fn undo(
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
     if dry_run {
+        // An `--all` job keeps no undo, so its dry run refuses exactly as the
+        // real undo does instead of promising one (D192).
+        if let Response::Ok {
+            data: ResponseData::Job { job },
+        } = client
+            .request(Request::GetJob {
+                job_id: mutation_id.clone(),
+            })
+            .await?
+        {
+            if job.selection.is_some() {
+                anyhow::bail!(crate::handler::mutations::all_job_undo_refusal(&job.job_id));
+            }
+        }
         print_undo_output(&mutation_id, true, format)?;
         return Ok(());
     }
 
-    let mut client = IpcClient::connect().await?;
     let resp = client
         .request(Request::UndoMutation {
             mutation_id: mutation_id.clone(),
@@ -147,6 +163,45 @@ pub async fn jobs(job_id: Option<String>, format: Option<OutputFormat>) -> anyho
     }
 }
 
+/// The table's undo column. A job over thousands of messages has one undo id
+/// per batch of 100: listing them all made a single row hundreds of KB wide,
+/// so a long list is a count and the command that lists them.
+fn undo_summary(job: &JobData) -> String {
+    const LISTED: usize = 3;
+    // A listing carries no undo ids; the daemon says how many there are.
+    let count = (job.undo_id_count as usize).max(job.undo_ids.len());
+    if count == 0 {
+        return String::new();
+    }
+    if count <= LISTED && job.undo_ids.len() == count {
+        return job.undo_ids.join(",");
+    }
+    format!(
+        "{count} undo id{} (list them with: mxr jobs {} --format json)",
+        if count == 1 { "" } else { "s" },
+        job.job_id
+    )
+}
+
+/// The table's failure note: the first failure when the response carries it
+/// (`mxr jobs JOB_ID`), else how many there are (a listing).
+fn failure_summary(job: &JobData) -> String {
+    if let Some(failure) = job.failures.first() {
+        return format!(
+            "  first_failure={}: {}",
+            failure.message_id.as_str(),
+            failure.error
+        );
+    }
+    if job.failure_count > 0 {
+        return format!(
+            "  failures={} (see mxr jobs {})",
+            job.failure_count, job.job_id
+        );
+    }
+    String::new()
+}
+
 fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     match resolve_format(format) {
         OutputFormat::Table => {
@@ -160,17 +215,25 @@ fn print_jobs_output(jobs: Vec<JobData>, format: Option<OutputFormat>) -> anyhow
             );
             for job in jobs {
                 println!(
-                    "{:<36}  {:<10}  {:<22}  {:>4}/{:<4}  {}{}",
+                    "{:<36}  {:<10}  {:<22}  {:>4}/{:<4}  {}{}{}{}",
                     job.job_id,
                     format!("{:?}", job.status).to_ascii_lowercase(),
                     job.kind,
                     job.progress.completed,
                     job.progress.total,
-                    job.undo_ids.join(","),
+                    undo_summary(&job),
+                    job.paused_until
+                        .and_then(chrono::DateTime::from_timestamp_millis)
+                        .map(|until| format!(
+                            "  paused until {} (provider rate limit)",
+                            until.with_timezone(&chrono::Local).format("%H:%M:%S")
+                        ))
+                        .unwrap_or_default(),
                     job.error
                         .as_ref()
                         .map(|error| format!("  error={error}"))
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    failure_summary(&job)
                 );
             }
         }
@@ -244,7 +307,9 @@ pub async fn archive(
         )
         .await?
     } else {
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all()
     };
     let operation = client
         .preview_archive(MutationCommand::Archive {
@@ -284,7 +349,9 @@ pub async fn read_archive(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -569,7 +636,9 @@ pub async fn label(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -607,7 +676,9 @@ pub async fn unlabel(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref())
+            .await?
+            .offering_all();
     run_simple_mutation(
         &mut client,
         selection,
@@ -1632,6 +1703,61 @@ fn render_plain_text_browser_document(text: &str) -> String {
 mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
+
+    fn job_with_undo_ids(count: usize) -> JobData {
+        JobData {
+            job_id: "job-1".into(),
+            kind: "mutation.archive".into(),
+            status: JobStatusData::Succeeded,
+            progress: JobProgressData {
+                total: 1,
+                completed: 1,
+                succeeded: 1,
+                skipped: 0,
+                failed: 0,
+            },
+            undo_ids: (0..count).map(|n| format!("undo-{n}")).collect(),
+            error: None,
+            started_at: 0,
+            finished_at: Some(1),
+            result: None,
+            selection: None,
+            failures: Vec::new(),
+            paused_until: None,
+            action: None,
+            undo_id_count: 0,
+            failure_count: 0,
+        }
+    }
+
+    #[test]
+    fn the_jobs_table_names_a_few_undo_ids_and_counts_a_long_list() {
+        assert_eq!(undo_summary(&job_with_undo_ids(0)), "");
+        assert_eq!(undo_summary(&job_with_undo_ids(3)), "undo-0,undo-1,undo-2");
+        let long = undo_summary(&job_with_undo_ids(5_000));
+        assert!(long.starts_with("5000 undo ids"), "{long}");
+        assert!(
+            long.len() < 120,
+            "one row stays one short line: {}",
+            long.len()
+        );
+        assert!(!long.contains("undo-4999"));
+    }
+
+    #[test]
+    fn a_listing_without_undo_ids_or_failures_counts_them() {
+        // `ListJobs` carries the counts, not the lists.
+        let mut listed = job_with_undo_ids(0);
+        listed.undo_id_count = 2;
+        listed.failure_count = 3;
+        let undo = undo_summary(&listed);
+        assert!(undo.starts_with("2 undo ids"), "{undo}");
+        assert_eq!(
+            failure_summary(&listed),
+            "  failures=3 (see mxr jobs job-1)"
+        );
+        assert_eq!(failure_summary(&job_with_undo_ids(0)), "");
+    }
 
     #[test]
     fn repeated_addresses_are_planned_once_and_message_ids_are_not_addresses() {

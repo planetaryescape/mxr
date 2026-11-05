@@ -63,6 +63,8 @@ mod gist_numbers;
 mod helpers;
 mod home_projection;
 mod humanizer;
+mod job_records;
+pub(crate) mod job_recovery;
 mod keymap;
 mod llm_routes;
 mod mail_kind;
@@ -103,6 +105,7 @@ mod runtime;
 mod safety_llm;
 mod safety_timing;
 mod screener;
+pub(crate) mod selection_jobs;
 pub(crate) mod send_recovery;
 mod sender_view;
 mod signatures;
@@ -491,6 +494,9 @@ pub fn request_lane(req: &Request) -> IpcLane {
 
         // Diagnostics that scan large tables.
         Request::GenerateBugReport { .. } => IpcLane::Bulk,
+
+        // Reads every match of a search, which can be hundreds of thousands.
+        Request::PreviewSelection { .. } => IpcLane::Bulk,
 
         _ => IpcLane::Hot,
     }
@@ -1373,6 +1379,29 @@ async fn dispatch(
                 cmd.clone(),
                 client_correlation_id.clone(),
                 mutations::ChunkGuard::None,
+            )
+            .await
+        }
+        Request::PreviewSelection {
+            selection,
+            mutation,
+            sample_size,
+        } => selection_jobs::preview_selection(state, selection, mutation, *sample_size).await,
+        Request::StartSelectionJob {
+            job_id,
+            preview_token,
+            selection,
+            mutation,
+            client_correlation_id,
+        } => {
+            selection_jobs::start_selection_job(
+                state,
+                source,
+                job_id,
+                preview_token,
+                selection,
+                mutation,
+                client_correlation_id.as_deref(),
             )
             .await
         }
@@ -2500,6 +2529,7 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
     match req {
         Request::Mutation { mutation, .. }
         | Request::StartMutationJob { mutation, .. }
+        | Request::StartSelectionJob { mutation, .. }
         | Request::SubmitArchive { mutation, .. } => mutation_destructive_action(mutation),
         Request::DeleteLabel { .. } => Some(DestructiveAction::DeleteLabel),
         Request::RemoveAccountConfig { .. } => Some(DestructiveAction::RemoveAccount),
@@ -2738,6 +2768,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListPlace { .. }
         | Request::GetMessageKind { .. }
         | Request::SweepPlace { dry_run: true, .. }
+        // Holds an in-memory token and changes nothing, like a dry run.
+        | Request::PreviewSelection { .. }
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
         | Request::SendTimeRecommendation { .. }
@@ -2808,6 +2840,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::Mutation { .. }
         | Request::SubmitArchive { .. }
         | Request::StartMutationJob { .. }
+        | Request::StartSelectionJob { .. }
         | Request::DeleteLabel { .. }
         | Request::DeleteCategory { .. }
         | Request::RemoveAccountConfig { .. }
@@ -3127,6 +3160,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::PreviewSelection { .. } => "preview_selection",
+        Request::StartSelectionJob { .. } => "start_selection_job",
         Request::GetRecoveryStatus => "recovery_status",
         Request::ActivateRecovery { .. } => "recovery_activate",
         Request::PrepareRecoveredDraft { .. } => "recovery_prepare_draft",
@@ -3432,6 +3467,14 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SplitPerson { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::SetModeRowSeen { account_id, .. } => Some(account_id),
+        Request::PreviewSelection {
+            selection: mxr_protocol::SelectionData::Search { account_id, .. },
+            ..
+        }
+        | Request::StartSelectionJob {
+            selection: mxr_protocol::SelectionData::Search { account_id, .. },
+            ..
+        } => account_id.as_ref(),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::ComposeAssist {
             draft: mxr_protocol::DraftTargetData::New { account_id, .. },
@@ -3661,6 +3704,49 @@ async fn persist_local_label_changes(
     add: &[String],
     remove: &[String],
 ) -> Result<(), sqlx::Error> {
+    let account_id = persist_local_label_changes_deferred(state, message_id, add, remove).await?;
+    state.store.recalculate_label_counts(&account_id).await
+}
+
+/// [`persist_local_label_changes`] without refreshing the account's label
+/// counts, and the account whose counts are now stale. The refresh scans every
+/// label's rows, so a batch that does it per message costs the size of the
+/// mailbox times the size of the batch; the batch refreshes once instead.
+async fn persist_local_label_changes_deferred(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<mxr_core::AccountId, sqlx::Error> {
+    persist_label_changes_matching(state, message_id, add, remove, LabelRefs::IdsOrNames).await
+}
+
+/// How a label edit names its labels when the local copy is brought in line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelRefs {
+    /// A provider id or a display name, whichever label matches first.
+    IdsOrNames,
+    /// Exactly the account's provider ids, never a name: a label *named*
+    /// like another label's provider id must not be picked instead.
+    ProviderIds,
+}
+
+impl LabelRefs {
+    fn matches(self, label: &mxr_core::types::Label, reference: &str) -> bool {
+        match self {
+            Self::IdsOrNames => label.provider_id == reference || label.name == reference,
+            Self::ProviderIds => label.provider_id == reference,
+        }
+    }
+}
+
+async fn persist_label_changes_matching(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+    refs: LabelRefs,
+) -> Result<mxr_core::AccountId, sqlx::Error> {
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3675,7 +3761,7 @@ async fn persist_local_label_changes(
     for label_ref in remove {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             label_ids.retain(|id| id != &label.id);
         }
@@ -3684,7 +3770,7 @@ async fn persist_local_label_changes(
     for label_ref in add {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             if !label_ids.iter().any(|id| id == &label.id) {
                 label_ids.push(label.id.clone());
@@ -3696,11 +3782,57 @@ async fn persist_local_label_changes(
         .store
         .set_message_labels(message_id, &label_ids, mxr_core::EventSource::User)
         .await?;
-    state
-        .store
-        .recalculate_label_counts(&envelope.account_id)
-        .await?;
-    Ok(())
+    Ok(envelope.account_id)
+}
+
+/// [`reconcile_label_mutation`] for a batch that refreshes the account's label
+/// counts itself, once, when it is done. A provider without label mutation
+/// still re-syncs here, which refreshes them.
+pub(crate) async fn reconcile_label_mutation_deferred(
+    state: &AppState,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().mutate.labels {
+        persist_local_label_changes_deferred(state, message_id, add, remove)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+/// [`reconcile_label_mutation_deferred`] for edits that name labels by
+/// provider id only: a selection's frozen labels and an undo's snapshot. The
+/// local copy then gets exactly the labels the provider got.
+pub(crate) async fn reconcile_label_ids_deferred(
+    state: &AppState,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().mutate.labels {
+        persist_label_changes_matching(state, message_id, add, remove, LabelRefs::ProviderIds)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 pub(crate) async fn reconcile_label_mutation(

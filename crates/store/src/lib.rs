@@ -103,6 +103,7 @@ mod screener;
 mod search;
 mod search_fts_fallback;
 mod search_reindex_pending;
+mod selection;
 mod semantic;
 mod send_time;
 mod sender_history;

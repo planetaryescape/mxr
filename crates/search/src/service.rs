@@ -1,4 +1,4 @@
-use crate::{SearchIndex, SearchPage};
+use crate::{ResolvedHit, SearchIndex, SearchPage};
 use mxr_core::id::MessageId;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
@@ -129,6 +129,17 @@ enum BatchKind {
     Rebuild { read_seq: u64 },
 }
 
+/// What a whole-result scan matches.
+pub enum ResolveTarget {
+    /// A compiled structured query.
+    Ast(Box<dyn Query>),
+    /// Free text, parsed the way the search fallback parses it.
+    Text {
+        query: String,
+        account_id: Option<String>,
+    },
+}
+
 enum SearchCommand {
     ApplyBatch {
         batch: SearchUpdateBatch,
@@ -152,6 +163,10 @@ enum SearchCommand {
         offset: usize,
         sort: SortOrder,
         resp: oneshot::Sender<Result<SearchPage, MxrError>>,
+    },
+    Resolve {
+        target: ResolveTarget,
+        resp: oneshot::Sender<Result<Vec<ResolvedHit>, MxrError>>,
     },
     Clear {
         resp: oneshot::Sender<Result<(), MxrError>>,
@@ -278,6 +293,29 @@ impl SearchServiceHandle {
                         resp,
                     } => {
                         let _ = resp.send(index.search_ast(query, limit, offset, sort));
+                    }
+                    SearchCommand::Resolve { target, resp } => {
+                        // A scan of every match can take seconds on a large
+                        // index. Take a searcher here and run it on the
+                        // blocking pool, so this loop keeps serving other
+                        // commands meanwhile.
+                        let resolver = index.resolver();
+                        let query = match target {
+                            ResolveTarget::Ast(query) => Ok(query),
+                            ResolveTarget::Text { query, account_id } => {
+                                index.text_query(&query, account_id.as_deref())
+                            }
+                        };
+                        match query {
+                            Ok(query) => {
+                                tokio::task::spawn_blocking(move || {
+                                    let _ = resp.send(resolver.resolve_date_desc(&*query));
+                                });
+                            }
+                            Err(error) => {
+                                let _ = resp.send(Err(error));
+                            }
+                        }
                     }
                     SearchCommand::Clear { resp } => {
                         let _ = resp.send(index.clear());
@@ -504,6 +542,23 @@ impl SearchServiceHandle {
                 limit,
                 offset,
                 sort,
+                resp: resp_tx,
+            })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())?
+    }
+
+    /// Every match of `target`, newest first, read in one pass. The caller
+    /// filters for visibility; this returns what the index holds.
+    pub async fn resolve_date_desc(
+        &self,
+        target: ResolveTarget,
+    ) -> Result<Vec<ResolvedHit>, MxrError> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SearchCommand::Resolve {
+                target,
                 resp: resp_tx,
             })
             .await

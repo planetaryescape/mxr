@@ -5282,11 +5282,14 @@ async fn ingest_sent_message(
     if state.config_snapshot().llm.enabled {
         let summary_store = state.store.clone();
         let summary_llm = state.llm.clone();
+        let allow_cloud_relationship_data =
+            state.config_snapshot().llm.allow_cloud_relationship_data;
         let summary_thread_id = thread_id.clone();
         tokio::spawn(async move {
             if let Err(error) = crate::handler::summarize::summarize_thread_cached(
                 summary_store,
                 summary_llm,
+                allow_cloud_relationship_data,
                 &summary_thread_id,
             )
             .await

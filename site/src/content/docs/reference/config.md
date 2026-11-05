@@ -177,15 +177,15 @@ allow_cloud_relationship_data = false     # true lets relationship features use 
 # context_window = 128000                 # defaults to llm.context_window
 
 [llm.overrides.answer_coverage]
-# Optional per-feature LLM override. Same shape as [llm] above. Useful
-# when answer-coverage benefits from a different model than the default
-# (e.g. a smarter cloud model for the only LLM-backed safety check).
-# Answer coverage carries relationship data, so a cloud endpoint here
-# runs only with allow_cloud_relationship_data = true under [llm].
+# Optional per-feature LLM override. Takes enabled, base_url, model,
+# api_key_env, context_window and request_timeout_secs; anything left out
+# comes from [llm]. Useful when answer coverage benefits from a different
+# model than the default (e.g. a smarter cloud model for the only
+# LLM-backed safety check). Answer coverage carries relationship data, so
+# a cloud model here runs only with allow_cloud_relationship_data = true
+# under [llm].
 # enabled = true
-# base_url = "https://api.openai.com/v1"
-# model = "gpt-5-mini"
-# api_key_env = "OPENAI_API_KEY"
+# model = "gpt-6-luna"                    # key from `mxr llm key set openai`
 
 [safety.recipients]
 internal_domains = ["company.com"]        # paired with internal markers in body
@@ -643,14 +643,24 @@ backends works:
 - **OpenRouter**: `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`
 - **Together AI**, **Mistral La Plateforme**, etc.
 
-A `claude-*` model name is the exception: `base_url` and `api_key_env` don't
-apply. It goes to Anthropic's own API with the key from
-`mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), and to OpenRouter with
-`mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) when Anthropic isn't
-working. A `gpt-<number>` model such as `gpt-6-luna` goes to OpenAI's own API
-with the key from `mxr llm key set openai` (or `OPENAI_API_KEY`), and to
-OpenRouter when OpenAI isn't working, unless `base_url` points at a remote
-server of your own. See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback)
+Some model names ignore `base_url` and `api_key_env` and go to a hosted
+provider with its own key:
+
+| `model` | Goes to, in order | Key |
+|---|---|---|
+| `claude-*`, such as `claude-haiku-5-5` | Anthropic, then OpenRouter | `mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), `mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) |
+| `gpt-<number>`, such as `gpt-6-luna` | OpenAI, then OpenRouter | `mxr llm key set openai` (or `OPENAI_API_KEY`), then the OpenRouter key |
+| `anthropic/<model>` | OpenRouter | the OpenRouter key |
+| `<vendor>/<model>` with the default `base_url`, for the vendors `openai`, `google`, `meta-llama`, `mistralai`, `deepseek`, `x-ai`, `qwen`, `cohere`, `perplexity`, `amazon`, `nvidia` and `microsoft` | OpenRouter | the OpenRouter key |
+
+When `base_url` points at a server off this machine, a `gpt-*` model goes to
+that server instead, and so does a `<vendor>/<model>` id from that list. With
+a `base_url` on this machine other than the default (LM Studio, another port),
+a `<vendor>/<model>` id goes to `base_url`, since local servers name some
+models that way. So a model id like `qwen/qwen3-8b` reaches Ollama only when
+you change `base_url`; with the default it goes to OpenRouter.
+
+See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback)
 and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
 
 ```toml
@@ -694,46 +704,77 @@ llm.compose.model <id> --dry-run` to preview the same catalogue-checked change
 without writing it. Legacy drafting overrides keep working when this setting
 is absent and warn that `[llm.compose] model` is the replacement.
 
-`[llm.fallback]` puts a hosted model behind a model that `base_url` serves:
-after one failed attempt on `base_url`, requests go to the fallback through
-the providers it routes to (`gpt-6-luna`: OpenAI, then OpenRouter, each with
-a stored key) until `base_url` answers again. `model` defaults to
-`gpt-6-luna` and must be an id mxr routes itself (`gpt-<number>`,
-`claude-*`, or an OpenRouter `vendor/model` id); `context_window` defaults to
-`llm.context_window`, and prompts are built to fit the smaller of the two.
-Relationship features use the fallback only with
-`allow_cloud_relationship_data = true`. `mxr config set llm.fallback.model
-<id>` sets it and refuses an id mxr can't route; an empty value removes the
-table. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
+`[llm.fallback]` puts a hosted model behind a model that `base_url` serves.
+When `base_url` is unreachable, times out, is rate limited (408, 429, 529),
+returns a server error (5xx), or rejects the key or model (401, 402, 403,
+404, or a 400 naming the model), the request goes to the fallback through the
+providers in the routing table above (`gpt-6-luna`: OpenAI, then OpenRouter,
+each with a stored key or the provider's environment variable). Any other
+error, such as another 400 or an empty reply, is returned without trying the
+fallback. `base_url` is tried again after a cooldown that starts at one
+minute and doubles to 30 minutes (one hour after a key or model error), with
+a cheap `GET /models` check first.
+
+`model` defaults to `gpt-6-luna` and must be an id the routing table sends to
+a hosted provider with the default `base_url`: `gpt-<number>`, `claude-*`,
+`anthropic/<model>`, or a `<vendor>/<model>` id from the listed vendors.
+`context_window` defaults to the feature's own `context_window` (its
+override's, if it sets one), and prompts are built to fit the smaller of the
+two. `context_window = 0` is rejected. Relationship features use the fallback
+only with `allow_cloud_relationship_data = true`.
+
+`mxr config set llm.fallback.model <id>` sets it and refuses an id mxr can't
+route; an empty value removes the table. A bad `[llm.fallback]` in a
+hand-edited file doesn't stop the daemon: it starts without the fallback,
+logs why, and `mxr llm status` prints `fallback not used: <reason>`. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
 time; raise it for a hosted endpoint.
 
-`allow_cloud_relationship_data = false` blocks relationship/profile context
-from being sent to non-local LLM endpoints. Set it to `true` only when you want
-cloud providers to receive that context for relationship-aware summaries,
-briefings, and draft assistance.
+`allow_cloud_relationship_data = false` keeps your wider mail history off any
+endpoint that isn't on this machine. Only `localhost`, a `127.x.x.x` address
+or `::1` count as local. A server on your home network or tailnet counts as
+cloud, and so does every model in the routing table above, whatever
+`base_url` says. With the setting off, mxr:
 
-`mxr config set llm.<key> <value>` applies to a running daemon without a
-restart. If the daemon can't apply it, the command says `Restart the daemon to
-apply: mxr restart`.
+- refuses the history features listed under [Per-feature overrides](#per-feature-overrides) on a non-local endpoint;
+- keeps them off `[llm.fallback]`, so they wait for `base_url`;
+- leaves your other mail, relationship summaries and sent-mail habits out of drafting prompts sent to a non-local endpoint;
+- marks cloud models unavailable in the assistant's model picker.
+
+Set it to `true` only when the provider's data terms cover mail other people
+wrote to you.
+
+`mxr config set` changes these `llm` keys on a running daemon without a
+restart: `llm.enabled`, `llm.base_url`, `llm.model`, `llm.compose.model`,
+`llm.models`, `llm.api_key_env`, `llm.context_window`,
+`llm.request_timeout_secs`, `llm.allow_cloud_relationship_data` and
+`llm.fallback.model`. Any other `llm` key, including
+`background_request_timeout_secs`, `gist_concurrency`,
+`fallback.context_window` and `overrides.*`, is refused as an unknown key.
+Edit those in `config.toml` and run `mxr restart`. If the daemon can't apply
+a change, the command says `Restart the daemon to apply: mxr restart`.
 
 Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
-is present. It lists each feature's model and, for Claude and GPT models, the
-providers in order with their health. With `[llm.fallback]` it shows
-`base_url`'s health first and the fallback's providers after it. It also reports process-local model request outcomes by provider
-route: initially no observation, then a typed success or failure. A successful
-request on one feature route does not clear another route's failure, and a
-provider reload clears the old outcomes. Status never probes the model endpoint.
-Feature health reports the same observations while core mail remains usable when
-an optional model is unavailable. Daemon config reloads rebuild the LLM provider, so changing
-`base_url`, `model`, or `api_key_env` is reflected after reload without
-restarting the process.
+is present. It lists each feature's model and, for a model in the routing
+table, the providers in order with their health. With `[llm.fallback]` it
+shows `base_url`'s health first and the fallback's providers after it. With
+`[llm.compose] model` set, the drafting rows (`draft_assist`, `draft_new`,
+`draft_refine`, `humanize_rewrite`) still show the override or base model,
+though drafts use the compose model. Status also reports process-local
+request outcomes per feature (`default` for the base model): initially no
+observation, then a typed success or failure. A success on one feature does
+not clear another feature's failure, and a provider reload clears the old
+outcomes. Status never probes the model endpoint. Feature health reports the
+same observations; core mail stays usable when an optional model is
+unavailable.
 
-The web app's Settings > LLM panel edits this same section through the
-daemon and reloads the provider immediately after save.
+The web app's Settings > LLM panel edits the same keys through the daemon and
+reloads the provider immediately after save. `background_request_timeout_secs`,
+`gist_concurrency` and `[llm.fallback]` are config-file only; the panel keeps
+them as they are.
 
 ### Per-feature overrides
 
@@ -745,20 +786,22 @@ answer-coverage on a smarter cloud model.
 ```toml
 [llm.overrides.answer_coverage]
 enabled = true
-base_url = "https://api.openai.com/v1"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
+model = "gpt-6-luna"        # key from `mxr llm key set openai`
 ```
 
-Any field omitted from an override falls back to the top-level `[llm]`
-section. Feature keys: `summarize` (also row gists and `mxr triage`),
+An override takes `enabled`, `base_url`, `model`, `api_key_env`,
+`context_window` and `request_timeout_secs`. Any field you leave out comes
+from `[llm]`. Other keys in an override table are ignored. Feature keys: `summarize` (also row gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
 `draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
 `archive_ask`, `decision_log`, `briefing`, `expert`,
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
 and `assistant` (the [assistant](/guides/assistant/), which needs a model that
 can call tools, and whose model you can pick from a list, and summarises older messages once a conversation nears
-`context_window`).
+`context_window`). `voice_match` and `expert` are accepted, but no current
+feature calls a model through them. With `[llm.compose] model` set, drafts
+use that model and the `draft_assist`, `draft_new`, `draft_refine` and
+`humanize_rewrite` overrides are ignored.
 
 `relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
 `archive_ask`, `decision_log`, `briefing`, `expert` and `assistant` carry

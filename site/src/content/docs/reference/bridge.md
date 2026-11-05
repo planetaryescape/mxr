@@ -668,8 +668,8 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/platform/llm/config` | Current `[llm]` config, without secrets |
-| `POST` | `/platform/llm/config` | Update `[llm]` config and reload provider |
+| `GET` | `/platform/llm/config` | The editable part of `[llm]`, without secrets; `fallback`, `gist_concurrency` and `background_request_timeout_secs` are config-file only |
+| `POST` | `/platform/llm/config` | Update the editable part of `[llm]` and reload the provider; keys it doesn't carry are kept |
 | `GET` | `/platform/keymap` | Every key in every client with `keys.toml` applied, the single-key switch and what in the file is ignored (`Keymap`) |
 | `POST` | `/platform/keymap` | Change `keys.toml`: `{change: {kind: "set_action", id, keys} \| {kind: "reset_action", id} \| {kind: "single_keys", on}, dry_run}`; nothing is written on a dry run or a conflict (`KeysUpdate`) |
 | `GET` | `/platform/notifications/chimes` | The shared chime setting (`NotificationChimes`) |

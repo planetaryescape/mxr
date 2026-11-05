@@ -193,7 +193,7 @@ sensitive_domains = ["competitor.com"]    # always Blocker
 warn_on_first_time_external = true        # warn on never-seen-before domains
 
 [safety.tone]
-formality_delta_threshold = 0.25          # 0.0 = always warn, 1.0 = never
+formality_delta_threshold = 0.4           # 0.0 = always warn, 1.0 = never
 
 [accounts.personal]
 name = "Personal"
@@ -772,6 +772,9 @@ Pre-send safety pipeline tuning. See the
 [Pre-send safety guide](/guides/pre-send-safety/) for the full check
 inventory and the override-token flow.
 
+The daemon reads `[safety]` when it starts. Edit `config.toml`, then run
+`mxr restart`; the running daemon keeps the values it loaded until then.
+
 ### `safety.recipients`
 
 ```toml
@@ -791,12 +794,12 @@ warn_on_first_time_external = true
 
 ```toml
 [safety.tone]
-formality_delta_threshold = 0.25
+formality_delta_threshold = 0.4
 ```
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `formality_delta_threshold` | float [0.0, 1.0] | `0.25` | How different the draft's formality score must be from the recipient's baseline before the warning fires. `0.0` = always warn (every send vs. baseline). `1.0` = never warn. Lower it if you want stricter checking, raise it to mute noise. |
+| `formality_delta_threshold` | float [0.0, 1.0] | `0.4` | How different the draft's formality score must be from the recipient's baseline before the warning fires. `0.0` = always warn (every send vs. baseline). `1.0` = never warn. Lower it if you want stricter checking, raise it to mute noise. Values outside the range are clamped into it. |
 
 Tone match needs at least 3 prior messages to a recipient — fewer than
 that and the check silently skips (no point warning when there's no

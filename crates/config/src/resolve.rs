@@ -1132,4 +1132,68 @@ mod write_tests {
             .collect();
         assert_eq!(leftovers, vec![std::ffi::OsString::from("config.toml")]);
     }
+
+    #[test]
+    fn a_save_keeps_a_configured_safety_section_and_its_comments() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"[safety.recipients]
+internal_domains = ["company.com"]
+sensitive_domains = ["competitor.com"]
+warn_on_first_time_external = true
+
+[safety.tone]
+# Lower warns more often.
+formality_delta_threshold = 0.25
+"#,
+        )
+        .expect("config fixture");
+
+        let mut config = load_config_file_as_written(&path).expect("config fixture");
+        config.search.max_results = 77;
+        save_config_to_path(&config, &path).expect("config fixture");
+
+        let saved = std::fs::read_to_string(&path).expect("config fixture");
+        assert!(saved.contains("# Lower warns more often."), "{saved}");
+        assert!(
+            saved.contains("formality_delta_threshold = 0.25"),
+            "{saved}"
+        );
+        let written = load_config_file_as_written(&path).expect("config fixture");
+        assert_eq!(written.safety.tone.formality_delta_threshold, 0.25);
+        assert_eq!(
+            written.safety.recipients.internal_domains,
+            vec!["company.com".to_string()]
+        );
+        assert_eq!(
+            written.safety.recipients.sensitive_domains,
+            vec!["competitor.com".to_string()]
+        );
+        assert!(written.safety.recipients.warn_on_first_time_external);
+    }
+
+    #[test]
+    fn the_safety_section_loads_back_equal_after_a_save() {
+        let dir = tempfile::tempdir().expect("config fixture");
+        let path = dir.path().join("config.toml");
+        let mut config = MxrConfig::default();
+        config.safety.recipients.internal_domains = vec!["company.com".into()];
+        config.safety.recipients.sensitive_domains = vec!["competitor.com".into()];
+        config.safety.recipients.warn_on_first_time_external = true;
+        config.safety.tone.formality_delta_threshold = 0.1;
+
+        save_config_to_path(&config, &path).expect("config fixture");
+        let loaded = load_config_from_path(&path).expect("config fixture");
+
+        assert_eq!(loaded.safety, config.safety);
+    }
+
+    #[test]
+    fn an_absent_safety_section_loads_the_defaults() {
+        let loaded = load_config_from_str("[general]\neditor = \"vim\"\n").expect("config fixture");
+        assert_eq!(loaded.safety, crate::types::SafetyConfig::default());
+        assert_eq!(loaded.safety.tone.formality_delta_threshold, 0.4);
+    }
 }

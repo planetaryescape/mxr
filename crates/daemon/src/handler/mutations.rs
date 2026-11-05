@@ -362,6 +362,31 @@ const KNOWN_CONTACTS_LIMIT: u32 = 200;
 /// useful for direct correspondence.
 const CONTACT_STYLE_LOOKUP_CAP: usize = 10;
 
+/// The `[safety]` config as the safety crate takes it. A threshold outside
+/// 0.0..=1.0 is clamped to the documented range, and NaN falls back to the
+/// crate default, so a mistyped value cannot silence the tone check or make
+/// it fire on every send.
+pub(super) fn safety_check_config(config: &mxr_config::SafetyConfig) -> mxr_safety::SafetyConfig {
+    let threshold = config.tone.formality_delta_threshold;
+    let formality_delta_threshold = if threshold.is_nan() {
+        mxr_safety::SafetyConfig::default()
+            .tone
+            .formality_delta_threshold
+    } else {
+        threshold.clamp(0.0, 1.0)
+    };
+    mxr_safety::SafetyConfig {
+        recipients: mxr_safety::SafetyRecipientConfig {
+            internal_domains: config.recipients.internal_domains.clone(),
+            sensitive_domains: config.recipients.sensitive_domains.clone(),
+            warn_on_first_time_external: config.recipients.warn_on_first_time_external,
+        },
+        tone: mxr_safety::SafetyToneConfig {
+            formality_delta_threshold,
+        },
+    }
+}
+
 /// Run the full safety pipeline: existing daemon checks (recipients,
 /// reply-all parent diff) + new `mxr-safety` deterministic checks.
 pub(super) async fn run_safety_pipeline(
@@ -384,7 +409,7 @@ pub(super) async fn run_safety_pipeline(
     };
     let mut report = check_draft_safety_with_context(state, draft).await?;
     let safety_ctx = build_safety_context(state, draft, context).await?;
-    let safety_cfg = mxr_safety::SafetyConfig::default();
+    let safety_cfg = safety_check_config(&state.config_snapshot().safety);
     let extra = mxr_safety::check_draft_deterministic(draft, &safety_ctx, &safety_cfg);
     report.extend(extra.issues);
 

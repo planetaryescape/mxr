@@ -777,6 +777,7 @@ mod record_subscriptions;
 mod records;
 mod reply_semantics;
 mod routing_and_search;
+mod safety_config;
 mod search_fallback;
 mod selection_jobs;
 mod send_outcomes;

@@ -162,6 +162,7 @@ A run that fails before publication leaves a draft. A re-run on an already publi
 | Upload or the asset check in `github-release` fails | Draft with zero or some assets; not visible. | Re-run the failed job. Upload uses `--clobber` and only ever touches a draft, so it converges. |
 | `gh release edit --draft=false` fails | Draft with all assets. | Re-run the failed job. |
 | `homebrew` fails | Release is published with all assets and Latest; tap is stale. | Re-run the failed `homebrew` job. It only reads the artifacts and the published release. |
+| `homebrew-verify` fails or is cancelled | Release is published and the tap is updated; only the macOS install check did not finish. | Re-run the failed `homebrew-verify` job alone (`gh run rerun <id> --failed`). It pushes nothing. |
 | A full workflow re-run after a successful publish | Nothing is written: the script sees a published release, confirms its asset names and sizes, and compares the published `.sha256` contents with this run's rebuilt ones. A mismatch (the rebuilt tarball differs) fails the job so Homebrew is not updated from checksums that do not match the published tarballs. A published release that is missing assets is never modified; ship a new version. | None needed when it passes. |
 
 If no `release.yml` run exists for a tag, dispatch it on the existing tag (`gh workflow run release.yml --ref vX.Y.Z`); the script reuses the draft.
@@ -330,7 +331,10 @@ Each archive contains:
 3. `build-binaries` (Build `<target>`) builds `cargo build --release --locked --target <target> -p mxr -p mxr-mailmerge --features semantic-local,web-ui` with the web SPA embedded. Linux x86_64 builds on `ubuntu-latest`. macOS Apple Silicon builds on the self-hosted `mxr-builder` runner, where `.github/actions/self-hosted-rust-home` gives the job its own `CARGO_HOME`, `RUSTUP_HOME` and sccache port so it never touches the developer's toolchain. The macOS binary is signed and notarized, then archived with its SHA256.
 4. `desktop` calls `desktop-signed.yml` to build the signed desktop app.
 5. `github-release` verifies the archive checksums, uploads the assets to the draft release release-please created, and only then publishes it.
-6. `homebrew` renders and pushes the formula and cask, then installs both to check them.
+6. `homebrew` (Homebrew tap update, Linux) renders the formula and cask, then pushes them to the tap. It runs after `github-release`, because the formula points at download URLs that are only public once the release is published.
+7. `homebrew-verify` (Verify Homebrew install, macOS) runs `brew install` for the formula and the cask. It pushes nothing. A macOS runner that is cancelled before it starts leaves the tap updated and only this check missing.
+
+`github-release` does not wait on either Homebrew job. Publishing comes first, so the tap never points at a draft's assets, and a Homebrew failure never unpublishes a release. The cost is that "published" does not mean "tap updated": a release can be live while Homebrew is still on the previous version until `homebrew` succeeds.
 
 The build job has no Rust cache step: each release runs on a new tag, and a tag cannot restore another tag's cache, so it never restored one.
 

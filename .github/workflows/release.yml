@@ -373,11 +373,17 @@ jobs:
 
   # Docs auto-deploy to Vercel on push (mxr-mail.vercel.app)
 
+  # The tap update runs on Linux: a macOS runner that is cancelled before it gets
+  # a machine (seen 2026-11-04) must not leave Homebrew a release behind.
+  # It runs after github-release because the formula points at the published
+  # release's download URLs, which are not public while the release is a draft.
   homebrew:
-    name: Homebrew Formula and Cask
-    runs-on: macos-15
+    name: Homebrew tap update
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
+    outputs:
+      has_cask: ${{ steps.cask.outputs.has_cask }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -389,15 +395,18 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           bash ./scripts/render_homebrew_formula.sh "$VERSION" artifacts Formula/mxr.rb
       - name: Render cask
+        id: cask
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           DMG_CHECKSUM="artifacts/mxr-desktop-${VERSION}-aarch64.dmg.sha256"
           if [ -f "$DMG_CHECKSUM" ]; then
             bash ./scripts/render_homebrew_cask.sh "$VERSION" artifacts Casks/mxr-desktop.rb
             echo "HAS_CASK=true" >> "$GITHUB_ENV"
+            echo "has_cask=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning ::Desktop DMG checksum not found; skipping Homebrew cask update for this release."
             echo "HAS_CASK=false" >> "$GITHUB_ENV"
+            echo "has_cask=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Update tap formula and cask
         env:
@@ -424,13 +433,22 @@ jobs:
           git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C tap commit -m "mxr ${VERSION}"
           git -C tap push origin HEAD:main
+
+  # Runs on macOS after the tap is pushed. A failure or cancellation here leaves
+  # the tap updated; re-run this job alone.
+  homebrew-verify:
+    name: Verify Homebrew install (macOS)
+    runs-on: macos-15
+    needs: [plan, homebrew]
+    if: needs.plan.outputs.cli_changed == 'true' && needs.homebrew.result == 'success'
+    steps:
       - name: Verify Homebrew install
         run: |
           brew update
           brew install planetaryescape/mxr/mxr
           mxr version
       - name: Verify Homebrew cask install
-        if: env.HAS_CASK == 'true'
+        if: needs.homebrew.outputs.has_cask == 'true'
         run: |
           brew install --cask planetaryescape/mxr/mxr-desktop
           test -d /Applications/mxr.app

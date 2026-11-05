@@ -334,6 +334,14 @@ pub(crate) fn llm_fallback(
              or remove [llm.fallback]"
         ));
     };
+    if fallback.context_window == Some(0) {
+        // The chain advertises the smallest window, so a zero would shrink
+        // every prompt to the minimum budget even while the endpoint works.
+        return Err(
+            "llm.fallback.context_window is 0; set the fallback model's window or remove the key"
+                .to_string(),
+        );
+    }
     Ok(Some(LlmFallbackChain {
         model: model.to_string(),
         routes,
@@ -433,7 +441,7 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
     let fallback = usable_llm_fallback(config);
     let base = base_llm_config(config);
     let base_chain = llm_fallback_chain(config, fallback.as_ref(), None, &base);
-    runtime.replace(build_llm_provider(&base, base_chain.as_ref(), &health));
+    let base_provider = build_llm_provider(&base, base_chain.as_ref(), &health);
     runtime.set_background_timeout(std::time::Duration::from_secs(
         config.background_request_timeout_secs,
     ));
@@ -466,7 +474,7 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
             providers.insert(feature, build_llm_provider(&base, chain.as_ref(), &health));
         }
     }
-    runtime.replace_feature_providers(providers, blocked);
+    runtime.install(base_provider, providers, blocked);
 }
 
 /// The settings a feature runs with: its `[llm.overrides.<feature>]` section

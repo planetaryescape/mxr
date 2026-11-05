@@ -494,6 +494,37 @@ impl LlmRuntime {
         self.mark_background_unsaved();
     }
 
+    /// [`Self::replace`] and [`Self::replace_feature_providers`] as one
+    /// update. A request pinned between two separate calls would get the new
+    /// base provider with the old per-feature map; when the new base may fall
+    /// back to the cloud, that sends a feature whose data must stay local to
+    /// the cloud.
+    pub fn install(
+        &self,
+        provider: Arc<dyn LlmProvider>,
+        providers: HashMap<LlmFeature, Arc<dyn LlmProvider>>,
+        blocked_features: HashMap<LlmFeature, String>,
+    ) {
+        self.observations.replace(|| {
+            *self
+                .provider
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+            *self
+                .feature_providers
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = providers;
+            *self
+                .blocked_features
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = blocked_features;
+            *self.breaker() = BackgroundBreaker::default();
+            self.attempts().reset_keeping_deferred();
+            self.route_health.reset();
+        });
+        self.mark_background_unsaved();
+    }
+
     pub fn replace_feature_providers(
         &self,
         providers: HashMap<LlmFeature, Arc<dyn LlmProvider>>,
@@ -1622,7 +1653,10 @@ impl OpenAiCompatibleProvider {
                     class,
                 })
             }
-            404 => return Ok(()),
+            // Some servers have no model listing (404), and some keys may
+            // complete but not list (403). Either way the endpoint answered;
+            // the real request decides whether the key works.
+            404 | 403 => return Ok(()),
             _ => {}
         }
         match class {

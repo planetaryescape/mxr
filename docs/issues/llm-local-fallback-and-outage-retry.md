@@ -59,7 +59,7 @@ The to-do resolution worker had the same charging problem in its own durable que
 - A daemon loop (`crates/daemon/src/llm_background.rs`) re-runs put-off inputs once each: relationship contacts go back to the relationship worker, and messages go back through the delivery scan, so a delivery that fell back to the heuristic during an outage is enriched once the endpoint answers. It runs when the breaker closes after an outage, when a `RouteHealth` route recovers, or, every 30 s, once the cooldown is over and the cheap check passes.
 - The breaker, the ledger and the put-off inputs are saved to `llm-background.json` in the data directory: wall-clock times, atomic write, mode 0600, at most every 30 s when changed and once on shutdown. A missing, corrupt or other-version file is logged and ignored. Tests and the demo instance never write it.
 
-What remained after this: the fallback chain, since shipped (see the first section). `RouteHealth` is still in memory only. Recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns.
+What remained after this: the fallback chain, since shipped (see the first section). `RouteHealth` is still in memory only. Without a fallback, recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns. With a fallback, the endpoint is a `RouteHealth` route instead, so its wait is the route cooldown: up to 30 minutes, or 1 hour after a broken verdict such as a bad key.
 
 ## Acceptance
 
@@ -76,3 +76,18 @@ What remained after this: the fallback chain, since shipped (see the first secti
 ## Open questions
 
 - Do the data terms of OpenRouter and its upstream providers for `gpt-6-luna` cover other people's mail?
+
+## Review follow-ups deferred from #883
+
+From CodeRabbit's review of the fallback PR, 2026-11-05. Fixed in the PR: the base and per-feature providers are installed in one update, so a reload can't hand a relationship feature the cloud-capable base provider; a zero `llm.fallback.context_window` is rejected; a 403 from `GET /models` counts as the endpoint answering; three doc corrections. Deferred:
+
+- Draft provenance reports `Cloud` whenever a fallback is configured, even when the local endpoint answered. It should follow the route that answered.
+- Compose-model drafts build a fresh `RouteHealth` per call, so their endpoint failures aren't remembered or shown in `mxr llm status`.
+- `mxr llm status` builds drafting rows without `llm.compose.model`, so those rows can show the base chain instead of the compose model.
+- An unroutable `[llm.fallback]` model makes `sync_llm_from_disk` return early, so a saved `llm.enabled = false` isn't applied until restart. Account and config reloads drop the fallback with only a warning.
+- Endpoint route health ignores `api_key_env`, so overrides sharing `base_url` and model share one health entry.
+- A successful `GET /models` check resets the endpoint's failure count, so completions failing with 503 behind a working listing never back off past 60 s.
+- The reasoning retry on the endpoint gets the full share again instead of the time left.
+- `prompt_budget_chars` doesn't reserve the hosted routes' thinking headroom.
+- The status chain label shows `base_url:` without the URL, and marks no route `next` when only the foreground forced attempt would run.
+

@@ -224,8 +224,10 @@ a provider's ([what mxr remembers](#what-mxr-remembers-about-each-provider)):
   to answer background work.
 
 It applies to every feature whose model `base_url` serves, including a
-per-feature override with its own `base_url`. A `claude-*` or `gpt-*` model
-already has OpenRouter behind it and ignores `[llm.fallback]`. Answers from
+per-feature override with its own `base_url`. A `claude-*` model, and a
+`gpt-*` model on the default or a local endpoint, already have OpenRouter
+behind them and ignore `[llm.fallback]`; a `gpt-*` model on a remote server of
+your own uses it. Answers from
 the fallback are labelled with the provider (`gpt-6-luna via OpenAI`,
 `openai/gpt-6-luna via OpenRouter`); answers from `base_url` keep the model's
 name. Prompts are built to fit the smaller context window of the two.
@@ -388,7 +390,9 @@ mxr llm status --format json
 `base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
 local; anything else is cloud. A `claude-*` model, and a `gpt-*` model
 routed to OpenAI, have no `base_url` and are always cloud. With
-`[llm.fallback]`, mail goes to OpenAI or OpenRouter while `base_url` is out,
+`[llm.fallback]`, mail goes to the fallback model's providers while `base_url`
+is out (OpenAI then OpenRouter for `gpt-*`, Anthropic then OpenRouter for
+`claude-*`, OpenRouter alone for a `vendor/model` id),
 so each feature that may fall back shows `cloud: true`; use a provider whose
 API data terms cover other people's mail.
 

@@ -2145,3 +2145,15 @@ fn search_page_size_from_config_clamps_to_u32_and_never_returns_zero() {
     assert_eq!(search_page_size_from_config(200), 200);
     assert_eq!(search_page_size_from_config(usize::MAX), u32::MAX);
 }
+
+#[test]
+fn only_pure_reads_are_cancelled_when_their_client_leaves() {
+    assert!(request_is_abandonable(&Request::GetKeymap));
+    // Read-class, but a turn drives tools that mutate once approved.
+    assert!(!request_is_abandonable(&Request::AssistantDecide {
+        conversation_id: "c".into(),
+        decisions: Vec::new(),
+    }));
+    assert!(!request_is_abandonable(&Request::RebuildAnalytics));
+    assert!(!request_is_abandonable(&Request::SyncAll));
+}

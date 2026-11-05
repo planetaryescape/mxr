@@ -1,6 +1,6 @@
 # Mode reads starved the reader pool; three gaps remain after the index fix
 
-**Status:** root cause fixed on `fix/reader-pool-starvation` (migration 092) ·
+**Status:** root cause fixed (migration 092); abandoned-request cancel and `PRAGMA optimize` fixed; regex compile on the request path still open ·
 **Found:** 2026-10-21 on v0.6.117 against a 110,839-message store ·
 **Severity:** high while it lasted: Now, Messages, Updates, Reading, Records and
 Arrivals timed out after 90 s, and so did background loops (snooze, scheduled
@@ -29,18 +29,14 @@ out at 120 s.
 
 ## Still open
 
-1. **Abandoned requests keep running.** When a client times out or
-   disconnects, the handler keeps its reader connection until the query ends
-   (`dropping client connection: response send failed`). Retrying clients
-   stack copies of the same slow query and turn one slow read into pool
-   starvation. Handlers should be cancelled when the client goes away.
-2. **Now, Messages, Updates, Reading and the rail still take 1–5 s** on this
+1. **Now, Messages, Updates, Reading and the rail still take 1–5 s** on this
    store with the release build (measured while a lexical reindex ran, so
    somewhat pessimistic). A stack sample showed regex compilation
    (`regex_syntax`) on the request path. Fine for the TUI; too slow for a
-   launcher client such as Raycast.
-3. **No query-planner statistics.** The store never runs `ANALYZE` /
-   `PRAGMA optimize`, so the planner guesses from schema alone. That guess is
-   what picked the account index here. Running `PRAGMA optimize` on close or
-   periodically would make this class of regression less likely; the plan
-   tests stay the guard either way.
+   launcher client such as Raycast. Profile first to find which regexes compile
+   per request before changing anything.
+
+Fixed since: abandoned read-only requests are cancelled when the client closes
+the connection (`serve.rs`, `request_is_abandonable`; a single `sqlite3_step`
+already running still finishes, the cancel takes effect between rows), and the
+store runs `PRAGMA optimize=0x10002` on open and `PRAGMA optimize` hourly.

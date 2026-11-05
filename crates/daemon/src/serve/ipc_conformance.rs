@@ -104,6 +104,25 @@ pub(crate) mod gate {
         /// the protocol produces one from in-memory state, and a client cannot
         /// send an oversized request either — its own encoder refuses it.
         oversized: bool,
+        /// Gated requests that ran past the gate.
+        completed_tx: watch::Sender<usize>,
+        /// Gated requests dropped while parked, i.e. cancelled.
+        cancelled_tx: watch::Sender<usize>,
+    }
+
+    /// Counts a parked gated request as cancelled if it is dropped before
+    /// it passes the gate.
+    struct CancelGuard {
+        cancelled_tx: watch::Sender<usize>,
+        armed: bool,
+    }
+
+    impl Drop for CancelGuard {
+        fn drop(&mut self) {
+            if self.armed {
+                self.cancelled_tx.send_modify(|count| *count += 1);
+            }
+        }
     }
 
     static GATE: Lazy<Mutex<Option<GateShared>>> = Lazy::new(|| Mutex::new(None));
@@ -113,7 +132,10 @@ pub(crate) mod gate {
     /// short-circuit the gated sentinel request, or `None` to let normal
     /// dispatch proceed (the only value in production-shaped behavior).
     pub(crate) async fn maybe_intercept(msg: &IpcMessage) -> Option<IpcMessage> {
-        let IpcPayload::Request(Request::RebuildAnalytics) = &msg.payload else {
+        // `RebuildAnalytics` is a mutation; `GetKeymap` is a read. Both park,
+        // so a test can show which one a disconnect cancels.
+        let IpcPayload::Request(Request::RebuildAnalytics | Request::GetKeymap) = &msg.payload
+        else {
             return None;
         };
         let shared = GATE.lock().clone()?;
@@ -128,6 +150,10 @@ pub(crate) mod gate {
                 payload: IpcPayload::Response(Response::error("x".repeat(17 * 1024 * 1024))),
             });
         }
+        let mut guard = CancelGuard {
+            cancelled_tx: shared.cancelled_tx.clone(),
+            armed: true,
+        };
         let mut open_rx = shared.open_rx;
         loop {
             if *open_rx.borrow_and_update() {
@@ -137,6 +163,8 @@ pub(crate) mod gate {
                 break;
             }
         }
+        guard.armed = false;
+        shared.completed_tx.send_modify(|count| *count += 1);
         Some(IpcMessage {
             expected_workspace: None,
             id: msg.id,
@@ -152,6 +180,8 @@ pub(crate) mod gate {
     pub(crate) struct GateHandle {
         open_tx: watch::Sender<bool>,
         entered_rx: watch::Receiver<usize>,
+        completed_rx: watch::Receiver<usize>,
+        cancelled_rx: watch::Receiver<usize>,
         _serial: OwnedMutexGuard<()>,
     }
 
@@ -178,6 +208,16 @@ pub(crate) mod gate {
         pub(crate) fn entered(&self) -> usize {
             *self.entered_rx.borrow()
         }
+
+        /// Gated requests that ran to completion.
+        pub(crate) fn completed(&self) -> usize {
+            *self.completed_rx.borrow()
+        }
+
+        /// Gated requests cancelled while parked at the gate.
+        pub(crate) fn cancelled(&self) -> usize {
+            *self.cancelled_rx.borrow()
+        }
     }
 
     impl Drop for GateHandle {
@@ -201,14 +241,20 @@ pub(crate) mod gate {
         let serial = SERIAL.clone().lock_owned().await;
         let (open_tx, open_rx) = watch::channel(false);
         let (entered_tx, entered_rx) = watch::channel(0usize);
+        let (completed_tx, completed_rx) = watch::channel(0usize);
+        let (cancelled_tx, cancelled_rx) = watch::channel(0usize);
         *GATE.lock() = Some(GateShared {
             open_rx,
             entered_tx,
             oversized,
+            completed_tx,
+            cancelled_tx,
         });
         GateHandle {
             open_tx,
             entered_rx,
+            completed_rx,
+            cancelled_rx,
             _serial: serial,
         }
     }

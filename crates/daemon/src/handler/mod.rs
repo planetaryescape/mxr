@@ -3041,6 +3041,27 @@ fn request_is_read_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::Read)
 }
 
+/// Whether the daemon may cancel this request's task when its client goes
+/// away. Reads only: a mutation, send or draft write must run to completion
+/// whether or not anyone is waiting for the answer.
+///
+/// `RequestClass::Read` means "no user-visible state change", which is not
+/// the same as "safe to drop mid-flight". The assistant requests are classed
+/// `Read` because the tools a conversation calls are classified one by one
+/// when they run, but a turn drives those tools, so cancelling it would cut
+/// off the mutation an approved step is making. `ExportRecords` copies files
+/// to disk between awaits and would leave a partial export.
+pub(crate) fn request_is_abandonable(req: &Request) -> bool {
+    request_is_read_only(req)
+        && !matches!(
+            req,
+            Request::AssistantSend { .. }
+                | Request::AssistantDecide { .. }
+                | Request::AssistantCancel { .. }
+                | Request::ExportRecords { .. }
+        )
+}
+
 fn request_kind(req: &Request) -> &'static str {
     match req {
         Request::ListEnvelopes { .. } => "list_envelopes",

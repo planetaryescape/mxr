@@ -26,7 +26,7 @@
 //! production `bind`/`accept`/`connect` path — proving the scenarios are both
 //! carrier- and transport-independent.
 
-use crate::handler::{handle_request_with_peer, request_lane, IpcLane};
+use crate::handler::{handle_request_with_peer, request_is_abandonable, request_lane, IpcLane};
 use crate::state::AppState;
 use futures::{FutureExt, SinkExt, StreamExt};
 use mxr_protocol::{
@@ -256,6 +256,12 @@ pub(crate) async fn serve_client_connection<S>(
     let mut accept_requests = true;
     let mut can_send = true;
     let mut shutdown_requested = false;
+    // Set when the client closed its end. Together with `!can_send` (a write
+    // failed) it means nobody is waiting for any response on this connection.
+    let mut client_closed = false;
+    // Abort handles of in-flight read-only requests. Cancelling one frees its
+    // reader connection; see `request_is_abandonable` for what may be dropped.
+    let mut abandonable: Vec<tokio::task::AbortHandle> = Vec::new();
     // Connection-scoped auth state. Token transports start unauthenticated and
     // gate every request; every other transport starts trusted.
     let mut auth = ConnectionAuth::new(&peer, auth_token);
@@ -325,6 +331,8 @@ pub(crate) async fn serve_client_connection<S>(
                         }
                     }
                     Some(Ok(_)) => {}
+                    // Aborted because the client left; not a failure.
+                    Some(Err(error)) if error.is_cancelled() => {}
                     Some(Err(error)) => {
                         tracing::warn!("ipc request task failed: {error}");
                     }
@@ -397,7 +405,11 @@ pub(crate) async fn serve_client_connection<S>(
                         // phase (UDS keeps implicit trust); the plumbing point
                         // exists for phase 5's token gate.
                         let peer = peer.clone();
-                        request_tasks.spawn(async move {
+                        let abandonable_request = matches!(
+                            &ipc_msg.payload,
+                            mxr_protocol::IpcPayload::Request(req) if request_is_abandonable(req)
+                        );
+                        let task = request_tasks.spawn(async move {
                             let _permit = permit;
                             tracing::trace!(
                                 wait_ms = permit_wait_started.elapsed().as_secs_f64() * 1000.0,
@@ -420,12 +432,17 @@ pub(crate) async fn serve_client_connection<S>(
                             })
                             .await
                         });
+                        abandonable.retain(|handle| !handle.is_finished());
+                        if abandonable_request {
+                            abandonable.push(task);
+                        }
                     }
                     Some(Err(error)) => {
                         tracing::error!("IPC decode error: {}", error);
                         accept_requests = false;
                     }
                     None => {
+                        client_closed = true;
                         accept_requests = false;
                     }
                 }
@@ -445,6 +462,12 @@ pub(crate) async fn serve_client_connection<S>(
                     can_send = false;
                     accept_requests = false;
                 }
+            }
+        }
+
+        if client_closed || !can_send {
+            for handle in abandonable.drain(..) {
+                handle.abort();
             }
         }
 
@@ -898,7 +921,7 @@ mod tests {
             .await;
     }
 
-    /// A request already running when the client walks away must run to
+    /// A mutation already running when the client walks away must run to
     /// completion.
     ///
     /// `mxr demo` tells the user they can Ctrl-C during the prewarm phase and
@@ -906,42 +929,13 @@ mod tests {
     /// true if a disconnect does not abort the in-flight `RebuildAnalytics` /
     /// `Wrapped` / voice + decision rebuilds, so pin it: with the request
     /// parked inside the conformance gate, closing the connection must not end
-    /// the connection task — only releasing the request does.
+    /// the connection task or cancel the request; only releasing the request
+    /// does, and it then completes.
     #[tokio::test]
-    async fn disconnect_does_not_abort_an_in_flight_request() {
+    async fn disconnect_does_not_abort_an_in_flight_mutation() {
         let gate = super::ipc_conformance::gate::install().await;
-        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
-        let state_for_cleanup = state.clone();
-        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
-        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
-        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
-        let event_rx = state.event_tx.subscribe();
-        let shutdown_rx = state.shutdown_receiver();
-
-        let mut server = tokio::spawn(async move {
-            serve_client_connection(
-                server_stream,
-                state,
-                request_semaphore,
-                bulk_semaphore,
-                mxr_transport::PeerInfo::local(),
-                None,
-                event_rx,
-                shutdown_rx,
-            )
-            .await;
-        });
-
-        let mut client = Framed::new(client_stream, IpcCodec::new());
-        client
-            .send(IpcMessage {
-                expected_workspace: None,
-                id: 12,
-                source: ::mxr_protocol::ClientKind::default(),
-                payload: IpcPayload::Request(Request::RebuildAnalytics),
-            })
-            .await
-            .expect("send rebuild-analytics");
+        let (server, client, state) = start_gated_request(Request::RebuildAnalytics).await;
+        let mut server = server;
         gate.wait_until_entered(1).await;
 
         // The user's Ctrl-C.
@@ -953,16 +947,80 @@ mod tests {
             still_running.is_err(),
             "the connection task must not exit while its request is in flight"
         );
+        assert_eq!(gate.cancelled(), 0, "a mutation must not be cancelled");
 
         gate.open();
         tokio::time::timeout(Duration::from_secs(2), server)
             .await
             .expect("connection task exits once the request finishes")
             .expect("connection task join");
+        assert_eq!(gate.completed(), 1, "the mutation must run to completion");
+        assert_eq!(gate.cancelled(), 0);
 
-        state_for_cleanup
-            .shutdown_runtime_tasks(Duration::from_secs(1))
+        state.shutdown_runtime_tasks(Duration::from_secs(1)).await;
+    }
+
+    /// A read whose client left holds a reader connection for nothing. Its
+    /// task is cancelled at once, which ends the connection without waiting
+    /// for the gate (the stand-in for a slow query) to open.
+    #[tokio::test]
+    async fn disconnect_cancels_an_in_flight_read() {
+        let gate = super::ipc_conformance::gate::install().await;
+        let (server, client, state) = start_gated_request(Request::GetKeymap).await;
+        gate.wait_until_entered(1).await;
+
+        drop(client);
+
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("connection task exits without the read finishing")
+            .expect("connection task join");
+        assert_eq!(gate.cancelled(), 1, "the abandoned read must be cancelled");
+        assert_eq!(gate.completed(), 0);
+
+        state.shutdown_runtime_tasks(Duration::from_secs(1)).await;
+    }
+
+    /// Serve one connection, send `request` on it and hand back the server
+    /// task, the client end and the state.
+    async fn start_gated_request(
+        request: Request,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        Framed<UnixStream, IpcCodec>,
+        Arc<AppState>,
+    ) {
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+        let server_state = state.clone();
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                server_state,
+                request_semaphore,
+                bulk_semaphore,
+                mxr_transport::PeerInfo::local(),
+                None,
+                event_rx,
+                shutdown_rx,
+            )
             .await;
+        });
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                expected_workspace: None,
+                id: 12,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(request),
+            })
+            .await
+            .expect("send request");
+        (server, client, state)
     }
 
     /// Read frames until the connection goes quiet, reporting whether a

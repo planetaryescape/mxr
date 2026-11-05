@@ -767,7 +767,9 @@ though drafts use the compose model. Status also reports process-local
 request outcomes per feature (`default` for the base model): initially no
 observation, then a typed success or failure. A success on one feature does
 not clear another feature's failure, and a provider reload clears the old
-outcomes. Status never probes the model endpoint. Feature health reports the
+outcomes. While background calls are paused after repeated endpoint failures,
+status says when the endpoint is checked next (`background_paused_until` in
+JSON). Status never probes the model endpoint. Feature health reports the
 same observations; core mail stays usable when an optional model is
 unavailable.
 
@@ -793,18 +795,19 @@ An override takes `enabled`, `base_url`, `model`, `api_key_env`,
 `context_window` and `request_timeout_secs`. Any field you leave out comes
 from `[llm]`. Other keys in an override table are ignored. Feature keys: `summarize` (also row gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert`,
+`draft_refine`, `humanize_rewrite`, `answer_coverage`,
+`archive_ask`, `decision_log`, `briefing`,
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
 and `assistant` (the [assistant](/guides/assistant/), which needs a model that
 can call tools, and whose model you can pick from a list, and summarises older messages once a conversation nears
-`context_window`). `voice_match` and `expert` are accepted, but no current
-feature calls a model through them. With `[llm.compose] model` set, drafts
+`context_window`). The old `voice_match` and `expert` keys are retired:
+voice matching and expert lookup run locally, so mxr ignores those tables and
+logs their names once. With `[llm.compose] model` set, drafts
 use that model and the `draft_assist`, `draft_new`, `draft_refine` and
 `humanize_rewrite` overrides are ignored.
 
-`relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert` and `assistant` carry
+`relationship_summary`, `commitments`, `answer_coverage`, `archive_ask`,
+`decision_log`, `briefing` and `assistant` carry
 relationship data, so the daemon refuses them on a non-local endpoint unless
 `allow_cloud_relationship_data = true`. The `answer_coverage` example above
 needs that setting to run.

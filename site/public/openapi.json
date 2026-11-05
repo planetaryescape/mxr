@@ -19116,17 +19116,6 @@
             ],
             "default": null
           },
-          "expert": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LlmOverrideData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
           "humanize_rewrite": {
             "oneOf": [
               {
@@ -19150,17 +19139,6 @@
             "default": null
           },
           "summarize": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LlmOverrideData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "voice_match": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LlmOverrideData"
@@ -19258,6 +19236,14 @@
           },
           "api_key_present": {
             "type": "boolean"
+          },
+          "background_paused_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the pause on background model calls after repeated endpoint\nfailures ends and the endpoint is checked again. Absent while they\nrun, and for routed models, whose routes show their own health."
           },
           "base_url": {
             "type": [

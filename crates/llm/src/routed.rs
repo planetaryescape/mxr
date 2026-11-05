@@ -37,6 +37,15 @@ const THINKING_HEADROOM: u32 = 2048;
 const FALLBACK_ANSWER_TOKENS: u32 = 1024;
 const MAX_OUTPUT_TOKENS: u32 = 64_000;
 
+/// The token cap for a hosted reasoning model: the answer's budget plus room
+/// for the thinking it does first, so the answer isn't cut off.
+pub(crate) fn with_thinking_headroom(max_tokens: Option<u32>) -> u32 {
+    max_tokens
+        .unwrap_or(FALLBACK_ANSWER_TOKENS)
+        .saturating_add(THINKING_HEADROOM)
+        .min(MAX_OUTPUT_TOKENS)
+}
+
 /// Background calls spend at most this share of their budget on attempts,
 /// so a slow route is recorded as failed (and skipped from then on) before
 /// the caller's own timeout cuts the call off without a verdict.
@@ -122,7 +131,8 @@ impl RoutedProvider {
             anthropic: AnthropicClient::new(&config.anthropic_base_url, config.request_timeout),
             openai: client_for(RouteProvider::OpenAI, &config.openai_base_url)
                 .map(|client| client.for_openai(openai_tools_need_no_reasoning(&config.model))),
-            openrouter: client_for(RouteProvider::OpenRouter, &config.openrouter_base_url),
+            openrouter: client_for(RouteProvider::OpenRouter, &config.openrouter_base_url)
+                .map(|client| client.for_openrouter(openai_tools_need_no_reasoning(&config.model))),
             endpoint: config.endpoint.map(|endpoint| EndpointLeg {
                 key: RouteKey::Endpoint(EndpointRoute::new(&endpoint.base_url, &endpoint.model)),
                 context_window: endpoint.context_window,
@@ -158,12 +168,7 @@ impl RoutedProvider {
         }
         CompletionRequest {
             temperature: None,
-            max_tokens: Some(
-                req.max_tokens
-                    .unwrap_or(FALLBACK_ANSWER_TOKENS)
-                    .saturating_add(THINKING_HEADROOM)
-                    .min(MAX_OUTPUT_TOKENS),
-            ),
+            max_tokens: Some(with_thinking_headroom(req.max_tokens)),
             ..req
         }
     }

@@ -272,6 +272,23 @@ async fn a_caller_that_gives_up_mid_check_frees_the_check() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn the_pause_reports_when_it_ends() {
+    let endpoint = Switchable::down(true);
+    let runtime = Arc::new(LlmRuntime::new(endpoint.clone()));
+    assert_eq!(runtime.background_paused_until(), None);
+    open_the_breaker(&runtime.for_feature(FEATURE)).await;
+
+    let until = runtime.background_paused_until().expect("paused");
+    let left = until.duration_since(SystemTime::now()).unwrap();
+    assert!(
+        left <= BREAKER_MIN_COOLDOWN && left > BREAKER_MIN_COOLDOWN - Duration::from_secs(5),
+        "{left:?}"
+    );
+    tokio::time::advance(BREAKER_MIN_COOLDOWN).await;
+    assert_eq!(runtime.background_paused_until(), None, "due a check");
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_failed_check_spends_no_input_and_doubles_the_cooldown() {
     let endpoint = Switchable::down(true);
     let runtime = Arc::new(LlmRuntime::new(endpoint.clone()));

@@ -114,6 +114,8 @@ pub(crate) struct OpenAiToolChatBody<'a> {
     pub max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<Value>,
     pub stream: bool,
     /// Asks a stream to end with a usage chunk, which the trace records.
     /// Only tracing builds send it, so a shipped build's request is as it
@@ -123,14 +125,23 @@ pub(crate) struct OpenAiToolChatBody<'a> {
     pub stream_options: Option<Value>,
 }
 
-/// How OpenAI's own API differs from other chat-completions servers.
+/// How OpenAI's own API, and OpenRouter in front of it, differ from other
+/// chat-completions servers.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct OpenAiDialect {
-    /// Name the token cap `max_completion_tokens`.
+    /// OpenAI's current models: name the token cap `max_completion_tokens`
+    /// and send no temperature, which they reject unless it is the default.
     pub completion_token_cap: bool,
-    /// Send `reasoning_effort: "none"`: these models take tool calls on
-    /// Chat Completions only with reasoning off, and default to medium.
+    /// Turn reasoning off on tool-calling requests: these models take tool
+    /// calls on Chat Completions only with reasoning off, and default to
+    /// medium.
     pub no_reasoning: bool,
+    /// Say it the OpenRouter way, `reasoning: {"effort": "none"}`, instead of
+    /// OpenAI's top-level `reasoning_effort`.
+    pub nested_reasoning: bool,
+    /// Add room for thinking to the token cap. Set where no router has done
+    /// it already: a `gpt-*` model on a server of the user's own.
+    pub thinking_headroom: bool,
 }
 
 /// The request in chat-completions form.
@@ -204,7 +215,9 @@ pub(crate) fn openai_body<'a>(
         tools,
         max_tokens: req.max_tokens.filter(|_| !completion_token_cap),
         max_completion_tokens: req.max_tokens.filter(|_| completion_token_cap),
-        reasoning_effort: dialect.no_reasoning.then_some("none"),
+        reasoning_effort: (dialect.no_reasoning && !dialect.nested_reasoning).then_some("none"),
+        reasoning: (dialect.no_reasoning && dialect.nested_reasoning)
+            .then(|| serde_json::json!({"effort": "none"})),
         stream: false,
         #[cfg(feature = "langfuse")]
         stream_options: None,
@@ -480,6 +493,7 @@ mod tests {
             OpenAiDialect {
                 completion_token_cap: true,
                 no_reasoning: true,
+                ..OpenAiDialect::default()
             },
         ))
         .unwrap();
@@ -488,6 +502,27 @@ mod tests {
         // Other servers get no reasoning field; OpenAI's reasoning models get "none".
         assert!(plain.get("reasoning_effort").is_none());
         assert_eq!(openai["reasoning_effort"], "none");
+    }
+
+    #[test]
+    fn openrouter_turns_reasoning_off_in_its_reasoning_object() {
+        let body = serde_json::to_value(openai_body(
+            "openai/gpt-6-luna",
+            &request(),
+            OpenAiDialect {
+                no_reasoning: true,
+                nested_reasoning: true,
+                ..OpenAiDialect::default()
+            },
+        ))
+        .unwrap();
+        assert_eq!(body["reasoning"], serde_json::json!({"effort": "none"}));
+        assert!(body.get("reasoning_effort").is_none());
+        // OpenRouter translates `max_tokens` for the model behind it.
+        assert_eq!(body["max_tokens"], 100);
+        let plain =
+            serde_json::to_value(openai_body("m", &request(), OpenAiDialect::default())).unwrap();
+        assert!(plain.get("reasoning").is_none());
     }
 
     /// A conversation that moved between providers: one turn written by a
@@ -542,6 +577,7 @@ mod tests {
             OpenAiDialect {
                 completion_token_cap: true,
                 no_reasoning: true,
+                ..OpenAiDialect::default()
             },
         ))
         .unwrap();

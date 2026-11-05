@@ -470,13 +470,11 @@ pub struct LlmOverrides {
     pub draft_assist: Option<LlmOverrideConfig>,
     pub draft_new: Option<LlmOverrideConfig>,
     pub draft_refine: Option<LlmOverrideConfig>,
-    pub voice_match: Option<LlmOverrideConfig>,
     pub humanize_rewrite: Option<LlmOverrideConfig>,
     pub answer_coverage: Option<LlmOverrideConfig>,
     pub archive_ask: Option<LlmOverrideConfig>,
     pub decision_log: Option<LlmOverrideConfig>,
     pub briefing: Option<LlmOverrideConfig>,
-    pub expert: Option<LlmOverrideConfig>,
     pub delivery_extraction: Option<LlmOverrideConfig>,
     pub assistant: Option<LlmOverrideConfig>,
 }

@@ -318,11 +318,8 @@ pub(super) fn feature_health_report(
             }
         },
     );
-    let voice_match_health = llm_feature_health(
-        state,
-        mxr_llm::LlmFeature::VoiceMatch,
-        FeatureHealth::Healthy,
-    );
+    // Voice match is local stylometry; no model call stands behind it.
+    let voice_match_health = FeatureHealth::Healthy;
 
     let draft_assist_health =
         llm_feature_health(state, mxr_llm::LlmFeature::DraftAssist, llm_health.clone());

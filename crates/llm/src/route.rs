@@ -261,6 +261,12 @@ pub fn openai_tools_need_no_reasoning(model: &str) -> bool {
     model == "gpt-6-luna" || ["gpt-5.6-terra", "gpt-5.6-luna"].contains(&model)
 }
 
+/// An OpenAI model under OpenAI's own naming (`gpt-6-luna`), not the
+/// OpenRouter slug (`openai/gpt-6-luna`).
+pub(crate) fn is_openai_own_id(model: &str) -> bool {
+    is_openai_id(model.trim())
+}
+
 /// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.
 fn is_openai_id(model: &str) -> bool {
     model

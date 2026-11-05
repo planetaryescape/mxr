@@ -498,6 +498,9 @@ pub const RETIRED_CONFIG_KEYS: &[&str] = &[
     "appearance.date_format_full",
     "appearance.subject_max_width",
     "humanizer.apply_to_summaries",
+    // Voice match and expert lookup are local; no model call ever read these.
+    "llm.overrides.voice_match",
+    "llm.overrides.expert",
 ];
 
 /// The retired keys that appear in a parsed config document, in
@@ -507,12 +510,14 @@ pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
         .iter()
         .copied()
         .filter(|key| {
-            let Some((section, field)) = key.split_once('.') else {
+            let Some((parents, field)) = key.rsplit_once('.') else {
                 return false;
             };
-            table
-                .get(section)
-                .and_then(toml::Value::as_table)
+            parents
+                .split('.')
+                .try_fold(table, |table, section| {
+                    table.get(section).and_then(toml::Value::as_table)
+                })
                 .is_some_and(|table| table.contains_key(field))
         })
         .collect()

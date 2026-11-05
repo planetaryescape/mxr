@@ -506,7 +506,6 @@ fn llm_override_entries(
         (LlmFeature::DraftAssist, overrides.draft_assist.as_ref()),
         (LlmFeature::DraftNew, overrides.draft_new.as_ref()),
         (LlmFeature::DraftRefine, overrides.draft_refine.as_ref()),
-        (LlmFeature::VoiceMatch, overrides.voice_match.as_ref()),
         (
             LlmFeature::HumanizeRewrite,
             overrides.humanize_rewrite.as_ref(),
@@ -518,7 +517,6 @@ fn llm_override_entries(
         (LlmFeature::ArchiveAsk, overrides.archive_ask.as_ref()),
         (LlmFeature::DecisionLog, overrides.decision_log.as_ref()),
         (LlmFeature::Briefing, overrides.briefing.as_ref()),
-        (LlmFeature::Expert, overrides.expert.as_ref()),
         (
             LlmFeature::DeliveryExtraction,
             overrides.delivery_extraction.as_ref(),
@@ -535,27 +533,23 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
         feature,
         mxr_llm::LlmFeature::RelationshipSummary
             | mxr_llm::LlmFeature::Commitments
-            | mxr_llm::LlmFeature::VoiceMatch
             | mxr_llm::LlmFeature::AnswerCoverage
             | mxr_llm::LlmFeature::ArchiveAsk
             | mxr_llm::LlmFeature::DecisionLog
             | mxr_llm::LlmFeature::Briefing
-            | mxr_llm::LlmFeature::Expert
             // Searches and reads across the whole mailbox.
             | mxr_llm::LlmFeature::Assistant
     )
 }
 
-fn relationship_data_features() -> [mxr_llm::LlmFeature; 9] {
+fn relationship_data_features() -> [mxr_llm::LlmFeature; 7] {
     [
         mxr_llm::LlmFeature::RelationshipSummary,
         mxr_llm::LlmFeature::Commitments,
-        mxr_llm::LlmFeature::VoiceMatch,
         mxr_llm::LlmFeature::AnswerCoverage,
         mxr_llm::LlmFeature::ArchiveAsk,
         mxr_llm::LlmFeature::DecisionLog,
         mxr_llm::LlmFeature::Briefing,
-        mxr_llm::LlmFeature::Expert,
         mxr_llm::LlmFeature::Assistant,
     ]
 }
@@ -3970,10 +3964,10 @@ use_tls = true
             .feature_block_reason(mxr_llm::LlmFeature::Commitments)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::VoiceMatch)
+            .feature_block_reason(mxr_llm::LlmFeature::Briefing)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .feature_block_reason(mxr_llm::LlmFeature::ArchiveAsk)
             .is_some());
         assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::DraftAssist)
@@ -3997,7 +3991,7 @@ use_tls = true
                     base_url: Some("http://localhost:11434/v1".to_string()),
                     ..mxr_config::LlmOverrideConfig::default()
                 }),
-                expert: Some(mxr_config::LlmOverrideConfig {
+                archive_ask: Some(mxr_config::LlmOverrideConfig {
                     base_url: Some("http://localhost:11434/v1".to_string()),
                     ..mxr_config::LlmOverrideConfig::default()
                 }),
@@ -4015,7 +4009,7 @@ use_tls = true
             .feature_block_reason(mxr_llm::LlmFeature::Commitments)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .feature_block_reason(mxr_llm::LlmFeature::ArchiveAsk)
             .is_none());
     }
 

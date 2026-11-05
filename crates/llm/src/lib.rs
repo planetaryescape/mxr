@@ -106,33 +106,29 @@ pub enum LlmFeature {
     DraftAssist,
     DraftNew,
     DraftRefine,
-    VoiceMatch,
     HumanizeRewrite,
     AnswerCoverage,
     ArchiveAsk,
     DecisionLog,
     Briefing,
-    Expert,
     DeliveryExtraction,
     Assistant,
 }
 
 impl LlmFeature {
     /// Every feature, in the order status lists them.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 13] = [
         Self::Summarize,
         Self::RelationshipSummary,
         Self::Commitments,
         Self::DraftAssist,
         Self::DraftNew,
         Self::DraftRefine,
-        Self::VoiceMatch,
         Self::HumanizeRewrite,
         Self::AnswerCoverage,
         Self::ArchiveAsk,
         Self::DecisionLog,
         Self::Briefing,
-        Self::Expert,
         Self::DeliveryExtraction,
         Self::Assistant,
     ];
@@ -145,13 +141,11 @@ impl LlmFeature {
             Self::DraftAssist => "draft_assist",
             Self::DraftNew => "draft_new",
             Self::DraftRefine => "draft_refine",
-            Self::VoiceMatch => "voice_match",
             Self::HumanizeRewrite => "humanize_rewrite",
             Self::AnswerCoverage => "answer_coverage",
             Self::ArchiveAsk => "archive_ask",
             Self::DecisionLog => "decision_log",
             Self::Briefing => "briefing",
-            Self::Expert => "expert",
             Self::DeliveryExtraction => "delivery_extraction",
             Self::Assistant => "assistant",
         }
@@ -803,6 +797,14 @@ impl LlmRuntime {
             .unwrap_or_else(|| self.current())
     }
 
+    /// When the pause on background calls after repeated endpoint failures
+    /// ends and the endpoint is checked again, or `None` while they run.
+    pub fn background_paused_until(&self) -> Option<std::time::SystemTime> {
+        let clocks = Clocks::current();
+        let remaining = self.breaker().remaining(clocks.now)?;
+        clocks.wall.checked_add(remaining)
+    }
+
     fn breaker(&self) -> std::sync::MutexGuard<'_, BackgroundBreaker> {
         self.background_breaker
             .lock()
@@ -1149,6 +1151,20 @@ pub struct OpenAiCompatibleProvider {
 impl OpenAiCompatibleProvider {
     pub fn new(config: OpenAiCompatibleConfig) -> Self {
         let client = endpoint::http_client(&config.base_url, config.request_timeout);
+        // A `gpt-*` id reaches a client built here only on a server of the
+        // user's own off this machine (local endpoints route these ids to
+        // OpenAI), which serves OpenAI's models and so their rules. The
+        // routed OpenAI client replaces this with `for_openai`.
+        let dialect = if route::is_openai_own_id(&config.model) {
+            tool_chat::OpenAiDialect {
+                completion_token_cap: true,
+                no_reasoning: openai_tools_need_no_reasoning(&config.model),
+                nested_reasoning: false,
+                thinking_headroom: true,
+            }
+        } else {
+            tool_chat::OpenAiDialect::default()
+        };
         Self {
             base_url: config.base_url.trim_end_matches('/').to_string(),
             api_key: config.api_key,
@@ -1157,7 +1173,7 @@ impl OpenAiCompatibleProvider {
             request_timeout: config.request_timeout,
             client,
             disable_reasoning: AtomicBool::new(false),
-            dialect: tool_chat::OpenAiDialect::default(),
+            dialect,
         }
     }
 
@@ -1168,6 +1184,22 @@ impl OpenAiCompatibleProvider {
         self.dialect = tool_chat::OpenAiDialect {
             completion_token_cap: true,
             no_reasoning,
+            nested_reasoning: false,
+            // The routed provider has already made room for thinking.
+            thinking_headroom: false,
+        };
+        self
+    }
+
+    /// For OpenRouter: with `no_reasoning`, turn reasoning off for
+    /// tool-calling requests in OpenRouter's `reasoning` object. OpenRouter
+    /// takes `max_tokens` and translates it, so the cap keeps its name.
+    #[must_use]
+    pub(crate) fn for_openrouter(mut self, no_reasoning: bool) -> Self {
+        self.dialect = tool_chat::OpenAiDialect {
+            no_reasoning,
+            nested_reasoning: true,
+            ..tool_chat::OpenAiDialect::default()
         };
         self
     }
@@ -1215,14 +1247,19 @@ impl OpenAiCompatibleProvider {
         timeout: Option<Duration>,
         disable_reasoning: bool,
     ) -> Result<ChatCompletion, AttemptError> {
+        let max_tokens = if self.dialect.thinking_headroom {
+            Some(routed::with_thinking_headroom(req.max_tokens))
+        } else {
+            req.max_tokens
+        };
         let body = ChatCompletionsRequestBody {
             model: &self.model,
             messages: &req.messages,
-            max_tokens: req
-                .max_tokens
+            max_tokens: max_tokens.filter(|_| !self.dialect.completion_token_cap),
+            max_completion_tokens: max_tokens.filter(|_| self.dialect.completion_token_cap),
+            temperature: req
+                .temperature
                 .filter(|_| !self.dialect.completion_token_cap),
-            max_completion_tokens: req.max_tokens.filter(|_| self.dialect.completion_token_cap),
-            temperature: req.temperature,
             reasoning_effort: disable_reasoning.then_some("none"),
             stream: false,
         };
@@ -2013,6 +2050,53 @@ mod tests {
                     .map(str::to_string)
             })
             .collect()
+    }
+
+    /// A `gpt-*` model on a server of the user's own gets OpenAI's rules:
+    /// the cap as `max_completion_tokens` with room to think, and no
+    /// temperature. Another model on the same kind of server keeps both.
+    #[tokio::test]
+    async fn a_gpt_model_on_a_remote_endpoint_speaks_openais_dialect() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_completion("ok")))
+            .mount(&server)
+            .await;
+        let request = CompletionRequest {
+            temperature: Some(0.2),
+            ..hello()
+        };
+        for model in ["gpt-6-luna", "gemma4:latest"] {
+            OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+                base_url: server.uri(),
+                api_key: None,
+                model: model.into(),
+                context_window: 8192,
+                request_timeout: Duration::from_secs(5),
+            })
+            .complete(request.clone())
+            .await
+            .unwrap();
+        }
+        let bodies: Vec<serde_json::Value> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|request| serde_json::from_slice(&request.body).unwrap())
+            .collect();
+        let (gpt, other) = (&bodies[0], &bodies[1]);
+        assert_eq!(gpt["model"], "gpt-6-luna");
+        assert_eq!(gpt["max_completion_tokens"], 500 + 2048);
+        assert!(gpt.get("max_tokens").is_none());
+        assert!(gpt.get("temperature").is_none());
+        assert_eq!(other["max_tokens"], 500);
+        assert!(other.get("max_completion_tokens").is_none());
+        assert!(other["temperature"].as_f64().is_some());
     }
 
     #[tokio::test]

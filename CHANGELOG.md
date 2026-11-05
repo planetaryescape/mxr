@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.221](https://github.com/planetaryescape/mxr/compare/v0.6.220...v0.6.221) (2026-11-05)
+
+
+### Bug Fixes
+
+* OpenAI rules for gpt models on your own endpoint, OpenRouter reasoning off, a visible background pause, and retire dead overrides ([#901](https://github.com/planetaryescape/mxr/issues/901)) ([b75771b](https://github.com/planetaryescape/mxr/commit/b75771b0e51422c3e947c7dc2a839831d1635970))
+
 ## [0.6.220](https://github.com/planetaryescape/mxr/compare/v0.6.219...v0.6.220) (2026-11-05)
 
 

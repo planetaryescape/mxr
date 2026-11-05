@@ -85,10 +85,10 @@ async fn main() -> anyhow::Result<()> {
             .filter(|s| matches!(s, subscriptions::Signal::RenewalApproaching { .. }))
             .count()
     );
-    let one_offs: usize = loaded.detection.one_offs.values().map(Vec::len).sum();
+    let one_offs: usize = loaded.one_offs.values().map(Vec::len).sum();
     println!(
-        "one-offs from issuers with a subscription: {one_offs} records from {} issuers",
-        loaded.detection.one_offs.len()
+        "one-offs from issuers with a subscription: {one_offs} records from {} account-issuer pairs",
+        loaded.one_offs.len()
     );
     println!(
         "totals: {} currencies, live {}",

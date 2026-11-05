@@ -20,10 +20,23 @@ pub(super) async fn put(
     html: Option<String>,
     sent: DateTime<Utc>,
 ) -> MessageId {
+    put_in(fx, &fx.account, from, subject, text, html, sent).await
+}
+
+/// [`put`] into `account`, for tests that need a second mailbox.
+pub(super) async fn put_in(
+    fx: &Fixture,
+    account: &mxr_core::AccountId,
+    from: (&str, &str),
+    subject: &str,
+    text: &str,
+    html: Option<String>,
+    sent: DateTime<Utc>,
+) -> MessageId {
     let id = MessageId::new();
     let envelope = Envelope {
         id: id.clone(),
-        account_id: fx.account.clone(),
+        account_id: account.clone(),
         provider_id: format!("rec-{id}"),
         thread_id: ThreadId::new(),
         message_id_header: Some(format!("<{id}@example.com>")),

@@ -786,7 +786,9 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> Result<u32, HandlerErr
         .map(|account| account.id)
         .collect();
     let _change = state.sweep_gate.change(&accounts).await;
-    Ok(state.store.refresh_contacts().await?)
+    let rows = state.store.refresh_contacts().await?;
+    crate::chimes::emit_daemon_event(state, mxr_protocol::DaemonEvent::ContactsRefreshed);
+    Ok(rows)
 }
 
 /// How long a sweep preview can be committed.

@@ -22,7 +22,10 @@
 //! endpoint) so clients can detect a mismatched daemon. Field additions use
 //! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding.
 //! Adding enum variants requires a bump because older peers reject unknown
-//! variants.
+//! variants. The exception is [`DaemonEvent`]: from protocol 29 it has an
+//! `Unknown` catch-all, so a client at 29 or later skips events added after it
+//! was built. Clients older than 29 still fail to decode an event they have no
+//! variant for, which is why 29 itself is a bump.
 
 mod archive;
 mod codec;
@@ -42,7 +45,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 28;
+pub const IPC_PROTOCOL_VERSION: u32 = 29;
 
 #[cfg(test)]
 mod tests {
@@ -1820,6 +1823,47 @@ mod tests {
             let json = serde_json::to_string(&msg).unwrap();
             let _parsed: IpcMessage = serde_json::from_str(&json).unwrap();
         }
+    }
+
+    /// A daemon newer than this build can push an event this build has no
+    /// variant for. It must decode as `Unknown` (to be skipped), not fail the
+    /// frame, or the client drops its connection.
+    #[test]
+    fn event_this_build_does_not_know_decodes_as_unknown() {
+        let frame = serde_json::json!({
+            "id": 0,
+            "payload": {
+                "type": "Event",
+                "event": "SomeEventAddedLater",
+                "account_id": "a",
+                "extra": [1, 2]
+            }
+        });
+
+        let parsed: IpcMessage = serde_json::from_value(frame).unwrap();
+
+        assert!(matches!(
+            parsed.payload,
+            IpcPayload::Event(DaemonEvent::Unknown)
+        ));
+    }
+
+    #[test]
+    fn contacts_refreshed_event_roundtrips_without_fields() {
+        let json = serde_json::to_value(IpcMessage {
+            expected_workspace: None,
+            id: 0,
+            source: crate::ClientKind::default(),
+            payload: IpcPayload::Event(DaemonEvent::ContactsRefreshed),
+        })
+        .unwrap();
+
+        assert_eq!(json["payload"]["event"], "ContactsRefreshed");
+        let parsed: IpcMessage = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            parsed.payload,
+            IpcPayload::Event(DaemonEvent::ContactsRefreshed)
+        ));
     }
 
     #[test]

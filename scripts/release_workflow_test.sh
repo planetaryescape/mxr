@@ -74,6 +74,31 @@ if ! grep -Fq 'group: release-publish-${{ github.ref }}' <<<"$publish_job" || ! 
     exit 1
 fi
 
+# The tap update runs on Linux so a cancelled macOS runner cannot leave Homebrew a
+# release behind. Only the install check, which pushes nothing, runs on macOS.
+tap_job="$(sed -n '/^  homebrew:/,/^  homebrew-verify:/p' "$workflow")"
+verify_job="$(sed -n '/^  homebrew-verify:/,$p' "$workflow")"
+if [[ -z "$tap_job" ]] || [[ -z "$verify_job" ]]; then
+    echo "Release workflow must define the homebrew tap job and the homebrew-verify job." >&2
+    exit 1
+fi
+if grep -Fq 'macos-' <<<"$tap_job" || ! grep -Fq 'runs-on: blacksmith-4vcpu-ubuntu-2404' <<<"$tap_job"; then
+    echo "The homebrew tap job must run on the Linux runner, not macOS." >&2
+    exit 1
+fi
+if ! grep -Fq 'git -C tap push origin HEAD:main' <<<"$tap_job"; then
+    echo "The homebrew tap job must push the formula and cask." >&2
+    exit 1
+fi
+if grep -Fq 'git -C tap push' <<<"$verify_job" || ! grep -Fq 'runs-on: macos-15' <<<"$verify_job"; then
+    echo "The homebrew-verify job must run brew install on macos-15 and must not push to the tap." >&2
+    exit 1
+fi
+if ! grep -Fq 'needs: [plan, homebrew]' <<<"$verify_job" || ! grep -Fq "needs.homebrew.outputs.has_cask == 'true'" <<<"$verify_job"; then
+    echo "The homebrew-verify job must wait on the homebrew tap job and take the cask decision from its output." >&2
+    exit 1
+fi
+
 desktop_notary_block="$(sed -n '/name: Notarise and staple the dmg/,/name: Verify the signature/p' .github/workflows/desktop-signed.yml)"
 if [[ "$(grep -Fc 'xcrun notarytool submit "$DMG"' <<<"$desktop_notary_block")" -ne 1 ]] \
     || ! grep -Fq "if: env.NOTARIZED == 'true'" <<<"$desktop_notary_block" \

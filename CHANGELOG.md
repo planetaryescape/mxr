@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.213](https://github.com/planetaryescape/mxr/compare/v0.6.212...v0.6.213) (2026-11-05)
+
+
+### Bug Fixes
+
+* web search uses the configured default order and page size ([#875](https://github.com/planetaryescape/mxr/issues/875)) ([789a96f](https://github.com/planetaryescape/mxr/commit/789a96f7061cb96d069d43a06890f99640b670f0))
+
+
+### Documentation
+
+* delete issue entries that are already fixed ([#874](https://github.com/planetaryescape/mxr/issues/874)) ([efeed3e](https://github.com/planetaryescape/mxr/commit/efeed3e54f1b51cf81a4226f03f1bc0c6b5c107c))
+* log the intermittent no-accounts-table failure in a Gmail draft-sync test ([#877](https://github.com/planetaryescape/mxr/issues/877)) ([d0ac7ac](https://github.com/planetaryescape/mxr/commit/d0ac7acfeaf2e99b5efe3c30233901b9fb91b33c))
+
 ## [0.6.212](https://github.com/planetaryescape/mxr/compare/v0.6.211...v0.6.212) (2026-11-05)
 
 

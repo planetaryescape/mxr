@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.211](https://github.com/planetaryescape/mxr/compare/v0.6.210...v0.6.211) (2026-11-05)
+
+
+### Bug Fixes
+
+* page the first generic IMAP sync newest first ([#869](https://github.com/planetaryescape/mxr/issues/869)) ([63c4577](https://github.com/planetaryescape/mxr/commit/63c45779ee0714ec84aef77d36ae3da22f215a19))
+
 ## [0.6.210](https://github.com/planetaryescape/mxr/compare/v0.6.209...v0.6.210) (2026-11-05)
 
 

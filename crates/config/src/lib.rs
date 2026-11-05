@@ -210,6 +210,12 @@ subject_max_width = 80
 
 [humanizer]
 apply_to_summaries = true
+
+[llm.overrides.voice_match]
+model = "gemma4:latest"
+
+[llm.overrides.expert]
+model = "gemma4:latest"
 "#;
 
         let config = load_config_from_str(toml_str).expect("retired keys must not break loading");

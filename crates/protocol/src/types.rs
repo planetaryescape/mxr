@@ -218,6 +218,13 @@ pub struct LlmStatusSnapshot {
     /// Why the configured fallback isn't used, e.g. a model mxr can't route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_error: Option<String>,
+    /// When the pause on background model calls after repeated endpoint
+    /// failures ends; the first background call after it checks the endpoint
+    /// before sending mail. Absent while they run. Features on a routed model
+    /// or with `[llm.fallback]` are never paused; their routes show their
+    /// own health.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_paused_until: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -322,13 +329,11 @@ pub struct LlmOverridesData {
     pub draft_assist: Option<LlmOverrideData>,
     pub draft_new: Option<LlmOverrideData>,
     pub draft_refine: Option<LlmOverrideData>,
-    pub voice_match: Option<LlmOverrideData>,
     pub humanize_rewrite: Option<LlmOverrideData>,
     pub answer_coverage: Option<LlmOverrideData>,
     pub archive_ask: Option<LlmOverrideData>,
     pub decision_log: Option<LlmOverrideData>,
     pub briefing: Option<LlmOverrideData>,
-    pub expert: Option<LlmOverrideData>,
     #[serde(default)]
     pub delivery_extraction: Option<LlmOverrideData>,
     #[serde(default)]

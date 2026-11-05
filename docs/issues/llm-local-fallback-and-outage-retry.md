@@ -94,10 +94,13 @@ From CodeRabbit's review of the fallback PR, 2026-11-05. Fixed in the PR: the ba
 
 ## Gaps found in the docs-parity audit, 2026-11-05
 
-The docs now describe what the code does. Fixed alongside: `mxr summarize` sent stored relationship summaries to a cloud model without `allow_cloud_relationship_data`; the web reader showed a `y` key on Summarize that does nothing; `mxr config get`'s key list left out `llm.fallback.model`. Not fixed:
+The docs now describe what the code does. Fixed alongside: `mxr summarize` sent stored relationship summaries to a cloud model without `allow_cloud_relationship_data`; the web reader showed a `y` key on Summarize that does nothing; `mxr config get`'s key list left out `llm.fallback.model`. Fixed in the follow-up, 2026-11-05:
 
-- A `gpt-*` model with `base_url = "https://api.openai.com/v1"` isn't routed, so the plain client sends `max_tokens` and a temperature, which current OpenAI models reject. Unconfirmed against the live API; the docs no longer use that example.
-- The OpenRouter route for `openai/gpt-6-luna` is built without the OpenAI dialect, so tool calls there carry no `reasoning_effort: "none"`. Unconfirmed whether OpenRouter needs it.
-- The background pause shows nowhere in `mxr llm status`, only in the daemon log.
-- `voice_match` and `expert` are accepted override keys with no model call behind them.
+- A `gpt-*` model on a remote `base_url` now gets OpenAI's request rules: `max_completion_tokens` with thinking room, no temperature, and `reasoning_effort: "none"` on tool calls for Luna and GPT-5.6. Not yet run against the live API.
+- The OpenRouter route turns reasoning off for those models' tool calls as `reasoning: {"effort": "none"}`, the shape OpenRouter documents.
+- `mxr llm status` shows the background pause and when the endpoint is checked next (`background_paused_until`).
+- `llm.overrides.voice_match` and `llm.overrides.expert` are retired keys: ignored, and named once in the log.
+
+Not fixed:
+
 - An `[llm.overrides.*]` table silently ignores keys it doesn't take (`deny_unknown_fields` is off).

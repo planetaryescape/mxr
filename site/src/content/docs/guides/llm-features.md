@@ -171,15 +171,15 @@ status` and `mxr llm key status` shows its state like the others.
 default Ollama or a server on this machine, because those servers don't serve
 OpenAI's models. If you point `base_url` at a remote server of your own, such
 as `https://api.openai.com/v1` with `api_key_env = "OPENAI_API_KEY"`, a `gpt-*`
-model keeps going there and mxr does nothing different. Local model names such
+model keeps going there, with OpenAI's request rules below. Local model names such
 as `gpt-oss:20b` never match, since they have no number straight after `gpt-`.
 
 OpenAI's current models reject `max_tokens` and any temperature but the
 default, so mxr sends the token cap as `max_completion_tokens`, leaves room in
 it for reasoning, and sends no temperature. GPT-6 Luna and the GPT-5.6 models
 take tool calls on Chat Completions only with reasoning off, so requests with
-tools to those ids through OpenAI carry `reasoning_effort: "none"`; no other
-id gets the field.
+tools to those ids carry `reasoning_effort: "none"` through OpenAI and
+`reasoning: {"effort": "none"}` through OpenRouter; no other id gets either.
 
 ## Fall back to a cloud model when your endpoint is out
 
@@ -246,8 +246,8 @@ name. Prompts are built to fit the smaller context window of the two.
 The fallback is a cloud service, so a configured fallback counts as cloud
 for what each request may carry, even while `base_url` answers: drafts carry
 your other emails only with `llm.allow_cloud_relationship_data = true`.
-Relationship summaries, commitments, voice matching, answer coverage,
-briefings, decisions, experts, `mxr ask` and the assistant use the fallback
+Relationship summaries, commitments, answer coverage, briefings, decisions,
+`mxr ask` and the assistant use the fallback
 only with that setting. Without it they stay on `base_url`, and their
 background work [waits for it](#background-work-waits-out-an-endpoint-outage)
 and runs when it answers again. With a `base_url` off this machine they are
@@ -342,8 +342,9 @@ contact being processed is not blamed for it:
 
 - After five endpoint failures in a row, background model calls pause for 5
   minutes, doubling to 10 minutes while the endpoint stays out. Commands you run
-  are not paused. The pause isn't in `mxr llm status`; the daemon log says
-  `background LLM calls paused after repeated failures`.
+  are not paused. `mxr llm status` prints `background calls paused after
+  repeated endpoint failures until 14:37`, and `--format json` carries the
+  time as `background_paused_until`.
 - When a pause ends, mxr checks a `base_url` endpoint with `GET
   <base_url>/models`, which sends no mail. One check runs at a time, and a
   failed check starts the next, longer pause.
@@ -388,7 +389,7 @@ subscription.
 | `mxr triage` | When you run it | Each message it sorts |
 | Row gists | In the background, for conversations from people that a client shows, and for automated mail while the web app's Updates page or `mxr briefing gists THREAD_ID... --generate --automated` asks | That conversation's messages. Newsletters and mailing lists are never sent. With `llm.allow_cloud_relationship_data = true`, also a line counting your history with the sender (messages, usual reply time, last contact) |
 | Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
-| Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
+| Relationship summaries, commitments, answer coverage, briefings, decisions, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
 | The [assistant](/guides/assistant/) | When you send it a message | Your message, what you have open, and the mail it reads while answering (search results, threads, drafts). Refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true`, since it reads across your mailbox |
 | Archive's records and answer box | After sync and on demand | Nothing: records are read by rules and schema.org markup on your machine. Only when no record matches does the answer box fall back to `mxr ask`, under that row's rule |
@@ -430,11 +431,10 @@ ignored.
 
 The keys are `summarize` (which also covers gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert`,
-`delivery_extraction` and `assistant` (which needs a model that can call
-tools). `voice_match` and `expert` are accepted, but no current feature calls
-a model through them. With `[llm.compose] model` set, every draft uses that
+`draft_refine`, `humanize_rewrite`, `answer_coverage`, `archive_ask`,
+`decision_log`, `briefing`, `delivery_extraction` and `assistant` (which needs
+a model that can call tools). Voice matching and expert lookup run locally, so
+the old `voice_match` and `expert` keys are retired and ignored. With `[llm.compose] model` set, every draft uses that
 model and the `draft_assist`, `draft_new`, `draft_refine` and
 `humanize_rewrite` overrides are ignored, though `mxr llm status` still shows
 their model on those rows. The relationship rule above still applies to an

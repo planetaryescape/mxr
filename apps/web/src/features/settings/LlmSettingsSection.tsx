@@ -67,7 +67,6 @@ const llmOverrideFeatures = [
   { key: "summarize", label: "Summaries" },
   { key: "relationship_summary", label: "Relationship summaries" },
   { key: "commitments", label: "Commitments" },
-  { key: "voice_match", label: "Voice match" },
 ] as const;
 
 export function LlmSettingsSection() {
@@ -420,11 +419,9 @@ function emptyLlmOverrides(): components["schemas"]["LlmOverridesData"] {
     draft_assist: null,
     draft_new: null,
     draft_refine: null,
-    expert: null,
     humanize_rewrite: null,
     relationship_summary: null,
     summarize: null,
-    voice_match: null,
   };
 }
 

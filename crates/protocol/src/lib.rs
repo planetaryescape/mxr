@@ -1366,6 +1366,7 @@ mod tests {
                         keys: Vec::new(),
                         fallback_model: None,
                         fallback_error: None,
+                        background_paused_until: None,
                     },
                 },
                 IpcCategory::MxrPlatform,

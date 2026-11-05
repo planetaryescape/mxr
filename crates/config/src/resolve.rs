@@ -498,6 +498,9 @@ pub const RETIRED_CONFIG_KEYS: &[&str] = &[
     "appearance.date_format_full",
     "appearance.subject_max_width",
     "humanizer.apply_to_summaries",
+    // Voice match and expert lookup are local; no model call ever read these.
+    "llm.overrides.voice_match",
+    "llm.overrides.expert",
 ];
 
 /// The retired keys that appear in a parsed config document, in
@@ -507,20 +510,23 @@ pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
         .iter()
         .copied()
         .filter(|key| {
-            let Some((section, field)) = key.split_once('.') else {
+            let Some((parents, field)) = key.rsplit_once('.') else {
                 return false;
             };
-            table
-                .get(section)
-                .and_then(toml::Value::as_table)
+            parents
+                .split('.')
+                .try_fold(table, |table, section| {
+                    table.get(section).and_then(toml::Value::as_table)
+                })
                 .is_some_and(|table| table.contains_key(field))
         })
         .collect()
 }
 
-/// Warns once per process. Logs key names only, never values.
+/// Warns once per key per process, so a key added by a later edit is still
+/// named. Logs key names only, never values.
 fn warn_retired_config_keys_once(contents: &str) {
-    static WARNED: std::sync::Once = std::sync::Once::new();
+    static WARNED: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
     // The daemon loads config to pick its log level before the subscriber
     // exists; warning then would drop the line and use up the once.
     if !tracing::dispatcher::has_been_set() {
@@ -530,13 +536,18 @@ fn warn_retired_config_keys_once(contents: &str) {
         return;
     };
     warn_legacy_draft_models_once(&table);
-    let keys = retired_config_keys_in(&table);
+    let mut warned = WARNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let keys: Vec<_> = retired_config_keys_in(&table)
+        .into_iter()
+        .filter(|key| !warned.contains(key))
+        .collect();
     if keys.is_empty() {
         return;
     }
-    WARNED.call_once(|| {
-        tracing::warn!("config keys ignored: no longer used: {}", keys.join(", "));
-    });
+    warned.extend(&keys);
+    tracing::warn!("config keys ignored: no longer used: {}", keys.join(", "));
 }
 
 fn warn_legacy_draft_models_once(table: &toml::Table) {

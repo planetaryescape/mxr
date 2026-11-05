@@ -4752,6 +4752,11 @@ export interface components {
             device_code_user_code?: string | null;
             ok: boolean;
             save?: components["schemas"]["AccountOperationStep"] | null;
+            /**
+             * @description True when the config change was written to disk even though `ok` is
+             *     false, because a later phase (runtime reload, cached mail) failed. The
+             *     change is saved but not fully applied.
+             */
             saved?: boolean;
             send?: components["schemas"]["AccountOperationStep"] | null;
             summary: string;
@@ -8324,6 +8329,25 @@ export interface components {
             /** Format: int64 */
             request_timeout_secs: number;
         };
+        /**
+         * @description The user's own endpoint (`base_url`) as the first route of a fallback
+         *     chain. It needs no stored key, so it has no provider.
+         */
+        LlmEndpointStatusData: {
+            base_url: string;
+            model: string;
+            /** @description A request would go here now. */
+            next: boolean;
+            /** @description Why it is out, e.g. `unreachable`. Fixed phrases only. */
+            reason?: string | null;
+            /**
+             * Format: date-time
+             * @description When a cooling or broken endpoint may be tried again.
+             */
+            retry_at?: string | null;
+            /** @description Never `no_key`. */
+            state: components["schemas"]["LlmRouteStateData"];
+        };
         /** @enum {string} */
         LlmFailureKindData:
             | "unreachable"
@@ -8341,6 +8365,17 @@ export interface components {
             /** @description Requests can leave this machine. */
             cloud: boolean;
             enabled: boolean;
+            endpoint?: components["schemas"]["LlmEndpointStatusData"] | null;
+            /**
+             * @description The fallback model's routes, tried in order while `base_url` is out.
+             *     Empty without a fallback or when `fallback_withheld` says why.
+             */
+            fallback?: components["schemas"]["LlmRouteStatusData"][];
+            /**
+             * @description Why this feature keeps to `base_url` although a fallback is
+             *     configured: its data may not go to a cloud model.
+             */
+            fallback_withheld?: string | null;
             /** @description The feature's name, e.g. `summarize`. */
             feature: string;
             model: string;
@@ -8430,16 +8465,12 @@ export interface components {
             /** @default null */
             draft_refine: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
-            expert: components["schemas"]["LlmOverrideData"] | null;
-            /** @default null */
             humanize_rewrite: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             relationship_summary:
                 components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             summarize: components["schemas"]["LlmOverrideData"] | null;
-            /** @default null */
-            voice_match: components["schemas"]["LlmOverrideData"] | null;
         };
         /**
          * @description A hosted provider mxr can hold a key for.
@@ -8475,11 +8506,27 @@ export interface components {
             allow_cloud_relationship_data?: boolean;
             api_key_env?: string | null;
             api_key_present: boolean;
+            /**
+             * Format: date-time
+             * @description When the pause on background model calls after repeated endpoint
+             *     failures ends; the first background call after it checks the endpoint
+             *     before sending mail. Absent while they run. Features on a routed model
+             *     or with `[llm.fallback]` are never paused; their routes show their
+             *     own health.
+             */
+            background_paused_until?: string | null;
             base_url?: string | null;
             configured_model: string;
             /** Format: int32 */
             context_window: number;
             enabled: boolean;
+            /** @description Why the configured fallback isn't used, e.g. a model mxr can't route. */
+            fallback_error?: string | null;
+            /**
+             * @description The hosted model `[llm.fallback]` names, used while `base_url` is
+             *     out. Absent when no fallback is configured.
+             */
+            fallback_model?: string | null;
             /** @description Each AI feature's model, providers and their health. */
             features?: components["schemas"]["LlmFeatureStatusData"][];
             /** @description Which providers have a key. Presence only, never the key. */

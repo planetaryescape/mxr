@@ -261,7 +261,10 @@ pub(super) async fn compose_assist(
         words = (words / 2).max(10);
     }
     let max_tokens = max_tokens_for_words(words);
-    let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
+    let budget_chars = prompt_budget_chars(
+        policy.llm.context_window(),
+        policy.llm.answer_tokens(max_tokens),
+    );
     let today = draft_voice::today();
     let prompt = draft_prompt::build(&PromptInput {
         mode: gathered.mode,

@@ -288,6 +288,7 @@ pub(crate) fn build_llm_provider(
         health.clone(),
     );
     routed.endpoint = Some(endpoint);
+    routed.endpoint_api_key_env = config.api_key_env.clone();
     Arc::new(mxr_llm::RoutedProvider::new(routed))
 }
 
@@ -477,12 +478,40 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
     runtime.install(base_provider, providers, blocked);
 }
 
-/// The settings a feature runs with: its `[llm.overrides.<feature>]` section
-/// over the base `[llm]`.
+/// The features `[llm.compose] model` serves when it is set, in place of
+/// their per-feature overrides.
+pub(crate) const DRAFTING_FEATURES: [mxr_llm::LlmFeature; 4] = [
+    mxr_llm::LlmFeature::DraftAssist,
+    mxr_llm::LlmFeature::DraftNew,
+    mxr_llm::LlmFeature::DraftRefine,
+    mxr_llm::LlmFeature::HumanizeRewrite,
+];
+
+/// `[llm.compose] model`, when it is set and `feature` drafts.
+pub(crate) fn compose_model_for(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> Option<&str> {
+    DRAFTING_FEATURES
+        .contains(&feature)
+        .then(|| config.compose.as_ref()?.model.as_deref())
+        .flatten()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+}
+
+/// The settings a feature runs with: `[llm.compose] model` on the base `[llm]`
+/// for a drafting feature when it is set, otherwise the feature's
+/// `[llm.overrides.<feature>]` section over the base `[llm]`.
 pub(crate) fn effective_llm_config(
     config: &mxr_config::LlmConfig,
     feature: mxr_llm::LlmFeature,
 ) -> mxr_config::EffectiveLlmConfig {
+    if let Some(model) = compose_model_for(config, feature) {
+        let mut effective = base_llm_config(config);
+        effective.model = model.to_string();
+        return effective;
+    }
     llm_override_entries(&config.overrides)
         .into_iter()
         .find(|(overridden, _)| *overridden == feature)
@@ -598,6 +627,21 @@ pub(crate) fn relationship_data_allowed(
 /// chooses among hosted APIs has no URL to inspect and still leaves it.
 pub(crate) fn llm_endpoint_is_local(llm: &mxr_llm::PinnedLlm) -> bool {
     mxr_config::is_demo_instance() || !llm.leaves_machine()
+}
+
+/// Where the answer labelled `answered_model` was written, for the label a
+/// client shows. Unlike [`llm_endpoint_is_local`], which decides what may be
+/// sent, this follows the route that answered: a local endpoint with a hosted
+/// fallback behind it is local when the endpoint answered.
+pub(crate) fn llm_answer_locality(
+    llm: &mxr_llm::PinnedLlm,
+    answered_model: &str,
+) -> mxr_protocol::AiLocalityData {
+    if mxr_config::is_demo_instance() || llm.answered_on_this_machine(answered_model) {
+        mxr_protocol::AiLocalityData::Local
+    } else {
+        mxr_protocol::AiLocalityData::Cloud
+    }
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
@@ -2142,9 +2186,9 @@ impl AppState {
     /// holds `config_write`.
     fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        // Said now, while someone is waiting on the edit; at startup the
-        // daemon runs without the fallback and `mxr llm status` says why.
-        llm_fallback(&config.llm)?;
+        // A fallback mxr can't use doesn't hold back the rest of `[llm]`
+        // (turning AI off must still apply): the daemon runs without it, as
+        // at startup, and `mxr llm status` and `mxr config set` say why.
         self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;

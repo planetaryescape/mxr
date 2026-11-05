@@ -523,6 +523,92 @@ pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
         .collect()
 }
 
+/// The feature tables `[llm.overrides]` takes. Matches the fields of
+/// [`crate::LlmOverrides`]; a test holds them together.
+pub const LLM_OVERRIDE_FEATURES: &[&str] = &[
+    "summarize",
+    "relationship_summary",
+    "commitments",
+    "draft_assist",
+    "draft_new",
+    "draft_refine",
+    "humanize_rewrite",
+    "answer_coverage",
+    "archive_ask",
+    "decision_log",
+    "briefing",
+    "delivery_extraction",
+    "assistant",
+];
+
+/// The settings one `[llm.overrides.<feature>]` table takes. Matches the
+/// fields of [`crate::LlmOverrideConfig`]; a test holds them together.
+pub const LLM_OVERRIDE_SETTINGS: &[&str] = &[
+    "enabled",
+    "base_url",
+    "model",
+    "api_key_env",
+    "context_window",
+    "request_timeout_secs",
+];
+
+/// Keys under `[llm.overrides]` that do nothing: a feature mxr has no
+/// override for, or a setting an override doesn't take (an override takes
+/// six of `[llm]`'s settings, not all of them). Serde ignores both, so they
+/// would otherwise look like working settings. Retired keys are left to
+/// [`retired_config_keys_in`].
+pub fn unknown_llm_override_keys_in(table: &toml::Table) -> Vec<String> {
+    let Some(overrides) = table
+        .get("llm")
+        .and_then(toml::Value::as_table)
+        .and_then(|llm| llm.get("overrides"))
+        .and_then(toml::Value::as_table)
+    else {
+        return Vec::new();
+    };
+    let mut unknown = Vec::new();
+    for (feature, settings) in overrides {
+        let key = format!("llm.overrides.{feature}");
+        if RETIRED_CONFIG_KEYS.contains(&key.as_str()) {
+            continue;
+        }
+        if !LLM_OVERRIDE_FEATURES.contains(&feature.as_str()) {
+            unknown.push(key);
+            continue;
+        }
+        if let Some(settings) = settings.as_table() {
+            unknown.extend(
+                settings
+                    .keys()
+                    .filter(|setting| !LLM_OVERRIDE_SETTINGS.contains(&setting.as_str()))
+                    .map(|setting| format!("{key}.{setting}")),
+            );
+        }
+    }
+    unknown
+}
+
+/// Names each unknown override key once per process. Key names only.
+fn warn_unknown_llm_override_keys_once(table: &toml::Table) {
+    static WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let mut warned = WARNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let keys: Vec<_> = unknown_llm_override_keys_in(table)
+        .into_iter()
+        .filter(|key| !warned.contains(key))
+        .collect();
+    if keys.is_empty() {
+        return;
+    }
+    warned.extend(keys.iter().cloned());
+    tracing::warn!(
+        "config keys ignored: not override settings: {} (an override takes {})",
+        keys.join(", "),
+        LLM_OVERRIDE_SETTINGS.join(", ")
+    );
+}
+
 /// Warns once per key per process, so a key added by a later edit is still
 /// named. Logs key names only, never values.
 fn warn_retired_config_keys_once(contents: &str) {
@@ -536,6 +622,7 @@ fn warn_retired_config_keys_once(contents: &str) {
         return;
     };
     warn_legacy_draft_models_once(&table);
+    warn_unknown_llm_override_keys_once(&table);
     let mut warned = WARNED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

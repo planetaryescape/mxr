@@ -376,6 +376,20 @@ pub trait LlmProvider: Send + Sync {
         self.base_url()
             .is_some_and(|url| !is_loopback_endpoint(url))
     }
+    /// Whether the answer this provider labelled `answered_model` came from
+    /// this machine. [`Self::leaves_machine`] says where a request may go;
+    /// this says where one went, for a provider that can answer from either
+    /// (a local endpoint with a hosted fallback behind it).
+    fn answered_on_this_machine(&self, _answered_model: &str) -> bool {
+        !self.leaves_machine()
+    }
+    /// How many tokens of the context window a request asking for
+    /// `max_tokens` takes for its answer. More than asked where the provider
+    /// adds room for a reasoning model's thinking, so a prompt sized to the
+    /// window still fits.
+    fn answer_tokens(&self, max_tokens: u32) -> u32 {
+        max_tokens
+    }
     /// The provider keeps its own record of which routes work, so the
     /// runtime's endpoint-wide background breaker steps aside: a refusal or
     /// an empty answer is no reason to pause every feature.
@@ -1087,6 +1101,16 @@ impl PinnedLlm {
     pub fn leaves_machine(&self) -> bool {
         self.provider.leaves_machine()
     }
+
+    /// Whether the answer labelled `answered_model` came from this machine.
+    pub fn answered_on_this_machine(&self, answered_model: &str) -> bool {
+        self.provider.answered_on_this_machine(answered_model)
+    }
+
+    /// See [`LlmProvider::answer_tokens`].
+    pub fn answer_tokens(&self, max_tokens: u32) -> u32 {
+        self.provider.answer_tokens(max_tokens)
+    }
 }
 
 /// Stub provider used when LLM features are disabled. All calls return
@@ -1532,6 +1556,7 @@ impl OpenAiCompatibleProvider {
         timeout: Option<Duration>,
     ) -> Result<CompletionResponse, AttemptError> {
         let reasoning_disabled = self.disable_reasoning.load(Ordering::Relaxed);
+        let started = Instant::now();
         let first = self.send(req, api_key, timeout, reasoning_disabled).await?;
         if !first.response.content.trim().is_empty() {
             return Ok(first.response);
@@ -1542,8 +1567,14 @@ impl OpenAiCompatibleProvider {
         // Thinking models (gemma4, qwen3, deepseek-r1 via Ollama) can spend the
         // whole max_tokens budget on reasoning and return empty `content` with
         // finish_reason "length". Ask once more with reasoning off, and keep it
-        // off only if this endpoint honours the switch.
-        let retry = self.send(req, api_key, timeout, true).await?;
+        // off only if this endpoint honours the switch. The retry spends what
+        // is left of this attempt's time, not a second share of the budget,
+        // so the routes after this one still get theirs.
+        let left = timeout.map(|timeout| timeout.saturating_sub(started.elapsed()));
+        if left == Some(Duration::ZERO) {
+            return Err(AttemptError::request(LlmError::Empty));
+        }
+        let retry = self.send(req, api_key, left, true).await?;
         if retry.response.content.trim().is_empty() {
             return Err(AttemptError::request(LlmError::Empty));
         }
@@ -1601,6 +1632,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
     fn model_name(&self) -> &str {
         &self.model
+    }
+
+    fn answer_tokens(&self, max_tokens: u32) -> u32 {
+        if self.dialect.thinking_headroom {
+            routed::with_thinking_headroom(Some(max_tokens))
+        } else {
+            max_tokens
+        }
     }
 
     fn base_url(&self) -> Option<&str> {

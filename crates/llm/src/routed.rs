@@ -63,6 +63,9 @@ pub struct RoutedProviderConfig {
     /// The user's own endpoint, tried before `routes`, with its own key and
     /// context window. `None` for a hosted model on its own.
     pub endpoint: Option<OpenAiCompatibleConfig>,
+    /// The variable the endpoint's key is read from (`api_key_env`), so its
+    /// health is kept per key. Empty for no key.
+    pub endpoint_api_key_env: String,
     pub request_timeout: Duration,
     pub keys: Arc<dyn ApiKeySource>,
     pub health: RouteHealth,
@@ -87,6 +90,7 @@ impl RoutedProviderConfig {
             routes,
             context_window,
             endpoint: None,
+            endpoint_api_key_env: String::new(),
             request_timeout,
             keys,
             health,
@@ -134,7 +138,11 @@ impl RoutedProvider {
             openrouter: client_for(RouteProvider::OpenRouter, &config.openrouter_base_url)
                 .map(|client| client.for_openrouter(openai_tools_need_no_reasoning(&config.model))),
             endpoint: config.endpoint.map(|endpoint| EndpointLeg {
-                key: RouteKey::Endpoint(EndpointRoute::new(&endpoint.base_url, &endpoint.model)),
+                key: RouteKey::Endpoint(EndpointRoute::new(
+                    &endpoint.base_url,
+                    &endpoint.model,
+                    &config.endpoint_api_key_env,
+                )),
                 context_window: endpoint.context_window,
                 client: OpenAiCompatibleProvider::new(endpoint),
             }),
@@ -412,10 +420,6 @@ impl RoutedProvider {
                                 last_error = Some(error);
                                 continue;
                             }
-                            ProbeOutcome::Taken(view) => {
-                                skipped.push((target.clone(), view));
-                                continue;
-                            }
                         }
                     }
                     Target::Hosted(..) => ticket,
@@ -502,15 +506,11 @@ impl RoutedProvider {
     ) -> ProbeOutcome {
         let timeout = share.map_or(PROBE_TIMEOUT, |share| share.min(PROBE_TIMEOUT));
         match endpoint.client.probe_attempt(timeout).await {
-            Ok(()) => {
-                ticket.succeeded();
-                // Back to healthy; take an ordinary ticket for the real
-                // request. Another caller may have failed it meanwhile.
-                match self.health.admit(endpoint.key.clone()) {
-                    Admission::Use(ticket) | Admission::Probe(ticket) => ProbeOutcome::Up(ticket),
-                    Admission::Skip(view) => ProbeOutcome::Taken(view),
-                }
-            }
+            // The listing answers, which says the server is up, not that
+            // completions work. The real request keeps the probe's ticket, so
+            // its outcome decides: a completion that still fails doubles the
+            // wait instead of starting it over at a minute.
+            Ok(()) => ProbeOutcome::Up(ticket),
             Err(AttemptError {
                 error,
                 class: ErrorClass::Route(failure),
@@ -573,8 +573,6 @@ enum ProbeOutcome {
         error: LlmError,
         failure: RouteFailure,
     },
-    /// Someone else's request failed it while the check ran.
-    Taken(RouteView),
 }
 
 enum Attempt<T> {
@@ -661,6 +659,29 @@ impl LlmProvider for RoutedProvider {
                 .is_some_and(|url| !is_loopback_endpoint(url))
     }
 
+    /// The hosted routes of a Claude or OpenAI model add room for thinking
+    /// (see `prepare`); the endpoint gets the request as written but shares
+    /// the window, so the larger reserve holds.
+    fn answer_tokens(&self, max_tokens: u32) -> u32 {
+        if !self.routes.is_empty() && (is_claude_model(&self.model) || is_openai_model(&self.model))
+        {
+            with_thinking_headroom(Some(max_tokens))
+        } else {
+            max_tokens
+        }
+    }
+
+    /// The endpoint answers under its own name and a hosted route under
+    /// [`answered_by`]'s label, so the label says which one this was.
+    fn answered_on_this_machine(&self, answered_model: &str) -> bool {
+        !hosted_answer(answered_model)
+            && self
+                .endpoint
+                .as_ref()
+                .and_then(|endpoint| endpoint.client.base_url())
+                .is_some_and(is_loopback_endpoint)
+    }
+
     fn tracks_route_health(&self) -> bool {
         true
     }
@@ -681,6 +702,23 @@ impl LlmProvider for RoutedProvider {
             })
             .min()
     }
+}
+
+/// Whether `model` is how [`answered_by`] labels a hosted route's answer.
+/// The user's endpoint keeps the name it answered with, and model names
+/// carry no spaces, so the endpoint's name never ends this way.
+pub(crate) fn hosted_answer(model: &str) -> bool {
+    [
+        RouteProvider::Anthropic,
+        RouteProvider::OpenAI,
+        RouteProvider::OpenRouter,
+    ]
+    .iter()
+    .any(|provider| {
+        model
+            .strip_suffix(provider.label())
+            .is_some_and(|rest| rest.ends_with(" via "))
+    })
 }
 
 /// What provenance shows: the model and the provider that answered.

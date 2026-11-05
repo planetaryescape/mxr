@@ -3,43 +3,26 @@
 //! itself and the provenance the client shows all follow that one endpoint,
 //! even if a config reload swaps providers mid-request.
 
-use crate::state::{llm_endpoint_is_local, relationship_data_allowed, AppState};
+use crate::state::{llm_answer_locality, relationship_data_allowed, AppState};
 use mxr_llm::{LlmFeature, PinnedLlm};
 use mxr_protocol::{
-    AiLocalityData, DraftProvenanceData, DraftRewriteOutcomeData, DraftRewriteProvenanceData,
-    DraftSourceData,
+    DraftProvenanceData, DraftRewriteOutcomeData, DraftRewriteProvenanceData, DraftSourceData,
 };
 
 pub(crate) struct DraftPolicy {
     pub llm: PinnedLlm,
-    pub locality: AiLocalityData,
     /// The user's other mail may reach this model (see
-    /// [`relationship_data_allowed`]).
+    /// [`relationship_data_allowed`]). Decided before the call from where it
+    /// may go, so a hosted fallback counts even if the endpoint answers.
     pub share_history: bool,
 }
 
 impl DraftPolicy {
     pub fn pin(state: &AppState, feature: LlmFeature) -> Self {
         let config = state.config_snapshot();
-        if let Some(model) = config
-            .llm
-            .compose
-            .as_ref()
-            .and_then(|compose| compose.model.as_deref())
-        {
-            return Self::pin_model(&config, feature, model);
-        }
-        let llm = state.llm.for_feature(feature).pin();
-        let share_history = relationship_data_allowed(&state.config_snapshot().llm, &llm);
-        let locality = if llm_endpoint_is_local(&llm) {
-            AiLocalityData::Local
-        } else {
-            AiLocalityData::Cloud
-        };
-        Self {
-            llm,
-            locality,
-            share_history,
+        match crate::state::compose_model_for(&config.llm, feature) {
+            Some(model) => Self::pin_model(state, &config, feature, model),
+            None => Self::pin_feature(state, &config, feature),
         }
     }
 
@@ -49,27 +32,31 @@ impl DraftPolicy {
         feature: LlmFeature,
         model: Option<&str>,
     ) -> Self {
-        let Some(model) = model else {
-            let llm = state.llm.for_feature(feature).pin();
-            let share_history = relationship_data_allowed(&state.config_snapshot().llm, &llm);
-            let locality = if llm_endpoint_is_local(&llm) {
-                AiLocalityData::Local
-            } else {
-                AiLocalityData::Cloud
-            };
-            return Self {
-                llm,
-                locality,
-                share_history,
-            };
-        };
-        Self::pin_model(config, feature, model)
+        match model {
+            Some(model) => Self::pin_model(state, config, feature, model),
+            None => Self::pin_feature(state, config, feature),
+        }
     }
 
-    fn pin_model(config: &mxr_config::MxrConfig, feature: LlmFeature, model: &str) -> Self {
+    fn pin_feature(state: &AppState, config: &mxr_config::MxrConfig, feature: LlmFeature) -> Self {
+        let llm = state.llm.for_feature(feature).pin();
+        let share_history = relationship_data_allowed(&config.llm, &llm);
+        Self { llm, share_history }
+    }
+
+    /// A model chosen for drafting rather than configured per feature. Its
+    /// provider is built for this request but shares the daemon's route
+    /// health, so a failing provider is remembered across drafts and shows in
+    /// `mxr llm status`.
+    fn pin_model(
+        state: &AppState,
+        config: &mxr_config::MxrConfig,
+        feature: LlmFeature,
+        model: &str,
+    ) -> Self {
         let mut effective = crate::state::base_llm_config(&config.llm);
         effective.model = model.trim().to_string();
-        let health = mxr_llm::RouteHealth::default();
+        let health = state.llm.route_health().clone();
         let fallback = crate::state::llm_fallback(&config.llm).ok().flatten();
         let chain = crate::state::llm_fallback_chain(
             &config.llm,
@@ -81,16 +68,7 @@ impl DraftPolicy {
         let runtime = std::sync::Arc::new(mxr_llm::LlmRuntime::with_route_health(provider, health));
         let llm = runtime.for_feature(feature).pin();
         let share_history = relationship_data_allowed(&config.llm, &llm);
-        let locality = if llm_endpoint_is_local(&llm) {
-            AiLocalityData::Local
-        } else {
-            AiLocalityData::Cloud
-        };
-        Self {
-            llm,
-            locality,
-            share_history,
-        }
+        Self { llm, share_history }
     }
 
     /// The provenance of text this policy's model wrote. `model` is the name
@@ -111,7 +89,7 @@ impl DraftPolicy {
         };
         DraftProvenanceData {
             model: model.to_string(),
-            locality: self.locality,
+            locality: llm_answer_locality(&self.llm, model),
             history_used,
             voice_examples,
             conversation,
@@ -130,7 +108,7 @@ impl DraftPolicy {
     ) -> DraftRewriteProvenanceData {
         DraftRewriteProvenanceData {
             model: model.to_string(),
-            locality: self.locality,
+            locality: llm_answer_locality(&self.llm, model),
             history_used,
             outcome,
             rejected_by: None,

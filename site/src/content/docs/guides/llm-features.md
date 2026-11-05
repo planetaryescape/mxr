@@ -138,8 +138,10 @@ a restart forgets it, and so does any config change the daemon applies.
 `mxr llm status` shows each feature's model, the providers in order with
 their state (`ok`, `cooling until 14:32 (429 rate limited)`,
 `broken: 401 invalid key (rechecked 15:32)`, `retry due`, `being retried`,
-`no key`), and `[now: ...]` for where a request would go, or
-`(no route available)`. A feature privacy settings keep from its model shows
+`no key`), and `[now: ...]` for where a request would go. When every route
+is out it says `(no route available; a command you run tries openrouter
+once)`: background work waits, and a command makes one attempt on the route
+that comes back soonest. A feature privacy settings keep from its model shows
 `[blocked: <reason>]`. `--format json` carries the same under `features`, and
 the web app's **Settings > Language model** shows the chain read-only. The web app cannot take a key;
 keys go in only through the CLI.
@@ -259,14 +261,14 @@ refused without the setting, as before.
 fallback=gpt-6-luna
 
 features:
-  summarize             gemma4:latest  base_url: cooling until 14:32 (unreachable) → openai: no key → openrouter: ok  [now: openrouter]
+  summarize             gemma4:latest  https://ollama.example.net/v1: cooling until 14:32 (unreachable) → openai: no key → openrouter: ok  [now: openrouter]
 ```
 
 With `base_url` on this machine, a relationship feature shows where it
 stays:
 
 ```text
-  relationship_summary  gemma4:latest  base_url: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
+  relationship_summary  gemma4:latest  https://ollama.example.net/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
 ```
 
 `--format json` adds `fallback_model` and, under each feature, `endpoint`
@@ -426,8 +428,8 @@ model = "gpt-6-luna"        # key from `mxr llm key set openai`
 ```
 
 An override takes `enabled`, `base_url`, `model`, `api_key_env`,
-`context_window` and `request_timeout_secs`; other keys in the table are
-ignored.
+`context_window` and `request_timeout_secs`. Other keys in the table, and
+feature names mxr doesn't know, are ignored and named once in the daemon log.
 
 The keys are `summarize` (which also covers gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
@@ -436,8 +438,8 @@ The keys are `summarize` (which also covers gists and `mxr triage`),
 a model that can call tools). Voice matching and expert lookup run locally, so
 the old `voice_match` and `expert` keys are retired and ignored. With `[llm.compose] model` set, every draft uses that
 model and the `draft_assist`, `draft_new`, `draft_refine` and
-`humanize_rewrite` overrides are ignored, though `mxr llm status` still shows
-their model on those rows. The relationship rule above still applies to an
+`humanize_rewrite` overrides are ignored; `mxr llm status` shows the compose
+model on those rows. The relationship rule above still applies to an
 override that points at a cloud endpoint.
 
 ## Model tiers for email modes are planned
@@ -723,8 +725,9 @@ Run `mxr cat <message-id>` on any line to read that message. The line is
 read from what the request actually did, not from your config:
 
 - **Local model** or **Cloud model** comes from the endpoint that answered.
-  If a config reload lands mid-request, the draft still describes the model
-  that wrote it.
+  With `[llm.fallback]`, a draft your local endpoint wrote says local, and one
+  the fallback wrote says cloud. If a config reload lands mid-request, the
+  draft still describes the model that wrote it.
 - The web app shows the model as a mark beside the text, `gemma4 · local` or
   `gemma4 · cloud`, with where it ran in its tooltip. Gists, the AI overview
   and drafts all wear it. The overview knows the model but not where it ran,

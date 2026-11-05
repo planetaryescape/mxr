@@ -263,6 +263,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         let startup_handle = spawn_startup_maintenance(state.clone());
         state.register_startup_maintenance(startup_handle);
 
+        // Saves the LLM background state and re-runs work an endpoint
+        // outage put off. Its last save happens in the shutdown drain.
+        crate::llm_background::spawn(state.clone());
+
         let snooze_state = state.clone();
         let snooze_handle = tokio::spawn(async move {
             let shutdown_rx = snooze_state.shutdown_receiver();

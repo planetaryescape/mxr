@@ -22,6 +22,7 @@ pub(crate) mod history_text;
 pub mod html_helper;
 pub(crate) mod idle_exit;
 pub mod ipc_client;
+pub(crate) mod llm_background;
 pub(crate) mod llm_keys;
 #[cfg(feature = "langfuse")]
 pub(crate) mod llm_tracing;

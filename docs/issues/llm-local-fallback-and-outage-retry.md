@@ -1,6 +1,6 @@
 # A local model needs a cloud fallback, and endpoint outages use up an input's retries
 
-Checked at `origin/main` `3bb328db2` (release 0.6.209) on 2026-11-04.
+Checked at `origin/main` `3bb328db2` (release 0.6.209) on 2026-11-04. The outage half was fixed on 2026-11-05; see "What shipped" below. The fallback chain is still open.
 
 The planned setup runs the daemon on an always-on home server and sends model work to Ollama on BK's MacBook over Tailscale. The MacBook is often asleep or away, so the endpoint is unavailable for hours or days at a time. Two gaps make that setup lose work.
 
@@ -35,7 +35,22 @@ The fix is to keep the two kinds of failure apart:
 - **The breaker probes with a cheap request.** It checks the endpoint with something like `GET /v1/models` rather than spending a real input.
 - **Recovery is prompt.** When the breaker closes, inputs skipped during the outage are attempted without waiting out a ledger delay.
 
-Thread gists use a separate pull-based queue and already recover. A failed gist backs off for 10 minutes (`crates/daemon/src/handler/thread_gists.rs:41`) and is queued again the next time the list loads. Delivery extraction falls back to its heuristic result on a model failure (`extract.rs:145`). Whether that message is enriched again after the endpoint recovers was not checked.
+Thread gists use a separate pull-based queue and already recover. A failed gist backs off for 10 minutes (`crates/daemon/src/handler/thread_gists.rs:41`) and is queued again the next time the list loads. Delivery extraction falls back to its heuristic result on a model failure (`extract.rs:145`).
+
+Nothing re-ran skipped inputs before the fix (checked at `2f7fb9d31`, release 0.6.210). The relationship worker only sees a contact when one is enqueued (`crates/relationship/src/service.rs:55`, `:76`): after a sync with new mail (`crates/daemon/src/loops.rs:1156`), at the end of an initial backfill (`loops.rs:716`), or when mail is deleted (`loops.rs:1283`). A summary skipped with `CircuitOpen` returned `Ok(false)` (`summary.rs:116`) and was dropped from the queue. The delivery scan runs only on newly synced message ids (`loops.rs:1215` calling `crates/daemon/src/handler/deliveries.rs:94`) and on an explicit `mxr deliveries scan` (`deliveries.rs:118`). A shortlisted message whose model call failed degraded to the heuristic (`deliveries.rs:237`) and was never scanned again, so it was not enriched after the endpoint recovered.
+
+The to-do resolution worker had the same charging problem in its own durable queue: any model error other than disabled, blocked or `CircuitOpen` used one of its five attempts (`crates/daemon/src/handler/todo_resolution/worker.rs:260-262`).
+
+### What shipped, 2026-11-05
+
+- `LlmError::Endpoint` carries every route-class failure that used to be `LlmError::Other` (5xx, 408, 529, 404 or an unknown-model 400, 401-403 other than `Unauthorized`, a redirect, an unreadable reply, and "no LLM route is working"). It reads exactly as before. `LlmError::is_endpoint_failure()` is true for it and for `Unreachable`, `Timeout`, `RateLimited`, `Unauthorized` and `CircuitOpen`. The conversion happens in `AttemptError::new` (`crates/llm/src/failure.rs`).
+- Endpoint failures never touch the ledger. `FeatureLlmRuntime::record_background_failure` puts the input off instead; any other failure is recorded as before. Relationship summaries, commitments and delivery extraction use it. The to-do resolution worker treats an endpoint failure like `CircuitOpen`: the attempt is handed back and the pair waits five minutes.
+- Only endpoint failures count toward the breaker. An empty reply, a refusal or a request-specific 400 counts as the endpoint working.
+- When the breaker's cooldown ends, one caller checks the endpoint while every other caller gets `CircuitOpen`. `OpenAiCompatibleProvider` checks with `GET {base_url}/models` (at most 10 s, no redirects, its API key). A failed check re-opens the breaker with the doubled cooldown and spends no input. A 404 from the listing counts as answering, because some compatible servers have no listing. Providers without a check (and `RoutedProvider`) keep using the next real request as the check.
+- A daemon loop (`crates/daemon/src/llm_background.rs`) re-runs put-off inputs once each: relationship contacts go back to the relationship worker, and messages go back through the delivery scan, so a delivery that fell back to the heuristic during an outage is enriched once the endpoint answers. It runs when the breaker closes after an outage, when a `RouteHealth` route recovers, or, every 30 s, once the cooldown is over and the cheap check passes.
+- The breaker, the ledger and the put-off inputs are saved to `llm-background.json` in the data directory: wall-clock times, atomic write, mode 0600, at most every 30 s when changed and once on shutdown. A missing, corrupt or other-version file is logged and ignored. Tests and the demo instance never write it.
+
+What remains: the fallback chain for compatible-endpoint models (the first section; rung 2). `RouteHealth` is still in memory only. Recovery takes up to one breaker cooldown (at most 10 minutes, shortened from 60 because the check is a cheap `GET /models`) after the endpoint returns.
 
 ## Acceptance
 
@@ -43,8 +58,12 @@ Thread gists use a separate pull-based queue and already recover. A failed gist 
 - A simulated 48-hour endpoint outage with an injected clock leaves no input given up. After recovery, every pending input is attempted once.
 - A feature blocked from cloud routes does not fall back, and its work resumes on the local route.
 
+## Decisions, 2026-11-05 (BK)
+
+- Background work falls back to the cloud while the MacBook is away. The gates in the first section still apply: a feature blocked from cloud routes waits for the local route.
+- The default fallback model is `gpt-6-luna` through OpenRouter.
+- The ledger and breaker state persist across daemon restarts. Shipped, see above.
+
 ## Open questions
 
-- Should background work fall back to the cloud, or wait for the local route while foreground requests fall back?
-- Which OpenRouter model should be the default, and do the data terms of OpenRouter and its upstream providers cover other people's mail?
-- Should the ledger and breaker state persist across daemon restarts?
+- Do the data terms of OpenRouter and its upstream providers for `gpt-6-luna` cover other people's mail?

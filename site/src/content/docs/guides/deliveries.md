@@ -16,7 +16,7 @@ Three stages, all local-first:
 It optimizes for precision: a string that merely *looks* like a tracking number inside an unrelated email (a finance code, a hosting receipt) won't create a delivery on its own — it needs a real shipping signal or LLM confirmation.
 
 :::note[Detection is on by default]
-Set `[deliveries].enabled = false` in your [config](/reference/config/) to turn it off. The LLM step only runs when an LLM is [configured](/guides/llm-features/); without one, detection falls back to heuristics plus checksum-valid tracking numbers.
+Set `[deliveries].enabled = false` in your [config](/reference/config/) to turn it off. The LLM step only runs when an LLM is [configured](/guides/llm-features/); without one, detection falls back to heuristics plus checksum-valid tracking numbers. When the model's endpoint is out, a shortlisted email uses that heuristic result and is checked by the model once the endpoint answers again (see [background work during an outage](/guides/llm-features/#background-work-waits-out-an-endpoint-outage)).
 :::
 
 ## See what's arriving

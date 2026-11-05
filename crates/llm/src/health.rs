@@ -9,6 +9,7 @@
 //!
 //! State is in memory only. A restart costs one failed attempt per bad route.
 
+use crate::background::RecoverySignal;
 use crate::route::{Route, RouteProvider};
 use std::collections::HashMap;
 use std::fmt;
@@ -160,6 +161,9 @@ impl Book {
 #[derive(Debug, Clone, Default)]
 pub struct RouteHealth {
     book: Arc<Mutex<Book>>,
+    /// Told when a route that was out answers again, so work put off while
+    /// every route was out can run.
+    recovery: RecoverySignal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,6 +262,10 @@ impl RouteHealth {
             .map_or(RouteView::OK, |entry| entry.view(now))
     }
 
+    pub(crate) fn recovery_signal(&self) -> &RecoverySignal {
+        &self.recovery
+    }
+
     /// Forget everything: the config changed, so what was learned about the
     /// old setup says nothing about the new one.
     pub fn reset(&self) {
@@ -285,13 +293,21 @@ impl RouteHealth {
     }
 
     fn settle(&self, ticket: &Ticket, failure: Option<RouteFailure>) {
+        let recovered = self.settle_book(ticket, failure);
+        if recovered {
+            self.recovery.notify();
+        }
+    }
+
+    /// Records the outcome; true when it brought a route back.
+    fn settle_book(&self, ticket: &Ticket, failure: Option<RouteFailure>) -> bool {
         let mut book = self.book();
         let next_epoch = book.next_epoch();
         let Some(entry) = book.entries.get_mut(&ticket.route) else {
-            return;
+            return false;
         };
         if entry.epoch != ticket.epoch {
-            return;
+            return false;
         }
         if ticket.kind == TicketKind::Probe {
             entry.probing = false;
@@ -308,6 +324,7 @@ impl RouteHealth {
                     entry.failures = 0;
                     entry.probing = false;
                     entry.epoch = next_epoch;
+                    return true;
                 }
             }
             Some(_) if ticket.kind == TicketKind::Forced => {}
@@ -343,6 +360,7 @@ impl RouteHealth {
                 );
             }
         }
+        false
     }
 
     fn release_probe(&self, ticket: &Ticket) {

@@ -464,6 +464,22 @@ impl LlmProvider for RoutedProvider {
     fn tracks_route_health(&self) -> bool {
         true
     }
+
+    fn background_retry_in(&self) -> Option<Duration> {
+        let keyed: Vec<&Route> = self
+            .routes
+            .iter()
+            .filter(|route| self.keys.api_key(route.provider).is_some())
+            .collect();
+        if keyed.iter().any(|route| self.is_available(route)) {
+            return None;
+        }
+        // A route being probed by another request shows zero; wait a moment.
+        keyed
+            .iter()
+            .map(|route| self.health.view(route).retry_in.max(Duration::from_secs(1)))
+            .min()
+    }
 }
 
 /// What provenance shows: the model and the provider that answered.
@@ -515,7 +531,7 @@ fn all_routes_out(
         .into_iter()
         .map(|(provider, state)| format!("{}: {state}", provider.key()))
         .collect();
-    LlmError::Other(format!("no LLM route is working ({})", listed.join("; ")))
+    LlmError::Endpoint(format!("no LLM route is working ({})", listed.join("; ")))
 }
 
 fn describe_view(view: &RouteView) -> String {

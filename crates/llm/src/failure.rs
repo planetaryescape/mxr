@@ -33,10 +33,19 @@ impl AttemptError {
     }
 
     pub(crate) fn route(error: LlmError, failure: RouteFailure) -> Self {
-        Self {
-            error,
-            class: ErrorClass::Route(failure),
-        }
+        Self::new(error, ErrorClass::Route(failure))
+    }
+
+    /// The one place a failed attempt is built from an error and its class.
+    /// A route failure without a more specific variant becomes
+    /// [`LlmError::Endpoint`], so background callers can tell an endpoint
+    /// that is out from an input that failed; the text stays the same.
+    pub(crate) fn new(error: LlmError, class: ErrorClass) -> Self {
+        let error = match (&class, error) {
+            (ErrorClass::Route(_), LlmError::Other(message)) => LlmError::Endpoint(message),
+            (_, error) => error,
+        };
+        Self { error, class }
     }
 
     pub(crate) fn timed_out(after: Duration) -> Self {

@@ -344,7 +344,7 @@ impl AnthropicClient {
                     redact(describe_error(&text), key)
                 )),
             };
-            return Err(AttemptError { error, class });
+            return Err(AttemptError::new(error, class));
         }
 
         Ok(response)

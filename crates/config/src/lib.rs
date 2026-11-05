@@ -19,6 +19,18 @@ pub use resolve::{
 pub use secret_store::SecretStore;
 pub use types::*;
 
+/// Read a file only this user may read, refusing a symlink and tightening
+/// looser permissions, as the secrets file is read. `Ok(None)` when missing.
+pub fn read_private_file(path: &std::path::Path) -> std::io::Result<Option<String>> {
+    secret_store::read_secrets_file(path)
+}
+
+/// Replace a file atomically (temp file, fsync, rename) with permissions for
+/// this user only, as the secrets file is written.
+pub fn write_private_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    secret_store::write_secrets_atomic(path, contents)
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(

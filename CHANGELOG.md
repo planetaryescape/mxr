@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.217](https://github.com/planetaryescape/mxr/compare/v0.6.216...v0.6.217) (2026-11-05)
+
+
+### Bug Fixes
+
+* owed-reply search pages fill and keep paging ([#889](https://github.com/planetaryescape/mxr/issues/889)) ([b5fb598](https://github.com/planetaryescape/mxr/commit/b5fb59871e1bf7ed6b2cdd50ea991c352b4cfdd8))
+* the TUI says the daemon isn't responding when reconnects keep failing ([#888](https://github.com/planetaryescape/mxr/issues/888)) ([e8b3ca4](https://github.com/planetaryescape/mxr/commit/e8b3ca4bdc720f00aec53e51baa4031a724e9603))
+
 ## [0.6.216](https://github.com/planetaryescape/mxr/compare/v0.6.215...v0.6.216) (2026-11-05)
 
 

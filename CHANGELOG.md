@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.216](https://github.com/planetaryescape/mxr/compare/v0.6.215...v0.6.216) (2026-11-05)
+
+
+### Bug Fixes
+
+* a hook that leaves a background process running is not a timeout ([#886](https://github.com/planetaryescape/mxr/issues/886)) ([8b9f485](https://github.com/planetaryescape/mxr/commit/8b9f485ee1dea76e1fdde93d316ed19bbee601a5))
+
 ## [0.6.215](https://github.com/planetaryescape/mxr/compare/v0.6.214...v0.6.215) (2026-11-05)
 
 

@@ -1285,6 +1285,57 @@ fn tick_connection_state_opens_modal_after_5s_reconnecting() {
     );
 }
 
+/// The IPC worker re-emits `Reconnecting` with a fresh `since` on every failed
+/// retry. The watchdog must measure the whole outage, so the modal still opens
+/// once retries have run past the threshold.
+#[test]
+fn tick_connection_state_opens_modal_when_retries_outlast_threshold() {
+    use crate::app::ConnectionState;
+    let mut app = App::new();
+    let t0 = std::time::Instant::now();
+    let secs = std::time::Duration::from_secs;
+    for offset in [0, 2, 4, 6] {
+        app.set_connection_state(ConnectionState::Reconnecting {
+            since: t0 + secs(offset),
+            reason: "connection refused".into(),
+        });
+    }
+
+    app.tick_connection_state(t0 + secs(6));
+
+    assert!(
+        app.modals.error.is_some(),
+        "retries that run past the threshold must open the daemon modal"
+    );
+}
+
+/// A successful reconnect clears the outage. The next outage starts its own
+/// clock, so an old outage must not make a fresh one escalate early.
+#[test]
+fn successful_reconnect_resets_outage_timer() {
+    use crate::app::{ConnectionState, ErrorModalState};
+    let mut app = App::new();
+    let t0 = std::time::Instant::now();
+    let secs = std::time::Duration::from_secs;
+    app.set_connection_state(ConnectionState::Reconnecting {
+        since: t0,
+        reason: "connection refused".into(),
+    });
+    app.modals.error = Some(ErrorModalState::new("Daemon not responding", "..."));
+
+    app.set_connection_state(ConnectionState::Connected);
+    app.set_connection_state(ConnectionState::Reconnecting {
+        since: t0 + secs(10),
+        reason: "connection refused".into(),
+    });
+    app.tick_connection_state(t0 + secs(11));
+
+    assert!(
+        app.modals.error.is_none(),
+        "a new outage must not inherit the timer from the one that recovered"
+    );
+}
+
 /// Phase 1.2 / Behavior 2: tick is a no-op when connection is healthy.
 /// Regression for "modal pops up randomly while connected".
 #[test]

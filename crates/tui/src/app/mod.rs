@@ -695,6 +695,19 @@ impl App {
     /// - On `Reconnecting` or `Connecting`, leave the modal alone — the
     ///   tick-based opener decides when to surface it.
     pub fn set_connection_state(&mut self, state: ConnectionState) {
+        // The IPC worker re-emits `Reconnecting` with a fresh `since` on every
+        // failed retry. Keep the first one so the watchdog times the whole
+        // outage; a successful reconnect goes through `Connected`, which clears it.
+        let state = match (&self.connection_state, state) {
+            (
+                ConnectionState::Reconnecting { since, .. },
+                ConnectionState::Reconnecting { reason, .. },
+            ) => ConnectionState::Reconnecting {
+                since: *since,
+                reason,
+            },
+            (_, state) => state,
+        };
         if matches!(state, ConnectionState::Connected) {
             // Only close error modals that were opened by the connection
             // watchdog. Heuristic: title mentions "daemon".

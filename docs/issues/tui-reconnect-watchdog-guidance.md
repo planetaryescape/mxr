@@ -1,9 +1,7 @@
-# Keep the TUI outage timer stable across reconnect attempts
+# TUI reconnect guidance clips at 130 columns
 
 Status: observed follow-up, not a release blocker.
 
-The supervised TUI fixture at candidate `4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f` showed repeated reconnect status frames without the watchdog error modal. In `crates/tui/src/ipc.rs`, failed reconnect attempts emit `ConnectionState::Reconnecting { since: Instant::now(), .. }` again before the two-second sleep. `crates/tui/src/app/mod.rs` opens its modal only after the current `since` exceeds `CONNECTION_STALE_THRESHOLD`, so the repeated timestamp resets prevent escalation while the retry loop continues. The fixture's 130-column terminal frame also clips the remainder of the long reconnect error after the service-manager guidance.
+The "Daemon not responding" modal now opens during a long reconnect, because the outage timer keeps its first timestamp (`set_connection_state` in `crates/tui/src/app/mod.rs`). The fixture at candidate `4b2d19d621d0fba90eb9c5f0dbef570dd68ad28f` also showed that its 130-column terminal frame clips the rest of the reconnect error after the service-manager guidance. The retained frame hash is in [`manifest.json`](../build-log/daemon-portability/evidence/s08c-candidate-4b2d19d6/manifest.json).
 
-The captured fixture receipt confirms a 130-column terminal and visible guidance; the retained frame hash is in [`manifest.json`](../build-log/daemon-portability/evidence/s08c-candidate-4b2d19d6/manifest.json).
-
-Follow-up: preserve the first outage timestamp until a successful connection, and render actionable reconnect guidance where it remains readable at the captured width. Add a focused test that keeps the connection in retry for longer than the watchdog threshold and verifies the modal appears. Re-run the captured 130-column fixture after the change.
+Still open: make the reconnect guidance readable at 130 columns, then re-run the captured 130-column fixture against the fix. This needs the supervised fixture, which is not reproducible in a unit test here, so the timer fix was verified by unit tests only.

@@ -443,6 +443,6 @@ mod budget_tests {
     #[test]
     fn an_over_budget_document_has_no_views_so_the_check_blocks_it() {
         let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
-        assert!(html_views(&html).is_none());
+        assert_eq!(html_views(&html).err(), Some(FallbackReason::Oversize));
     }
 }

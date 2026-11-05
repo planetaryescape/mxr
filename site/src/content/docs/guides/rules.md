@@ -224,7 +224,10 @@ to 30 seconds and covers JSON preparation, stdin delivery and command waiting.
 A stalled stdin is subject to the same deadline. On timeout mxr kills and
 reaps its direct child, allowing up to one additional second for cleanup;
 cancellation also kills that child. This does not supervise the command's
-descendants or detached processes. Nonzero exits and timeouts appear in rule history.
+descendants or detached processes. A hook finishes when its shell exits, even if
+a background process it started still holds the output pipe open; a failed hook
+keeps the stderr it wrote, collected for up to 250 ms after exit. Nonzero exits
+and timeouts appear in rule history.
 
 ## Recommended workflow
 

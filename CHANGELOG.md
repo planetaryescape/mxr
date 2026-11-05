@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.220](https://github.com/planetaryescape/mxr/compare/v0.6.219...v0.6.220) (2026-11-05)
+
+
+### Bug Fixes
+
+* keep relationship summaries off cloud thread summaries, and bring the LLM docs to parity ([#899](https://github.com/planetaryescape/mxr/issues/899)) ([a3514a4](https://github.com/planetaryescape/mxr/commit/a3514a462021d7deab0c09ae375cc511c25d975f))
+
+
+### Documentation
+
+* close the no-accounts-table draft-sync flake ([#895](https://github.com/planetaryescape/mxr/issues/895)) ([2395135](https://github.com/planetaryescape/mxr/commit/2395135d1b2df74b93f52f4eef44160165101105))
+
 ## [0.6.219](https://github.com/planetaryescape/mxr/compare/v0.6.218...v0.6.219) (2026-11-05)
 
 

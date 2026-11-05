@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.218](https://github.com/planetaryescape/mxr/compare/v0.6.217...v0.6.218) (2026-11-05)
+
+
+### Bug Fixes
+
+* update the Homebrew tap on Linux so a cancelled Mac runner can't skip it ([#891](https://github.com/planetaryescape/mxr/issues/891)) ([6b863d5](https://github.com/planetaryescape/mxr/commit/6b863d5bd175d0b69ce1ba12de711ef0cfe00557))
+
 ## [0.6.217](https://github.com/planetaryescape/mxr/compare/v0.6.216...v0.6.217) (2026-11-05)
 
 

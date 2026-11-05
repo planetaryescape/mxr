@@ -268,7 +268,7 @@ With `base_url` on this machine, a relationship feature shows where it
 stays:
 
 ```text
-  relationship_summary  gemma4:latest  https://ollama.example.net/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
+  relationship_summary  gemma4:latest  http://localhost:11434/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
 ```
 
 `--format json` adds `fallback_model` and, under each feature, `endpoint`

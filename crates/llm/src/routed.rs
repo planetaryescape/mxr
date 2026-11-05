@@ -197,9 +197,20 @@ impl RoutedProvider {
                 ticket.succeeded();
                 // The user's endpoint keeps the label it always had; a
                 // hosted answer names who served it.
-                if let Target::Hosted(route, _) = target {
-                    let model = model_of(&mut response);
-                    *model = answered_by(route.provider, model, &route.model);
+                match target {
+                    Target::Hosted(route, _) => {
+                        let model = model_of(&mut response);
+                        *model = answered_by(route.provider, model, &route.model);
+                    }
+                    // The label says which side answered, so an endpoint
+                    // reporting a name that reads as a hosted answer gets its
+                    // configured name instead.
+                    Target::Endpoint(endpoint) => {
+                        let model = model_of(&mut response);
+                        if hosted_answer(model) {
+                            *model = endpoint.client.model_name().to_string();
+                        }
+                    }
                 }
                 Attempt::Done(Ok(response))
             }
@@ -663,12 +674,18 @@ impl LlmProvider for RoutedProvider {
     /// (see `prepare`); the endpoint gets the request as written but shares
     /// the window, so the larger reserve holds.
     fn answer_tokens(&self, max_tokens: u32) -> u32 {
-        if !self.routes.is_empty() && (is_claude_model(&self.model) || is_openai_model(&self.model))
+        let hosted = if !self.routes.is_empty()
+            && (is_claude_model(&self.model) || is_openai_model(&self.model))
         {
             with_thinking_headroom(Some(max_tokens))
         } else {
             max_tokens
-        }
+        };
+        // A `gpt-*` endpoint of the user's own adds the room itself.
+        let endpoint = self.endpoint.as_ref().map_or(max_tokens, |endpoint| {
+            endpoint.client.answer_tokens(max_tokens)
+        });
+        hosted.max(endpoint)
     }
 
     /// The endpoint answers under its own name and a hosted route under

@@ -46,8 +46,8 @@ impl DraftPolicy {
 
     /// A model chosen for drafting rather than configured per feature. Its
     /// provider is built for this request but shares the daemon's route
-    /// health, so a failing provider is remembered across drafts and shows in
-    /// `mxr llm status`.
+    /// health and records its outcomes in the daemon's runtime, so a failing
+    /// provider is remembered across drafts and shows in `mxr llm status`.
     fn pin_model(
         state: &AppState,
         config: &mxr_config::MxrConfig,
@@ -65,8 +65,7 @@ impl DraftPolicy {
             &effective,
         );
         let provider = crate::state::build_llm_provider(&effective, chain.as_ref(), &health);
-        let runtime = std::sync::Arc::new(mxr_llm::LlmRuntime::with_route_health(provider, health));
-        let llm = runtime.for_feature(feature).pin();
+        let llm = state.llm.for_feature(feature).pin_with(provider);
         let share_history = relationship_data_allowed(&config.llm, &llm);
         Self { llm, share_history }
     }

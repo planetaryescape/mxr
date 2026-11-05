@@ -25,10 +25,12 @@ pub(super) struct RepairInput<'a> {
     pub(super) max_tokens: u32,
 }
 
+/// The repaired proposal and the model label of the answer that repaired it,
+/// which may differ from the first answer's when a fallback took the repair.
 pub(super) async fn repair_style_sentences(
     llm: &mxr_llm::PinnedLlm,
     input: RepairInput<'_>,
-) -> Option<check::Checked> {
+) -> Option<(check::Checked, String)> {
     let RepairInput {
         original,
         typed,
@@ -87,7 +89,7 @@ pub(super) async fn repair_style_sentences(
         turns_kept: Vec::new(),
         background_used: false,
     };
-    let (raw, _) = complete_with_retry(llm, &prompt, max_tokens).await.ok()?;
+    let (raw, repair_model) = complete_with_retry(llm, &prompt, max_tokens).await.ok()?;
     let response: RepairResponse = serde_json::from_str(raw.trim()).ok()?;
     if response.replacements.len() != flagged.len() {
         return None;
@@ -137,7 +139,7 @@ pub(super) async fn repair_style_sentences(
     {
         return None;
     }
-    Some(checked)
+    Some((checked, repair_model))
 }
 
 fn same_gaps(

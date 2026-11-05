@@ -973,6 +973,21 @@ impl FeatureLlmRuntime {
                 generation,
             })
     }
+
+    /// [`Self::pin`] with `provider` in place of the configured one: a model
+    /// chosen for one request (a compose pick) whose outcomes still count in
+    /// this runtime's observations, so `mxr llm status` sees them.
+    pub fn pin_with(&self, provider: Arc<dyn LlmProvider>) -> PinnedLlm {
+        self.runtime
+            .observations
+            .with_generation(|generation| PinnedLlm {
+                provider,
+                blocked: self.runtime.blocked_reason(self.feature),
+                runtime: self.runtime.clone(),
+                feature: self.feature,
+                generation,
+            })
+    }
 }
 
 /// One feature's provider, fixed for the length of a request. See

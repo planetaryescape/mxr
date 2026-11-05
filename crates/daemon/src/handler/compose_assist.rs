@@ -27,8 +27,8 @@ use mxr_core::id::{AccountId, DraftId, ThreadId};
 use mxr_core::types::{Address, Draft, DraftContent, Envelope};
 use mxr_llm::LlmFeature;
 use mxr_protocol::{
-    AssistActionData, AssistAdjustData, ClientKind, ComposeProposalData, DaemonEvent,
-    DraftSourceData, DraftTargetData, ResponseData, TextRangeData, VoiceRegisterData,
+    AiLocalityData, AssistActionData, AssistAdjustData, ClientKind, ComposeProposalData,
+    DaemonEvent, DraftSourceData, DraftTargetData, ResponseData, TextRangeData, VoiceRegisterData,
 };
 
 /// The operation name on each progress event, so a client can tell this
@@ -112,7 +112,16 @@ pub(super) async fn compose_assist(
         .model
         .map(str::trim)
         .filter(|model| !model.is_empty())
-        .or_else(|| config.llm.compose.as_ref()?.model.as_deref().map(str::trim));
+        .or_else(|| {
+            config
+                .llm
+                .compose
+                .as_ref()?
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+        });
     if let Some(model) = selected_model {
         if !config
             .llm
@@ -328,8 +337,9 @@ pub(super) async fn compose_assist(
         },
         &snapshot.pattern_rates,
     );
+    let mut repair_model = None;
     if config.humanizer.auto_fix && checked.style_score < 100 && checked.yours_changed.is_empty() {
-        if let Some(repaired) = super::compose_style_repair::repair_style_sentences(
+        if let Some((repaired, model)) = super::compose_style_repair::repair_style_sentences(
             &policy.llm,
             super::compose_style_repair::RepairInput {
                 original: &checked,
@@ -344,6 +354,7 @@ pub(super) async fn compose_assist(
         .await
         {
             checked = repaired;
+            repair_model = Some(model);
         }
     }
     // Keep only source-backed figures present in this proposal. A guessed
@@ -363,7 +374,7 @@ pub(super) async fn compose_assist(
         || !material.habits.is_empty()
         || prompt.background_used
         || context.as_ref().is_some_and(|context| context.history_used);
-    let provenance = policy.provenance(
+    let mut provenance = policy.provenance(
         &model,
         history_used,
         voice_sources,
@@ -373,6 +384,13 @@ pub(super) async fn compose_assist(
             .map(|index| gathered.turns[*index].source.clone())
             .collect(),
     );
+    // Sentences a hosted fallback repaired make the proposal cloud-written
+    // even when the endpoint on this machine wrote the rest.
+    if repair_model.as_deref().is_some_and(|repair| {
+        crate::state::llm_answer_locality(&policy.llm, repair) == AiLocalityData::Cloud
+    }) {
+        provenance.locality = AiLocalityData::Cloud;
+    }
     // Remembered so a later refine of this text can't hand it to a cloud model
     // without opt-in (see `history_text`).
     if history_used {

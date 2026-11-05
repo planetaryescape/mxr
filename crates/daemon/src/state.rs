@@ -262,12 +262,13 @@ pub(crate) fn build_llm_provider(
             ),
         ));
     }
-    let api_key = if config.api_key_env.is_empty() {
+    // Trimmed as the endpoint's route health keys it, so the key read and
+    // the health kept belong to the same variable.
+    let api_key_env = config.api_key_env.trim();
+    let api_key = if api_key_env.is_empty() {
         None
     } else {
-        std::env::var(&config.api_key_env)
-            .ok()
-            .filter(|s| !s.is_empty())
+        std::env::var(api_key_env).ok().filter(|s| !s.is_empty())
     };
     let endpoint = mxr_llm::OpenAiCompatibleConfig {
         base_url: config.base_url.clone(),

@@ -252,8 +252,8 @@ fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData)
 }
 
 /// Every route is out. Background work waits, but a command you run still
-/// tries the one that comes back soonest, once; name it. A route with no key
-/// is never tried.
+/// tries the one that comes back soonest, once; name it. A route already due
+/// or being checked comes first; a route with no key is never tried.
 fn none_available<'a>(
     routes: impl Iterator<
         Item = (
@@ -265,7 +265,12 @@ fn none_available<'a>(
 ) -> String {
     routes
         .filter(|(_, state, _)| *state != LlmRouteStateData::NoKey)
-        .filter_map(|(name, _, at)| Some((name, at?)))
+        .filter_map(|(name, state, at)| match state {
+            LlmRouteStateData::Recovering | LlmRouteStateData::Probing => {
+                Some((name, at.unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC)))
+            }
+            _ => Some((name, at?)),
+        })
         .min_by_key(|(_, at)| *at)
         .map_or_else(
             || "  (no route available)".to_string(),

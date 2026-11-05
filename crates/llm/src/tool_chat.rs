@@ -139,8 +139,10 @@ pub(crate) struct OpenAiDialect {
     /// Say it the OpenRouter way, `reasoning: {"effort": "none"}`, instead of
     /// OpenAI's top-level `reasoning_effort`.
     pub nested_reasoning: bool,
-    /// Add room for thinking to the token cap. Set where no router has done
-    /// it already: a `gpt-*` model on a server of the user's own.
+    /// Add room for thinking to a completion's token cap. Set where no router
+    /// has done it already: a `gpt-*` model on a server of the user's own.
+    /// Tool-calling requests don't get it, as on the routed path: the models
+    /// that take tools here run them with reasoning off.
     pub thinking_headroom: bool,
 }
 

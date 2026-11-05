@@ -278,11 +278,14 @@ async fn the_pause_reports_when_it_ends() {
     assert_eq!(runtime.background_paused_until(), None);
     open_the_breaker(&runtime.for_feature(FEATURE)).await;
 
+    // The monotonic clock is paused, so the pause has exactly the cooldown
+    // left; only the wall clock moves between these reads.
+    let before = SystemTime::now();
     let until = runtime.background_paused_until().expect("paused");
-    let left = until.duration_since(SystemTime::now()).unwrap();
+    let after = SystemTime::now();
     assert!(
-        left <= BREAKER_MIN_COOLDOWN && left > BREAKER_MIN_COOLDOWN - Duration::from_secs(5),
-        "{left:?}"
+        until >= before + BREAKER_MIN_COOLDOWN && until <= after + BREAKER_MIN_COOLDOWN,
+        "{until:?} not the cooldown after {before:?}..={after:?}"
     );
     tokio::time::advance(BREAKER_MIN_COOLDOWN).await;
     assert_eq!(runtime.background_paused_until(), None, "due a check");

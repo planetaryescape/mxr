@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.212](https://github.com/planetaryescape/mxr/compare/v0.6.211...v0.6.212) (2026-11-05)
+
+
+### Features
+
+* act on every search match with --all as one daemon job ([#851](https://github.com/planetaryescape/mxr/issues/851)) ([39e58a2](https://github.com/planetaryescape/mxr/commit/39e58a2a927d4c3833498bdb224e00c1e838f17e))
+
+
+### Bug Fixes
+
+* keep LLM outages from using up background retries ([#873](https://github.com/planetaryescape/mxr/issues/873)) ([ea682b6](https://github.com/planetaryescape/mxr/commit/ea682b67723938603b600a60576e44c0d215fe3b))
+
 ## [0.6.211](https://github.com/planetaryescape/mxr/compare/v0.6.210...v0.6.211) (2026-11-05)
 
 

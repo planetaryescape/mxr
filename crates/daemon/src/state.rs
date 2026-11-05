@@ -533,6 +533,9 @@ pub struct AppState {
     /// config so callers can return `LlmDisabled` without `Option`
     /// gymnastics.
     pub llm: Arc<mxr_llm::LlmRuntime>,
+    /// Where the LLM background breaker and attempt ledger are saved across
+    /// restarts. `None` for test states and the demo, which never write it.
+    pub(crate) llm_state_path: Option<std::path::PathBuf>,
     pub sync_engine: Arc<SyncEngine>,
     /// Account-owned address cache. SyncEngine consults this for direction
     /// classification; handlers refresh it after every mutation through
@@ -876,6 +879,15 @@ impl AppState {
         );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
+        // After the providers are built: building them resets this state.
+        let llm_state_path = (!mxr_config::is_demo_instance())
+            .then(|| data_dir.join(crate::llm_background::STATE_FILE));
+        if let Some(saved) = llm_state_path
+            .as_deref()
+            .and_then(crate::llm_background::load)
+        {
+            llm.restore_background_state(&saved);
+        }
         let (relationship, relationship_worker) =
             RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
@@ -931,6 +943,7 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path,
             sync_engine,
             account_addresses,
             rule_mutation_gate: Default::default(),
@@ -1978,6 +1991,9 @@ impl AppState {
             tracing::trace!(session_id = %session_id.0, "auth session task aborted");
         }
 
+        // After the workers stopped, so their last outcomes are in it.
+        crate::llm_background::save_if_changed(self).await;
+
         tracing::info!(
             elapsed_ms = drain_started.elapsed().as_secs_f64() * 1000.0,
             "daemon shutdown drain completed"
@@ -2419,6 +2435,7 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path: None,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             rule_mutation_gate: Default::default(),
@@ -2520,6 +2537,7 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path: None,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             rule_mutation_gate: Default::default(),
@@ -2647,6 +2665,7 @@ impl AppState {
                 relationship,
                 contacts_refresh,
                 llm,
+                llm_state_path: None,
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 rule_mutation_gate: Default::default(),

@@ -16,7 +16,8 @@ per batch under one eight-second deadline. The existing provider fallback for
 empty reasoning responses can make one extra HTTP attempt per check; these
 attempts share the same deadline. It resumes remaining pairs on later
 ticks and after restart, with durable five-attempt retry backoff. Disabled
-models, privacy gates and the circuit breaker pause work without consuming an
+models, privacy gates, the circuit breaker and endpoint failures (unreachable,
+timed out, rate limited, 5xx, bad key) pause work without consuming an
 attempt.
 
 The queue records account, task and message identity plus an input digest and a

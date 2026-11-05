@@ -137,11 +137,15 @@ pub async fn enrich(
 
     let resp = match runtime.complete_background(req).await {
         Ok(r) => r,
-        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. }) => {
-            return base
+        Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return base,
+        // Put off until the endpoint is back, when the message is scanned
+        // again; the heuristic result stands until then.
+        Err(error @ LlmError::CircuitOpen { .. }) => {
+            runtime.record_background_failure(message_key, FINGERPRINT, &error);
+            return base;
         }
         Err(error) => {
-            runtime.record_background_attempt(message_key, FINGERPRINT, false);
+            runtime.record_background_failure(message_key, FINGERPRINT, &error);
             tracing::warn!(message = message_key, %error, "delivery LLM enrich failed; using heuristic");
             return base;
         }
@@ -621,5 +625,64 @@ mod tests {
         let _ = enrich(&feature, "msg-2", false, &input, base_signal()).await;
         let _ = enrich(&feature, "msg-1", true, &input, base_signal()).await;
         assert_eq!(provider.calls.load(Ordering::SeqCst), 3);
+    }
+
+    /// An endpoint outage is not the message's fault: it keeps the heuristic
+    /// result, stays due, and is handed to the recovery pass instead of
+    /// backing off.
+    #[tokio::test]
+    async fn an_unreachable_endpoint_puts_the_message_off_without_charging_it() {
+        use mxr_llm::{CompletionResponse, LlmCapabilities, LlmFeature, LlmProvider, LlmRuntime};
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        #[derive(Default)]
+        struct Down {
+            calls: AtomicU32,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for Down {
+            async fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> std::result::Result<CompletionResponse, LlmError> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Err(LlmError::Unreachable("connection refused".into()))
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "stub"
+            }
+        }
+
+        let provider = Arc::new(Down::default());
+        let runtime = Arc::new(LlmRuntime::new(provider.clone() as Arc<dyn LlmProvider>));
+        let feature = runtime.for_feature(LlmFeature::DeliveryExtraction);
+        let input = LlmInput {
+            from_name: "Shop",
+            from_domain: "shop.example",
+            subject: "Your order",
+            body_text: "shipped today",
+            received_at: sent(),
+            time_prefs: TimePrefs::default(),
+        };
+
+        // Fewer than the breaker needs to open: every call reaches the model,
+        // so none of them was skipped as backing off.
+        for attempt in 1..=3 {
+            let signal = enrich(&feature, "msg-1", false, &input, base_signal()).await;
+            assert_eq!(signal.decision, Decision::ShortlistLlm);
+            assert_eq!(provider.calls.load(Ordering::SeqCst), attempt);
+            assert!(feature.background_attempt_due("msg-1", ""));
+        }
+        assert_eq!(
+            runtime.take_deferred_background(LlmFeature::DeliveryExtraction),
+            ["msg-1"]
+        );
     }
 }

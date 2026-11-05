@@ -56,11 +56,15 @@ mod tool_chat;
 pub mod trace;
 
 #[cfg(test)]
+mod background_tests;
+#[cfg(test)]
 mod observation_tests;
 
-use background::{AttemptLedger, BackgroundBreaker};
-use failure::{classify_status, parse_retry_after, AttemptError};
+use background::{AttemptLedger, BackgroundBreaker, Clocks, Gate, PROBE_TIMEOUT};
+use failure::{classify_status, parse_retry_after, AttemptError, ErrorClass};
 use health::RouteFailure;
+
+pub use background::BackgroundState;
 
 pub use demo::DemoLlmProvider;
 pub use endpoint::is_loopback_endpoint;
@@ -285,8 +289,30 @@ pub enum LlmError {
     Empty,
     #[error("background LLM calls paused for {retry_after_secs}s after repeated failures")]
     CircuitOpen { retry_after_secs: u64 },
+    /// The endpoint, not the request, failed: a server error, an overload, an
+    /// unknown model or key problem, a redirect or an unreadable reply. Reads
+    /// like [`Self::Other`]; the variant is what background callers decide by.
+    #[error("LLM error: {0}")]
+    Endpoint(String),
     #[error("LLM error: {0}")]
     Other(String),
+}
+
+impl LlmError {
+    /// The endpoint was out or answered nothing usable for any request, so
+    /// the input being processed is not to blame. Background work puts the
+    /// input off instead of counting the failure against it.
+    pub fn is_endpoint_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::Unreachable(_)
+                | Self::Timeout(_)
+                | Self::RateLimited { .. }
+                | Self::Unauthorized
+                | Self::CircuitOpen { .. }
+                | Self::Endpoint(_)
+        )
+    }
 }
 
 /// Who is asking, which decides what a provider with several routes does
@@ -363,6 +389,18 @@ pub trait LlmProvider: Send + Sync {
     fn is_configured(&self) -> bool {
         true
     }
+    /// Check that the endpoint answers without spending a real request, for
+    /// the background breaker's half-open step. `None` when the provider has
+    /// no cheap check; then the next real request is the check.
+    async fn probe(&self, _timeout: Duration) -> Option<Result<(), LlmError>> {
+        None
+    }
+    /// How long until background work could reach this provider, for a
+    /// provider that tracks its own routes (`tracks_route_health`). `None`
+    /// when a request could go out now.
+    fn background_retry_in(&self) -> Option<Duration> {
+        None
+    }
 }
 
 /// Default ceiling for background LLM work (relationship summary,
@@ -379,6 +417,9 @@ pub struct LlmRuntime {
     background_timeout: RwLock<Duration>,
     background_breaker: Mutex<BackgroundBreaker>,
     background_attempts: Mutex<AttemptLedger>,
+    /// The breaker or ledger changed since [`LlmRuntime::take_unsaved_background_state`]
+    /// last handed them out.
+    background_unsaved: AtomicBool,
     observations: CompletionObservations,
     /// What mxr remembers about each provider route. Shared with the routed
     /// providers built for this runtime.
@@ -405,6 +446,7 @@ impl LlmRuntime {
             background_timeout: RwLock::new(DEFAULT_BACKGROUND_TIMEOUT),
             background_breaker: Mutex::new(BackgroundBreaker::default()),
             background_attempts: Mutex::new(AttemptLedger::default()),
+            background_unsaved: AtomicBool::new(false),
             observations: CompletionObservations::default(),
         }
     }
@@ -432,7 +474,8 @@ impl LlmRuntime {
     /// Also resets the background breaker, the attempt ledger and what was
     /// learned about each route: a new provider (config reload) deserves a
     /// fresh attempt at everything, and an old verdict (model not found, bad
-    /// base URL) may be exactly what the change fixed.
+    /// base URL) may be exactly what the change fixed. Inputs put off by an
+    /// outage stay owed and are kept.
     pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
         self.observations.replace(|| {
             *self
@@ -440,9 +483,10 @@ impl LlmRuntime {
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
             *self.breaker() = BackgroundBreaker::default();
-            *self.attempts() = AttemptLedger::default();
+            self.attempts().reset_keeping_deferred();
             self.route_health.reset();
         });
+        self.mark_background_unsaved();
     }
 
     pub fn replace_feature_providers(
@@ -503,45 +547,208 @@ impl LlmRuntime {
 
     /// The background budget and breaker around one call: refuse while the
     /// breaker is open, cut the call at the background timeout, and count
-    /// real endpoint failures toward opening it. A provider that tracks its
-    /// own route health (`tracks_route_health`) skips the breaker: it already
-    /// fails fast when no route is worth trying, and failures of single
-    /// requests say nothing about the routes.
+    /// endpoint failures toward opening it. A request-specific failure (an
+    /// empty or refused reply, a 400) shows the endpoint answered, so it
+    /// counts as the endpoint working. A provider that tracks its own route
+    /// health (`tracks_route_health`) skips the breaker: it already fails
+    /// fast when no route is worth trying.
+    ///
+    /// Once the cooldown is over, exactly one caller checks the endpoint
+    /// while the rest are turned away. With a cheap check
+    /// ([`LlmProvider::probe`]) a failed check spends no input; without one
+    /// this call is the check.
     async fn guard_background<F>(
         &self,
         generation: u64,
         feature: Option<LlmFeature>,
-        tracks_route_health: bool,
+        provider: &dyn LlmProvider,
         call: impl FnOnce(Duration) -> F,
     ) -> Result<CompletionResponse, LlmError>
     where
         F: std::future::Future<Output = Result<CompletionResponse, LlmError>>,
     {
+        let tracks_route_health = provider.tracks_route_health();
+        let budget = self.background_timeout();
+        // Released on drop, so a caller that gives up mid-check frees it.
+        let mut _probe = None;
         if !tracks_route_health {
-            let open_for = self.breaker().remaining(Instant::now());
-            if let Some(remaining) = open_for {
-                return Err(LlmError::CircuitOpen {
-                    retry_after_secs: remaining.as_secs().max(1),
-                });
+            match self.update_breaker(|breaker| breaker.admit(Instant::now())) {
+                Gate::Closed => {}
+                Gate::Open(remaining) => return Err(circuit_open(remaining)),
+                Gate::Probe => {
+                    let slot = ProbeSlot { runtime: self };
+                    match check_endpoint(provider, budget).await {
+                        None => _probe = Some(slot),
+                        Some(Err(error)) if error.is_endpoint_failure() => {
+                            self.breaker_failed(&error);
+                            drop(slot);
+                            let remaining = self
+                                .breaker()
+                                .remaining(Instant::now())
+                                .unwrap_or(background::BREAKER_MIN_COOLDOWN);
+                            return Err(circuit_open(remaining));
+                        }
+                        Some(_) => {
+                            self.breaker_succeeded();
+                            drop(slot);
+                        }
+                    }
+                }
             }
         }
-        let budget = self.background_timeout();
         let result = match tokio::time::timeout(budget, call(budget)).await {
             Ok(result) => result,
             Err(_elapsed) => Err(LlmError::Timeout(budget)),
         };
-        if !tracks_route_health {
+        // A call that started before a config reload says nothing about the
+        // new endpoint.
+        if !tracks_route_health && self.observations.is_current(generation) {
             match &result {
-                Ok(_) => self.breaker().record_success(),
-                // Not endpoint failures: no request was made.
+                Ok(_) => self.breaker_succeeded(),
+                // No request was made.
                 Err(
                     LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
                 ) => {}
-                Err(error) => self.breaker().record_failure(Instant::now(), error),
+                Err(error) if error.is_endpoint_failure() => self.breaker_failed(error),
+                Err(_) => self.breaker_succeeded(),
             }
         }
         self.observations.record(generation, feature, &result);
         result
+    }
+
+    fn update_breaker<T>(&self, change: impl FnOnce(&mut BackgroundBreaker) -> T) -> T {
+        let mut breaker = self.breaker();
+        let before = breaker.clone();
+        let result = change(&mut breaker);
+        if *breaker != before {
+            self.mark_background_unsaved();
+        }
+        result
+    }
+
+    fn breaker_succeeded(&self) {
+        if self.update_breaker(BackgroundBreaker::record_success) {
+            self.route_health.recovery_signal().notify();
+        }
+    }
+
+    fn breaker_failed(&self, error: &LlmError) {
+        self.update_breaker(|breaker| breaker.record_failure(Instant::now(), error));
+    }
+
+    fn mark_background_unsaved(&self) {
+        self.background_unsaved.store(true, Ordering::Release);
+    }
+
+    /// Changes each time an endpoint that was out answers again: the
+    /// background breaker closes after being open, or a route recovers.
+    /// Whoever re-runs put-off work waits on it.
+    pub fn subscribe_background_recovery(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.route_health.recovery_signal().subscribe()
+    }
+
+    /// The inputs of `feature` put off because the endpoint was out, removed
+    /// so a recovery pass runs each once. One the endpoint fails again is put
+    /// off again.
+    pub fn take_deferred_background(&self, feature: LlmFeature) -> Vec<String> {
+        let keys = self.attempts().take_deferred(feature);
+        if !keys.is_empty() {
+            self.mark_background_unsaved();
+        }
+        keys
+    }
+
+    /// Which of `features` have inputs put off by an outage that should run
+    /// again now. While the breaker's cooldown runs, none; once it is over,
+    /// this checks the endpoint cheaply (when the provider can) as the one
+    /// half-open check, so a recovery pass doesn't need a new input to
+    /// notice the endpoint is back. A feature that is blocked or has no
+    /// model keeps its inputs for later.
+    pub async fn background_recovery_due(&self, features: &[LlmFeature]) -> Vec<LlmFeature> {
+        let mut due = Vec::new();
+        // The breaker is shared, so it is checked at most once.
+        let mut breaker_ready = None;
+        for &feature in features {
+            if !self.attempts().has_deferred(feature) || self.blocked_reason(feature).is_some() {
+                continue;
+            }
+            let provider = self.provider_for_feature(feature);
+            if !provider.is_configured() {
+                continue;
+            }
+            let ready = if provider.tracks_route_health() {
+                provider.background_retry_in().is_none()
+            } else if let Some(ready) = breaker_ready {
+                ready
+            } else {
+                let ready = self.breaker_lets_work_through(provider.as_ref()).await;
+                breaker_ready = Some(ready);
+                ready
+            };
+            if ready {
+                due.push(feature);
+            }
+        }
+        due
+    }
+
+    /// Whether background calls to `provider` would go through, running the
+    /// half-open check when the cooldown is over.
+    async fn breaker_lets_work_through(&self, provider: &dyn LlmProvider) -> bool {
+        match self.update_breaker(|breaker| breaker.admit(Instant::now())) {
+            Gate::Closed => true,
+            Gate::Open(_) => false,
+            Gate::Probe => {
+                let _slot = ProbeSlot { runtime: self };
+                match check_endpoint(provider, self.background_timeout()).await {
+                    // No cheap check: the first re-run input is the check.
+                    None => true,
+                    Some(Err(error)) if error.is_endpoint_failure() => {
+                        self.breaker_failed(&error);
+                        false
+                    }
+                    Some(_) => {
+                        self.breaker_succeeded();
+                        true
+                    }
+                }
+            }
+        }
+    }
+
+    /// The background breaker and ledger, when they changed since the last
+    /// call, for saving across restarts. A failed save hands them back with
+    /// [`Self::background_state_unsaved`].
+    pub fn take_unsaved_background_state(&self) -> Option<BackgroundState> {
+        self.take_unsaved_background_state_at(Clocks::current())
+    }
+
+    fn take_unsaved_background_state_at(&self, clocks: Clocks) -> Option<BackgroundState> {
+        if !self.background_unsaved.swap(false, Ordering::AcqRel) {
+            return None;
+        }
+        let breaker = self.breaker().clone();
+        Some(BackgroundState::capture(&breaker, &self.attempts(), clocks))
+    }
+
+    /// Mark the state as still needing a save (the last one failed).
+    pub fn background_state_unsaved(&self) {
+        self.mark_background_unsaved();
+    }
+
+    /// Put back the breaker and ledger saved by an earlier daemon. Call it
+    /// after the providers are in place: replacing a provider resets both.
+    pub fn restore_background_state(&self, state: &BackgroundState) {
+        self.restore_background_state_at(state, Clocks::current());
+    }
+
+    fn restore_background_state_at(&self, state: &BackgroundState, clocks: Clocks) {
+        let (breaker, ledger) = state.restore(clocks);
+        *self.breaker() = breaker;
+        *self.attempts() = ledger;
+        // What is in memory now is what the file says.
+        self.background_unsaved.store(false, Ordering::Release);
     }
 
     fn current(&self) -> Arc<dyn LlmProvider> {
@@ -578,6 +785,36 @@ impl LlmRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(&feature)
             .cloned()
+    }
+}
+
+/// The provider's cheap endpoint check, bounded by [`PROBE_TIMEOUT`] and the
+/// background budget even if the provider doesn't bound it itself.
+async fn check_endpoint(
+    provider: &dyn LlmProvider,
+    budget: Duration,
+) -> Option<Result<(), LlmError>> {
+    let timeout = budget.min(PROBE_TIMEOUT);
+    tokio::time::timeout(timeout, provider.probe(timeout))
+        .await
+        .unwrap_or(Some(Err(LlmError::Timeout(timeout))))
+}
+
+fn circuit_open(remaining: Duration) -> LlmError {
+    LlmError::CircuitOpen {
+        retry_after_secs: remaining.as_secs().max(1),
+    }
+}
+
+/// The breaker's half-open check held by one caller. Dropping it frees the
+/// check for the next caller; recording an outcome already has.
+struct ProbeSlot<'a> {
+    runtime: &'a LlmRuntime,
+}
+
+impl Drop for ProbeSlot<'_> {
+    fn drop(&mut self) {
+        self.runtime.breaker().release_probe();
     }
 }
 
@@ -626,12 +863,33 @@ impl FeatureLlmRuntime {
     }
 
     /// Record how a background attempt at this input went. Callers count a
-    /// reply they couldn't use (e.g. non-JSON) as a failure too, and skip
-    /// recording when no request was made (disabled, blocked, breaker open).
+    /// reply they couldn't use (e.g. non-JSON) as a failure too. A call that
+    /// failed goes through [`Self::record_background_failure`] instead.
     pub fn record_background_attempt(&self, key: &str, fingerprint: &str, succeeded: bool) {
         self.runtime
             .attempts()
             .record(self.feature, key, fingerprint, succeeded, Instant::now());
+        self.runtime.mark_background_unsaved();
+    }
+
+    /// Record a background call at this input that returned `error`. An
+    /// endpoint failure (including the breaker being open) is not the
+    /// input's fault: it costs the input none of its retries, and the input
+    /// is put off until the endpoint answers again. Any other failure counts
+    /// against the input. Disabled and privacy-blocked calls made no request
+    /// and record nothing.
+    pub fn record_background_failure(&self, key: &str, fingerprint: &str, error: &LlmError) {
+        if matches!(error, LlmError::Disabled | LlmError::PrivacyBlocked(_)) {
+            return;
+        }
+        let mut ledger = self.runtime.attempts();
+        if error.is_endpoint_failure() {
+            ledger.defer(self.feature, key);
+        } else {
+            ledger.record(self.feature, key, fingerprint, false, Instant::now());
+        }
+        drop(ledger);
+        self.runtime.mark_background_unsaved();
     }
 
     pub fn capabilities(&self) -> LlmCapabilities {
@@ -752,11 +1010,15 @@ impl PinnedLlm {
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
+        // Before the breaker, so a blocked feature never runs its check.
+        if let Some(reason) = &self.blocked {
+            return Err(LlmError::PrivacyBlocked(reason.clone()));
+        }
         self.runtime
             .guard_background(
                 self.generation,
                 Some(self.feature),
-                self.provider.tracks_route_health(),
+                self.provider.as_ref(),
                 |budget| self.complete_as(req, CallKind::Background { budget }),
             )
             .await
@@ -1174,15 +1436,15 @@ impl OpenAiCompatibleProvider {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             let class = classify_status(status.as_u16(), retry_after, &body);
-            return Err(AttemptError {
-                error: LlmError::Other(format!(
+            return Err(AttemptError::new(
+                LlmError::Other(format!(
                     "{} {}: {}",
                     status.as_u16(),
                     status.canonical_reason().unwrap_or(""),
                     redact_key(body, api_key)
                 )),
                 class,
-            });
+            ));
         }
         Ok(response)
     }
@@ -1269,6 +1531,75 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
     fn base_url(&self) -> Option<&str> {
         Some(&self.base_url)
+    }
+
+    async fn probe(&self, timeout: Duration) -> Option<Result<(), LlmError>> {
+        Some(self.list_models(timeout).await)
+    }
+}
+
+impl OpenAiCompatibleProvider {
+    /// `GET {base_url}/models`: whether the endpoint answers, without
+    /// sending a prompt. Failures read like a chat request's would. A server
+    /// that answers but has no model listing (404) or rejects the method is
+    /// up, so that counts as answering; the real request then shows whether
+    /// the model works.
+    async fn list_models(&self, timeout: Duration) -> Result<(), LlmError> {
+        let client = self
+            .client
+            .as_ref()
+            .map_err(|error| LlmError::Other(error.clone()))?;
+        let api_key = self.api_key.as_deref();
+        let budget = timeout.min(self.request_timeout);
+        let mut request = client
+            .get(format!("{}/models", self.base_url))
+            .timeout(budget);
+        if let Some(key) = api_key {
+            request = request.bearer_auth(key);
+        }
+        let response = request.send().await.map_err(|e| {
+            if e.is_timeout() {
+                LlmError::Timeout(budget)
+            } else if e.is_connect() {
+                LlmError::Unreachable(redact_key(e.to_string(), api_key))
+            } else {
+                LlmError::Endpoint(redact_key(e.to_string(), api_key))
+            }
+        })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        if status.is_redirection() {
+            return Err(LlmError::Endpoint(format!(
+                "the LLM endpoint redirected its model listing ({status}); set llm.base_url to \
+                 the final address"
+            )));
+        }
+        let retry_after = parse_retry_after(
+            response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()),
+        );
+        match status.as_u16() {
+            401 => return Err(LlmError::Unauthorized),
+            429 => {
+                return Err(LlmError::RateLimited {
+                    retry_after_secs: retry_after.map_or(30, |after| after.as_secs()),
+                })
+            }
+            404 => return Ok(()),
+            _ => {}
+        }
+        match classify_status(status.as_u16(), retry_after, "") {
+            ErrorClass::Route(_) => Err(LlmError::Endpoint(format!(
+                "{} {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("")
+            ))),
+            ErrorClass::Request => Ok(()),
+        }
     }
 }
 
@@ -1700,7 +2031,7 @@ mod tests {
         async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if self.fail.load(Ordering::SeqCst) {
-                return Err(LlmError::Empty);
+                return Err(LlmError::Unreachable("connection refused".into()));
             }
             Ok(CompletionResponse {
                 content: "ok".into(),
@@ -1733,7 +2064,7 @@ mod tests {
 
         for _ in 0..BREAKER_THRESHOLD {
             let error = commitments.complete_background(hello()).await.unwrap_err();
-            assert!(matches!(error, LlmError::Empty), "got {error:?}");
+            assert!(matches!(error, LlmError::Unreachable(_)), "got {error:?}");
         }
         // Open: shared across features, and the provider is not called.
         let error = deliveries.complete_background(hello()).await.unwrap_err();
@@ -1747,7 +2078,7 @@ mod tests {
         tokio::time::advance(BREAKER_MIN_COOLDOWN).await;
         assert!(matches!(
             commitments.complete_background(hello()).await,
-            Err(LlmError::Empty)
+            Err(LlmError::Unreachable(_))
         ));
         assert!(matches!(
             commitments.complete_background(hello()).await,
@@ -1763,7 +2094,7 @@ mod tests {
         for _ in 0..BREAKER_THRESHOLD - 1 {
             assert!(matches!(
                 commitments.complete_background(hello()).await,
-                Err(LlmError::Empty)
+                Err(LlmError::Unreachable(_))
             ));
         }
     }
@@ -1803,7 +2134,7 @@ mod tests {
         // A user-initiated call still reaches the endpoint and sees the real error.
         assert!(matches!(
             feature.complete(hello()).await,
-            Err(LlmError::Empty)
+            Err(LlmError::Unreachable(_))
         ));
         assert_eq!(provider.calls.load(Ordering::SeqCst), BREAKER_THRESHOLD + 1);
     }

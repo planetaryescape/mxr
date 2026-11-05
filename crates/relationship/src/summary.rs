@@ -22,6 +22,18 @@ struct SummaryResponse {
     known_topics: Vec<String>,
 }
 
+/// Names one contact in the background attempt ledger.
+pub(crate) fn attempt_key(account_id: &AccountId, email: &str) -> String {
+    format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase())
+}
+
+/// The contact an [`attempt_key`] names, for re-running work an LLM outage
+/// put off.
+pub fn parse_attempt_key(key: &str) -> Option<(AccountId, String)> {
+    let (account_id, email) = key.split_once(':')?;
+    Some((account_id.parse().ok()?, email.to_string()))
+}
+
 /// `force` is for explicit user rebuilds: it skips the backoff that
 /// otherwise stops re-sending an input that recently failed.
 pub async fn generate_relationship_summary(
@@ -35,7 +47,7 @@ pub async fn generate_relationship_summary(
         return Ok(false);
     };
     let feature_llm = llm.for_feature(LlmFeature::RelationshipSummary);
-    let attempt_key = format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase());
+    let attempt_key = attempt_key(account_id, email);
     if !force && !feature_llm.background_attempt_due(&attempt_key, &style.source_hash) {
         return Ok(false);
     }
@@ -112,11 +124,16 @@ pub async fn generate_relationship_summary(
         .await
     {
         Ok(response) => response,
-        // Open breaker already warned once; skip instead of a WARN per contact.
-        Err(LlmError::Disabled | LlmError::CircuitOpen { .. }) => return Ok(false),
+        Err(LlmError::Disabled) => return Ok(false),
         Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
+        // Put off until the endpoint is back. The open breaker already
+        // warned once; skip instead of a WARN per contact.
+        Err(error @ LlmError::CircuitOpen { .. }) => {
+            feature_llm.record_background_failure(&attempt_key, &style.source_hash, &error);
+            return Ok(false);
+        }
         Err(error) => {
-            feature_llm.record_background_attempt(&attempt_key, &style.source_hash, false);
+            feature_llm.record_background_failure(&attempt_key, &style.source_hash, &error);
             return Err(error.into());
         }
     };
@@ -180,6 +197,18 @@ mod tests {
     };
     use mxr_llm::{LlmRuntime, NoopProvider};
     use mxr_store::{ContactStyleRecord, Store};
+
+    #[test]
+    fn an_attempt_key_names_its_contact_again() {
+        let account_id = AccountId::new();
+        let key = attempt_key(&account_id, "Alice@Example.com");
+        assert_eq!(
+            parse_attempt_key(&key),
+            Some((account_id, "alice@example.com".to_string()))
+        );
+        assert_eq!(parse_attempt_key("not-an-account:alice@example.com"), None);
+        assert_eq!(parse_attempt_key("no separator"), None);
+    }
 
     #[tokio::test]
     async fn summary_regeneration_waits_for_three_unsummarized_messages() {

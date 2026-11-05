@@ -35,6 +35,12 @@ impl CompletionObservations {
         select(*generation)
     }
 
+    /// Whether `generation` is still the current one: no provider was
+    /// replaced since it was read.
+    pub(crate) fn is_current(&self, generation: u64) -> bool {
+        self.with_generation(|current| current == generation)
+    }
+
     pub(crate) fn replace<T>(&self, update: impl FnOnce() -> T) -> T {
         let mut generation = self
             .generation
@@ -104,6 +110,6 @@ fn failure_kind(error: &LlmError) -> Option<LlmFailureKind> {
         LlmError::Timeout(_) => Some(LlmFailureKind::Timeout),
         LlmError::Unauthorized => Some(LlmFailureKind::Unauthorized),
         LlmError::Empty => Some(LlmFailureKind::Empty),
-        LlmError::Other(_) => Some(LlmFailureKind::Other),
+        LlmError::Endpoint(_) | LlmError::Other(_) => Some(LlmFailureKind::Other),
     }
 }

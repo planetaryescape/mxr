@@ -256,9 +256,10 @@ async fn model_resolution(
     }
     let response = match tokio::time::timeout_at(deadline, llm.complete_background(request)).await {
         Ok(Ok(response)) => response,
-        Ok(Err(
-            LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
-        )) => return ModelOutcome::Skipped,
+        Ok(Err(LlmError::Disabled | LlmError::PrivacyBlocked(_))) => return ModelOutcome::Skipped,
+        // The endpoint is out (or the breaker is open): not this input's
+        // fault, so it costs none of its attempts.
+        Ok(Err(error)) if error.is_endpoint_failure() => return ModelOutcome::Skipped,
         _ => return ModelOutcome::Failed,
     };
     let Ok(parsed) = serde_json::from_str::<ModelResolution>(&response.content) else {

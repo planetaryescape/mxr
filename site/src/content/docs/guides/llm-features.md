@@ -230,6 +230,40 @@ the model without restarting the process. `mxr config set llm.<key> <value>`
 tells a running daemon to reload; a hand edit of `config.toml` reaches it on
 the next account reload or restart.
 
+## Background work waits out an endpoint outage
+
+Relationship summaries, delivery confirmation and to-do resolution checks run
+in the background. When the model's endpoint is out (no connection, a
+timeout, a rate limit, a 5xx, a bad key or an unknown model), the email or
+contact being processed is not blamed for it:
+
+- After five endpoint failures in a row, background model calls pause for 5
+  minutes, doubling to an hour while the endpoint stays out. Commands you run
+  are not paused.
+- When a pause ends, mxr checks a `base_url` endpoint with `GET
+  <base_url>/models`, which sends no mail. One check runs at a time, and a
+  failed check starts the next, longer pause.
+- Contacts and messages skipped while the endpoint was out are processed once
+  each soon after a check succeeds, without waiting for new mail. A parcel
+  email seen during the outage keeps its heuristic result until then.
+
+With Claude or GPT through mxr's own routes there is no separate pause: work
+skipped while every provider was out runs once one of them is back (see
+[what mxr remembers about each provider](#what-mxr-remembers-about-each-provider)).
+
+For relationship summaries and delivery confirmation, a reply mxr can't use,
+such as an empty one, or a 400 about the request, does count against that
+input: it is retried after 1 h, 4 h, 16 h, then daily, and skipped after five
+tries until new mail changes it. `mxr deliveries scan` retries skipped
+messages straight away.
+
+The pause, the retry times and the skipped work are saved to
+`llm-background.json` next to `mxr.db` in mxr's data directory, readable only
+by you, so a restart keeps them. The file holds contact addresses, message
+ids and content hashes, never mail text. If it can't be read, mxr logs a
+warning and starts fresh. Reloading the config clears the pause and the
+retry times but keeps the skipped work.
+
 ## Know what each request sends, and where
 
 The endpoint decides where your mail goes. With a local endpoint nothing

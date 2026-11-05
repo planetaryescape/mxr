@@ -738,9 +738,11 @@ mod tests {
             );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-            .await
-            .is_some());
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
+                .await
+                .is_some()
+        );
 
         state
             .store
@@ -756,9 +758,11 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-            .await
-            .is_none());
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
+                .await
+                .is_none()
+        );
 
         summarize_thread(&state, &thread_id).await.unwrap();
         let requests = llm.requests.lock().expect("requests");
@@ -829,7 +833,11 @@ mod tests {
             .await
             .unwrap();
         let requests = llm.requests.lock().expect("requests");
-        assert_eq!(requests.len(), 2, "allowing the context misses the old cache");
+        assert_eq!(
+            requests.len(),
+            2,
+            "allowing the context misses the old cache"
+        );
         assert!(requests[1].messages[1]
             .content
             .contains("Alice prefers launch context before asks."));
@@ -923,9 +931,11 @@ mod tests {
 
         summarize_thread(&state, &thread_id).await.unwrap();
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-            .await
-            .is_some());
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
+                .await
+                .is_some()
+        );
 
         // The summary prompt names the owner's addresses, so a summary written
         // before this alias existed may describe the wrong ownership.
@@ -934,8 +944,10 @@ mod tests {
             .add_account_address(&account_id, "new-alias@example.com", false)
             .await
             .unwrap();
-        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes, true)
-            .await
-            .is_none());
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes, true)
+                .await
+                .is_none()
+        );
     }
 }

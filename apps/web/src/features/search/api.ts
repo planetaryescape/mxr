@@ -7,8 +7,10 @@ export type SearchSort = "relevance" | "newest" | "oldest" | "verdict";
 export interface SearchParams {
   q: string;
   mode?: SearchMode;
+  /** Omitted, the daemon applies `[search] default_sort`. */
   sort?: SearchSort;
   account?: string;
+  /** Omitted, the daemon applies `[search] max_results` to search. */
   limit?: number;
   offset?: number;
   scope?: "threads" | "messages" | "attachments" | "triage";
@@ -73,8 +75,9 @@ export function fetchSearch(
   const query = new URLSearchParams();
   query.set("q", params.q);
   query.set("mode", params.mode ?? "lexical");
-  query.set("sort", params.sort === "relevance" ? "relevant" : (params.sort ?? "newest"));
-  query.set("limit", String(params.limit ?? 50));
+  // Omitted sort and limit stay off the URL so the daemon's config defaults apply.
+  if (params.sort) query.set("sort", params.sort === "relevance" ? "relevant" : params.sort);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
   query.set("offset", String(params.offset ?? 0));
   query.set("scope", params.scope ?? "threads");
   if (params.verdict) query.set("verdict", params.verdict);

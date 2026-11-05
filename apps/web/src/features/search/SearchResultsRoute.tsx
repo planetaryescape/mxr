@@ -61,7 +61,8 @@ export function SearchResultsRoute() {
   const accountScope = useUiPrefs((s) => s.accountScope);
   const q = search.q ?? "";
   const mode = search.mode ?? "lexical";
-  const sort = search.sort ?? "relevance";
+  // Undefined is the Default choice: the daemon picks the order.
+  const sort = search.sort;
   const scope: Scope = (search.scope as Scope | undefined) ?? "threads";
   const verdict = search.verdict as Verdict | undefined;
   const groupBy = (search.groupBy as SearchGroupBy | undefined) ?? "from";
@@ -79,7 +80,9 @@ export function SearchResultsRoute() {
     if (!q) inputRef.current?.focus();
   }, [q]);
 
-  const request = { q, mode, sort, scope, account, limit: SEARCH_PAGE_LIMIT, verdict };
+  // Search takes its page size from [search] max_results. Triage keeps its own page.
+  const limit = scope === "triage" ? SEARCH_PAGE_LIMIT : undefined;
+  const request = { q, mode, sort, scope, account, limit, verdict };
   const results = useInfiniteQuery({
     queryKey: searchKey(request),
     queryFn: ({ signal, pageParam }) =>
@@ -116,7 +119,7 @@ export function SearchResultsRoute() {
         search: {
           q: next.q ?? q,
           mode: next.mode ?? mode,
-          sort: next.sort ?? sort,
+          sort: next.sort === null ? undefined : (next.sort ?? sort),
           scope: next.scope ?? scope,
           verdict: next.verdict === null ? undefined : (next.verdict ?? verdict),
           groupBy: next.groupBy ?? groupBy,

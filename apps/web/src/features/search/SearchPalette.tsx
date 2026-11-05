@@ -71,7 +71,8 @@ export function SearchPalette() {
     const trimmed = query.trim();
     if (!trimmed) return;
     close();
-    void navigate({ to: "/search", search: { q: trimmed, mode: "lexical", sort: "relevance" } });
+    // No sort: the full page starts at Default, the configured order.
+    void navigate({ to: "/search", search: { q: trimmed, mode: "lexical" } });
   }
 
   function openRow(row: MessageRowView) {

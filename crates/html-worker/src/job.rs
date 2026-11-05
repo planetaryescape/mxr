@@ -2,7 +2,7 @@
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::supervisor::{self, Outcome, Supervisor};
+use crate::supervisor::{self, FallbackReason, Outcome, Supervisor};
 
 /// One parse of untrusted HTML: a function from the document and some
 /// parameters to a result, identified by `kind` on the wire.
@@ -58,24 +58,37 @@ impl<P, R> Job<P, R> {
 impl<P: Serialize, R: DeserializeOwned> Job<P, R> {
     /// Runs the job in the installed helper, or here when none is installed.
     pub fn call(&self, html: &str, params: &P) -> Option<R> {
+        self.try_call(html, params).ok()
+    }
+
+    /// As [`Job::call`], saying why there is no result: a caller that refuses
+    /// the document can then tell "too complex" from "the helper could not
+    /// start".
+    pub fn try_call(&self, html: &str, params: &P) -> Result<R, FallbackReason> {
         match supervisor::current() {
-            Some(supervisor) => self.call_on(&supervisor, html, params),
-            None => Some(self.run_here(html, params)),
+            Some(supervisor) => self.try_call_on(&supervisor, html, params),
+            None => Ok(self.run_here(html, params)),
         }
     }
 
     /// Runs the job in `supervisor`'s helper.
     pub fn call_on(&self, supervisor: &Supervisor, html: &str, params: &P) -> Option<R> {
-        let params = serde_json::to_vec(params).ok()?;
+        self.try_call_on(supervisor, html, params).ok()
+    }
+
+    pub fn try_call_on(
+        &self,
+        supervisor: &Supervisor,
+        html: &str,
+        params: &P,
+    ) -> Result<R, FallbackReason> {
+        let params = serde_json::to_vec(params).map_err(|_| FallbackReason::JobFailed)?;
         match supervisor.run(self.kind, html.as_bytes(), &params, self.max_html_bytes) {
-            Outcome::Done(bytes) => match serde_json::from_slice(&bytes) {
-                Ok(result) => Some(result),
-                Err(_) => {
-                    supervisor.note_undecodable_result();
-                    None
-                }
-            },
-            Outcome::Fallback(_) => None,
+            Outcome::Done(bytes) => serde_json::from_slice(&bytes).map_err(|_| {
+                supervisor.note_undecodable_result();
+                FallbackReason::JobFailed
+            }),
+            Outcome::Fallback(reason) => Err(reason),
         }
     }
 }

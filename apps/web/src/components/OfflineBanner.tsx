@@ -5,6 +5,7 @@ import { useDaemonDown } from "@/lib/daemonAvailability";
 import { copyCommand, START_COMMAND } from "@/lib/copyCommand";
 import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
+import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 
 /** The event stream alone dropping only matters once it stays down. */
 const STREAM_BANNER_DELAY_MS = 30_000;
@@ -113,6 +114,14 @@ function useBannerContent(): ReactNode {
   }
 
   if (daemonDown) {
+    const host = new URL(getBridgeBaseUrl()).hostname;
+    if (!["localhost", "mxr.localhost", "127.0.0.1", "[::1]"].includes(host)) {
+      return (
+        <Banner kind="daemon" role="status">
+          Offline. Saved mail stays readable. mxr reconnects automatically.
+        </Banner>
+      );
+    }
     return (
       <Banner
         kind="daemon"

@@ -88,6 +88,20 @@ async function settle(): Promise<void> {
 }
 
 describe("daemon availability", () => {
+  test("a worker offline response is not an answer from a live daemon", async () => {
+    stop = startDaemonAvailability(new QueryClient());
+    fetchMock.mockImplementationOnce(async () =>
+      Response.json(
+        { error: "not saved", code: "offline_not_cached" },
+        { status: 503, headers: { "x-mxr-offline": "1" } },
+      ),
+    );
+    await probeDaemon();
+    await settle();
+    expect(isDaemonDown()).toBe(true);
+    expect(onlineManager.isOnline()).toBe(false);
+  });
+
   test("an unanswered request probes; only a failed probe marks the daemon down", async () => {
     stop = startDaemonAvailability(new QueryClient());
     daemonUp = false;

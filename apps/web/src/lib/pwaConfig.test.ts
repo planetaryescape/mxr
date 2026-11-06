@@ -18,16 +18,13 @@ describe("PWA config", () => {
     );
   });
 
-  it("retires stale service workers before they can outlive the daemon protocol", () => {
-    expect(pwaOptions.registerType).toBe("autoUpdate");
-    expect(pwaOptions.selfDestroying).toBe(true);
+  it("keeps an offline worker and waits for the user before activating updates", () => {
+    expect(pwaOptions.strategies).toBe("injectManifest");
+    expect(pwaOptions.registerType).toBe("prompt");
+    expect(pwaOptions.selfDestroying).not.toBe(true);
   });
 
-  it("keeps API traffic out of the app-shell fallback if PWA caching returns", () => {
-    expect(pwaOptions.workbox?.globPatterns).toEqual(["**/*.{js,css,html,png,svg,woff2}"]);
-
-    const denylist = pwaOptions.workbox?.navigateFallbackDenylist ?? [];
-    expect(denylist.some((pattern) => pattern.test("/api/v1/mail/mailbox"))).toBe(true);
-    expect(denylist.every((pattern) => !pattern.test("/m/inbox"))).toBe(true);
+  it("precaches app resources for an offline launch", () => {
+    expect(pwaOptions.injectManifest?.globPatterns).toEqual(["**/*.{js,css,html,png,svg,woff2}"]);
   });
 });

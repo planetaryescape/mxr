@@ -7,17 +7,33 @@ import { useConnectionStore } from "@/state/connectionStore";
 
 import { OfflineBanner } from "./OfflineBanner";
 
+const bridge = vi.hoisted(() => ({ url: "http://localhost" }));
+vi.mock("@/lib/tokenStorage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/tokenStorage")>()),
+  getBridgeBaseUrl: () => bridge.url,
+}));
+
 function banner(kind: string): Element | null {
   return document.querySelector(`[data-offline-banner="${kind}"]`);
 }
 
 beforeEach(() => {
+  bridge.url = "http://localhost";
   vi.useFakeTimers();
   useConnectionStore.setState({
     state: "connected",
     daemonDown: false,
     protocolMismatch: undefined,
   });
+});
+
+test("a hosted app explains offline reading without asking the phone to run a daemon", () => {
+  bridge.url = "https://mxr.example.test";
+  useConnectionStore.setState({ daemonDown: true });
+  render(<OfflineBanner />);
+  expect(banner("daemon")).toHaveTextContent("Saved mail stays readable");
+  expect(banner("daemon")).toHaveTextContent("reconnects automatically");
+  expect(document.body).not.toHaveTextContent("Copy start command");
 });
 
 afterEach(() => {

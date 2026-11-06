@@ -18,11 +18,17 @@
  */
 
 import { onWorkspaceChanged } from "./workspaceOwner";
+import { clearOfflineMail } from "@/pwa/offlineReads";
 import { requestCoordinator } from "./requestCoordinator";
 import { onlineManager, type Query, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { apiFetch, DaemonUnavailableError, onDaemonReachability } from "@/api/client";
+import {
+  apiFetch,
+  BridgeRequestError,
+  DaemonUnavailableError,
+  onDaemonReachability,
+} from "@/api/client";
 import { daemonEvents } from "@/lib/ws";
 import { useConnectionStore } from "@/state/connectionStore";
 
@@ -88,8 +94,9 @@ export function probeDaemon(): Promise<void> {
     .then(
       () => undefined,
       (error: unknown) => {
-        // Any other failure is still an answer from the daemon.
-        if (!(error instanceof DaemonUnavailableError)) return;
+        const offline = error instanceof BridgeRequestError && error.code === "offline_not_cached";
+        // Worker fallback errors are local; other structured failures reach the daemon.
+        if (!(error instanceof DaemonUnavailableError) && !offline) return;
         setDown(true);
         scheduleProbe();
       },
@@ -110,6 +117,7 @@ function retainedPrivateQuery(query: Query): boolean {
 
 export function startDaemonAvailability(queryClient: QueryClient): () => void {
   const offWorkspace = onWorkspaceChanged(() => {
+    clearOfflineMail();
     requestCoordinator.cancelAll();
     void queryClient
       .cancelQueries({ predicate: (query) => !retainedPrivateQuery(query) })

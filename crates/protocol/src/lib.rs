@@ -1932,6 +1932,37 @@ mod tests {
     }
 
     #[test]
+    fn every_client_kind_name_parses_back_to_its_kind() {
+        // The bridge turns Activity filter text back into a `ClientKind`, so
+        // every tag the recorder writes must parse: a missing arm silently
+        // drops that client's rows from a filtered view.
+        for kind in [
+            ClientKind::Human,
+            ClientKind::Tui,
+            ClientKind::Cli,
+            ClientKind::Script,
+            ClientKind::Web,
+            ClientKind::Daemon,
+            ClientKind::Agent,
+            ClientKind::Mcp,
+            ClientKind::Assistant,
+        ] {
+            assert_eq!(
+                kind.as_str().parse::<ClientKind>(),
+                Ok(kind),
+                "`{}` must parse back to the kind the recorder writes",
+                kind.as_str()
+            );
+        }
+        for not_a_kind in ["constructor", "__proto__", "", "Cli", "e-mail"] {
+            assert!(
+                not_a_kind.parse::<ClientKind>().is_err(),
+                "`{not_a_kind}` is not a client kind"
+            );
+        }
+    }
+
+    #[test]
     fn request_categories_cover_core_mail_variants() {
         for (request, expected) in request_category_cases()
             .into_iter()

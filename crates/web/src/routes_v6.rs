@@ -2877,15 +2877,8 @@ fn is_indexed_key(key: &str, field: &str) -> bool {
 /// The client kind `s` names, or the caller's mistake: dropping a source the
 /// user picked would show every row instead of theirs.
 fn parse_source(s: &str) -> Result<mxr_protocol::ClientKind, BridgeError> {
-    match s {
-        "tui" => Ok(mxr_protocol::ClientKind::Tui),
-        "cli" => Ok(mxr_protocol::ClientKind::Cli),
-        "web" => Ok(mxr_protocol::ClientKind::Web),
-        "daemon" => Ok(mxr_protocol::ClientKind::Daemon),
-        other => Err(BridgeError::BadRequest(format!(
-            "unknown activity source '{other}'"
-        ))),
-    }
+    s.parse::<mxr_protocol::ClientKind>()
+        .map_err(|err| BridgeError::BadRequest(err.to_string()))
 }
 
 fn parse_tier(s: &str) -> Option<mxr_protocol::ActivityTier> {

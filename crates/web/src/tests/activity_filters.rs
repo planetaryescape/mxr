@@ -140,6 +140,42 @@ async fn comma_and_bracket_forms_apply_the_same_filter() {
 }
 
 #[tokio::test]
+async fn every_activity_source_chip_reaches_the_daemon() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = test_http_client();
+    let chips = [
+        "human",
+        "tui",
+        "cli",
+        "script",
+        "web",
+        "daemon",
+        "agent",
+        "mcp",
+        "assistant",
+    ];
+
+    for chip in chips {
+        seen.lock().unwrap().clear();
+        let response = get(
+            &client,
+            format!("http://{addr}/api/v1/admin/activity?source={chip}"),
+        )
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "chip `{chip}`");
+        let filter = only_filter(&seen);
+        assert_eq!(
+            filter.sources.len(),
+            1,
+            "chip `{chip}` must not be dropped: {filter:?}"
+        );
+        assert_eq!(filter.sources[0].as_str(), chip);
+    }
+}
+
+#[tokio::test]
 async fn an_unknown_source_or_tier_is_refused_rather_than_dropped() {
     let (_temp, addr, seen) = serve_recording().await;
     let client = test_http_client();

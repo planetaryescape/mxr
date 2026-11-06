@@ -607,6 +607,40 @@ impl Default for ClientKind {
     }
 }
 
+/// A client tag that names no [`ClientKind`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownClientKind(pub String);
+
+impl std::fmt::Display for UnknownClientKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown activity source '{}'", self.0)
+    }
+}
+
+impl std::error::Error for UnknownClientKind {}
+
+impl std::str::FromStr for ClientKind {
+    type Err = UnknownClientKind;
+
+    /// The inverse of [`Self::as_str`], the tags the activity recorder writes.
+    /// The bridge reads filters as text, so this is the one place that decides
+    /// which source names are real; a filter can't quietly drop a kind.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "human" => Ok(Self::Human),
+            "tui" => Ok(Self::Tui),
+            "cli" => Ok(Self::Cli),
+            "script" => Ok(Self::Script),
+            "web" => Ok(Self::Web),
+            "daemon" => Ok(Self::Daemon),
+            "agent" => Ok(Self::Agent),
+            "mcp" => Ok(Self::Mcp),
+            "assistant" => Ok(Self::Assistant),
+            other => Err(UnknownClientKind(other.to_owned())),
+        }
+    }
+}
+
 /// One IPC frame: the unit [`crate::IpcCodec`] reads and writes on the
 /// daemon socket. `id` is a client-chosen correlation number — the daemon
 /// echoes it on the matching [`Response`] so clients can multiplex requests

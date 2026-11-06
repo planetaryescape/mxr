@@ -1122,3 +1122,94 @@ async fn authenticated_failure_requester_never_uses_the_display_brand() {
         .contains("Stripe"));
     println!("documented warmed-domain payment residual: created=1 false_display_brand=0");
 }
+
+#[tokio::test]
+async fn an_existing_alert_task_does_not_drop_the_independent_owner_request() {
+    let case = Case {
+        from: "notifications@stripe.com",
+        display: Some("Stripe"),
+        subject: "Your payment failed",
+        prior: vec![("stripe.com", 12, 200)],
+        arrival: Arrival::Gmail(vec![pass("stripe.com")]),
+        ..Case::google_sign_in("existing alert keeps the owner request", true)
+    };
+    let run = arrange(&case, mxr_config::MxrConfig::default()).await;
+    super::promise_projection::replace(
+        &run.fx,
+        &run.candidate,
+        "Your payment failed.\n\nPlease update your payment details.",
+    )
+    .await;
+
+    // A task of the alert's own kind already exists for this message (the
+    // user made one by hand, or an older flow did), so the alert insert takes
+    // its `existing` branch. The independent owner request is its own work and
+    // must still be written under the durable claim.
+    let now = run.now;
+    let existing = mxr_store::TodoRecord {
+        id: "manual-payment-task".into(),
+        account_id: run.fx.account.clone(),
+        thread_id: Some(run.candidate.thread_id.clone()),
+        source_message_id: Some(run.candidate.id.clone()),
+        source_date: Some(run.candidate.date),
+        source_filed_at: None,
+        source_unread: Some(true),
+        kind: "payment_failed".into(),
+        verb: "update".into(),
+        doc_type: None,
+        title: "Update payment details".into(),
+        counterparty: Some("stripe.com".into()),
+        sender_domain: Some("stripe.com".into()),
+        amount_minor: None,
+        currency: None,
+        due_at: None,
+        due_words: None,
+        act_by_at: None,
+        surface_at: None,
+        scheduled_for: None,
+        action_url: None,
+        action_domain: None,
+        relevant_until: None,
+        window_source: None,
+        state: mxr_store::TodoState::Open,
+        expired_at: None,
+        expired_at_birth: false,
+        catchup: None,
+        looks_done_message_id: None,
+        looks_done_reason: None,
+        origin: "manual".into(),
+        reason: "made by hand".into(),
+        field_sources: "{}".into(),
+        user_edited: true,
+        commitment_id: None,
+        rules_version: mxr_todo::RULES_VERSION,
+        dedup_key: "manual-existing-alert".into(),
+        surfaced_at: None,
+        created_at: now,
+        updated_at: now,
+        done_at: None,
+        dismissed_at: None,
+    };
+    run.fx
+        .state
+        .store
+        .insert_todo(&existing)
+        .await
+        .expect("insert the existing task");
+
+    scan(&run).await;
+    let tasks = todos_for(&run).await;
+    let keys = tasks
+        .iter()
+        .map(|task| task.dedup_key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tasks.len(),
+        2,
+        "expected the existing task and the owner request: {keys:?}"
+    );
+    assert!(
+        tasks.iter().any(|task| task.dedup_key.contains("|owner|")),
+        "the independent owner request was dropped: {keys:?}"
+    );
+}

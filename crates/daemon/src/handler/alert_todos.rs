@@ -268,25 +268,27 @@ pub(super) async fn create_on_arrival(
         now,
     );
     let requests = enrich_from_stored_ask(state, message, claim, &mut record, now).await?;
-    if !state
+    let made = state
         .store
         .insert_alert_todo_with_requests(&record, claim.kind.as_str(), &requests)
-        .await?
-    {
+        .await?;
+    if made.tasks() == 0 {
         return Ok(0);
     }
-    // Kind only: the host and the message stay out of the activity log.
-    state.activity.record(crate::activity::OwnedEntry {
-        ts: now.timestamp_millis(),
-        account_id: Some(message.account_id.to_string()),
-        source: mxr_protocol::ClientKind::Daemon,
-        action: "todo.alert_created".into(),
-        target_kind: Some("todo".into()),
-        target_id: Some(record.id.clone()),
-        tier: mxr_store::Tier::Important,
-        context: Some(serde_json::json!({ "kind": claim.kind.as_str() })),
-    });
-    Ok(1 + requests.len() as u64)
+    if made.alert_created {
+        // Kind only: the host and the message stay out of the activity log.
+        state.activity.record(crate::activity::OwnedEntry {
+            ts: now.timestamp_millis(),
+            account_id: Some(message.account_id.to_string()),
+            source: mxr_protocol::ClientKind::Daemon,
+            action: "todo.alert_created".into(),
+            target_kind: Some("todo".into()),
+            target_id: Some(record.id.clone()),
+            tier: mxr_store::Tier::Important,
+            context: Some(serde_json::json!({ "kind": claim.kind.as_str() })),
+        });
+    }
+    Ok(made.tasks())
 }
 
 /// Asks projection uses the same receiver gate before acknowledging its work.

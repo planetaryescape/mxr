@@ -2,6 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "astro",
+  "ignoreCommand": "prev=\"$VERCEL_GIT_PREVIOUS_SHA\"; if [ -z \"$prev\" ]; then exit 1; fi; if git diff --quiet \"$prev\" HEAD -- ':(top)site' ':(top)crates/daemon/tests/integration/snapshots'; then exit 0; fi; exit 1",
   "redirects": [
     {
       "source": "/:path*",

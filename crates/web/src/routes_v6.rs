@@ -14,7 +14,7 @@
 
 use crate::{ensure_authorized, ipc_request, AppState, AuthQuery, BridgeError};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, RawQuery, State},
     http::HeaderMap,
     routing::{delete, get, post},
     Json, Router,
@@ -2768,49 +2768,123 @@ async fn authorize_account_config(
 // Strictly local: routes are bridge-gated like the rest. No new auth surface.
 // ===========================================================================
 
-#[derive(Debug, Deserialize, Default)]
+/// The list and count routes' filters, parsed from the raw query string by one
+/// parser so the two routes can never apply different filters.
+///
+/// Axum's default `Query` (serde_urlencoded) can't represent this shape: the
+/// repeated keys a form sends (`source=cli&source=web`) are a 400 and the
+/// bracket keys an array-building client sends (`source[0]=cli`) are silently
+/// dropped as unknown fields, so the page showed unfiltered rows. Accept every
+/// form a caller sends — repeated, comma-separated, and the legacy bracket
+/// index — and never drop a filter the caller asked for.
+#[derive(Debug, Default)]
 struct ActivityListQuery {
-    #[serde(default)]
     token: Option<String>,
-    #[serde(default)]
     since: Option<i64>,
-    #[serde(default)]
     until: Option<i64>,
-    #[serde(default)]
     account: Option<String>,
-    #[serde(default)]
     source: Vec<String>,
-    #[serde(default)]
     action: Vec<String>,
-    #[serde(default)]
     prefix: Option<String>,
-    #[serde(default)]
     target_kind: Option<String>,
-    #[serde(default)]
     target_id: Option<String>,
-    #[serde(default)]
     tier: Vec<String>,
-    #[serde(default)]
     query: Option<String>,
-    #[serde(default)]
     include_redacted: bool,
-    #[serde(default = "default_activity_limit")]
     limit: u32,
-    #[serde(default)]
     cursor: Option<String>,
+}
+
+impl ActivityListQuery {
+    fn parse(raw: Option<&str>) -> Result<Self, BridgeError> {
+        let mut q = Self {
+            limit: default_activity_limit(),
+            ..Self::default()
+        };
+        for (key, value) in url::form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
+            let (key, value) = (key.as_ref(), value.as_ref());
+            match key {
+                "token" => q.token = Some(value.to_owned()),
+                "since" => q.since = Some(query_number("since", value)?),
+                "until" => q.until = Some(query_number("until", value)?),
+                "account" => q.account = Some(value.to_owned()),
+                "source" => extend_filter(&mut q.source, value),
+                "action" => extend_filter(&mut q.action, value),
+                "prefix" => q.prefix = Some(value.to_owned()),
+                "target_kind" => q.target_kind = Some(value.to_owned()),
+                "target_id" => q.target_id = Some(value.to_owned()),
+                "tier" => extend_filter(&mut q.tier, value),
+                "query" => q.query = Some(value.to_owned()),
+                "include_redacted" => q.include_redacted = query_bool("include_redacted", value)?,
+                "limit" => q.limit = query_number("limit", value)?,
+                "cursor" => q.cursor = Some(value.to_owned()),
+                _ if is_indexed_key(key, "source") => extend_filter(&mut q.source, value),
+                _ if is_indexed_key(key, "action") => extend_filter(&mut q.action, value),
+                _ if is_indexed_key(key, "tier") => extend_filter(&mut q.tier, value),
+                // Unknown parameters are ignored, as serde_urlencoded did.
+                _ => {}
+            }
+        }
+        Ok(q)
+    }
 }
 
 fn default_activity_limit() -> u32 {
     50
 }
 
-fn parse_source(s: &str) -> Option<mxr_protocol::ClientKind> {
+/// One scalar query parameter. A wrong type is the caller's mistake, not a
+/// reason to quietly run with the default.
+fn query_number<T>(name: &str, raw: &str) -> Result<T, BridgeError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    raw.parse::<T>()
+        .map_err(|err| BridgeError::BadRequest(format!("invalid {name}: {err}")))
+}
+
+fn query_bool(name: &str, raw: &str) -> Result<bool, BridgeError> {
+    match raw {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(BridgeError::BadRequest(format!(
+            "invalid {name}: expected true or false"
+        ))),
+    }
+}
+
+/// Append one query value to a list filter. Repeated keys and comma-separated
+/// values both land here; blank segments are skipped.
+fn extend_filter(values: &mut Vec<String>, raw: &str) {
+    for value in raw.split(',') {
+        let value = value.trim();
+        if !value.is_empty() {
+            values.push(value.to_owned());
+        }
+    }
+}
+
+/// `source[0]`, `source[]`: the array style URLSearchParams builders and older
+/// web clients sent. serde_urlencoded treated these as unknown fields.
+fn is_indexed_key(key: &str, field: &str) -> bool {
+    key.strip_prefix(field)
+        .and_then(|rest| rest.strip_prefix('['))
+        .and_then(|rest| rest.strip_suffix(']'))
+        .is_some_and(|index| index.is_empty() || index.parse::<usize>().is_ok())
+}
+
+/// The client kind `s` names, or the caller's mistake: dropping a source the
+/// user picked would show every row instead of theirs.
+fn parse_source(s: &str) -> Result<mxr_protocol::ClientKind, BridgeError> {
     match s {
-        "tui" => Some(mxr_protocol::ClientKind::Tui),
-        "cli" => Some(mxr_protocol::ClientKind::Cli),
-        "web" => Some(mxr_protocol::ClientKind::Web),
-        "daemon" => Some(mxr_protocol::ClientKind::Daemon),
-        _ => None,
+        "tui" => Ok(mxr_protocol::ClientKind::Tui),
+        "cli" => Ok(mxr_protocol::ClientKind::Cli),
+        "web" => Ok(mxr_protocol::ClientKind::Web),
+        "daemon" => Ok(mxr_protocol::ClientKind::Daemon),
+        other => Err(BridgeError::BadRequest(format!(
+            "unknown activity source '{other}'"
+        ))),
     }
 }
 
@@ -2823,20 +2897,34 @@ fn parse_tier(s: &str) -> Option<mxr_protocol::ActivityTier> {
     }
 }
 
-fn query_to_filter(q: &ActivityListQuery) -> mxr_protocol::ActivityFilter {
-    mxr_protocol::ActivityFilter {
+/// The tier `s` names, or the caller's mistake: a tier the bridge can't
+/// honour must not widen the filter.
+fn query_tier(s: &str) -> Result<mxr_protocol::ActivityTier, BridgeError> {
+    parse_tier(s).ok_or_else(|| BridgeError::BadRequest(format!("unknown activity tier '{s}'")))
+}
+
+fn query_to_filter(q: &ActivityListQuery) -> Result<mxr_protocol::ActivityFilter, BridgeError> {
+    Ok(mxr_protocol::ActivityFilter {
         since: q.since,
         until: q.until,
         account_id: q.account.clone(),
-        sources: q.source.iter().filter_map(|s| parse_source(s)).collect(),
+        sources: q
+            .source
+            .iter()
+            .map(|s| parse_source(s))
+            .collect::<Result<_, _>>()?,
         actions: q.action.clone(),
         action_prefix: q.prefix.clone(),
         target_kind: q.target_kind.clone(),
         target_id: q.target_id.clone(),
-        tiers: q.tier.iter().filter_map(|t| parse_tier(t)).collect(),
+        tiers: q
+            .tier
+            .iter()
+            .map(|t| query_tier(t))
+            .collect::<Result<_, _>>()?,
         query: q.query.clone(),
         include_redacted: q.include_redacted,
-    }
+    })
 }
 
 fn parse_cursor_str(s: &str) -> Option<mxr_protocol::ActivityCursor> {
@@ -2850,9 +2938,10 @@ fn parse_cursor_str(s: &str) -> Option<mxr_protocol::ActivityCursor> {
 async fn list_activity(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(q): Query<ActivityListQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<Value>, BridgeError> {
-    let filter = query_to_filter(&q);
+    let q = ActivityListQuery::parse(raw.as_deref())?;
+    let filter = query_to_filter(&q)?;
     let cursor = q.cursor.as_deref().and_then(parse_cursor_str);
     let response = dispatch(
         &state,
@@ -2871,9 +2960,10 @@ async fn list_activity(
 async fn count_activity(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(q): Query<ActivityListQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<Value>, BridgeError> {
-    let filter = query_to_filter(&q);
+    let q = ActivityListQuery::parse(raw.as_deref())?;
+    let filter = query_to_filter(&q)?;
     let response = dispatch(
         &state,
         &headers,

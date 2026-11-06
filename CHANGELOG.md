@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.229](https://github.com/planetaryescape/mxr/compare/v0.6.228...v0.6.229) (2026-11-06)
+
+
+### Bug Fixes
+
+* keep independent owner requests when an alert task already exists ([#931](https://github.com/planetaryescape/mxr/issues/931)) ([dd95df3](https://github.com/planetaryescape/mxr/commit/dd95df32853e1e43915f42356103a9f6b5f02dfd))
+* round-1 reliability — Activity filters, Done events, single-use undo ([#925](https://github.com/planetaryescape/mxr/issues/925)) ([fb81c0a](https://github.com/planetaryescape/mxr/commit/fb81c0ad6f89ef766f728775fff0f18ff9a25748))
+* **thread:** bound long-conversation reads and batch bodies (P-1, P-2, P-3) ([#926](https://github.com/planetaryescape/mxr/issues/926)) ([0a87432](https://github.com/planetaryescape/mxr/commit/0a874329948fc0670a1476c8cce57ce318efbad3))
+
+
+### Performance
+
+* **reads:** bounded thread pages, shared Now/rail snapshot, bounded demo seed (P-4, P-7, P-8) ([#928](https://github.com/planetaryescape/mxr/issues/928)) ([c827340](https://github.com/planetaryescape/mxr/commit/c827340c4a967f8819e31f654f991b13f98c8286))
+* **web:** keep the editors out of message routes and zod off the entry chunk (P-5) ([#927](https://github.com/planetaryescape/mxr/issues/927)) ([46bdf5e](https://github.com/planetaryescape/mxr/commit/46bdf5e702b6ae4b41fb494cf2b27f4fa514fb99))
+
 ## [0.6.228](https://github.com/planetaryescape/mxr/compare/v0.6.227...v0.6.228) (2026-11-06)
 
 

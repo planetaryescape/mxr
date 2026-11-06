@@ -19,6 +19,7 @@ use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
+mod activity_filters;
 mod arrival_routes;
 mod compose_and_scheduling;
 mod draft_attachment_bytes;

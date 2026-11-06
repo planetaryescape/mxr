@@ -80,10 +80,12 @@ function toQuery(params: FetchListParams): string {
   const search = new URLSearchParams();
   if (params.since !== undefined) search.set("since", params.since.toString());
   if (params.until !== undefined) search.set("until", params.until.toString());
-  params.source?.forEach((s, i) => search.append(`source[${i}]`, s));
-  params.action?.forEach((a, i) => search.append(`action[${i}]`, a));
+  // Repeated keys, the form the bridge parses. The old `source[0]` bracket
+  // form was silently dropped as unknown query fields.
+  params.source?.forEach((s) => search.append("source", s));
+  params.action?.forEach((a) => search.append("action", a));
   if (params.prefix) search.set("prefix", params.prefix);
-  params.tier?.forEach((t, i) => search.append(`tier[${i}]`, t));
+  params.tier?.forEach((t) => search.append("tier", t));
   if (params.query) search.set("query", params.query);
   if (params.include_redacted) search.set("include_redacted", "true");
   if (params.limit !== undefined) search.set("limit", params.limit.toString());

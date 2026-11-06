@@ -1924,16 +1924,19 @@ fn log_non_fatal<T, E: std::fmt::Display>(context: &str, result: Result<T, E>) {
 /// and we surface that as an "irreversible" error rather than leaving
 /// the local store and provider out of sync.
 pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> HandlerResult {
-    let entry = match lookup_undo_entry(state, mutation_id).await? {
-        UndoLookup::Live(entry) => entry,
-        UndoLookup::Expired(entry) => {
-            log_non_fatal(
-                "undo: failed to delete expired undo entry",
-                state.store.delete_undo_entry(&entry.mutation_id).await,
-            );
-            return Err(undo_window_expired(mutation_id).into());
+    // Claim the entry before restoring anything: the delete is what makes an
+    // id single-use, so two overlapping `mxr undo <id>` calls can't both
+    // restore and both report success. The loser sees no entry and is refused
+    // as already undone.
+    let Some(entry) = claim_undo_entry(state, mutation_id).await? else {
+        if let Some(refusal) = selection_job_undo_refusal(state, mutation_id).await? {
+            return Err(refusal.into());
         }
+        return Err(undo_not_found(mutation_id).into());
     };
+    if entry.expires_at <= chrono::Utc::now().timestamp() {
+        return Err(undo_window_expired(mutation_id).into());
+    }
 
     // Group snapshots by account so we resolve the provider once per
     // account (not per message). Inside each account, restore each
@@ -1951,7 +1954,14 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     let mut restored = 0u32;
     let mut last_error: Option<String> = None;
     if let Some(desk) = entry.desk.as_ref() {
-        super::desk_done::restore_desk_state(state, desk, entry.applied_at).await?;
+        // Nothing has been attempted if the desk rows won't restore: hand the
+        // claim back so the same id retries rather than being spent.
+        if let Err(error) =
+            super::desk_done::restore_desk_state(state, desk, entry.applied_at).await
+        {
+            return_undo_claim(state, &entry).await;
+            return Err(error);
+        }
         restored += (desk.dismissals.len()
             + desk.commitments.len()
             + desk.reply_later_priors.len()
@@ -1959,7 +1969,13 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             + desk.mode_done.len()
             + desk.todos_ticked.len()) as u32;
         if !desk.highlights.is_empty() {
-            let back = super::reading::restore_highlights(state, &desk.highlights).await?;
+            let back = match super::reading::restore_highlights(state, &desk.highlights).await {
+                Ok(back) => back,
+                Err(error) => {
+                    return_undo_claim(state, &entry).await;
+                    return Err(error);
+                }
+            };
             restored += back;
             if (back as usize) < desk.highlights.len() {
                 last_error = Some("a highlight's mail was deleted, or it was changed again".into());
@@ -2012,11 +2028,8 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             let detail = last_error.unwrap_or_else(|| "no messages restored".into());
             return Err(undo_irreversible(irreversible, &detail).into());
         }
-        // Done: drop the entry so the same id can't be replayed.
-        log_non_fatal(
-            "undo: failed to delete spent undo entry (the id could be replayed until it expires)",
-            state.store.delete_undo_entry(&entry.mutation_id).await,
-        );
+        // Done: the claim already deleted the entry, so the same id can't be
+        // replayed.
         return Ok(ResponseData::Ack);
     }
 
@@ -2038,19 +2051,31 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     .into())
 }
 
-/// The undo entry `mutation_id` names, read without changing it. The undo and
-/// its preview both take this path, so they refuse the same ids with the same
-/// messages.
-enum UndoLookup {
-    Live(UndoEntry),
-    /// Past its window. The undo removes the entry; a preview leaves it.
-    Expired(UndoEntry),
-}
-
-async fn lookup_undo_entry(
+/// Claim the undo entry `mutation_id` names: delete it and return what was
+/// there, in one statement. `Ok(None)` means another caller already took it.
+async fn claim_undo_entry(
     state: &AppState,
     mutation_id: &str,
-) -> Result<UndoLookup, HandlerError> {
+) -> Result<Option<UndoEntry>, HandlerError> {
+    Ok(state.store.take_undo_entry(mutation_id).await?)
+}
+
+/// Put a claimed entry back when the undo stopped before it could try the
+/// messages, so the same id still retries. The claim deleted it first.
+async fn return_undo_claim(state: &AppState, entry: &UndoEntry) {
+    log_non_fatal(
+        "undo: could not put the claimed entry back; this id can no longer be retried",
+        state.store.write_undo_entry(entry).await,
+    );
+}
+
+/// The undo entry `mutation_id` names, read without changing it, for the
+/// preview. The undo claims the entry instead ([`claim_undo_entry`]), so both
+/// refuse the same ids with the same messages but only the undo consumes one.
+async fn preview_undo_entry(
+    state: &AppState,
+    mutation_id: &str,
+) -> Result<UndoEntry, HandlerError> {
     let Some(entry) = state.store.read_undo_entry(mutation_id).await? else {
         if let Some(refusal) = selection_job_undo_refusal(state, mutation_id).await? {
             return Err(refusal.into());
@@ -2058,9 +2083,9 @@ async fn lookup_undo_entry(
         return Err(undo_not_found(mutation_id).into());
     };
     if entry.expires_at <= chrono::Utc::now().timestamp() {
-        return Ok(UndoLookup::Expired(entry));
+        return Err(undo_window_expired(mutation_id).into());
     }
-    Ok(UndoLookup::Live(entry))
+    Ok(entry)
 }
 
 fn undo_window_expired(mutation_id: &str) -> String {
@@ -2075,10 +2100,7 @@ fn undo_irreversible(count: u32, detail: &str) -> String {
 /// refuses what the undo refuses without contacting the provider: a provider
 /// can still refuse a message the store holds, and only the undo finds that.
 pub(super) async fn undo_preview(state: &AppState, mutation_id: &str) -> HandlerResult {
-    let entry = match lookup_undo_entry(state, mutation_id).await? {
-        UndoLookup::Live(entry) => entry,
-        UndoLookup::Expired(_) => return Err(undo_window_expired(mutation_id).into()),
-    };
+    let entry = preview_undo_entry(state, mutation_id).await?;
     let mut targets = Vec::with_capacity(entry.snapshots.len());
     let mut last_missing = None;
     for snapshot in &entry.snapshots {

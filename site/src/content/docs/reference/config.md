@@ -383,7 +383,36 @@ username = "me@example.com"
 auth_required = true              # set to false for relays that pre-authenticate
 use_tls = true
 password_ref = "imap:work"
+# tls_cert_sha256 = "<64 hex digits>"   # optional, see below
 ```
+
+How IMAP is secured depends on `use_tls` and `port`:
+
+| `use_tls` | Port | Connection | Certificate check |
+|---|---|---|---|
+| `true` | anything except 143 (normally 993) | TLS from the first byte | System trust store and hostname, or the `tls_cert_sha256` pin |
+| `true` | 143 | Plain connect, `STARTTLS`, then TLS | Same as above, applied after the upgrade. Refused if the server does not advertise `STARTTLS`; mxr never continues in plaintext |
+| `false` | any | No encryption | None. Allowed only for loopback hosts (`127.0.0.0/8`, `::1`, `localhost`); any other host is refused before connecting |
+
+`tls_cert_sha256` is the SHA-256 of the server's leaf certificate (DER), as 64
+hex digits; `:` separators are accepted. When it is set, mxr accepts exactly
+that certificate, including a self-signed one, and nothing else. The chain and
+hostname are not checked, because the pin replaces them. When it is unset, the
+certificate is verified normally. Use it for a local bridge with its own
+certificate. `mxr accounts test <account>` prints the fingerprint the server
+presents without authenticating on the inspection connection. This fingerprint
+is unverified: check it against the bridge's own certificate before copying it
+into the config. The account test separately attempts a verified sync. A server
+that changes its certificate fails
+until the pin is updated.
+
+For scripts, `mxr accounts --format json test <account>` and `--format jsonl`
+include `tls_cert_sha256` in the result. A failed certificate check still exits
+with an error after printing the result, so you can inspect the fingerprint
+before configuring trust.
+
+An implicit TLS connection to a server that answers in plaintext fails with an error that
+names the mismatch and the fix, instead of a bare "record overflow".
 
 ### SMTP send provider
 

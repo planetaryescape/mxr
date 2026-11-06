@@ -33,6 +33,7 @@ pub mod output;
 pub(crate) mod process_probe;
 pub(crate) mod provider_credentials;
 pub mod reindex;
+pub(crate) mod remote_lifecycle;
 pub(crate) mod serve;
 pub mod server;
 pub mod snooze;
@@ -58,15 +59,17 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
 
 fn ensure_web_target_supported(
     remote_host: Option<&str>,
-    action: Option<&cli::WebAction>,
+    _action: Option<&cli::WebAction>,
 ) -> anyhow::Result<()> {
-    if remote_host.is_none()
-        && !matches!(action, Some(cli::WebAction::Stop))
-        && server::selected_daemon_target()?.is_paired_remote()
-    {
-        anyhow::bail!(
-            "`mxr web` is unavailable for a paired remote connection; use the CLI, TUI, or MCP client"
-        );
+    if matches!(_action, Some(cli::WebAction::Stop)) {
+        return Ok(());
+    }
+    if remote_host.is_some() {
+        anyhow::bail!("Legacy --remote-host token URLs are unsupported. Pair with `mxr connect https://host --confirm`, then run `mxr web`.");
+    }
+    let target = server::selected_daemon_target()?;
+    if target.is_remote() && !target.is_paired_remote() {
+        anyhow::bail!("Remote web requires a saved paired HTTPS connection; use mxr connect instead of legacy transport overrides");
     }
     Ok(())
 }
@@ -147,6 +150,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     let command = match cli.command {
         Some(Command::Connect {
             allow_send,
+            allow_triage,
+            allow_ai,
+            cancel_pairing,
+            restart_pairing,
+            forget_cleanup,
             url,
             local,
             status,
@@ -163,6 +171,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 dry_run,
                 confirm,
                 allow_send,
+                allow_triage,
+                allow_ai,
+                cancel_pairing,
+                restart_pairing,
+                forget_cleanup,
                 format,
             })
             .await?;
@@ -172,6 +185,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             action,
             format,
             foreground,
+            public_origin,
             listen,
             dry_run,
         }) => boxed(move || async move {
@@ -185,15 +199,32 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 if !listen.ip().is_loopback() {
                     anyhow::bail!("Gateway requires a loopback listen address");
                 }
+                let public_origin = public_origin
+                    .as_deref()
+                    .map(commands::serve::normalize_public_origin)
+                    .transpose()?;
                 if dry_run {
                     crate::output::print_json(
-                        &serde_json::json!({"listen":listen,"foreground":true,"selection_source":"explicit_local_profile","dry_run":true}),
+                        &serde_json::json!({"listen":listen,"foreground":true,"public_origin":public_origin,"selection_source":"explicit_local_profile","dry_run":true}),
                         format.unwrap_or(cli::OutputFormat::Json),
                     )?;
                 } else {
-                    mxr_web::remote_gateway::serve(mxr_config::socket_path(), listen).await?;
+                    commands::serve::prepare_foreground().await?;
+                    if let Some(origin) = public_origin {
+                        mxr_web::remote_gateway::serve_with_origin(
+                            mxr_config::socket_path(),
+                            listen,
+                            origin,
+                        )
+                        .await?;
+                    } else {
+                        mxr_web::remote_gateway::serve(mxr_config::socket_path(), listen).await?;
+                    }
                 }
             } else {
+                if public_origin.is_some() {
+                    anyhow::bail!("--public-origin requires --foreground; use `serve setup --public-origin` for supervised hosting");
+                }
                 commands::serve::run(action, format).await?;
             }
             anyhow::Ok(())
@@ -214,11 +245,26 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             anyhow::Ok(())
         }),
         Some(Command::Daemon {
+            action: Some(DaemonAction::Stop { dry_run, confirm }),
+            ..
+        }) => boxed(move || async move {
+            commands::serve::stop_daemon(confirm && !dry_run).await?;
+            anyhow::Ok(())
+        }),
+        Some(Command::Daemon {
             action: None,
             no_bridge,
             bridge_port,
             ..
         }) => boxed(move || async move {
+            if std::env::var_os("MXR_DAEMON_CLIENT_AUTOSTART").is_some() {
+                anyhow::ensure!(
+                    !commands::serve::daemon_desired_stopped()?,
+                    "This hosted daemon was explicitly stopped; a client cannot restart it"
+                );
+            } else {
+                commands::serve::mark_daemon_started()?;
+            }
             crate::server::run_daemon_with_overrides(crate::server::BridgeOverrides {
                 disabled: no_bridge,
                 port: bridge_port,
@@ -1126,6 +1172,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             host,
             port,
             print_url,
+            session_json,
             no_open,
             auto_port,
             strict_port,
@@ -1134,7 +1181,9 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             detached_child,
         }) => boxed(move || async move {
             ensure_web_target_supported(remote_host.as_deref(), action.as_ref())?;
-            if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
+            if !server::selected_daemon_target()?.is_remote()
+                && !matches!(action, Some(cli::WebAction::Stop))
+            {
                 crate::server::ensure_daemon_running().await?;
             }
             commands::web::run(commands::web::Args {
@@ -1142,6 +1191,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
                 host,
                 port,
                 print_url,
+                session_json,
                 no_open,
                 auto_port,
                 strict_port,
@@ -1966,6 +2016,18 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         Some(Command::Attachments { action }) => boxed(move || async move {
             crate::server::ensure_daemon_running().await?;
             match action {
+                cli::AttachmentAction::InlineBytes {
+                    message_id,
+                    source,
+                    offset,
+                    length,
+                    format,
+                } => {
+                    commands::mutations::inline_image_bytes(
+                        message_id, source, offset, length, format,
+                    )
+                    .await?;
+                }
                 cli::AttachmentAction::List {
                     message_id,
                     search,

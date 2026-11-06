@@ -1,5 +1,5 @@
 import { onlineManager, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from "vitest";
 
 import { apiFetch, DaemonUnavailableError } from "@/api/client";
 
@@ -21,14 +21,28 @@ vi.mock("@/lib/tokenStorage", () => ({
   getToken: () => "test-token",
 }));
 
-const socket = vi.hoisted(() => ({
-  state: "connected" as string,
+interface AvailabilitySocket {
+  state: string;
+  reconnectNow: Mock<() => void>;
+  eventListener: ((event: { type: string; deadline_at: number }) => void) | undefined;
+  listener: ((status: { state: string }) => void) | undefined;
+}
+
+const socket = vi.hoisted<AvailabilitySocket>(() => ({
+  state: "connected",
   reconnectNow: vi.fn<() => void>(),
-  listener: undefined as ((status: { state: string }) => void) | undefined,
+  eventListener: undefined,
+  listener: undefined,
 }));
 vi.mock("@/lib/ws", () => ({
   daemonEvents: {
     getStatus: () => ({ state: socket.state }),
+    subscribe: (listener: (event: { type: string; deadline_at: number }) => void) => {
+      socket.eventListener = listener;
+      return () => {
+        socket.eventListener = undefined;
+      };
+    },
     onStatus: (listener: (status: { state: string }) => void) => {
       socket.listener = listener;
       return () => {
@@ -236,4 +250,15 @@ describe("daemon availability", () => {
       description: "Nothing changed. Try again once it's back.",
     });
   });
+});
+
+test("a planned stop holds submissions until the deadline and a successful probe", async () => {
+  stop = startDaemonAvailability(new QueryClient());
+  socket.eventListener?.({ type: "ServerStopping", deadline_at: Date.now() / 1_000 + 5 });
+  expect(isDaemonDown()).toBe(true);
+  await probeDaemon();
+  expect(isDaemonDown()).toBe(true);
+  await vi.advanceTimersByTimeAsync(5_001);
+  await probeDaemon();
+  expect(isDaemonDown()).toBe(false);
 });

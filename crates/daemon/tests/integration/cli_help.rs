@@ -160,6 +160,9 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_root", &["--help"]),
         ("cli_help_connect", &["connect", "--help"]),
         ("cli_help_serve", &["serve", "--help"]),
+        ("cli_help_serve_setup", &["serve", "setup", "--help"]),
+        ("cli_help_serve_start", &["serve", "start", "--help"]),
+        ("cli_help_serve_stop", &["serve", "stop", "--help"]),
         ("cli_help_serve_status", &["serve", "status", "--help"]),
         ("cli_help_serve_pair", &["serve", "pair", "--help"]),
         (
@@ -178,6 +181,7 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_search", &["search", "--help"]),
         ("cli_help_triage", &["triage", "--help"]),
         ("cli_help_daemon", &["daemon", "--help"]),
+        ("cli_help_daemon_stop", &["daemon", "stop", "--help"]),
         (
             "cli_help_daemon_dial_stdio",
             &["daemon", "dial-stdio", "--help"],
@@ -410,6 +414,10 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_send_outcome", &["send-outcome", "--help"]),
         ("cli_help_unsubscribe", &["unsubscribe", "--help"]),
         ("cli_help_attachments", &["attachments", "--help"]),
+        (
+            "cli_help_attachments_inline_bytes",
+            &["attachments", "inline-bytes", "--help"],
+        ),
         (
             "cli_help_attachments_list",
             &["attachments", "list", "--help"],

@@ -3,6 +3,8 @@ pub use archive::archive_operation;
 mod bulk_all;
 pub use bulk_all::{run as bulk_all, BulkAction, BulkAllRun};
 mod attachments;
+mod inline_images;
+pub use inline_images::inline_image_bytes;
 mod compose;
 mod compose_html;
 mod helpers;
@@ -27,22 +29,20 @@ pub async fn undo(
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     if dry_run {
-        // An `--all` job keeps no undo, so its dry run refuses exactly as the
-        // real undo does instead of promising one (D192).
-        if let Response::Ok {
-            data: ResponseData::Job { job },
-        } = client
-            .request(Request::GetJob {
-                job_id: mutation_id.clone(),
+        // The daemon's preview takes the undo's own lookup, so it refuses the
+        // ids the undo refuses, with the same messages (D192 for `--all` jobs).
+        let resp = client
+            .request(Request::UndoPreview {
+                mutation_id: mutation_id.clone(),
             })
-            .await?
-        {
-            if job.selection.is_some() {
-                anyhow::bail!(crate::handler::mutations::all_job_undo_refusal(&job.job_id));
-            }
-        }
-        print_undo_output(&mutation_id, true, format)?;
-        return Ok(());
+            .await?;
+        return match resp {
+            Response::Ok {
+                data: ResponseData::UndoPreview { preview },
+            } => print_undo_output(&mutation_id, Some(&preview), format),
+            Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
+            _ => anyhow::bail!("Unexpected response"),
+        };
     }
 
     let resp = client
@@ -54,7 +54,7 @@ pub async fn undo(
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            print_undo_output(&mutation_id, false, format)?;
+            print_undo_output(&mutation_id, None, format)?;
             Ok(())
         }
         Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
@@ -83,6 +83,9 @@ struct UndoOutput<'a> {
     mutation_id: &'a str,
     dry_run: bool,
     undone: bool,
+    /// What a dry run would undo. Absent on a real undo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview: Option<&'a UndoPreview>,
 }
 
 #[derive(Serialize)]
@@ -103,15 +106,32 @@ fn batch_all_failed(message: String, auth_failed: bool) -> anyhow::Error {
 
 fn print_undo_output(
     mutation_id: &str,
-    dry_run: bool,
+    preview: Option<&UndoPreview>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    let dry_run = preview.is_some();
     match resolve_format(format) {
         OutputFormat::Table => {
-            if dry_run {
-                println!("Would undo mutation {mutation_id}");
-            } else {
-                println!("Undone");
+            match preview {
+                Some(preview) => {
+                    println!(
+                        "Would undo mutation {mutation_id}: {} ({} message(s))",
+                        preview.kind,
+                        preview.targets.len()
+                    );
+                    for target in &preview.targets {
+                        let note = if target.in_local_store {
+                            ""
+                        } else {
+                            "  (no longer in the local store; the undo cannot restore it)"
+                        };
+                        println!("  {}  {}{note}", target.message_id, target.account_id);
+                    }
+                    if preview.restores_desk_state {
+                        println!("  also restores the desk's dismissals, promises, reminders or highlights");
+                    }
+                }
+                None => println!("Undone"),
             }
         }
         OutputFormat::Json => println!(
@@ -120,6 +140,7 @@ fn print_undo_output(
                 mutation_id,
                 dry_run,
                 undone: !dry_run,
+                preview,
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -128,6 +149,7 @@ fn print_undo_output(
                 mutation_id,
                 dry_run,
                 undone: !dry_run,
+                preview,
             })?
         ),
         OutputFormat::Csv => {

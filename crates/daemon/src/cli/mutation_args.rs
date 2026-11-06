@@ -52,6 +52,14 @@ pub enum AccountsAction {
         /// Maximum concurrent IMAP connections for this account.
         #[arg(long, default_value_t = 4)]
         imap_max_connections: usize,
+        /// Connect to IMAP without TLS. Only accepted for loopback hosts
+        /// (127.0.0.0/8, ::1, localhost), such as a local bridge.
+        #[arg(long)]
+        imap_no_tls: bool,
+        /// Trust only the IMAP server certificate with this SHA-256 (hex), even if
+        /// self-signed. `mxr accounts test <account>` prints it.
+        #[arg(long)]
+        imap_tls_cert_sha256: Option<String>,
         // SMTP-specific.
         #[arg(long)]
         smtp_host: Option<String>,
@@ -390,6 +398,18 @@ pub enum ConfigAction {
 
 #[derive(Subcommand)]
 pub enum AttachmentAction {
+    /// Read a bounded inline-image chunk as JSON, without a host cache path.
+    InlineBytes {
+        message_id: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long, default_value_t = 0)]
+        offset: u64,
+        #[arg(long, default_value_t = mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES)]
+        length: u32,
+        #[arg(long)]
+        format: Option<crate::cli::OutputFormat>,
+    },
     /// List attachments for one message, or for every match of a
     /// `--search QUERY`. Multi-message output prefixes each section
     /// with `--- MESSAGE_ID ---`.

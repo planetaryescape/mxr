@@ -2,7 +2,7 @@
 source: crates/daemon/tests/integration/cli_help.rs
 expression: stdout
 ---
-Inspect local pairing authority; supervised gateway setup is not available
+Inspect local pairing authority and any recorded hosting setup
 
 Usage: mxr serve status [OPTIONS]
 

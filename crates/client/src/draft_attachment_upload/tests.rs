@@ -457,6 +457,9 @@ async fn remote_preview_uses_declarations_without_upload_and_changed_bytes_fail_
                     source: ClientKind::Daemon,
                     payload: IpcPayload::Response(Response::Ok {
                         data: ResponseData::RemoteReady {
+                            accepting_mail: true,
+                            shutdown_deadline_at: None,
+                            boot_id: "fixture-boot".into(),
                             attachment_transfer_supported: true,
                             capabilities: vec![
                                 mxr_core::RemoteCapability::MailRead,

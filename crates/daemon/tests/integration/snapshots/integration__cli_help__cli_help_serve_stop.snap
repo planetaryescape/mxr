@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview stopping remote hosting; --all also stops the local provider owner
+
+Usage: mxr serve stop [OPTIONS]
+
+Options:
+      --all
+      --dry-run
+      --confirm
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

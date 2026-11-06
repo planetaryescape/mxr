@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview installation of an owned private HTTPS user service; --confirm applies it
+
+Usage: mxr serve setup [OPTIONS] --public-origin <PUBLIC_ORIGIN>
+
+Options:
+      --public-origin <PUBLIC_ORIGIN>
+      --listen <LISTEN>                [default: 127.0.0.1:18741]
+      --dry-run
+      --confirm
+      --format <FORMAT>                Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help                           Print help

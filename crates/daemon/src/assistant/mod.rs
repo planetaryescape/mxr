@@ -124,8 +124,9 @@ pub(crate) async fn start_turn(
 
     let state = state.clone();
     let conversation_id = conversation_id.to_string();
+    let proof = crate::handler::remote::captured_proof();
     tokio::spawn(async move {
-        let outcome = run_turn(&state, &conversation_id, pending, start, cancel).await;
+        let outcome = run_turn(&state, &conversation_id, pending, start, cancel, proof).await;
         let settled = settle(&state, &conversation_id, &outcome).await;
         state.assistant.finish(&conversation_id);
         emit(&state, &conversation_id, settled, None);
@@ -139,12 +140,17 @@ async fn run_turn(
     pending: Vec<PendingItem>,
     start: TurnStart,
     cancel: CancellationToken,
+    proof: Option<crate::handler::remote::AdmissionProof>,
 ) -> TurnOutcome {
     let mut history = match load_history(state, conversation_id).await {
         Ok(history) => history,
         Err(error) => return TurnOutcome::Failed(error),
     };
-    let tools = match state.assistant.tools(state).await {
+    let tools_result = match proof {
+        Some(proof) => host::McpHost::start_scoped(state, Some(proof)).await,
+        None => state.assistant.tools(state).await,
+    };
+    let tools = match tools_result {
         Ok(tools) => tools,
         Err(error) => return TurnOutcome::Failed(format!("mxr's tools didn't start: {error}")),
     };

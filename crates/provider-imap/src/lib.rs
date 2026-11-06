@@ -15,6 +15,7 @@ mod generic_backfill;
 mod generic_backfill_tests;
 pub mod parse;
 pub mod session;
+pub mod transport;
 pub mod types;
 
 use async_trait::async_trait;
@@ -58,6 +59,7 @@ struct CollectSyncedMessages<'a> {
 
 pub struct ImapProvider {
     account_id: AccountId,
+    config: ImapConfig,
     trash_folder: String,
     max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
@@ -71,6 +73,7 @@ impl ImapProvider {
         let session_factory = Box::new(RealImapSessionFactory::new(config.clone()));
         Self {
             account_id,
+            config,
             trash_folder: "Trash".to_string(),
             max_connections,
             session_factory,
@@ -89,6 +92,7 @@ impl ImapProvider {
             account_id,
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
+            config,
             session_factory,
             receiver: parse::ImapReceiver::from_config(&config),
             receiver_verifier: Default::default(),
@@ -1131,6 +1135,12 @@ impl MailSyncProvider for ImapProvider {
 
     fn account_id(&self) -> &AccountId {
         &self.account_id
+    }
+
+    async fn server_certificate_sha256(&self) -> mxr_core::provider::Result<Option<String>> {
+        transport::probe_server_certificate_sha256(&self.config)
+            .await
+            .map_err(mxr_core::error::MxrError::from)
     }
 
     fn capabilities(&self) -> SyncCapabilities {

@@ -13,6 +13,21 @@ export function TokenSection() {
   const [reveal, setReveal] = useState(false);
   const reason = new URLSearchParams(window.location.search).get("reason");
 
+  if (token === "browser-session") {
+    return (
+      <div className="space-y-4">
+        <p className="max-w-prose text-sm text-muted-foreground">
+          This browser uses a private session on your mail host. Run <code>mxr web</code> again, or
+          reopen the desktop app, to reconnect with a fresh single-use code.
+        </p>
+        {reason === "expired" ? (
+          <Alert variant="destructive">Your hosted session expired or was revoked.</Alert>
+        ) : null}
+        <Button onClick={() => window.location.assign("/")}>Enter connection code</Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <p className="mb-5 max-w-prose text-sm text-muted-foreground">

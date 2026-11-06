@@ -300,6 +300,15 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
             .execute(expected.writer())
             .await?;
     }
+    if manifest.schema_version < 110 {
+        sqlx::raw_sql("DROP TABLE remote_browser_sessions; DROP TABLE remote_browser_codes;")
+            .execute(expected.writer())
+            .await?;
+    }
+    if manifest.schema_version < 109 {
+        sqlx::raw_sql("ALTER TABLE remote_pairings DROP COLUMN allow_triage; ALTER TABLE remote_pairings DROP COLUMN allow_ai; ALTER TABLE remote_clients DROP COLUMN allow_triage; ALTER TABLE remote_clients DROP COLUMN allow_ai;")
+            .execute(expected.writer()).await?;
+    }
     if manifest.schema_version < 106 {
         sqlx::query("DROP TABLE mode_row_seen")
             .execute(expected.writer())
@@ -466,6 +475,17 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
                     .await?;
             if count != 0 {
                 return Err("Portable backup contains remote authority".into());
+            }
+        }
+    }
+    if manifest.schema_version >= 110 {
+        for table in ["remote_browser_codes", "remote_browser_sessions"] {
+            let count: i64 =
+                sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                    .fetch_one(&mut db)
+                    .await?;
+            if count != 0 {
+                return Err("Portable backup contains browser authority".into());
             }
         }
     }
@@ -743,6 +763,19 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
             .fetch_one(&mut *tx)
             .await?;
     if remote_tables {
+        for table in ["remote_browser_codes", "remote_browser_sessions"] {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?)",
+            )
+            .bind(table)
+            .fetch_one(&mut *tx)
+            .await?;
+            if exists {
+                sqlx::query(AssertSqlSafe(format!("DELETE FROM {table}")))
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
         let retirement_table: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='remote_pairing_retirements')",
         )

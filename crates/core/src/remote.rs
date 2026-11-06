@@ -63,4 +63,8 @@ pub enum RemoteCapability {
     MailRead,
     /// Draft, portable attachment and reviewed send operations explicitly approved by the host.
     MailSend,
+    /// Mail organization, modes, todos and reviewed batch mutations.
+    MailTriage,
+    /// Mail intelligence through the host privacy policy and configured models.
+    MailAi,
 }

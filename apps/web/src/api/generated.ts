@@ -4761,6 +4761,12 @@ export interface components {
             send?: components["schemas"]["AccountOperationStep"] | null;
             summary: string;
             sync?: components["schemas"]["AccountOperationStep"] | null;
+            /**
+             * @description SHA-256 of the IMAP server's leaf certificate, reported by an account
+             *     test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+             *     accounts and non-IMAP accounts.
+             */
+            tls_cert_sha256?: string | null;
         };
         AccountOperationStep: {
             detail: string;
@@ -4835,6 +4841,8 @@ export interface components {
                   password_ref: string;
                   /** Format: int32 */
                   port: number;
+                  /** @description Hex SHA-256 of the server's leaf certificate; see the config reference. */
+                  tls_cert_sha256?: string | null;
                   /** @enum {string} */
                   type: "imap";
                   use_tls: boolean;
@@ -6866,6 +6874,13 @@ export interface components {
         };
         DaemonEvent:
             | {
+                  boot_id: string;
+                  /** Format: int64 */
+                  deadline_at: number;
+                  /** @enum {string} */
+                  event: "ServerStopping";
+              }
+            | {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   event: "SyncCompleted";
@@ -8135,6 +8150,14 @@ export interface components {
             partstat: components["schemas"]["CalendarPartstat"];
             source_message_id: components["schemas"]["MessageId"];
         };
+        InlineImageChunkData: {
+            data_base64: string;
+            mime_type: string;
+            /** Format: int64 */
+            offset: number;
+            /** Format: int64 */
+            total_length: number;
+        };
         /** @enum {string} */
         IpcErrorKind:
             | "invalid_request"
@@ -8358,6 +8381,7 @@ export interface components {
          *     chain. It needs no stored key, so it has no provider.
          */
         LlmEndpointStatusData: {
+            /** @description Empty in remote status, where endpoint addresses remain on the host. */
             base_url: string;
             model: string;
             /** @description A request would go here now. */
@@ -8561,6 +8585,8 @@ export interface components {
              *     These contain typed failure classes only, never provider error text.
              */
             observations?: components["schemas"]["LlmObservationData"][];
+            /** @description Cache identity for a redacted host endpoint, not an authentication credential. */
+            policy_key?: string | null;
             provider: string;
             /** Format: int64 */
             request_timeout_secs: number;
@@ -10863,8 +10889,60 @@ export interface components {
             note?: string | null;
         };
         /** @enum {string} */
-        RemoteCapability: "mail_read" | "mail_send";
+        RemoteCapability: "mail_read" | "mail_send" | "mail_triage" | "mail_ai";
+        RemotePresence: {
+            active: boolean;
+            client_id: string;
+            /** Format: int64 */
+            expires_at: number;
+            /** Format: int64 */
+            last_seen_at: number;
+            session_id: string;
+            surface: string;
+        };
         RemoteRequest:
+            | {
+                  /** @enum {string} */
+                  action: "TouchSession";
+                  client_id: string;
+                  mail_secret: components["schemas"]["RemoteSecret"];
+                  session_id: string;
+                  surface: string;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "CloseSession";
+                  client_id: string;
+                  mail_secret: components["schemas"]["RemoteSecret"];
+                  session_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Sessions";
+              }
+            | {
+                  /** @enum {string} */
+                  action: "Drain";
+                  /** Format: int32 */
+                  deadline_seconds: number;
+                  dry_run: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  action: "ResumeHosting";
+              }
+            | {
+                  /** @enum {string} */
+                  action: "IssueBrowserCode";
+                  client_id: string;
+                  mail_secret: components["schemas"]["RemoteSecret"];
+              }
+            | {
+                  /** @enum {string} */
+                  action: "ClaimBrowserCode";
+                  code: components["schemas"]["RemoteSecret"];
+                  replace_session?: [string, string] | null;
+              }
             | {
                   /** @enum {string} */
                   action: "Status";
@@ -10923,6 +11001,44 @@ export interface components {
               };
         RemoteResponse:
             | {
+                  /** @enum {string} */
+                  result: "Sessions";
+                  status: components["schemas"]["RemoteSessions"];
+              }
+            | {
+                  /** Format: int64 */
+                  active_assistant_turns: number;
+                  /** Format: int64 */
+                  active_jobs: number;
+                  dry_run: boolean;
+                  /** Format: int64 */
+                  registered_clients: number;
+                  /** @enum {string} */
+                  result: "Drain";
+                  /** Format: int64 */
+                  scheduled_reminders: number;
+                  /** Format: int64 */
+                  scheduled_sends: number;
+                  /** Format: int64 */
+                  scheduled_snoozes: number;
+                  status: components["schemas"]["RemoteSessions"];
+              }
+            | {
+                  code: components["schemas"]["RemoteSecret"];
+                  /** Format: int64 */
+                  expires_at: number;
+                  /** @enum {string} */
+                  result: "BrowserCode";
+              }
+            | {
+                  /** Format: int64 */
+                  expires_at: number;
+                  mail_secret: components["schemas"]["RemoteSecret"];
+                  /** @enum {string} */
+                  result: "BrowserSession";
+                  session_id: string;
+              }
+            | {
                   authority: components["schemas"]["HostAuthority"];
                   /** @enum {string} */
                   result: "Status";
@@ -10956,6 +11072,15 @@ export interface components {
               };
         /** @description Credential or verifier on the wire. Debug output never reveals its contents. */
         RemoteSecret: string;
+        RemoteSessions: {
+            boot_id: string;
+            /** Format: int64 */
+            deadline_at?: number | null;
+            draining: boolean;
+            /** Format: int64 */
+            in_flight: number;
+            sessions: components["schemas"]["RemotePresence"][];
+        };
         RenameCategoryBody: {
             category_id: string;
             name: string;
@@ -11093,6 +11218,16 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetHtmlImageAssets";
                   message_id: components["schemas"]["MessageId"];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "ReadInlineImage";
+                  /** Format: int32 */
+                  length: number;
+                  message_id: components["schemas"]["MessageId"];
+                  /** Format: int64 */
+                  offset: number;
+                  source: string;
               }
             | {
                   attachment_id: components["schemas"]["AttachmentId"];
@@ -11911,6 +12046,11 @@ export interface components {
             | {
                   /** @enum {string} */
                   cmd: "UndoMutation";
+                  mutation_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "UndoPreview";
                   mutation_id: string;
               }
             | {
@@ -13361,7 +13501,11 @@ export interface components {
                   workspace: components["schemas"]["ArchiveWorkspaceData"];
               }
             | {
+                  /** @description A draining host still admits status and original-operation recovery. */
+                  accepting_mail?: boolean;
                   attachment_transfer_supported?: boolean;
+                  /** @description Changes with every daemon boot; stale lifecycle notices must not cross it. */
+                  boot_id?: string;
                   capabilities?: components["schemas"]["RemoteCapability"][];
                   client_id: string;
                   draft_attachment_upload_supported?: boolean;
@@ -13372,6 +13516,8 @@ export interface components {
                   /** Format: int32 */
                   protocol_version: number;
                   send_outcome_supported?: boolean;
+                  /** Format: int64 */
+                  shutdown_deadline_at?: number | null;
                   workspace: components["schemas"]["ArchiveWorkspaceData"];
               }
             | {
@@ -13437,6 +13583,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "HtmlImageAssets";
                   message_id: components["schemas"]["MessageId"];
+              }
+            | {
+                  chunk: components["schemas"]["InlineImageChunkData"];
+                  /** @enum {string} */
+                  kind: "InlineImageChunk";
               }
             | {
                   file: components["schemas"]["AttachmentFile"];
@@ -13867,6 +14018,11 @@ export interface components {
                   job: components["schemas"]["JobData"];
                   /** @enum {string} */
                   kind: "Job";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "UndoPreview";
+                  preview: components["schemas"]["UndoPreview"];
               }
             | {
                   /** @enum {string} */
@@ -16368,6 +16524,31 @@ export interface components {
             keys: string[];
             /** @description The TUI action its dispatcher returns. */
             name: string;
+        };
+        /**
+         * @description What `UndoMutation` would reverse, read from the undo entry without
+         *     changing it.
+         */
+        UndoPreview: {
+            /** @description The mutation's kind, snake_case (`archive`, `labels`, `desk_done`). */
+            kind: string;
+            mutation_id: string;
+            /**
+             * @description True when the undo also puts back local state beyond messages: a desk
+             *     Done's dismissals, promises, reminders or highlights.
+             */
+            restores_desk_state: boolean;
+            /** @description The messages the undo restores, in the order the undo entry holds them. */
+            targets: components["schemas"]["UndoPreviewTarget"][];
+        };
+        UndoPreviewTarget: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description False when the message is gone from the local store, so the real undo
+             *     cannot restore it.
+             */
+            in_local_store: boolean;
+            message_id: components["schemas"]["MessageId"];
         };
         UnsubscribeMethod:
             | {

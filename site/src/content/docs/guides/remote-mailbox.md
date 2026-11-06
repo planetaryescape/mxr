@@ -1,11 +1,11 @@
 ---
-title: Read and reply from another computer
-description: Run a foreground host gateway, pair each client, and save a private HTTPS connection for the CLI, TUI and MCP.
+title: Use one hosted mailbox from your other devices
+description: Pair each client with a private HTTPS host, approve its mail permissions, and open the same mailbox in the CLI, TUI, MCP, web or desktop app.
 ---
 
-One computer runs the daemon and owns its mail providers, database and search index. Other computers can pair with it and read or search that mailbox through private HTTPS, and request host approval to reply and send. The host must stay awake, online and running mxr.
+One computer runs the daemon and owns its mail providers, database and search index. Other computers pair with it through private HTTPS and request host approval for the mail workflows they need. The host must stay awake, online and running mxr.
 
-Default pairings support mailbox reading, search and attachment downloads in the CLI, TUI and MCP. An explicitly approved send grant adds draft preparation, portable uploads, previews, sending and outcome recovery. Mail changes, remote browser sessions and unattended service setup remain future stages. Unsupported remote operations return an error.
+Default pairings support reading, search and portable attachment downloads. Add host-approved grants for sending, mail organization and AI features. Web and desktop sessions inherit the grants of the paired installation that opens them. Host configuration, credentials, executable rules, process control, recovery administration and activity history stay on the host.
 
 ## Run the daemon and gateway on the host
 
@@ -82,7 +82,36 @@ mxr connect https://mail-host.example-tailnet.ts.net:8443 --allow-send --confirm
 
 The result lists `mail_read` and `mail_send`. On the host, compare the full challenge and requested grants, then preview and approve the request as in the pairing steps. Repeat the client's confirmed command with `--allow-send` to claim it. An upgrade keeps the old read connection selected until the approved registration and workspace handshake are saved. It then retires that installation's old registration; other clients remain connected. A pending, refused or failed upgrade leaves the old selection intact.
 
-`mail_send` authorizes only the draft, preview, portable attachment and reviewed send operations required for composing and sending. It does not grant host configuration, credentials, filesystem access, process control, recovery administration or activity history. Remote MCP uses this registration-wide grant; local MCP profiles do not narrow it.
+`mail_send` authorizes draft, preview, portable attachment, calendar response, scheduled-send and reviewed send operations. It does not grant host configuration, credentials, filesystem access, process control, recovery administration or activity history. Remote MCP uses this registration-wide grant; local MCP profiles do not narrow it.
+
+## Approve mail organization and AI features
+
+Request the grants your client needs, then compare and approve the full challenge on the host:
+
+```sh
+mxr connect https://mail-host.example-tailnet.ts.net:8443 \
+  --allow-send --allow-triage --allow-ai --dry-run --format json
+mxr connect https://mail-host.example-tailnet.ts.net:8443 \
+  --allow-send --allow-triage --allow-ai --confirm --format json
+```
+
+| Client flag | Host-approved grant | Workflows |
+| --- | --- | --- |
+| None | `mail_read` | Read, search, modes, todos, received attachments and mailbox status |
+| `--allow-send` | `mail_send` | Drafts, portable uploads, signatures, snippets, previews, sending, scheduled sending and outcome recovery |
+| `--allow-triage` | `mail_triage` | Archive, labels, snooze, mode moves, todo changes, reviewed batches and sync |
+| `--allow-ai` | `mail_ai` | Summaries, writing help, mail questions and the assistant |
+
+The grants are independent. AI access follows the host's configured models and privacy policy; it does not grant sending or mail changes. Applying writing help to a stored draft also needs `mail_send`. Assistant tools check the originating registration and its grants for every operation, including after a turn starts. Assistant history belongs to that paired installation: its browser sessions share the history, while local host conversations and other installations remain separate. Re-pairing creates a new registration and does not adopt the previous registration's conversations. Continue a remote conversation from its paired client; the host refuses to resume it with local tool privileges.
+
+Model availability reflects the host. Remote status omits its endpoint addresses, environment-variable names and credential locations. Without `mail_ai`, the client reports AI as disabled. Configure models and keys on the host.
+
+Use the same preview and confirmation flows as you do locally. For example, preview a mode move before committing it:
+
+```sh
+mxr reclassify MESSAGE_ID reading --dry-run --format json
+mxr reclassify MESSAGE_ID reading --format json
+```
 
 ## Save, preview and send a plain-text reply
 
@@ -115,6 +144,31 @@ mxr attachments download MESSAGE_ID --dir ./downloads --format json
 
 In the TUI, open a message, press `r`, edit locally, review **Draft Ready**, and press `s` to confirm sending. Opening mail still does not implicitly mark it read remotely. MCP provides `mxr_prepare_reply`, `mxr_save_draft`, the draft attachment tools, `mxr_draft_preview`, `mxr_send_draft` and `mxr_send_outcome` for the same journey; see the [MCP reference](/reference/mcp/).
 
+## Open the hosted web or desktop app
+
+On the host, restart the foreground gateway with the exact HTTPS origin printed by Tailscale Serve:
+
+```sh
+mxr serve --foreground --listen 127.0.0.1:18741 \
+  --public-origin https://mail-host.example-tailnet.ts.net:8443 --dry-run --format json
+mxr serve --foreground --listen 127.0.0.1:18741 \
+  --public-origin https://mail-host.example-tailnet.ts.net:8443
+```
+
+The proxy must preserve the original `Host` header. Requests from another browser origin are refused. Keep the TLS proxy private to your tailnet.
+
+On the paired client, open the selected host:
+
+```sh
+mxr web
+```
+
+Enter the single-use code printed in the terminal into the host's dedicated `/api/v1/remote/browser-launch` connection form. This form always opens, including when the browser profile already has another parent registration's session cookie. The code expires after two minutes. The browser receives a secure, HTTP-only session cookie lasting up to thirty days; the native mail credential stays on the paired client. Neither credential appears in the launch URL. Run `mxr web` again to replace an expired code or session.
+
+Launch the [desktop app](/guides/desktop-app/) on the paired computer to use the same selected host. It exchanges its single-use code at the selected HTTPS origin automatically. External links still open in your normal browser.
+
+Browser sessions use the same mail grants and workspace checks as terminal clients. Inline images and received attachments travel as bounded bytes; compose attachments use portable uploads. Switching the parent installation away or revoking it denies subsequent browser requests and closes its event connection. Other independently paired clients keep their access.
+
 ## The CLI, TUI and MCP use the saved connection
 
 ```sh
@@ -129,6 +183,42 @@ Each new client process uses the saved selection. The remote TUI opens the mailb
 
 The client never starts a local daemon as a fallback when the selected remote is unavailable. Restore host or network access and retry. If another process changes selection while a client is open, close and reopen that client before continuing. Keep private work with its original workspace.
 
+## Recover a pending pairing without switching mailboxes
+
+Inspect the current target and pending request first:
+
+```sh
+mxr connect --status --dry-run --format json
+mxr connect --cancel-pairing --dry-run --format json
+mxr connect --cancel-pairing --confirm --format json
+```
+
+`--cancel-pairing` retires only the unfinished request. It preserves the selected registration and retains cleanup intent if the host cannot acknowledge cancellation.
+
+For an expired challenge, request a fresh one with the same intended grants:
+
+```sh
+mxr connect https://mail-host.example-tailnet.ts.net:8443 \
+  --allow-send --allow-triage --allow-ai --restart-pairing --dry-run --format json
+mxr connect https://mail-host.example-tailnet.ts.net:8443 \
+  --allow-send --allow-triage --allow-ai --restart-pairing --confirm --format json
+```
+
+Compare and approve the new challenge on the host, then repeat the ordinary confirmed connection command with the same grants, **without** `--restart-pairing`, to claim it. Repeating the restart flag would retire that challenge and request another one. The previous selected mailbox stays selected until the new registration is approved, claimed and verified.
+
+## Forget cleanup only when local retries should stop
+
+Connection status reports `pending_deregistration_count` and `cleanup_retry_at` (Unix seconds). Failed cleanup attempts share a persisted delay across client processes, starting at thirty seconds and doubling up to one hour. Retiring another registration or pending pairing makes cleanup due again.
+
+If an old host has been permanently removed or restored and can no longer acknowledge its former credentials, inspect the exact local intents before forgetting them:
+
+```sh
+mxr connect --forget-cleanup --dry-run --format json
+mxr connect --forget-cleanup --confirm --format json
+```
+
+Forgetting preserves the selected connection and drops only the matching local retry intents captured by that invocation. It does not verify revocation on the old host. Revoke there separately if it is reachable. An invalid legacy pending request can first be retired with `--cancel-pairing`, then its cleanup intent can be forgotten; forgetting itself needs no network connection.
+
 ## Switch one client back to its local daemon
 
 ```sh
@@ -137,7 +227,7 @@ mxr connect --local --confirm --format json
 mxr connect --status --format json
 ```
 
-Switching retires only this installation's registration. Other independently paired clients continue using the host. Local selection takes effect even when the host is offline; the result reports pending deregistration, and the client retains enough information to retry it. Later client use or `mxr connect --status` retries pending cleanup. An unreachable host leaves the intent pending.
+Switching retires only this installation's registration. Other independently paired clients continue using the host. Local selection takes effect even when the host is offline; the result reports pending deregistration, and the client retains enough information to retry it. Later client use or `mxr connect --status` retries pending cleanup when its persisted retry time is due. An unreachable host leaves the intent pending.
 
 Switching does not copy the host's database to this computer or move drafts between workspaces. A local mailbox still needs its own local configuration. Cancelling an unfinished pairing with `--local --confirm` also retains cleanup until the host acknowledges it.
 
@@ -153,6 +243,6 @@ mxr serve clients revoke CLIENT_ID --confirm --format json
 
 The next operation on an already-open remote connection checks the current registration and rejects a revoked credential. Work admitted before revocation may finish. Revocation does not cancel previously accepted work.
 
-Client credentials are stored in an owner-only local file using mxr's existing plaintext credential policy. Do not copy that file to make another client; pair the new installation independently. The host keeps verifiers rather than the client secrets. Logs and structured command output omit secrets.
+Client credentials are stored in an owner-only local file using mxr's existing plaintext credential policy. Do not copy that file to make another client; pair the new installation independently. The host keeps verifiers rather than the client secrets. Logs and connection-status output omit native credentials. `mxr web` deliberately prints a short-lived browser code for the connection form; treat that code as private until it is consumed or expires.
 
 A restored host workspace invalidates prior registrations. A changed host, workspace or protocol fails verification before a new saved selection is applied. Preserve the old client state and private work while investigating; switch away explicitly and pair again when the intended host is ready. See [pairing authority](/guides/pairing-authority/) and [backup recovery](/guides/backup-recovery/).

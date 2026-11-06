@@ -18,8 +18,16 @@ pub(crate) struct McpHost {
 
 impl McpHost {
     pub(super) async fn start(state: &Arc<AppState>) -> Result<Arc<Self>, String> {
+        Self::start_scoped(state, None).await
+    }
+
+    pub(super) async fn start_scoped(
+        state: &Arc<AppState>,
+        proof: Option<crate::handler::remote::AdmissionProof>,
+    ) -> Result<Arc<Self>, String> {
         let requester = Arc::new(InProcessRequester {
             state: Arc::downgrade(state),
+            proof,
         });
         let tools = InProcessTools::start(requester)
             .await
@@ -56,6 +64,7 @@ impl ToolHost for McpHost {
 #[derive(Debug)]
 struct InProcessRequester {
     state: Weak<AppState>,
+    proof: Option<crate::handler::remote::AdmissionProof>,
 }
 
 impl InProcessRequester {
@@ -68,6 +77,15 @@ impl InProcessRequester {
             .state
             .upgrade()
             .ok_or_else(|| anyhow::anyhow!("the mxr daemon is shutting down"))?;
+        let request = match &self.proof {
+            Some(proof) => Request::RemoteRead {
+                expected_workspace: expected_workspace.clone(),
+                client_id: proof.client_id.clone(),
+                mail_secret: proof.mail_secret.clone(),
+                request: Box::new(request),
+            },
+            None => request,
+        };
         let message = IpcMessage {
             expected_workspace,
             id: 0,
@@ -111,6 +129,79 @@ mod tests {
         async fn request(&self, _request: Request) -> anyhow::Result<Response> {
             anyhow::bail!("no daemon in this test")
         }
+    }
+
+    #[tokio::test]
+    async fn remote_assistant_tools_recheck_the_original_registration_and_never_gain_local_admin() {
+        use mxr_core::{RemoteCapability, RemoteSecret};
+        use sha2::{Digest, Sha256};
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mail = RemoteSecret::new("a".repeat(64));
+        let cleanup = RemoteSecret::new("b".repeat(64));
+        let verifier = |secret: &RemoteSecret| {
+            RemoteSecret::new(base16ct::lower::encode_string(&Sha256::digest(
+                secret.expose().as_bytes(),
+            )))
+        };
+        let now = chrono::Utc::now().timestamp();
+        let pairing = state
+            .store
+            .start_remote_pairing(
+                "assistant test",
+                &[RemoteCapability::MailRead, RemoteCapability::MailAi],
+                &verifier(&mail),
+                &verifier(&cleanup),
+                now,
+            )
+            .await
+            .unwrap();
+        state
+            .store
+            .approve_remote_pairing(&pairing.request_id, false, now)
+            .await
+            .unwrap();
+        let client = state
+            .store
+            .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, now)
+            .await
+            .unwrap();
+        let requester = InProcessRequester {
+            state: Arc::downgrade(&state),
+            proof: Some(crate::handler::remote::AdmissionProof {
+                client_id: client.client_id.clone(),
+                owner_client_id: client.client_id.clone(),
+                mail_secret: mail,
+            }),
+        };
+        assert!(matches!(
+            requester.request(Request::Ping).await.unwrap(),
+            Response::Ok { .. }
+        ));
+        for request in [
+            Request::Shutdown,
+            Request::GetLlmConfig,
+            Request::Mutation {
+                mutation: mxr_protocol::MutationCommand::SetRead {
+                    message_ids: vec![],
+                    read: true,
+                },
+                client_correlation_id: None,
+            },
+        ] {
+            assert!(matches!(
+                requester.request(request).await.unwrap(),
+                Response::Error { .. }
+            ));
+        }
+        state
+            .store
+            .revoke_remote_client(&client.client_id, false, now)
+            .await
+            .unwrap();
+        assert!(matches!(
+            requester.request(Request::Ping).await.unwrap(),
+            Response::Error { .. }
+        ));
     }
 
     /// A tool added to the MCP server must get an explicit gate rule: until

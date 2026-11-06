@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.226](https://github.com/planetaryescape/mxr/compare/v0.6.225...v0.6.226) (2026-11-06)
+
+
+### Bug Fixes
+
+* pair hosted browsers and desktop clients on protocol 31 ([#906](https://github.com/planetaryescape/mxr/issues/906)) ([f02c7fd](https://github.com/planetaryescape/mxr/commit/f02c7fd3b913f0f162bf30d6726f5a1218487472))
+* validate undo dry runs against real mutation entries ([#909](https://github.com/planetaryescape/mxr/issues/909)) ([33eda3f](https://github.com/planetaryescape/mxr/commit/33eda3f1eef3cb9c949bad87a895fbff0289e173))
+
+
+### Documentation
+
+* record the rejected Resend Inboxes provider and list Outlook as first-party ([#776](https://github.com/planetaryescape/mxr/issues/776)) ([a101fb7](https://github.com/planetaryescape/mxr/commit/a101fb744a7d34a432f61e5c1c85bda75e385d8b))
+
+## [0.6.225](https://github.com/planetaryescape/mxr/compare/v0.6.224...v0.6.225) (2026-11-06)
+
+
+### Bug Fixes
+
+* honour IMAP TLS modes and exact certificate pins ([#910](https://github.com/planetaryescape/mxr/issues/910)) ([5f7259c](https://github.com/planetaryescape/mxr/commit/5f7259cfe5771f02b0a74da5463c4b1d2e539157))
+
 ## [0.6.224](https://github.com/planetaryescape/mxr/compare/v0.6.223...v0.6.224) (2026-11-06)
 
 

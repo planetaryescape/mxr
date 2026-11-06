@@ -227,6 +227,8 @@ pub enum Screen {
 /// "connecting".
 #[derive(Debug, Clone)]
 pub enum ConnectionState {
+    /// The installation deliberately selected another workspace; this session is retired.
+    SelectionChanged,
     Connecting,
     Connected,
     Reconnecting {
@@ -695,6 +697,17 @@ impl App {
     /// - On `Reconnecting` or `Connecting`, leave the modal alone — the
     ///   tick-based opener decides when to surface it.
     pub fn set_connection_state(&mut self, state: ConnectionState) {
+        // An old session cannot be revived by a late connection result.
+        if matches!(self.connection_state, ConnectionState::SelectionChanged) {
+            return;
+        }
+        if matches!(state, ConnectionState::SelectionChanged) {
+            self.pending_connection_retry = false;
+            self.modals.error = Some(crate::app::ErrorModalState::new(
+                "Connection changed",
+                mxr_client::selected_daemon::SELECTION_CHANGED_MESSAGE,
+            ));
+        }
         // The IPC worker re-emits `Reconnecting` with a fresh `since` on every
         // failed retry. Keep the first one so the watchdog times the whole
         // outage; a successful reconnect goes through `Connected`, which clears it.
@@ -757,6 +770,9 @@ impl App {
     /// Mark a "retry now" request from the user. The IPC worker drains and
     /// clears this flag on the next iteration.
     pub fn request_connection_retry(&mut self) {
+        if matches!(self.connection_state, ConnectionState::SelectionChanged) {
+            return;
+        }
         self.pending_connection_retry = true;
     }
 
@@ -765,6 +781,9 @@ impl App {
     pub fn connection_state_label(&self) -> Option<String> {
         match &self.connection_state {
             ConnectionState::Connected => None,
+            ConnectionState::SelectionChanged => {
+                Some("Connection changed; close and reopen mxr".into())
+            }
             ConnectionState::Connecting => Some("Connecting to daemon...".into()),
             ConnectionState::Reconnecting { reason, .. } => {
                 Some(format!("Reconnecting to daemon ({reason})..."))
@@ -1294,10 +1313,14 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 username,
                 password_ref,
                 auth_required,
+                use_tls,
                 max_connections,
+                tls_cert_sha256,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
+                form.imap_use_tls = use_tls;
+                form.imap_tls_cert_sha256 = tls_cert_sha256;
                 form.imap_host = host;
                 form.imap_port = port.to_string();
                 form.imap_max_connections = max_connections.to_string();

@@ -1,6 +1,6 @@
-//! mxr desktop: a window around the local mxr web app.
+//! mxr desktop: a window around the selected mxr web app.
 //!
-//! The daemon is the system. This shell runs `mxr web --print-url --no-open`,
+//! The daemon is the system. This shell runs `mxr web --session-json --no-open`,
 //! loads the URL it prints and adds a global new-message shortcut. It bundles
 //! no frontend (only a down page), manages no daemon and has no updater.
 //!
@@ -18,13 +18,16 @@ mod mxr_cli;
 mod navigation;
 
 use mxr_cli::LaunchError;
-use navigation::{classify, may_open_externally, new_message_script, Nav, DOWN_PAGE};
+use navigation::{
+    browser_session_script, classify, may_open_externally, new_message_script, Nav, DOWN_PAGE,
+};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{
-    webview::DownloadEvent, AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    webview::{DownloadEvent, PageLoadEvent},
+    AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -38,6 +41,7 @@ const SHORTCUT_ENV: &str = "MXR_DESKTOP_SHORTCUT";
 struct Shell {
     /// Origin the window may show, set once `mxr web` has printed it.
     bridge: Mutex<Option<Url>>,
+    browser_code: Mutex<Option<String>>,
     launching: AtomicBool,
 }
 
@@ -114,15 +118,25 @@ fn start_web(app: &AppHandle) {
     if shell.launching.swap(true, Ordering::SeqCst) {
         return;
     }
+    if let Ok(mut code) = shell.browser_code.lock() {
+        *code = None;
+    }
     let app = app.clone();
     std::thread::spawn(move || {
         let shell = app.state::<Arc<Shell>>();
         let target = match mxr_cli::launch(mxr_cli::LAUNCH_TIMEOUT) {
-            Ok(url) => {
-                if let Ok(mut bridge) = shell.bridge.lock() {
-                    *bridge = Some(url.clone());
+            Ok(target) => {
+                let mut navigate = target.url.clone();
+                if target.browser_code.is_some() {
+                    navigate.set_path(navigation::BROWSER_LAUNCH_PATH);
                 }
-                url
+                if let Ok(mut bridge) = shell.bridge.lock() {
+                    *bridge = Some(target.url.clone());
+                }
+                if let Ok(mut code) = shell.browser_code.lock() {
+                    *code = target.browser_code;
+                }
+                navigate
             }
             Err(error) => {
                 if let Ok(mut bridge) = shell.bridge.lock() {
@@ -151,6 +165,7 @@ fn open_externally(url: &Url) {
 fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
     let nav_app = app.clone();
     let dl_app = app.clone();
+    let load_app = app.clone();
     WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("down.html".into()))
         .title("mxr")
         .inner_size(1280.0, 840.0)
@@ -169,6 +184,30 @@ fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
                     false
                 }
                 Nav::Deny => false,
+            }
+        })
+        .on_page_load(move |window, payload| {
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            let shell = load_app.state::<Arc<Shell>>();
+            let Some(target) = shell.bridge() else {
+                return;
+            };
+            let Ok(mut pending) = shell.browser_code.lock() else {
+                return;
+            };
+            let Some(code) = pending.as_deref() else {
+                return;
+            };
+            let Some(script) = browser_session_script(payload.url(), &target, code) else {
+                return;
+            };
+            // Take before evaluating: redirects and repeat page events cannot reuse it.
+            *pending = None;
+            drop(pending);
+            if window.eval(script).is_err() {
+                let _ = window.navigate(down_url(LaunchError::Failed.reason()));
             }
         })
         // `target=_blank` and `window.open` never get a second window.

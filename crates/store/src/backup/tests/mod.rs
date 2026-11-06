@@ -8,6 +8,11 @@ use crate::ByWhenSource;
 use mxr_core::types::MessageDirection;
 use mxr_core::*;
 
+async fn remove_remote_workflow_schema(db: &mut SqliteConnection) {
+    sqlx::raw_sql("DROP TABLE remote_browser_sessions; DROP TABLE remote_browser_codes; ALTER TABLE remote_pairings DROP COLUMN allow_triage; ALTER TABLE remote_pairings DROP COLUMN allow_ai; ALTER TABLE remote_clients DROP COLUMN allow_triage; ALTER TABLE remote_clients DROP COLUMN allow_ai;")
+        .execute(db).await.unwrap();
+}
+
 type QueueSnapshot = (String, String, String, String, String, i64, i64, i64, i64);
 async fn fixture(root: &Path) -> (String, DraftId) {
     let store = Store::fresh_backup(&root.join("mxr.db")).await.unwrap();
@@ -428,6 +433,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -539,6 +545,7 @@ async fn exact_schema_90_backup_without_microsoft_links_remains_inspectable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -581,6 +588,7 @@ async fn exact_schema_91_backup_without_the_thread_index_remains_inspectable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -623,6 +631,7 @@ async fn exact_schema_92_backup_without_unsubscribe_receipts_remains_inspectable
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -665,6 +674,7 @@ async fn exact_schema_94_backup_without_draft_candidate_date_source_remains_insp
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -707,6 +717,7 @@ async fn exact_schema_93_backup_without_commitment_date_source_remains_inspectab
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -982,6 +993,19 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
         .claim_remote_pairing(&p.request_id, &mail, &cleanup, 102)
         .await
         .unwrap();
+    let (code, _) = store
+        .issue_browser_code(&c.client_id, &mail, 103)
+        .await
+        .unwrap();
+    let (session_id, session_mail, _) = store.claim_browser_code(&code, 104).await.unwrap();
+    store
+        .issue_browser_code(&c.client_id, &mail, 105)
+        .await
+        .unwrap();
+    assert!(store
+        .authenticate_remote_client(&session_id, &session_mail, 106)
+        .await
+        .is_ok());
     store.writer().close().await;
     write_manifest(
         stage.path(),
@@ -990,6 +1014,13 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
     inspect(stage.path()).await.unwrap();
     let portable = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     assert!(portable.remote_clients().await.unwrap().is_empty());
+    for table in ["remote_browser_codes", "remote_browser_sessions"] {
+        let count: i64 = sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+            .fetch_one(portable.reader())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
     assert!(portable
         .remote_authority_status()
         .await
@@ -1008,6 +1039,17 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
         .authenticate_remote_client(&c.client_id, &mail, 103)
         .await
         .is_err());
+    assert!(restored
+        .authenticate_remote_client(&session_id, &session_mail, 107)
+        .await
+        .is_err());
+    for table in ["remote_browser_codes", "remote_browser_sessions"] {
+        let count: i64 = sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+            .fetch_one(restored.reader())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
     assert!(restored.restore_pending().await.unwrap());
 }
 
@@ -1028,6 +1070,7 @@ async fn exact_schema_82_backup_remains_restorable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -1083,6 +1126,7 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
         )
         .await
         .unwrap();
+        remove_remote_workflow_schema(&mut db).await;
         sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
             .execute(&mut db)
             .await
@@ -1175,6 +1219,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         )
         .await
         .unwrap();
+        remove_remote_workflow_schema(&mut db).await;
         sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
             .execute(&mut db)
             .await
@@ -1255,6 +1300,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -1323,6 +1369,7 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await

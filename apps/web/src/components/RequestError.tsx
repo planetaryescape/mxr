@@ -1,3 +1,4 @@
+import { getToken } from "@/lib/tokenStorage";
 import { BridgeRequestError, DaemonUnavailableError, UnauthorizedError } from "@/api/client";
 
 /**
@@ -50,7 +51,10 @@ export function explainError(error: unknown, subject?: string): ErrorExplanation
   if (error instanceof UnauthorizedError) {
     return {
       heading: "mxr doesn't recognise this browser",
-      body: "Mail already on screen is still readable. A fresh bridge token reconnects it.",
+      body:
+        getToken() === "browser-session"
+          ? "Mail already on screen is still readable. Run mxr web or reopen the desktop app to reconnect."
+          : "Mail already on screen is still readable. A fresh bridge token reconnects it.",
       fix: "token",
       generic: false,
       technical,

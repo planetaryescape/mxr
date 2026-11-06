@@ -1013,6 +1013,7 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
         model: state.llm.model_name(),
         configured_model: config.model,
         base_url: (config.enabled && !base_routed).then_some(config.base_url),
+        policy_key: None,
         api_key_env: api_key_env.filter(|_| !base_routed),
         api_key_present,
         context_window: capabilities.context_window,

@@ -113,6 +113,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
         )
         .await
         .unwrap();
+        remove_remote_workflow_schema(&mut db).await;
         sqlx::raw_sql(include_str!("../pre_conversation_summaries.sql"))
             .execute(&mut db)
             .await
@@ -183,7 +184,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .unwrap();
             assert_eq!(
                 versions,
-                [98, 99, 100, 101, 102, 103, 104, 105, 106, 108, 111]
+                [98, 99, 100, 101, 102, 103, 104, 105, 106, 108, 109, 110, 111]
             );
             restored.reader().close().await;
             restored.writer().close().await;

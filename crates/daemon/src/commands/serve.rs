@@ -1,3 +1,34 @@
+mod hosting;
+mod proxy;
+mod runner;
+mod state;
+mod supervisor;
+
+pub(crate) async fn prepare_foreground() -> anyhow::Result<()> {
+    hosting::prepare_foreground().await
+}
+pub(crate) async fn stop_daemon(confirm: bool) -> anyhow::Result<()> {
+    hosting::stop_daemon(confirm).await
+}
+pub(crate) fn daemon_desired_stopped() -> anyhow::Result<bool> {
+    Ok(mxr_config::hosting_daemon_desired_stopped()?)
+}
+pub(crate) fn mark_daemon_started() -> anyhow::Result<()> {
+    let Some(mut config) = state::read()? else {
+        return Ok(());
+    };
+    if config.daemon_enabled {
+        return Ok(());
+    }
+    let _lock = state::lock()?;
+    config = state::read()?.ok_or_else(|| anyhow::anyhow!("Hosting state changed"))?;
+    config.daemon_enabled = true;
+    state::write(&config)
+}
+pub(crate) fn normalize_public_origin(origin: &str) -> anyhow::Result<String> {
+    hosting::normalize_origin(origin)
+}
+
 use crate::commands::daemon_response_error;
 use crate::{
     cli::{ServeAction, ServeClientAction, ServePairAction},
@@ -20,7 +51,22 @@ pub async fn run(
         anyhow::bail!("Choose a `mxr serve` subcommand, or use `mxr serve --foreground` to run the loopback gateway.")
     };
     let request = match action {
-        ServeAction::Status => RemoteRequest::Status,
+        ServeAction::Setup {
+            public_origin,
+            listen,
+            dry_run,
+            confirm,
+        } => return hosting::setup(public_origin, listen, confirm && !dry_run, format).await,
+        ServeAction::Start { dry_run, confirm } => {
+            return hosting::start(confirm && !dry_run, format).await
+        }
+        ServeAction::Stop {
+            all,
+            dry_run,
+            confirm,
+        } => return hosting::stop(all, confirm && !dry_run, format).await,
+        ServeAction::Supervised => return runner::supervised().await,
+        ServeAction::Status => return hosting::status(format).await,
         ServeAction::Pair {
             action: ServePairAction::List,
         } => RemoteRequest::Pairings,

@@ -1,18 +1,30 @@
 # Remote hosting keeps one daemon in charge of registered clients
 
-Status: implementation contract, updated 2026-10-13. F01 shipped in v0.6.94; R1 shipped in v0.6.95 from `abb9b5a3fb90bb14f462c61c6a329561b379a93b`. The feature merged as `b2ceb47ffbe0ea8839384d94945ed28810e95f04`. R2–R5 remain proposed requirements. The original source baseline is [`origin/main` at `25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`](https://github.com/planetaryescape/mxr/tree/25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb). This contract expands the deferred R01 remote boundary from [daemon portability preparation](23-daemon-portability.md). Track execution in [the remote hosting issue](../issues/remote-hosting-and-client-lifecycle.md).
+Status: F01 shipped in v0.6.94, R1 in v0.6.95, R2 in [v0.6.96](https://github.com/planetaryescape/mxr/releases/tag/v0.6.96), and R3–R5 in [v0.6.226](https://github.com/planetaryescape/mxr/releases/tag/v0.6.226) through [PR 906](https://github.com/planetaryescape/mxr/pull/906), merged as `f02c7fd3b913f0f162bf30d6726f5a1218487472`. R2 merged in [PR 450](https://github.com/planetaryescape/mxr/pull/450) as `f4d02b6405cf7414e457004e24d870056a303c0f`; the release tag resolves to `b388f28a048e3aae94e825154d8ca406810bed98`. v0.6.226 carries IPC 31 and schema 110. Live macOS/Linux supervisor installation, crash/reboot recovery and a real-mailbox migration still have no installed acceptance. The original specification baseline remains [`25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb`](https://github.com/planetaryescape/mxr/tree/25aebe7573c6f80f98c68260bf5dc4c3b5ac4ddb). Track remaining acceptance in [the remote hosting issue](../issues/remote-hosting-and-client-lifecycle.md).
 
-The [execution ladder](../implementation/remote-hosting.md) records F01 as released in v0.6.94 and R1 as shipped in v0.6.95. The rest of the hosting, connection and lifecycle requirements below remain proposed.
+The [execution ladder](../implementation/remote-hosting.md) preserves release evidence. The [web and desktop handover](../implementation/remote-web-desktop-handover.md) records the shipped checks and the remaining installed prerequisites; [hosting runtime notes](../implementation/remote-hosting-runtime.md) distinguish service implementation from live supervisor acceptance. The requirements below remain the acceptance contract where the shipped release has not yet been exercised.
 
 Implement `mxr serve` on the computer that owns the mail workspace and `mxr connect` on each client computer. CLI, TUI, MCP and `mxr web` must honour the saved connection. The host knows which clients are registered, which sessions are active, and which operations it has accepted. Clients receive planned shutdown notices, reconnect after interruptions and deregister when deliberately switching away.
 
 The completion check is two separate client homes using one hosted workspace through authenticated HTTPS: read, reply, attach, submit, lose a response, restart the host, recover the outcome, then switch one client to local while the other continues. Include an actual browser session. Repeat the switch while the host is unavailable and prove eventual deregistration without sending old work to the local daemon. Use controlled providers throughout.
 
+## R3 adds web access and approved mail workflows
+
+R3 uses IPC 31 and database schema 110. Existing registrations keep their grants. `mxr connect --allow-send`, `--allow-triage` and `--allow-ai` request independently approved send/compose, mail organization and AI authority; none grants host administration. The exact operation lists live in `crates/protocol/src/remote.rs` and `crates/protocol/src/remote/workflow_policy.rs`.
+
+`mxr web` opens the selected server's `/api/v1/remote/browser-launch` form and prints a two-minute single-use code. The desktop shell submits its code at the same origin. A secure, HTTP-only child-session cookie lasts at most thirty days and is checked against the parent registration on each admission. The launch path always shows the form, including when that browser profile holds an older cookie. No credential appears in the launch URL. Compose files stay bound to their captured workspace and parent registration; uploads and inline images use bounded, path-free transfers. Remote assistant histories are separated by parent registration, and each tool call rechecks that registration's grants.
+
+`mxr connect --cancel-pairing` retires only an unfinished request; `--restart-pairing URL` requests a fresh challenge while preserving the selected registration until claim. Cleanup retries share persisted exponential backoff across processes. `--forget-cleanup` previews and drops matching local retry intents without asserting that a removed or restored host revoked access.
+
+Presence is per boot with 90-second leases; registration authority persists in SQLite. The current `ServerStopping` event carries `boot_id` and `deadline_at`; `RemoteReady` returns the boot, host, workspace, protocol and grants. The richer logical event examples later in this contract are requirements to assess, not fields the current release emits. Drain previews include registered clients, leased sessions, accepted remote work, scheduled sends, snoozes and reminders.
+
+v0.6.226 ships `serve setup`, `serve start`, `serve stop`, `serve stop --all` and `daemon stop`, with preview before confirmation. No installed Mac/Linux service, live Tailscale mapping change, host reboot or real-mailbox migration has been exercised. Published binary and end-to-end acceptance remain open in the handovers.
+
 ## One host owns the database, index and provider work
 
 ```text
 Mac CLI / TUI / MCP ---- HTTPS + WSS ----+
-Browser web app ------- HTTPS + WSS ----+--> Tailscale Serve
+Browser / desktop ----- HTTPS + WSS ----+--> Tailscale Serve
 Future SwiftUI app ---- HTTPS + WSS ----+       |
                                         remote gateway (loopback)
                                                |
@@ -47,17 +59,17 @@ All source links in this table are pinned to the baseline commit. Re-fetch befor
 
 ## Serving and connecting have separate command scopes
 
-These examples record the required command UX. R1 commands shipped in v0.6.95; the [remote mailbox guide](../../site/src/content/docs/guides/remote-mailbox.md) records their usage. Requirements for later stages remain proposed. `--dry-run` is read-only and uses the same target resolution and validation as execution. Interactive mutations show the preview and ask for confirmation; noninteractive execution requires `--confirm`. All results and failures support `--format json`; event watching supports JSONL. Secrets never appear in normal structured output.
+These examples record the required command UX. R1 commands shipped in v0.6.95; the [remote mailbox guide](../../site/src/content/docs/guides/remote-mailbox.md) records their usage. Candidate commands are shown below; installed acceptance remains pending. `--dry-run` is read-only and uses the same target resolution and validation as execution. Interactive mutations show the preview and ask for confirmation; noninteractive execution requires `--confirm`. All results and failures support `--format json`; event watching supports JSONL. Secrets never appear in normal structured output.
 
 ```sh
 # On the host, preview before enabling persistent hosting.
-mxr serve --tailscale --dry-run
-mxr serve --tailscale --confirm
+mxr serve setup --public-origin https://mail.example-tailnet.ts.net:8443 --dry-run
+mxr serve setup --public-origin https://mail.example-tailnet.ts.net:8443 --confirm
 mxr serve status --format json
 
 # On a client, inspect the target before pairing and saving it.
 mxr connect https://mail.example-tailnet.ts.net --dry-run
-mxr connect https://mail.example-tailnet.ts.net --name "MacBook"
+mxr connect https://mail.example-tailnet.ts.net --name "MacBook" --confirm
 mxr status --format json
 mxr
 mxr web
@@ -74,7 +86,7 @@ mxr serve stop --confirm
 
 | Command | Required behaviour |
 | --- | --- |
-| `mxr serve --tailscale [--https-port PORT]` | Always targets the current computer's explicit local profile, even if its saved client connection is remote. Reuses that profile's daemon, installs or updates its supervised hosting configuration and reports the endpoint. Repeating it is idempotent. |
+| `mxr serve setup --public-origin HTTPS_ORIGIN [--listen ADDRESS]` | Always targets the current computer's explicit local profile, even if its saved client connection is remote. Reuses that profile's daemon, installs or updates its supervised hosting configuration and reports the endpoint. Repeating it is idempotent. |
 | `mxr serve status` | Reports desired hosting state, daemon/gateway/service-manager health, endpoint, workspace identity, paired clients, active sessions, in-flight operations and setup drift. Works locally even when the daemon is stopped. |
 | `mxr serve clients` | Lists local-host registrations and active sessions with names, surfaces and last-seen times. The full inventory requires host administration authority. |
 | `mxr serve clients revoke CLIENT_ID` | Previews and revokes that registration, credentials and descendant browser sessions. Supports `--dry-run` and `--confirm`. Does not cancel accepted mail operations. |
@@ -90,7 +102,7 @@ Extend the existing `mxr restart` with the same lifecycle preview and confirmati
 
 Resolve ordinary daemon clients in this order: an existing explicit per-command transport option where supported, `MXR_DAEMON_ADDR`, saved connection, default local Unix socket. Show the winning source in status. An environment override is temporary and cannot rewrite, deregister or silently bypass a saved pairing. Retain existing Unix, SSH `cmd://` and loopback TCP support as explicit advanced transports.
 
-`mxr connect` configures the supplied URL or local selection explicitly; it must detect an environment override that would mask the saved result. Report the conflict before mutation and ask the operator to remove it. `mxr web` must either honour the effective target with a known web origin or report that the transport has no web mapping. It must never open an unrelated local workspace. Keep `--remote-host` as an explicit legacy override with a visible target; do not claim that it creates a saved registration.
+`mxr connect` configures the supplied URL or local selection explicitly; it must detect an environment override that would mask the saved result. Report the conflict before mutation and ask the operator to remove it. `mxr web` must either honour the effective target with a known web origin or report that the transport has no web mapping. It must never open an unrelated local workspace. The gateway rejects legacy `--remote-host` token launch URLs with an instruction to use `mxr connect`; it does not silently open a local mailbox.
 
 Store the selected origin, server ID, workspace identity/recovery generation, registration ID, credential reference and a monotonically changing local selection generation. Keep credentials in the platform's protected credential storage; use the repository's headless credential policy on Linux. Keep client selection outside portable daemon backups.
 
@@ -106,13 +118,13 @@ Verification: run CLI, TUI, MCP and web with a saved remote selection, a conflic
 
 Tailscale provides private reachability and HTTPS termination. Its [Serve documentation](https://tailscale.com/docs/features/tailscale-serve) describes tailnet access controls and the loopback proxy. mxr still authenticates callers with its own revocable credentials. Do not authorise requests from a forwarded identity header, `ClientKind`, display name, client-supplied ID or loopback source address.
 
-Create a dedicated loopback listener/router for remote hosting. Leave the existing local bridge's behaviour separate. The remote router must omit the local-token bootstrap, filesystem-serving routes and implicit local administration access. Build a reviewed allowlist of individual operations; the existing broad IPC categories are insufficient because a category can mix safe reads and administrative effects.
+Create a dedicated loopback listener/router for remote hosting. Leave the existing local bridge's behaviour separate. The remote router must never reveal the local bridge credential or provide arbitrary filesystem and implicit local administration access. The remote router returns only a public compatibility marker from the authenticated SPA bootstrap route; its cookie supplies authority. Build a reviewed allowlist of individual operations; the existing broad IPC categories are insufficient because a category can mix safe reads and administrative effects.
 
 | Boundary | Contract |
 | --- | --- |
 | Pairing | Client starts a bounded pending request and proves possession of its generated secret. Display the same challenge on client and local host approval. Approval is single-use, expires and grants only the requested supported mail capabilities. Do not expose mail before approval. Bound pending requests and attempts. |
 | Native/CLI credentials | Issue an opaque per-registration credential; store only its verifier on the server. Authenticate over TLS. Never put credentials in command arguments, URLs, logs, diagnostics or the activity log. |
-| Browser credentials | Use a secure, HttpOnly, same-origin cookie and CSRF/Origin validation for mutations and WebSocket upgrades. For CLI-assisted launch, exchange a short-lived, single-use code entered on the pairing page for a child grant. Open a clean URL; do not put the long-lived CLI token in its fragment or query. |
+| Browser credentials | Use a secure, HttpOnly, same-origin cookie and CSRF/Origin validation for mutations and WebSocket upgrades. Exchange a short-lived, single-use code at the dedicated browser-launch form for a child grant. Opening this form must not silently reuse another registration's existing cookie. Open a clean URL; put no credential in its fragment or query. |
 | Revocation | Commit revocation before acknowledging it; invalidate existing sessions and child grants as well as future requests. Recheck authority at operation admission, including on open WebSockets. |
 | Remote permissions | Permit the reviewed mail/resource, self-session and lifecycle-observation operations. Keep provider credentials, arbitrary paths, shell execution, configuration of executable hooks, process control, backup/restore and broad diagnostic exports local-admin only. |
 | Forwarding to daemon | The gateway supplies a server-validated session context. Bind it to the authenticated registration and its permitted operations. Public requests cannot forge that context or invoke internal forwarding/admin wrappers. Apply the same check to HTTP and WSS. |
@@ -129,7 +141,7 @@ Treat a registration as an explicit ongoing relationship with one server. Treat 
 | --- | --- |
 | Server identity | Stable host installation ID, workspace identity and recovery generation. A fresh daemon start also gets a new process/boot ID. A restored installation requires explicit identity and credential handling. |
 | Registration | Server-issued ID, installation/profile identity, display name, creation/last-seen timestamps, capabilities, credential verifier, optional parent registration and active/revoked state. Survives daemon restart; explicit deregistration ends it. Names are bounded display data, never identifiers. |
-| Session | Server-issued ID, registration ID, surface, client/protocol version, server boot ID, last activity, lease expiry and connection state. In-memory presence resets on daemon restart. HTTP requests and event connections must refer to the same authenticated session. |
+| Session | Candidate presence records use a bounded session ID supplied by the authenticated client/gateway, registration ID, surface, last activity, lease expiry and active state. The registry has a server boot ID and resets on restart. A session ID or surface alone never grants authority. Browser session credentials are issued separately by the host. |
 | Accepted operation | Existing workspace-bound operation ID and outcome, with registration attribution where appropriate. Its lifetime is independent of the socket and registration. |
 | Pending deregistration | Client-local record containing old origin/server/registration IDs, operation ID, retry state and a credential restricted to revoking that registration. Survives client exit and contains no mail actions. |
 
@@ -137,13 +149,13 @@ At pairing, issue a separate cleanup capability that can only deregister this re
 
 Keep registration state server-owned, separate from user-activity history. Coalesce last-seen writes. Activity remains host-local, honours `MXR_ACTIVITY=off`, and never becomes a remotely exported presence journal. Ordinary clients may inspect their own registration/session and general service availability; listing other clients requires local administration.
 
-Initial timing defaults are engineering choices to test: 30-second foreground heartbeats, 90-second presence expiry, exponential reconnect delay starting at one second and capped at 30 seconds with jitter. Negotiate them in the handshake. Short CLI requests do not spawn background heartbeat processes. Sleeping/offline clients remain registered and appear last-seen; their expired sessions do not block shutdown.
+Timing remains subject to runtime acceptance. The current implementation uses 90-second presence expiry; the browser reconnect base starts at 250 ms and caps at 30 seconds before jitter. The TUI currently uses a two-second reconnect wait. These are implementation defaults, not negotiated handshake fields. Short CLI requests do not spawn background heartbeat processes. Sleeping/offline clients remain registered and appear last-seen; their expired sessions do not block shutdown.
 
 Store credential verifiers and pairing state in the daemon's persistence layer with explicit backup filtering. Portable backups must not re-enable old grants or revive revoked credentials after restore. Restore clears remote hosting authority and sessions, rotates server security identity as required and requires re-pairing; preserve the existing workspace recovery safeguards. Do not copy authentication state blindly alongside mail SQLite.
 
 ## A fresh handshake establishes that the server is back
 
-Proposed lifecycle messages are additive contract requirements, subject to protocol versioning. The examples show logical payloads; use the existing transport envelopes when implementing them.
+The following is the original logical lifecycle proposal, not the current IPC payload. The current release emits `ServerStopping { boot_id, deadline_at }`; future fields require an explicit protocol change and acceptance evidence.
 
 ```json
 {
@@ -209,7 +221,7 @@ Existing drafts, attachments, queued actions and uncertain outcomes remain attac
 
 ## Hosting setup owns only mxr's service configuration
 
-`mxr serve --tailscale --dry-run` inspects local profile locks, recovery state, Tailscale availability/login, HTTPS prerequisites, the chosen tailnet endpoint/port, conflicting Serve mappings and the OS supervisor. It must not install software, approve tailnet settings, pair a device or alter a service. Execution reports missing prerequisites with actionable commands rather than silently reconfiguring unrelated infrastructure.
+`mxr serve setup --public-origin HTTPS_ORIGIN --dry-run` inspects local profile locks, recovery state, Tailscale availability/login, HTTPS prerequisites, the chosen tailnet endpoint/port, conflicting Serve mappings and the OS supervisor. It must not install software, approve tailnet settings, pair a device or alter a service. Execution reports missing prerequisites with actionable commands rather than silently reconfiguring unrelated infrastructure.
 
 Run the daemon as the account that owns its data; do not give the daemon root privileges to simplify installation. Support a user-scoped macOS launchd service and a Linux systemd service arrangement suitable for unattended hosting. Distinguish macOS login startup from pre-login boot service availability. If Linux user lingering or system-level setup requires privileges, preview that exact prerequisite and report incomplete setup until it is satisfied.
 
@@ -236,7 +248,7 @@ Execution follows the [vertical release ladder](../implementation/remote-hosting
 
 Use the existing crate boundaries. `core` owns domain identifiers, `protocol` owns DTOs/events, `store` owns persisted registrations/revocation, `daemon` owns authority and lifecycle, `config` owns host/client settings, `transport` owns the WSS adapter, `client` owns shared selection/reconnect, and `web` remains an IPC client and authenticated gateway. OS service and Tailscale commands belong in host CLI integration. Web, TUI and MCP consume the shared contract. Avoid adding unrelated code to already large protocol/web files; follow their existing module seams.
 
-R1 implements `/api/v1/remote/pairings`, `/api/v1/remote/self/deregister` and `/api/v1/remote/ipc`. The proposed `/api/v1/remote/sessions`, `/api/v1/remote/self` and `/api/v1/remote/browser-grants` routes remain future requirements. Reuse existing mail resource routes and event streaming with the remote authentication layer. Expose reusable domain operations through typed IPC and CLI JSON too. Keep host installation and other local-only administration outside the remote allowlist; client parity does not grant remote OS privileges.
+R1 implements `/api/v1/remote/pairings`, `/api/v1/remote/self/deregister` and `/api/v1/remote/ipc`. The current release adds native `/api/v1/remote/browser-grants`, browser `/api/v1/remote/browser-launch` and `/api/v1/remote/browser-session`, and lease handling through authenticated IPC. Separate `/api/v1/remote/sessions` and `/api/v1/remote/self` REST routes remain proposed; do not document them as available. Reuse existing mail resource routes and event streaming with the remote authentication layer. Expose reusable domain operations through typed IPC and CLI JSON too. Keep host installation and other local-only administration outside the remote allowlist; client parity does not grant remote OS privileges.
 
 | Stage | Depends on | Implementation and acceptance |
 | --- | --- | --- |
@@ -281,11 +293,9 @@ Use fake providers and isolated homes for deterministic fault injection. Run foc
 
 Update the transport blueprint, CLI reference source/generator, remote API/OpenAPI schemas and generated clients as each surface ships. Add public operator guides only for implemented behaviour. Record each stage's commit, test environment, acceptance evidence and release result in the existing issue and linked implementation reports. Mark proposed commands as available only after installed acceptance.
 
-The original specification passed source-reference, relative-link and HTML-companion checks. R1's release and installed HTTPS acceptance are complete and recorded in the [execution ladder](../implementation/remote-hosting.md). R2–R5 product acceptance remains unexecuted; R2 is next. R5 still requires supported Mac/Linux supervisor and reboot acceptance.
+The original specification passed source-reference, relative-link and HTML-companion checks. R1's release and installed HTTPS acceptance are complete and recorded in the [execution ladder](../implementation/remote-hosting.md). R2 code shipped in v0.6.96; its merged-PR evidence is recorded in the execution ladder. R3–R5 shipped in v0.6.226. Their installed browser/client acceptance and live Mac/Linux supervisor, crash and reboot checks remain open; neither source fixtures nor the earlier R1 receipts satisfy them.
 
 ## Unresolved choices have defaults and explicit decision points
 
 - Which macOS Tailscale distribution and Linux service account/supervisor arrangement are the first supported deployment fixtures? Resolve in R01f before claiming unattended startup; the proposed default is launchd at user login on Mac and an unattended systemd arrangement on Linux.
-- What credential lifetime and revoked-registration retention window should ship? Resolve in R01b; explicit revocation and cleanup-only retries are required regardless of duration.
-- What remote API/client compatibility window should be supported? Start with explicit negotiated capabilities and exact IPC compatibility for the WSS adapter; choose and test any broader window in R01a rather than promising it implicitly.
-- Are the proposed 30/90-second presence intervals and reconnect cap acceptable under actual network interruptions? Validate in R01d; timing changes must not alter the registration or shutdown semantics.
+- Do the implemented lease and reconnect defaults recover acceptably under the supported network-interruption fixtures? Record the observed recovery and any tuning before accepting R4; timing changes must not alter registration or shutdown semantics.

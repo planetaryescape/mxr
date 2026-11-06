@@ -94,7 +94,7 @@ pub(crate) mod record_subscriptions;
 pub(crate) mod records;
 mod recovery;
 mod relationship_profile;
-mod remote;
+pub(crate) mod remote;
 #[cfg(test)]
 mod remote_tests;
 pub(crate) mod reply_later;
@@ -458,6 +458,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::SyncMicrosoftTodos { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::ReadInlineImage { .. }
         | Request::PreviewDraftAttachment { .. }
         | Request::BeginDraftAttachment { .. }
         | Request::WriteDraftAttachmentChunk { .. }
@@ -726,6 +727,12 @@ async fn dispatch(
             message_id,
             allow_remote,
         } => mailbox::get_html_image_assets(state, message_id, *allow_remote).await,
+        Request::ReadInlineImage {
+            message_id,
+            source,
+            offset,
+            length,
+        } => mailbox::read_inline_image(state, message_id, source, *offset, *length).await,
         Request::DownloadAttachment {
             message_id,
             attachment_id,
@@ -1425,6 +1432,7 @@ async fn dispatch(
         Request::ListJobs => mutations::list_jobs(state).await,
         Request::GetJob { job_id } => mutations::get_job(state, job_id).await,
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
+        Request::UndoPreview { mutation_id } => mutations::undo_preview(state, mutation_id).await,
         Request::Snooze {
             message_id,
             wake_at,
@@ -2683,6 +2691,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::PreviewArchive { .. }
         | Request::ListJobs
         | Request::GetJob { .. }
+        | Request::UndoPreview { .. }
         | Request::ListSnoozed
         | Request::ListReplyQueue
         | Request::ListSnippets
@@ -2869,6 +2878,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DownloadAttachment { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::ReadInlineImage { .. }
         | Request::OpenAttachment { .. }
         | Request::CreateLabel { .. }
         | Request::RenameLabel { .. }
@@ -3077,6 +3087,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::PrepareInviteResponse { .. } => "prepare_invite_response",
         Request::MarkInviteAnswered { .. } => "mark_invite_answered",
         Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
+        Request::ReadInlineImage { .. } => "read_inline_image",
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::GetAttachmentTransferMetadata { .. } => "attachment_transfer_metadata",
         Request::ReadAttachmentChunk { .. } => "read_attachment_chunk",
@@ -3194,6 +3205,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListJobs => "list_jobs",
         Request::GetJob { .. } => "get_job",
         Request::UndoMutation { .. } => "undo_mutation",
+        Request::UndoPreview { .. } => "undo_preview",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::UnsubscribePurge { .. } => "unsubscribe_purge",
         Request::CommitUnsubscribePreview { .. } => "commit_unsubscribe_preview",
@@ -5111,6 +5123,7 @@ mod identity_activity_tests {
                     send: None,
                     device_code_url: None,
                     device_code_user_code: None,
+                    tls_cert_sha256: None,
                 },
             },
         }
@@ -5136,6 +5149,7 @@ mod identity_activity_tests {
                     send: None,
                     device_code_url: None,
                     device_code_user_code: None,
+                    tls_cert_sha256: None,
                 },
             },
         };

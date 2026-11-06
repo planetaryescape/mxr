@@ -44,7 +44,7 @@ pub(super) async fn middleware(
         && !path.contains("/docs")
         && !path.ends_with("/health");
     if authenticated && (owner.is_some() || read_observation) {
-        let mut connection = match mxr_client::IpcConnection::connect(
+        let mut connection = match crate::remote_browser::connect(
             &state.config.socket_path,
             mxr_protocol::ClientKind::Web,
         )

@@ -342,6 +342,9 @@ pub(crate) async fn serve_client_connection<S>(
             changed = shutdown_rx.changed(), if !shutdown_requested => {
                 match changed {
                     Ok(()) if *shutdown_rx.borrow_and_update() => {
+                        // The lifecycle notice was enqueued before shutdown intent. Deliver it
+                        // while the socket can still write, including for idle remote clients.
+                        if can_send && auth.is_authenticated() && !flush_queued_events(&mut sink, &state, event_profile, &mut event_rx).await {can_send=false;}
                         shutdown_requested = true;
                         accept_requests = false;
                     }
@@ -832,12 +835,34 @@ mod tests {
             .await
             .expect("send shutdown request");
 
+        let notice = tokio::time::timeout(Duration::from_secs(1), client.next())
+            .await
+            .expect("stopping notice should arrive")
+            .expect("stopping notice frame")
+            .expect("stopping notice should decode");
+        let status = state_for_cleanup
+            .remote_lifecycle
+            .snapshot(chrono::Utc::now().timestamp());
+        assert_eq!(notice.id, 0);
+        assert_eq!(notice.source, mxr_protocol::ClientKind::Daemon);
+        match notice.payload {
+            IpcPayload::Event(DaemonEvent::ServerStopping {
+                boot_id,
+                deadline_at,
+            }) => {
+                assert_eq!(boot_id, status.boot_id);
+                assert_eq!(Some(deadline_at), status.deadline_at);
+            }
+            other => panic!("expected stopping notice, got {other:?}"),
+        }
+
         let response = tokio::time::timeout(Duration::from_secs(1), client.next())
             .await
             .expect("response should arrive")
             .expect("response frame")
             .expect("response should decode");
 
+        assert_eq!(response.id, 44);
         match response.payload {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::Ack,
@@ -845,7 +870,10 @@ mod tests {
             other => panic!("expected shutdown ack, got {other:?}"),
         }
 
-        drop(client);
+        let closed = tokio::time::timeout(Duration::from_secs(1), client.next())
+            .await
+            .expect("connection should close after acknowledging shutdown");
+        assert!(closed.is_none(), "expected clean EOF, got {closed:?}");
 
         tokio::time::timeout(Duration::from_secs(1), server)
             .await

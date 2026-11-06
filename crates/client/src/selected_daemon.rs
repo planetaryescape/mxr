@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 
+pub const SELECTION_CHANGED_MESSAGE: &str = "Saved connection changed. Close and reopen this client. Retained drafts and operation outcomes still belong to their original workspace.";
+
 const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
@@ -114,10 +116,34 @@ impl SelectedDaemonTarget {
         }
     }
 
+    /// A resolved target is immutable for its session. A deliberate saved
+    /// selection change retires it; reconnecting must not revive the old target.
+    pub async fn selection_is_current(&self) -> Result<bool, ClientError> {
+        let Some(generation) = self.generation else {
+            return Ok(true);
+        };
+        let state = tokio::task::spawn_blocking(|| {
+            mxr_config::connection_state::read(&mxr_config::connection_state::path())
+        })
+        .await
+        .map_err(|_| ClientError::Closed)??;
+        Ok(state.generation == generation)
+    }
+    async fn require_current_selection(&self) -> Result<(), ClientError> {
+        if !self.selection_is_current().await? {
+            return Err(ClientError::Io(std::io::Error::other(
+                SELECTION_CHANGED_MESSAGE,
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn connect(&self, source: ClientKind) -> Result<IpcConnection, ClientError> {
+        self.require_current_selection().await?;
         crate::remote_connection::schedule_cleanup();
         if let Some((saved, generation)) = &self.saved {
             let connection = connect_registration(saved, source).await?;
+            self.require_current_selection().await?;
             return Ok(connection.with_selection_generation(*generation));
         }
         if let Some(path) = self.unix_path() {
@@ -126,6 +152,7 @@ impl SelectedDaemonTarget {
             } else {
                 IpcConnection::connect_supervised(path, source).await
             }?;
+            self.require_current_selection().await?;
             return Ok(match self.generation {
                 Some(generation) => connection.with_selection_generation(generation),
                 None => connection,
@@ -143,7 +170,7 @@ impl SelectedDaemonTarget {
                 _ => Err(self.setup_error("daemon returned an unexpected status response")),
             }
         };
-        tokio::time::timeout(SETUP_TIMEOUT, setup)
+        let connection=tokio::time::timeout(SETUP_TIMEOUT, setup)
             .await
             .map_err(|_| {
                 self.setup_error(
@@ -160,7 +187,9 @@ impl SelectedDaemonTarget {
                     error.to_string()
                 };
                 self.setup_error(&reason)
-            })
+            })?;
+        self.require_current_selection().await?;
+        Ok(connection)
     }
 
     fn setup_error(&self, reason: &str) -> ClientError {
@@ -199,13 +228,16 @@ pub async fn connect_registration(
     let setup = async {
         let mut connection = IpcConnection::connect_with(&connector, source).await?;
         match connection.request(Request::GetRemoteReady).await? {
-            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id, capabilities, ..}
+            ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id, capabilities, accepting_mail, shutdown_deadline_at, boot_id, ..}
                 if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id
                     && saved.capabilities.iter().all(|grant| capabilities.contains(grant))
                     && (saved.host_id.is_empty() || (host_id == saved.host_id && workspace.workspace_id == saved.workspace_id && workspace.recovery_generation == saved.recovery_generation)) => {
                         connection.selected_remote = true;
                         connection.remote_workspace = Some(workspace);
                         connection.remote_registration_identity = Some((host_id, client_id));
+                        if !accepting_mail {
+                            connection.remote_shutdown_notice=Some(mxr_protocol::DaemonEvent::ServerStopping {boot_id,deadline_at:shutdown_deadline_at.unwrap_or(0)});
+                        }
                         Ok(connection)
                     }
             ResponseData::RemoteReady { protocol_version, .. } if protocol_version != IPC_PROTOCOL_VERSION => Err(ClientError::Io(std::io::Error::other(format!("Client supports IPC protocol {IPC_PROTOCOL_VERSION}; remote host reports {protocol_version}. Upgrade host and clients to matching mxr versions; saved selection was preserved")))),

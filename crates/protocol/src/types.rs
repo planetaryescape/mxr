@@ -14,6 +14,7 @@ mod compose_assist;
 mod desk;
 mod draft_provenance;
 mod freshness;
+mod inline_images;
 mod keymap;
 mod llm_routes;
 mod messages;
@@ -37,6 +38,7 @@ pub use compose_assist::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
+pub use inline_images::*;
 pub use keymap::*;
 pub use llm_routes::*;
 pub use messages::*;
@@ -192,6 +194,9 @@ pub struct LlmStatusSnapshot {
     pub model: String,
     pub configured_model: String,
     pub base_url: Option<String>,
+    /// Cache identity for a redacted host endpoint, not an authentication credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_key: Option<String>,
     pub api_key_env: Option<String>,
     pub api_key_present: bool,
     pub context_window: u32,
@@ -727,6 +732,14 @@ pub enum Request {
     GetHtmlImageAssets {
         message_id: MessageId,
         allow_remote: bool,
+    },
+    /// Read one bounded chunk of an inline source present in this message's HTML.
+    /// Remote web resources and host file sources cannot be requested.
+    ReadInlineImage {
+        message_id: MessageId,
+        source: String,
+        offset: u64,
+        length: u32,
     },
     DownloadAttachment {
         message_id: MessageId,
@@ -1344,6 +1357,12 @@ pub enum Request {
     /// the mutation landing; daemon refuses with an `Error` response
     /// past that window.
     UndoMutation {
+        mutation_id: String,
+    },
+    /// What `UndoMutation` with this id would reverse, read without changing
+    /// anything. `mxr undo --dry-run` asks this, so it refuses the ids the
+    /// real undo refuses, with the same messages.
+    UndoPreview {
         mutation_id: String,
     },
     Unsubscribe {
@@ -3076,6 +3095,7 @@ impl Request {
             | Self::PrepareInviteResponse { .. }
             | Self::MarkInviteAnswered { .. }
             | Self::GetHtmlImageAssets { .. }
+            | Self::ReadInlineImage { .. }
             | Self::DownloadAttachment { .. }
             | Self::GetAttachmentTransferMetadata { .. }
             | Self::ReadAttachmentChunk { .. }
@@ -3128,6 +3148,7 @@ impl Request {
             | Self::ListJobs
             | Self::GetJob { .. }
             | Self::UndoMutation { .. }
+            | Self::UndoPreview { .. }
             | Self::Unsubscribe { .. }
             | Self::UnsubscribePurge { .. }
             | Self::CommitUnsubscribePreview { .. }
@@ -3575,6 +3596,31 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+/// What `UndoMutation` would reverse, read from the undo entry without
+/// changing it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UndoPreview {
+    pub mutation_id: String,
+    /// The mutation's kind, snake_case (`archive`, `labels`, `desk_done`).
+    pub kind: String,
+    /// The messages the undo restores, in the order the undo entry holds them.
+    pub targets: Vec<UndoPreviewTarget>,
+    /// True when the undo also puts back local state beyond messages: a desk
+    /// Done's dismissals, promises, reminders or highlights.
+    pub restores_desk_state: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UndoPreviewTarget {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    /// False when the message is gone from the local store, so the real undo
+    /// cannot restore it.
+    pub in_local_store: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -3780,6 +3826,14 @@ pub enum ResponseData {
         report: mxr_core::DraftSafetyReport,
     },
     RemoteReady {
+        /// A draining host still admits status and original-operation recovery.
+        #[serde(default)]
+        accepting_mail: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shutdown_deadline_at: Option<i64>,
+        /// Changes with every daemon boot; stale lifecycle notices must not cross it.
+        #[serde(default)]
+        boot_id: String,
         #[serde(default)]
         attachment_transfer_supported: bool,
         #[serde(default)]
@@ -3834,6 +3888,9 @@ pub enum ResponseData {
     HtmlImageAssets {
         message_id: MessageId,
         assets: Vec<HtmlImageAsset>,
+    },
+    InlineImageChunk {
+        chunk: InlineImageChunkData,
     },
     AttachmentFile {
         file: AttachmentFile,
@@ -4133,6 +4190,9 @@ pub enum ResponseData {
     },
     Job {
         job: JobData,
+    },
+    UndoPreview {
+        preview: UndoPreview,
     },
     SelectionPreview {
         preview: SelectionPreviewData,
@@ -4899,6 +4959,7 @@ impl ResponseData {
             | Self::InviteResponsePreview { .. }
             | Self::InviteResponseSent { .. }
             | Self::HtmlImageAssets { .. }
+            | Self::InlineImageChunk { .. }
             | Self::AttachmentFile { .. }
             | Self::AttachmentTransferMetadata { .. }
             | Self::AttachmentChunk { .. }
@@ -4971,6 +5032,7 @@ impl ResponseData {
             | Self::JobStarted { .. }
             | Self::Jobs { .. }
             | Self::Job { .. }
+            | Self::UndoPreview { .. }
             | Self::SelectionPreview { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::UnsubscribePlan { .. }
@@ -6091,6 +6153,9 @@ pub enum AccountSyncConfigData {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate; see the config reference.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         client_id: Option<String>,
@@ -6129,6 +6194,11 @@ pub struct AccountOperationResult {
     pub device_code_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_code_user_code: Option<String>,
+    /// SHA-256 of the IMAP server's leaf certificate, reported by an account
+    /// test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+    /// accounts and non-IMAP accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_cert_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6172,6 +6242,10 @@ fn default_imap_max_connections() -> usize {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "event")]
 pub enum DaemonEvent {
+    ServerStopping {
+        boot_id: String,
+        deadline_at: i64,
+    },
     // Core mail/runtime events.
     SyncCompleted {
         account_id: AccountId,
@@ -6312,7 +6386,8 @@ impl DaemonEvent {
             | Self::MessageUnsnoozed { .. }
             | Self::ReminderTriggered { .. }
             | Self::LabelCountsUpdated { .. } => IpcCategory::CoreMail,
-            Self::OperationStarted { .. }
+            Self::ServerStopping { .. }
+            | Self::OperationStarted { .. }
             | Self::OperationProgress { .. }
             | Self::OperationCompleted { .. }
             | Self::OperationFailed { .. }

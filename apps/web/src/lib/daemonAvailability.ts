@@ -36,6 +36,7 @@ const PROBE_MAX_DELAY_MS = 8_000;
 
 let probing: Promise<void> | null = null;
 let probeAttempt = 0;
+let plannedStopUntil = 0;
 let probeTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function isDaemonDown(): boolean {
@@ -119,6 +120,10 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
   });
   const markReachable = () => {
     if (!isDaemonDown()) return;
+    if (Date.now() < plannedStopUntil) {
+      scheduleProbe();
+      return;
+    }
     clearTimeout(probeTimer);
     probeAttempt = 0;
     // Mark what is shown stale first, so going online refetches it once:
@@ -163,6 +168,16 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     if (isDaemonDown() ? state === "connected" : dropped) void probeDaemon();
   });
 
+  const offLifecycle = daemonEvents.subscribe((event) => {
+    if (event.type !== "ServerStopping" || typeof event.deadline_at !== "number") return;
+    plannedStopUntil = event.deadline_at * 1_000;
+    setDown(true);
+    scheduleProbe();
+    toast.warning("mxr is stopping. Your drafts are kept; mail will refresh when it returns.", {
+      id: "daemon-stopping",
+    });
+  });
+
   const onFocus = () => {
     if (isDaemonDown()) void probeDaemon();
   };
@@ -172,6 +187,7 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     offWorkspace();
     offReachability();
     offSocket();
+    offLifecycle();
     window.removeEventListener("focus", onFocus);
     clearTimeout(probeTimer);
   };
@@ -198,5 +214,6 @@ export function resetDaemonAvailabilityForTest(): void {
   clearTimeout(probeTimer);
   probeAttempt = 0;
   probing = null;
+  plannedStopUntil = 0;
   useConnectionStore.getState().setState({ daemonDown: false });
 }

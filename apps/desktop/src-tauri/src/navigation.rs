@@ -5,6 +5,7 @@
 use tauri::Url;
 
 pub const DOWN_PAGE: &str = "tauri://localhost/down.html";
+pub const BROWSER_LAUNCH_PATH: &str = "/api/v1/remote/browser-launch";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Nav {
@@ -72,6 +73,28 @@ pub fn new_message_script(bridge: &Url) -> Option<String> {
     ))
 }
 
+/// Exchange only on the selected launch page. The secret travels in a POST body,
+/// and the script checks the live location again before creating the form.
+pub fn browser_session_script(page: &Url, target: &Url, code: &str) -> Option<String> {
+    if !same_origin(page, target)
+        || page.path() != BROWSER_LAUNCH_PATH
+        || page.query().is_some()
+        || page.fragment().is_some()
+        || target.scheme() != "https"
+        || !crate::mxr_cli::valid_browser_code(code)
+    {
+        return None;
+    }
+    let origin = serde_json::to_string(&target.origin().ascii_serialization()).ok()?;
+    let code = serde_json::to_string(code).ok()?;
+    Some(format!(
+        "(function(o,c){{if(location.origin!==o||location.pathname!=='/api/v1/remote/browser-launch'||location.search||location.hash)return;\
+         var f=document.createElement('form');f.method='POST';f.action=o+'/api/v1/remote/browser-session';\
+         var i=document.createElement('input');i.type='hidden';i.name='code';i.value=c;\
+         f.appendChild(i);document.body.appendChild(f);f.submit();}})({origin},{code});"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +116,49 @@ mod tests {
         ] {
             assert_eq!(classify(&u(url), Some(&bridge())), Nav::Allow, "{url}");
         }
+    }
+
+    #[test]
+    fn the_selected_https_origin_is_allowed_and_redirects_leave_the_app() {
+        let target = u("https://mail.example.test/");
+        assert_eq!(
+            classify(&u("https://mail.example.test/m/inbox"), Some(&target)),
+            Nav::Allow
+        );
+        for url in [
+            "https://other.example.test/",
+            "http://mail.example.test/",
+            "https://mail.example.test:444/",
+        ] {
+            assert_eq!(classify(&u(url), Some(&target)), Nav::External);
+        }
+    }
+
+    #[test]
+    fn browser_code_is_only_submitted_at_the_exact_selected_launch_page() {
+        let target = u("https://mail.example.test/");
+        let code = "a".repeat(64);
+        assert!(
+            browser_session_script(&target.join(BROWSER_LAUNCH_PATH).unwrap(), &target, &code)
+                .is_some()
+        );
+        for page in [
+            "https://other.example.test/api/v1/remote/browser-launch",
+            "http://mail.example.test/api/v1/remote/browser-launch",
+            "https://mail.example.test:444/api/v1/remote/browser-launch",
+            "https://mail.example.test/",
+            "https://mail.example.test/compose/new",
+            "https://mail.example.test/api/v1/remote/browser-launch?redirect=other",
+            "https://mail.example.test/api/v1/remote/browser-launch#unexpected",
+            DOWN_PAGE,
+        ] {
+            assert!(
+                browser_session_script(&u(page), &target, &code).is_none(),
+                "{page}"
+            );
+        }
+        assert!(browser_session_script(&target, &target, "invalid").is_none());
+        assert!(browser_session_script(&bridge(), &bridge(), &code).is_none());
     }
 
     #[test]

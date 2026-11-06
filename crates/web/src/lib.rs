@@ -4058,6 +4058,9 @@ fn merge_account_operation_result(
     if next.send.is_some() {
         base.send = next.send;
     }
+    if next.tls_cert_sha256.is_some() {
+        base.tls_cert_sha256 = next.tls_cert_sha256;
+    }
 }
 
 fn resolve_snooze_until(

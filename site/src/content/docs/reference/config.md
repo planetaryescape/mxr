@@ -400,8 +400,16 @@ that certificate, including a self-signed one, and nothing else. The chain and
 hostname are not checked, because the pin replaces them. When it is unset, the
 certificate is verified normally. Use it for a local bridge with its own
 certificate. `mxr accounts test <account>` prints the fingerprint the server
-presents, to copy into the config. A server that changes its certificate fails
+presents without authenticating on the inspection connection. This fingerprint
+is unverified: check it against the bridge's own certificate before copying it
+into the config. The account test separately attempts a verified sync. A server
+that changes its certificate fails
 until the pin is updated.
+
+For scripts, `mxr accounts --format json test <account>` and `--format jsonl`
+include `tls_cert_sha256` in the result. A failed certificate check still exits
+with an error after printing the result, so you can inspect the fingerprint
+before configuring trust.
 
 A TLS connection to a server that answers in plaintext fails with an error that
 names the mismatch and the fix, instead of a bare "record overflow".

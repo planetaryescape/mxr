@@ -1070,19 +1070,19 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 .and_then(|config| Ok(config.with_tls_cert_sha256(tls_cert_sha256)?))
                 {
                     Ok(config) => {
+                        let provider = mxr_provider_imap::ImapProvider::new(
+                            mxr_core::AccountId::from_provider_id("imap", &account.email),
+                            config,
+                        );
                         // Read the certificate first so a self-signed bridge's
                         // fingerprint is reported even when sync then fails
                         // verification. Credentials are never sent on this probe.
-                        match mxr_provider_imap::probe_server_certificate_sha256(&config).await {
+                        match provider.server_certificate_sha256().await {
                             Ok(fingerprint) => tls_fingerprint = fingerprint,
                             Err(error) => {
                                 tracing::debug!("IMAP certificate probe failed: {error}");
                             }
                         }
-                        let provider = mxr_provider_imap::ImapProvider::new(
-                            mxr_core::AccountId::from_provider_id("imap", &account.email),
-                            config,
-                        );
                         match provider.sync_labels().await {
                             Ok(folders) => {
                                 sync = Some(account_step(

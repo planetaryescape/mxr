@@ -124,7 +124,6 @@ pub(crate) fn empty_account_operation_result() -> mxr_protocol::AccountOperation
         send: None,
         device_code_url: None,
         device_code_user_code: None,
-        tls_cert_sha256: None,
     }
 }
 

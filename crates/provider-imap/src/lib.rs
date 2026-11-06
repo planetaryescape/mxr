@@ -29,7 +29,6 @@ pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
-pub use transport::probe_server_certificate_sha256;
 
 use crate::types::{FolderInfo, ImapCapabilities};
 
@@ -59,6 +58,7 @@ struct CollectSyncedMessages<'a> {
 
 pub struct ImapProvider {
     account_id: AccountId,
+    config: ImapConfig,
     trash_folder: String,
     max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
@@ -70,6 +70,7 @@ impl ImapProvider {
         let session_factory = Box::new(RealImapSessionFactory::new(config.clone()));
         Self {
             account_id,
+            config,
             trash_folder: "Trash".to_string(),
             max_connections,
             session_factory,
@@ -86,6 +87,7 @@ impl ImapProvider {
             account_id,
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
+            config,
             session_factory,
         }
     }
@@ -1094,6 +1096,12 @@ impl MailSyncProvider for ImapProvider {
 
     fn account_id(&self) -> &AccountId {
         &self.account_id
+    }
+
+    async fn server_certificate_sha256(&self) -> mxr_core::provider::Result<Option<String>> {
+        transport::probe_server_certificate_sha256(&self.config)
+            .await
+            .map_err(mxr_core::error::MxrError::from)
     }
 
     fn capabilities(&self) -> SyncCapabilities {

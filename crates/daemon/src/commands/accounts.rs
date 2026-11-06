@@ -1,7 +1,7 @@
 use crate::cli::{AccountsAction, AddressesOp, OutputFormat};
 use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format};
+use crate::output::{jsonl, print_json, resolve_format};
 use mxr_core::id::AccountId;
 use mxr_core::types::AccountAddress;
 use mxr_protocol::{
@@ -89,7 +89,7 @@ pub async fn run(
             }
         }
         Some(AccountsAction::Show { name }) => show_account(&name).await?,
-        Some(AccountsAction::Test { name }) => test_account(&name).await?,
+        Some(AccountsAction::Test { name }) => test_account(&name, format).await?,
         Some(AccountsAction::Reauth { name }) => reauth_account(&name).await?,
         Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
         Some(AccountsAction::Disable { name }) => {
@@ -494,9 +494,21 @@ async fn show_account(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_account(name: &str) -> anyhow::Result<()> {
+async fn test_account(name: &str, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let account = find_account_config(name).await?;
-    run_account_operation(Request::TestAccountConfig { account }).await
+    let mut client = client().await?;
+    let result =
+        request_account_operation(&mut client, Request::TestAccountConfig { account }).await?;
+    let format = resolve_format(format);
+    if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
+        print_json(&result, format)?;
+        if !result.ok {
+            anyhow::bail!(result.summary);
+        }
+        Ok(())
+    } else {
+        render_account_operation(result)
+    }
 }
 
 async fn account_configs() -> anyhow::Result<Vec<AccountConfigData>> {

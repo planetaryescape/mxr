@@ -102,7 +102,7 @@ The `mxr accounts add` flow above is the supported path; the manual TOML shape i
 | ProtonMail (Bridge) | 127.0.0.1 | 1143 | 127.0.0.1 | 1025 |
 | Self-hosted (Dovecot) | your-server.com | 993 | your-server.com | 587 |
 
-All use TLS. Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS.
+Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS. Choose the IMAP TLS mode your local bridge supports, as described below.
 
 ## Local bridges and STARTTLS
 
@@ -115,14 +115,14 @@ A local server with its own self-signed certificate on an implicit-TLS port is t
 ```bash
 mxr accounts test work
 # ...
-#   IMAP server certificate SHA-256: 3f1a...e9
+#   IMAP server certificate SHA-256: e51a57a240fc06f519fd775afd20ae622d7fb8bfa0cc628c612ebf78f5eaae80
 ```
 
-Then add it to the account:
+The reported fingerprint is unverified. Check it against the bridge's own certificate before adding the value from your output to the account:
 
 ```toml
 [accounts.work.sync]
-tls_cert_sha256 = "3f1a...e9"
+tls_cert_sha256 = "e51a57a240fc06f519fd775afd20ae622d7fb8bfa0cc628c612ebf78f5eaae80"
 ```
 
 Or pass `--imap-tls-cert-sha256 <hex>` (and `--imap-no-tls` for a plaintext loopback bridge) to `mxr accounts add imap-smtp`. See the [IMAP reference](/reference/config/#imap-sync-provider) for how each mode verifies the server.

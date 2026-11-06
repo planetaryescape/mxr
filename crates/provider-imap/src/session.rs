@@ -86,7 +86,7 @@ type ImapTlsStream = ImapStream;
 /// timeout, so a dead or half-open network would otherwise hang session
 /// setup indefinitely — wedging whichever sync currently holds the
 /// per-account provider lock.
-const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Deadline for a single IMAP round trip — and, on streaming commands, an
 /// *inactivity* bound on the next response item (each arriving item resets
@@ -119,7 +119,7 @@ fn command_timeout_error(what: &str, limit: std::time::Duration) -> ImapProvider
 /// unknown protocol state; callers must not keep using the session after
 /// an error (all call sites open a session per operation and drop it on
 /// failure, which closes the socket).
-async fn bounded<T>(
+pub(crate) async fn bounded<T>(
     what: &str,
     limit: std::time::Duration,
     fut: impl std::future::Future<Output = Result<T>>,

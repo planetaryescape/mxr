@@ -376,6 +376,19 @@ impl IpcConnection {
             {
                 Ok(connection)
             }
+            ResponseData::Status {
+                protocol_version, ..
+            } if protocol_version != mxr_protocol::IPC_PROTOCOL_VERSION => {
+                Err(ClientError::DaemonIncompatible {
+                    message: supervised_message(
+                        path,
+                        &format!(
+                            "the running daemon is incompatible: this client requires IPC protocol {}; local daemon uses {protocol_version}. Upgrade mxr and restart the local daemon through its service manager",
+                            mxr_protocol::IPC_PROTOCOL_VERSION
+                        ),
+                    ),
+                })
+            }
             ResponseData::Status { .. } => Err(ClientError::DaemonIncompatible {
                 message: supervised_message(
                     path,
@@ -1618,6 +1631,21 @@ mod tests {
                 Err(error) => error,
             };
             assert!(error.to_string().contains("incompatible"), "{error}");
+            if protocol != mxr_protocol::IPC_PROTOCOL_VERSION {
+                let message = error.to_string();
+                assert!(
+                    message.contains(&format!(
+                        "requires IPC protocol {}",
+                        mxr_protocol::IPC_PROTOCOL_VERSION
+                    )),
+                    "{message}"
+                );
+                assert!(
+                    message.contains(&format!("local daemon uses {protocol}")),
+                    "{message}"
+                );
+                assert!(message.contains("service manager"), "{message}");
+            }
             assert_eq!(seen.lock().unwrap().as_slice(), &["status"]);
         }
     }

@@ -619,8 +619,10 @@ the tag (for example `v0.5.47`) matches `workspace.package.version` in
    - Download binary from GitHub Releases
 ```
 
-Docs deploy separately through Vercel when the merged `main` commit changes the
-site.
+Docs deploy separately through Vercel on pushes that change `site/` or the CLI
+help snapshots the reference pages are generated from. Other pushes still
+reach Vercel, but `site/vercel.json`'s `ignoreCommand` skips the build before
+it spends a deployment.
 
 ---
 

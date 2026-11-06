@@ -111,7 +111,12 @@ site/
 cd site && npm run build
 ```
 
-**Deploy trigger**: Push to `main` branch, changes in `site/` directory.
+**Deploy trigger**: A push builds when the diff since the last deployment
+touches `site/` or the CLI help snapshots the reference pages are generated
+from (`crates/daemon/tests/integration/snapshots`). `site/vercel.json`'s
+`ignoreCommand` skips the build otherwise, so a web-only or blueprint-only
+push never spends a deployment. A missing previous deployment SHA builds,
+never skips.
 
 **Public URL**: `https://mxr.sh` (configured in `site/astro.config.mjs`). The
 old `mxr-mail.vercel.app` hostname redirects to the canonical domain.

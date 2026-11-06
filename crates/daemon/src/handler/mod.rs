@@ -1431,6 +1431,7 @@ async fn dispatch(
         Request::ListJobs => mutations::list_jobs(state).await,
         Request::GetJob { job_id } => mutations::get_job(state, job_id).await,
         Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
+        Request::UndoPreview { mutation_id } => mutations::undo_preview(state, mutation_id).await,
         Request::Snooze {
             message_id,
             wake_at,
@@ -2689,6 +2690,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::PreviewArchive { .. }
         | Request::ListJobs
         | Request::GetJob { .. }
+        | Request::UndoPreview { .. }
         | Request::ListSnoozed
         | Request::ListReplyQueue
         | Request::ListSnippets
@@ -3202,6 +3204,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListJobs => "list_jobs",
         Request::GetJob { .. } => "get_job",
         Request::UndoMutation { .. } => "undo_mutation",
+        Request::UndoPreview { .. } => "undo_preview",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::UnsubscribePurge { .. } => "unsubscribe_purge",
         Request::CommitUnsubscribePreview { .. } => "commit_unsubscribe_preview",

@@ -6695,6 +6695,14 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
                                 detail: None,
                             },
                             HtmlImageAsset {
+                                source: "cid:pixel.svg".into(),
+                                kind: HtmlImageSourceKind::Cid,
+                                status: HtmlImageAssetStatus::Ready,
+                                mime_type: Some("image/svg+xml".into()),
+                                path: Some(served_path.clone()),
+                                detail: None,
+                            },
+                            HtmlImageAsset {
                                 source: "https://tracker.example/pixel.gif".into(),
                                 kind: HtmlImageSourceKind::Remote,
                                 status: HtmlImageAssetStatus::Ready,
@@ -6734,7 +6742,24 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
         .unwrap();
     assert_eq!(ok.status(), reqwest::StatusCode::OK);
     assert_eq!(ok.headers()["content-type"], "image/png");
+    assert_eq!(ok.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(ok.headers()["content-disposition"], "inline");
+    assert_eq!(
+        ok.headers()["content-security-policy"],
+        "default-src 'none'; sandbox"
+    );
     assert_eq!(ok.bytes().await.unwrap().as_ref(), b"\x89PNG fake bytes");
+
+    // An SVG inline part is mail-authored markup and must never be served as a
+    // document on the origin that holds the browser credential.
+    let svg = client
+        .get(url("cid:pixel.svg"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(svg.status(), reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(svg.headers().get("content-type").is_none());
 
     let missing = client
         .get(url("cid:nope"))

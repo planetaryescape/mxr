@@ -2266,16 +2266,11 @@ async fn get_inline_image(
     let bytes = tokio::fs::read(&path)
         .await
         .map_err(|err| BridgeError::Ipc(format!("inline image unreadable: {err}")))?;
-    let mime = asset
-        .mime_type
-        .filter(|mime| mime.starts_with("image/"))
-        .unwrap_or_else(|| "application/octet-stream".to_string());
-    axum::response::Response::builder()
-        .header(axum::http::header::CONTENT_TYPE, mime)
-        .header(axum::http::header::CACHE_CONTROL, "private, max-age=3600")
-        .header("x-content-type-options", "nosniff")
-        .body(axum::body::Body::from(bytes))
-        .map_err(|err| BridgeError::Ipc(format!("response build: {err}")))
+    Ok(crate::inline_images::response(
+        asset.mime_type.as_deref(),
+        bytes,
+        "private, max-age=3600",
+    ))
 }
 
 async fn get_message_headers_ipc(

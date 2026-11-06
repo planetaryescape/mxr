@@ -67,7 +67,10 @@ build.
    `[bridge].auto_local_token` is on (default). The SPA calls it on cold start
    and on 401, so local use never asks for a token.
 3. Otherwise `#token=…` in the URL is stored and scrubbed from history, and
-   `/settings/token` offers a paste field.
+   `/settings/token` offers a paste field. **Save and connect** checks the
+   candidate against the bridge before storing it, then opens Now on a fresh
+   page. A rejected token, connection failure, or blocked browser storage stays
+   on the form with its own error; an invalid candidate preserves the saved token.
 4. `#remote=<origin>` points the app at another bridge
    (`lib/tokenStorage.ts`). Any page can link there, so switching to a new
    origin asks for confirmation first, and the stored local token is cleared
@@ -460,6 +463,8 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
   size such as `text-[13px]` fails `npm run lint` (`scripts/check-type-scale.mjs`,
   with `check-motion.mjs` beside it). A file that needs one goes on the
   script's `ALLOWLIST` with its reason; keep that list short.
+- Editable fields on touch devices or screens narrower than 768 px use at least
+  16 px text to prevent iOS focus zoom. Browser pinch-to-zoom remains available.
 - Cyan (`--primary`) means focus, selection and the primary action; counts and
   unread marks use `--unread-marker`, which is the accent except in Paper
   (rust reads as error red there, so it is `--text-1`). It

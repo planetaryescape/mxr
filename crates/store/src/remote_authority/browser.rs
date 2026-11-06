@@ -199,6 +199,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn browser_session_lasts_thirty_days() {
+        let store = crate::Store::in_memory().await.unwrap();
+        let (id, mail) = parent(&store, 'a').await;
+        let (code, _) = store.issue_browser_code(&id, &mail, 103).await.unwrap();
+        let (_, _, expires) = store.claim_browser_code(&code, 104).await.unwrap();
+        assert_eq!(expires, 104 + 30 * 24 * 60 * 60);
+    }
+
+    #[tokio::test]
     async fn replacing_or_expiring_a_launch_code_cannot_issue_a_session() {
         let store = crate::Store::in_memory().await.unwrap();
         let (id, secret) = parent(&store, 'a').await;

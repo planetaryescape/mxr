@@ -31,6 +31,8 @@ export type DaemonEvent =
   | { type: "ModesChanged"; event?: "ModesChanged"; account_id?: string | null }
   /** An account's addresses changed (alias added or removed, or the primary moved). */
   | { type: "AccountAddressesChanged"; event?: "AccountAddressesChanged"; account_id: string }
+  /** The contacts table was rebuilt; analytics and contacts views refetch. */
+  | { type: "ContactsRefreshed"; event?: "ContactsRefreshed" }
   | {
       type: "OperationStarted";
       event?: "OperationStarted";

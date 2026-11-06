@@ -162,6 +162,10 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         | DaemonEvent::ModesChanged { .. }
         // Clients drop cached reply recipients; nothing to announce.
         | DaemonEvent::AccountAddressesChanged { .. }
+        // Analytics views refetch; nothing to announce.
+        | DaemonEvent::ContactsRefreshed
+        // Never sent by the daemon.
+        | DaemonEvent::Unknown
         // The assistant's progress shows in its panel.
         | DaemonEvent::AssistantUpdated { .. } => None,
     }

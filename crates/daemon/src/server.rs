@@ -342,6 +342,12 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_contacts_refresher(contacts_handle);
 
+        // Ends by itself when the refresh worker shuts down.
+        tokio::spawn(loops::contacts_refreshed_announcer(
+            state.clone(),
+            state.contacts_refresh.subscribe_refreshed(),
+        ));
+
         let wrapped_warmer_state = state.clone();
         let wrapped_warmer_handle = tokio::spawn(async move {
             let shutdown_rx = wrapped_warmer_state.shutdown_receiver();

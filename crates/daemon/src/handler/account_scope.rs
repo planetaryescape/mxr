@@ -1668,6 +1668,10 @@ pub(crate) async fn scope_event(
             let allowed = account_id_allowed(state, profile, account_id).await?;
             keep_if(allowed, event)
         }
+        // Carries nothing: only that the shared contacts table was rebuilt.
+        DaemonEvent::ContactsRefreshed => Some(DaemonEvent::ContactsRefreshed),
+        // Not an event this build understands, so it cannot be scoped.
+        DaemonEvent::Unknown => None,
         // Its summary can name another account's messages, and nothing
         // ties it to an account.
         DaemonEvent::MutationReconciliationFailed { .. } => None,

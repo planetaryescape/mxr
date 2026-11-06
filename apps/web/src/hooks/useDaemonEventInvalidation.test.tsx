@@ -184,6 +184,20 @@ describe("useDaemonEventInvalidation", () => {
     expect(invalidatedKeys()).toContain(JSON.stringify(["analytics"]));
   });
 
+  test("ContactsRefreshed refetches analytics and nothing else", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "ContactsRefreshed" });
+
+    expect(invalidatedKeys()).toEqual([JSON.stringify(["analytics"])]);
+  });
+
+  test("an event this build does not know changes nothing and does not throw", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "SomeEventAddedLater", account_id: "acct-1" });
+
+    expect(invalidatedKeys()).toEqual([]);
+  });
+
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {
     const { emit, invalidatedKeys } = setup();
     emit({

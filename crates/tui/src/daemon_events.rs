@@ -235,6 +235,15 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                 app.analytics.refresh_pending = true;
             }
         }
+        // The contacts table was rebuilt, and analytics read from it. Forget
+        // what was fetched, so entering the screen refetches, and refresh it
+        // if it is open.
+        DaemonEvent::ContactsRefreshed => {
+            app.analytics.last_refresh_at.clear();
+            if app.screen == app::Screen::Analytics {
+                app.analytics.refresh_pending = true;
+            }
+        }
         DaemonEvent::AssistantUpdated {
             conversation_id,
             status,
@@ -256,6 +265,8 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             refresh_after_event_gap(app);
             tracing::debug!(skipped, "event stream lagged; resyncing TUI views");
         }
+        // Added by a newer daemon than this build knows; nothing to do.
+        DaemonEvent::Unknown => {}
         _ => {}
     }
 }

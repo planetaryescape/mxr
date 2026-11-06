@@ -6319,6 +6319,18 @@ pub enum DaemonEvent {
     AccountAddressesChanged {
         account_id: AccountId,
     },
+    /// A rebuild of the contacts table committed (after the debounce that
+    /// follows an address change, a sync pass or a manual refresh). Clients
+    /// showing analytics or contacts refetch them; the counts they hold are
+    /// from before the rebuild. Names no account because the rebuild covers
+    /// every account.
+    ContactsRefreshed,
+    /// Any event this build has no variant for, so a client built from here on
+    /// skips a newer daemon's later events instead of failing to decode the
+    /// frame and dropping the connection. The daemon never sends it. Clients
+    /// ignore it.
+    #[serde(other)]
+    Unknown,
 }
 
 impl DaemonEvent {
@@ -6341,7 +6353,9 @@ impl DaemonEvent {
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
             | Self::ModesChanged { .. }
-            | Self::AccountAddressesChanged { .. } => IpcCategory::CoreMail,
+            | Self::AccountAddressesChanged { .. }
+            | Self::ContactsRefreshed
+            | Self::Unknown => IpcCategory::CoreMail,
             Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }

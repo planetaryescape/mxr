@@ -151,6 +151,8 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::AccountAddressesChanged { account_id } => {
                 format!("account addresses changed account={account_id}")
             }
+            DaemonEvent::ContactsRefreshed => "contacts refreshed".to_string(),
+            DaemonEvent::Unknown => "unknown event".to_string(),
             DaemonEvent::AssistantUpdated {
                 conversation_id,
                 status,

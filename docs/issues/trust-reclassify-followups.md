@@ -4,7 +4,8 @@
 `238cb19c` · **Severity:** low to medium; none blocks the PR
 
 The rest of that review (findings 1-8, 11-13) is fixed in the PR. These are
-left alone on purpose.
+left alone on purpose. Items 7 (two overlapping moves to To do) and 8 (events a
+client has no variant for) are fixed; the numbering of the rest is unchanged.
 
 ## 1. The Not-sure cap counts surviving conflicts, not questions shown
 
@@ -69,20 +70,3 @@ person you've written to is classified as a person (`Person`, not
 crowd rule in `conversation_shape` sends it to Updates without a Not-sure
 question. Product call: should a known correspondent's crowd mail ask, or
 stay in Messages?
-
-## 7. Two overlapping moves to To do can create two tasks
-
-`MoveMessage(todo)` checks for an open to-do and then inserts. Two requests
-that both pass the check before either inserts each create a task; manual
-to-dos get a fresh id and a `manual|{id}` dedup key, so nothing in the
-database stops it. Fix: a uniqueness key per source email for open manual
-to-dos, or serialise the check and insert per message.
-
-## 8. Clients that stay connected across an upgrade cannot decode `ModesChanged`
-
-The new `DaemonEvent::ModesChanged` is broadcast to every connection. A
-v0.6.58 client has no variant for it and no fallback, so decoding fails and
-its pending request returns an error, although both versions report
-protocol version 4. Fix: a fallback `#[serde(other)]` variant on the event
-enum in the released protocol going forward, and a version gate (bump the
-protocol version or send the event only to clients that declared support).

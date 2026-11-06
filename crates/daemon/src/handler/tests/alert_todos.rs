@@ -430,7 +430,6 @@ async fn a_resync_a_reclassification_or_a_dismissed_to_do_never_makes_a_second()
 async fn a_second_alert_of_a_kind_in_a_local_day_is_one_to_do_and_the_next_day_is_another() {
     let case = Case::google_sign_in("days", true);
     let run = arrange(&case, mxr_config::MxrConfig::default()).await;
-    scan(&run).await;
     // A differently worded alert twenty minutes later, same local day.
     let noon = Local
         .from_local_datetime(

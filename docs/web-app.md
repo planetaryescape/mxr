@@ -212,6 +212,17 @@ toolbar popup both edit these rules.
 
 ## Keyboard
 
+The person's keys (`keys.toml`) never hold up the first paint. The app caches
+the last keymap the daemon served per bridge in `localStorage`
+(`lib/actions/servedKeymap.ts`) and applies it while its modules load, before
+`@/App` builds the labels it computes once (`components/navMap.ts`,
+`components/sidebarRail.ts`); a first visit, or a browser with storage off,
+starts from the definition's keys. The keymap request runs after the first
+contentful paint and applies its answer to the same registry: every chord is
+live at once, and the store's `version` makes hints, the palette, help and
+status strips recompute without a reload. A cached record that isn't the shape
+the daemon serves is dropped field by field rather than applied.
+
 `lib/keys/dispatcher.ts` is the app's one key dispatcher. Every key is an action
 in the registry (`lib/actions/`), including list and reader motion. Only two
 capture listeners sit in front of it: the right rail's `Esc` (closes the rail
@@ -506,12 +517,14 @@ build`; gzipped transfer as `vite` reports it):
 
 | Chunk | gzip | Contents |
 |---|---|---|
-| `index` (entry) | 127 kB | the shell: sidebar, topbar, key dispatcher, action registry, keymap catalog, query client, WS client |
+| `index` (entry) | 134 kB | the shell: sidebar, topbar, key dispatcher, action registry, keymap catalog, query client, WS client |
 | `vendor-react` | 76 kB | react, react-dom |
 | `vendor-tanstack` | 44 kB | router, query, virtual |
 | `vendor-radix` | 44 kB | the Radix primitives the shell and lists use |
 | `vendor-icons` | 11 kB | lucide, tree-shaken to the icons used |
 | `index.css` | 23 kB | tokens, Tailwind output, the Recursive face declarations |
+| `recursive-latin-casl` | 107 kB | the UI and reading face: wght + CASL |
+| `recursive-latin-mono` | 71 kB | the mono face, fetched when a screen first asks: wght + MONO |
 
 Compose (editors, sanitizer, address parsing), the palettes, help, mail
 dialogs, the assistant and the right rail load the first time they open
@@ -525,6 +538,13 @@ composer may import them, directly or through a shared dependency.
   and every thread route downloaded 637 kB of editor it never opened. Named
   chunks are only for libraries every route loads: react, tanstack, radix,
   icons. Everything lazy keeps Rollup's automatic chunking.
+- **Keep a first screen's lazy chunk count low.** Rollup makes a chunk per
+  shared module by default, so the Messages route pulled about thirty 1–7 kB
+  files after the entry ran, each wave paying the round trip again: 2.07 s to
+  3.5 s on Fast 4G at 150 ms RTT, which was most of its LCP. `build.
+  rollupOptions.output.experimentalMinChunkSize` (25 kB) merges those into the
+  chunks that import them; the entry grew 127 → 134 kB gzipped and the first
+  screen lost about 500 ms. Check the count if a route's LCP budget moves.
 - **Keep zod off the entry path.** The router uses small validators
   (`lib/searchParams.ts`) and `state/uiPrefsStore.ts` repairs the four stored
   Reading display fields itself instead of calling `parseReaderSettings` from
@@ -533,18 +553,31 @@ composer may import them, directly or through a shared dependency.
 - **Don't defer the toast viewport.** Sonner's `Toaster` starts from an empty
   list and only sees toasts raised after it mounts, so mounting it late drops
   the Undo toast of whatever the person did first.
-- Budget: the entry chunk is 127 kB gzipped and the first screen 324 kB (down
-  from 148 kB and 346 kB). Measured warm, back to back, on Fast 4G with the
-  demo profile: Messages LCP 4.34 s → 4.18 s at 1× and 4.61 s → 4.47 s at 4×;
-  Reading 6.08 s → 6.65 s at 1× and 6.31 s → 6.12 s at 4×. Reading's LCP waits
-  on daemon data, not assets, so it moves with cache warmth; the reliable
-  numbers there are transfer (1.01 MB → 993 kB) and the thread route
-  (963 kB → 748 kB, with the 637 kB of editor code gone). Raising either
-  budget needs a measurement in the PR.
+- **The first paint waits for no network answer.** `main.tsx` renders as soon
+  as the bundle runs: auth and UI prefs come from storage, and the keymap from
+  its cache (see Keyboard). The keymap request starts after the first
+  contentful paint, and the daemon's keys take over without a reload.
+- **Recursive ships as two faces, not the package's full one.** The package's
+  latin full face is 305 kB because it carries wght, MONO, CASL, CRSV and
+  slnt; the app uses three of those. `styles/fonts.css` declares the casl face
+  (107 kB) and the mono face (71 kB), both `font-display: swap`, so no text
+  waits for a font and only the mono contexts fetch the second file. Do not
+  switch to `@fontsource-variable/recursive/full.css` without measuring: it
+  brings back 125 kB on the first screen. A preload of the casl face was
+  measured and rejected — it started the download 2.8 s earlier and cost
+  0.3 s of first paint, because the bytes it used were the entry bundle's.
+- Budget: the entry chunk is 134 kB gzipped and the whole first screen
+  855 kB transferred (from 962 kB before the round-2 LCP work: 305 kB of
+  font became 178 kB, and merging chunks moved about 7 kB into the entry).
+  Measured cold, back to back, on Fast 4G against the demo profile on a
+  production build: Messages LCP 4.28 s → 2.72 s at 1× and 4.52 s → 2.99 s at
+  4×. Reading stays data-bound: its reading query answers in about 4 s, so
+  its LCP is 5–7 s whichever assets change (5.0 s in the best 4× run).
+  Raising either budget needs a measurement in the PR.
   `docs/web-app-rubric.md` row 9.2 still says 70 kB; the shell alone (router,
   query, keymap catalog, sidebar, topbar) is past that, so the row needs its
-  owner's decision rather than a quiet rewrite. Use 130 kB as the regression
-  line until then.
+  owner's decision rather than a quiet rewrite. Use 135 kB as the regression
+  line until then (130 kB before the chunk merge above).
 
 ## Testing
 

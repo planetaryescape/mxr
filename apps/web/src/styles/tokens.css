@@ -20,14 +20,14 @@
  */
 
 @import "tailwindcss";
-@import "@fontsource-variable/recursive/full.css";
+@import "./fonts.css";
 /* Every theme's colour roles, generated from styles/themes.ts (`npm run gen:themes`). */
 @import "./themes.generated.css";
 
 @theme {
   --font-sans: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
   --font-heading: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Recursive Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: "Recursive Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
   --text-2xs: 0.6875rem; /* 11px meta, timestamps */
   --text-xs: 0.75rem; /* 12px chips, secondary */
@@ -215,8 +215,8 @@
 /*
  * Recursive axis presets. Weight stays on `font-weight` (a `wght` entry
  * here would override every bold in the app). full.css carries all the axes
- * (wght, MONO, CASL, CRSV, slnt); UI text is the linear voice, and type.css
- * turns CASL up for the reading voice.
+ * (wght, MONO, CASL); UI text is the linear voice, and type.css turns CASL
+ * up for the reading voice. fonts.css declares the two faces it ships in.
  */
 :root {
   --rec-ui: "MONO" 0;

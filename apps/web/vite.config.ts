@@ -88,6 +88,14 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       output: {
+        // Small shared modules would otherwise each become their own chunk.
+        // A route then pays a round trip per chunk: on Fast 4G at 150 ms RTT
+        // the Messages route pulled about thirty 1–7 kB files before it could
+        // paint (measured 2.07 s → 3.5 s after the entry ran). Rollup merges
+        // chunks under this size into the chunks that import them, which
+        // trades a little duplication for far fewer round trips.
+        experimentalMinChunkSize: 25_000,
+
         // Named vendor chunks are for libraries every route loads and that
         // change on their own cadence. The compose editors are deliberately
         // absent: giving @tiptap and @codemirror their own groups also pulled

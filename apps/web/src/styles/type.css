@@ -50,6 +50,7 @@
 }
 
 @utility type-meta {
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1rem;
   font-weight: 450;
@@ -58,6 +59,7 @@
 }
 
 @utility type-eyebrow {
+  font-family: var(--font-mono);
   font-size: 0.6875rem;
   line-height: 0.875rem;
   font-weight: 550;

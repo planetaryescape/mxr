@@ -1,8 +1,8 @@
 # Remote browser acceptance passes; native installation remains separate
 
-Continue `fix/remote-web-desktop-parity` in `/Users/bhekanik/code/planetaryescape/.worktrees/mxr-pool-3`. [PR 906](https://github.com/planetaryescape/mxr/pull/906) owns the candidate. BK asked to fix the hosted web and desktop gaps; the completion check is two isolated paired clients sharing one synthetic workspace through login, read/search, previewed triage, uploaded draft/send, restart/reconnect and parent revocation while the second client continues.
+Continue `fix/remote-web-desktop-parity` in `/Users/bhekanik/code/planetaryescape/.worktrees/mxr-pool-3`. [PR 906](https://github.com/planetaryescape/mxr/pull/906) owns the change and merged as `f02c7fd3b913f0f162bf30d6726f5a1218487472`. BK asked to fix the hosted web and desktop gaps; the completion check is two isolated paired clients sharing one synthetic workspace through login, read/search, previewed triage, uploaded draft/send, restart/reconnect and parent revocation while the second client continues.
 
-The candidate implements approved triage/AI grants, parent-bound browser sessions and assistant tools/history, portable inline images, desktop launch packets, leased presence, bounded drain, supervised hosting and selection/pairing/cleanup recovery. IPC is 31 and schema 110. [Runtime notes](remote-hosting-runtime.md) describe supervision; [the issue](../issues/remote-hosting-and-client-lifecycle.md) retains live installation and release gates.
+v0.6.226 ships approved triage/AI grants, parent-bound browser sessions and assistant tools/history, portable inline images, desktop launch packets, leased presence, bounded drain, supervised hosting and selection/pairing/cleanup recovery. IPC is 31 and schema 110. [Runtime notes](remote-hosting-runtime.md) describe supervision; [the issue](../issues/remote-hosting-and-client-lifecycle.md) retains live installation and release gates.
 
 ## The real browser journey passed on 514389ba6
 
@@ -126,8 +126,14 @@ Release-only main `4c35d3a19bf5cd15342354a43e0db5d5f211fe78` was then merged nor
 
 ## Final integration: IPC 31 and thirty-day browser sessions
 
-This candidate now lands after undo dry-run validation (IPC 30) and carries IPC 31. Both the protocol constant and the web compatibility constant were moved together, and the transport blueprint names 31. Rebase/reconcile used fresh `origin/main`, retaining main's IMAP TLS modes and certificate pins.
+This change lands after undo dry-run validation (IPC 30) and carries IPC 31. Both the protocol constant and the web compatibility constant were moved together, and the transport blueprint names 31. Rebase/reconcile used fresh `origin/main`, retaining main's IMAP TLS modes and certificate pins.
 
 BK set the paired-browser requirement to thirty days rather than twelve hours. `SESSION_TTL` in `crates/store/src/remote_authority/browser.rs` is thirty days; the cookie's `Max-Age` follows the stored expiry, the parent registration still caps it at ninety days, and revocation ends it immediately. The blueprint, pairing-authority guide, and remote-mailbox guide describe the same lifetime. No client-side bearer token or rolling refresh was added: the server-side session remains the authority.
 
 A daemon on this release reports IPC 31, so an older deployed browser bundle must be rebuilt from this commit before the daemon restarts. The deployment owner performs that paired cutover; this branch changes no proxy, domain, or live service.
+
+## Release receipt, 2026-11-06
+
+[v0.6.226](https://github.com/planetaryescape/mxr/releases/tag/v0.6.226) published on 2026-11-06 at 10:54:11Z from release commit `988b8809a59302379e01e40b56210098a00853a6`. It carries [PR 906](https://github.com/planetaryescape/mxr/pull/906), squash-merged as `f02c7fd3b913f0f162bf30d6726f5a1218487472`. The release workflow published macOS arm64 and Linux x86_64 archives with checksums and the signed desktop DMG, then verified the Homebrew install. Full CI and OpenAPI Conformance passed on the release commit.
+
+The undo preview reconciliation was checked on the same tree: nine `undo_preview` library tests and all ten `bulk_all_cli` integration tests passed. Browser-session storage and the thirty-day lifetime are covered by three store tests, including the expiry assertion. These are source and fixture receipts. A live macOS/Linux service install, host reboot, real-mailbox migration and a rebuilt browser bundle against IPC 31 remain deployment-owner work.

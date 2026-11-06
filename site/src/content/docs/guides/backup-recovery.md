@@ -111,7 +111,8 @@ outcome, or Message-ID. Review it through the ordinary send preview before
 sending. TUI, web, and MCP expose the same recovery previews and explicit
 confirmations.
 
-Upgrade the daemon, CLI, TUI, and MCP client together. Recovery uses IPC
-protocol 12; protocol-11 peers are rejected explicitly. The web bridge stays
+Upgrade the daemon, CLI, TUI, and MCP client together. Recovery needs the same
+IPC protocol version as the daemon (`protocol_version` in `mxr status
+--format json`); a mismatched peer is rejected explicitly. The web bridge stays
 beside its daemon and uses that daemon's protocol. This workflow creates a local
 backup; it does not configure remote HTTP access, a VPS, or a phone client.

@@ -907,7 +907,9 @@ The cut is a stable set, so let go acts on exactly what the preview listed.
 Leftovers fold into the next cut instead of stacking.
 
 **In and out.** Enters by an Automated base mode or a copied thread;
-`needs_you` leads Needs a look as a suggested to-do that `t` adds; nothing goes to To do on arrival. Leaves by let go. Trackers
+`needs_you` leads Needs a look as a suggested to-do that `t` adds, unless
+the alert is verified (next section), in which case it is already a to-do.
+Leaves by let go. Trackers
 that end well leave on their own (a delivered parcel goes to Archive); bad
 endings move to Needs a look. After eight digests let go without opening
 a source, mxr asks once whether to mute it.
@@ -915,6 +917,139 @@ a source, mxr asks once whether to mute it.
 **Not a list of emails.** Thirty-one emails from twelve senders are twelve
 lines, mostly folded; four parcel emails are one track; the text is the
 fact; numbers come compared; replying isn't offered.
+
+### A verified alert becomes its own to-do; anything less stays a suggestion
+
+D193. Promise: a security or account alert (a new sign-in, a failed
+payment) that mxr can prove came from the real sender, a source the
+account already receives mail from, becomes one open to-do when it
+arrives, titled with the sending domain. Mail an attacker wrote never
+creates one. Everything else keeps the suggestion at the top of Needs a
+look, and the suggestion says why it was not created. Delivery problems
+stay suggestions (see "What stays a suggestion"). Auto-closing stays a
+suggestion too. `[updates] auto_todo_alerts = false` turns creation off.
+
+Two review rounds on the first build found ten ways past a gate that read
+mail-controlled text. Each is an acceptance case below.
+
+**The test is made once, when the mail arrives.** The provider adapter
+that fetched the message writes an arrival record in the same sync
+transaction as the message: the provider's own receipt time, and the
+provider's own verdict about the sender. Nothing is recomputed from the
+message later, so classification order, `mxr classify --rebuild`, a
+backfill or a re-sync cannot change it. A message synced before the
+record existed has none, and counts as unverified.
+
+**Whose verdict counts, per provider.** The verdict is `dmarc=pass` for
+the message's own From host, read from an `Authentication-Results` header
+whose authserv-id is the receiving provider's, pinned in the adapter. mxr
+never reads the sender's `Date`, display name, or any `Authentication-
+Results` whose id is not the pinned one.
+
+| Provider | Verdict used | Receipt time | Alert can auto-create |
+|---|---|---|---|
+| Gmail API | `Authentication-Results: mx.google.com` | `internalDate` | yes |
+| Gmail over IMAP (server says `X-GM-EXT-1`) | the same header | `INTERNALDATE` | yes |
+| Outlook.com and Microsoft 365 (IMAP) | none: Exchange writes `Authentication-Results` without an authserv-id, so a header added by a relay is indistinguishable from the server's | `INTERNALDATE` | no |
+| Any other IMAP server | none | `INTERNALDATE` | no |
+
+Header order is not trusted; presence is. The adapter requires exactly
+one `Authentication-Results` header carrying the pinned authserv-id. None
+is "missing"; two or more is "duplicated", which is what a forged copy
+below the provider's own looks like; both fail closed, as does a header
+that does not parse, a version other than 1, `dmarc` absent, not `pass`,
+or a `header.from` that is not the From host. A header with any other
+authserv-id is ignored, so a forged `mx.google.com.evil.example` or
+`evil.example` pass cannot help or hurt. The reason is recorded:
+`provider_gives_no_verdict`, `no_verdict_header`, `ambiguous_verdict`,
+`not_dmarc_pass`, `no_receipt_time` or `not_recorded`.
+
+**A source you already know.** The verified host (exact host, not
+registrable domain: `evil.camden.gov.uk` does not inherit
+`camden.gov.uk`) must have, in this account, at least three earlier
+inbound messages, none of them the candidate, whose provider receipt is
+strictly before the candidate's, the oldest at least 30 days before it.
+That is the history rule two reviews tested for pay links, without the
+mail-controlled `Date`. The count reads the arrival records at decision
+time, so it is the same whether the candidate is classified first or
+last. Last, a host that is a confusable of, or one edit from, a different
+host this account has more history with (Unicode skeletons folded, `rn`
+and `m`, `0` and `o`, transpositions) is not known.
+
+**What is eligible.** On top of the verdict and history, the message must
+be in the inbox, unread, received within the last 24 hours by the
+provider's clock, a sign-in alert whose window has not ended or a
+failed-payment alert, not relayed through a mailing list (`List-Id`
+means someone else's words under the list's host), and in an account whose
+provider can give a verdict. A backfill, an archived message, one the user
+already opened, or an old message reclassified later, never creates.
+
+**The claim.** One to-do per (account, verified host, alert kind, local
+day), kept as the to-do's `dedup_key` `alert|<host>|<kind>|<YYYY-MM-DD>`
+with the day taken from the provider receipt in the user's zone, so a
+pair either side of UTC midnight in one local day is one to-do and a
+different local day is a new one. The key lives on the to-do row, which is
+never deleted, so a rules-version change, a re-sync or a reclassification
+finds it and creates nothing, even after the user dismisses the to-do.
+Insert-or-nothing: the uniqueness is the database's, not a check made
+before.
+
+**What the to-do shows.** "Check new sign-in · accounts.google.com" and
+"Fix failed payment · stripe.com": the verified host, never the display
+name. Its reason reads "Created automatically: your provider confirmed
+accounts.google.com sent this, and you have had mail from it since <date>."
+`origin` is `alert`, the row says what verified it, and
+`mxr todo` JSON carries `origin`, `reason` and the claim.
+
+**What the user sees when it was not created.** The suggestion row keeps
+`t` and adds the reason, per provider:
+"Not created automatically: Outlook doesn't give mxr a verified sender",
+"…: your mail server doesn't give mxr a verified sender",
+"…: your provider did not confirm this sender", "…: mxr has seen fewer
+than three emails from this sender over 30 days", "…: looks like
+<known host>", "…: sent through a mailing list", "…: this arrived before
+mxr kept sender checks". Silence never means safe. It is in
+`mxr updates` JSON as `todo_suggestion` and `auto_todo` on each line
+(`created`, `not_created` with a `reason` code and a `reason_text`).
+
+**What stays a suggestion.** Delivery problems. A parcel's state comes
+from several emails read by the deliveries detector, which records the
+latest thread, not the message that carried the exception, so no single
+verified message stands behind it. Making one stand behind it is a
+change to deliveries, not to this gate, so a parcel keeps its suggestion
+with the reason "mxr can't tie this parcel to one verified email yet".
+
+**Eval.** `crates/daemon/tests` carries a synthetic corpus run through the
+same code the daemon runs on arrival. The adversarial half has one case
+for each finding of the two review rounds, plus these: a forged lower
+`mx.google.com` header; a forged `Authentication-Results` with another
+id; a verdict for another From host; a first-time sender dated before
+today; the candidate counted as its own history; a look-alike display
+name on an unrelated authenticated domain; two alerts either side of UTC
+midnight and across two local days; a backfill that classifies the older
+message after the newer; a reclassification; an Outlook and a generic
+IMAP account; a mailing-list relay; a lookalike host. All must create
+zero. The legitimate half (a real Google sign-in with long history, a
+Stripe failed payment, a second one the same day, the next day) must
+create exactly as many as it should. The result prints as
+`false_automatic` and `missed`. `mxr updates alert-audit` opens the user's
+own store read-only (no daemon, no IPC, nothing written), replays the same
+decision over every stored alert candidate from the headers kept with each
+message, and prints counts by outcome and reason: no subjects, senders,
+hosts or bodies. It is how real-mail precision gets measured, and its
+output is the false-automatic check D117 asks for.
+
+**Limits stated.** mxr trusts Google's verdict, not the sender's
+signature; a Google account that forwards for an attacker's rule is
+outside it. An attacker who owns a domain, sends the account three
+ordinary emails over 30 days and then an alert is shown as "Check new
+sign-in · their-domain.example": the title names the real sender and the
+reason line names the history it rests on, which is the point of
+showing the host. A service that lets anyone put words in its own
+transactional mail without a `List-Id` can still create an alert to-do.
+Gmail's API is assumed to deliver headers as received; the "exactly one
+header" rule does not depend on their order. Real-mail precision is not
+measured here: the audit command is how.
 
 ## Reading is a front page you visit, not a pile you owe
 

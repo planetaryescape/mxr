@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.232](https://github.com/planetaryescape/mxr/compare/v0.6.231...v0.6.232) (2026-11-06)
+
+
+### Features
+
+* bind client profile at connect time before event delivery ([#929](https://github.com/planetaryescape/mxr/issues/929)) ([1dfd7a5](https://github.com/planetaryescape/mxr/commit/1dfd7a501ea298d1d7914d43f378a3038eb75eab))
+
 ## [0.6.231](https://github.com/planetaryescape/mxr/compare/v0.6.230...v0.6.231) (2026-11-06)
 
 

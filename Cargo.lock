@@ -4626,7 +4626,7 @@ checksum = "a8afc6df942f4c022d70c5725e18df1a705773870e5b7f96fde94ca0334ce77a"
 
 [[package]]
 name = "mxr"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4751,7 +4751,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-assistant"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "mxr-llm",
@@ -4789,7 +4789,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-client"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base16ct",
  "base64 0.23.1",
@@ -4812,7 +4812,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-compose"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "comrak",
@@ -4840,7 +4840,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-composer"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base16ct",
  "chrono",
@@ -4856,7 +4856,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base16ct",
  "chrono",
@@ -4877,7 +4877,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "bitflags 2.13.2",
@@ -4894,7 +4894,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-deliveries"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4914,7 +4914,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "insta",
@@ -4929,7 +4929,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-html-worker"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "nix 0.30.1",
  "serde",
@@ -4940,7 +4940,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-humanizer"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "mxr-core",
  "serde",
@@ -4948,7 +4948,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -4959,7 +4959,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keymap"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "serde",
  "serde_json",
@@ -4969,7 +4969,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-llm"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -4987,7 +4987,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -5009,7 +5009,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mailmerge"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5024,7 +5024,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mcp"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5046,7 +5046,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -5069,7 +5069,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "bytes",
  "chrono",
@@ -5084,7 +5084,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5098,7 +5098,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5132,7 +5132,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -5160,7 +5160,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5181,7 +5181,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-smtp"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5200,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reader"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "data-url",
  "ego-tree",
@@ -5221,7 +5221,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reading"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "dom_smoothie",
@@ -5244,7 +5244,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-records"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5266,7 +5266,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-relationship"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5285,7 +5285,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-rules"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "glob-match",
@@ -5302,7 +5302,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-safety"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -5322,7 +5322,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "mail-query",
@@ -5339,7 +5339,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-semantic"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "base16ct",
@@ -5363,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-store"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "base16ct",
  "caseless",
@@ -5385,7 +5385,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-sync"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5403,7 +5403,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-test-support"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "assert_cmd",
  "dirs 7.0.0",
@@ -5415,7 +5415,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-todo"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5438,7 +5438,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-transport"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "async-trait",
  "futures",
@@ -5456,7 +5456,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-tui"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5501,7 +5501,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-updates"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "chrono",
  "once_cell",
@@ -5513,7 +5513,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.6.231"
+version = "0.6.232"
 dependencies = [
  "axum",
  "base64 0.23.1",

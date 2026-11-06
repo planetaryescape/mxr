@@ -2379,7 +2379,9 @@ pub(crate) mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=106).chain([108, 109, 110, 111, 112]).collect::<Vec<_>>(),
+                (83..=106)
+                    .chain([108, 109, 110, 111, 112])
+                    .collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

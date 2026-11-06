@@ -82,6 +82,8 @@ sensitive_domains = ["competitor.com"]
 warn_on_first_time_external = true   # warn on never-seen-before domains
 ```
 
+The daemon reads `[safety]` when it starts, so run `mxr restart` after editing it.
+
 **Use it like this:**
 
 ```bash
@@ -205,7 +207,7 @@ mail. Triggers a Warning only when:
 
 ```toml
 [safety.tone]
-formality_delta_threshold = 0.25   # 0.0 = always warn, 1.0 = never
+formality_delta_threshold = 0.4    # default; 0.0 = always warn, 1.0 = never
 ```
 
 The warning names the direction: "Tone is more formal than usual with

@@ -37,6 +37,7 @@ pub struct MxrConfig {
     pub records: RecordsConfig,
     pub updates: UpdatesConfig,
     pub reading: ReadingConfig,
+    pub safety: SafetyConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -156,6 +157,45 @@ pub struct ReadingConfig {
     /// kept in the secrets file, never here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub marginalia_url: Option<String>,
+}
+
+/// Pre-send safety tuning (`[safety]`). Mirrors `mxr_safety::SafetyConfig`;
+/// the daemon converts it when it runs the send-path checks. This crate
+/// cannot name `mxr-safety`, so the defaults here are kept equal to the
+/// crate's by a daemon test.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SafetyConfig {
+    pub recipients: SafetyRecipientConfig,
+    pub tone: SafetyToneConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SafetyRecipientConfig {
+    /// Domains treated as internal. An internal marker in the body, such as
+    /// `INTERNAL`, paired with a recipient outside this list is a Blocker.
+    pub internal_domains: Vec<String>,
+    /// Any recipient at one of these domains is a Blocker.
+    pub sensitive_domains: Vec<String>,
+    /// Warn when a recipient's domain has no prior history with you.
+    pub warn_on_first_time_external: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SafetyToneConfig {
+    /// How far the draft's formality must sit from the recipient's baseline
+    /// before a tone warning fires. 0.0 warns on every send, 1.0 never.
+    pub formality_delta_threshold: f64,
+}
+
+impl Default for SafetyToneConfig {
+    fn default() -> Self {
+        Self {
+            formality_delta_threshold: 0.4,
+        }
+    }
 }
 
 /// Updates' digest (blueprint 22, phase 4).

@@ -2,7 +2,7 @@
 //! This tests the decision, not the live provider's authentication policy.
 //! The corpus runs each case through the
 //! code the daemon runs after a sync: the provider's arrival record is built
-//! by the same function the Gmail and IMAP adapters call, `updates::scan`
+//! from a synthetic pinned receiver verdict, `updates::scan`
 //! decides, and the to-do table is what is counted.
 
 use super::desk::{Fixture, ME};
@@ -90,6 +90,14 @@ fn corpus() -> Vec<Case> {
     ];
     let adversarial = |name: &'static str| legit(name, false);
     cases.extend([
+        Case {
+            from: "notifications@stripe.com",
+            display: Some("Stripe"),
+            subject: "Your payment of $20.00 failed",
+            arrival: Arrival::OtherImap,
+            prior: vec![],
+            ..adversarial("an unverified first-time payment-failure alert")
+        },
         Case {
             // Round 2: a forged pass below the provider's own failure.
             arrival: Arrival::Gmail(vec![
@@ -348,6 +356,7 @@ async fn todos_for(run: &Run) -> Vec<mxr_store::TodoRecord> {
 #[tokio::test]
 async fn the_corpus_makes_every_legitimate_alert_and_no_forged_one() {
     let (mut false_automatic, mut missed, mut checked) = (Vec::new(), Vec::new(), 0);
+    let mut invalid_provenance = Vec::new();
     for case in corpus() {
         let run = arrange(&case, mxr_config::MxrConfig::default()).await;
         scan(&run).await;
@@ -359,23 +368,29 @@ async fn the_corpus_makes_every_legitimate_alert_and_no_forged_one() {
             (false, _) => false_automatic.push(case.name),
         }
         if let Some(todo) = made.first().filter(|_| case.creates) {
-            assert_eq!(todo.origin, "rule", "{}", case.name);
-            assert!(!todo.user_edited);
-            assert!(
-                todo.reason.starts_with("Created automatically"),
-                "{}",
-                todo.reason
-            );
+            if todo.origin != "rule"
+                || todo.user_edited
+                || !todo.reason.starts_with("Created automatically")
+                || !todo
+                    .title
+                    .contains(case.from.split('@').next_back().unwrap())
+            {
+                invalid_provenance.push(case.name);
+            }
         }
     }
     println!(
-        "alert corpus: {checked} cases, false_automatic={false_automatic:?}, missed={missed:?}"
+        "alert corpus: {checked} cases, false_automatic={false_automatic:?}, missed={missed:?}, invalid_provenance={invalid_provenance:?}"
     );
     assert!(
         false_automatic.is_empty(),
         "false automatic: {false_automatic:?}"
     );
     assert!(missed.is_empty(), "missed: {missed:?}");
+    assert!(
+        invalid_provenance.is_empty(),
+        "invalid provenance: {invalid_provenance:?}"
+    );
 }
 
 #[tokio::test]
@@ -554,8 +569,9 @@ async fn the_switch_turns_automatic_creation_off_and_the_alert_stays_a_suggestio
     let line = digest
         .needs_a_look
         .iter()
+        .chain(&digest.since.lines)
         .find(|line| line.message_ids.contains(&run.candidate.id))
-        .expect("the alert is in Needs a look");
+        .expect("the alert stays in the digest");
     let note = line.auto_todo.as_ref().expect("a reason");
     assert_eq!(note.state, "not_created");
     assert_eq!(note.reason_code, "switched_off");
@@ -585,6 +601,7 @@ async fn the_digest_says_why_an_untrusted_alert_was_not_made_and_marks_a_made_on
     let line = digest
         .needs_a_look
         .iter()
+        .chain(&digest.since.lines)
         .find(|line| line.message_ids.contains(&run.candidate.id))
         .unwrap();
     let note = line.auto_todo.as_ref().unwrap();
@@ -616,6 +633,7 @@ async fn the_digest_says_why_an_untrusted_alert_was_not_made_and_marks_a_made_on
     let line = digest
         .needs_a_look
         .iter()
+        .chain(&digest.since.lines)
         .chain(&digest.changed)
         .find(|line| line.message_ids.contains(&real.candidate.id))
         .unwrap();

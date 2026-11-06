@@ -49,7 +49,7 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 109);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -142,7 +142,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
                 .unwrap();
         }
         // Labels gained `role` in 105.
-        sqlx::raw_sql("DROP TABLE mode_row_seen; ALTER TABLE labels DROP COLUMN role")
+        sqlx::raw_sql("DROP TABLE message_arrivals; DROP TABLE alert_todo_claims; DROP TABLE mode_row_seen; ALTER TABLE labels DROP COLUMN role")
             .execute(&mut db)
             .await
             .unwrap();

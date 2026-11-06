@@ -4,7 +4,9 @@ use mxr_core::{RegisteredClient, RemoteSecret};
 use sqlx::Row;
 
 const CODE_TTL: i64 = 120;
-const SESSION_TTL: i64 = 12 * 60 * 60;
+/// A paired browser stays signed in for thirty days. The parent registration
+/// still caps it at ninety days, and revocation ends it immediately.
+const SESSION_TTL: i64 = 30 * 24 * 60 * 60;
 
 fn secret() -> Result<RemoteSecret, sqlx::Error> {
     let mut bytes = [0u8; 32];

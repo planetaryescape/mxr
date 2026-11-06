@@ -163,7 +163,7 @@ On the paired client, open the selected host:
 mxr web
 ```
 
-Enter the single-use code printed in the terminal into the host's dedicated `/api/v1/remote/browser-launch` connection form. This form always opens, including when the browser profile already has another parent registration's session cookie. The code expires after two minutes. The browser receives a secure, HTTP-only session cookie lasting up to twelve hours; the native mail credential stays on the paired client. Neither credential appears in the launch URL. Run `mxr web` again to replace an expired code or session.
+Enter the single-use code printed in the terminal into the host's dedicated `/api/v1/remote/browser-launch` connection form. This form always opens, including when the browser profile already has another parent registration's session cookie. The code expires after two minutes. The browser receives a secure, HTTP-only session cookie lasting up to thirty days; the native mail credential stays on the paired client. Neither credential appears in the launch URL. Run `mxr web` again to replace an expired code or session.
 
 Launch the [desktop app](/guides/desktop-app/) on the paired computer to use the same selected host. It exchanges its single-use code at the selected HTTPS origin automatically. External links still open in your normal browser.
 

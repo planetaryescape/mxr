@@ -46,7 +46,7 @@ mxr serve clients --format json
 
 Preview the exact client ID before confirming. The committed result includes `revoked_at`. Revocation removes mail authority and clears its verifier and display name; it does not cancel accepted mail work. Repeating revocation is safe.
 
-Mail credentials last ninety days. A separate cleanup credential can only revoke its own registration. Its verifier remains after expiry and revocation so an offline client can retry cleanup when a response was lost. Cleanup credentials never authorize mail access. Browser sessions are children of the paired installation. A single-use code expires after two minutes; its secure, HTTP-only cookie lasts at most twelve hours and cannot issue another child. Every browser request checks the parent registration and inherits its grants.
+Mail credentials last ninety days. A separate cleanup credential can only revoke its own registration. Its verifier remains after expiry and revocation so an offline client can retry cleanup when a response was lost. Cleanup credentials never authorize mail access. Browser sessions are children of the paired installation. A single-use code expires after two minutes; its secure, HTTP-only cookie lasts at most thirty days and cannot issue another child. Every browser request checks the parent registration and inherits its grants.
 
 ## Restart preserves authority and portable restore clears it
 

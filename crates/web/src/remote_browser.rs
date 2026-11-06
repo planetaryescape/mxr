@@ -313,6 +313,12 @@ async fn issue_session(
             response
                 .headers_mut()
                 .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            // Without a content type and with nosniff, Safari offers a download
+            // instead of following the redirect.
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
             response
         }
         Err(status) => status.into_response(),

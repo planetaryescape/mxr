@@ -37,7 +37,9 @@ async fn update(
 fn http() -> Result<reqwest::Client, ClientError> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(5))
+        // A saved origin may sit behind a proxy and a tailnet relay; five seconds
+        // was not enough for a loopback gateway reached through the public edge.
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|_| error("Cannot initialize HTTPS client"))
 }

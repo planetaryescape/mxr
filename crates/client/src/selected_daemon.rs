@@ -9,7 +9,8 @@ use std::{
 
 pub const SELECTION_CHANGED_MESSAGE: &str = "Saved connection changed. Close and reopen this client. Retained drafts and operation outcomes still belong to their original workspace.";
 
-const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
+// Pairing and status handshakes cross a proxy when the saved origin is remote.
+const SETUP_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct SelectedDaemonTarget {

@@ -62,7 +62,7 @@ Preparation checks the attachment bytes during both preview and execution. It cr
 
 Native TUI diagnostics and the web recovery panel expose these same previews and explicit confirmations. MCP exposes `mxr_recovery_status`, `mxr_recovery_activate` and `mxr_recovery_prepare_draft`; its configured profile must permit the action and all affected accounts. Restricted status responses omit other accounts' held subjects and retained evidence.
 
-Recovery requests use protocol 12. Upgrade CLI, native TUI, MCP and daemon together. Published protocol-11 peers are rejected explicitly; selected targets never fall back to a different local daemon. The web bridge stays beside its daemon and uses that daemon's protocol.
+Recovery requests need the same IPC protocol version as the daemon (`protocol_version` in `mxr status --format json`). Upgrade the CLI, native TUI, MCP client and daemon together. A mismatched peer is rejected explicitly; selected targets never fall back to a different local daemon. The web bridge stays beside its daemon and uses that daemon's protocol.
 
 ## Verify with synthetic profiles
 

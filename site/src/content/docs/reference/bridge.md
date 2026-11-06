@@ -727,7 +727,7 @@ per daemon event. The TypeScript shapes are in
 - `IndexBootstrapped` — Tantivy completed a startup repair
 - `AccountAddressesChanged` — an account's owned addresses changed (an alias was added or removed, or the primary moved); drop anything cached from the old set
 - `ContactsRefreshed` — the contacts table was rebuilt after a debounce; analytics and contacts views refetch
-- `Unknown` — what a client built from protocol 29 on decodes any event it has no variant for as. The daemon never sends it; ignore it, and ignore event names you do not recognise
+- `Unknown` — Rust clients from protocol 29 decode unrecognised event names as this local fallback. The daemon never emits it. Web clients ignore unrecognised event names.
 - `AssistantUpdated` — an assistant conversation changed; `progress` says
   what a running turn is doing (`thinking`, `calling`, `writing` with the
   reply so far, `summarizing`)

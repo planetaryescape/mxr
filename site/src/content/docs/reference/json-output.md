@@ -503,9 +503,10 @@ reverse a run, act on a search the other way (`unlabel --all` after
 `mxr undo MUTATION_ID --dry-run` changes nothing. It asks the daemon for the
 same lookup the undo makes, so an unknown, expired or already undone id is
 refused with the undo's own error and exit code. A valid id with something
-left to restore prints the messages the undo would restore. If every message
-and desk row is gone or changed, the preview returns the same `irreversible`
-error as the undo. Its JSON adds a `preview` object (absent on a real undo):
+left to restore lists its message targets and whether it also carries desk
+state. The preview checks local message availability and highlight restoration;
+it can refuse an entry as `irreversible` when no local work remains to restore.
+Its JSON adds a `preview` object (absent on a real undo):
 
 ```json
 {
@@ -524,9 +525,9 @@ error as the undo. Its JSON adds a `preview` object (absent on a real undo):
 ```
 
 `in_local_store: false` marks a message that is gone from the local store. When
-other targets remain restorable, the undo leaves it out. A provider can still
-refuse a message the store holds; the dry run cannot see that, only the undo
-does.
+other targets remain restorable, the undo leaves it out. Provider access and
+other restoration steps can still fail when the real undo runs; the preview
+does not contact a provider.
 
 `mxr jobs JOB_ID` carries the first 50 `failures` and every `undo_id`;
 `undo_id_count` and `failure_count` say how many the job holds. Jobs other

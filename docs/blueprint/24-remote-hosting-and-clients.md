@@ -10,7 +10,7 @@ The completion check is two separate client homes using one hosted workspace thr
 
 ## The current candidate adds web access and approved mail workflows
 
-The candidate uses IPC 29 and database schema 110. Existing registrations keep their grants. `mxr connect --allow-send`, `--allow-triage` and `--allow-ai` request independently approved send/compose, mail organization and AI authority; none grants host administration. The exact operation lists live in `crates/protocol/src/remote.rs` and `crates/protocol/src/remote/workflow_policy.rs`.
+The candidate uses IPC 30 and database schema 110. Existing registrations keep their grants. `mxr connect --allow-send`, `--allow-triage` and `--allow-ai` request independently approved send/compose, mail organization and AI authority; none grants host administration. The exact operation lists live in `crates/protocol/src/remote.rs` and `crates/protocol/src/remote/workflow_policy.rs`.
 
 `mxr web` opens the selected server's `/api/v1/remote/browser-launch` form and prints a two-minute single-use code. The desktop shell submits its code at the same origin. A secure, HTTP-only child-session cookie lasts at most twelve hours and is checked against the parent registration on each admission. The launch path always shows the form, including when that browser profile holds an older cookie. No credential appears in the launch URL. Compose files stay bound to their captured workspace and parent registration; uploads and inline images use bounded, path-free transfers. Remote assistant histories are separated by parent registration, and each tool call rechecks that registration's grants.
 

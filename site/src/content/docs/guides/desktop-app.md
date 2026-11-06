@@ -1,11 +1,11 @@
 ---
 title: Desktop app
-description: A macOS window around the same local web app, with a global new-message shortcut. The daemon is still the system.
+description: A macOS window for your selected local or paired remote mailbox, with a global new-message shortcut.
 ---
 
-The mxr desktop app is a window around the local web app. It opens your mail
-in its own window, a system-wide shortcut starts a new message, and when mxr
-isn't running it says so instead of showing a broken page.
+The mxr desktop app opens your selected mailbox in its own window. A
+system-wide shortcut starts a new message, and when mxr is unavailable the
+app shows the connection problem.
 
 It is the same app `mxr web` opens in a browser. The daemon is still the
 system: SQLite, search, provider sync, credentials and background work all
@@ -38,14 +38,30 @@ first launch. The release's job summary says which of the two happened.
 
 ## What it does
 
-On launch the app runs `mxr web --print-url --no-open`, which starts or
-reuses the local web bridge, and loads the address it prints. Closing the
+On launch the app runs `mxr web --session-json --no-open`. For a local
+workspace, it starts or reuses the web bridge. For a saved remote connection,
+it opens that host over HTTPS and exchanges a single-use code for a browser
+session. Its launch page exchanges the code even if a previous session is
+still open. The code travels in a form POST, never the launch address. Closing the
 window hides it; the Dock icon or the shortcut brings it back, and
 Command+Q quits.
 
 Only one copy runs. Opening a second one focuses the first.
 
 The window remembers its size and position.
+
+## A paired remote mailbox opens in the same window
+
+Select the host with `mxr connect` and complete host approval before opening
+the desktop app. It uses that saved connection and the permissions approved
+for it. Upgrade the CLI and desktop app together; older CLI versions do not
+support the session launch handshake.
+
+The host must serve its web app at its configured HTTPS origin. The desktop
+app does not start a second local mailbox when the host is unavailable.
+Revoking the parent registration also revokes its browser access. To change
+workspaces, change the saved connection and quit and reopen the desktop app.
+Open tabs and retained drafts stay attached to their original workspace.
 
 ## The menu bar
 
@@ -85,15 +101,16 @@ another app, the window still works without it.
 ## When mxr isn't running
 
 If `mxr` can't be found, or `mxr web` fails or doesn't answer within 15
-seconds, the window shows "mxr isn't running" with the command to start the
-daemon:
+seconds, the window shows "mxr isn't running". Inspect the saved connection:
 
 ```bash
-mxr daemon
+mxr connect --status
 ```
 
-Run it in a terminal and press **Try again**. Once the web app is open, its
-own offline banner covers a daemon that goes away later.
+For a local workspace, start `mxr daemon`. For a remote workspace, check that
+the selected host is reachable. Press **Try again** after resolving the
+connection problem. Once the web app is open, its offline banner covers a
+daemon that goes away later.
 
 ## Links, attachments and safety
 
@@ -105,7 +122,9 @@ the mail it renders can't call into the shell.
 
 ## Still works in a browser
 
-`mxr web` keeps working. It opens the same app at `http://mxr.localhost:42829`,
+`mxr web` opens the selected local or remote app in a browser. Local mail
+uses `http://mxr.localhost:42829`; a paired remote connection uses its host
+origin and prompts for the single-use code printed by the CLI. The app is
 installable as a PWA if you prefer that to the desktop app.
 
 ## What it isn't

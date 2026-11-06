@@ -136,12 +136,32 @@ pub async fn fixture(
     headers: &[&str],
     length: bool,
 ) -> (String, FakeDns) {
+    fixture_with_sender_headers(
+        domain,
+        sender,
+        headers,
+        length,
+        &SIGNED
+            .into_iter()
+            .filter(|h| *h != "DKIM-Signature")
+            .collect::<Vec<_>>(),
+    )
+    .await
+}
+
+pub async fn fixture_with_sender_headers(
+    domain: &str,
+    sender: &str,
+    headers: &[&str],
+    length: bool,
+    sender_headers: &[&str],
+) -> (String, FakeDns) {
     let dns = dns();
     let auth = MessageAuthenticator::new_system_conf().expect("synthetic fixture");
     let signature = DkimSigner::from_key(key())
         .domain(sender)
         .selector("unit")
-        .headers(SIGNED.into_iter().filter(|h| *h != "DKIM-Signature"))
+        .headers(sender_headers.iter().copied())
         .sign(RAW.as_bytes())
         .expect("synthetic fixture");
     let signed = format!("{}{RAW}", signature.to_header());
@@ -170,4 +190,31 @@ pub async fn fixture(
         .seal(&parsed, &results, &chain)
         .expect("synthetic fixture");
     (format!("{}{signed}", set.to_header()), dns)
+}
+
+pub async fn reseal(raw: &str, dns: &FakeDns) -> String {
+    let auth = MessageAuthenticator::new_system_conf().expect("synthetic resolver");
+    let parsed = AuthenticatedMessage::parse(raw.as_bytes()).expect("synthetic RFC");
+    let dk = auth
+        .verify_dkim(Parameters::new(&parsed).with_cache(dns))
+        .await;
+    let spf = SpfOutput::default();
+    let dm = auth
+        .verify_dmarc(
+            Parameters::new(DmarcParameters::new(&parsed, &dk, "stripe.com", &spf)).with_cache(dns),
+        )
+        .await;
+    let results = AuthenticationResults::new("mx.google.com").with_dmarc_result(&dm);
+    let chain = auth
+        .verify_arc(Parameters::new(&parsed).with_cache(dns))
+        .await;
+    assert_eq!(chain.result(), &DkimResult::Pass);
+    let sealer = ArcSealer::from_key(key())
+        .domain("google.com")
+        .selector("unit")
+        .headers(SIGNED);
+    let set = sealer
+        .seal(&parsed, &results, &chain)
+        .expect("fresh receiver set");
+    format!("{}{raw}", set.to_header())
 }

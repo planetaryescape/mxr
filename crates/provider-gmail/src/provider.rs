@@ -351,9 +351,6 @@ impl GmailProvider {
     /// attachment (`.ics` / `text/calendar` / `application/ics`), fetch that
     /// attachment and parse its iCalendar payload into `metadata.calendar`.
     ///
-    /// A no-op for the common case (no calendar attachment, or calendar already
-    /// parsed from an inline part), so it costs a network round-trip only for
-    /// attachment-delivered invites.
     async fn verify_receiver(&self, id: &str, synced: &mut SyncedMessage) {
         use base64::Engine;
         use mxr_mail_parse::receiver_arc::{ReceiverPolicy, MAX_RAW_BYTES};
@@ -388,6 +385,9 @@ impl GmailProvider {
             .await;
     }
 
+    /// A no-op for the common case (no calendar attachment, or calendar already
+    /// parsed from an inline part), so it costs a network round-trip only for
+    /// attachment-delivered invites.
     async fn enrich_calendar_from_attachment(
         &self,
         provider_message_id: &str,

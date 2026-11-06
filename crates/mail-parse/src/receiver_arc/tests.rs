@@ -101,3 +101,51 @@ async fn future_receiver_clock_rejected_and_old_clock_cannot_be_freshened() {
     .expect("old evidence retained for history");
     assert_eq!(old.received_at, Some(at));
 }
+
+#[tokio::test]
+async fn a_fresh_google_reseal_keeps_the_same_authenticated_original_identity() {
+    let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, false).await;
+    let first = check(&raw, &dns).await.expect("original");
+    let copy = reseal(&raw, &dns).await;
+    assert_ne!(copy, raw);
+    let second = check(&copy, &dns)
+        .await
+        .expect("genuine second receiver set");
+    assert_eq!(first.message_fingerprint, second.message_fingerprint);
+    println!("crypto replay identity: distinct_receiver_sets=2 independent_originals=1");
+}
+
+#[tokio::test]
+async fn valid_crypto_with_unbound_interpretation_headers_still_fails_policy() {
+    use mail_auth::dns::Parameters;
+    let headers: Vec<_> = SIGNED
+        .into_iter()
+        .filter(|h| *h != "Content-Type")
+        .collect();
+    let sender_headers: Vec<_> = headers
+        .iter()
+        .copied()
+        .filter(|h| *h != "DKIM-Signature")
+        .collect();
+    let (raw, dns) =
+        fixture_with_sender_headers("google.com", "stripe.com", &headers, false, &sender_headers)
+            .await;
+    let auth = MessageAuthenticator::new_system_conf().expect("synthetic resolver");
+    let parsed = AuthenticatedMessage::parse(raw.as_bytes()).expect("RFC fixture");
+    assert_eq!(
+        auth.verify_arc(Parameters::new(&parsed).with_cache(&dns))
+            .await
+            .result(),
+        &DkimResult::Pass
+    );
+    assert!(check(&raw, &dns).await.is_err());
+    let altered = raw.replace("Content-Type: text/plain", "Content-Type: text/html");
+    let parsed = AuthenticatedMessage::parse(altered.as_bytes()).expect("altered interpretation");
+    assert_eq!(
+        auth.verify_arc(Parameters::new(&parsed).with_cache(&dns))
+            .await
+            .result(),
+        &DkimResult::Pass
+    );
+    assert!(check(&altered, &dns).await.is_err());
+}

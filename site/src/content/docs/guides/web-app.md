@@ -417,6 +417,13 @@ on the newest or first unread message. You can move between messages, open
 or fold one, or open them all. Quoted history and signatures fold behind a
 control that says how much is hidden.
 
+A very long conversation opens on its newest 50 messages, with **Load
+earlier messages** above them; each older page is added above without
+moving what you are reading. Opening a link to an old message starts on the
+page that holds it, with a way to load newer mail below. Archive, done,
+search, export and the thread's counts always cover the whole conversation,
+loaded or not.
+
 The view switch, and a key for each view, choose between the formatted
 HTML, a cleaned reading view, and plain text; as in the TUI, pressing the
 HTML or reader key again goes back to plain text.

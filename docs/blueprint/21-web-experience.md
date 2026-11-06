@@ -55,6 +55,11 @@ behind it.
   either a verified quote from the message or labelled as a summary with
   its provenance. A gist is announced only if no message arrived while it
   was written.
+- **Bounded long threads.** The reader loads the newest 50 messages, then
+  earlier pages on demand; the bridge never sends a 2,000-message thread's
+  bodies in one open. Every action still uses the thread's full id list, and
+  a deep link opens the page that holds its message. `GetThread`'s window is
+  optional so the CLI, TUI and MCP keep their whole-thread shape.
 - **Verify on the merge commit.** Read its check-runs, not only the PR's.
 
 ## Plan: pass rubric v2

@@ -2,6 +2,8 @@
 
 import { describe, expect, test } from "vitest";
 
+import { parseReaderSettings } from "@planetaryescape/reader";
+
 import {
   DEFAULT_READING_DISPLAY,
   readReadingDisplay,
@@ -278,5 +280,36 @@ describe("reading display preference", () => {
   test("a bad size from the settings control is clamped back to something valid", () => {
     useUiPrefs.getState().setReadingDisplay({ size: 500 });
     expect(useUiPrefs.getState().readingDisplay.size).toBe(20);
+  });
+
+  test("agrees with the reader package's schema for every field", () => {
+    // `readReadingDisplay` mirrors `parseReaderSettings` for these four fields
+    // so the entry chunk does not pull zod in. If the package's schema moves,
+    // this fails instead of letting the two drift apart.
+    const samples: unknown[] = [
+      null,
+      [],
+      {},
+      { theme: "sepia", typeface: "removed", size: 999, spacing: "airy" },
+      { theme: "dusk", typeface: "sans", size: "huge", spacing: "airy" },
+      { theme: "ink", typeface: "book", size: 14, spacing: "snug" },
+      { theme: "night", typeface: "legible", size: 28, spacing: "even" },
+      { theme: "paper", typeface: "serif", size: 20.5, spacing: "airy" },
+      { theme: "snow", typeface: "sans", size: 13.9, spacing: "snug" },
+      { theme: "night", typeface: "sans", size: 28.1, spacing: "even" },
+      { theme: "constructor", typeface: "__proto__", size: Number.NaN, spacing: "airy" },
+      { theme: null, typeface: 7, size: null, spacing: {} },
+    ];
+    for (const sample of samples) {
+      const saved =
+        sample && typeof sample === "object" && !Array.isArray(sample)
+          ? (sample as Record<string, unknown>)
+          : {};
+      const { theme, typeface, size, spacing } = parseReaderSettings({
+        ...DEFAULT_READING_DISPLAY,
+        ...saved,
+      });
+      expect(readReadingDisplay(sample)).toEqual({ theme, typeface, size, spacing });
+    }
   });
 });

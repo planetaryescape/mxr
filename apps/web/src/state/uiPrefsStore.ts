@@ -4,7 +4,6 @@
  * before render so the theme doesn't flash.
  */
 
-import { parseReaderSettings, type ReaderSettings } from "@planetaryescape/reader";
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
@@ -28,7 +27,17 @@ export type UndoSendSeconds = 0 | 5 | 10 | 30;
 export type HomeView = "now" | "inbox";
 
 /** How the Reading reader draws an article: the reader theme, typeface, size and line spacing. */
-export type ReadingDisplay = Pick<ReaderSettings, "theme" | "typeface" | "size" | "spacing">;
+export type ReaderTheme = "auto" | "paper" | "sepia" | "snow" | "dusk" | "night" | "ink";
+export type ReaderTypeface = "serif" | "book" | "sans" | "legible";
+export type ReaderSpacing = "snug" | "even" | "airy";
+
+export interface ReadingDisplay {
+  theme: ReaderTheme;
+  typeface: ReaderTypeface;
+  /** Pixels; the reader's own control offers 14–28 and anything else falls back. */
+  size: number;
+  spacing: ReaderSpacing;
+}
 
 export const DEFAULT_READING_DISPLAY: ReadingDisplay = {
   theme: "auto",
@@ -37,14 +46,49 @@ export const DEFAULT_READING_DISPLAY: ReadingDisplay = {
   spacing: "even",
 };
 
-/** Stored prefs may be hand-edited or from another version; repair them field by field. */
+const READER_THEMES: readonly ReaderTheme[] = [
+  "auto",
+  "paper",
+  "sepia",
+  "snow",
+  "dusk",
+  "night",
+  "ink",
+];
+const READER_TYPEFACES: readonly ReaderTypeface[] = ["serif", "book", "sans", "legible"];
+const READER_SPACING: readonly ReaderSpacing[] = ["snug", "even", "airy"];
+
+/**
+ * Stored prefs may be hand-edited or from another version; repair them field
+ * by field.
+ *
+ * This mirrors `parseReaderSettings` from `@planetaryescape/reader` for the
+ * four fields the app stores, on purpose: importing that package here also
+ * pulls zod into the entry chunk, which every screen downloads before it can
+ * paint. `uiPrefsStore.test.ts` checks the two agree field by field, so a
+ * change in the package's schema fails here instead of drifting.
+ */
 export function readReadingDisplay(value: unknown): ReadingDisplay {
   const saved = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const { theme, typeface, size, spacing } = parseReaderSettings({
-    ...DEFAULT_READING_DISPLAY,
-    ...saved,
-  });
-  return { theme, typeface, size, spacing };
+  const field = (key: keyof ReadingDisplay) => (saved as Record<string, unknown>)[key];
+  const pick = <T extends string>(
+    options: readonly T[],
+    key: keyof ReadingDisplay,
+    fallback: T,
+  ): T => {
+    const raw = field(key);
+    return options.find((option) => option === raw) ?? fallback;
+  };
+  const size = field("size");
+  return {
+    theme: pick(READER_THEMES, "theme", DEFAULT_READING_DISPLAY.theme),
+    typeface: pick(READER_TYPEFACES, "typeface", DEFAULT_READING_DISPLAY.typeface),
+    size:
+      typeof size === "number" && Number.isFinite(size) && size >= 14 && size <= 28
+        ? size
+        : DEFAULT_READING_DISPLAY.size,
+    spacing: pick(READER_SPACING, "spacing", DEFAULT_READING_DISPLAY.spacing),
+  };
 }
 
 export interface UiPrefsState {

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.223](https://github.com/planetaryescape/mxr/compare/v0.6.222...v0.6.223) (2026-11-06)
+
+
+### Bug Fixes
+
+* recovered draft attachments keep their file names ([#898](https://github.com/planetaryescape/mxr/issues/898)) ([577f71c](https://github.com/planetaryescape/mxr/commit/577f71c48d7a84a8c00d671d90abc6ee5d011bdf))
+* the [safety] config section changes the pre-send checks ([#897](https://github.com/planetaryescape/mxr/issues/897)) ([d55bf4f](https://github.com/planetaryescape/mxr/commit/d55bf4f67cafb5cea5a439414c3657ce91c7a28a))
+* write the Outlook token cache through a private temp file ([#896](https://github.com/planetaryescape/mxr/issues/896)) ([4e71bd3](https://github.com/planetaryescape/mxr/commit/4e71bd3f7c1c067b5ad97d98b259f38ae364f03e))
+
 ## [0.6.222](https://github.com/planetaryescape/mxr/compare/v0.6.221...v0.6.222) (2026-11-05)
 
 

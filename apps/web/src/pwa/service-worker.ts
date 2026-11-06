@@ -6,7 +6,13 @@ import { cleanupOutdatedCaches, matchPrecache, precacheAndRoute } from "workbox-
 import { NavigationRoute, registerRoute, setCatchHandler } from "workbox-routing";
 import { CacheFirst, NetworkFirst, NetworkOnly } from "workbox-strategies";
 
-import { isOfflineRead, mayCacheMail, OFFLINE_HEADER, OFFLINE_MAIL_CACHE } from "./offlineReads";
+import {
+  isOfflineRead,
+  isUnavailableResponse,
+  mayCacheMail,
+  OFFLINE_HEADER,
+  OFFLINE_MAIL_CACHE,
+} from "./offlineReads";
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision?: string | null }>;
@@ -42,6 +48,13 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+const requireConnection: WorkboxPlugin = {
+  fetchDidSucceed: async ({ response }) => {
+    if (isUnavailableResponse(response)) throw new Error("Mail host unavailable");
+    return response;
+  },
+};
+
 const privateReads: WorkboxPlugin = {
   // Cache only the read URL, never its bearer-token request headers.
   cacheKeyWillBeUsed: async ({ request }) => request.url,
@@ -49,6 +62,7 @@ const privateReads: WorkboxPlugin = {
     if (state) state.generation = cacheGeneration;
   },
   fetchDidSucceed: async ({ response }) => {
+    if (isUnavailableResponse(response)) throw new Error("Mail host unavailable");
     if (response.status === 401 || response.status === 403) {
       await clearMail();
       // A slow authority response may arrive after NetworkFirst used offline data.
@@ -59,8 +73,6 @@ const privateReads: WorkboxPlugin = {
         }
       }
     }
-    // A sleeping mail host gives Caddy a gateway error, even with Wi-Fi online.
-    if ([502, 503, 504].includes(response.status)) throw new Error("Mail host unavailable");
     return response;
   },
   cacheWillUpdate: async ({ request, response, state }) => {
@@ -110,26 +122,33 @@ registerRoute(
   ({ url }) =>
     url.origin === self.location.origin &&
     ["/api/v1/health", "/api/v1/admin/status", "/api/v1/auth/local-token"].includes(url.pathname),
-  new NetworkOnly({ networkTimeoutSeconds: 4 }),
+  new NetworkOnly({ networkTimeoutSeconds: 4, plugins: [requireConnection] }),
 );
 
 registerRoute(
   ({ url }) => url.origin === self.location.origin && url.pathname.startsWith("/api/"),
-  new NetworkOnly(),
+  new NetworkOnly({ plugins: [requireConnection] }),
 );
 
 for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
   registerRoute(
     ({ url }) => url.origin === self.location.origin && url.pathname.startsWith("/api/"),
-    new NetworkOnly(),
+    new NetworkOnly({ plugins: [requireConnection] }),
     method,
   );
 }
 
 registerRoute(
-  new NavigationRoute(new NetworkFirst({ cacheName: "mxr-pages-v1", networkTimeoutSeconds: 4 }), {
-    denylist: [/^\/api\//],
-  }),
+  new NavigationRoute(
+    new NetworkFirst({
+      cacheName: "mxr-pages-v1",
+      networkTimeoutSeconds: 4,
+      plugins: [requireConnection],
+    }),
+    {
+      denylist: [/^\/api\//],
+    },
+  ),
 );
 
 registerRoute(

@@ -3,6 +3,14 @@ import { EXPECTED_IPC_PROTOCOL_VERSION } from "@/lib/protocolCompatibility";
 export const OFFLINE_MAIL_CACHE = `mxr-opened-mail-v1-ipc${EXPECTED_IPC_PROTOCOL_VERSION}`;
 export const OFFLINE_HEADER = "x-mxr-offline";
 
+/** The proxy's network gate is distinct from a mailbox permission rejection. */
+export function isUnavailableResponse(response: Response): boolean {
+  return (
+    [502, 503, 504].includes(response.status) ||
+    (response.status === 403 && response.headers.get("x-mxr-tailnet-required") === "1")
+  );
+}
+
 const READ_PATHS = new Set([
   "/api/v1/client/shell",
   "/api/v1/platform/accounts",

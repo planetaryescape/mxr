@@ -215,6 +215,12 @@ An app update offers an **Update** action. Finish editing before accepting it;
 the worker waits rather than reloading an open composer automatically. The
 daemon protocol check still applies when the app reconnects.
 
+A reverse proxy that returns 403 when Tailscale is disconnected must add
+`X-Mxr-Tailnet-Required: 1` to that network-gate response. The worker then
+uses saved reads and the offline shell. Unmarked 401/403 responses remain
+mailbox authority decisions and clear saved mail; never mark those responses
+as a network failure.
+
 ### Stop extensions reading mxr's keys
 
 Extensions that run on every page can take mxr's single keys (`j`, `k`,

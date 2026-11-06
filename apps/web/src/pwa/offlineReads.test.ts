@@ -1,10 +1,26 @@
 import { describe, expect, test } from "vitest";
 
-import { isOfflineRead, mayCacheMail } from "./offlineReads";
+import { isOfflineRead, isUnavailableResponse, mayCacheMail } from "./offlineReads";
 
 const origin = "https://mxr.example.test";
 
 describe("offline read admission", () => {
+  test("uses saved mail for a disconnected tailnet, but respects mailbox authority", () => {
+    expect(
+      isUnavailableResponse(
+        new Response(null, {
+          status: 403,
+          headers: { "x-mxr-tailnet-required": "1" },
+        }),
+      ),
+    ).toBe(true);
+    for (const status of [200, 401, 403]) {
+      expect(isUnavailableResponse(new Response(null, { status }))).toBe(false);
+    }
+    for (const status of [502, 503, 504]) {
+      expect(isUnavailableResponse(new Response(null, { status }))).toBe(true);
+    }
+  });
   test.each([
     "/api/v1/client/shell",
     "/api/v1/mail/mailbox?lens_kind=inbox",

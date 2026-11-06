@@ -741,6 +741,7 @@ pub fn map_request(
         | Request::GetInvite { .. }
         | Request::ListInvites { .. }
         | Request::GetHtmlImageAssets { .. }
+        | Request::ReadInlineImage { .. }
         | Request::ListBodies { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }

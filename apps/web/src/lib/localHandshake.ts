@@ -32,7 +32,7 @@ export async function tryLocalHandshake(): Promise<string | undefined> {
       const res = await fetch(`${getBridgeBaseUrl()}/api/v1/auth/local-token`, {
         method: "GET",
         headers: { accept: "application/json" },
-        credentials: "omit",
+        credentials: "same-origin",
       });
       if (!res.ok) return undefined;
       const body = (await res.json()) as HandshakeResponse;

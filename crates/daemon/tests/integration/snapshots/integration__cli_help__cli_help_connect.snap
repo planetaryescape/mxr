@@ -11,6 +11,11 @@ Arguments:
 
 Options:
       --allow-send       Request host-approved draft, attachment and send access; default pairing is read-only
+      --allow-triage     Request host-approved mail organization, modes and todo access
+      --allow-ai         Request host-approved AI mail features; host privacy policy still applies
+      --cancel-pairing   Cancel only the pending pairing, preserving the selected registration
+      --restart-pairing  Retire a pending pairing and request a fresh challenge at this URL
+      --forget-cleanup   Forget the previewed cleanup intents locally; the old host may still have them registered
       --local
       --status
       --name <NAME>      [default: "mxr client"]

@@ -50,6 +50,21 @@ pub(crate) fn spawn_ipc_worker_for_session(
     spawn_ipc_worker_selected(session.target, Some(session.owner), result_tx)
 }
 
+fn retire_selected_session(
+    result_tx: &mpsc::UnboundedSender<AsyncResult>,
+    rx: &mut mpsc::UnboundedReceiver<IpcRequest>,
+) {
+    rx.close();
+    while let Ok(request) = rx.try_recv() {
+        let _ = request.reply.send(Err(MxrError::Ipc(
+            mxr_client::selected_daemon::SELECTION_CHANGED_MESSAGE.into(),
+        )));
+    }
+    let _ = result_tx.send(AsyncResult::ConnectionState(
+        ConnectionState::SelectionChanged,
+    ));
+}
+
 fn spawn_ipc_worker_selected(
     target: mxr_client::SelectedDaemonTarget,
     initial_owner: Option<Option<mxr_protocol::ArchiveWorkspaceData>>,
@@ -68,6 +83,10 @@ fn spawn_ipc_worker_selected(
         // for the UI to render, and reply Err to any pending requests so the
         // main loop's mutation queue doesn't stall.
         let (mut client, session_workspace) = loop {
+            if matches!(target.selection_is_current().await, Ok(false)) {
+                retire_selected_session(&result_tx, &mut rx);
+                return;
+            }
             match connect_ipc_client(&target, event_tx.clone()).await {
                 Ok(mut client) => {
                     let owner = if let Some(owner) = &initial_owner {
@@ -113,6 +132,10 @@ fn spawn_ipc_worker_selected(
         };
 
         loop {
+            if matches!(target.selection_is_current().await, Ok(false)) {
+                retire_selected_session(&result_tx, &mut rx);
+                return;
+            }
             tokio::select! {
                 req = rx.recv() => {
                     match req {
@@ -241,6 +264,9 @@ fn spawn_ipc_worker_selected(
                 }
                 idle = client.read_idle_frame() => {
                     if let Err(error) = idle {
+                        if matches!(target.selection_is_current().await,Ok(false)) {
+                            retire_selected_session(&result_tx,&mut rx);return;
+                        }
                         let _ = result_tx.send(AsyncResult::ConnectionState(
                             ConnectionState::Reconnecting {
                                 since: std::time::Instant::now(),
@@ -329,12 +355,26 @@ pub(crate) fn should_autostart_daemon(error: &std::io::Error) -> bool {
 }
 
 async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
+    if !mxr_client::daemon_autostart_enabled() {
+        return Err(MxrError::Ipc(
+            mxr_client::daemon_autostart_disabled_message().into(),
+        ));
+    }
     let exe = std::env::current_exe()
         .map_err(|error| MxrError::Ipc(format!("failed to locate mxr binary: {error}")))?;
-    std::process::Command::new(exe)
+    let mut command = std::process::Command::new(exe);
+    let inherited = mxr_client::TransportAddr::resolve(mxr_config::socket_path())
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    // Preserve exact profile selectors for recovery unless this session was
+    // explicitly constructed for a different socket than its environment.
+    if !matches!(inherited, mxr_client::TransportAddr::Unix(ref path) if path == socket_path) {
+        command
+            .env_remove("MXR_DAEMON_ADDR")
+            .env("MXR_SOCKET_PATH", socket_path);
+    }
+    command
         .arg("daemon")
-        .arg("--instance")
-        .arg(mxr_config::app_instance_name())
+        .env("MXR_DAEMON_CLIENT_AUTOSTART", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -512,6 +552,50 @@ pub(crate) async fn ipc_call_dedicated(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_stopped_host_is_not_started_by_tui_reconnect() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path().join("hosting.json");
+        let original = r#"{"version":1,"daemon_enabled":false}"#;
+        std::fs::write(&state, original).unwrap();
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", directory.path().to_str()),
+                ("MXR_DAEMON_AUTOSTART", None),
+                ("MXR_DAEMON_ADDR", None),
+            ],
+            || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        let (events, _) = mpsc::unbounded_channel();
+                        let target = mxr_client::SelectedDaemonTarget::from(
+                            directory.path().join("absent.sock"),
+                        );
+                        let result = tokio::time::timeout(
+                            Duration::from_secs(2),
+                            connect_ipc_client(&target, events),
+                        )
+                        .await
+                        .unwrap();
+                        assert!(result
+                            .err()
+                            .unwrap()
+                            .to_string()
+                            .contains("explicitly stopped"));
+                        assert!(start_daemon_process(&directory.path().join("absent.sock"))
+                            .await
+                            .unwrap_err()
+                            .to_string()
+                            .contains("explicitly stopped"));
+                        assert_eq!(std::fs::read_to_string(&state).unwrap(), original);
+                    });
+            },
+        );
+    }
+
     use futures::SinkExt;
     use mxr_core::id::AccountId;
     use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload};

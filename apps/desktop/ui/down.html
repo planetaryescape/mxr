@@ -58,12 +58,12 @@
 <main>
   <section id="starting" hidden>
     <h1>Opening mxr</h1>
-    <p>Starting the local web app.</p>
+    <p>Opening your selected mail workspace.</p>
   </section>
   <section id="down" hidden>
     <h1>mxr isn't running</h1>
     <p id="why"></p>
-    <code>mxr daemon</code>
+    <code>mxr connect --status</code>
     <a class="retry" id="retry" href="down.html?action=retry">Try again</a>
     <p class="hint">Run the command in a terminal, then try again.</p>
   </section>
@@ -72,9 +72,9 @@
   // No Tauri IPC here: "Try again" is a navigation the shell intercepts.
   var reason = new URLSearchParams(location.search).get("reason") || "starting";
   var why = {
-    missing: "The mxr command wasn't found. Install it with Homebrew, then start the daemon.",
-    failed: "The local web app didn't start. Start the daemon, then try again.",
-    timeout: "The local web app didn't answer in time. Start the daemon, then try again.",
+    missing: "The mxr command wasn't found. Install it with Homebrew, then try again.",
+    failed: "The selected web app didn't open. Upgrade mxr and the desktop app together, check your saved connection, then try again.",
+    timeout: "The selected web app didn't answer in time. Check that its daemon is reachable, then try again.",
   };
   if (reason === "starting") {
     document.getElementById("starting").hidden = false;

@@ -81,7 +81,7 @@ function FeatureRoutes({ feature }: { feature: LlmFeatureStatus }) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-2xs text-muted-foreground">
-          {feature.base_url ?? "this machine"}
+          {feature.base_url ?? "mail host"}
         </span>
         <Badge variant="outline">{feature.cloud ? "cloud" : "local"}</Badge>
         {blocked}

@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Read a bounded inline-image chunk as JSON, without a host cache path
+
+Usage: mxr attachments inline-bytes [OPTIONS] --source <SOURCE> <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+      --source <SOURCE>
+      --offset <OFFSET>  [default: 0]
+      --length <LENGTH>  [default: 262144]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

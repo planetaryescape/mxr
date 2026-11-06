@@ -8,6 +8,11 @@ use crate::ByWhenSource;
 use mxr_core::types::MessageDirection;
 use mxr_core::*;
 
+async fn remove_remote_workflow_schema(db: &mut SqliteConnection) {
+    sqlx::raw_sql("DROP TABLE remote_browser_sessions; DROP TABLE remote_browser_codes; ALTER TABLE remote_pairings DROP COLUMN allow_triage; ALTER TABLE remote_pairings DROP COLUMN allow_ai; ALTER TABLE remote_clients DROP COLUMN allow_triage; ALTER TABLE remote_clients DROP COLUMN allow_ai;")
+        .execute(db).await.unwrap();
+}
+
 type QueueSnapshot = (String, String, String, String, String, i64, i64, i64, i64);
 async fn fixture(root: &Path) -> (String, DraftId) {
     let store = Store::fresh_backup(&root.join("mxr.db")).await.unwrap();
@@ -286,7 +291,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -398,7 +403,7 @@ async fn unsubscribe_receipts_round_trip_through_backup_and_restore() {
         .await
         .unwrap();
 
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
     assert!(
         restored_store
@@ -428,6 +433,7 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -505,7 +511,7 @@ async fn microsoft_link_baselines_and_uncertain_receipts_survive_backup_and_rest
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -539,6 +545,7 @@ async fn exact_schema_90_backup_without_microsoft_links_remains_inspectable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -581,6 +588,7 @@ async fn exact_schema_91_backup_without_the_thread_index_remains_inspectable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -623,6 +631,7 @@ async fn exact_schema_92_backup_without_unsubscribe_receipts_remains_inspectable
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -665,6 +674,7 @@ async fn exact_schema_94_backup_without_draft_candidate_date_source_remains_insp
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -707,6 +717,7 @@ async fn exact_schema_93_backup_without_commitment_date_source_remains_inspectab
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -794,7 +805,7 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
 
     let mut staged = SqliteConnection::connect_with(
@@ -982,6 +993,19 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
         .claim_remote_pairing(&p.request_id, &mail, &cleanup, 102)
         .await
         .unwrap();
+    let (code, _) = store
+        .issue_browser_code(&c.client_id, &mail, 103)
+        .await
+        .unwrap();
+    let (session_id, session_mail, _) = store.claim_browser_code(&code, 104).await.unwrap();
+    store
+        .issue_browser_code(&c.client_id, &mail, 105)
+        .await
+        .unwrap();
+    assert!(store
+        .authenticate_remote_client(&session_id, &session_mail, 106)
+        .await
+        .is_ok());
     store.writer().close().await;
     write_manifest(
         stage.path(),
@@ -990,6 +1014,13 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
     inspect(stage.path()).await.unwrap();
     let portable = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     assert!(portable.remote_clients().await.unwrap().is_empty());
+    for table in ["remote_browser_codes", "remote_browser_sessions"] {
+        let count: i64 = sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+            .fetch_one(portable.reader())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
     assert!(portable
         .remote_authority_status()
         .await
@@ -1008,6 +1039,17 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
         .authenticate_remote_client(&c.client_id, &mail, 103)
         .await
         .is_err());
+    assert!(restored
+        .authenticate_remote_client(&session_id, &session_mail, 107)
+        .await
+        .is_err());
+    for table in ["remote_browser_codes", "remote_browser_sessions"] {
+        let count: i64 = sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+            .fetch_one(restored.reader())
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
     assert!(restored.restore_pending().await.unwrap());
 }
 
@@ -1028,6 +1070,7 @@ async fn exact_schema_82_backup_remains_restorable() {
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -1083,6 +1126,7 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
         )
         .await
         .unwrap();
+        remove_remote_workflow_schema(&mut db).await;
         sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
             .execute(&mut db)
             .await
@@ -1175,6 +1219,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         )
         .await
         .unwrap();
+        remove_remote_workflow_schema(&mut db).await;
         sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
             .execute(&mut db)
             .await
@@ -1213,7 +1258,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 108, "source {source_version}");
+        assert_eq!(manifest.schema_version, 110, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -1247,7 +1292,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         populate(source.path(), stage.path()).await.unwrap(),
     );
     // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -1255,6 +1300,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -1316,13 +1362,14 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
 
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
     )
     .await
     .unwrap();
+    remove_remote_workflow_schema(&mut db).await;
     sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
         .execute(&mut db)
         .await
@@ -1443,7 +1490,7 @@ async fn a_backup_from_before_95_marks_dated_draft_candidates_as_unverified() {
 
     let manifest = populate(source.path(), stage.path()).await.unwrap();
 
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     let rows = restored
         .list_draft_commitment_candidates(&draft)
@@ -1514,7 +1561,7 @@ async fn a_backup_from_before_94_backfills_where_each_commitment_date_came_from(
 
     let manifest = populate(source.path(), stage.path()).await.unwrap();
 
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     let mut sources: Vec<(String, Option<ByWhenSource>)> = restored
         .list_contact_commitments(&account.id, None, None)
@@ -1606,7 +1653,7 @@ async fn stored_assessment_policy_history_survives_schema_97_backup_and_restore(
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -1665,7 +1712,7 @@ async fn a_pre_108_source_with_duplicate_identity_tags_backs_up_and_restores_dis
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -1740,7 +1787,7 @@ async fn a_pre_105_source_with_duplicate_tags_and_no_label_roles_backs_up_both_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 108);
+    assert_eq!(manifest.schema_version, 110);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))

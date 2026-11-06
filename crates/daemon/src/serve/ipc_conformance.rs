@@ -1206,8 +1206,8 @@ async fn scenario_12_handler_panic_recovers<H: Harness>() {
     finish(&state, served).await;
 }
 
-/// Scenario 13 — the daemon shutdown signal closes idle connections cleanly:
-/// the shutdown watch arm ends the serve loop and the client sees EOF, no frame.
+/// Scenario 13 — shutdown delivers the current boot's stopping notice before
+/// closing idle connections with a clean EOF.
 async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (hot, bulk) = lanes();
@@ -1217,8 +1217,25 @@ async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     // Signal shutdown on an idle connection.
     state.request_shutdown();
 
-    // The connection closes cleanly — a strict EOF (`None`), no dangling frame
-    // and no I/O error masquerading as a graceful close.
+    let status = state
+        .remote_lifecycle
+        .snapshot(chrono::Utc::now().timestamp());
+    let notice = served.recv().await;
+    assert_eq!(notice.id, 0);
+    assert_eq!(notice.source, ClientKind::Daemon);
+    assert!(notice.expected_workspace.is_none());
+    match notice.payload {
+        IpcPayload::Event(DaemonEvent::ServerStopping {
+            boot_id,
+            deadline_at,
+        }) => {
+            assert_eq!(boot_id, status.boot_id);
+            assert_eq!(Some(deadline_at), status.deadline_at);
+        }
+        other => panic!("expected the shutdown notice, got {other:?}"),
+    }
+
+    // No duplicate notice, dangling frame or I/O error may replace clean EOF.
     served.expect_eof().await;
     join_server(served.server).await;
 

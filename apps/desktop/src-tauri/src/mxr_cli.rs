@@ -1,10 +1,10 @@
-//! Finds the `mxr` binary and asks it for the local web app URL.
+//! Finds `mxr` and opens its selected local or paired remote web app.
 //!
-//! The shell owns no daemon logic: `mxr web --print-url --no-open` starts or
-//! reuses the managed bridge and prints its URL, and that URL is all we keep.
+//! The shell owns no daemon logic: `mxr web --session-json --no-open` starts or
+//! reuses the managed bridge or issues a one-time remote browser code.
 
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -63,16 +63,43 @@ fn is_executable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Accepts the first stdout line that is an http URL on a loopback host.
-/// The bridge only binds loopback, so anything else is not our bridge and
-/// must never become a place the window may navigate to.
-pub fn parse_bridge_url(stdout: &str) -> Option<Url> {
+/// The code is held only until the selected page can exchange it for its cookie.
+#[derive(PartialEq, Eq)]
+pub struct LaunchTarget {
+    pub url: Url,
+    pub browser_code: Option<String>,
+}
+
+impl std::fmt::Debug for LaunchTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LaunchTarget")
+            .field("url", &self.url)
+            .field("has_browser_code", &self.browser_code.is_some())
+            .finish()
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaunchResponse {
+    url: String,
+    #[serde(default)]
+    browser_code: Option<String>,
+}
+
+pub fn parse_launch_target(stdout: &str) -> Option<LaunchTarget> {
     let line = stdout
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty())?;
-    let url = Url::parse(line).ok()?;
-    if url.scheme() != "http" || !url.username().is_empty() || url.password().is_some() {
+    let response: LaunchResponse = serde_json::from_str(line).ok()?;
+    let url = Url::parse(&response.url).ok()?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
         return None;
     }
     let host = url.host_str()?;
@@ -80,19 +107,34 @@ pub fn parse_bridge_url(stdout: &str) -> Option<Url> {
         || host.ends_with(".localhost")
         || host == "127.0.0.1"
         || host == "[::1]";
-    loopback.then_some(url)
+    let valid = match (url.scheme(), response.browser_code.as_deref()) {
+        ("http", None) => loopback,
+        ("https", Some(code)) => valid_browser_code(code),
+        _ => false,
+    };
+    valid.then_some(LaunchTarget {
+        url,
+        browser_code: response.browser_code,
+    })
 }
 
-pub fn launch(timeout: Duration) -> Result<Url, LaunchError> {
+pub(super) fn valid_browser_code(code: &str) -> bool {
+    code.len() == 64
+        && code
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub fn launch(timeout: Duration) -> Result<LaunchTarget, LaunchError> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let dirs = candidate_dirs(std::env::var_os("PATH"), home.as_deref());
     let mxr = find_mxr(&dirs).ok_or(LaunchError::Missing)?;
     run_web(&mxr, timeout)
 }
 
-fn run_web(mxr: &Path, timeout: Duration) -> Result<Url, LaunchError> {
+fn run_web(mxr: &Path, timeout: Duration) -> Result<LaunchTarget, LaunchError> {
     let mut child = Command::new(mxr)
-        .args(["web", "--print-url", "--no-open"])
+        .args(["web", "--session-json", "--no-open"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         // stderr can carry the URL too; it is dropped, never logged.
@@ -104,11 +146,11 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<Url, LaunchError> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut out = String::new();
-        let mut reader = BufReader::new(stdout);
+        let mut reader = BufReader::new(stdout.take(4097));
         // The URL is a single line; stop at the first so a lingering child
         // holding the pipe open cannot stall us.
         let _ = reader.read_line(&mut out);
-        let _ = tx.send(out);
+        let _ = tx.send((out.len() <= 4096).then_some(out));
     });
 
     let deadline = Instant::now() + timeout;
@@ -117,6 +159,12 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<Url, LaunchError> {
         let _ = child.kill();
         let _ = child.wait();
         return Err(LaunchError::TimedOut);
+    };
+
+    let Some(out) = out else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(LaunchError::Failed);
     };
 
     // Let the command finish so a non-zero exit is reported as a failure.
@@ -132,7 +180,7 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<Url, LaunchError> {
             Ok(None) => std::thread::sleep(Duration::from_millis(25)),
         }
     }
-    parse_bridge_url(&out).ok_or(LaunchError::Failed)
+    parse_launch_target(&out).ok_or(LaunchError::Failed)
 }
 
 #[cfg(test)]
@@ -142,14 +190,17 @@ mod tests {
 
     #[test]
     fn parses_the_default_bridge_url() {
-        let url = parse_bridge_url("http://mxr.localhost:42829\n").unwrap();
+        let target = parse_launch_target(r#"{"url":"http://mxr.localhost:42829"}"#).unwrap();
+        let url = target.url;
         assert_eq!(url.host_str(), Some("mxr.localhost"));
         assert_eq!(url.port(), Some(42829));
     }
 
     #[test]
     fn takes_the_first_non_empty_line() {
-        let url = parse_bridge_url("\n  http://127.0.0.1:5000  \nnoise\n").unwrap();
+        let url = parse_launch_target("\n  {\"url\":\"http://127.0.0.1:5000\"}  \nnoise\n")
+            .unwrap()
+            .url;
         assert_eq!(url.port(), Some(5000));
     }
 
@@ -165,8 +216,48 @@ mod tests {
             "file:///etc/passwd",
             "javascript:alert(1)",
         ] {
-            assert!(parse_bridge_url(bad).is_none(), "{bad}");
+            let output = serde_json::json!({"url": bad}).to_string();
+            assert!(parse_launch_target(&output).is_none(), "{bad}");
         }
+    }
+
+    #[test]
+    fn accepts_an_https_host_only_with_a_browser_code_and_redacts_debug() {
+        let code = "b".repeat(64);
+        let output =
+            serde_json::json!({"url":"https://mail.example.test", "browser_code":code}).to_string();
+        let target = parse_launch_target(&output).unwrap();
+        assert_eq!(target.url.as_str(), "https://mail.example.test/");
+        assert_eq!(target.browser_code.as_deref(), Some(code.as_str()));
+        assert!(!format!("{target:?}").contains(&code));
+    }
+
+    #[test]
+    fn refuses_launch_credentials_in_urls_and_insecure_remote_codes() {
+        let code = "c".repeat(64);
+        for url in [
+            "http://mail.example.test/",
+            "http://mxr.localhost:42829/",
+            "https://user:pass@mail.example.test/",
+            "https://mail.example.test/#code=secret",
+            "https://mail.example.test/?code=secret",
+            "https://mail.example.test/elsewhere",
+            "file:///tmp/mxr",
+        ] {
+            let output = serde_json::json!({"url":url, "browser_code":code}).to_string();
+            assert!(parse_launch_target(&output).is_none(), "{url}");
+        }
+        for code in ["c".repeat(63), "C".repeat(64), "g".repeat(64)] {
+            let output =
+                serde_json::json!({"url":"https://mail.example.test/", "browser_code":code})
+                    .to_string();
+            assert!(parse_launch_target(&output).is_none());
+        }
+        assert!(parse_launch_target(r#"{"url":"https://mail.example.test/"}"#).is_none());
+        assert!(
+            parse_launch_target(r#"{"url":"http://mxr.localhost:42829/","unexpected":true}"#)
+                .is_none()
+        );
     }
 
     #[test]
@@ -226,11 +317,23 @@ mod tests {
         let mxr = script(
             &tmp,
             "mxr",
-            "#!/bin/sh\necho http://mxr.localhost:4242\n",
+            "#!/bin/sh\nprintf '%s\\n' '{\"url\":\"http://mxr.localhost:4242\"}'\n",
             0o755,
         );
         let url = run_web(&mxr, Duration::from_secs(5)).unwrap();
-        assert_eq!(url.port(), Some(4242));
+        assert_eq!(url.url.port(), Some(4242));
+    }
+
+    #[test]
+    fn run_web_requests_the_session_contract_and_keeps_the_code_out_of_the_url() {
+        let tmp = tempdir("remote");
+        let code = "e".repeat(64);
+        let response =
+            serde_json::json!({"url":"https://mail.example.test/","browser_code":code}).to_string();
+        let mxr = script(&tmp, "mxr", &format!("#!/bin/sh\n[ \"$*\" = \"web --session-json --no-open\" ] || exit 2\nprintf '%s\\n' '{response}'\n"), 0o755);
+        let target = run_web(&mxr, Duration::from_secs(5)).unwrap();
+        assert_eq!(target.url.as_str(), "https://mail.example.test/");
+        assert_eq!(target.browser_code.as_deref(), Some(code.as_str()));
     }
 
     #[test]

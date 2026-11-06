@@ -564,3 +564,99 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
         vec![2, 0, 1]
     );
 }
+
+#[test]
+fn changed_saved_selection_retires_idle_worker_and_blocks_old_mcp_target() {
+    use crate::{app::ConnectionState, async_result::AsyncResult};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join("config");
+    let socket = directory.path().join("saved.sock");
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", config.to_str()),
+            ("MXR_DAEMON_ADDR", None),
+            ("MXR_DAEMON_AUTOSTART", Some("off")),
+        ],
+        || {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+            let listener=tokio::net::UnixListener::bind(&socket).unwrap();
+            let target=mxr_client::SelectedDaemonTarget::resolve(socket,||Ok(None)).unwrap();
+            let connects=Arc::new(AtomicUsize::new(0));
+            let effects=Arc::new(AtomicUsize::new(0));
+            let server_connects=connects.clone();let server_effects=effects.clone();
+            let (closed_tx,closed_rx)=tokio::sync::oneshot::channel();
+            let server=tokio::spawn(async move {
+                let (stream,_)=listener.accept().await.unwrap();
+                server_connects.fetch_add(1,Ordering::SeqCst);
+                let mut framed=Framed::new(stream,IpcCodec::new());
+                while let Some(Ok(message))=framed.next().await {
+                    let IpcPayload::Request(request)=message.payload else {panic!("request")};
+                    if !matches!(request,Request::GetStatus) {server_effects.fetch_add(1,Ordering::SeqCst);}
+                    let response=serde_json::from_value(serde_json::json!({"kind":"Status","uptime_secs":0,"accounts":[],"total_messages":0,"protocol_version":mxr_protocol::IPC_PROTOCOL_VERSION,"daemon_version":env!("CARGO_PKG_VERSION"),"daemon_build_id":mxr_client::current_daemon_build_id()})).unwrap();
+                    framed.send(IpcMessage{id:message.id,expected_workspace:None,source:ClientKind::Daemon,payload:IpcPayload::Response(Response::Ok{data:response})}).await.unwrap();
+                }
+                let _=closed_tx.send(());
+                if tokio::time::timeout(std::time::Duration::from_millis(150),listener.accept()).await.is_ok(){server_connects.fetch_add(1,Ordering::SeqCst);}
+            });
+            let session=DaemonSession{target:target.clone(),owner:Some(owner("original"))};
+            let (result_tx,mut results)=tokio::sync::mpsc::unbounded_channel();
+            let worker=spawn_ipc_worker_for_session(session.clone(),result_tx);
+            tokio::time::timeout(std::time::Duration::from_secs(5),async {
+                while let Some(result)=results.recv().await {
+                    if matches!(result,AsyncResult::ConnectionState(ConnectionState::Connected)){return}
+                }
+                panic!("worker did not connect");
+            }).await.unwrap();
+            mxr_config::connection_state::update(&mxr_config::connection_state::path(),Some(0),|state|{state.generation=1;Ok(())}).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(5),async {
+                while let Some(result)=results.recv().await {
+                    if matches!(result,AsyncResult::ConnectionState(ConnectionState::SelectionChanged)){return}
+                }
+                panic!("worker did not retire changed selection");
+            }).await.unwrap();
+            closed_rx.await.unwrap();
+            assert!(worker.is_closed());
+            assert!(ipc_call(&worker,Request::Ping).await.is_err());
+            assert!(crate::ipc::ipc_call_dedicated(&session,Request::Ping).await.unwrap_err().to_string().contains("Saved connection changed"));
+            let mcp=tokio::time::timeout(std::time::Duration::from_secs(2),target.connect(ClientKind::Mcp)).await.unwrap();
+            assert!(mcp.err().unwrap().to_string().contains("Saved connection changed"));
+            server.await.unwrap();
+            assert_eq!(connects.load(Ordering::SeqCst),1,"retired target must not open another connection");
+            assert_eq!(effects.load(Ordering::SeqCst),0,"queued or dedicated work must not reach the previous owner");
+        });
+        },
+    );
+}
+
+#[test]
+fn retired_selection_keeps_private_owner_and_cannot_be_revived_by_late_readiness() {
+    use crate::app::{App, ConnectionState};
+    let mut app = App::new();
+    app.compose.workspace_owner = Some(owner("original"));
+    app.pending_draft_edit_request=Some(serde_json::from_value(serde_json::json!({"id":mxr_core::DraftId::new(),"account_id":mxr_core::AccountId::new(),"intent":"new","to":[],"cc":[],"bcc":[],"subject":"retained","body_markdown":"private unsent text","attachments":[],"managed_attachments":[],"inline_assets":[],"created_at":chrono::Utc::now(),"updated_at":chrono::Utc::now()})).unwrap());
+    let before = serde_json::to_value(&app.pending_draft_edit_request).unwrap();
+    app.set_connection_state(ConnectionState::SelectionChanged);
+    app.set_connection_state(ConnectionState::Connected);
+    app.request_connection_retry();
+    assert!(matches!(
+        app.connection_state,
+        ConnectionState::SelectionChanged
+    ));
+    assert!(!app.pending_connection_retry);
+    assert_eq!(app.compose.workspace_owner, Some(owner("original")));
+    assert_eq!(
+        serde_json::to_value(&app.pending_draft_edit_request).unwrap(),
+        before
+    );
+    assert!(app
+        .modals
+        .error
+        .as_ref()
+        .unwrap()
+        .detail
+        .contains("Close and reopen"));
+}

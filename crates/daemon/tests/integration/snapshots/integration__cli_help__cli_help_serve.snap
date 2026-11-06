@@ -7,14 +7,18 @@ Manage local pairing authority or run the loopback gateway in foreground
 Usage: mxr serve [OPTIONS] [COMMAND]
 
 Commands:
-  status   Inspect local pairing authority; supervised gateway setup is not available
+  status   Inspect local pairing authority and any recorded hosting setup
+  setup    Preview installation of an owned private HTTPS user service; --confirm applies it
+  start    Preview resuming recorded hosting and local daemon recovery
+  stop     Preview stopping remote hosting; --all also stops the local provider owner
   pair     Inspect or approve local pairing requests
   clients  List registered clients, or preview/revoke one
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --foreground       Run the native gateway beside the explicit local daemon
-      --listen <LISTEN>  [default: 127.0.0.1:18741]
+      --foreground                     Run the gateway beside the explicit local daemon
+      --public-origin <PUBLIC_ORIGIN>  Exact HTTPS origin served by the private proxy; enables browser sessions
+      --listen <LISTEN>                [default: 127.0.0.1:18741]
       --dry-run
-      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --format <FORMAT>                Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help                           Print help

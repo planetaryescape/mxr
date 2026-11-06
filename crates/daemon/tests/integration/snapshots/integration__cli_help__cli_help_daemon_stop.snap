@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview stopping the local daemon; hosted profiles retain stopped intent across reboot
+
+Usage: mxr daemon stop [OPTIONS]
+
+Options:
+      --dry-run
+      --confirm
+  -h, --help     Print help

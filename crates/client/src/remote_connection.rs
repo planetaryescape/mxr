@@ -46,7 +46,7 @@ pub async fn authority(
     route: &str,
     request: RemoteRequest,
 ) -> Result<ResponseData, ClientError> {
-    let send_grant_request = matches!(&request, RemoteRequest::StartPairing { capabilities, .. } if capabilities.contains(&mxr_core::RemoteCapability::MailSend));
+    let extended_grant_request = matches!(&request, RemoteRequest::StartPairing { capabilities, .. } if capabilities.iter().any(|capability| *capability != mxr_core::RemoteCapability::MailRead));
     let origin = mxr_transport::https_origin(origin)?;
     let mut response = http()?
         .post(format!("{origin}/api/v1/remote/{route}"))
@@ -54,8 +54,8 @@ pub async fn authority(
         .send()
         .await
         .map_err(|_| error("Remote HTTPS request failed; saved selection was preserved"))?;
-    if send_grant_request && matches!(response.status().as_u16(), 400 | 422) {
-        return Err(error("Remote host does not support the requested send grant; upgrade host and client to matching mxr IPC versions, then retry explicitly. Saved selection was preserved"));
+    if extended_grant_request && matches!(response.status().as_u16(), 400 | 422) {
+        return Err(error("Remote host does not support the requested mail grant; upgrade host and client to matching mxr IPC versions, then retry explicitly. Saved selection was preserved"));
     }
     if !response.status().is_success() {
         return Err(error(
@@ -84,6 +84,26 @@ pub async fn authority(
 pub async fn retry_cleanup() -> Result<usize, ClientError> {
     let deadline = tokio::time::Instant::now() + CLEANUP_BUDGET;
     let snapshot = read().await?;
+    if snapshot.cleanup.is_empty() && snapshot.retired_pairings.is_empty() {
+        return Ok(0);
+    }
+    let pending = snapshot.cleanup.len() + snapshot.retired_pairings.len();
+    let snapshot = tokio::task::spawn_blocking(|| {
+        persistence::update(&persistence::path(), None, |state| {
+            Ok(state
+                .claim_cleanup_retry(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX)),
+                )
+                .then(|| state.clone()))
+        })
+    })
+    .await
+    .map_err(|_| error("Cleanup retry reservation was interrupted"))??;
+    let Some(snapshot) = snapshot else {
+        return Ok(pending);
+    };
     let work = futures::stream::iter(
         snapshot
             .retired_pairings
@@ -180,6 +200,9 @@ async fn retire_pairing(
             state
                 .retired_pairings
                 .retain(|entry| entry.cleanup_secret.expose() != old.cleanup_secret.expose());
+            if state.cleanup.is_empty() && state.retired_pairings.is_empty() {
+                state.reset_cleanup_retry();
+            }
             Ok(())
         })
         .await?;
@@ -214,6 +237,9 @@ async fn retire_registration(
             state
                 .cleanup
                 .retain(|entry| entry.client_id != id || entry.origin != origin);
+            if state.cleanup.is_empty() && state.retired_pairings.is_empty() {
+                state.reset_cleanup_retry();
+            }
             Ok(())
         })
         .await?;

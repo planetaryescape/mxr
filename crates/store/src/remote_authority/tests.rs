@@ -598,3 +598,74 @@ async fn legacy_read_grant_remains_read_only_and_rejects_send_only_or_duplicate_
             .unwrap();
     assert!(!allowed);
 }
+
+#[tokio::test]
+async fn workflow_grants_are_approved_persisted_and_cannot_escalate_an_existing_pairing() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let (mail, cleanup, mv, cv) = secrets();
+    let grants = vec![
+        RemoteCapability::MailRead,
+        RemoteCapability::MailTriage,
+        RemoteCapability::MailAi,
+    ];
+    let pairing = store
+        .start_remote_pairing("workflow client", &grants, &mv, &cv, 100)
+        .await
+        .unwrap();
+    assert_eq!(pairing.capabilities, grants);
+    let preview = store
+        .approve_remote_pairing(&pairing.request_id, true, 101)
+        .await
+        .unwrap();
+    assert_eq!(preview.capabilities, grants);
+    assert!(!preview.approved);
+    assert!(store
+        .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, 102)
+        .await
+        .is_err());
+    for changed in [
+        vec![RemoteCapability::MailRead, RemoteCapability::MailTriage],
+        vec![
+            RemoteCapability::MailRead,
+            RemoteCapability::MailTriage,
+            RemoteCapability::MailAi,
+            RemoteCapability::MailSend,
+        ],
+        vec![
+            RemoteCapability::MailRead,
+            RemoteCapability::MailAi,
+            RemoteCapability::MailAi,
+        ],
+        vec![RemoteCapability::MailAi],
+    ] {
+        assert!(store
+            .start_remote_pairing("workflow client", &changed, &mv, &cv, 103)
+            .await
+            .is_err());
+    }
+    store
+        .approve_remote_pairing(&pairing.request_id, false, 104)
+        .await
+        .unwrap();
+    let client = store
+        .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, 105)
+        .await
+        .unwrap();
+    assert_eq!(client.capabilities, grants);
+    assert_eq!(
+        store
+            .authenticate_remote_client(&client.client_id, &mail, 106)
+            .await
+            .unwrap()
+            .capabilities,
+        grants
+    );
+    store
+        .revoke_remote_client(&client.client_id, false, 107)
+        .await
+        .unwrap();
+    assert!(store
+        .authenticate_remote_client(&client.client_id, &mail, 108)
+        .await
+        .is_err());
+}

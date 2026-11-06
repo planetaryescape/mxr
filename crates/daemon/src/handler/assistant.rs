@@ -25,6 +25,59 @@ const MAX_MESSAGE_CHARS: usize = 20_000;
 const STEP_ROWS: usize = 500;
 
 pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResult {
+    let prefix = remote_prefix();
+    let target = match req {
+        Request::AssistantSend {
+            conversation_id: Some(id),
+            ..
+        }
+        | Request::AssistantDecide {
+            conversation_id: id,
+            ..
+        }
+        | Request::AssistantCancel {
+            conversation_id: id,
+        }
+        | Request::SetAssistantAutoApprove {
+            conversation_id: id,
+            ..
+        }
+        | Request::GetAssistantConversation {
+            conversation_id: id,
+        }
+        | Request::GetAssistantStepRows {
+            conversation_id: id,
+            ..
+        }
+        | Request::DeleteAssistantConversation {
+            conversation_id: id,
+            ..
+        } => Some(id),
+        _ => None,
+    };
+    if let Some(id) = target {
+        if prefix
+            .as_ref()
+            .is_some_and(|prefix| !id.starts_with(prefix))
+        {
+            return Err(HandlerError::RemoteAuthorityDenied(
+                "This assistant conversation belongs to another installation".into(),
+            ));
+        }
+        // A local continuation must not put privileged tool output into a transcript
+        // that a remote registration is allowed to read later.
+        let local_mutation = prefix.is_none()
+            && id.starts_with("asst_remote_")
+            && matches!(
+                req,
+                Request::AssistantSend { .. }
+                    | Request::AssistantDecide { .. }
+                    | Request::SetAssistantAutoApprove { .. }
+            );
+        if local_mutation {
+            return Err(HandlerError::RemoteAuthorityDenied("Continue this assistant conversation from its paired installation, or start a new local conversation".into()));
+        }
+    }
     let result = match req {
         Request::GetAssistantAvailability => Ok(ResponseData::AssistantAvailability {
             availability: availability(state),
@@ -54,7 +107,7 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
             let limit = limit.unwrap_or(DEFAULT_LIST_LIMIT).clamp(1, MAX_LIST_LIMIT);
             state
                 .store
-                .list_assistant_conversations(limit)
+                .list_assistant_conversations_with_prefix(limit, prefix.as_deref().unwrap_or(""))
                 .await
                 .map(|rows| ResponseData::AssistantConversations {
                     conversations: rows.iter().map(summary_view).collect(),
@@ -76,6 +129,10 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
         _ => Err("not an assistant request".to_string()),
     };
     result.map_err(HandlerError::from)
+}
+
+fn remote_prefix() -> Option<String> {
+    super::remote::captured_proof().map(|proof| format!("asst_remote_{}_", proof.owner_client_id))
 }
 
 /// Whether a turn can run. Checked before any conversation is written, so
@@ -138,7 +195,11 @@ async fn send(
             (row.id, parse_pending(row.pending_json.as_deref()))
         }
         None => {
-            let id = format!("asst_{}", uuid::Uuid::now_v7().simple());
+            let id = format!(
+                "{}{}",
+                remote_prefix().unwrap_or_else(|| "asst_".into()),
+                uuid::Uuid::now_v7().simple()
+            );
             state
                 .store
                 .create_assistant_conversation(&id, &title(message))

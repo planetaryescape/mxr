@@ -131,6 +131,7 @@ export default defineConfig({
             { label: 'Accounts', slug: 'guides/accounts' },
             { label: 'Sound, key hints and touch', slug: 'guides/sound-hints-and-touch' },
             { label: 'Remote mailbox', slug: 'guides/remote-mailbox' },
+            { label: 'Hosted mailbox service', slug: 'guides/hosted-mailbox-service' },
             { label: 'Headless Linux', slug: 'guides/headless-linux' },
           ],
         },

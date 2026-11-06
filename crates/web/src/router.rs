@@ -220,9 +220,13 @@ fn client_router() -> Router<AppState> {
 }
 
 pub fn app(config: WebServerConfig) -> Router {
+    app_with_state(AppState::new(config))
+}
+
+pub(super) fn app_with_state(state: AppState) -> Router {
+    let config = &state.config;
     let cors = middleware::cors_layer(&config.cors_allowlist);
     let host_allowlist = std::sync::Arc::new(config.host_allowlist.clone());
-    let state = AppState::new(config);
 
     let v1 = Router::new()
         .route("/health", get(health))

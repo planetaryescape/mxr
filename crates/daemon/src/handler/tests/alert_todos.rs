@@ -1087,3 +1087,38 @@ async fn independent_remediation_in_a_first_time_alert_cannot_bypass_receiver_hi
     scan(&run).await;
     assert!(todos_for(&run).await.is_empty());
 }
+
+#[tokio::test]
+async fn authenticated_failure_requester_never_uses_the_display_brand() {
+    let case = Case {
+        from: "no-reply@evil.example",
+        display: Some("Stripe"),
+        subject: "Your payment failed",
+        prior: vec![("evil.example", 12, 200)],
+        arrival: Arrival::Gmail(vec![pass("evil.example")]),
+        ..Case::google_sign_in("warmed domain payment branding residual", true)
+    };
+    let run = arrange(&case, mxr_config::MxrConfig::default()).await;
+    super::promise_projection::replace(
+        &run.fx,
+        &run.candidate,
+        "Your payment failed. Please update your payment details.",
+    )
+    .await;
+    scan(&run).await;
+    let tasks = todos_for(&run).await;
+    assert_eq!(tasks.len(), 1);
+    let shown = super::super::todo_view::to_data(&tasks[0], run.now);
+    assert!(shown.title.contains("evil.example"));
+    assert!(shown
+        .person_label
+        .as_deref()
+        .expect("verified requester")
+        .contains("evil.example"));
+    assert!(!shown
+        .person_label
+        .as_deref()
+        .expect("verified requester")
+        .contains("Stripe"));
+    println!("documented warmed-domain payment residual: created=1 false_display_brand=0");
+}

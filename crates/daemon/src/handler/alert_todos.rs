@@ -447,6 +447,13 @@ pub(super) fn alert_record(
             ),
         );
     }
+    fields.set(
+        "requester",
+        FieldProvenance::with_evidence(
+            FieldSource::Rule,
+            format!("{} sent this alert", claim.host),
+        ),
+    );
     let id = mxr_todo::pass::new_todo_id();
     let mut record = TodoRecord {
         id,

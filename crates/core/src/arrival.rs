@@ -17,7 +17,8 @@ pub struct ArrivalEvidence {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_fingerprint: Option<String>,
     /// Set by sync, never by mail: fetched after a completed initial sync,
-    /// outside a provider history/refetch page. The first stored value wins.
+    /// outside a provider history/refetch page, first seen unread in Inbox.
+    /// The first stored eligibility wins.
     #[serde(default)]
     pub is_live: bool,
 }

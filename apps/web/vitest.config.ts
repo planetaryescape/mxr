@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 import { mxrVersion } from "./scripts/mxr-version";
+import { keymapModules } from "./src/lib/actions/keymapPlugin";
 
 // The app formats dates in the viewer's locale, and the tests assert British
 // forms ("6 Oct", "09:50"). The forked test workers inherit these, so a
@@ -16,7 +17,7 @@ export default defineConfig({
   define: {
     MXR_BUILD_VERSION: JSON.stringify(mxrVersion()),
   },
-  plugins: [react()],
+  plugins: [keymapModules(), react()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

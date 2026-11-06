@@ -6,7 +6,7 @@
 import "./catalog";
 
 export { buildActionContext, snapshotActionContext, useActionContext } from "./context";
-export { ensureCatalogRegistered, resetCatalogRegistration } from "./catalog";
+export { ensureCatalogRegistered, loadActionCatalog, resetCatalogRegistration } from "./catalog";
 export {
   formatChord,
   pageKeyHints,

@@ -11,6 +11,7 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 import { mxrVersion } from "./scripts/mxr-version";
+import { keymapModules } from "./src/lib/actions/keymapPlugin";
 import { pwaOptions } from "./src/lib/pwaConfig";
 
 /**
@@ -65,6 +66,9 @@ export default defineConfig({
     MXR_BUILD_VERSION: JSON.stringify(mxrVersion()),
   },
   plugins: [
+    // The generated keymap as two modules: a small index in the entry and the
+    // full catalog in a chunk loaded after the first paint.
+    keymapModules(),
     TanStackRouterVite({
       target: "react",
       routesDirectory: "./src/routes",
@@ -103,6 +107,9 @@ export default defineConfig({
         // only needed `linkifyjs` from it downloaded 590 kB of editor code.
         // Let Rollup follow the import graph for anything lazy.
         manualChunks: (id) => {
+          // Its own chunk: the full key definition loads after the first
+          // paint, and nothing else should ride along with it.
+          if (id.includes("virtual:mxr-action-catalog")) return "keymap-catalog";
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom"))
             return "vendor-react";

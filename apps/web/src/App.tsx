@@ -11,6 +11,7 @@ import { useDaemonEventInvalidation } from "@/hooks/useDaemonEventInvalidation";
 import { useProtocolCompatibilityBootstrap } from "@/hooks/useProtocolCompatibility";
 import { startDaemonAvailability } from "@/lib/daemonAvailability";
 import { createQueryClient, setActiveQueryClient } from "@/lib/queryClient";
+import { scheduleActionCatalog } from "@/lib/actions/servedKeymap";
 import { daemonEvents } from "@/lib/ws";
 import { routeTree } from "@/routeTree.gen";
 
@@ -64,6 +65,10 @@ function RealtimeBootstrap() {
   useConnectionStatusBootstrap();
   useProtocolCompatibilityBootstrap();
   useDaemonEventInvalidation();
+  // The full key definition lands after the first paint; keys are live then.
+  useEffect(() => {
+    void scheduleActionCatalog();
+  }, []);
   // Before the socket starts, so its first drop is heard.
   useEffect(() => startDaemonAvailability(queryClient), []);
   useEffect(() => {

@@ -189,6 +189,30 @@ impl Store {
         record: &crate::TodoRecord,
         alert_kind: &str,
     ) -> Result<bool, sqlx::Error> {
+        self.insert_alert_todo_with_requests(record, alert_kind, &[])
+            .await
+    }
+
+    /// One guarded alert and its independent owner requests commit together.
+    /// The enduring alert claim prevents partial replay after a rule change.
+    pub async fn insert_alert_todo_with_requests(
+        &self,
+        record: &crate::TodoRecord,
+        alert_kind: &str,
+        requests: &[crate::TodoRecord],
+    ) -> Result<bool, sqlx::Error> {
+        if requests.iter().any(|r| {
+            r.account_id != record.account_id
+                || r.source_message_id != record.source_message_id
+                || r.sender_domain != record.sender_domain
+                || !r
+                    .dedup_key
+                    .starts_with(&format!("{}|owner|", record.dedup_key))
+        }) {
+            return Err(sqlx::Error::Protocol(
+                "Alert owner requests must share its verified source and claim".into(),
+            ));
+        }
         let Some(message_id) = &record.source_message_id else {
             return Err(sqlx::Error::Protocol(
                 "An alert needs a source message".into(),
@@ -230,9 +254,11 @@ impl Store {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        crate::todos::bind_record(sqlx::query(sqlx::AssertSqlSafe(sql)), record)
-            .execute(&mut *tx)
-            .await?;
+        for task in std::iter::once(record).chain(requests) {
+            crate::todos::bind_record(sqlx::query(sqlx::AssertSqlSafe(sql.clone())), task)
+                .execute(&mut *tx)
+                .await?;
+        }
         tx.commit().await?;
         Ok(true)
     }

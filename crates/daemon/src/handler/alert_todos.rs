@@ -267,10 +267,10 @@ pub(super) async fn create_on_arrival(
         assessment.handled_at,
         now,
     );
-    enrich_from_stored_ask(state, message, claim, &mut record, now).await?;
+    let requests = enrich_from_stored_ask(state, message, claim, &mut record, now).await?;
     if !state
         .store
-        .insert_alert_todo(&record, claim.kind.as_str())
+        .insert_alert_todo_with_requests(&record, claim.kind.as_str(), &requests)
         .await?
     {
         return Ok(false);
@@ -338,52 +338,82 @@ async fn enrich_from_stored_ask(
     claim: &Claim,
     record: &mut TodoRecord,
     now: DateTime<Utc>,
-) -> Result<(), HandlerError> {
+) -> Result<Vec<TodoRecord>, HandlerError> {
     if claim.kind != NeedsYou::PaymentFailed {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let Some(envelope) = state.store.get_envelope(&message.id).await? else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let answers = state
         .store
         .asks_for_messages(&message.account_id, std::slice::from_ref(&message.id))
         .await?;
     let Some(answer) = answers.get(&message.id) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
-    let Some((_, detection)) = mxr_todo::asks::items::detections(answer, &envelope)
+    let mut payments: Vec<_> = mxr_todo::asks::items::detections(answer, &envelope)
         .into_iter()
-        .find(|(_, d)| d.kind == TodoKind::PaymentFailed)
-    else {
-        return Ok(());
-    };
+        .filter(|(_, d)| d.kind == TodoKind::PaymentFailed)
+        .map(|(_, d)| d)
+        .collect();
+    if payments.is_empty() {
+        return Ok(Vec::new());
+    }
+    let primary = payments
+        .iter()
+        .position(|d| mxr_todo::asks::items::has_failure_status(&d.reason))
+        .unwrap_or(0);
+    let detection = payments.remove(primary);
     let rows = state
         .store
         .list_todo_scan_rows(std::slice::from_ref(&message.id))
         .await?;
     let Some(row) = rows.first() else {
-        return Ok(());
+        return Ok(Vec::new());
     };
-    let (projected, _) = mxr_todo::pass::stored_record(
-        &super::todos::pass_config(state, now),
-        row,
-        detection,
-        false,
-    );
+    let cfg = super::todos::pass_config(state, now);
+    let (projected, _) = mxr_todo::pass::stored_record(&cfg, row, detection, false);
     record.amount_minor = projected.amount_minor;
     record.currency = projected.currency;
     record.due_at = projected.due_at;
     record.due_words = projected.due_words;
-    // Keep exact quote/unit provenance without handing the alert's lifetime to
-    // an evolving content assessment. Durable arrival claims own that lifetime.
+    let verified = FieldSources::from_json(&record.field_sources);
     let mut fields = FieldSources::from_json(&projected.field_sources);
-    fields
-        .0
-        .extend(FieldSources::from_json(&record.field_sources).0);
+    fields.0.extend(verified.0.clone());
     retime_record(record, &mut fields, state.snooze_time_prefs().morning_hour);
     record.field_sources = fields.to_json();
-    Ok(())
+    let mut requests = Vec::new();
+    for detection in payments
+        .into_iter()
+        .filter(|d| !mxr_todo::asks::items::has_failure_status(&d.reason))
+    {
+        let (mut request, _) = mxr_todo::pass::stored_record(&cfg, row, detection, false);
+        request.dedup_key = format!(
+            "{}|owner|{}",
+            record.dedup_key,
+            mxr_store::assessment_fingerprint(&request.dedup_key)
+        );
+        request.title = format!("Update payment details · {}", claim.host);
+        request.counterparty = Some(claim.host.clone());
+        request.sender_domain = Some(claim.host.clone());
+        request.source_date = record.source_date;
+        request.reason = format!("{} Source request: {}", record.reason, request.reason);
+        let mut fields = FieldSources::from_json(&request.field_sources);
+        fields.0.extend(verified.0.clone());
+        fields.set(
+            "alert_role",
+            FieldProvenance::with_evidence(FieldSource::Rule, "independent_owner_request"),
+        );
+        retime_record(
+            &mut request,
+            &mut fields,
+            state.snooze_time_prefs().morning_hour,
+        );
+        request.field_sources = fields.to_json();
+        requests.push(request);
+    }
+    Ok(requests)
 }
 
 pub(super) fn alert_record(

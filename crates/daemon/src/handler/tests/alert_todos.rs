@@ -1067,3 +1067,23 @@ async fn filing_or_reading_between_decision_and_insert_cannot_create_an_alert_ta
         assert!(todos_for(&run).await.is_empty());
     }
 }
+
+#[tokio::test]
+async fn independent_remediation_in_a_first_time_alert_cannot_bypass_receiver_history() {
+    let case = Case {
+        from: "notifications@stripe.com",
+        subject: "Your payment failed",
+        prior: vec![],
+        arrival: Arrival::Gmail(vec![pass("stripe.com")]),
+        ..Case::google_sign_in("first-time independent remediation", false)
+    };
+    let run = arrange(&case, mxr_config::MxrConfig::default()).await;
+    super::promise_projection::replace(
+        &run.fx,
+        &run.candidate,
+        "Your payment failed.\n\nPlease update your payment details.",
+    )
+    .await;
+    scan(&run).await;
+    assert!(todos_for(&run).await.is_empty());
+}

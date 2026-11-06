@@ -276,13 +276,14 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
             super::alert_todos::authenticated_known_source(&fx, &mail).await;
             replace(&fx, &mail, text).await;
             settle(&fx, &mail).await;
-            let grouped = fx
+            let created = fx
                 .state
                 .store
                 .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
                 .await
                 .unwrap()
                 .remove(0);
+            assert!(created.reason.contains("verified origin example.com"));
             let mut old = fx
                 .state
                 .store
@@ -291,6 +292,30 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 .unwrap()
                 .remove(&mail.id)
                 .unwrap();
+            let current_scan = fx
+                .state
+                .store
+                .list_todo_scan_rows(std::slice::from_ref(&mail.id))
+                .await
+                .unwrap()
+                .remove(0);
+            let current_detection = mxr_todo::asks::items::detections(&old, &mail)
+                .into_iter()
+                .find(|(_, d)| d.kind == mxr_todo::TodoKind::PaymentFailed)
+                .unwrap()
+                .1;
+            let (grouped, _) = mxr_todo::pass::stored_record(
+                &mxr_todo::pass::PassConfig {
+                    now: chrono::Utc::now(),
+                    tz: mxr_store::AsksTimezone::resolve().unwrap(),
+                    morning_hour: 9,
+                    catchup_days: 30,
+                    catchup_max: 100,
+                },
+                &current_scan,
+                current_detection,
+                false,
+            );
             // Reproduce the two policy13 units observed in the native RED receipt.
             let unit_index = old
                 .units

@@ -77,6 +77,13 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
         "equal basenames must keep distinct bytes"
     );
     assert_eq!(owned[2], external.display().to_string());
+    for copy in [&owned[0], &owned[1]] {
+        assert_eq!(
+            Path::new(copy).file_name().and_then(|name| name.to_str()),
+            Some("notes.txt"),
+            "recovered attachments keep the name the user attached"
+        );
+    }
     remove_compose_attachment_dir(Path::new(&source))
         .await
         .unwrap();

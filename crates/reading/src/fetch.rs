@@ -1,7 +1,8 @@
-//! The linked article, fetched only when you ask (the `L` key, or Later on
-//! a link), through the same guards as a remote LLM endpoint
-//! (`mxr_llm::is_loopback_endpoint`): no request leaves for this machine or
-//! a private network, by its name, its address or a redirect.
+//! Outbound fetching for content the user asked for — the linked article,
+//! and the remote images a message may show — through the same guards as a
+//! remote LLM endpoint (`mxr_llm::is_loopback_endpoint`): no request leaves
+//! for this machine or a private network, by its name, its address or a
+//! redirect.
 //!
 //! - Only `http(s)` URLs with a host and no userinfo; tracking parameters
 //!   are stripped first.
@@ -12,8 +13,9 @@
 //!   like the first, at most `max_redirects` of them.
 //! - No system proxy: a proxy would resolve the name itself and skip the
 //!   check.
-//! - The body is read up to `max_bytes` and refused past it; only HTML is
-//!   accepted.
+//! - The body is read up to `max_bytes` and refused past it; only the
+//!   accepted content types pass ([`Accept::HtmlPage`] for an article,
+//!   [`Accept::Image`] for a message image).
 //!
 //! Every host contacted is returned, so the client can say which sites
 //! learned that you clicked.
@@ -29,10 +31,40 @@ pub struct FetchPolicy {
     pub max_redirects: usize,
     pub timeout: Duration,
     pub user_agent: String,
+    /// What the caller will do with the body. The declared content type must
+    /// match, so a fetched article is always HTML and a fetched message image
+    /// is always an image.
+    pub accept: Accept,
     /// Tests only: 127.0.0.1 counts as public, so a local mock server can
     /// stand in for the web. Every other private range stays refused.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     allow_loopback_for_tests: bool,
+}
+
+/// The content types a caller accepts from a fetch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Accept {
+    /// An article: exactly `text/html` or `application/xhtml+xml`.
+    HtmlPage,
+    /// A message image: any `image/*` type. SVG is stored but never served
+    /// as a document by the bridge (see the web crate's inline-image route).
+    Image,
+}
+
+impl Accept {
+    fn request_header(self) -> &'static str {
+        match self {
+            Self::HtmlPage => "text/html,application/xhtml+xml",
+            Self::Image => "image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp",
+        }
+    }
+
+    fn declared_type_allowed(self, content_type: &str) -> bool {
+        match self {
+            Self::HtmlPage => HTML_TYPES.contains(&content_type),
+            Self::Image => content_type.starts_with("image/"),
+        }
+    }
 }
 
 impl Default for FetchPolicy {
@@ -42,7 +74,8 @@ impl Default for FetchPolicy {
             max_redirects: 5,
             timeout: Duration::from_secs(20),
             user_agent: "Mozilla/5.0 (compatible; mxr reader)".to_string(),
-            #[cfg(test)]
+            accept: Accept::HtmlPage,
+            #[cfg(any(test, feature = "test-support"))]
             allow_loopback_for_tests: false,
         }
     }
@@ -66,6 +99,8 @@ pub enum FetchError {
     Status { host: String, status: u16 },
     #[error("{host} sent {content_type}, not a web page")]
     NotHtml { host: String, content_type: String },
+    #[error("{host} sent {content_type}, not an image")]
+    NotImage { host: String, content_type: String },
     #[error("couldn't reach {host}: {message}")]
     Http { host: String, message: String },
 }
@@ -78,6 +113,19 @@ pub struct Fetched {
     /// Every host contacted, in order, without repeats.
     pub contacted: Vec<String>,
     pub html: String,
+}
+
+/// Fetched bytes and the type the origin declared.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedBytes {
+    /// Where the request ended up, after redirects.
+    pub final_url: Url,
+    /// Every host contacted, in order, without repeats.
+    pub contacted: Vec<String>,
+    /// The type the origin declared, lowercased and stripped of parameters.
+    /// [`fetch_bytes`] only returns when it matched the policy's [`Accept`].
+    pub content_type: String,
+    pub bytes: Vec<u8>,
 }
 
 /// Whether an address is on the public internet: not loopback, private,
@@ -164,8 +212,17 @@ pub fn checked_url(raw: &str) -> Result<Url, FetchError> {
 }
 
 impl FetchPolicy {
+    /// Tests only: allow `127.0.0.1` so a mock server can stand in for the
+    /// web. This is behind the `test-support` feature, which a dev-dependency
+    /// enables; it is not part of the runtime surface.
+    #[cfg(feature = "test-support")]
+    pub fn allowing_loopback_for_tests(mut self) -> Self {
+        self.allow_loopback_for_tests = true;
+        self
+    }
+
     fn check(&self, raw: &str) -> Result<Url, FetchError> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.allow_loopback_for_tests {
             if let Some(url) = clean_url(raw).filter(|url| url.host_str() == Some("127.0.0.1")) {
                 return Ok(url);
@@ -175,7 +232,7 @@ impl FetchPolicy {
     }
 
     fn allows(&self, ip: IpAddr) -> bool {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.allow_loopback_for_tests && ip == IpAddr::V4(Ipv4Addr::LOCALHOST) {
             return true;
         }
@@ -223,9 +280,16 @@ impl FetchPolicy {
     }
 }
 
-/// Fetch the page at `raw`, following at most `policy.max_redirects`
-/// redirects, each checked like the first.
-pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, FetchError> {
+/// The response after following at most `policy.max_redirects` redirects,
+/// each hop checked like the first.
+struct FetchResponse {
+    final_url: Url,
+    contacted: Vec<String>,
+    host: String,
+    response: reqwest::Response,
+}
+
+async fn fetch_response(raw: &str, policy: &FetchPolicy) -> Result<FetchResponse, FetchError> {
     let mut url = policy.check(raw)?;
     let mut contacted: Vec<String> = Vec::new();
     for _ in 0..=policy.max_redirects {
@@ -237,7 +301,7 @@ pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, Fetc
         let response = policy
             .client(&url, addr)?
             .get(url.clone())
-            .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
+            .header(reqwest::header::ACCEPT, policy.accept.request_header())
             .send()
             .await
             .map_err(|error| FetchError::Http {
@@ -261,45 +325,99 @@ pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, Fetc
                 status: status.as_u16(),
             });
         }
-        // Only HTML is read. A declared type must be exactly text/html or
-        // application/xhtml+xml; with none, the body itself must look like
-        // HTML.
-        let declared = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| {
-                value
-                    .split(';')
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .to_ascii_lowercase()
-            });
-        if let Some(content_type) = &declared {
-            if !HTML_TYPES.contains(&content_type.as_str()) {
-                return Err(FetchError::NotHtml {
-                    host,
-                    content_type: content_type.clone(),
-                });
-            }
-        }
-        let html = read_capped(response, policy.max_bytes, &host).await?;
-        if declared.is_none() && !looks_like_html(&html) {
-            return Err(FetchError::NotHtml {
-                host,
-                content_type: "no declared type, and not HTML".to_string(),
-            });
-        }
-        return Ok(Fetched {
+        return Ok(FetchResponse {
             final_url: url,
             contacted,
-            html,
+            host,
+            response,
         });
     }
     Err(FetchError::TooManyRedirects(
         contacted.first().cloned().unwrap_or_default(),
     ))
+}
+
+/// Fetch the page at `raw`, following at most `policy.max_redirects`
+/// redirects, each checked like the first.
+pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, FetchError> {
+    let fetched = fetch_response(raw, policy).await?;
+    // Only HTML is read. A declared type must be exactly text/html or
+    // application/xhtml+xml; with none, the body itself must look like
+    // HTML.
+    let declared = declared_content_type(&fetched.response);
+    if let Some(content_type) = &declared {
+        if !Accept::HtmlPage.declared_type_allowed(content_type) {
+            return Err(FetchError::NotHtml {
+                host: fetched.host,
+                content_type: content_type.clone(),
+            });
+        }
+    }
+    let html = read_capped(fetched.response, policy.max_bytes, &fetched.host).await?;
+    if declared.is_none() && !looks_like_html(&html) {
+        return Err(FetchError::NotHtml {
+            host: fetched.host,
+            content_type: "no declared type, and not HTML".to_string(),
+        });
+    }
+    Ok(Fetched {
+        final_url: fetched.final_url,
+        contacted: fetched.contacted,
+        html,
+    })
+}
+
+/// Fetch bytes from `raw` through the same guards as [`fetch_page`], refusing
+/// a body whose declared content type does not match `policy.accept`.
+pub async fn fetch_bytes(raw: &str, policy: &FetchPolicy) -> Result<FetchedBytes, FetchError> {
+    let fetched = fetch_response(raw, policy).await?;
+    let declared = declared_content_type(&fetched.response).ok_or_else(|| {
+        if policy.accept == Accept::Image {
+            FetchError::NotImage {
+                host: fetched.host.clone(),
+                content_type: "no declared type".to_string(),
+            }
+        } else {
+            FetchError::NotHtml {
+                host: fetched.host.clone(),
+                content_type: "no declared type".to_string(),
+            }
+        }
+    })?;
+    if !policy.accept.declared_type_allowed(&declared) {
+        return Err(match policy.accept {
+            Accept::Image => FetchError::NotImage {
+                host: fetched.host,
+                content_type: declared,
+            },
+            Accept::HtmlPage => FetchError::NotHtml {
+                host: fetched.host,
+                content_type: declared,
+            },
+        });
+    }
+    let bytes = read_capped_bytes(fetched.response, policy.max_bytes, &fetched.host).await?;
+    Ok(FetchedBytes {
+        final_url: fetched.final_url,
+        contacted: fetched.contacted,
+        content_type: declared,
+        bytes,
+    })
+}
+
+fn declared_content_type(response: &reqwest::Response) -> Option<String> {
+    response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+        })
 }
 
 const HTML_TYPES: &[&str] = &["text/html", "application/xhtml+xml"];
@@ -330,10 +448,19 @@ fn looks_like_html(body: &str) -> bool {
 }
 
 async fn read_capped(
-    mut response: reqwest::Response,
+    response: reqwest::Response,
     max_bytes: usize,
     host: &str,
 ) -> Result<String, FetchError> {
+    let body = read_capped_bytes(response, max_bytes, host).await?;
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+async fn read_capped_bytes(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+    host: &str,
+) -> Result<Vec<u8>, FetchError> {
     let too_large = FetchError::TooLarge(max_bytes / (1024 * 1024));
     if response
         .content_length()
@@ -351,7 +478,7 @@ async fn read_capped(
         }
         body.extend_from_slice(&chunk);
     }
-    Ok(String::from_utf8_lossy(&body).into_owned())
+    Ok(body)
 }
 
 #[cfg(test)]
@@ -616,5 +743,114 @@ mod tests {
             .await
             .expect_err("not html");
         assert!(matches!(err, FetchError::NotHtml { .. }));
+    }
+
+    fn image_policy() -> FetchPolicy {
+        FetchPolicy {
+            accept: Accept::Image,
+            ..local_policy()
+        }
+    }
+
+    #[tokio::test]
+    async fn image_bytes_pass_only_for_declared_image_types() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/pixel.png"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/page"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw("<p>hi</p>", "text/html"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/untyped"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "text/plain"),
+            )
+            .mount(&server)
+            .await;
+        let policy = image_policy();
+        let url = |route: &str| format!("{}{route}", server.uri());
+
+        let got = fetch_bytes(&url("/pixel.png"), &policy)
+            .await
+            .expect("image");
+        assert_eq!(got.content_type, "image/png");
+        assert_eq!(got.bytes, b"\x89PNG");
+
+        for route in ["/page", "/untyped"] {
+            let err = fetch_bytes(&url(route), &policy)
+                .await
+                .expect_err("not an image");
+            assert!(matches!(err, FetchError::NotImage { .. }), "{route}: {err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn image_fetch_refuses_a_private_address_or_redirect_before_connecting() {
+        // No loopback allowance: the first hop is refused before a socket is
+        // opened, so an unrelated local server never sees the request.
+        let policy = FetchPolicy {
+            accept: Accept::Image,
+            ..FetchPolicy::default()
+        };
+        let err = fetch_bytes("http://127.0.0.1:9/pixel.png", &policy)
+            .await
+            .expect_err("loopback refused");
+        assert!(matches!(err, FetchError::PrivateAddress(_)), "{err}");
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/r"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("location", "http://10.0.0.7/pixel.png"),
+            )
+            .mount(&server)
+            .await;
+        let err = fetch_bytes(&format!("{}/r", server.uri()), &image_policy())
+            .await
+            .expect_err("private redirect refused");
+        assert_eq!(err, FetchError::PrivateAddress("10.0.0.7".to_string()));
+    }
+
+    #[tokio::test]
+    async fn image_fetch_stops_a_slow_origin_and_a_body_past_the_cap() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/slow"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_secs(5))
+                    .set_body_raw(b"\x89PNG".to_vec(), "image/png"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/big"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(vec![0u8; 2 * 1024 * 1024], "image/png"),
+            )
+            .mount(&server)
+            .await;
+        let timed = FetchPolicy {
+            timeout: Duration::from_millis(100),
+            ..image_policy()
+        };
+        let err = fetch_bytes(&format!("{}/slow", server.uri()), &timed)
+            .await
+            .expect_err("timeout");
+        assert!(matches!(err, FetchError::Http { .. }), "{err}");
+
+        let capped = FetchPolicy {
+            max_bytes: 1024 * 1024,
+            ..image_policy()
+        };
+        let err = fetch_bytes(&format!("{}/big", server.uri()), &capped)
+            .await
+            .expect_err("too big");
+        assert_eq!(err, FetchError::TooLarge(1));
     }
 }

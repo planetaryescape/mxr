@@ -1441,49 +1441,29 @@ async fn materialize_remote_asset(
         return Ok((path, None));
     }
 
-    let response = reqwest::Client::new()
-        .get(source)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("remote image fetch failed: {}", response.status()));
-    }
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_REMOTE_ASSET_BYTES)
+    // The same guards the reader uses for a linked article: public addresses
+    // only, every redirect re-checked, no proxy, a pinned address and a
+    // deadline. `Accept::Image` also refuses a body that is not an image.
+    let mut policy = mxr_reading::fetch::FetchPolicy {
+        max_bytes: MAX_REMOTE_ASSET_BYTES as usize,
+        accept: mxr_reading::fetch::Accept::Image,
+        ..mxr_reading::fetch::FetchPolicy::default()
+    };
+    #[cfg(test)]
     {
-        return Err(format!(
-            "remote image exceeds {MAX_REMOTE_ASSET_BYTES} byte limit"
-        ));
+        policy = policy.allowing_loopback_for_tests();
     }
-    let mime_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.split(';').next().unwrap_or(value).trim().to_string());
-    let bytes = read_capped_remote_asset(response).await?;
-    tokio::fs::write(&path, bytes)
+    let fetched = mxr_reading::fetch::fetch_bytes(source, &policy)
+        .await
+        .map_err(|error| format!("remote image fetch failed: {error}"))?;
+
+    tokio::fs::write(&path, fetched.bytes)
         .await
         .map_err(|error| error.to_string())?;
     set_private_file_permissions(&path)
         .await
         .map_err(|error| error.to_string())?;
-    Ok((path, mime_type))
-}
-
-async fn read_capped_remote_asset(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
-        let next_len = bytes.len().saturating_add(chunk.len());
-        if next_len as u64 > MAX_REMOTE_ASSET_BYTES {
-            return Err(format!(
-                "remote image exceeds {MAX_REMOTE_ASSET_BYTES} byte limit"
-            ));
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok(bytes)
+    Ok((path, Some(fetched.content_type)))
 }
 
 #[cfg(unix)]

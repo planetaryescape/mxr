@@ -1937,13 +1937,16 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
 
     // Group snapshots by account so we resolve the provider once per
     // account (not per message). Inside each account, restore each
-    // message's labels and read flag.
-    let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
-    for snapshot in &entry.snapshots {
+    // message's labels and read flag. Carry the stored snapshot index so
+    // error selection across accounts remains deterministic regardless of
+    // map iteration order.
+    let mut by_account: HashMap<mxr_core::AccountId, Vec<(usize, &UndoEntrySnapshot)>> =
+        HashMap::new();
+    for (index, snapshot) in entry.snapshots.iter().enumerate() {
         by_account
             .entry(snapshot.account_id.clone())
             .or_default()
-            .push(snapshot);
+            .push((index, snapshot));
     }
 
     // The desk's Done also dismissed conversations and resolved promises.
@@ -1971,16 +1974,20 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     // same id undoes just those next time.
     let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
     let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
+    let mut snapshot_errors: Vec<(usize, String)> = Vec::new();
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
             Ok(p) => p,
             Err(error) => {
-                last_error = Some(format!("account unavailable: {error}"));
-                retryable.extend(snapshots.into_iter().cloned());
+                let msg = format!("account unavailable: {error}");
+                for (index, snapshot) in snapshots {
+                    snapshot_errors.push((index, msg.clone()));
+                    retryable.push(snapshot.clone());
+                }
                 continue;
             }
         };
-        for snapshot in snapshots {
+        for (index, snapshot) in snapshots {
             match restore_snapshot(state, provider.as_ref(), entry.kind, snapshot).await {
                 Ok(()) => {
                     restored += 1;
@@ -1988,14 +1995,18 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
                 }
                 Err(SnapshotError::Irreversible(msg)) => {
                     irreversible += 1;
-                    last_error = Some(msg);
+                    snapshot_errors.push((index, msg));
                 }
                 Err(SnapshotError::Other(msg)) => {
                     retryable.push(snapshot.clone());
-                    last_error = Some(msg);
+                    snapshot_errors.push((index, msg));
                 }
             }
         }
+    }
+
+    if let Some((_, msg)) = snapshot_errors.into_iter().max_by_key(|(index, _)| *index) {
+        last_error = Some(msg);
     }
 
     // One search commit for the whole undo, as `apply_mutation_batch` does:
@@ -2137,11 +2148,13 @@ pub(super) async fn undo_preview(state: &AppState, mutation_id: &str) -> Handler
     }
     let any_restorable = restored_desk_rows > 0 || targets.iter().any(|t| t.in_local_store);
     if !any_restorable {
-        // The undo's own refusal for this case, from its last failed message.
-        let detail = last_error.unwrap_or_else(|| match last_missing {
+        // The undo's own refusal for this case: a missing snapshot message
+        // takes precedence over desk/highlight refusal, matching the real
+        // undo's error priority.
+        let detail = match last_missing {
             Some(id) => format!("message `{id}` no longer exists locally"),
-            None => "no messages restored".into(),
-        });
+            None => last_error.unwrap_or_else(|| "no messages restored".into()),
+        };
         let count = u32::try_from(entry.snapshots.len()).unwrap_or(u32::MAX);
         return Err(undo_irreversible(count, &detail).into());
     }

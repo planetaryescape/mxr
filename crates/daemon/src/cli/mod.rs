@@ -2833,7 +2833,7 @@ pub enum TodoMicrosoftAction {
 
 const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.
 
-Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem leads Needs a look as a suggested to-do; nothing goes to To do until you add it. One-time codes, sign-in alerts and offers expire and never show past their window.
+Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem can create a to-do only with a verified receiving verdict, trusted receipt and independent prior-source history. Current live adapters cannot attest that boundary, so alerts remain suggestions with an explanation. Automatic alert creation is controlled by `updates.auto_todo_alerts` (default on). One-time codes, sign-in alerts and offers expire and never show past their window.
 
 With no subcommand, prints the latest digest and what arrived since.";
 

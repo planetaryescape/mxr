@@ -257,8 +257,7 @@ pub(super) async fn create_on_arrival(
     let Decision::Create(claim) = &assessment.decision else {
         return Ok(false);
     };
-    // The to-do scan may already have made one from this thread (a failed
-    // payment is a to-do kind of its own): one is enough.
+    // An existing task already gives this thread a place in To do.
     if !state
         .store
         .open_todos_for_threads(

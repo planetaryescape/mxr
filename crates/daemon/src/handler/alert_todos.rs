@@ -306,6 +306,9 @@ pub(super) async fn project_payment_ask(
     let Some(answer) = answers.get(id) else {
         return Ok(());
     };
+    if !mxr_todo::asks::items::has_payment_failure_notice(answer) {
+        return Ok(());
+    }
     if !mxr_todo::asks::items::detections(answer, &envelope)
         .iter()
         .any(|(_, d)| d.kind == TodoKind::PaymentFailed)

@@ -596,7 +596,9 @@ async fn review6_financial_speakers_keep_remediation_and_independent_owner_work(
                 None,
             )
             .await;
-        super::alert_todos::authenticated_known_source(&fx, &mail).await;
+        if mxr_todo::asks::items::has_failure_status(&text) {
+            super::alert_todos::authenticated_known_source(&fx, &mail).await;
+        }
         replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         let rows = fx

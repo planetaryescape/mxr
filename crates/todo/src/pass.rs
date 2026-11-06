@@ -388,6 +388,15 @@ where
                 None
             };
         let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        if record.kind == "payment_failed" && crate::asks::items::has_payment_failure_notice(answer)
+        {
+            let mut fields = FieldSources::from_json(&record.field_sources);
+            fields.set(
+                "alert_notice",
+                FieldProvenance::with_evidence(FieldSource::Rule, "payment_failed"),
+            );
+            record.field_sources = fields.to_json();
+        }
         if record.kind == "payment_failed" {
             if let Some(old) = &previous {
                 let unit = &answer.units[unit_index];

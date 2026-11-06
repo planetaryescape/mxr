@@ -90,6 +90,9 @@ struct MembershipQuery {
     thread_id: Option<ThreadId>,
     #[serde(default)]
     message_id: Option<MessageId>,
+    /// Keep per-message evidence only for the newest `limit` messages.
+    #[serde(default)]
+    limit: Option<u32>,
 }
 
 async fn get_membership(
@@ -110,6 +113,7 @@ async fn get_membership(
             message_id: query.message_id,
             thread_id: query.thread_id,
             thread_ids: Vec::new(),
+            limit: query.limit,
         },
     )
     .await?;
@@ -122,6 +126,9 @@ pub(crate) struct ModeMembershipBody {
     /// At most 100 threads, answered in this order.
     #[schema(value_type = Vec<String>)]
     thread_ids: Vec<ThreadId>,
+    /// Keep per-message evidence only for the newest `limit` messages.
+    #[serde(default)]
+    limit: Option<u32>,
 }
 
 async fn post_membership(
@@ -142,6 +149,7 @@ async fn post_membership(
             message_id: None,
             thread_id: None,
             thread_ids: body.thread_ids,
+            limit: body.limit,
         },
     )
     .await?;

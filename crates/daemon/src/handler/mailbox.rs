@@ -955,20 +955,6 @@ async fn load_body_for_message(
     enrich_calendar_viewer_fields(state, message_id, body).await
 }
 
-async fn load_cached_body_for_message(
-    state: &AppState,
-    message_id: &MessageId,
-) -> Result<MessageBody, String> {
-    let mut body = state
-        .store
-        .get_body(message_id)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("Body not found in local store: {message_id}"))?;
-    body.ensure_best_effort_readable();
-    enrich_calendar_viewer_fields(state, message_id, body).await
-}
-
 /// Derive `viewer_partstat`, `viewer_attendee_email`, and `is_update` on the
 /// body's `metadata.calendar` so every client (TUI, web SPA) renders the
 /// invite card consistently without re-walking attendees or stored invites.
@@ -1481,10 +1467,27 @@ fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {
 
 pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> HandlerResult {
     tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
+    // Two queries for the whole set instead of two per message. Missing
+    // bodies stay per-id failures; one absent body must not fail the rest.
+    let mut found = state
+        .store
+        .bodies_for_messages(message_ids)
+        .await
+        .map_err(|error| error.to_string())?;
     let mut bodies = Vec::with_capacity(message_ids.len());
     let mut failures = Vec::new();
     for id in message_ids {
-        match load_cached_body_for_message(state, id).await {
+        let Some(mut body) = found.remove(id) else {
+            let error = format!("Body not found in local store: {id}");
+            tracing::debug!(message_id = %id, error = %error, "ListBodies: body unavailable");
+            failures.push(BodyFailure {
+                message_id: id.clone(),
+                error,
+            });
+            continue;
+        };
+        body.ensure_best_effort_readable();
+        match enrich_calendar_viewer_fields(state, id, body).await {
             Ok(body) => bodies.push(body),
             Err(error) => {
                 tracing::debug!(message_id = %id, error = %error, "ListBodies: body unavailable");
@@ -1498,7 +1501,15 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
     Ok(ResponseData::Bodies { bodies, failures })
 }
 
-pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
+/// Largest page a reader may ask for in one open. A client asking for more
+/// still gets a bounded answer instead of the whole thread.
+const MAX_THREAD_WINDOW: u32 = 500;
+
+pub(super) async fn get_thread(
+    state: &AppState,
+    thread_id: &ThreadId,
+    window: Option<&mxr_protocol::ThreadWindow>,
+) -> HandlerResult {
     // A legacy thread id can span accounts. Only enabled accounts' messages
     // are read, so a disabled account's subject, snippet, participants and
     // message ids never reach a reader (which would go on to fetch bodies).
@@ -1509,7 +1520,7 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
         .await?
         .pop()
         .ok_or_else(|| "Thread not found".to_string())?;
-    let messages = state
+    let all_messages = state
         .store
         .get_thread_envelopes(thread_id)
         .await
@@ -1517,13 +1528,40 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
         .into_iter()
         .filter(|message| accounts.contains(&message.account_id))
         .collect::<Vec<_>>();
+    // The summary describes the whole conversation, so validate it against
+    // every message before the window hides older ones from the reader.
     let summary = super::summarize::valid_cached_summary(
         &state.store,
         thread_id,
-        &messages,
+        &all_messages,
         super::summarize::summary_shares_relationship(state),
     )
     .await;
+    let messages = match window {
+        None => all_messages,
+        Some(window) => {
+            let limit = window.limit.clamp(1, MAX_THREAD_WINDOW) as usize;
+            let position = |id: &MessageId| {
+                all_messages
+                    .iter()
+                    .position(|message| &message.id == id)
+                    .ok_or_else(|| format!("Message not in thread: {id}"))
+            };
+            let (start, end) = if let Some(focus) = window.focus.as_ref() {
+                let end = position(focus)? + 1;
+                (end.saturating_sub(limit), end)
+            } else if let Some(before) = window.before.as_ref() {
+                let end = position(before)?;
+                (end.saturating_sub(limit), end)
+            } else if let Some(after) = window.after.as_ref() {
+                let start = position(after)? + 1;
+                (start, (start + limit).min(all_messages.len()))
+            } else {
+                (all_messages.len().saturating_sub(limit), all_messages.len())
+            };
+            all_messages[start..end].to_vec()
+        }
+    };
     Ok(ResponseData::Thread {
         thread,
         messages,

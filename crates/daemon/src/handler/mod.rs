@@ -784,7 +784,9 @@ async fn dispatch(
             attachment_id,
         } => mailbox::open_attachment(state, message_id, attachment_id).await,
         Request::ListBodies { message_ids } => mailbox::list_bodies(state, message_ids).await,
-        Request::GetThread { thread_id } => mailbox::get_thread(state, thread_id).await,
+        Request::GetThread { thread_id, window } => {
+            mailbox::get_thread(state, thread_id, window.as_ref()).await
+        }
         Request::ListThreads {
             account_id,
             label_id,
@@ -1978,8 +1980,16 @@ async fn dispatch(
             message_id,
             thread_id,
             thread_ids,
+            limit,
         } => {
-            modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
+            modes::get_membership(
+                state,
+                message_id.as_ref(),
+                thread_id.as_ref(),
+                thread_ids,
+                *limit,
+            )
+            .await
         }
         // One boxed call for all of Reading: its arms inline make
         // `dispatch`'s poll frame big enough to overflow a debug build's

@@ -1,6 +1,6 @@
 import { ReaderModesLine } from "@/features/modes/ReaderModesLine";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ModeFrame } from "@/components/ModeFrame";
@@ -11,7 +11,7 @@ import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
 import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
 import { useProjectedMessages } from "@/features/mail-actions/pendingMailOps";
 import { targetFromThread } from "@/features/mail-actions/target";
-import { resolveCommitment } from "@/features/mailbox/api";
+import { fetchThread, resolveCommitment, THREAD_PAGE_SIZE } from "@/features/mailbox/api";
 import { openMoveSenderFor } from "@/features/places/placeVerbs";
 import { WhyHereLine } from "@/features/places/WhyHereLine";
 import { useReaderNav } from "@/features/mailbox/readerNav";
@@ -69,11 +69,44 @@ export function ThreadReader({
   const setReaderLayout = useUiPrefs((s) => s.setReaderLayout);
   const defaultView = useUiPrefs((s) => s.readerView);
   const setDefaultView = useUiPrefs((s) => s.setReaderView);
-  const messages = useProjectedMessages(data.messages);
-  const bodies = useMemo(
-    () => new Map(data.bodies.map((body) => [body.message_id, body])),
-    [data.bodies],
-  );
+  // Pages of the same conversation loaded on demand: older pages prepended
+  // in reverse load order, newer pages (a deep link starts in the middle)
+  // appended in load order.
+  const [olderPages, setOlderPages] = useState<ThreadResponse[]>([]);
+  const [newerPages, setNewerPages] = useState<ThreadResponse[]>([]);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [loadingLater, setLoadingLater] = useState(false);
+  const loadedMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return [
+      ...[...olderPages].toReversed().flatMap((page) => page.messages),
+      ...data.messages,
+      ...newerPages.flatMap((page) => page.messages),
+    ].filter((message) => {
+      if (seen.has(message.id)) return false;
+      seen.add(message.id);
+      return true;
+    });
+  }, [data.messages, olderPages, newerPages]);
+  const messages = useProjectedMessages(loadedMessages);
+  const bodies = useMemo(() => {
+    const merged = new Map<string, ThreadResponse["bodies"][number]>();
+    for (const page of [...olderPages, data, ...newerPages]) {
+      for (const body of page.bodies) merged.set(body.message_id, body);
+    }
+    return merged;
+  }, [data, olderPages, newerPages]);
+
+  const oldestPage = olderPages.at(-1) ?? data;
+  const newestPage = newerPages.at(-1) ?? data;
+  const hasEarlier = oldestPage.has_earlier ?? false;
+  const hasLater = newestPage.has_later ?? false;
+  const totalMessages = data.total_messages ?? data.thread.message_count;
+  // A prepended page must not move the message the reader is looking at:
+  // remember where the scroller was, then restore that offset plus the new
+  // content's height. Reading `scrollTop` after the update is too late — the
+  // inserted page can reset it to 0.
+  const prependAnchor = useRef<{ height: number; top: number } | null>(null);
 
   const [view, setView] = useState<ReaderView>(defaultView);
   const [showQuotes, setShowQuotes] = useState(false);
@@ -149,6 +182,54 @@ export function ThreadReader({
   }, [data.thread.id, readerFocused]);
 
   const threadId = data.thread.id;
+  const loadEarlier = async () => {
+    const before = oldestPage.earlier_before;
+    if (!before || loadingEarlier) return;
+    setLoadingEarlier(true);
+    prependAnchor.current = scrollRef.current
+      ? { height: scrollRef.current.scrollHeight, top: scrollRef.current.scrollTop }
+      : null;
+    try {
+      const page = await fetchThread(threadId, { before, limit: THREAD_PAGE_SIZE });
+      // The page is now above everything rendered; keep the same message
+      // under the reader's eye and the same message focused.
+      setFocusIndex((index) => index + page.messages.length);
+      setOlderPages((pages) => [...pages, page]);
+    } catch (error) {
+      prependAnchor.current = null;
+      toast.error("Couldn't load earlier messages", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setLoadingEarlier(false);
+    }
+  };
+  const loadLater = async () => {
+    const after = newestPage.later_after;
+    if (!after || loadingLater) return;
+    setLoadingLater(true);
+    try {
+      const page = await fetchThread(threadId, { after, limit: THREAD_PAGE_SIZE });
+      setNewerPages((pages) => [...pages, page]);
+    } catch (error) {
+      toast.error("Couldn't load newer messages", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setLoadingLater(false);
+    }
+  };
+  useLayoutEffect(() => {
+    const anchor = prependAnchor.current;
+    const container = scrollRef.current;
+    if (!anchor || !container) return;
+    prependAnchor.current = null;
+    // Wait one frame so message heights that depend on layout are final;
+    // `overflow-anchor: none` on the scroller keeps the browser out of it.
+    requestAnimationFrame(() => {
+      container.scrollTop = anchor.top + (container.scrollHeight - anchor.height);
+    });
+  }, [olderPages]);
   const queryClient = useQueryClient();
   const context = useQuery(threadContextQuery(threadId));
   const policy = llmPolicyKey(llm.data?.status);
@@ -423,7 +504,7 @@ export function ThreadReader({
   const newest = messages.at(-1);
   const recipients = (newest?.to?.length ?? 0) + (newest?.cc?.length ?? 0);
   const canReplyAll = recipients > 1 || data.thread.participants.length > 2;
-  const hasAttachments = data.bodies.some((body) =>
+  const hasAttachments = [...bodies.values()].some((body) =>
     (body.attachments ?? []).some((attachment) => !attachment.content_id),
   );
 
@@ -451,6 +532,7 @@ export function ThreadReader({
         ref={scrollRef}
         tabIndex={-1}
         data-testid="thread-scroll"
+        style={{ overflowAnchor: "none" }}
         className="min-h-0 flex-1 overflow-y-auto outline-none"
         onFocus={() => setActivePane("reader")}
       >
@@ -495,6 +577,21 @@ export function ThreadReader({
               )}
             </div>
           ) : null}
+          {hasEarlier ? (
+            <div className="px-5 pt-4">
+              <button
+                type="button"
+                data-testid="thread-load-earlier"
+                className="w-full rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-surface-2 disabled:opacity-60"
+                disabled={loadingEarlier}
+                onClick={() => void loadEarlier()}
+              >
+                {loadingEarlier
+                  ? "Loading earlier messages…"
+                  : `Load earlier messages (${messages.length} of ${totalMessages})`}
+              </button>
+            </div>
+          ) : null}
           {messages.map((message, index) => (
             <MessageCard
               key={message.id}
@@ -526,7 +623,19 @@ export function ThreadReader({
               onShowHeaders={() => setHeadersFor(message.id)}
             />
           ))}
-          {newest ? (
+          {hasLater ? (
+            <div className="px-5 pt-4">
+              <button
+                type="button"
+                data-testid="thread-load-later"
+                className="w-full rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-surface-2 disabled:opacity-60"
+                disabled={loadingLater}
+                onClick={() => void loadLater()}
+              >
+                {loadingLater ? "Loading newer messages…" : "Load newer messages"}
+              </button>
+            </div>
+          ) : newest ? (
             <WhyHereLine messageId={newest.id} senderLabel={newest.sender || "this sender"} />
           ) : null}
           <ReplyField

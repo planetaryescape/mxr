@@ -20837,6 +20837,15 @@
           "thread_ids"
         ],
         "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Keep per-message evidence only for the newest `limit` messages.",
+            "minimum": 0
+          },
           "thread_ids": {
             "type": "array",
             "items": {
@@ -27256,6 +27265,17 @@
               },
               "thread_id": {
                 "$ref": "#/components/schemas/ThreadId"
+              },
+              "window": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ThreadWindow",
+                    "description": "A bounded page of the thread. Omitted returns every message,\nwhich is what the CLI, TUI and MCP keep asking for."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             }
           },
@@ -33692,6 +33712,15 @@
                 "enum": [
                   "GetModeMembership"
                 ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Keep only the newest `limit` messages' asks, assessments and\npending asks in each answer. Omitted returns every message's\nevidence, which the CLI and TUI still read.",
+                "minimum": 0
               },
               "message_id": {
                 "oneOf": [
@@ -44150,6 +44179,50 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "ThreadWindow": {
+        "type": "object",
+        "description": "One bounded page of a conversation, for readers that must not load a\n2,000-message thread in one payload. `limit` counts messages; the page\nends just before `before` (exclusive) or starts just after `after`\n(exclusive). `focus` returns the page ending at that message, so a deep\nlink can open on an old message without loading everything newer.",
+        "required": [
+          "limit"
+        ],
+        "properties": {
+          "after": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focus": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

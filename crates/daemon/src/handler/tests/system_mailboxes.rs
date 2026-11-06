@@ -483,6 +483,7 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
         &a.fx,
         Request::GetThread {
             thread_id: shared.clone(),
+            window: None,
         },
     )
     .await
@@ -518,6 +519,7 @@ async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::GetThread {
             thread_id: only_hidden,
+            window: None,
         }),
     };
     assert!(matches!(

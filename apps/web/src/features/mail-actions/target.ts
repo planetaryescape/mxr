@@ -58,7 +58,12 @@ export function targetFromRows(rows: MessageRowView[], source: MailTarget["sourc
 
 export function targetFromThread(data: ThreadResponse, messages = data.messages): MailTarget {
   const newest = messages.at(-1) ?? messages[0];
-  const messageIds = messages.map((message) => message.id);
+  // The reader loads a page at a time, but every thread action (archive,
+  // move, read, star) still covers the whole conversation.
+  const messageIds =
+    data.thread.message_ids && data.thread.message_ids.length > 0
+      ? [...new Set(data.thread.message_ids)]
+      : messages.map((message) => message.id);
   return {
     messageIds,
     unstarIds: messageIds,

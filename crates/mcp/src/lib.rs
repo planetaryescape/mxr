@@ -172,6 +172,7 @@ impl MxrMcpServer {
             .requester
             .request(Request::GetThread {
                 thread_id: parse_id(thread_id)?,
+                window: None,
             })
             .await
             .map_err(mcp_error)?;
@@ -1218,6 +1219,7 @@ impl MxrMcpServer {
     ) -> Result<McpJson<Value>, ErrorData> {
         self.daemon_json(Request::GetThread {
             thread_id: parse_id(&input.thread_id)?,
+            window: None,
         })
         .await
     }

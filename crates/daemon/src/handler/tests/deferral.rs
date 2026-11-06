@@ -448,6 +448,7 @@ async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_diff
                 message_id: Some(acknowledgement.id),
                 thread_id: None,
                 thread_ids: vec![],
+                limit: None,
             },
         )
         .await

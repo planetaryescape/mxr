@@ -2492,6 +2492,7 @@ async fn thread_endpoint_returns_messages_and_bodies() {
         move |request| match request {
             Request::GetThread {
                 thread_id: requested,
+                window: None,
             } if requested == thread.id => Some(Response::Ok {
                 data: ResponseData::Thread {
                     thread: thread.clone(),
@@ -2568,6 +2569,7 @@ async fn thread_endpoint_shapes_reader_mode_and_right_rail_from_raw_ipc_data() {
         move |request| match request {
             Request::GetThread {
                 thread_id: requested,
+                window: None,
             } if requested == thread.id => Some(Response::Ok {
                 data: ResponseData::Thread {
                     thread: thread.clone(),
@@ -2628,6 +2630,7 @@ async fn thread_endpoint_rejects_unexpected_body_response() {
         move |request| match request {
             Request::GetThread {
                 thread_id: requested,
+                window: None,
             } if requested == thread.id => Some(Response::Ok {
                 data: ResponseData::Thread {
                     thread: thread.clone(),

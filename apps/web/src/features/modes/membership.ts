@@ -21,9 +21,13 @@ export const MEMBERSHIP_MAX_THREADS = 100;
 
 export const MEMBERSHIP_KEY = ["mode-membership"] as const;
 
+/** The reader's mode line needs the thread-level modes, not per-message
+ * evidence: ask for no evidence rather than every message's asks. */
+const MEMBERSHIP_EVIDENCE_LIMIT = 0;
+
 export async function fetchMembership(threadId: string): Promise<ThreadModes | null> {
   const answer = await apiFetch<MembershipResponse>(
-    `/api/v1/mail/modes/membership?thread_id=${encodeURIComponent(threadId)}`,
+    `/api/v1/mail/modes/membership?thread_id=${encodeURIComponent(threadId)}&limit=${MEMBERSHIP_EVIDENCE_LIMIT}`,
   );
   return answer.threads[0] ?? null;
 }
@@ -38,7 +42,7 @@ export async function fetchMemberships(threadIds: readonly string[]): Promise<Th
     chunks.map((chunk) =>
       apiFetch<MembershipResponse>("/api/v1/mail/modes/membership", {
         method: "POST",
-        body: { thread_ids: chunk },
+        body: { thread_ids: chunk, limit: MEMBERSHIP_EVIDENCE_LIMIT },
       }),
     ),
   );

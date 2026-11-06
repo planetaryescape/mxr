@@ -127,7 +127,7 @@ SMTP send failures are not yet aggregated into doctor diagnostics.
 |--------|------|---------|
 | `GET` | `/mail/mailbox` | Browse the inbox or any lens |
 | `GET` | `/mail/search` | Run a Tantivy search |
-| `GET` | `/mail/threads/{id}` | Full thread payload (messages + bodies) |
+| `GET` | `/mail/threads/{id}` | Thread payload. Without `?limit`, every message and body (the old shape); with `?limit=50`, the newest page only, plus `total_messages`, `has_earlier`/`earlier_before` and `has_later`/`later_after`. `before`, `after` and `focus` name the page (`focus` ends at that message, for a deep link) |
 | `GET` | `/mail/threads/{id}/export` | Markdown / JSON export |
 | `GET` | `/mail/drafts` | List drafts |
 | `GET` | `/mail/messages/{message_id}/body` | Fetch one message body |
@@ -258,8 +258,8 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `GET` | `/mail/people/merge-suggestions` | Merges mxr suggests: same name, written to both |
 | `GET` | `/mail/rail` | Now, the five modes and Inbox with keys, counts and early-version notes (Messages also carries `quiet`), plus More |
 | `POST` | `/mail/threads/previews` | Subject, latest sender, date, snippet, message and unread counts and an attachment flag for up to 100 threads, with no bodies (`{thread_ids}`; unknown ids are left out) |
-| `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`) |
-| `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids}`) |
+| `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`). `limit` keeps per-message asks and assessments to the newest N messages; the reader asks for `0`, while no `limit` keeps the CLI's full evidence |
+| `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids, limit?}`) |
 | `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, dry_run, todo_ids?, sender?}`): `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
 | `GET` | `/mail/modes/guide` | How a mode explains itself (`?mode=now`) |
 | `POST` | `/mail/hints/{hint}` | Dismiss a hint in every client, or show it again (`{seen}`) |

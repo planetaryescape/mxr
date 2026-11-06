@@ -687,12 +687,14 @@ async fn mode_requests_stay_in_the_agents_accounts() {
         message_id: None,
         thread_id: Some(o.thread.clone()),
         thread_ids: vec![],
+        limit: None,
     })
     .await;
     assert_scoped(&s, |o| Request::GetModeMembership {
         message_id: Some(o.message.clone()),
         thread_id: None,
         thread_ids: vec![],
+        limit: None,
     })
     .await;
     assert_scoped(&s, |o| Request::SetModeDone {
@@ -1479,6 +1481,7 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     for req in [
         Request::GetThread {
             thread_id: shared.clone(),
+            window: None,
         },
         Request::GetThreadContext {
             thread_id: shared.clone(),

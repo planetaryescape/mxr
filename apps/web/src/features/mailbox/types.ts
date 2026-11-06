@@ -210,6 +210,9 @@ export interface ThreadView {
   id: string;
   latest_date: string;
   message_count: number;
+  /** Every message in the conversation, oldest first. Actions cover these
+   * even when the reader has only loaded a page. */
+  message_ids?: string[];
   participants: AddressView[];
   snippet: string;
   subject: string;
@@ -230,6 +233,17 @@ export interface ThreadResponse {
   summary?: ThreadSummaryViewData | null;
   reader_mode?: string | null;
   right_rail?: { title?: string; items?: string[] };
+  /** Every message in the conversation, windowed or not. */
+  total_messages?: number;
+  /** Older messages sit before `messages[0]`. */
+  has_earlier?: boolean;
+  /** Cursor for the next older page: `messages[0].id`. */
+  earlier_before?: string | null;
+  /** Newer messages sit after `messages.at(-1)`. Only a deep link to an old
+   * message opens with this true. */
+  has_later?: boolean;
+  /** Cursor for the next newer page: `messages.at(-1).id`. */
+  later_after?: string | null;
 }
 
 export interface AccountMutationResult {

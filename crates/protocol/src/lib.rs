@@ -733,6 +733,7 @@ mod tests {
             (
                 Request::GetThread {
                     thread_id: ThreadId::new(),
+                    window: None,
                 },
                 IpcCategory::CoreMail,
             ),

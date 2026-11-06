@@ -791,6 +791,7 @@ mod stars;
 mod system_mailboxes;
 mod thread_gists;
 mod thread_previews;
+mod thread_window;
 mod todo;
 mod undo_claims;
 mod undo_preview;

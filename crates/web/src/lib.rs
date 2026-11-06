@@ -354,15 +354,50 @@ fn annotate_open_commitment_counts(
     }
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct ThreadQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// Page size; omitted keeps the old whole-thread response.
+    #[serde(default)]
+    limit: Option<u32>,
+    #[serde(default)]
+    before: Option<String>,
+    #[serde(default)]
+    after: Option<String>,
+    /// The page ending at this message, for a deep link to an old message.
+    #[serde(default)]
+    focus: Option<String>,
+}
+
 async fn thread(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(auth): Query<AuthQuery>,
+    Query(query): Query<ThreadQuery>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
     let thread_id = parse_thread_id(&thread_id)?;
-    match ipc_request(&state.config.socket_path, Request::GetThread { thread_id }).await? {
+    let window = query
+        .limit
+        .map(|limit| {
+            let optional = |value: Option<&str>| -> Result<Option<MessageId>, BridgeError> {
+                value.map(parse_message_id).transpose()
+            };
+            Ok(mxr_protocol::ThreadWindow {
+                limit,
+                before: optional(query.before.as_deref())?,
+                after: optional(query.after.as_deref())?,
+                focus: optional(query.focus.as_deref())?,
+            })
+        })
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetThread { thread_id, window },
+    )
+    .await?
+    {
         ResponseData::Thread {
             thread,
             messages,
@@ -406,9 +441,33 @@ async fn thread(
                 .iter()
                 .filter(|body| body.metadata.calendar.is_some())
                 .count();
+            // The thread keeps the whole ordered id list for actions and
+            // deep links; these fields say where the page sits inside it.
+            let total_messages = thread.message_ids.len() as u32;
+            let has_earlier = messages
+                .first()
+                .is_some_and(|message| thread.message_ids.first() != Some(&message.id));
+            let has_later = messages
+                .last()
+                .is_some_and(|message| thread.message_ids.last() != Some(&message.id));
+            let earlier_before = if has_earlier {
+                messages.first().map(|message| message.id.clone())
+            } else {
+                None
+            };
+            let later_after = if has_later {
+                messages.last().map(|message| message.id.clone())
+            } else {
+                None
+            };
 
             Ok(Json(json!({
                 "thread": thread,
+                "total_messages": total_messages,
+                "has_earlier": has_earlier,
+                "earlier_before": earlier_before,
+                "has_later": has_later,
+                "later_after": later_after,
                 "messages": messages
                     .iter()
                     .map(|message| message_row_view_with_labels(message, &labels))

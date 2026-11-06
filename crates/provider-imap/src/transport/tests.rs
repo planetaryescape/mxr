@@ -161,8 +161,8 @@ async fn rejects_starttls_response_with_excessive_untagged_lines() {
     drop(socket);
     server.await;
     let error = result
-        .err()
-        .expect("individual short lines must still share a response budget");
+        .map(|_| ())
+        .expect_err("individual short lines must still share a response budget");
     assert!(error.to_string().contains("oversized response"), "{error}");
 }
 

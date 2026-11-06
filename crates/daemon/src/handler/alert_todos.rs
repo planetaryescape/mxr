@@ -365,21 +365,12 @@ async fn enrich_from_stored_ask(
     record.due_words = projected.due_words;
     // Keep exact quote/unit provenance without handing the alert's lifetime to
     // an evolving content assessment. Durable arrival claims own that lifetime.
-    let mut fields: serde_json::Value =
-        serde_json::from_str(&projected.field_sources).unwrap_or_default();
-    let verified: serde_json::Value =
-        serde_json::from_str(&record.field_sources).unwrap_or_default();
-    if let (Some(fields), Some(verified)) = (fields.as_object_mut(), verified.as_object()) {
-        fields.extend(verified.clone());
-    }
-    record.field_sources = fields.to_string();
-    let mut provenance = FieldSources::from_json(&record.field_sources);
-    retime_record(
-        record,
-        &mut provenance,
-        state.snooze_time_prefs().morning_hour,
-    );
-    record.field_sources = provenance.to_json();
+    let mut fields = FieldSources::from_json(&projected.field_sources);
+    fields
+        .0
+        .extend(FieldSources::from_json(&record.field_sources).0);
+    retime_record(record, &mut fields, state.snooze_time_prefs().morning_hour);
+    record.field_sources = fields.to_json();
     Ok(())
 }
 

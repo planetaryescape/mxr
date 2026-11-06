@@ -56,13 +56,33 @@ async fn receiver_crypto_binds_origin_body_interpretation_and_replay_identity() 
 #[tokio::test]
 async fn receiver_policy_rejects_passing_untrusted_sealers_and_bare_results() {
     let (raw, dns) = fixture("evil.example", "stripe.com", &SIGNED, false).await;
+    let auth = MessageAuthenticator::new_system_conf().expect("synthetic resolver");
+    let parsed = AuthenticatedMessage::parse(raw.as_bytes()).expect("untrusted signed set");
+    assert_eq!(
+        auth.verify_arc(Parameters::new(&parsed).with_cache(&dns))
+            .await
+            .result(),
+        &DkimResult::Pass
+    );
     assert!(check(&raw, &dns).await.is_err());
+    // Relabelling an evil seal as Google cannot verify against Google's key.
+    assert!(check(&raw.replace("d=evil.example", "d=google.com"), &dns)
+        .await
+        .is_err());
     let (raw, dns) = fixture("google.com", "evil.example", &SIGNED, false).await;
     let forged = format!(
         "Authentication-Results: mx.google.com; dmarc=pass header.from=stripe.com\r\n{raw}"
     );
     assert!(check(&forged, &dns).await.is_err());
     assert!(check(RAW, &dns).await.is_err());
+    assert!(check(
+        &format!(
+            "Authentication-Results: mx.google.com; dmarc=pass header.from=stripe.com\r\n{RAW}"
+        ),
+        &dns
+    )
+    .await
+    .is_err());
     let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, true).await;
     assert!(check(&raw, &dns).await.is_err());
 }

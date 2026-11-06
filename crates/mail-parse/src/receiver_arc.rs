@@ -1,5 +1,6 @@
 //! Verify receiver assertions over original RFC bytes, never reconstructed headers.
 //! Provider adapters choose the trust anchor; message content cannot choose it.
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use mail_auth::{
     crypto::Algorithm,
@@ -239,7 +240,8 @@ async fn verify_inner<C: DnsCache>(
     hash.update(host.as_bytes());
     hash.update(b"\0");
     hash.update(&sig.b);
-    evidence.message_fingerprint = Some(format!("{:x}", hash.finalize()));
+    evidence.message_fingerprint =
+        Some(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash.finalize()));
     Ok(evidence)
 }
 fn strong(a: Algorithm) -> bool {

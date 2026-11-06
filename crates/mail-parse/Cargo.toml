@@ -10,13 +10,13 @@ publish = false
 
 
 [features]
-test-util = ["dep:base64"]
+test-util = []
 
 [lints]
 workspace = true
 
 [dependencies]
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 mxr-core = { workspace = true }
 chrono = { workspace = true }
 icalendar = { workspace = true }

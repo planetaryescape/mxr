@@ -32,7 +32,7 @@ pub const SIGNED: [&str; 9] = [
     "Content-Transfer-Encoding",
     "DKIM-Signature",
 ];
-const RAW: &str = "From: Stripe <notifications@stripe.com>\r\nTo: user@example.com\r\nSubject: Your payment of $20.00 failed\r\nDate: Fri, 6 Nov 2026 00:00:00 +0000\r\nMessage-ID: <signed-fixture@stripe.com>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nYour payment failed. Please update your payment details.\r\n";
+pub const RAW: &str = "From: Stripe <notifications@stripe.com>\r\nTo: user@example.com\r\nSubject: Your payment of $20.00 failed\r\nDate: Fri, 6 Nov 2026 00:00:00 +0000\r\nMessage-ID: <signed-fixture@stripe.com>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nYour payment failed. Please update your payment details.\r\n";
 
 #[derive(Default)]
 pub struct FakeTxt {
@@ -96,26 +96,31 @@ impl DnsCache for FakeDns {
         None
     }
 }
-fn key() -> Ed25519Key {
+fn key(domain: &str) -> Ed25519Key {
     // Deliberately public, deterministic TEST seed; never a provider key.
     let mut der = vec![
         0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04,
         0x20,
     ];
-    der.extend([7_u8; 32]);
+    let seed = match domain {
+        "google.com" => 11,
+        "stripe.com" => 7,
+        _ => 13,
+    };
+    der.extend([seed; 32]);
     Ed25519Key::from_pkcs8_maybe_unchecked_der(&der).expect("synthetic fixture")
 }
 fn dns() -> FakeDns {
     let dns = FakeDns::default();
-    let txt = format!(
-        "v=DKIM1; k=ed25519; p={}",
-        STANDARD.encode(key().public_key())
-    );
     for domain in ["stripe.com", "google.com", "evil.example"] {
+        let txt = format!(
+            "v=DKIM1; k=ed25519; p={}",
+            STANDARD.encode(key(domain).public_key())
+        );
         dns.0.insert(
             format!("unit._domainkey.{domain}.").into_boxed_str(),
             TxtRecord::DomainKey(Arc::new(
-                DomainKey::parse(txt.as_bytes()).expect("synthetic fixture"),
+                DomainKey::parse(txt.as_bytes()).expect("synthetic key"),
             )),
             Instant::now() + std::time::Duration::from_secs(600),
         );
@@ -158,7 +163,7 @@ pub async fn fixture_with_sender_headers(
 ) -> (String, FakeDns) {
     let dns = dns();
     let auth = MessageAuthenticator::new_system_conf().expect("synthetic fixture");
-    let signature = DkimSigner::from_key(key())
+    let signature = DkimSigner::from_key(key(sender))
         .domain(sender)
         .selector("unit")
         .headers(sender_headers.iter().copied())
@@ -181,7 +186,7 @@ pub async fn fixture_with_sender_headers(
     let chain = auth
         .verify_arc(Parameters::new(&parsed).with_cache(&dns))
         .await;
-    let sealer = ArcSealer::from_key(key())
+    let sealer = ArcSealer::from_key(key(domain))
         .domain(domain)
         .selector("unit")
         .headers(headers.iter().copied())
@@ -209,7 +214,7 @@ pub async fn reseal(raw: &str, dns: &FakeDns) -> String {
         .verify_arc(Parameters::new(&parsed).with_cache(dns))
         .await;
     assert_eq!(chain.result(), &DkimResult::Pass);
-    let sealer = ArcSealer::from_key(key())
+    let sealer = ArcSealer::from_key(key("google.com"))
         .domain("google.com")
         .selector("unit")
         .headers(SIGNED);

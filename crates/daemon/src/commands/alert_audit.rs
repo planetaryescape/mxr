@@ -151,7 +151,9 @@ fn replay(
             .message_fingerprint
             .as_ref()
             .and_then(|_| evidence.verified_host.clone());
-        let code = evidence.unverified_reason.map(mxr_core::UnverifiedReason::code);
+        let code = evidence
+            .unverified_reason
+            .map(mxr_core::UnverifiedReason::code);
         let (history, established) = match (&verified, evidence.received_at) {
             (Some(host), Some(at)) => (
                 inbound.history(

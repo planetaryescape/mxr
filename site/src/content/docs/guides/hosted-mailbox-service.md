@@ -26,6 +26,36 @@ mxr serve status --format json
 
 Setup records its progress before changing the service or proxy. It waits for the authenticated gateway before publishing the HTTPS mapping, then checks HTTPS health and rejection of anonymous IPC. Pair an independent client using the [remote mailbox guide](/guides/remote-mailbox/) to verify approved access. Setup checks do not substitute for that pairing and mail workflow.
 
+## Serve a custom HTTPS origin behind your own proxy
+
+`serve setup` publishes through Tailscale Serve and requires the node's
+Tailscale DNS name. If the mailbox answers on a domain you already terminate
+with Caddy, nginx or another reverse proxy, run the gateway in the foreground
+and supervise it with your own service unit:
+
+```sh
+mxr serve --foreground \
+  --listen 127.0.0.1:18741 \
+  --public-origin https://mail.example.com
+```
+
+Foreground mode writes no `hosting.json` and installs no supervisor. Do not
+also run `serve setup` for the same host; it owns a Tailscale Serve mapping and
+would refuse a non-tailnet origin.
+
+- Proxy the whole origin to `127.0.0.1:18741` and preserve the incoming `Host`
+  header exactly. The gateway rejects any other host, and `X-Forwarded-*`
+  headers never establish browser trust.
+- Native requests must not send `Origin`. Browser POSTs and WebSocket upgrades
+  must send exactly the configured origin.
+- Release binaries built with `web-ui` embed the SPA, so one proxy can serve
+  `/` and `/api/*`. If you serve a separately built SPA from a static root,
+  proxy `/api/*` and leave `/` on that root.
+- The session cookie is `__Host-mxr-session`: `Secure`, `HttpOnly`,
+  `SameSite=Strict`, `Path=/`, and no `Domain`. It is host-only to the
+  configured origin and lasts at most thirty days. The proxy must not rewrite
+  those attributes, and the origin needs a valid certificate.
+
 ## Inspect registrations and current sessions separately
 
 ```sh

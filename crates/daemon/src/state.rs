@@ -1371,6 +1371,7 @@ impl AppState {
                     auth_required,
                     use_tls,
                     max_connections,
+                    tls_cert_sha256,
                 }) => {
                     // Degrade, never crash: a bad IMAP config skips just this
                     // account (mirroring Gmail above). Credentials resolve
@@ -1384,7 +1385,9 @@ impl AppState {
                         *auth_required,
                         *use_tls,
                         *max_connections,
-                    ) {
+                    )
+                    .and_then(|config| Ok(config.with_tls_cert_sha256(tls_cert_sha256.clone())?))
+                    {
                         Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
                             account_id.clone(),
                             config,

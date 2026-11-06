@@ -58,6 +58,12 @@ Options:
 
           [default: 4]
 
+      --imap-no-tls
+          Connect to IMAP without TLS. Only accepted for loopback hosts (127.0.0.0/8, ::1, localhost), such as a local bridge
+
+      --imap-tls-cert-sha256 <IMAP_TLS_CERT_SHA256>
+          Trust only the IMAP server certificate with this SHA-256 (hex), even if self-signed. `mxr accounts test <account>` prints it
+
       --smtp-host <SMTP_HOST>
 
 

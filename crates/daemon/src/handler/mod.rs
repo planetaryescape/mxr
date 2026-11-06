@@ -5119,6 +5119,7 @@ mod identity_activity_tests {
                     send: None,
                     device_code_url: None,
                     device_code_user_code: None,
+                    tls_cert_sha256: None,
                 },
             },
         }
@@ -5144,6 +5145,7 @@ mod identity_activity_tests {
                     send: None,
                     device_code_url: None,
                     device_code_user_code: None,
+                    tls_cert_sha256: None,
                 },
             },
         };

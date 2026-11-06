@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.225](https://github.com/planetaryescape/mxr/compare/v0.6.224...v0.6.225) (2026-11-06)
+
+
+### Bug Fixes
+
+* honour IMAP TLS modes and exact certificate pins ([#910](https://github.com/planetaryescape/mxr/issues/910)) ([5f7259c](https://github.com/planetaryescape/mxr/commit/5f7259cfe5771f02b0a74da5463c4b1d2e539157))
+
 ## [0.6.224](https://github.com/planetaryescape/mxr/compare/v0.6.223...v0.6.224) (2026-11-06)
 
 

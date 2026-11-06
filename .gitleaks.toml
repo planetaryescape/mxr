@@ -26,3 +26,10 @@ id = "generic-api-key"
   paths = ['''(^|/)crates/daemon/src/commands/serve/hosting\.rs$''']
   regexTarget = "secret"
   regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+[[rules]]
+id = "private-key"
+
+  [[rules.allowlists]]
+  description = "Throwaway self-signed TLS key for the IMAP transport tests; protects nothing"
+  paths = ['''(^|/)crates/provider-imap/src/test_fixtures/test-server\.key\.pem$''']

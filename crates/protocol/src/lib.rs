@@ -1530,6 +1530,7 @@ mod tests {
                         send: None,
                         device_code_url: None,
                         device_code_user_code: None,
+                        tls_cert_sha256: None,
                     },
                 },
                 IpcCategory::MxrPlatform,

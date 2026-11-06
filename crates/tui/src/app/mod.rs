@@ -1313,10 +1313,14 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 username,
                 password_ref,
                 auth_required,
+                use_tls,
                 max_connections,
+                tls_cert_sha256,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
+                form.imap_use_tls = use_tls;
+                form.imap_tls_cert_sha256 = tls_cert_sha256;
                 form.imap_host = host;
                 form.imap_port = port.to_string();
                 form.imap_max_connections = max_connections.to_string();

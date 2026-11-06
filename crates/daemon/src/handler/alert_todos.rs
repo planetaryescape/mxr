@@ -254,7 +254,7 @@ pub(super) async fn create_on_arrival(
     message: &PlaceMessage,
     alert: Alert,
     now: DateTime<Utc>,
-) -> Result<usize, HandlerError> {
+) -> Result<u64, HandlerError> {
     let assessment = assess(state, message, alert, now).await?;
     let Decision::Create(claim) = &assessment.decision else {
         return Ok(0);
@@ -286,7 +286,7 @@ pub(super) async fn create_on_arrival(
         tier: mxr_store::Tier::Important,
         context: Some(serde_json::json!({ "kind": claim.kind.as_str() })),
     });
-    Ok(1 + requests.len())
+    Ok(1 + requests.len() as u64)
 }
 
 /// Asks projection uses the same receiver gate before acknowledging its work.
@@ -295,7 +295,7 @@ pub(super) async fn project_payment_ask(
     state: &AppState,
     id: &mxr_core::MessageId,
     now: DateTime<Utc>,
-) -> Result<usize, HandlerError> {
+) -> Result<u64, HandlerError> {
     let Some(envelope) = state.store.get_envelope(id).await? else {
         return Ok(0);
     };

@@ -238,7 +238,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=111).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=112).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -299,6 +299,29 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
         sqlx::raw_sql("DROP TABLE message_arrivals; DROP TABLE alert_todo_claims;")
             .execute(expected.writer())
             .await?;
+    }
+    // The ordered thread page summary (migration 112) is derived from
+    // `messages` and `message_labels`: a restore from before it rebuilds it.
+    // A bundle stamped before 112 may or may not carry it (a test or a
+    // hand-stamped bundle made from a newer schema), so mirror whichever the
+    // bundle has instead of insisting on one shape.
+    let bundle_has_thread_role_pages: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'thread_role_pages')",
+    )
+    .fetch_one(&mut db)
+    .await?;
+    if manifest.schema_version < 112 && !bundle_has_thread_role_pages {
+        sqlx::raw_sql(concat!(
+            "DROP TRIGGER IF EXISTS thread_role_pages_message_insert; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_message_update; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_message_delete; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_label_insert; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_label_delete; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_label_role_update; ",
+            "DROP TABLE thread_role_pages;",
+        ))
+        .execute(expected.writer())
+        .await?;
     }
     if manifest.schema_version < 110 {
         sqlx::raw_sql("DROP TABLE remote_browser_sessions; DROP TABLE remote_browser_codes;")
@@ -607,7 +630,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=111).contains(&version) {
+    if !(80..=112).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -749,7 +772,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:111, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:112, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 

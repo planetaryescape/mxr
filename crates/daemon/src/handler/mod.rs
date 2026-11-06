@@ -784,7 +784,9 @@ async fn dispatch(
             attachment_id,
         } => mailbox::open_attachment(state, message_id, attachment_id).await,
         Request::ListBodies { message_ids } => mailbox::list_bodies(state, message_ids).await,
-        Request::GetThread { thread_id } => mailbox::get_thread(state, thread_id).await,
+        Request::GetThread { thread_id, window } => {
+            mailbox::get_thread(state, thread_id, window.as_ref()).await
+        }
         Request::ListThreads {
             account_id,
             label_id,

@@ -24,6 +24,13 @@ vi.mock("@/features/llm/useLlmStatus", () => ({
   llmPolicyKey: () => "off",
   useLlmStatus: () => ({ enabled: false, data: undefined }),
 }));
+const mailbox = vi.hoisted(() => ({
+  fetchThread: vi.fn<(id: string, page?: unknown) => Promise<ThreadResponse>>(),
+}));
+vi.mock("@/features/mailbox/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
+  fetchThread: mailbox.fetchThread,
+}));
 
 const thread: ThreadResponse = {
   thread: {
@@ -62,7 +69,88 @@ function Harness({ open }: { open: boolean }) {
   );
 }
 
+function row(id: string): ThreadResponse["messages"][number] {
+  return {
+    id,
+    kind: "message",
+    account_id: "acct",
+    thread_id: "thread-1",
+    provider_id: id,
+    sender: "Sam <sam@example.com>",
+    subject: "Contract renewal",
+    snippet: id,
+    date: "2026-10-06T16:00:00Z",
+    date_label: "",
+    date_full: "",
+    date_relative: "",
+    unread: false,
+    starred: false,
+    has_attachments: false,
+  };
+}
+
 describe("ThreadReader", () => {
+  test("prepends an earlier page without moving the reader or losing a message", async () => {
+    const page: ThreadResponse = {
+      thread: { ...thread.thread, message_ids: ["m0", "m1", "m2"] },
+      messages: [row("m1"), row("m2")],
+      bodies: [],
+      total_messages: 3,
+      has_earlier: true,
+      earlier_before: "m1",
+    };
+    Element.prototype.scrollIntoView = vi.fn<() => void>();
+    let resolveEarlier: ((value: ThreadResponse) => void) | undefined;
+    mailbox.fetchThread.mockReturnValue(
+      new Promise((resolve) => {
+        resolveEarlier = resolve;
+      }),
+    );
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <TooltipProvider>
+          <ThreadReader data={page} />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+
+    const scroll = screen.getByTestId("thread-scroll");
+    let height = 1000;
+    Object.defineProperty(scroll, "scrollHeight", {
+      configurable: true,
+      get: () => height,
+    });
+    scroll.scrollTop = 100;
+
+    fireEvent.click(screen.getByTestId("thread-load-earlier"));
+    expect(mailbox.fetchThread).toHaveBeenCalledWith("thread-1", {
+      before: "m1",
+      limit: 50,
+    });
+
+    // The prepended page adds 300px above the reader.
+    height = 1300;
+    await act(async () => {
+      resolveEarlier?.({
+        thread: page.thread,
+        messages: [row("m0")],
+        bodies: [],
+        total_messages: 3,
+        has_earlier: false,
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("thread-message").map((node) => node.dataset.messageId)).toEqual([
+        "m0",
+        "m1",
+        "m2",
+      ]),
+    );
+    await waitFor(() => expect(scroll.scrollTop).toBe(400));
+    expect(screen.queryByTestId("thread-load-earlier")).toBeNull();
+  });
+
   test("takes focus back when an overlay closes while it drives the keys", async () => {
     act(() => useMailboxPane.getState().setActivePane("reader"));
     const { rerender } = render(<Harness open />);

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import type { MessageRowView } from "@/features/mailbox/types";
+import type { MessageRowView, ThreadResponse } from "@/features/mailbox/types";
 
-import { targetFromRows } from "./target";
+import { targetFromRows, targetFromThread } from "./target";
 
 function row(overrides: Partial<MessageRowView>): MessageRowView {
   return {
@@ -39,5 +39,34 @@ describe("targetFromRows", () => {
   test("a message row unstars just its message", () => {
     const target = targetFromRows([row({ kind: "message", id: "m-1", starred: true })], "list");
     expect(target.unstarIds).toEqual(["m-1"]);
+  });
+});
+
+describe("targetFromThread", () => {
+  test("a windowed reader still acts on the whole conversation", () => {
+    const data: ThreadResponse = {
+      thread: {
+        account_id: "acct",
+        id: "thread-1",
+        latest_date: "2026-10-01T10:00:00Z",
+        message_count: 4,
+        message_ids: ["m-1", "m-2", "m-3", "m-4"],
+        participants: [],
+        snippet: "",
+        subject: "Launch checklist",
+        unread_count: 0,
+      },
+      // Only the newest page is loaded.
+      messages: [row({ id: "m-3", thread_id: "thread-1" }), row({ id: "m-4", thread_id: "thread-1" })],
+      bodies: [],
+      total_messages: 4,
+      has_earlier: true,
+      earlier_before: "m-3",
+    };
+    const target = targetFromThread(data);
+    expect(target.messageIds).toEqual(["m-1", "m-2", "m-3", "m-4"]);
+    expect(target.unstarIds).toEqual(["m-1", "m-2", "m-3", "m-4"]);
+    expect(target.rows.map((message) => message.id)).toEqual(["m-3", "m-4"]);
+    expect(target.primary?.id).toBe("m-4");
   });
 });

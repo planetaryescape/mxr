@@ -1479,6 +1479,7 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     for req in [
         Request::GetThread {
             thread_id: shared.clone(),
+            window: None,
         },
         Request::GetThreadContext {
             thread_id: shared.clone(),

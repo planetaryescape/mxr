@@ -29,8 +29,11 @@ export function ThreadPane({
   linkHighlight?: LinkHighlight;
 }) {
   const query = useQuery({
-    queryKey: ["thread", threadId],
-    queryFn: () => fetchThread(threadId),
+    queryKey: ["thread", threadId, "page", focusMessageId ?? ""],
+    // A deep link to a message older than the newest page asks for the page
+    // that ends at it; the reader can load older and newer pages from there.
+    queryFn: () =>
+      fetchThread(threadId, focusMessageId ? { focus: focusMessageId } : {}),
   });
   // Wait for both local context reads, so their lines are in place before
   // the first message paints. A failed read just leaves its line out. The

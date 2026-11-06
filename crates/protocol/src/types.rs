@@ -642,6 +642,23 @@ pub enum IpcPayload {
     Event(DaemonEvent),
 }
 
+/// One bounded page of a conversation, for readers that must not load a
+/// 2,000-message thread in one payload. `limit` counts messages; the page
+/// ends just before `before` (exclusive) or starts just after `after`
+/// (exclusive). `focus` returns the page ending at that message, so a deep
+/// link can open on an old message without loading everything newer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadWindow {
+    pub limit: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<MessageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<MessageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<MessageId>,
+}
+
 /// Every command a client can ask the daemon to perform.
 ///
 /// Tagged `cmd` on the wire. One flat enum is the whole client-facing
@@ -793,6 +810,10 @@ pub enum Request {
     },
     GetThread {
         thread_id: ThreadId,
+        /// A bounded page of the thread. Omitted returns every message,
+        /// which is what the CLI, TUI and MCP keep asking for.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window: Option<ThreadWindow>,
     },
     /// Paginated list of threads in date-descending order (most-recent
     /// first), with optional account/label filters. Each returned

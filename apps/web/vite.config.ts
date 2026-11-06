@@ -88,6 +88,12 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       output: {
+        // Named vendor chunks are for libraries every route loads and that
+        // change on their own cadence. The compose editors are deliberately
+        // absent: giving @tiptap and @codemirror their own groups also pulled
+        // their whole dependency subtree into those groups, so a thread that
+        // only needed `linkifyjs` from it downloaded 590 kB of editor code.
+        // Let Rollup follow the import graph for anything lazy.
         manualChunks: (id) => {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom"))
@@ -95,13 +101,6 @@ export default defineConfig({
           if (id.includes("node_modules/@tanstack")) return "vendor-tanstack";
           if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/cmdk"))
             return "vendor-radix";
-          if (id.includes("node_modules/@tiptap")) return "vendor-tiptap";
-          if (id.includes("node_modules/@replit/codemirror-vim")) return "vendor-codemirror-vim";
-          if (id.includes("node_modules/@codemirror/view")) return "vendor-codemirror-view";
-          if (id.includes("node_modules/@codemirror/state")) return "vendor-codemirror-state";
-          if (id.includes("node_modules/codemirror") || id.includes("node_modules/@codemirror"))
-            return "vendor-codemirror-core";
-          if (id.includes("node_modules/@lezer")) return "vendor-codemirror-core";
           if (id.includes("node_modules/lucide-react")) return "vendor-icons";
         },
       },

@@ -91,6 +91,17 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
     // Explicit offline maintenance must not touch demo state, logs or autostart a daemon.
     match cli.command.take() {
         Some(Command::Backup { action }) => return commands::backup::run(action).await,
+        Some(Command::Updates {
+            action: Some(cli::UpdatesAction::AlertAudit),
+            format,
+            cut,
+            expired,
+            account,
+        }) => {
+            anyhow::ensure!(cut.is_none() && !expired && account.is_none(),
+                "alert-audit assesses all local stored alerts; --cut, --expired and --account are not supported");
+            return commands::alert_audit::run(format).await;
+        }
         command => cli.command = command,
     }
     // Sticky demo: when `mxr demo` has been started in a prior invocation,

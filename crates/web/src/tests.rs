@@ -7280,6 +7280,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                         send: None,
                         device_code_url: None,
                         device_code_user_code: None,
+                        tls_cert_sha256: None,
                     },
                 },
             }),

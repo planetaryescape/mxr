@@ -323,6 +323,7 @@ fn smtp_only_form_test_allows_no_auth_and_marks_operation_pending() {
         send: None,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     });
 
     app.apply(Action::TestAccountForm);
@@ -397,6 +398,7 @@ fn failed_account_operation_opens_details_modal() {
             }),
             device_code_url: None,
             device_code_user_code: None,
+            tls_cert_sha256: None,
         };
 
     app.apply_account_operation_result(result);
@@ -425,6 +427,7 @@ fn account_form_o_reopens_result_details_modal() {
         send: None,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     });
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));

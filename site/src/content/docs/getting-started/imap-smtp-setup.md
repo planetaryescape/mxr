@@ -104,6 +104,29 @@ The `mxr accounts add` flow above is the supported path; the manual TOML shape i
 
 All use TLS. Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS.
 
+## Local bridges and STARTTLS
+
+`use_tls = true` on IMAP port 143 connects in plaintext, issues `STARTTLS` and upgrades with full certificate verification. mxr refuses to continue if the server does not advertise `STARTTLS`.
+
+A bridge that listens on the loopback interface (127.0.0.0/8, `::1` or `localhost`) can be used without TLS with `use_tls = false`. mxr refuses `use_tls = false` for any other host, because it would send your password unencrypted. For a remote server, use port 993 or port 143 with STARTTLS.
+
+A local server with its own self-signed certificate on an implicit-TLS port is trusted by pinning that exact certificate:
+
+```bash
+mxr accounts test work
+# ...
+#   IMAP server certificate SHA-256: 3f1a...e9
+```
+
+Then add it to the account:
+
+```toml
+[accounts.work.sync]
+tls_cert_sha256 = "3f1a...e9"
+```
+
+Or pass `--imap-tls-cert-sha256 <hex>` (and `--imap-no-tls` for a plaintext loopback bridge) to `mxr accounts add imap-smtp`. See the [IMAP reference](/reference/config/#imap-sync-provider) for how each mode verifies the server.
+
 For SMTP, `use_tls = true` selects implicit TLS on port 465 and STARTTLS on
 other ports, including 587. If your provider publishes port 465 instead of 587,
 set the provider's port explicitly and test the same path mxr will use to send:

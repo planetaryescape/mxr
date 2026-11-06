@@ -15,6 +15,7 @@ mod generic_backfill;
 mod generic_backfill_tests;
 pub mod parse;
 pub mod session;
+pub mod transport;
 pub mod types;
 
 use async_trait::async_trait;
@@ -28,6 +29,7 @@ pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
+pub use transport::probe_server_certificate_sha256;
 
 use crate::types::{FolderInfo, ImapCapabilities};
 

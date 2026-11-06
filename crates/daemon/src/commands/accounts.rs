@@ -48,6 +48,8 @@ pub async fn run(
             imap_username,
             imap_password,
             imap_max_connections,
+            imap_no_tls,
+            imap_tls_cert_sha256,
             smtp_host,
             smtp_port,
             smtp_no_auth,
@@ -67,6 +69,8 @@ pub async fn run(
                 imap_username,
                 imap_password,
                 imap_max_connections,
+                imap_no_tls,
+                imap_tls_cert_sha256,
                 smtp_host,
                 smtp_port,
                 smtp_no_auth,
@@ -541,6 +545,15 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     {
         println!("  {} {}", if step.ok { "ok" } else { "error" }, step.detail);
     }
+    if let Some(fingerprint) = &result.tls_cert_sha256 {
+        println!("  IMAP server certificate SHA-256: {fingerprint}");
+        println!(
+            "  For a server with a self-signed certificate (a local bridge), set \
+             tls_cert_sha256 = \"{fingerprint}\" on the account to trust only this certificate. \
+             Leave it unset for a normally signed server: a pin stops working when the \
+             certificate is renewed."
+        );
+    }
     if result.ok {
         return Ok(());
     }
@@ -700,6 +713,8 @@ pub(super) struct AddArgs {
     pub imap_username: Option<String>,
     pub imap_password: Option<String>,
     pub imap_max_connections: usize,
+    pub imap_no_tls: bool,
+    pub imap_tls_cert_sha256: Option<String>,
     pub smtp_host: Option<String>,
     pub smtp_port: u16,
     pub smtp_no_auth: bool,
@@ -839,6 +854,11 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     let imap_host = or_prompt(args.imap_host.clone(), "IMAP host: ")?;
     let imap_port_default = args.imap_port.to_string();
     let imap_port = or_prompt_default(None, "IMAP port", &imap_port_default)?.parse::<u16>()?;
+    // Fail here, not on the first sync, for a plaintext remote host or a typo'd pin.
+    mxr_provider_imap::transport::TransportMode::resolve(&imap_host, imap_port, !args.imap_no_tls)?;
+    if let Some(pin) = &args.imap_tls_cert_sha256 {
+        mxr_provider_imap::transport::CertFingerprint::parse(pin)?;
+    }
     let imap_auth_required = if args.imap_no_auth {
         false
     } else if args.imap_username.is_some() || args.imap_password.is_some() {
@@ -910,8 +930,9 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
             password_ref: imap_password_ref,
             password: imap_password,
             auth_required: imap_auth_required,
-            use_tls: true,
+            use_tls: !args.imap_no_tls,
             max_connections: args.imap_max_connections.max(1),
+            tls_cert_sha256: args.imap_tls_cert_sha256.clone(),
         }),
         send,
         is_default: false,

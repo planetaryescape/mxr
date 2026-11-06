@@ -870,6 +870,7 @@ pub(super) async fn authorize_account_config(
                         send: None,
                         device_code_url: Some(device_code_url),
                         device_code_user_code: Some(device_code_user_code),
+                        tls_cert_sha256: None,
                     }
                 }
             }
@@ -979,6 +980,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
     let mut sync = None;
     let mut send = None;
     let mut ok = true;
+    let mut tls_fingerprint = None;
 
     if let Some(sync_config) = account.sync.clone() {
         match sync_config {
@@ -1053,6 +1055,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 auth_required,
                 use_tls,
                 max_connections,
+                tls_cert_sha256,
                 ..
             } => {
                 match crate::provider_credentials::imap_config_with_credentials(
@@ -1063,8 +1066,19 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                     auth_required,
                     use_tls,
                     max_connections,
-                ) {
+                )
+                .and_then(|config| Ok(config.with_tls_cert_sha256(tls_cert_sha256)?))
+                {
                     Ok(config) => {
+                        // Read the certificate first so a self-signed bridge's
+                        // fingerprint is reported even when sync then fails
+                        // verification. Credentials are never sent on this probe.
+                        match mxr_provider_imap::probe_server_certificate_sha256(&config).await {
+                            Ok(fingerprint) => tls_fingerprint = fingerprint,
+                            Err(error) => {
+                                tracing::debug!("IMAP certificate probe failed: {error}");
+                            }
+                        }
                         let provider = mxr_provider_imap::ImapProvider::new(
                             mxr_core::AccountId::from_provider_id("imap", &account.email),
                             config,
@@ -1339,7 +1353,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
         None => {}
     }
 
-    account_operation_result(
+    let mut result = account_operation_result(
         ok,
         if ok {
             format!("Account '{}' test passed.", account.key)
@@ -1350,7 +1364,9 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
         auth,
         sync,
         send,
-    )
+    );
+    result.tls_cert_sha256 = tls_fingerprint;
+    result
 }
 
 pub(super) fn account_step(ok: bool, detail: String) -> AccountOperationStep {
@@ -1386,6 +1402,7 @@ pub(super) fn account_operation_result(
         send,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     }
 }
 
@@ -1471,6 +1488,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             auth_required,
             use_tls,
             max_connections,
+            tls_cert_sha256,
         } => AccountSyncConfigData::Imap {
             host,
             port,
@@ -1480,6 +1498,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             auth_required,
             use_tls,
             max_connections,
+            tls_cert_sha256,
         },
         mxr_config::SyncProviderConfig::OutlookPersonal {
             client_id,
@@ -1666,6 +1685,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
             max_connections,
+            tls_cert_sha256,
             ..
         } => Ok(mxr_config::SyncProviderConfig::Imap {
             host,
@@ -1675,6 +1695,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
             max_connections,
+            tls_cert_sha256,
         }),
         AccountSyncConfigData::OutlookPersonal {
             client_id,
@@ -1985,6 +2006,7 @@ mod tests {
             auth_required: true,
             use_tls: true,
             max_connections: 4,
+            tls_cert_sha256: None,
         });
 
         assert!(capabilities.push);

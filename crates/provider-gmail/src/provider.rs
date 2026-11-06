@@ -151,6 +151,15 @@ pub struct GmailProvider {
 }
 
 impl GmailProvider {
+    #[cfg(feature = "test-util")]
+    pub fn with_test_receiver(
+        mut self,
+        verifier: mxr_mail_parse::receiver_arc::ReceiverVerifier,
+    ) -> Self {
+        self.receiver_verifier = verifier;
+        self
+    }
+
     async fn send_reply_thread_id(
         &self,
         draft: &Draft,

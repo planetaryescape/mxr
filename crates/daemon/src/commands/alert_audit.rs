@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 pub struct AuditReport {
     /// Alerts replayed: a sign-in or failed-payment fact on inbound mail.
     pub candidates: usize,
+    pub auto_todo_enabled: bool,
     /// Counts are not a precision grade: the audit has no human truth labels.
     pub precision_evaluated: bool,
     /// How many currently satisfy the stored eligibility and freshness gates.
@@ -105,10 +106,26 @@ impl Inbound {
 }
 
 /// Replay the rule over every candidate.
-pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport {
+fn replay(
+    candidates: &[AuditCandidate],
+    mail: &[AuditMail],
+    existing: &[(String, String, String, String)],
+    enabled: bool,
+    now: DateTime<Utc>,
+) -> AuditReport {
     let inbound = Inbound::new(mail);
-    let mut report = AuditReport::default();
-    let mut claims = HashSet::new();
+    let mut report = AuditReport {
+        auto_todo_enabled: enabled,
+        ..Default::default()
+    };
+    let mut claims: HashSet<_> = existing
+        .iter()
+        .map(|(account, key, _, _)| (account.clone(), key.clone()))
+        .collect();
+    let mut originals: HashSet<_> = existing
+        .iter()
+        .map(|(account, _, fingerprint, kind)| (account.clone(), fingerprint.clone(), kind.clone()))
+        .collect();
     for candidate in candidates {
         let Ok(fact) = serde_json::from_str::<Fact>(&candidate.fact_json) else {
             continue;
@@ -126,7 +143,10 @@ pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport 
             .entry(if gmail { "gmail" } else { "other" }.to_string())
             .or_default() += 1;
         let evidence = &candidate.arrival;
-        let verified = evidence.verified_host.clone();
+        let verified = evidence
+            .message_fingerprint
+            .as_ref()
+            .and(evidence.verified_host.clone());
         let code = evidence.unverified_reason.map(|reason| reason.code());
         let (history, established) = match (&verified, evidence.received_at) {
             (Some(host), Some(at)) => (
@@ -140,10 +160,9 @@ pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport 
             ),
             _ => (History::default(), Vec::new()),
         };
-        let now = Utc::now();
         let input = AlertInput {
             kind,
-            enabled: true,
+            enabled,
             verified_host: verified.as_deref(),
             unverified_code: code,
             received_at: evidence.received_at,
@@ -162,7 +181,14 @@ pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport 
         };
         match decide(&input, &Local) {
             Decision::Create(claim) => {
-                if !claims.insert((candidate.account_id.clone(), claim.key)) {
+                let original = (
+                    candidate.account_id.clone(),
+                    evidence.message_fingerprint.clone().unwrap_or_default(),
+                    kind.as_str().to_string(),
+                );
+                if !claims.insert((candidate.account_id.clone(), claim.key))
+                    || !originals.insert(original)
+                {
                     *report.held.entry("already_claimed".into()).or_default() += 1;
                     continue;
                 }
@@ -204,10 +230,89 @@ pub async fn run(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut conn = sqlx::SqliteConnection::connect_with(&options).await?;
     let candidates = mxr_store::alert_audit_candidates(&mut conn).await?;
     let mail = mxr_store::alert_audit_inbound(&mut conn).await?;
+    let existing = mxr_store::alert_audit_claims(&mut conn).await?;
+    let enabled = mxr_config::load_config()?.updates.auto_todo_alerts;
     conn.close().await?;
     print!(
         "{}",
-        render(&replay(&candidates, &mail), resolve_format(format))?
+        render(
+            &replay(&candidates, &mail, &existing, enabled, Utc::now()),
+            resolve_format(format)
+        )?
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn counts_respect_real_clock_configuration_and_enduring_original_claims() {
+        let now = Utc::now();
+        let host = "stripe.com";
+        let fact = mxr_updates::derive(
+            &mxr_updates::FactInput {
+                subject: "Your payment failed",
+                body: None,
+                snippet: "",
+                from_email: "notifications@stripe.com",
+                from_name: None,
+                list_id: None,
+                date: now,
+            },
+            &Local,
+        );
+        let mut candidates = vec![AuditCandidate {
+            account_id: "account-a".into(),
+            sync_provider: Some("gmail".into()),
+            has_list_id: false,
+            fact_json: serde_json::to_string(&fact).expect("fact"),
+            in_inbox: true,
+            unread: true,
+            arrival: mxr_store::StoredArrival {
+                received_at: Some(now - chrono::Duration::minutes(1)),
+                is_live: true,
+                verified_host: Some(host.into()),
+                unverified_reason: None,
+                message_fingerprint: Some("candidate-original".into()),
+            },
+        }];
+        let mail: Vec<_> = [60, 40, 20]
+            .into_iter()
+            .map(|days| AuditMail {
+                account_id: "account-a".into(),
+                from_host: host.into(),
+                received_at: Some((now - chrono::Duration::days(days)).timestamp()),
+                observed_at: (now - chrono::Duration::days(days)).timestamp(),
+                message_fingerprint: format!("prior-{days}"),
+            })
+            .collect();
+        assert_eq!(replay(&candidates, &mail, &[], true, now).would_create, 1);
+        let old_claim = vec![(
+            "account-a".into(),
+            "alert|stripe.com|payment_failed|older-day".into(),
+            "candidate-original".into(),
+            "payment_failed".into(),
+        )];
+        let claimed = replay(&candidates, &mail, &old_claim, true, now);
+        assert_eq!(claimed.would_create, 0);
+        assert_eq!(claimed.held.get("already_claimed"), Some(&1));
+        assert_eq!(
+            replay(&candidates, &mail, &[], false, now)
+                .held
+                .get("switched_off"),
+            Some(&1)
+        );
+        candidates[0].arrival.received_at = Some(now - chrono::Duration::hours(25));
+        assert_eq!(
+            replay(&candidates, &mail, &[], true, now)
+                .held
+                .get("too_old"),
+            Some(&1)
+        );
+        let rendered = render(&claimed, OutputFormat::Json).expect("counts JSON");
+        assert!(!rendered.contains(host));
+        assert!(!rendered.contains("candidate-original"));
+        assert!(!claimed.precision_evaluated);
+    }
 }

@@ -84,3 +84,14 @@ pub async fn alert_audit_inbound(
         })
         .collect()
 }
+
+/// Enduring daily and original-message claims, read without replaying mail.
+pub async fn alert_audit_claims(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<(String, String, String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT account_id, dedup_key, message_fingerprint, alert_kind FROM alert_todo_claims",
+    )
+    .fetch_all(conn)
+    .await
+}

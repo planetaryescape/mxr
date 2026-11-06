@@ -143,7 +143,9 @@ mod wrapped;
 
 pub use account::AccountIdentitySlot;
 pub use account::PRIMARY_REMOVAL_REFUSED;
-pub use alert_audit::{alert_audit_candidates, alert_audit_inbound, AuditCandidate, AuditMail};
+pub use alert_audit::{
+    alert_audit_candidates, alert_audit_claims, alert_audit_inbound, AuditCandidate, AuditMail,
+};
 pub use analytics::AccountDirectionChanges;
 pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,

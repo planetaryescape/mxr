@@ -31,6 +31,7 @@ pub(super) struct Assessment {
     /// The verified host, when there is one.
     pub host: Option<String>,
     pub history: History,
+    pub handled_at: Option<DateTime<Utc>>,
 }
 
 /// What kind of alert a message is, and when a sign-in stops mattering.
@@ -112,6 +113,7 @@ pub(super) async fn assess(
         decision: decide(&input, &Local),
         host: verified_host,
         history,
+        handled_at: received_at,
     })
 }
 
@@ -257,7 +259,14 @@ pub(super) async fn create_on_arrival(
     let Decision::Create(claim) = &assessment.decision else {
         return Ok(false);
     };
-    let mut record = alert_record(state, message, claim, assessment.history, now);
+    let mut record = alert_record(
+        state,
+        message,
+        claim,
+        assessment.history,
+        assessment.handled_at,
+        now,
+    );
     enrich_from_stored_ask(state, message, claim, &mut record, now).await?;
     if !state
         .store
@@ -379,6 +388,7 @@ fn alert_record(
     message: &PlaceMessage,
     claim: &Claim,
     history: History,
+    handled_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
 ) -> TodoRecord {
     let kind = match claim.kind {
@@ -404,7 +414,7 @@ fn alert_record(
         account_id: message.account_id.clone(),
         thread_id: Some(message.thread_id.clone()),
         source_message_id: Some(message.id.clone()),
-        source_date: Some(message.date),
+        source_date: handled_at,
         source_filed_at: None,
         source_unread: Some(true),
         kind: kind.as_str().to_string(),

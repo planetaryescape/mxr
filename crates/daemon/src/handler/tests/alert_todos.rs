@@ -902,3 +902,108 @@ async fn copied_old_originals_observed_after_the_candidate_do_not_create_source_
     assert!(todos_for(&run).await.is_empty());
     println!("cross-mailbox old-copy adversary: manufactured_history_created=0");
 }
+
+#[tokio::test]
+async fn original_gmail_raw_crosses_sync_store_and_daemon_with_authenticated_timing() {
+    use base64::Engine;
+    use mxr_core::MailSyncProvider;
+    use mxr_mail_parse::receiver_arc::{
+        test_fixtures::{fixture, SIGNED},
+        ReceiverVerifier,
+    };
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    for days in [60, 40, 20] {
+        store_prior(&fx, "stripe.com", now - Duration::days(days)).await;
+    }
+    let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, false).await;
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&raw);
+    let body = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode("Your payment failed. Please update your payment details.");
+    let server = MockServer::start().await;
+    Mock::given(method("GET")).and(path("/messages/signed-original")).and(query_param("format", "full"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id":"signed-original", "threadId":"signed-thread", "internalDate":"1", "sizeEstimate":raw.len(), "labelIds":["INBOX","UNREAD"],
+            "payload":{"mimeType":"text/plain", "headers":[
+                {"name":"From","value":"Stripe <notifications@stripe.com>"},
+                {"name":"To","value":"user@example.com"},
+                {"name":"Subject","value":"Your payment of $20.00 failed"},
+                {"name":"ARC-Seal","value":"fetch original to verify"}
+            ], "body":{"data":body,"size":60}}
+        }))).expect(1).mount(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/messages/signed-original"))
+        .and(query_param("format", "raw"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            serde_json::json!({"id":"signed-original","threadId":"signed-thread","raw":encoded}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = mxr_provider_gmail::client::GmailClient::new(
+        mxr_provider_gmail::auth::GmailAuth::for_test_token("synthetic-token"),
+    )
+    .with_base_url(server.uri());
+    let provider = mxr_provider_gmail::GmailProvider::new(fx.account.clone(), client)
+        .with_test_receiver(ReceiverVerifier::for_test(dns));
+    let synced = provider
+        .fetch_message("signed-original")
+        .await
+        .expect("synthetic API fetch")
+        .expect("message");
+    assert!(
+        matches!(synced.arrival.sender, SenderCheck::Verified { ref host } if host == "stripe.com")
+    );
+    let signed_at = synced
+        .arrival
+        .received_at
+        .expect("authenticated handling time");
+    assert!(synced.envelope.date < signed_at - Duration::days(365));
+    let id = synced.envelope.id.clone();
+    let mut page = [mxr_store::SyncUpsert {
+        envelope: synced.envelope,
+        body: synced.body,
+        direction: MessageDirection::Inbound,
+        label_ids: vec![fx.inbox.clone()],
+        arrival: ArrivalEvidence {
+            is_live: true,
+            ..synced.arrival
+        },
+    }];
+    fx.state
+        .store
+        .apply_sync_upserts(&mut page)
+        .await
+        .expect("sync transaction");
+    updates::scan(&fx.state, std::slice::from_ref(&id), Utc::now())
+        .await
+        .expect("daemon scan");
+    let tasks = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .expect("tasks");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].title, "Fix failed payment · stripe.com");
+    assert_eq!(tasks[0].source_date, Some(signed_at));
+    assert!(tasks[0].relevant_until.is_none_or(|at| at > now));
+    assert!(tasks[0].reason.contains("verified origin stripe.com"));
+    updates::scan(&fx.state, &[id], Utc::now())
+        .await
+        .expect("rescan");
+    assert_eq!(
+        fx.state
+            .store
+            .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+            .await
+            .expect("tasks")
+            .len(),
+        1
+    );
+    println!("signed Gmail RAW -> sync -> store -> daemon: created=1 rescan_extra=0 API_date_used_for_age=false");
+}

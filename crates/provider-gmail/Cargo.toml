@@ -9,7 +9,7 @@ description = "Internal: Gmail REST API adapter for mxr"
 publish = false
 
 [features]
-test-util = []
+test-util = ["mxr-mail-parse/test-util"]
 
 [lints]
 workspace = true

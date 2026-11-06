@@ -55,6 +55,7 @@ async fn pairing(
     }
     public_response(call(&socket, Request::RemoteAuthority { request }).await?)
 }
+
 async fn cleanup(
     State(socket): State<PathBuf>,
     Json(request): Json<RemoteRequest>,
@@ -67,6 +68,7 @@ async fn cleanup(
     }
     public_response(call(&socket, Request::RemoteAuthority { request }).await?)
 }
+
 fn public_response(response: Response) -> Result<Json<Response>, StatusCode> {
     match response {
         Response::Ok { .. } => Ok(Json(response)),
@@ -118,26 +120,150 @@ async fn upgrade(
 }
 
 async fn session(mut ws: WebSocket, socket: PathBuf, id: String, secret: RemoteSecret) {
-    let Ok(mut connection) = IpcConnection::connect_supervised(&socket, ClientKind::Web).await
-    else {
-        return;
-    };
-    let session_id = uuid::Uuid::now_v7().to_string();
-    let mut surface = "web";
-    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(20));
+    let mut connection: Option<IpcConnection> = None;
+    let mut declared_kind = None;
+    let setup_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     let mut bytes = BytesMut::new();
     let mut codec = IpcCodec::new();
+
+    while connection.is_none() {
+        let message = match tokio::time::timeout_at(setup_deadline, ws.next()).await {
+            Ok(Some(Ok(m))) => m,
+            _ => return,
+        };
+        match message {
+            Message::Binary(data) => {
+                let mut offset = 0;
+                while offset < data.len() {
+                    let size = (LIMIT - bytes.len()).min(data.len() - offset);
+                    if size == 0 {
+                        return;
+                    }
+                    bytes.extend_from_slice(&data[offset..offset + size]);
+                    offset += size;
+                    let frame = match codec.decode(&mut bytes) {
+                        Ok(Some(frame)) => frame,
+                        Ok(None) => continue,
+                        Err(_) => return,
+                    };
+                    let IpcPayload::Request(request) = frame.payload else {
+                        return;
+                    };
+                    let Request::DeclareClient {
+                        kind,
+                        protocol_version,
+                    } = request
+                    else {
+                        return;
+                    };
+                    if kind != frame.source
+                        || protocol_version != mxr_protocol::IPC_PROTOCOL_VERSION
+                    {
+                        return;
+                    }
+                    match tokio::time::timeout_at(
+                        setup_deadline,
+                        IpcConnection::connect_supervised(&socket, kind),
+                    )
+                    .await
+                    {
+                        Ok(Ok(opened)) => {
+                            connection = Some(opened);
+                            declared_kind = Some(kind);
+                            if !send_frame(
+                                &mut ws,
+                                &mut codec,
+                                frame.id,
+                                IpcPayload::Response(Response::Ok {
+                                    data: mxr_protocol::ResponseData::Ack,
+                                }),
+                            )
+                            .await
+                            {
+                                return;
+                            }
+                            break;
+                        }
+                        Ok(Err(mxr_client::ClientError::Daemon {
+                            kind: mxr_protocol::IpcErrorKind::Policy,
+                            ..
+                        })) => {
+                            let _ = send_frame(
+                                &mut ws,
+                                &mut codec,
+                                frame.id,
+                                IpcPayload::Response(Response::error_kinded(
+                                    format!(
+                                        "{} clients require [agents.profiles.{}] on the daemon host; configure that profile and reconnect",
+                                        kind.as_str(),
+                                        kind.as_str()
+                                    ),
+                                    mxr_protocol::IpcErrorKind::Policy,
+                                )),
+                            )
+                            .await;
+                            return;
+                        }
+                        _ => {
+                            let _ = send_frame(
+                                &mut ws,
+                                &mut codec,
+                                frame.id,
+                                IpcPayload::Response(Response::error_kinded(
+                                    "Client declaration failed; check host availability and matching mxr protocol versions",
+                                    mxr_protocol::IpcErrorKind::Unsupported,
+                                )),
+                            )
+                            .await;
+                            return;
+                        }
+                    }
+                }
+            }
+            Message::Ping(data) => {
+                if ws.send(Message::Pong(data)).await.is_err() {
+                    return;
+                }
+            }
+            Message::Pong(_) => (),
+            _ => return,
+        }
+    }
+
+    let Some(mut connection) = connection else {
+        return;
+    };
+    let declared_kind = declared_kind.unwrap_or(ClientKind::Web);
+    let session_id = uuid::Uuid::now_v7().to_string();
+    let surface = match declared_kind {
+        ClientKind::Cli => "cli",
+        ClientKind::Tui => "tui",
+        ClientKind::Mcp => "mcp",
+        ClientKind::Agent => "agent",
+        _ => "web",
+    };
+    let mut heartbeat = tokio::time::interval_at(
+        tokio::time::Instant::now() + std::time::Duration::from_secs(20),
+        std::time::Duration::from_secs(20),
+    );
+
     'session: loop {
         tokio::select! {
             _ = heartbeat.tick() => {
-                if !touch(&socket, &id, &secret, &session_id, surface).await && !authenticated(&socket, &id, &secret).await { break; }
+                if !touch(&socket, &id, &secret, &session_id, surface).await && !authenticated(&socket, &id, &secret).await {
+                    break;
+                }
             }
             event = connection.next_event() => {
                 let Ok(frame) = event else { break; };
                 if let IpcPayload::Event(event) = frame.payload {
                     if !crate::remote_browser::event_visible(&id, &event) { continue; }
-                    if !matches!(event, mxr_protocol::DaemonEvent::ServerStopping { .. }) && !authenticated(&socket, &id, &secret).await { break; }
-                    if !send_frame(&mut ws, &mut codec, 0, IpcPayload::Event(crate::remote_browser::public_event(event))).await { break; }
+                    if !matches!(event, mxr_protocol::DaemonEvent::ServerStopping { .. }) && !authenticated(&socket, &id, &secret).await {
+                        break;
+                    }
+                    if !send_frame(&mut ws, &mut codec, 0, IpcPayload::Event(crate::remote_browser::public_event(event))).await {
+                        break;
+                    }
                 }
             }
             message = ws.next() => {
@@ -155,28 +281,55 @@ async fn session(mut ws: WebSocket, socket: PathBuf, id: String, secret: RemoteS
                                     Ok(None) => break,
                                     Err(_) => break 'session,
                                 };
+                                if frame.source != declared_kind
+                                    || matches!(frame.payload, IpcPayload::Request(Request::DeclareClient { .. }))
+                                {
+                                    let response = Response::error_kinded(
+                                        "request conflicts with the declared client identity",
+                                        mxr_protocol::IpcErrorKind::Policy,
+                                    );
+                                    if !send_frame(&mut ws, &mut codec, frame.id, IpcPayload::Response(response)).await {
+                                        break 'session;
+                                    }
+                                    continue;
+                                }
                                 let IpcPayload::Request(request) = frame.payload else { break 'session; };
-                                surface = match frame.source {
-                                    ClientKind::Cli => "cli", ClientKind::Tui => "tui", ClientKind::Mcp => "mcp",
-                                    ClientKind::Agent => "agent", _ => "web",
+                                if !touch(&socket, &id, &secret, &session_id, surface).await && !authenticated(&socket, &id, &secret).await {
+                                    break 'session;
+                                }
+                                let response = match request_with_events(
+                                    &mut connection,
+                                    &mut ws,
+                                    &mut codec,
+                                    &socket,
+                                    &id,
+                                    &secret,
+                                    Request::RemoteRead {
+                                        expected_workspace: frame.expected_workspace,
+                                        client_id: id.clone(),
+                                        mail_secret: secret.clone(),
+                                        request: Box::new(request),
+                                    },
+                                ).await {
+                                    Ok(response) => response,
+                                    Err(()) => break 'session,
                                 };
-                                if !touch(&socket, &id, &secret, &session_id, surface).await && !authenticated(&socket, &id, &secret).await { break 'session; }
-                                // Authentication, workspace ownership and the exact operation are checked by the daemon.
-                                let response = match request_with_events(&mut connection, &mut ws, &mut codec, &socket, &id, &secret,
-                                    Request::RemoteRead { expected_workspace: frame.expected_workspace, client_id: id.clone(), mail_secret: secret.clone(), request: Box::new(request) }).await {
-                                    Ok(response) => response, Err(()) => break 'session,
-                                };
-                                if !send_frame(&mut ws, &mut codec, frame.id, IpcPayload::Response(response)).await { break 'session; }
+                                if !send_frame(&mut ws, &mut codec, frame.id, IpcPayload::Response(response)).await {
+                                    break 'session;
+                                }
                             }
                         }
                     }
-                    Some(Ok(Message::Ping(data))) => { if ws.send(Message::Pong(data)).await.is_err() { break; } }
+                    Some(Ok(Message::Ping(data))) => {
+                        if ws.send(Message::Pong(data)).await.is_err() { break; }
+                    }
                     Some(Ok(Message::Pong(_))) => (),
                     _ => break,
                 }
             }
         }
     }
+
     let _ = call(
         &socket,
         Request::RemoteAuthority {
@@ -379,3 +532,6 @@ async fn request_with_events(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

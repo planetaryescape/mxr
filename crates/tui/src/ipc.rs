@@ -596,32 +596,27 @@ mod tests {
         );
     }
 
-    use futures::SinkExt;
+    use futures::{SinkExt, StreamExt};
     use mxr_core::id::AccountId;
     use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload};
-    use tokio::io::AsyncReadExt;
     use tokio_util::codec::Framed;
 
-    /// A daemon that accepts the connection but never replies must produce
-    /// a timeout error, not park the worker (and the UI status) forever.
+    /// A daemon that acknowledges setup but stalls ordinary requests must
+    /// produce a timeout error instead of parking the worker forever.
     #[tokio::test(start_paused = true)]
     async fn unresponsive_daemon_times_out_instead_of_hanging() {
         let dir = tempfile::tempdir().expect("tempdir");
         let sock = dir.path().join("mxr.sock");
         let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
 
-        // Accept and read forever, never writing a response.
+        // Finish setup, then leave ordinary requests unanswered.
         tokio::spawn(async move {
-            let Ok((mut stream, _)) = listener.accept().await else {
+            let Ok((stream, _)) = listener.accept().await else {
                 return;
             };
-            let mut sink = [0u8; 1024];
-            loop {
-                match stream.read(&mut sink).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
-                }
-            }
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::selected_daemon_tests::accept_declaration(&mut framed).await;
+            while let Some(Ok(_)) = framed.next().await {}
         });
 
         let (result_tx, _result_rx) = mpsc::unbounded_channel();
@@ -652,6 +647,7 @@ mod tests {
                 return;
             };
             let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::selected_daemon_tests::accept_declaration(&mut framed).await;
             let status_request = futures::StreamExt::next(&mut framed)
                 .await
                 .unwrap()

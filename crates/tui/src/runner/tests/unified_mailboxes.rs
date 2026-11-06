@@ -47,6 +47,7 @@ async fn serve_two_accounts(
             let (envelopes, seen_roles) = (envelopes.clone(), seen_roles.clone());
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                crate::selected_daemon_tests::accept_declaration(&mut framed).await;
                 while let Some(Ok(message)) = framed.next().await {
                     let IpcPayload::Request(request) = message.payload else {
                         panic!("request")

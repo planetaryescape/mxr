@@ -26,7 +26,7 @@ HTTP bridge (mxr-web): REST + WS + SPA gateway — consumes a Connector; NOT a S
 
 Three principles, each with a decision-log entry:
 
-- **Frozen protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `31` (`crates/protocol/src/lib.rs`) and does not move per transport. From protocol 29 onward, clients decode unrecognised daemon events as `DaemonEvent::Unknown`. Original workspace ownership introduced protocol 11. Category-rule request/response variants require protocol 10 because older peers reject unknown enum variants; immutable draft attachments introduced protocol 9 and to-do resolution introduced protocol 8. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
+- **Frozen protocol.** `IpcMessage` / `Request` / `ResponseData` / `DaemonEvent` and `IpcCodec` framing (4-byte length prefix, JSON body, 16 MiB cap — `crates/protocol/src/codec.rs`) are identical on every transport. `IPC_PROTOCOL_VERSION` is `32` (`crates/protocol/src/lib.rs`) and does not move per transport. From protocol 29 onward, clients decode unrecognised daemon events as `DaemonEvent::Unknown`. Original workspace ownership introduced protocol 11. Category-rule request/response variants require protocol 10 because older peers reject unknown enum variants; immutable draft attachments introduced protocol 9 and to-do resolution introduced protocol 8. The ecosystem premium is on the protocol, not transport pluggability (the Podman/varlink regret — see D052, D055).
 - **Byte-stream-level abstraction.** An adapter produces a connected `AsyncRead + AsyncWrite` stream plus peer/auth evidence — nothing more. Not a typed-RPC `Transport` (tarpc), which would exclude curl/jq/scripts/non-Rust agents against mxr's CLI-first JSON shape (D055).
 - **HTTP is a gateway.** `mxr-web` translates REST/WS into the same `Request` enum and *uses* a client transport; it is not a `ServerTransport`. Discovery measured it: ~100 lines transport plumbing, ~5,500 lines presentation (D052).
 
@@ -63,7 +63,7 @@ The `stop_accepting` / `cleanup` split is deliberate: during an upgrade restart 
 |---|---|
 | `async connect(&self) -> Result<BoxedIo>` | Open one connection. |
 | `describe(&self) -> String` | What this connector dials. |
-| `auth_token(&self) -> Option<&str>` | Bearer token, if any. The byte-stream seam stays protocol-free: the connector advertises a token here, and `mxr_client::IpcConnection::connect_with` performs the framed `Authenticate` handshake. Default `None` (no handshake) — every implicit-trust transport. |
+| `auth_token(&self) -> Option<&str>` | Bearer token, if any. The byte-stream seam stays protocol-free: the connector advertises a token here, and `mxr_client::IpcConnection::connect_with` performs the framed `Authenticate` handshake. Default `None` skips token authentication on implicit-trust transports. Every connection still declares its client kind. |
 
 `BoxedIo = Box<dyn AsyncReadWrite + Send + Unpin>`; `AsyncReadWrite` is blanket-implemented for any `AsyncRead + AsyncWrite`, so the boxed connection drops straight into `Framed<_, IpcCodec>`.
 
@@ -102,7 +102,7 @@ Docker's precedent — a small scheme names an endpoint. `MXR_DAEMON_ADDR` (`DAE
 - `tcp://<host:port>` — loopback + token (§4).
 - `cmd://<command line>` — spawn-and-pipe; argv whitespace-split, no shell quoting.
 
-CLI, native TUI and stdio MCP resolve one `SelectedDaemonTarget` per session. Their initial, dedicated and reconnect connections retain that target. TCP authenticates before status; the complete remote connect/auth/status handshake has a five-second bound. Remote peers must report exactly protocol 11; package versions and build IDs may differ. Per-operation capability checks still apply. Missing, older or newer protocol identities fail before ordinary requests, with no local fallback or remote restart.
+CLI, native TUI and stdio MCP resolve one `SelectedDaemonTarget` per session. Their initial, dedicated and reconnect connections retain that target. TCP authenticates before client declaration and status; the complete remote connect/auth/declaration/status handshake has a five-second bound. Remote peers must report exactly protocol 32; package versions and build IDs may differ. Per-operation capability checks still apply. Missing, older or newer protocol identities fail before ordinary requests, with no local fallback or remote restart.
 
 The TUI captures its original workspace owner once before loading mail. Background, dedicated, archive-preview and reply-prewarm connections retain that owner; a failed initial capture stays unavailable until explicit reopen. Pending private work keeps its existing owner after reconnect or recovery-generation changes. An empty client account configuration does not suppress remote mailbox loading.
 
@@ -125,13 +125,47 @@ Leaving UDS-only removes implicit protections one at a time (Caddy / Tailscale m
 | **TCP loopback** | `TcpServerTransport` | `TokenRequired` | **none** — any local process, and browsers via DNS-rebinding / `0.0.0.0` tricks | bearer token even on loopback; **refuse non-loopback bind** (no TLS in scope) |
 | **TCP remote** | — (out of scope) | — | none | mTLS or refuse; recommend deferring remote entirely (D054/Q2) |
 
-The serve core enforces the TCP row: `TokenRequired` peers get `IpcErrorKind::Auth` on every request — and no events — until a successful `Authenticate` (`ConnectionAuth`, `crates/daemon/src/serve.rs:56`). UDS/memory/stdio start trusted and are byte-for-byte unchanged (pinned by the corpus's no-auth tests, so an accidental token-gate on UDS fails loudly).
+The serve core enforces the TCP row: `TokenRequired` peers get `IpcErrorKind::Auth` on every request — and no events — until a successful `Authenticate` (`ConnectionAuth`, `crates/daemon/src/serve.rs:56`). UDS/memory/stdio start trusted and skip token authentication. Every transport still requires the client declaration before ordinary requests and events.
 
 ---
 
+### Declare the client before ordinary traffic
+
+After token authentication where required, send this framed IPC message
+(`Cli`, `Tui`, `Web`, `Agent` and `Mcp` all use the same common client setup):
+
+```json
+{"id":1,"source":"mcp","payload":{"type":"Request","cmd":"DeclareClient","kind":"mcp","protocol_version":32}}
+```
+
+The daemon sends an `Ack` with the same id before any event. Both kind fields
+must agree and the protocol revision must match exactly. The declared kind
+stays fixed for the connection. Conflicting later source tags and repeated
+or late declarations are rejected; they cannot switch request or event
+profiles. A missing declaration admits no ordinary request and releases no
+event or lag count. Malformed declarations close the connection. Setup must
+finish within five seconds, including token authentication.
+
+The common `IpcConnection::connect_with` path performs this setup for Unix,
+memory, TCP, stdio/command and paired HTTPS connectors, including event-only
+consumers. Paired gateways preserve the declared kind through remote
+admission. Host agent/MCP profiles intersect with registration grants before
+specialized preview/send paths or generic dispatch; ordinary paired CLI/web
+access remains governed by registration grants. Per-operation proof,
+workspace ownership, review/safety checks and response sanitization still
+apply. A missing host profile names the required `[agents.profiles.<kind>]`
+section; configure it, restart the host daemon, then reconnect.
+
+Protocol 32 deliberately requires upgraded clients and hosts. Older clients
+that start with an ordinary request receive an unsupported-protocol error
+and disconnect; they cannot subscribe by remaining silent. A new client
+cannot use a host that cannot acknowledge the declaration. The client kind
+is cooperative policy metadata, not process authentication: a hostile
+same-user process can still declare itself `cli`.
+
 ## 4. Auth: the token gate
 
-One additive protocol request (`Request::Authenticate { token }` → `ResponseData::Authenticated`), **no `IPC_PROTOCOL_VERSION` bump** — additive-only, an old client never emits it, and the only transport that requires it (TCP) is new (D054). The gate is connection-scoped state in the serve core, not the transport (which stays protocol-free) and not the stateless dispatcher (which has no connection notion). The `Authenticated` ack is sent inline so it always precedes any buffered event. The token is a dedicated IPC secret — `MXR_DAEMON_TOKEN` env > `<config_dir>/daemon-token` (0600, atomic create), via `mxr_config::resolve_daemon_token` (`crates/config/src/resolve.rs:172`) — distinct from the HTTP bridge token (reusing it would leak: the bridge hands its token to any loopback caller). Comparison is constant-time; the `TcpConnector` refuses non-loopback targets so the token is never sent in plaintext off-machine.
+One additive protocol request (`Request::Authenticate { token }` → `ResponseData::Authenticated`), **no `IPC_PROTOCOL_VERSION` bump** — additive-only, an old client never emits it, and the only transport that requires it (TCP) is new (D054). The gate is connection-scoped state in the serve core, not the transport (which stays protocol-free) and not the stateless dispatcher (which has no connection notion). The `Authenticated` ack is sent inline. Events remain withheld until the subsequent client declaration is acknowledged. The token is a dedicated IPC secret — `MXR_DAEMON_TOKEN` env > `<config_dir>/daemon-token` (0600, atomic create), via `mxr_config::resolve_daemon_token` (`crates/config/src/resolve.rs:172`) — distinct from the HTTP bridge token (reusing it would leak: the bridge hands its token to any loopback caller). Comparison is constant-time; the `TcpConnector` refuses non-loopback targets so the token is never sent in plaintext off-machine.
 
 ---
 

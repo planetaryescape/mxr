@@ -642,12 +642,13 @@ async fn dispatch(
             mail_secret,
             request,
         } => {
-            remote::read_owned(
+            remote::read_owned_as(
                 state,
                 client_id,
                 mail_secret,
                 request,
                 expected_workspace.as_ref(),
+                source,
             )
             .await
         }
@@ -1243,6 +1244,9 @@ async fn dispatch(
         // request reaching here is on an already-trusted connection (UDS,
         // in-process, stdio, or a redundant handshake after a valid one), so
         // acknowledge it as a harmless no-op.
+        Request::DeclareClient { .. } => Err(HandlerError::InvalidRequest(
+            "client declaration is only accepted during connection setup".into(),
+        )),
         Request::Authenticate { .. } => Ok(ResponseData::Authenticated),
 
         // ----- activity log (Phase 3) -----
@@ -2816,6 +2820,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::PreviewDraftAttachment { .. }
         | Request::GetStatus
         | Request::Ping
+        | Request::DeclareClient { .. }
         | Request::Authenticate { .. }
         | Request::ListEventCategories
         | Request::CountEvents { .. }
@@ -3404,6 +3409,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetRemoteReady => "remote_ready",
         Request::PreviewDraft { .. } => "preview_draft",
         Request::RemoteAuthority { .. } => "remote_authority",
+        Request::DeclareClient { .. } => "declare_client",
         Request::Authenticate { .. } => "authenticate",
         Request::ListEventCategories => "list_event_categories",
         Request::CountEvents { .. } => "count_events",

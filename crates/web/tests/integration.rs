@@ -58,6 +58,22 @@ where
             let events = events.clone();
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                let declaration = framed.next().await.expect("declaration").expect("decode");
+                assert!(
+                    matches!(declaration.payload, IpcPayload::Request(Request::DeclareClient { kind: mxr_protocol::ClientKind::Web, protocol_version })
+                    if declaration.source == mxr_protocol::ClientKind::Web && protocol_version == IPC_PROTOCOL_VERSION)
+                );
+                framed
+                    .send(IpcMessage {
+                        expected_workspace: None,
+                        id: declaration.id,
+                        source: mxr_protocol::ClientKind::Daemon,
+                        payload: IpcPayload::Response(Response::Ok {
+                            data: ResponseData::Ack,
+                        }),
+                    })
+                    .await
+                    .expect("declaration ack");
                 for event in events.iter() {
                     let _ = framed
                         .send(IpcMessage {

@@ -5,8 +5,8 @@ description: Run mxr as a local Model Context Protocol server.
 
 mxr ships a first-party MCP server for agents that support stdio MCP tools.
 The server does not talk to Gmail or IMAP directly. Every tool calls the selected
-mxr daemon. Local MCP calls use the host's MCP profile, account allowlist and
-send gates; paired HTTPS calls use the approved registration grant. Provider
+mxr daemon. MCP calls use the selected host's MCP profile, account allowlist and
+send gates. Paired HTTPS calls also require the approved registration grant. Provider
 adapters and send safety remain on the daemon.
 
 For a local Codex setup that starts with synthetic mail and saves a draft for
@@ -26,7 +26,7 @@ The command speaks MCP over stdin/stdout. It retains the selected daemon for eve
 MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 ```
 
-`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report the same IPC protocol version as the client (`protocol_version` in `mxr status --format json`); different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before declaring its client kind and requesting status. Remote setup must complete within five seconds and report the same IPC protocol version as the client (`protocol_version` in `mxr status --format json`); different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 
@@ -34,11 +34,11 @@ For a supervised daemon,
 the MCP client and the `mxr` CLI both connect to the service-owned process. If
 the service is unavailable, MCP reports the IPC connection error.
 
-A saved paired HTTPS connection uses the host-approved registration across mailbox accounts. The local `[agents.profiles.mcp]` policy does not narrow that registration. Default registrations are read-only; request `mxr connect HTTPS_ORIGIN --allow-send` and compare the grant and challenge during host approval to compose or send. Host configuration, process control, activity and recovery administration remain unavailable through that connection.
+A saved paired HTTPS connection requires both the host-approved registration and the selected host's `[agents.profiles.mcp]` policy. The host profile can narrow the registration's account access and send permissions; it cannot grant operations the registration lacks. Default registrations are read-only; request `mxr connect HTTPS_ORIGIN --allow-send` and compare the grant and challenge during host approval to compose or send. Host configuration, process control, activity and recovery administration remain unavailable through that connection.
 
 ## Required profile
 
-Local MCP IPC is denied unless `[agents.profiles.mcp]` exists in `config.toml`:
+Local and paired MCP connections are denied unless `[agents.profiles.mcp]` exists in `config.toml`:
 
 ```toml
 [agents.profiles.mcp]
@@ -47,6 +47,22 @@ allowed_accounts = ["work"]       # account key, email, or account id
 allow_send = false
 allow_destructive = false
 ```
+
+Set this profile on the daemon host, including for a saved paired HTTPS connection.
+A missing profile returns `mcp clients require [agents.profiles.mcp] on the daemon host`.
+Save the host configuration and restart the host daemon through its service
+manager, or run `mxr restart` on the host for a manually managed daemon. Then
+restart `mxr mcp serve` on the client. Adding a local client-side profile cannot
+change a remote host's permissions.
+
+The common IPC client declares `mcp` during connection setup, before any
+ordinary request or event. This identity stays fixed until disconnect;
+conflicting later source tags and late declarations are rejected. Setup takes
+at most five seconds. Upgrade host and clients together: protocol 32 requires
+the declaration, and older clients cannot continue by sending `GetStatus`
+first. The declaration selects a cooperative-client profile; a hostile local
+process can still declare itself `cli`. A paired registration holder can also
+declare `cli` and use the registration's full grant.
 
 With `allowed_accounts` set, a request for another account is denied. The
 Reading edition and highlights export with no account cover only the allowed

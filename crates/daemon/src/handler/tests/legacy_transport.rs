@@ -38,6 +38,7 @@ async fn legacy_tcp_keeps_real_daemon_save_send_archive_download_and_safety_cont
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::test_fixtures::accept_client_declaration(&mut framed, ClientKind::Cli).await;
         while let Some(Ok(message)) = framed.next().await {
             let response = handle_request(&server_state, &message).await;
             framed.send(response).await.unwrap();

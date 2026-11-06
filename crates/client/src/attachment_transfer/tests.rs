@@ -23,6 +23,7 @@ async fn server_with_bytes(
     tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("test operation succeeds");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         while let Some(Ok(message)) = framed.next().await {
             let IpcPayload::Request(request) = message.payload else {
                 continue;
@@ -273,6 +274,7 @@ async fn no_clobber_preserves_a_destination_created_during_transfer() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("test operation succeeds");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut chunk_requested = Some(chunk_requested);
         let mut allow_chunk_rx = Some(allow_chunk_rx);
         while let Some(Ok(message)) = framed.next().await {
@@ -402,6 +404,7 @@ async fn dropping_a_transfer_removes_its_partial_file() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("test operation succeeds");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut requested = Some(requested);
         while let Some(Ok(message)) = framed.next().await {
             let IpcPayload::Request(request) = message.payload else {

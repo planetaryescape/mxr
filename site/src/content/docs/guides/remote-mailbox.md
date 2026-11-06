@@ -67,7 +67,7 @@ mxr serve pair approve REQUEST_ID --confirm --format json
 
 Repeat the client's confirmed `mxr connect` command to claim the registration and save the connection. It reports `selection_applied: true` after verifying the host identity, workspace and protocol. Repeating it again reuses that registration. Pair another client from its own installation; give it a distinct name so the host's list is useful.
 
-A registration grants the supported reads across the host's mailbox accounts. Remote MCP uses that registration's grant; the host's local MCP profile restrictions do not narrow it. Pair only clients that should have this access.
+A registration grants the supported reads across the host's mailbox accounts. Paired CLI and web clients use that grant. Paired MCP and agent clients must also satisfy the host's `[agents.profiles.mcp]` or `[agents.profiles.agent]` policy. Configure the matching profile on the host before connecting; a missing-profile error names that TOML section. Restart the host daemon through its service manager, or `mxr restart` for a manually managed daemon, then reconnect. See [agent profiles](/reference/config/#agentsprofiles) for a narrow account allowlist. Pair only clients that should have the registration's access. Client kind is cooperative metadata: a registration holder that declares `cli` uses the registration's full grant.
 
 Omitting `--confirm` previews without contacting the host or creating credentials. `--dry-run` and `--confirm` conflict. Unset `MXR_DAEMON_ADDR` before changing a saved connection; that environment variable temporarily overrides saved selection.
 
@@ -82,7 +82,7 @@ mxr connect https://mail-host.example-tailnet.ts.net:8443 --allow-send --confirm
 
 The result lists `mail_read` and `mail_send`. On the host, compare the full challenge and requested grants, then preview and approve the request as in the pairing steps. Repeat the client's confirmed command with `--allow-send` to claim it. An upgrade keeps the old read connection selected until the approved registration and workspace handshake are saved. It then retires that installation's old registration; other clients remain connected. A pending, refused or failed upgrade leaves the old selection intact.
 
-`mail_send` authorizes draft, preview, portable attachment, calendar response, scheduled-send and reviewed send operations. It does not grant host configuration, credentials, filesystem access, process control, recovery administration or activity history. Remote MCP uses this registration-wide grant; local MCP profiles do not narrow it.
+`mail_send` authorizes draft, preview, portable attachment, calendar response, scheduled-send and reviewed send operations. It does not grant host configuration, credentials, filesystem access, process control, recovery administration or activity history. Paired MCP and agent clients additionally need their host profile's safety policy, `allow_send` and account allowlist to permit the operation. A permissive profile cannot add `mail_send` to a read-only registration.
 
 ## Approve mail organization and AI features
 

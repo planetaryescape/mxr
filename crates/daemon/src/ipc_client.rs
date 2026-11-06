@@ -333,8 +333,10 @@ mod tests {
         let listener = tokio::net::UnixListener::bind(&socket).expect("bind silent daemon");
         let peer = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept CLI connection");
+            let mut framed = tokio_util::codec::Framed::new(stream, IpcCodec::new());
+            crate::test_fixtures::accept_client_declaration(&mut framed, ClientKind::Cli).await;
             tokio::time::sleep(Duration::from_secs(2)).await;
-            drop(stream);
+            drop(framed);
         });
 
         let mut client = IpcClient::connect().await.expect("connect CLI client");

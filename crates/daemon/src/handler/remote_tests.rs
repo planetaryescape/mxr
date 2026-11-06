@@ -531,13 +531,15 @@ impl mxr_core::MailSendProvider for DiagnosticSendFailure {
 
 #[tokio::test]
 async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
-    for (known_rejection, expected_state, expected_code) in [
+    for (source, known_rejection, expected_state, expected_code) in [
         (
+            mxr_protocol::ClientKind::Cli,
             true,
             mxr_core::SendOutcomeState::NotAccepted,
             "send_not_accepted",
         ),
         (
+            mxr_protocol::ClientKind::Mcp,
             false,
             mxr_core::SendOutcomeState::Unknown,
             "send_outcome_unknown",
@@ -555,9 +557,20 @@ async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
             .await
             .unwrap(),
         );
+        let mut config = state.config_snapshot();
+        config.agent_surfaces.profiles.insert(
+            "mcp".into(),
+            mxr_config::AgentProfileConfig {
+                allowed_accounts: vec![state.default_account_id().as_str()],
+                safety_policy: mxr_config::SafetyPolicy::Full,
+                allow_send: true,
+                ..Default::default()
+            },
+        );
+        state.set_config_for_test(config).await;
         let (client_id, mail) = send_registration(&state).await;
         let owner = owner(&state).await;
-        let saved = remote::read_owned(
+        let saved = remote::read_owned_as(
             &state,
             &client_id,
             &mail,
@@ -565,6 +578,7 @@ async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
                 draft: portable_draft(&state),
             },
             Some(&owner),
+            source,
         )
         .await
         .unwrap();
@@ -572,7 +586,7 @@ async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
             panic!("expected saved draft");
         };
         let identity = mxr_core::SendIdentity::for_draft(&draft);
-        let response = remote::read_owned(
+        let response = remote::read_owned_as(
             &state,
             &client_id,
             &mail,
@@ -583,6 +597,7 @@ async fn remote_provider_errors_keep_typed_outcome_without_host_diagnostics() {
                 managed_attachments_reviewed: true,
             },
             Some(&owner),
+            source,
         )
         .await
         .unwrap_err()
@@ -1118,3 +1133,5 @@ async fn remote_assistant_history_is_scoped_to_the_parent_registration_and_local
     .await
     .is_err());
 }
+
+mod profile;

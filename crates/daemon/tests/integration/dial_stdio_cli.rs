@@ -5,7 +5,7 @@
 //! in-crate `pipe_stdio` unit tests cannot: real stdin/stdout wiring, the
 //! daemon-closes-first exit (the hang regression), and the failure exit code.
 //!
-//! The fake answers every request with a `Pong` echoing its id — enough for
+//! The fake acknowledges declaration, then answers Ping with a correlated Pong — enough for
 //! `ensure_daemon_running`'s ping-based liveness probe, so autostart leaves the
 //! fake running instead of trying to restart it.
 
@@ -36,6 +36,29 @@ fn encode(message: &IpcMessage) -> Vec<u8> {
     buf.to_vec()
 }
 
+fn declaration_frame() -> Vec<u8> {
+    encode(&IpcMessage {
+        expected_workspace: None,
+        id: 0,
+        source: ClientKind::Cli,
+        payload: IpcPayload::Request(Request::DeclareClient {
+            kind: ClientKind::Cli,
+            protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+        }),
+    })
+}
+
+fn expected_ack_frame() -> Vec<u8> {
+    encode(&IpcMessage {
+        expected_workspace: None,
+        id: 0,
+        source: ClientKind::Daemon,
+        payload: IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }),
+    })
+}
+
 fn ping_frame() -> Vec<u8> {
     encode(&IpcMessage {
         expected_workspace: None,
@@ -56,8 +79,8 @@ fn expected_pong_frame() -> Vec<u8> {
     })
 }
 
-/// Fake daemon that answers every request with a `Pong` echoing its id. When
-/// `close_after_first`, it closes each connection right after the first reply —
+/// Fake daemon that requires declaration before Ping. When
+/// `close_after_first`, it closes each connection right after the first Pong —
 /// the "daemon closes first" scenario that must not hang the proxy.
 fn spawn_fake_daemon(sock: &Path, close_after_first: bool) -> JoinHandle<()> {
     let listener = UnixListener::bind(sock).unwrap();
@@ -68,16 +91,31 @@ fn spawn_fake_daemon(sock: &Path, close_after_first: bool) -> JoinHandle<()> {
             };
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                let mut declared = false;
                 while let Some(Ok(msg)) = framed.next().await {
+                    assert_eq!(msg.source, ClientKind::Cli);
+                    let declaration = !declared;
+                    if declaration {
+                        assert!(matches!(msg.payload,
+                            IpcPayload::Request(Request::DeclareClient { kind: ClientKind::Cli, protocol_version })
+                            if protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION));
+                        declared = true;
+                    } else {
+                        assert!(matches!(msg.payload, IpcPayload::Request(Request::Ping)));
+                    }
                     let reply = IpcMessage {
                         expected_workspace: None,
                         id: msg.id,
                         source: ClientKind::Daemon,
                         payload: IpcPayload::Response(Response::Ok {
-                            data: ResponseData::Pong,
+                            data: if declaration {
+                                ResponseData::Ack
+                            } else {
+                                ResponseData::Pong
+                            },
                         }),
                     };
-                    if framed.send(reply).await.is_err() || close_after_first {
+                    if framed.send(reply).await.is_err() || (close_after_first && !declaration) {
                         return;
                     }
                 }
@@ -132,16 +170,17 @@ fn spawn_dial_stdio(envs: &[(String, String)]) -> Child {
         .unwrap()
 }
 
-/// stdin EOF path: the framed Ping comes back on the real process's stdout as a
-/// byte-identical Pong frame with nothing else, and the process exits 0.
+/// The real process carries declaration then Ping without changing their
+/// correlated responses, and exits cleanly after stdin EOF.
 #[tokio::test]
-async fn ping_pong_byte_identical_over_real_process() {
+async fn declaration_and_ping_byte_identical_over_real_process() {
     let iso = isolated("pp");
     let _server = spawn_fake_daemon(&iso.sock, false);
     let mut child = spawn_dial_stdio(&iso.envs);
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
+    stdin.write_all(&declaration_frame()).await.unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
     // stdin EOF -> child half-closes the socket -> fake closes -> child exits 0.
@@ -154,8 +193,8 @@ async fn ping_pong_byte_identical_over_real_process() {
         .unwrap();
     assert_eq!(
         out,
-        expected_pong_frame(),
-        "stdout must be exactly one Pong frame and nothing else"
+        [expected_ack_frame(), expected_pong_frame()].concat(),
+        "stdout must contain the declaration ack followed by Pong"
     );
 
     let status = tokio::time::timeout(BOUND, child.wait())
@@ -179,6 +218,7 @@ async fn daemon_closing_first_exits_without_waiting_on_stdin() {
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
+    stdin.write_all(&declaration_frame()).await.unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
     // Deliberately keep stdin OPEN. The daemon closes first; the proxy must exit
@@ -189,7 +229,7 @@ async fn daemon_closing_first_exits_without_waiting_on_stdin() {
         .await
         .expect("child stdout never reached EOF — daemon-first close hung")
         .unwrap();
-    assert_eq!(out, expected_pong_frame());
+    assert_eq!(out, [expected_ack_frame(), expected_pong_frame()].concat());
 
     let status = tokio::time::timeout(BOUND, child.wait())
         .await
@@ -213,10 +253,11 @@ async fn downstream_write_error_exits_nonzero() {
     let _server = spawn_fake_daemon(&iso.sock, false);
     let mut child = spawn_dial_stdio(&iso.envs);
     let mut stdin = child.stdin.take().unwrap();
-    // Close our read end of the child's stdout so its Pong write hits EPIPE.
+    // Close our read end of the child's stdout so its setup reply hits EPIPE.
     // Keep stdin OPEN: a clean stdin EOF must not be the reason it exits.
     drop(child.stdout.take().unwrap());
 
+    stdin.write_all(&declaration_frame()).await.unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
 

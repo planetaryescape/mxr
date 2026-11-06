@@ -311,6 +311,39 @@ pub(crate) fn make_empty_body(message_id: &MessageId) -> MessageBody {
     }
 }
 
+/// Complete setup for a stand-in that exercises ordinary requests through the
+/// shared client. Keep declaration out of command request/order assertions.
+pub(crate) async fn accept_client_declaration<S>(
+    framed: &mut tokio_util::codec::Framed<S, mxr_protocol::IpcCodec>,
+    source: mxr_protocol::ClientKind,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    use futures::{SinkExt, StreamExt};
+    use mxr_protocol::{ClientKind, IpcMessage, IpcPayload, Request, Response, ResponseData};
+    let frame = framed
+        .next()
+        .await
+        .expect("client declaration")
+        .expect("decode declaration");
+    assert_eq!(frame.source, source);
+    assert!(
+        matches!(frame.payload, IpcPayload::Request(Request::DeclareClient { kind, protocol_version })
+        if kind == source && protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION)
+    );
+    framed
+        .send(IpcMessage {
+            expected_workspace: None,
+            id: frame.id,
+            source: ClientKind::Daemon,
+            payload: IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }),
+        })
+        .await
+        .expect("declaration ack");
+}
+
 // -- Fake daemon for bulk selection -------------------------------------------
 
 /// A daemon that answers only what a `--search` bulk command sends: the
@@ -358,6 +391,7 @@ impl FakeBulkDaemon {
                 return;
             };
             let mut framed = tokio_util::codec::Framed::new(stream, IpcCodec::new());
+            accept_client_declaration(&mut framed, ClientKind::Cli).await;
             while let Some(Ok(message)) = framed.next().await {
                 let IpcPayload::Request(request) = message.payload else {
                     continue;

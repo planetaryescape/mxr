@@ -114,7 +114,10 @@ fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
 fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
         Request::SetModeRowSeen { account_id, .. } => account(account_id),
-        Request::RemoteRead { .. } | Request::GetRemoteReady | Request::RemoteAuthority { .. } => AllAccounts,
+        // The authenticated remote admission checks the inner operation's
+        // profile before any specialized branch or generic dispatch.
+        Request::RemoteRead { .. } | Request::GetRemoteReady => Unscoped,
+        Request::RemoteAuthority { .. } => AllAccounts,
         Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
         // Refused for agent profiles before scoping; a conversation can
         // read any account.
@@ -612,6 +615,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         }
         | Request::GetStatus
         | Request::Ping
+        | Request::DeclareClient { .. }
         | Request::Authenticate { .. }
         | Request::GetLlmStatus
         | Request::GetLlmConfig

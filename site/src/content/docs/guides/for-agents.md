@@ -233,7 +233,7 @@ Run the server under an MCP client as a stdio command:
 mxr mcp serve
 ```
 
-Required daemon config is explicit. If `source = "mcp"` requests arrive without an `[agents.profiles.mcp]` profile, the daemon rejects them before handlers touch mail providers:
+Required daemon config is explicit. The MCP connection declares its identity before ordinary requests or events. Without `[agents.profiles.mcp]` on the selected daemon host, setup is rejected. This applies to local IPC and paired HTTPS:
 
 ```toml
 [agents.profiles.mcp]
@@ -299,8 +299,8 @@ Behind the CLI and MCP server, every request lands in one of four [IPC buckets](
 
 ## Current limits (be honest)
 
-- Run `mxr mcp serve` under your client for stdio tools. It can use the selected daemon, including a saved paired HTTPS connection; that connection uses the host-approved registration grant rather than the local MCP profile. See the [MCP reference](/reference/mcp/#start-the-server) for transport and authority details.
-- Agent/MCP profiles enforce identified agent or MCP daemon requests by IPC origin, account allowlist, safety policy, send gate, and destructive gate. A coding agent using ordinary CLI requests has CLI origin and is outside those profile checks. These profiles do not sandbox the rest of the OS; a coding agent can still run shell commands available to its user.
+- Run `mxr mcp serve` under your client for stdio tools. It can use the selected daemon, including a saved paired HTTPS connection; that connection requires both the host-approved registration grant and the selected host's MCP profile. Client-local profile settings do not change the host's permissions. See the [MCP reference](/reference/mcp/#start-the-server) for transport and authority details.
+- Agent/MCP profiles enforce the connection's declared identity, account allowlist, safety policy, send gate, and destructive gate. The identity stays fixed until disconnect. Paired calls must also satisfy their registration grants. A coding agent using ordinary CLI requests has CLI origin and is outside those profile checks. These profiles do not sandbox the rest of the OS; a coding agent can still run shell commands available to its user.
 - Account scope must still be carried in prompts and commands. The daemon blocks out-of-profile accounts, but the best UX is to include account selectors in every search/read/mutation step.
 
 If you need stronger OS sandboxing, run the agent in a separate user/session and give it only the mxr config/profile you intend.

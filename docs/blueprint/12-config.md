@@ -392,7 +392,8 @@ port = 42830           # one above the bridge's 42829
 The TCP transport has **no implicit peer identity**, so it requires a bearer
 token: a client sends an in-band `Authenticate` handshake before any request,
 and the daemon rejects everything (and withholds events) with an `auth` error
-until it succeeds. Connect with it via
+until it succeeds. The client then declares its kind; events remain withheld
+until that declaration is acknowledged. Connect with it via
 `MXR_DAEMON_ADDR=tcp://127.0.0.1:42830 MXR_DAEMON_TOKEN=… mxr status`.
 
 ### Daemon IPC token (distinct from the bridge token)

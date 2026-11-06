@@ -16,6 +16,28 @@ use mxr_protocol::{
 use tokio::net::TcpListener;
 use tokio_util::codec::Framed;
 
+pub(crate) async fn accept_declaration<S>(framed: &mut Framed<S, IpcCodec>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let frame = framed.next().await.expect("declaration").expect("decode");
+    assert!(
+        matches!(frame.payload, IpcPayload::Request(Request::DeclareClient { kind: ClientKind::Tui, protocol_version })
+        if frame.source == ClientKind::Tui && protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION)
+    );
+    framed
+        .send(IpcMessage {
+            expected_workspace: None,
+            id: frame.id,
+            source: ClientKind::Daemon,
+            payload: IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }),
+        })
+        .await
+        .expect("declaration ack");
+}
+
 fn owner(workspace: &str) -> ArchiveWorkspaceData {
     ArchiveWorkspaceData {
         workspace_id: workspace.into(),
@@ -37,6 +59,7 @@ async fn slow_request_forwards_events_before_its_reply_arrives() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        accept_declaration(&mut framed).await;
         let mut wait = Some(wait);
         while let Some(Ok(message)) = framed.next().await {
             let IpcPayload::Request(request) = message.payload else {
@@ -134,6 +157,7 @@ async fn legacy_worker_preserves_safety_request_across_reconnect() {
         for connection in 0..2 {
             let (stream, _) = listener.accept().await.unwrap();
             let mut framed = Framed::new(stream, IpcCodec::new());
+            accept_declaration(&mut framed).await;
             while let Some(Ok(message)) = framed.next().await {
                 let IpcPayload::Request(request) = message.payload else {
                     panic!("request")
@@ -263,6 +287,7 @@ async fn safe_retry_stays_on_selected_target_and_refuses_replacement_owner() {
         for workspace in ["original", "replacement"] {
             let (stream, _) = listener.accept().await.unwrap();
             let mut framed = Framed::new(stream, IpcCodec::new());
+            accept_declaration(&mut framed).await;
             while let Some(Ok(message)) = framed.next().await {
                 let IpcPayload::Request(request) = message.payload else {
                     panic!("request")
@@ -334,6 +359,7 @@ async fn failed_initial_owner_capture_is_not_adopted_on_background_connection() 
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        accept_declaration(&mut framed).await;
         let message = framed.next().await.unwrap().unwrap();
         assert!(matches!(
             message.payload,
@@ -402,6 +428,7 @@ async fn failed_timeout_reconnect_then_safe_retry_closes_modal_and_refreshes_vie
             };
             tasks.push(tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                accept_declaration(&mut framed).await;
                 let mut signal = signal;
                 let mut pings = 0;
                 while let Some(Ok(message)) = framed.next().await {
@@ -593,6 +620,7 @@ fn changed_saved_selection_retires_idle_worker_and_blocks_old_mcp_target() {
                 let (stream,_)=listener.accept().await.unwrap();
                 server_connects.fetch_add(1,Ordering::SeqCst);
                 let mut framed=Framed::new(stream,IpcCodec::new());
+                accept_declaration(&mut framed).await;
                 while let Some(Ok(message))=framed.next().await {
                     let IpcPayload::Request(request)=message.payload else {panic!("request")};
                     if !matches!(request,Request::GetStatus) {server_effects.fetch_add(1,Ordering::SeqCst);}

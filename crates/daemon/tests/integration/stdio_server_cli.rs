@@ -81,11 +81,10 @@ fn isolated(tag: &str) -> (tempfile::TempDir, Vec<(String, String)>) {
     (dir, envs)
 }
 
-/// The core contract: a framed `Ping` on stdin comes back as a byte-identical
-/// `Pong` on stdout with NOTHING else (stdout purity), NO `Authenticate` was
-/// demanded (LocalProcess trust), and the process exits 0 on stdin EOF.
+/// Declaration and Ping retain their correlated replies with no extra stdout,
+/// require no transport token on LocalProcess, and exit cleanly on stdin EOF.
 #[tokio::test]
-async fn stdio_server_ping_pong_pure_stdout_no_auth() {
+async fn stdio_server_declaration_ping_pong_pure_stdout_no_auth() {
     let (_dir, envs) = isolated("pp");
     let mut child = Command::new(MXR_BIN)
         .args(["daemon", "--stdio"])
@@ -100,7 +99,19 @@ async fn stdio_server_ping_pong_pure_stdout_no_auth() {
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
 
-    // Straight to a Ping — no Authenticate handshake first.
+    // Declare identity, then Ping; LocalProcess needs no token authentication.
+    stdin
+        .write_all(&encode(&IpcMessage {
+            expected_workspace: None,
+            id: 0,
+            source: ClientKind::Cli,
+            payload: IpcPayload::Request(Request::DeclareClient {
+                kind: ClientKind::Cli,
+                protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+            }),
+        }))
+        .await
+        .unwrap();
     stdin.write_all(&ping_frame()).await.unwrap();
     stdin.flush().await.unwrap();
     // stdin EOF -> the one connection closes -> the stdio server exits.
@@ -112,12 +123,23 @@ async fn stdio_server_ping_pong_pure_stdout_no_auth() {
         .expect("reading stdio-server stdout timed out")
         .unwrap();
 
-    // Purity + no-auth in one assertion: stdout is EXACTLY the Pong frame. Any
-    // log line, ANSI colour, or an Auth-error frame instead of Pong would fail.
+    // Declaration is policy metadata, separate from token authentication.
+    // Extra logs, ANSI bytes or an authentication demand fail this comparison.
     assert_eq!(
         out,
-        expected_pong_frame(),
-        "stdout must be exactly one Pong frame — no logs, no auth demand, nothing else"
+        [
+            encode(&IpcMessage {
+                expected_workspace: None,
+                id: 0,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack
+                })
+            }),
+            expected_pong_frame()
+        ]
+        .concat(),
+        "stdout must contain declaration Ack then Pong, without logs or an auth demand"
     );
 
     let status = tokio::time::timeout(BOUND, child.wait())

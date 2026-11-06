@@ -3293,6 +3293,11 @@ mod tests {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept");
             let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::test_fixtures::accept_client_declaration(
+                &mut framed,
+                mxr_protocol::ClientKind::Cli,
+            )
+            .await;
             if let Some(Ok(message)) = framed.next().await {
                 framed
                     .send(IpcMessage {
@@ -3346,6 +3351,11 @@ mod tests {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept");
             let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::test_fixtures::accept_client_declaration(
+                &mut framed,
+                mxr_protocol::ClientKind::Cli,
+            )
+            .await;
             if let Some(Ok(message)) = framed.next().await {
                 framed
                     .send(IpcMessage {
@@ -3378,6 +3388,11 @@ mod tests {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept");
             let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::test_fixtures::accept_client_declaration(
+                &mut framed,
+                mxr_protocol::ClientKind::Cli,
+            )
+            .await;
             match framed.next().await {
                 Some(Ok(message)) => {
                     assert!(matches!(

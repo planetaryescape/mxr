@@ -13239,7 +13239,7 @@
       },
       "ClientKind": {
         "type": "string",
-        "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` — the most\nrealistic guess for scripts hand-rolled against the socket.",
+        "description": "Cooperative client identity, declared during setup and repeated on each\nenvelope for activity attribution. Missing legacy envelope tags decode as\n`Cli`; they cannot replace the mandatory `DeclareClient` handshake.",
         "enum": [
           "human",
           "tui",
@@ -32493,6 +32493,31 @@
               },
               "query": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Declare a cooperative client identity before any requests or events.\nToken transports authenticate first. The kind is fixed for the entire\nconnection; an exact protocol match is required. Success is `Ack`.",
+            "required": [
+              "kind",
+              "protocol_version",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeclareClient"
+                ]
+              },
+              "kind": {
+                "$ref": "#/components/schemas/ClientKind"
+              },
+              "protocol_version": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
             }
           },

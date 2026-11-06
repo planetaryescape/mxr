@@ -15,3 +15,5 @@ The shared `DaemonGuard` sends SIGTERM and waits for socket removal without chec
 Ordinary CLI autostart during a supervised daemon's drain can also start a background daemon outside the supervisor after broken-daemon recovery (`crates/daemon/src/server.rs:816`, `1499`, `1543`). That behavior predates S08a. The headless recipe needs a deliberate supervised-client policy and a test, rather than claiming signal support alone completes supervised deployment.
 
 Next owner: S08c implementation after S03/S04 deploy. No S08c implementation or recovery runtime result is claimed here.
+
+The B1 contacts-refreshed announcer is also detached (`crates/daemon/src/server.rs`, `crates/daemon/src/loops.rs`). Its receiver does not necessarily close when the refresh worker stops: `AppState::contacts_refresh` retains another broadcast sender. No shutdown failure was reproduced in B1. Include this task in the supervised shutdown ownership work rather than rely on channel closure to join it.

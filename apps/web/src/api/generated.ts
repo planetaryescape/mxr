@@ -6982,6 +6982,14 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   event: "AccountAddressesChanged";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "ContactsRefreshed";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "Unknown";
               };
         /** @enum {string} */
         DaemonHealthClass:

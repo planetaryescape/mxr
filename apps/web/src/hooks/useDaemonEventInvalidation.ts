@@ -57,6 +57,11 @@ export function useDaemonEventInvalidation(): void {
             void invalidateMailQueries(qc);
             void qc.invalidateQueries({ queryKey: ["analytics"] });
             break;
+          // The debounced contacts rebuild committed. Analytics queries do not
+          // poll, so a view left open would keep counts from before it.
+          case "ContactsRefreshed":
+            void qc.invalidateQueries({ queryKey: ["analytics"] });
+            break;
           case "LabelCountsUpdated":
             void qc.invalidateQueries({ queryKey: shellKey });
             break;

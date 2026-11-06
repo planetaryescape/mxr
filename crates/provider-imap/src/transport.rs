@@ -104,7 +104,7 @@ impl CertFingerprint {
     }
 
     /// Parse 64 hex digits. Colons and whitespace between bytes are accepted so
-    /// an `openssl x509 -fingerprint` line can be pasted as is.
+    /// the value from `openssl x509 -fingerprint -sha256` can be pasted as is.
     pub fn parse(input: &str) -> Result<Self> {
         let digits: Vec<u8> = input
             .bytes()
@@ -286,14 +286,14 @@ async fn connect_mode(
             Ok((client, greeting))
         }
         TransportMode::ImplicitTls => {
-            let tls = tls_handshake(host, port, tcp, verify).await?;
+            let tls = tls_handshake(host, port, tcp, verify, mode).await?;
             let mut client = async_imap::Client::new(ImapStream::Tls(tls));
             let greeting = read_greeting(&mut client).await?;
             Ok((client, greeting))
         }
         TransportMode::StartTls => {
             let tcp = negotiate_starttls(tcp, host, port).await?;
-            let tls = tls_handshake(host, port, tcp, verify).await?;
+            let tls = tls_handshake(host, port, tcp, verify, mode).await?;
             // The server sends no second greeting after the upgrade.
             Ok((
                 async_imap::Client::new(ImapStream::Tls(tls)),
@@ -339,6 +339,7 @@ async fn tls_handshake(
     port: u16,
     tcp: TcpStream,
     verify: Verify,
+    mode: TransportMode,
 ) -> Result<async_native_tls::TlsStream<TcpStream>> {
     let mut connector = async_native_tls::TlsConnector::new();
     if !matches!(verify, Verify::System) {
@@ -350,7 +351,7 @@ async fn tls_handshake(
     }
     let stream = match connector.connect(host, tcp).await {
         Ok(stream) => stream,
-        Err(error) => return Err(describe_tls_failure(host, port, &error.to_string()).await),
+        Err(error) => return Err(describe_tls_failure(host, port, mode, &error.to_string()).await),
     };
     if let Verify::Pinned(expected) = verify {
         let actual = peer_fingerprint(&stream)?;
@@ -384,8 +385,15 @@ fn peer_fingerprint(stream: &async_native_tls::TlsStream<TcpStream>) -> Result<C
 /// differs per TLS library ("record overflow", "wrong version number", ...), so
 /// instead of matching those, ask the server: a plaintext IMAP server speaks
 /// first, a TLS server waits for us.
-async fn describe_tls_failure(host: &str, port: u16, tls_error: &str) -> ImapProviderError {
-    if answers_in_plaintext(host, port).await {
+async fn describe_tls_failure(
+    host: &str,
+    port: u16,
+    mode: TransportMode,
+    tls_error: &str,
+) -> ImapProviderError {
+    // STARTTLS normally greets in plaintext on a fresh connection, so that
+    // greeting cannot diagnose why its negotiated TLS handshake failed.
+    if mode == TransportMode::ImplicitTls && answers_in_plaintext(host, port).await {
         return ImapProviderError::Connection(format!(
             "the server answered in plaintext on a TLS connection ({host}:{port}); if this is a \
              local bridge set use_tls = false, otherwise use port 993"
@@ -522,7 +530,7 @@ async fn probe_unbounded(config: &ImapConfig) -> Result<Option<String>> {
         TransportMode::ImplicitTls => tcp,
         TransportMode::StartTls => negotiate_starttls(tcp, &config.host, config.port).await?,
     };
-    let tls = tls_handshake(&config.host, config.port, tcp, Verify::InspectOnly).await?;
+    let tls = tls_handshake(&config.host, config.port, tcp, Verify::InspectOnly, mode).await?;
     Ok(Some(peer_fingerprint(&tls)?.to_string()))
 }
 

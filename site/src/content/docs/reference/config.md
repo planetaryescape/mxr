@@ -411,7 +411,7 @@ include `tls_cert_sha256` in the result. A failed certificate check still exits
 with an error after printing the result, so you can inspect the fingerprint
 before configuring trust.
 
-A TLS connection to a server that answers in plaintext fails with an error that
+An implicit TLS connection to a server that answers in plaintext fails with an error that
 names the mismatch and the fix, instead of a bare "record overflow".
 
 ### SMTP send provider

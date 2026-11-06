@@ -330,6 +330,49 @@ async fn starttls_upgrades_and_enforces_the_pin() {
 }
 
 #[tokio::test]
+async fn starttls_verification_failure_keeps_the_tls_error() {
+    let cert = test_cert();
+    let (listener, port) = bind_local().await;
+    async_std::task::spawn(async move {
+        let (mut tcp, _) = listener.accept().await.expect("accept STARTTLS connection");
+        tcp.write_all(b"* OK ready\r\n")
+            .await
+            .expect("send greeting");
+        assert_eq!(
+            read_line(&mut tcp).await.expect("receive CAPABILITY"),
+            "mxr1 CAPABILITY\r\n"
+        );
+        tcp.write_all(b"* CAPABILITY IMAP4rev1 STARTTLS\r\nmxr1 OK done\r\n")
+            .await
+            .expect("advertise STARTTLS");
+        assert_eq!(
+            read_line(&mut tcp).await.expect("receive STARTTLS"),
+            "mxr2 STARTTLS\r\n"
+        );
+        tcp.write_all(b"mxr2 OK begin TLS\r\n")
+            .await
+            .expect("allow upgrade");
+        let _ = cert.acceptor.accept(tcp).await;
+        // A real STARTTLS listener also greets the diagnostic reconnection
+        // in plaintext. That is expected protocol behaviour, not a mismatch.
+        if let Ok((mut tcp, _)) = listener.accept().await {
+            let _ = tcp.write_all(b"* OK ready\r\n").await;
+        }
+    });
+    let error = tokio::time::timeout(
+        Duration::from_secs(10),
+        connect_mode("127.0.0.1", port, TransportMode::StartTls, Verify::System),
+    )
+    .await
+    .expect("bounded fixture handshake")
+    .map(|_| ())
+    .expect_err("refuse the untrusted certificate")
+    .to_string();
+    assert!(error.contains("TLS handshake"), "{error}");
+    assert!(!error.contains("answered in plaintext"), "{error}");
+}
+
+#[tokio::test]
 async fn probe_reports_the_certificate_fingerprint_without_trusting_it() {
     let cert = test_cert();
     let expected = cert.fingerprint.to_string();

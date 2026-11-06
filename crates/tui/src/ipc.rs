@@ -362,10 +362,18 @@ async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
     }
     let exe = std::env::current_exe()
         .map_err(|error| MxrError::Ipc(format!("failed to locate mxr binary: {error}")))?;
-    std::process::Command::new(exe)
+    let mut command = std::process::Command::new(exe);
+    let inherited = mxr_client::TransportAddr::resolve(mxr_config::socket_path())
+        .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    // Preserve exact profile selectors for recovery unless this session was
+    // explicitly constructed for a different socket than its environment.
+    if !matches!(inherited, mxr_client::TransportAddr::Unix(ref path) if path == socket_path) {
+        command
+            .env_remove("MXR_DAEMON_ADDR")
+            .env("MXR_SOCKET_PATH", socket_path);
+    }
+    command
         .arg("daemon")
-        .env("MXR_INSTANCE", mxr_config::app_instance_name())
-        .env("MXR_SOCKET_PATH", socket_path)
         .env("MXR_DAEMON_CLIENT_AUTOSTART", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())

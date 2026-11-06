@@ -2177,10 +2177,10 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
+    // Recovery compares selectors exactly, including absent defaults. The
+    // inherited environment already resolves the same instance and socket.
     command
         .arg("daemon")
-        .env("MXR_INSTANCE", mxr_config::app_instance_name())
-        .env("MXR_SOCKET_PATH", sock_path)
         .env("MXR_DAEMON_CLIENT_AUTOSTART", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

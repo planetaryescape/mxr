@@ -402,6 +402,62 @@ fn status_recovers_running_daemon_when_socket_path_disappears() {
     );
 }
 
+#[test]
+fn status_recovers_default_instance_daemon_with_explicit_socket() {
+    let _guard = daemon_lifecycle_guard();
+    let temp = TempDir::new().expect("isolated default-profile recovery");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = temp.path().join("mxr.sock");
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&config_dir).expect("isolated config directory");
+    std::fs::write(
+        config_dir.join("config.toml"),
+        "[bridge]\nenabled=false\n[llm]\nenabled=false\n[search.semantic]\nenabled=false\nauto_download_models=false\n",
+    )
+    .expect("isolated daemon configuration");
+    let mut daemon = TestDaemon::new(socket_path.clone(), pid_path.clone());
+    let run = || {
+        let output = Command::cargo_bin("mxr")
+            .expect("mxr bin")
+            .env_remove("MXR_INSTANCE")
+            .env_remove("MXR_DAEMON_ADDR")
+            .env("MXR_SOCKET_PATH", &socket_path)
+            .env("MXR_CONFIG_DIR", &config_dir)
+            .env("MXR_DATA_DIR", &data_dir)
+            .env("MXR_KEYCHAIN", "off")
+            .env("MXR_ACTIVITY", "off")
+            .env("MXR_DAEMON_AUTOSTART", "on")
+            .args(["status", "--format", "json"])
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        (
+            serde_json::from_slice::<Value>(&output.stdout).expect("status JSON"),
+            String::from_utf8(output.stderr).expect("status stderr"),
+        )
+    };
+    let (first, _) = run();
+    let first_pid = first["daemon_pid"].as_u64().expect("initial daemon PID");
+    daemon.set_pid(first_pid);
+    std::fs::remove_file(&socket_path).expect("remove live socket");
+    std::fs::remove_file(&pid_path).expect("remove PID discovery file");
+
+    let (second, stderr) = run();
+    let second_pid = second["daemon_pid"].as_u64().expect("recovered daemon PID");
+    daemon.set_pid(second_pid);
+    assert_ne!(first_pid, second_pid);
+    assert!(
+        socket_path.exists(),
+        "recovery restores the explicit socket"
+    );
+    assert!(
+        stderr.contains("Restarting daemon to recover from a missing IPC socket... ready."),
+        "the default instance must recognize its own daemon, stderr={stderr:?}"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 // Keep the shared daemon fixture serialized while the async client is active.

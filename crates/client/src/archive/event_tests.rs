@@ -32,6 +32,7 @@ async fn archive_helpers_forward_events_in_order_without_resubmitting() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let workspace = ArchiveWorkspaceData {
             workspace_id: uuid::Uuid::now_v7().to_string(),
             recovery_generation: uuid::Uuid::now_v7().to_string(),
@@ -196,6 +197,7 @@ async fn archive_event_helper_preserves_default_request_timeout() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let request = framed.next().await.unwrap().unwrap();
         assert!(matches!(
             request.payload,

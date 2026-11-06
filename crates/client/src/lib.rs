@@ -402,55 +402,83 @@ impl IpcConnection {
         }
     }
 
-    /// Connect to the daemon through any [`Connector`], tagging every request
-    /// with `source`. The transport-agnostic entry point: the connection holds a
+    /// Connect through any [`Connector`], authenticate if required, and declare
+    /// `source` before exposing the connection. Setup is bounded to five seconds;
+    /// every later request retains this kind. The connection holds a
     /// [`BoxedIo`], so the same framing/correlation machinery serves whatever
     /// byte stream the connector produced.
     pub async fn connect_with(
         connector: &dyn Connector,
         source: ClientKind,
     ) -> Result<Self, ClientError> {
-        let io = connector.connect().await?;
-        let mut conn = Self {
-            framed: Framed::new(io, IpcCodec::new()),
-            next_id: AtomicU64::new(1),
-            source,
-            default_timeout: None,
-            attachment_transfer_supported: None,
-            system_mailbox_counts_unsupported: false,
-            selected_remote: false,
-            preview_attachment_declarations: std::collections::HashMap::new(),
-            remote_workspace: None,
-            remote_registration_identity: None,
-            selection_generation: None,
-            remote_admission: None,
-            remote_shutdown_notice: None,
+        let setup = async {
+            let io = connector.connect().await?;
+            let mut conn = Self {
+                framed: Framed::new(io, IpcCodec::new()),
+                next_id: AtomicU64::new(1),
+                source,
+                default_timeout: None,
+                attachment_transfer_supported: None,
+                system_mailbox_counts_unsupported: false,
+                selected_remote: false,
+                preview_attachment_declarations: std::collections::HashMap::new(),
+                remote_workspace: None,
+                remote_registration_identity: None,
+                selection_generation: None,
+                remote_admission: None,
+                remote_shutdown_notice: None,
+            };
+            // Authentication proves transport access; declaration selects the
+            // cooperative profile. Neither may release events ahead of its ack.
+            if let Some(token) = connector.auth_token() {
+                let response = conn
+                    .setup_request(Request::Authenticate {
+                        token: token.to_string(),
+                    })
+                    .await?;
+                if !matches!(response, ResponseData::Authenticated) {
+                    return Err(ClientError::DaemonIncompatible {
+                        message: "daemon returned an unexpected authentication response".into(),
+                    });
+                }
+            }
+            let response = conn
+                .setup_request(Request::DeclareClient {
+                    kind: source,
+                    protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                })
+                .await?;
+            if !matches!(response, ResponseData::Ack) {
+                return Err(ClientError::DaemonIncompatible { message: "daemon did not acknowledge the client declaration; update host and clients together".into() });
+            }
+            Ok(conn)
         };
-        // Token-bearing transports (the TCP-loopback adapter) authenticate
-        // in-band as the FIRST request on the connection. The byte-stream seam
-        // stays protocol-free — the connector only advertises its token; the
-        // framed handshake lives here. Implicit-trust transports (UDS, memory,
-        // stdio, cmd) advertise no token and skip this entirely.
-        if let Some(token) = connector.auth_token() {
-            conn.authenticate(token.to_string()).await?;
-        }
-        Ok(conn)
+        let limit = Duration::from_secs(5);
+        tokio::time::timeout(limit, setup)
+            .await
+            .map_err(|_| ClientError::Timeout(limit))?
     }
 
-    /// Perform the in-band token handshake: send `Authenticate` and require an
-    /// `Authenticated` reply. Any daemon-side rejection surfaces as
-    /// [`ClientError::Daemon`] with [`IpcErrorKind::Auth`]; an unexpected
-    /// success payload is a protocol error.
-    async fn authenticate(&mut self, token: String) -> Result<(), ClientError> {
-        match self.request(Request::Authenticate { token }).await? {
-            ResponseData::Authenticated => Ok(()),
-            other => Err(ClientError::Daemon {
-                message: format!("unexpected response to Authenticate: {other:?}"),
-                kind: IpcErrorKind::Auth,
-                retryable: false,
-                code: "auth".into(),
-                details: None,
+    /// Setup cannot consume or discard mailbox events: a peer releasing them
+    /// before declaration is incompatible, even if it eventually replies.
+    async fn setup_request(&mut self, request: Request) -> Result<ResponseData, ClientError> {
+        // Setup is sequential and hidden from callers. Keep ordinary request
+        // correlation ids unchanged, including bridge-supplied start ids.
+        let id = 0;
+        self.framed.send(self.envelope(id, request)).await?;
+        match self.framed.next().await {
+            Some(Ok(IpcMessage {
+                id: response_id,
+                payload: IpcPayload::Response(response),
+                ..
+            })) if response_id == id => into_data(response),
+            Some(Ok(frame)) => Err(ClientError::UnexpectedFrame {
+                frame_id: frame.id,
+                expected_id: id,
+                is_response: matches!(frame.payload, IpcPayload::Response(_)),
             }),
+            Some(Err(error)) => Err(ClientError::Io(error)),
+            None => Err(ClientError::Closed),
         }
     }
 
@@ -1157,6 +1185,35 @@ mod tests {
     use std::sync::Arc;
     use tokio::net::UnixListener;
 
+    /// Accept only the setup frame; ordinary responses remain controlled by
+    /// each fixture so protocol behavior under test cannot be hidden here.
+    pub(crate) async fn accept_declaration<S>(framed: &mut Framed<S, IpcCodec>)
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
+        let frame = framed.next().await.unwrap().unwrap();
+        let IpcPayload::Request(Request::DeclareClient {
+            kind,
+            protocol_version,
+        }) = frame.payload
+        else {
+            panic!("expected client declaration, got {frame:?}");
+        };
+        assert_eq!(kind, frame.source);
+        assert_eq!(protocol_version, mxr_protocol::IPC_PROTOCOL_VERSION);
+        framed
+            .send(IpcMessage {
+                expected_workspace: None,
+                id: frame.id,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack,
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
     /// A minimal daemon stand-in that speaks the real [`IpcCodec`] over a Unix
     /// socket. `responder` maps a decoded [`Request`] to an optional
     /// [`Response`] (return `None` to stay silent — e.g. to exercise the
@@ -1181,6 +1238,7 @@ mod tests {
                 let preamble = preamble.clone();
                 tokio::spawn(async move {
                     let mut framed = Framed::new(stream, IpcCodec::new());
+                    accept_declaration(&mut framed).await;
                     for frame in preamble {
                         if framed.send(frame).await.is_err() {
                             return;
@@ -1399,6 +1457,7 @@ mod tests {
                 let counts_writer = counts_writer.clone();
                 tokio::spawn(async move {
                     let mut framed = Framed::new(stream, IpcCodec::new());
+                    accept_declaration(&mut framed).await;
                     while let Some(Ok(message)) = framed.next().await {
                         let IpcPayload::Request(request) = message.payload else {
                             continue;
@@ -1753,6 +1812,7 @@ mod tests {
         let server = tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                accept_declaration(&mut framed).await;
                 if let Some(Ok(message)) = framed.next().await {
                     let _ = framed
                         .send(IpcMessage {
@@ -2098,7 +2158,8 @@ mod tests {
         let listener = UnixListener::bind(&sock).unwrap();
         let server = tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
-                drop(stream);
+                let mut framed = Framed::new(stream, IpcCodec::new());
+                accept_declaration(&mut framed).await;
             }
         });
 
@@ -2172,6 +2233,7 @@ mod tests {
 #[cfg(test)]
 mod draft_revision_compatibility_tests {
     use super::*;
+    use crate::tests::accept_declaration;
     use futures::{SinkExt, StreamExt};
     use mxr_core::AccountId;
     use tokio::net::UnixListener;
@@ -2184,6 +2246,7 @@ mod draft_revision_compatibility_tests {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("compatibility test fixture");
             let mut framed = Framed::new(stream, IpcCodec::new());
+            accept_declaration(&mut framed).await;
             let first = framed
                 .next()
                 .await
@@ -2257,6 +2320,7 @@ mod draft_revision_compatibility_tests {
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("send compatibility fixture");
             let mut framed = Framed::new(stream, IpcCodec::new());
+            accept_declaration(&mut framed).await;
             let request = framed
                 .next()
                 .await
@@ -2310,3 +2374,6 @@ fn workspace_error(code: &str, message: &str) -> ClientError {
 
 #[cfg(test)]
 mod workspace_owner_tests;
+
+#[cfg(test)]
+mod connection_profile_tests;

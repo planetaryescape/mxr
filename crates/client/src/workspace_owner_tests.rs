@@ -63,6 +63,7 @@ async fn fixture() -> (
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         while let Some(Ok(message)) = framed.next().await {
             let IpcPayload::Request(request) = &message.payload else {
                 continue;

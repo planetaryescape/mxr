@@ -61,8 +61,14 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
                 while let Some(Ok(message)) = framed.next().await {
-                    counter.fetch_add(1, Ordering::Relaxed);
+                    if !matches!(
+                        message.payload,
+                        IpcPayload::Request(Request::DeclareClient { .. })
+                    ) {
+                        counter.fetch_add(1, Ordering::Relaxed);
+                    }
                     let data = match message.payload {
+                        IpcPayload::Request(Request::DeclareClient { .. }) => ResponseData::Ack,
                         IpcPayload::Request(Request::GetStatus) => ResponseData::Status {
                             workspace_owner_supported: false,
                             draft_revision_supported: true,
@@ -750,6 +756,22 @@ async fn serve_old_local_daemon_reports_upgrade_before_new_request_or_remote_ove
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut frames = Framed::new(stream, IpcCodec::new());
+        let declaration = frames.next().await.unwrap().unwrap();
+        assert!(matches!(
+            declaration.payload,
+            IpcPayload::Request(Request::DeclareClient { .. })
+        ));
+        frames
+            .send(IpcMessage {
+                id: declaration.id,
+                expected_workspace: None,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack,
+                }),
+            })
+            .await
+            .unwrap();
         let request = frames.next().await.unwrap().unwrap();
         assert!(matches!(
             request.payload,

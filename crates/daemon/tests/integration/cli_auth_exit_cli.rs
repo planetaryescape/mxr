@@ -72,6 +72,9 @@ fn spawn_auth_rejecting_daemon(socket: &Path) -> tokio::task::JoinHandle<()> {
                 let mut framed = Framed::new(stream, IpcCodec::new());
                 while let Some(Ok(message)) = framed.next().await {
                     let response = match message.payload {
+                        IpcPayload::Request(Request::DeclareClient { .. }) => Response::Ok {
+                            data: ResponseData::Ack,
+                        },
                         IpcPayload::Request(Request::GetStatus) => Response::Ok { data: status() },
                         _ => Response::error_kinded("Unauthorized", IpcErrorKind::Auth),
                     };

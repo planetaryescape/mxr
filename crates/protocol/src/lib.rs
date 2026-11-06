@@ -26,6 +26,10 @@
 //! `Unknown` catch-all, so a client at 29 or later skips events added after it
 //! was built. Clients older than 29 still fail to decode an event they have no
 //! variant for, which is why 29 itself is a bump.
+//!
+//! Protocol 32 requires `DeclareClient` before ordinary requests or events.
+//! Token transports authenticate first. Declaration selects one cooperative
+//! client kind for the connection lifetime; it does not authenticate a process.
 
 mod archive;
 mod codec;
@@ -45,7 +49,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 31;
+pub const IPC_PROTOCOL_VERSION: u32 = 32;
 
 #[cfg(test)]
 mod tests {

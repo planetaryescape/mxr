@@ -1193,7 +1193,11 @@ pub fn map_request(
                 "pairing credentials and client inventory are not user activity"
             );
         }
-        Request::GetStatus | Request::Ping | Request::Shutdown | Request::Authenticate { .. } => {
+        Request::DeclareClient { .. }
+        | Request::GetStatus
+        | Request::Ping
+        | Request::Shutdown
+        | Request::Authenticate { .. } => {
             skip_activity!(
                 "daemon_lifecycle",
                 "daemon lifecycle requests are not activity"

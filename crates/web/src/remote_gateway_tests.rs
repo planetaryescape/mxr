@@ -105,6 +105,7 @@ async fn stopping_notice_arrives_while_a_provider_request_is_still_waiting() {
                         break;
                     };
                     let data = match request {
+                        Request::DeclareClient { .. } => ResponseData::Ack,
                         Request::GetStatus => serde_json::from_value(serde_json::json!({
                             "kind":"Status","uptime_secs":0,"accounts":[],"total_messages":0,
                             "protocol_version":mxr_protocol::IPC_PROTOCOL_VERSION,
@@ -161,6 +162,25 @@ async fn stopping_notice_arrives_while_a_provider_request_is_still_waiting() {
     let (mut ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     let mut codec = IpcCodec::new();
     let mut bytes = BytesMut::new();
+    codec
+        .encode(
+            IpcMessage {
+                expected_workspace: None,
+                id: 1,
+                source: ClientKind::Cli,
+                payload: IpcPayload::Request(Request::DeclareClient {
+                    kind: ClientKind::Cli,
+                    protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                }),
+            },
+            &mut bytes,
+        )
+        .unwrap();
+    ws.send(Message::Binary(bytes.split().freeze()))
+        .await
+        .unwrap();
+    let ack_frame = ws.next().await.unwrap().unwrap();
+    assert!(matches!(ack_frame, Message::Binary(_)));
     codec
         .encode(
             IpcMessage {

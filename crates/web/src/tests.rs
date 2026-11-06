@@ -33,6 +33,32 @@ mod todo_routes;
 mod unsaved_recovery;
 mod workspace_owner;
 
+async fn accept_client_declaration<S>(framed: &mut Framed<S, IpcCodec>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let frame = framed
+        .next()
+        .await
+        .expect("declaration")
+        .expect("decode declaration");
+    assert!(
+        matches!(frame.payload, IpcPayload::Request(Request::DeclareClient { kind, protocol_version })
+        if kind == frame.source && protocol_version == IPC_PROTOCOL_VERSION)
+    );
+    framed
+        .send(IpcMessage {
+            expected_workspace: None,
+            id: frame.id,
+            source: mxr_protocol::ClientKind::Daemon,
+            payload: IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }),
+        })
+        .await
+        .expect("declaration ack");
+}
+
 const TEST_AUTH_TOKEN: &str = "test-token";
 
 #[tokio::test]
@@ -202,6 +228,7 @@ where
             let event = event.clone();
             tokio::spawn(async move {
                 let mut framed = Framed::new(stream, IpcCodec::new());
+                accept_client_declaration(&mut framed).await;
                 if let Some(event) = event {
                     let _ = framed
                         .send(IpcMessage {
@@ -6489,6 +6516,7 @@ async fn websocket_events_answer_ping_and_release_daemon_on_close() {
     tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        accept_client_declaration(&mut framed).await;
         // Never emit an event: only the client side can end this session.
         while let Some(Ok(_)) = framed.next().await {}
         let _ = closed_tx.send(());

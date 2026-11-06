@@ -89,7 +89,14 @@ fn preview_attachment_comparison_preserves_set_multiplicity_and_managed_bytes() 
 #[tokio::test]
 async fn preview_transfer_rejects_changed_session_without_consuming_original_review() {
     let transport = MemoryTransport::new();
-    let _listener = transport.bind().await.expect("listener");
+    let mut listener = transport.bind().await.expect("listener");
+    let server = tokio::spawn(async move {
+        for _ in 0..7 {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            crate::tests::accept_declaration(&mut framed).await;
+        }
+    });
     let mut previous = IpcConnection::connect_with(&transport.connector(), ClientKind::Tui)
         .await
         .expect("connection");
@@ -156,6 +163,7 @@ async fn preview_transfer_rejects_changed_session_without_consuming_original_rev
     assert!(replacement
         .preview_attachment_declarations
         .contains_key(&draft_id));
+    server.await.expect("declaration server");
 }
 
 #[tokio::test]
@@ -167,6 +175,7 @@ async fn portable_upload_rejects_old_daemon_before_opening_client_file() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         while let Some(Ok(message)) = framed.next().await {
             let IpcPayload::Request(request) = message.payload else {
                 continue;
@@ -222,6 +231,7 @@ async fn portable_upload_sends_bounded_bytes_and_preserves_selected_send_identit
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut stored: Option<Draft> = None;
         let mut declaration: Option<DraftAttachment> = None;
         while let Some(Ok(message)) = framed.next().await {
@@ -360,6 +370,7 @@ async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut count = 0;
         while let Some(Ok(message)) = framed.next().await {
             assert!(matches!(
@@ -443,6 +454,7 @@ async fn remote_preview_uses_declarations_without_upload_and_changed_bytes_fail_
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.expect("accept");
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut requests = Vec::new();
         while let Some(Ok(message)) = framed.next().await {
             assert!(matches!(

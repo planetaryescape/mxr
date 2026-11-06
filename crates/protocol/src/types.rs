@@ -554,10 +554,9 @@ pub struct SavedActivityFilterEntry {
     pub last_used_at: Option<i64>,
 }
 
-/// Originating client for an IPC request. Carried on the envelope so the
-/// daemon's activity recorder can tag rows with the surface that produced
-/// them. Legacy clients (pre-source-field) decode as `Cli` — the most
-/// realistic guess for scripts hand-rolled against the socket.
+/// Cooperative client identity, declared during setup and repeated on each
+/// envelope for activity attribution. Missing legacy envelope tags decode as
+/// `Cli`; they cannot replace the mandatory `DeclareClient` handshake.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
@@ -619,9 +618,8 @@ pub struct IpcMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_workspace: Option<ArchiveWorkspaceData>,
     pub id: u64,
-    /// Originating client surface. Optional on the wire for backwards
-    /// compatibility with pre-Phase-2 clients; the default is `Cli`. New
-    /// clients always set this explicitly.
+    /// Originating surface. Missing tags decode as `Cli`; every connection
+    /// must first declare its kind explicitly and later tags must match it.
     #[serde(default)]
     pub source: ClientKind,
     pub payload: IpcPayload,
@@ -1988,6 +1986,13 @@ pub enum Request {
     },
 
     // Admin / maintenance / operational utilities.
+    /// Declare a cooperative client identity before any requests or events.
+    /// Token transports authenticate first. The kind is fixed for the entire
+    /// connection; an exact protocol match is required. Success is `Ack`.
+    DeclareClient {
+        kind: ClientKind,
+        protocol_version: u32,
+    },
     GetStatus,
     Ping,
     Shutdown,
@@ -3402,6 +3407,7 @@ impl Request {
             | Self::GetStatus
             | Self::Ping
             | Self::Shutdown
+            | Self::DeclareClient { .. }
             | Self::Authenticate { .. }
             | Self::ListActivity { .. }
             | Self::CountActivity { .. }

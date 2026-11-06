@@ -1833,9 +1833,17 @@ mod tests {
                                     let IpcPayload::Request(request) = message.payload else {
                                         continue;
                                     };
-                                    let Some(response) = responder(request) else {
-                                        return;
-                                    };
+                                    let response =
+                                        if matches!(request, Request::DeclareClient { .. }) {
+                                            Response::Ok {
+                                                data: ResponseData::Ack,
+                                            }
+                                        } else {
+                                            let Some(response) = responder(request) else {
+                                                return;
+                                            };
+                                            response
+                                        };
                                     let _ = framed
                                         .send(IpcMessage {
                                             expected_workspace: None,

@@ -264,10 +264,20 @@ The TUI greys out mutation actions when the policy disallows them.
 
 ## `agents.profiles`
 
-Profiles constrain non-human daemon clients by IPC origin. The daemon selects
-`[agents.profiles.agent]` for IPC messages with source `agent` and
-`[agents.profiles.mcp]` for messages from `mxr mcp serve`. If the matching
-profile is missing, the daemon rejects the request before any provider call.
+Profiles constrain cooperative daemon clients by the identity declared during
+connection setup. `agent` selects `[agents.profiles.agent]`; `mxr mcp serve`
+declares `mcp` and selects `[agents.profiles.mcp]`. The identity stays fixed
+until disconnect. Missing profiles are rejected before ordinary requests or
+events, including on event-only connections.
+
+Configure the profile on the selected daemon host. Paired HTTPS agent/MCP
+calls must satisfy both this host profile and the registration's grants. A
+profile can narrow those grants, never broaden them. Missing-profile errors
+name the required TOML section: add it to the host configuration, restart the
+host daemon through its service manager or `mxr restart`, then reconnect.
+
+Client kinds are self-declared. These profiles guide cooperative clients;
+a hostile same-user process can still declare itself `cli`.
 
 ```toml
 [agents.profiles.agent]

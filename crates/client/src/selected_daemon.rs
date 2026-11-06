@@ -10,6 +10,8 @@ use std::{
 pub const SELECTION_CHANGED_MESSAGE: &str = "Saved connection changed. Close and reopen this client. Retained drafts and operation outcomes still belong to their original workspace.";
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
+const SETUP_TIMEOUT_MESSAGE: &str =
+    "connect/authentication/declaration/status handshake timed out after 5 seconds";
 
 #[derive(Clone)]
 pub struct SelectedDaemonTarget {
@@ -172,13 +174,11 @@ impl SelectedDaemonTarget {
         };
         let connection=tokio::time::timeout(SETUP_TIMEOUT, setup)
             .await
-            .map_err(|_| {
-                self.setup_error(
-                    "connect/authentication/status handshake timed out after 5 seconds",
-                )
-            })?
+            .map_err(|_| self.setup_error(SETUP_TIMEOUT_MESSAGE))?
             .map_err(|error| {
-                let reason = if matches!(self.address, TransportAddr::Cmd(_))
+                let reason = if matches!(error, ClientError::Timeout(_)) {
+                    SETUP_TIMEOUT_MESSAGE.to_string()
+                } else if matches!(self.address, TransportAddr::Cmd(_))
                     && matches!(error, ClientError::Transport(_))
                 {
                     "Cannot open the selected cmd:// daemon bridge; check that its executable is available"
@@ -290,6 +290,14 @@ mod tests {
                         assert_eq!(token, "fixture-token");
                         ResponseData::Authenticated
                     }
+                    Request::DeclareClient {
+                        kind,
+                        protocol_version,
+                    } => {
+                        assert_eq!(*kind, message.source);
+                        assert_eq!(*protocol_version, IPC_PROTOCOL_VERSION);
+                        ResponseData::Ack
+                    }
                     Request::GetStatus => data.clone(),
                     Request::Ping => ResponseData::Pong,
                     _ => panic!("unexpected business request {request:?}"),
@@ -332,6 +340,7 @@ mod tests {
             requests.as_slice(),
             [
                 Request::Authenticate { .. },
+                Request::DeclareClient { .. },
                 Request::GetStatus,
                 Request::Ping
             ]
@@ -355,7 +364,11 @@ mod tests {
             );
             assert!(matches!(
                 server.await.unwrap().as_slice(),
-                [Request::Authenticate { .. }, Request::GetStatus]
+                [
+                    Request::Authenticate { .. },
+                    Request::DeclareClient { .. },
+                    Request::GetStatus
+                ]
             ));
         }
     }
@@ -370,7 +383,7 @@ mod tests {
             .unwrap()
             .to_string()
             .contains("unexpected status"));
-        assert_eq!(server.await.unwrap().len(), 2);
+        assert_eq!(server.await.unwrap().len(), 3);
         let (target, server) = fixture(status(Some(IPC_PROTOCOL_VERSION), false)).await;
         let mut connection = target.connect(ClientKind::Tui).await.unwrap();
         assert!(connection
@@ -380,11 +393,10 @@ mod tests {
             .to_string()
             .contains("workspace"));
         drop(connection);
-        assert!(server
-            .await
-            .unwrap()
-            .iter()
-            .all(|request| matches!(request, Request::Authenticate { .. } | Request::GetStatus)));
+        assert!(server.await.unwrap().iter().all(|request| matches!(
+            request,
+            Request::Authenticate { .. } | Request::DeclareClient { .. } | Request::GetStatus
+        )));
     }
 
     #[tokio::test]

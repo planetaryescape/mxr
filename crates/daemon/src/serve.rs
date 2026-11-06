@@ -48,7 +48,8 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 /// stdio) start authenticated and this is inert. A [`PeerAuth::TokenRequired`]
 /// transport (the TCP-loopback adapter) starts UNauthenticated: every request
 /// is gated behind a successful `Authenticate` handshake, and events are
-/// withheld until then so a pre-auth peer never observes daemon state.
+/// withheld until then so a pre-auth peer never observes daemon state. Client
+/// declaration is still required after authentication before events can flow.
 ///
 /// The gate lives here — in the serve core's per-connection state, not in the
 /// transport (which stays protocol-free) and not in the stateless request
@@ -265,16 +266,21 @@ pub(crate) async fn serve_client_connection<S>(
     // Connection-scoped auth state. Token transports start unauthenticated and
     // gate every request; every other transport starts trusted.
     let mut auth = ConnectionAuth::new(&peer, auth_token);
-    // Once any request on this connection comes from a profiled client
-    // (agent, MCP), its events are cut to that profile's accounts for the
-    // rest of the connection. A connection that never sends (the web event
-    // socket, `mxr events`) is never profiled.
+    // Identity is declared after transport authentication, before events or
+    // ordinary requests. It remains fixed even if later envelopes disagree.
+    let mut client_kind: Option<ClientKind> = None;
     let mut event_profile: Option<&'static str> = None;
+    let setup_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
 
     loop {
         tokio::select! {
             biased;
 
+            _ = tokio::time::sleep_until(setup_deadline), if client_kind.is_none() => {
+                // No peer data was released, and no ordinary request admitted.
+                tracing::debug!("client declaration timed out");
+                break;
+            }
             joined = request_tasks.join_next(), if !request_tasks.is_empty() => {
                 match joined {
                     Some(Ok(response)) if can_send => {
@@ -288,6 +294,7 @@ pub(crate) async fn serve_client_connection<S>(
                         if accept_requests
                             && !shutdown_requested
                             && auth.is_authenticated()
+                            && client_kind.is_some()
                             && !flush_queued_events(&mut sink, &state, event_profile, &mut event_rx).await
                         {
                             can_send = false;
@@ -376,8 +383,38 @@ pub(crate) async fn serve_client_connection<S>(
                         }
                     }
                     Some(Ok(ipc_msg)) => {
-                        if let Some(name) = crate::handler::account_scope::profile_name(ipc_msg.source) {
-                            event_profile = Some(name);
+                        let setup_response = match (&ipc_msg.payload, client_kind) {
+                            (IpcPayload::Request(Request::DeclareClient { kind, protocol_version }), None)
+                                if *kind == ipc_msg.source
+                                    && *protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION => {
+                                let name = crate::handler::account_scope::profile_name(*kind);
+                                if name.is_some_and(|name| !state.config_snapshot().agent_surfaces.profiles.contains_key(name)) {
+                                    Some(Response::error_kinded(format!("{} clients require [agents.profiles.{}] on the daemon host; configure that profile and reconnect", kind.as_str(), kind.as_str()), IpcErrorKind::Policy))
+                                } else {
+                                    client_kind = Some(*kind);
+                                    event_profile = name;
+                                    Some(Response::Ok { data: ResponseData::Ack })
+                                }
+                            }
+                            (_, None) => Some(Response::error_kinded(
+                                format!("send DeclareClient with matching source and IPC protocol {} before ordinary requests", mxr_protocol::IPC_PROTOCOL_VERSION),
+                                IpcErrorKind::Unsupported,
+                            )),
+                            (IpcPayload::Request(Request::DeclareClient { .. }), Some(_)) => Some(Response::error_kinded(
+                                "client identity is already declared for this connection", IpcErrorKind::InvalidRequest,
+                            )),
+                            (_, Some(kind)) if kind != ipc_msg.source => Some(Response::error_kinded(
+                                "request source conflicts with the declared client identity", IpcErrorKind::Policy,
+                            )),
+                            _ => None,
+                        };
+                        if let Some(response) = setup_response {
+                            // Send inline so the declaration ack precedes every
+                            // event, including anything buffered before setup.
+                            if sink.send(response_frame(ipc_msg.id, response)).await.is_err() || client_kind.is_none() {
+                                break;
+                            }
+                            continue;
                         }
                         let permit_wait_started = std::time::Instant::now();
                         // Route the request to its lane semaphore before
@@ -450,7 +487,7 @@ pub(crate) async fn serve_client_connection<S>(
                     }
                 }
             }
-            event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
+            event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() && client_kind.is_some() => {
                 let delivered = match event {
                     Ok(event_msg) => forward_event(&mut sink, &state, event_profile, event_msg).await,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
@@ -750,6 +787,32 @@ mod tests {
     use tokio::sync::Semaphore;
     use tokio_util::codec::Framed;
 
+    async fn declare(client: &mut Framed<UnixStream, IpcCodec>) {
+        client
+            .send(IpcMessage {
+                expected_workspace: None,
+                id: u64::MAX,
+                source: mxr_protocol::ClientKind::Cli,
+                payload: IpcPayload::Request(Request::DeclareClient {
+                    kind: mxr_protocol::ClientKind::Cli,
+                    protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                }),
+            })
+            .await
+            .expect("declare");
+        assert!(matches!(
+            client
+                .next()
+                .await
+                .expect("declaration ack")
+                .expect("decode")
+                .payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+    }
+
     #[test]
     fn registration_proof_cannot_unlock_legacy_daemon_auth() {
         let peer = mxr_transport::PeerInfo {
@@ -825,6 +888,7 @@ mod tests {
         });
 
         let mut client = Framed::new(client_stream, IpcCodec::new());
+        declare(&mut client).await;
         client
             .send(IpcMessage {
                 expected_workspace: None,
@@ -927,6 +991,7 @@ mod tests {
         });
 
         let mut client = Framed::new(client_stream, IpcCodec::new());
+        declare(&mut client).await;
         // The first frame the client sees must be the resync signal, not a
         // silently-truncated event stream.
         let frame = tokio::time::timeout(Duration::from_secs(1), client.next())
@@ -1039,6 +1104,7 @@ mod tests {
             .await;
         });
         let mut client = Framed::new(client_stream, IpcCodec::new());
+        declare(&mut client).await;
         client
             .send(IpcMessage {
                 expected_workspace: None,
@@ -1101,6 +1167,7 @@ mod tests {
         });
 
         let mut client = Framed::new(client_stream, IpcCodec::new());
+        declare(&mut client).await;
         client
             .send(IpcMessage {
                 expected_workspace: None,
@@ -1196,6 +1263,7 @@ mod tests {
         });
 
         let mut client = Framed::new(client_stream, IpcCodec::new());
+        declare(&mut client).await;
         client
             .send(IpcMessage {
                 expected_workspace: None,

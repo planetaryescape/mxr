@@ -571,6 +571,39 @@ async fn authenticate_framed(client: &mut Framed<BoxedIo, IpcCodec>, token: &str
     }
 }
 
+async fn declare_framed<S>(client: &mut Framed<S, IpcCodec>, kind: ClientKind)
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    client
+        .send(IpcMessage {
+            expected_workspace: None,
+            id: u64::MAX - 1,
+            source: kind,
+            payload: IpcPayload::Request(Request::DeclareClient {
+                kind,
+                protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+            }),
+        })
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(RECV_TIMEOUT, client.next())
+        .await
+        .expect("declaration ack arrives")
+        .expect("open before declaration ack")
+        .expect("valid frame");
+    assert!(
+        matches!(
+            frame.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ),
+        "declaration must precede mailbox data: {frame:?}"
+    );
+    assert_eq!(frame.id, u64::MAX - 1);
+}
+
 /// A framed client over a served connection.
 struct Served {
     client: Framed<BoxedIo, IpcCodec>,
@@ -593,6 +626,17 @@ async fn serve_with_prep<H: Harness>(
     bulk: Arc<Semaphore>,
     prep: impl FnOnce(&Arc<AppState>),
 ) -> Served {
+    serve_with_kind(harness, state, hot, bulk, ClientKind::Cli, prep).await
+}
+
+async fn serve_with_kind<H: Harness>(
+    harness: &H,
+    state: Arc<AppState>,
+    hot: Arc<Semaphore>,
+    bulk: Arc<Semaphore>,
+    kind: ClientKind,
+    prep: impl FnOnce(&Arc<AppState>),
+) -> Served {
     let token = harness.expected_token();
     let (client, server) = spawn_server(harness, state, hot, bulk, prep).await;
     let mut client = Framed::new(client, IpcCodec::new());
@@ -602,6 +646,7 @@ async fn serve_with_prep<H: Harness>(
     if let Some(token) = token {
         authenticate_framed(&mut client, &token).await;
     }
+    declare_framed(&mut client, kind).await;
     Served { client, server }
 }
 
@@ -1370,8 +1415,8 @@ mod no_auth_pins {
 mod auth_matrix {
     use super::{
         daemon_event, request, sample_event, spawn_server, spawn_server_with_auth, AppState, Arc,
-        DaemonEvent, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload, Request,
-        Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT, RECV_TIMEOUT,
+        ClientKind, DaemonEvent, Framed, Harness, IpcCodec, IpcErrorKind, IpcMessage, IpcPayload,
+        Request, Response, ResponseData, TcpTokenHarness, CORPUS_TOKEN, JOIN_TIMEOUT, RECV_TIMEOUT,
     };
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
@@ -1394,6 +1439,23 @@ mod auth_matrix {
             .expect("stream open")
             .expect("frame decodes");
         assert_auth_error(&response);
+
+        client
+            .send(request(
+                2,
+                Request::DeclareClient {
+                    kind: ClientKind::Cli,
+                    protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                },
+            ))
+            .await
+            .unwrap();
+        let rejected = tokio::time::timeout(RECV_TIMEOUT, client.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_auth_error(&rejected);
 
         drop(client);
         tokio::time::timeout(JOIN_TIMEOUT, server)
@@ -1446,7 +1508,7 @@ mod auth_matrix {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 
-    /// The good token authenticates, then requests dispatch normally.
+    /// The good token authenticates; declaration then enables ordinary requests.
     #[tokio::test]
     async fn good_token_unlocks_the_connection() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -1479,6 +1541,7 @@ mod auth_matrix {
             "good token should authenticate, got {authed:?}"
         );
 
+        super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
         // Now a normal request round-trips.
         client.send(request(2, Request::Ping)).await.unwrap();
         let pong = tokio::time::timeout(RECV_TIMEOUT, client.next())
@@ -1599,11 +1662,10 @@ mod auth_matrix {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 
-    /// A pre-auth `TokenRequired` connection receives NO events; once
-    /// authenticated, events flow. Guards the data-leak edge: a peer must not
-    /// observe daemon state before it proves itself.
+    /// A token transport withholds events through both authentication and
+    /// declaration, including events queued before either setup step.
     #[tokio::test]
-    async fn events_are_withheld_until_authenticated() {
+    async fn events_are_withheld_until_authenticated_and_declared() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let (hot, bulk) = super::lanes();
         let token: Arc<str> = Arc::from(CORPUS_TOKEN);
@@ -1623,7 +1685,7 @@ mod auth_matrix {
             Ok(frame) => panic!("no frame may arrive before auth, got {frame:?}"),
         }
 
-        // Authenticate, then the (still-buffered) event is delivered.
+        // Authentication alone leaves the event buffered until declaration.
         client
             .send(request(
                 1,
@@ -1644,6 +1706,13 @@ mod auth_matrix {
                 data: ResponseData::Authenticated
             })
         ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), client.next())
+                .await
+                .is_err(),
+            "authentication alone cannot release mailbox events"
+        );
+        super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
         let event = tokio::time::timeout(RECV_TIMEOUT, client.next())
             .await
             .expect("frame")
@@ -1662,10 +1731,8 @@ mod auth_matrix {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 
-    /// The `Authenticated` ack must precede a pre-auth-buffered `EventsLagged`
-    /// (the inline-send ordering guarantee). Overflow the broadcast channel
-    /// pre-auth, then authenticate: the FIRST frame is `Authenticated`, the
-    /// SECOND is the `EventsLagged` resync — never reordered.
+    /// Authentication and declaration acknowledgements must both precede a
+    /// buffered lag signal, even when the broadcast channel overflowed pre-auth.
     #[tokio::test]
     async fn authenticated_precedes_events_lagged() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -1707,6 +1774,7 @@ mod auth_matrix {
             "Authenticated must be the FIRST frame, got {first:?}"
         );
 
+        super::declare_framed(&mut client, mxr_protocol::ClientKind::Cli).await;
         let second = tokio::time::timeout(RECV_TIMEOUT, client.next())
             .await
             .expect("frame")
@@ -1717,7 +1785,7 @@ mod auth_matrix {
                 second.payload,
                 IpcPayload::Event(DaemonEvent::EventsLagged { .. })
             ),
-            "EventsLagged must follow Authenticated, got {second:?}"
+            "EventsLagged must follow authentication and declaration, got {second:?}"
         );
 
         drop(client);
@@ -1868,7 +1936,8 @@ mod scoped_events {
 
         let (hot, bulk) = lanes();
         let h = DuplexHarness::start().await;
-        let mut served = serve(&h, state.clone(), hot, bulk).await;
+        let mut served =
+            serve_with_kind(&h, state.clone(), hot, bulk, ClientKind::Mcp, |_| {}).await;
         served
             .client
             .send(IpcMessage {
@@ -1930,7 +1999,8 @@ mod scoped_events {
         state.set_config_for_test(config).await;
         let (hot, bulk) = lanes();
         let h = DuplexHarness::start().await;
-        let mut served = serve(&h, state.clone(), hot, bulk).await;
+        let mut served =
+            serve_with_kind(&h, state.clone(), hot, bulk, ClientKind::Mcp, |_| {}).await;
         served
             .client
             .send(IpcMessage {
@@ -1983,10 +2053,9 @@ mod scoped_events {
         ));
     }
 
-    /// A connection that never identifies itself (the web event socket,
-    /// `mxr events`) is not profiled and still gets every event.
+    /// Declared CLI event consumers retain their ordinary event stream.
     #[tokio::test]
-    async fn an_unidentified_event_only_connection_still_receives_events() {
+    async fn a_declared_cli_event_only_connection_receives_events() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let (hot, bulk) = lanes();
         let h = DuplexHarness::start().await;
@@ -2066,8 +2135,11 @@ mod queued_events {
         assert!(is_lagged(&frames[0]));
     }
 
-    /// A stream whose writes always fail, as a client that has gone away.
-    struct FailingWrites(DuplexStream);
+    /// Let setup finish, then fail the operation's flush as a departed client.
+    struct FailingWrites {
+        io: DuplexStream,
+        fail: Arc<std::sync::atomic::AtomicBool>,
+    }
 
     impl AsyncRead for FailingWrites {
         fn poll_read(
@@ -2075,21 +2147,29 @@ mod queued_events {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<std::io::Result<()>> {
-            Pin::new(&mut self.0).poll_read(cx, buf)
+            Pin::new(&mut self.io).poll_read(cx, buf)
         }
     }
 
     impl AsyncWrite for FailingWrites {
         fn poll_write(
-            self: Pin<&mut Self>,
-            _: &mut Context<'_>,
-            _: &[u8],
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
         ) -> Poll<std::io::Result<usize>> {
-            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+            if self.fail.load(std::sync::atomic::Ordering::Acquire) {
+                Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+            } else {
+                Pin::new(&mut self.io).poll_write(cx, buf)
+            }
         }
 
-        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            if self.fail.load(std::sync::atomic::Ordering::Acquire) {
+                Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+            } else {
+                Pin::new(&mut self.io).poll_flush(cx)
+            }
         }
 
         fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
@@ -2135,8 +2215,12 @@ mod queued_events {
         let (server_io, client_io) = tokio::io::duplex(1 << 20);
         let event_rx = state.event_tx.subscribe();
         let shutdown_rx = state.shutdown_receiver();
+        let fail = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let server = tokio::spawn(serve_client_connection(
-            FailingWrites(server_io),
+            FailingWrites {
+                io: server_io,
+                fail: fail.clone(),
+            },
             state.clone(),
             hot,
             bulk,
@@ -2149,6 +2233,8 @@ mod queued_events {
         // fail. The quick run queues its progress events and finishes without
         // yielding, so the flush is the first write the daemon attempts.
         let mut client = Framed::new(client_io, IpcCodec::new());
+        declare_framed(&mut client, ClientKind::Cli).await;
+        fail.store(true, std::sync::atomic::Ordering::Release);
         client
             .send(request(1, Request::DraftEvalQuick))
             .await
@@ -2161,3 +2247,32 @@ mod queued_events {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 }
+
+/// Undeclared peers must not see mailbox data, including events queued before
+/// their first frame. Raw IPC deliberately bypasses the cooperative library.
+#[tokio::test]
+async fn undeclared_connection_does_not_release_queued_mail() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (hot, bulk) = lanes();
+    let harness = DuplexHarness::start().await;
+    let (io, server) = spawn_server(&harness, state.clone(), hot, bulk, |state| {
+        crate::chimes::emit_daemon_event(state, sample_event());
+    })
+    .await;
+    let mut client = Framed::new(io, IpcCodec::new());
+    client.send(request(1, Request::Ping)).await.unwrap();
+    let first = tokio::time::timeout(RECV_TIMEOUT, client.next())
+        .await
+        .expect("undeclared peer gets an actionable rejection")
+        .expect("rejection before EOF")
+        .expect("valid response");
+    assert!(
+        matches!(first.payload, IpcPayload::Response(Response::Error { .. })),
+        "mailbox data or an ordinary response escaped before declaration: {first:?}"
+    );
+    drop(client);
+    join_server(server).await;
+    state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+}
+
+mod connection_profile;

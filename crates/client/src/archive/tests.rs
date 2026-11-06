@@ -106,6 +106,7 @@ async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
         };
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let mut retained = None;
         while let Some(frame) = framed.next().await {
             let frame = frame.unwrap();
@@ -145,6 +146,7 @@ async fn submission_response_loss_retains_exact_review_for_reconnected_query() {
         operation.accepted = true;
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         for _ in 0..2 {
             let frame = framed.next().await.unwrap().unwrap();
             let response = match frame.payload {
@@ -207,6 +209,7 @@ async fn v068_status_fixture_refuses_archive_submission_without_capability() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let frame = framed.next().await.unwrap().unwrap();
         assert!(matches!(
             frame.payload,
@@ -253,6 +256,7 @@ async fn v068_status_fixture_refuses_private_replay_without_owner_capability() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
+        crate::tests::accept_declaration(&mut framed).await;
         let status_request = framed.next().await.unwrap().unwrap();
         assert!(matches!(
             status_request.payload,

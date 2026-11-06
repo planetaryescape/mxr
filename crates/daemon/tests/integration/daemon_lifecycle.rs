@@ -670,6 +670,29 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     active_client
         .send(IpcMessage {
             expected_workspace: None,
+            id: 0,
+            source: ClientKind::Cli,
+            payload: IpcPayload::Request(Request::DeclareClient {
+                kind: ClientKind::Cli,
+                protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+            }),
+        })
+        .await
+        .expect("declare active client");
+    assert!(matches!(
+        active_client
+            .next()
+            .await
+            .expect("declaration ack")
+            .expect("decode")
+            .payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    active_client
+        .send(IpcMessage {
+            expected_workspace: None,
             id: 1,
             source: ClientKind::Cli,
             payload: IpcPayload::Request(Request::Ping),

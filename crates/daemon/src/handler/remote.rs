@@ -293,12 +293,32 @@ pub(super) async fn read(
     read_owned(state, client_id, mail_secret, request, None).await
 }
 
+#[cfg(test)]
 pub(super) async fn read_owned(
     state: &std::sync::Arc<AppState>,
     client_id: &str,
     mail_secret: &mxr_core::RemoteSecret,
     request: &mxr_protocol::Request,
     owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
+) -> HandlerResult {
+    read_owned_as(
+        state,
+        client_id,
+        mail_secret,
+        request,
+        owner,
+        mxr_protocol::ClientKind::Cli,
+    )
+    .await
+}
+
+pub(super) async fn read_owned_as(
+    state: &std::sync::Arc<AppState>,
+    client_id: &str,
+    mail_secret: &mxr_core::RemoteSecret,
+    request: &mxr_protocol::Request,
+    owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
+    source: mxr_protocol::ClientKind,
 ) -> HandlerResult {
     use mxr_protocol::{Request, Response};
     let client = state
@@ -351,6 +371,20 @@ pub(super) async fn read_owned(
             sanitize_error(*response)
         } else { super::HandlerError::RemoteResponse(response) }
     })?;
+    // The gateway preserves the declared kind. Remote grants and cooperative
+    // profiles both apply, including specialized preview/send paths below.
+    super::enforce_client_profile(state, &state.config_snapshot(), source, request)
+        .await
+        .map_err(|_| {
+            super::HandlerError::RemoteResponse(Box::new(Response::error_kinded(
+                format!(
+                    "Request `{}` rejected by host {} profile",
+                    super::request_kind(request),
+                    source.as_str()
+                ),
+                mxr_protocol::IpcErrorKind::Policy,
+            )))
+        })?;
     if matches!(
         request,
         Request::GetRemoteReady | Request::GetArchiveWorkspace
@@ -466,7 +500,7 @@ pub(super) async fn read_owned(
             },
             Box::pin(super::dispatch(
                 state,
-                mxr_protocol::ClientKind::Cli,
+                source,
                 &PeerInfo {
                     auth: PeerAuth::TokenRequired,
                 },

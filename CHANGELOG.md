@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.228](https://github.com/planetaryescape/mxr/compare/v0.6.227...v0.6.228) (2026-11-06)
+
+
+### Features
+
+* trusted-alert automatic to-dos ([#915](https://github.com/planetaryescape/mxr/issues/915)) ([bd0c372](https://github.com/planetaryescape/mxr/commit/bd0c372f0ebee8c79ce36450a4cf4f983cc5579c))
+
+
+### Bug Fixes
+
+* **security:** close round-1 security findings (SEC-1..SEC-4) ([#923](https://github.com/planetaryescape/mxr/issues/923)) ([4f9b398](https://github.com/planetaryescape/mxr/commit/4f9b398841007ab52033b7f4712b50ea0544eaab))
+* **web:** float the offline banner so the shell never shifts ([#920](https://github.com/planetaryescape/mxr/issues/920)) ([edc5945](https://github.com/planetaryescape/mxr/commit/edc59459b61967efa28a51c82a6bd6378da049cf))
+
+
+### Documentation
+
+* remove a stray merge marker and fail docs validation on new ones ([#924](https://github.com/planetaryescape/mxr/issues/924)) ([6cab33c](https://github.com/planetaryescape/mxr/commit/6cab33cdc4eb7e24e247458f3083ca5b1b54f4d8))
+
 ## [0.6.227](https://github.com/planetaryescape/mxr/compare/v0.6.226...v0.6.227) (2026-11-06)
 
 

@@ -76,7 +76,7 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
             provider.as_ref(),
             &outcome.upserted_message_ids,
             false,
-            Utc::now(),
+            now,
         )
         .await;
         if !outcome.has_more {
@@ -201,7 +201,10 @@ async fn authenticate_demo_payment_alerts(
             .1
             .to_string();
         let sent = chrono::DateTime::from_timestamp(msg_date, 0).unwrap_or(now);
-        let fresh_date = sent.max(now - chrono::Duration::hours(23));
+        let fresh_date = sent.clamp(
+            now - chrono::Duration::hours(23),
+            now - chrono::Duration::minutes(5),
+        );
         state
             .store
             .record_message_arrival(
@@ -235,9 +238,17 @@ async fn eval(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
+    eval_at(state, account_id, Utc::now()).await
+}
+
+async fn eval_at(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    now: chrono::DateTime<Utc>,
+) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
     for account in state.store.list_accounts().await.unwrap() {
         if account_id.is_none_or(|id| id == &account.id) {
-            crate::handler::assessments::reconcile_account(state, &account.id)
+            crate::handler::assessments::reconcile_account_at(state, &account.id, now)
                 .await
                 .unwrap();
         }
@@ -359,7 +370,7 @@ async fn the_quick_snapshot_survives_crossing_midnight_utc() {
         midnight + chrono::Duration::hours(3),
     ] {
         let (state, _) = scenario_state_at(now).await;
-        let (summary, mismatches) = eval(&state, None).await;
+        let (summary, mismatches) = eval_at(&state, None, now).await;
         classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
         insta::assert_snapshot!(
             "the_quick_set_is_graded_and_every_mismatch_is_listed",

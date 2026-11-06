@@ -85,6 +85,7 @@ impl super::Store {
             for upsert in chunk {
                 let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
+                upsert.arrival.is_live &= !stored.existed;
                 vacated_threads.extend(stored.vacated_thread_id);
                 upsert.retarget(stored.id);
                 // A message whose id was deleted before (an IMAP UID reused
@@ -211,6 +212,50 @@ mod tests {
             label_ids,
             arrival: Default::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn receiver_evidence_on_refetch_cannot_turn_preexisting_mail_into_live_arrivals() {
+        let account = test_account();
+        let store = Store::in_memory().await.expect("synthetic store");
+        store.insert_account(&account).await.expect("account");
+        let mut page = [upsert(&account, 1, vec![])];
+        store
+            .upsert_envelope_with_direction(&page[0].envelope, MessageDirection::Inbound)
+            .await
+            .expect("pre-upgrade stored mail");
+        page[0].arrival = ArrivalEvidence {
+            received_at: Some(chrono::Utc::now()),
+            sender: mxr_core::SenderCheck::Verified {
+                host: "example.com".into(),
+            },
+            message_fingerprint: Some("original-before-refetch".into()),
+            is_live: true,
+        };
+        store.apply_sync_upserts(&mut page).await.expect("refetch");
+        let stored = store
+            .message_arrival(&page[0].envelope.id)
+            .await
+            .expect("arrival")
+            .expect("stored evidence");
+        assert!(!stored.is_live);
+        assert_eq!(
+            stored.message_fingerprint.as_deref(),
+            Some("original-before-refetch")
+        );
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("repeat refetch");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("evidence")
+                .is_live
+        );
     }
 
     #[tokio::test]

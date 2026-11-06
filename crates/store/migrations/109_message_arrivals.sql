@@ -1,15 +1,17 @@
 -- What the receiving provider said about a message when it arrived: its own
--- receipt time and whether it vouched for the From host (blueprint 22, D193).
+-- authenticated handling time and whether it vouched for the From host (blueprint 22, D193).
 -- Written once by the sync that stores the message and never recomputed, so
 -- the sender's Date header and later reclassification cannot change it.
 CREATE TABLE IF NOT EXISTS message_arrivals (
     message_id         TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
     account_id         TEXT NOT NULL,
     from_host          TEXT NOT NULL,
-    -- Unix seconds of the provider's receipt; NULL when it gave none.
+    -- Unix seconds of authenticated receiver handling; NULL when it gave none.
     received_at        INTEGER,
     -- Set only when the provider's own verdict passed DMARC for from_host.
     verified_host      TEXT,
+    message_fingerprint TEXT,
+    observed_at        INTEGER NOT NULL DEFAULT (unixepoch()),
     unverified_reason  TEXT,
     is_live            INTEGER NOT NULL DEFAULT 0
 );
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS alert_todo_claims (
     dedup_key TEXT NOT NULL,
     message_id TEXT NOT NULL,
     alert_kind TEXT NOT NULL,
+    message_fingerprint TEXT NOT NULL,
     PRIMARY KEY (account_id, dedup_key),
-    UNIQUE (account_id, message_id, alert_kind)
+    UNIQUE (account_id, message_id, alert_kind),
+    UNIQUE (account_id, message_fingerprint, alert_kind)
 );

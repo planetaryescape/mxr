@@ -13,7 +13,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 pub const MIN_HISTORY_MESSAGES: u32 = 3;
 /// How long before the alert the host's oldest earlier message must be.
 pub const MIN_HISTORY_DAYS: i64 = 30;
-/// An alert older than this (by the provider's receipt) never creates.
+/// An alert older than this (by the receiver's authenticated handling time) never creates.
 pub const FRESH_HOURS: i64 = 24;
 
 /// What the store holds about the host's earlier mail.
@@ -33,7 +33,7 @@ pub struct AlertInput<'a> {
     pub verified_host: Option<&'a str>,
     /// Why not, when it did not: an `UnverifiedReason` code.
     pub unverified_code: Option<&'a str>,
-    /// The provider's receipt time, never the `Date` header.
+    /// The receiver's authenticated handling time time, never the `Date` header.
     pub received_at: Option<DateTime<Utc>>,
     pub now: DateTime<Utc>,
     pub in_inbox: bool,
@@ -114,11 +114,11 @@ impl Held {
                 "not_recorded" => "it arrived before mxr kept sender checks".to_string(),
                 "no_verdict_header" => "your provider didn't say who sent it".to_string(),
                 "ambiguous_verdict" => "your provider's sender check was ambiguous".to_string(),
-                "no_receipt_time" => "your provider gave no arrival time".to_string(),
+                "no_receipt_time" => "your provider gave no authenticated handling time".to_string(),
                 _ => "your provider did not confirm the sender".to_string(),
             },
             Self::ParcelNotTied => "mxr can't tie this parcel to one verified email yet".into(),
-            Self::TooOld => "its arrival is outside the current day-long window".into(),
+            Self::TooOld => "its verified receiver handling time is outside the day-long window".into(),
             Self::Backfill => "it was fetched as history, not a new arrival".into(),
             Self::MailingList => "it came through a mailing list".into(),
             Self::ThinHistory => format!(

@@ -9,7 +9,7 @@
 
 use crate::cli::OutputFormat;
 use crate::output::resolve_format;
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Local, Utc};
 use mxr_store::{AuditCandidate, AuditMail};
 use mxr_updates::trust::{decide, AlertInput, Decision, History, MIN_HISTORY_MESSAGES};
 use mxr_updates::{Fact, WindowKind};
@@ -22,7 +22,7 @@ pub struct AuditReport {
     pub candidates: usize,
     /// Counts are not a precision grade: the audit has no human truth labels.
     pub precision_evaluated: bool,
-    /// How many the rule would have made into a to-do on arrival.
+    /// How many currently satisfy the stored eligibility and freshness gates.
     pub would_create: usize,
     /// How many it would have held, by reason code.
     pub held: BTreeMap<String, usize>,
@@ -33,16 +33,20 @@ pub struct AuditReport {
 }
 
 /// Provider receipts per (account, host), sorted to count earlier mail.
-struct Inbound(HashMap<(String, String), Vec<i64>>);
+struct Inbound(HashMap<(String, String), Vec<(i64, String, i64)>>);
 
 impl Inbound {
     fn new(mail: &[AuditMail]) -> Self {
-        let mut map: HashMap<(String, String), Vec<i64>> = HashMap::new();
+        let mut map: HashMap<(String, String), Vec<(i64, String, i64)>> = HashMap::new();
         for item in mail {
             if let Some(received_at) = item.received_at {
                 map.entry((item.account_id.clone(), item.from_host.clone()))
                     .or_default()
-                    .push(received_at);
+                    .push((
+                        received_at,
+                        item.message_fingerprint.clone(),
+                        item.observed_at,
+                    ));
             }
         }
         for dates in map.values_mut() {
@@ -52,16 +56,30 @@ impl Inbound {
     }
 
     /// Earlier mail from one host: how many, and the oldest.
-    fn history(&self, account: &str, host: &str, before: i64) -> History {
+    fn history(&self, account: &str, host: &str, before: i64, candidate: Option<&str>) -> History {
         let Some(dates) = self.0.get(&(account.to_string(), host.to_string())) else {
             return History::default();
         };
-        let earlier = dates.partition_point(|date| *date < before);
+        let prior: std::collections::HashMap<&str, i64> = dates
+            .iter()
+            .filter(|(date, fingerprint, observed)| {
+                *date < before && *observed < before && Some(fingerprint.as_str()) != candidate
+            })
+            .fold(
+                std::collections::HashMap::new(),
+                |mut out, (date, fingerprint, _)| {
+                    out.entry(fingerprint.as_str())
+                        .and_modify(|d| *d = (*d).min(*date))
+                        .or_insert(*date);
+                    out
+                },
+            );
+        let earlier = prior.len();
         History {
             messages: u32::try_from(earlier).unwrap_or(u32::MAX),
-            oldest: dates
-                .first()
-                .filter(|_| earlier > 0)
+            oldest: prior
+                .values()
+                .min()
                 .and_then(|date| DateTime::from_timestamp(*date, 0)),
         }
     }
@@ -71,7 +89,15 @@ impl Inbound {
             .iter()
             .filter(|((acct, _), _)| acct == account)
             .filter_map(|((_, host), dates)| {
-                let earlier = u32::try_from(dates.partition_point(|date| *date < before)).ok()?;
+                let earlier = u32::try_from(
+                    dates
+                        .iter()
+                        .filter(|(date, _, observed)| *date < before && *observed < before)
+                        .map(|(_, fingerprint, _)| fingerprint)
+                        .collect::<std::collections::HashSet<_>>()
+                        .len(),
+                )
+                .ok()?;
                 (earlier >= MIN_HISTORY_MESSAGES).then(|| (host.clone(), earlier))
             })
             .collect()
@@ -104,14 +130,17 @@ pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport 
         let code = evidence.unverified_reason.map(|reason| reason.code());
         let (history, established) = match (&verified, evidence.received_at) {
             (Some(host), Some(at)) => (
-                inbound.history(&candidate.account_id, host, at.timestamp()),
+                inbound.history(
+                    &candidate.account_id,
+                    host,
+                    at.timestamp(),
+                    evidence.message_fingerprint.as_deref(),
+                ),
                 inbound.established(&candidate.account_id, at.timestamp()),
             ),
             _ => (History::default(), Vec::new()),
         };
-        let now = evidence
-            .received_at
-            .map_or_else(Utc::now, |at| at + Duration::minutes(1));
+        let now = Utc::now();
         let input = AlertInput {
             kind,
             enabled: true,

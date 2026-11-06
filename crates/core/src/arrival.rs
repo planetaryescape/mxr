@@ -1,22 +1,21 @@
-//! What the receiving provider itself said about a message at the moment it
-//! arrived: when it received it, and whether it vouches for the sender.
-//!
-//! The provider adapter writes this once, with the message. Nothing in the
-//! message's own text (its `Date`, display name or subject) feeds it, and
-//! nothing recomputes it later, so classification order, a rebuild or a
-//! re-sync cannot change what was true on arrival (blueprint 22, D193).
+//! Verified sender origin and receiver handling age (D193).
+//! A fresh intact copy can qualify without proving new SMTP delivery. Adapters
+//! authenticate original bytes; sync records live eligibility independently.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// The provider's receipt time and its verdict on the sender.
+/// Verified receiver handling time, origin and stable original identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ArrivalEvidence {
-    /// When the provider received the message: Gmail's `internalDate`, IMAP's
-    /// `INTERNALDATE`. Never the sender's `Date` header.
+    /// Authenticated receiver handling time. Never API internalDate, IMAP
+    /// INTERNALDATE or the sender Date. The legacy field name is retained.
     pub received_at: Option<DateTime<Utc>>,
     pub sender: SenderCheck,
+    /// Stable authenticated original-message identity across copies/reseals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_fingerprint: Option<String>,
     /// Set by sync, never by mail: fetched after a completed initial sync,
     /// outside a provider history/refetch page. The first stored value wins.
     #[serde(default)]
@@ -27,6 +26,7 @@ impl Default for ArrivalEvidence {
     fn default() -> Self {
         Self {
             received_at: None,
+            message_fingerprint: None,
             is_live: false,
             sender: SenderCheck::Unverified {
                 reason: UnverifiedReason::NotRecorded,
@@ -40,7 +40,7 @@ impl Default for ArrivalEvidence {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum SenderCheck {
-    /// The provider's own `Authentication-Results` says DMARC passed for
+    /// A cryptographically bound receiver verdict says DMARC passed for
     /// `host`, which is the message's From host.
     Verified {
         host: String,
@@ -59,7 +59,7 @@ pub enum UnverifiedReason {
     /// does not.
     NotRecorded,
     /// The API supplies message headers but no attestation that the receiver
-    /// authored the verdict or that the message arrived through SMTP.
+    /// authored a cryptographically bound verdict and handling time.
     GmailVerdictUnproven,
     /// An IMAP server that is not Gmail has no pinned verdict. Outlook.com
     /// and Microsoft 365 are IMAP too, and write no authserv-id, so a header

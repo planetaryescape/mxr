@@ -274,6 +274,7 @@ pub(crate) fn imap_fetch_from_receiver(
         ImapReceiver::Generic => UnverifiedReason::ImapGivesNoVerdict,
     };
     let arrival = mxr_core::ArrivalEvidence {
+        message_fingerprint: None,
         received_at: None,
         is_live: false,
         sender: mxr_core::SenderCheck::Unverified { reason },

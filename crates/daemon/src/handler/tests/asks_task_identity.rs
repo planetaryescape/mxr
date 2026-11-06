@@ -596,6 +596,7 @@ async fn review6_financial_speakers_keep_remediation_and_independent_owner_work(
                 None,
             )
             .await;
+        super::alert_todos::authenticated_known_source(&fx, &mail).await;
         replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         let rows = fx
@@ -606,11 +607,15 @@ async fn review6_financial_speakers_keep_remediation_and_independent_owner_work(
             .unwrap();
         assert_eq!(rows.len(), expected, "{text}");
         for row in rows {
-            assert!(text.contains(&row.reason));
+            let quote = mxr_todo::provenance::FieldSources::from_json(&row.field_sources)
+                .get("quote")
+                .and_then(|f| f.evidence.clone())
+                .unwrap_or_else(|| row.reason.clone());
+            assert!(text.contains(&quote));
             assert!(
-                row.reason.starts_with("Please")
-                    || row.reason.starts_with("Your payment")
-                    || row.reason.starts_with("We couldn't")
+                quote.starts_with("Please")
+                    || quote.starts_with("Your payment")
+                    || quote.starts_with("We couldn't")
             );
         }
     }

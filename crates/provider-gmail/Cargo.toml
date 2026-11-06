@@ -43,6 +43,7 @@ security-framework = { workspace = true }
 security-framework-sys = { workspace = true }
 
 [dev-dependencies]
+mxr-mail-parse = { workspace = true, features = ["test-util"] }
 insta = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-test-support = { workspace = true }

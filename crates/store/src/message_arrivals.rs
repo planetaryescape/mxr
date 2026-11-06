@@ -1,7 +1,5 @@
-//! What the receiving provider said about each message when it arrived
-//! (blueprint 22, D193). Written by the sync transaction that stores the
-//! message; read by the alert to-do decision, which counts a sender's
-//! earlier mail by the provider's receipt time and never by `Date`.
+//! Persist authenticated receiver handling evidence and replay-safe claims.
+//! The legacy received_at column means verified handling time, not SMTP receipt.
 
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId};
@@ -15,6 +13,7 @@ use crate::{decode_optional_timestamp, Store};
 pub struct StoredArrival {
     pub received_at: Option<DateTime<Utc>>,
     pub is_live: bool,
+    pub message_fingerprint: Option<String>,
     pub verified_host: Option<String>,
     pub unverified_reason: Option<UnverifiedReason>,
 }
@@ -37,9 +36,9 @@ fn host_of(email: &str) -> Option<String> {
     (!host.is_empty()).then_some(host)
 }
 
-/// Record a message's arrival inside the sync transaction. The first real
-/// record wins; only the placeholder written for mail that predates this
-/// table is replaced.
+/// Keep the first verified evidence and first sync eligibility. Unverified
+/// records may gain evidence after a transient DNS failure; refetch cannot
+/// change the original live/backfill decision.
 pub(crate) async fn record_message_arrival_tx(
     tx: &mut SqliteConnection,
     message_id: &MessageId,
@@ -56,14 +55,15 @@ pub(crate) async fn record_message_arrival_tx(
     };
     sqlx::query(
         "INSERT INTO message_arrivals
-            (message_id, account_id, from_host, received_at, verified_host, unverified_reason, is_live)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (message_id, account_id, from_host, received_at, verified_host, unverified_reason, is_live, message_fingerprint)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(message_id) DO UPDATE SET
             from_host = excluded.from_host,
             received_at = COALESCE(excluded.received_at, message_arrivals.received_at),
             verified_host = excluded.verified_host,
-            unverified_reason = excluded.unverified_reason
-         WHERE message_arrivals.unverified_reason = 'not_recorded'",
+            unverified_reason = excluded.unverified_reason,
+            message_fingerprint = excluded.message_fingerprint
+         WHERE message_arrivals.verified_host IS NULL",
     )
     .bind(message_id.as_str())
     .bind(account_id.as_str())
@@ -72,6 +72,7 @@ pub(crate) async fn record_message_arrival_tx(
     .bind(verified_host)
     .bind(reason)
     .bind(arrival.is_live)
+    .bind(&arrival.message_fingerprint)
     .execute(tx)
     .await?;
     Ok(())
@@ -97,7 +98,7 @@ impl Store {
         message_id: &MessageId,
     ) -> Result<Option<StoredArrival>, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT received_at, verified_host, unverified_reason, is_live
+            "SELECT received_at, verified_host, unverified_reason, is_live, message_fingerprint
              FROM message_arrivals WHERE message_id = ?",
         )
         .bind(message_id.as_str())
@@ -107,6 +108,7 @@ impl Store {
             Ok(StoredArrival {
                 received_at: decode_optional_timestamp(row.try_get("received_at")?)?,
                 is_live: row.try_get("is_live")?,
+                message_fingerprint: row.try_get("message_fingerprint")?,
                 verified_host: row.try_get("verified_host")?,
                 unverified_reason: row
                     .try_get::<Option<String>, _>("unverified_reason")?
@@ -127,12 +129,14 @@ impl Store {
         candidate: &MessageId,
     ) -> Result<PriorSenderHistory, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT COUNT(*) AS messages, MIN(a.received_at) AS oldest
+            "SELECT COUNT(DISTINCT a.message_fingerprint) AS messages, MIN(a.received_at) AS oldest
              FROM message_arrivals a
              JOIN messages m ON m.id = a.message_id
              WHERE a.account_id = ?1 AND a.from_host = ?2
-               AND a.received_at IS NOT NULL AND a.received_at < ?3
-               AND a.message_id <> ?4 AND m.direction = 'inbound'",
+               AND a.received_at IS NOT NULL AND a.received_at < ?3 AND a.observed_at < ?3
+               AND a.message_id <> ?4 AND m.direction = 'inbound'
+               AND a.verified_host = a.from_host AND a.message_fingerprint IS NOT NULL
+               AND a.message_fingerprint IS NOT (SELECT message_fingerprint FROM message_arrivals WHERE message_id=?4)",
         )
         .bind(account_id.as_str())
         .bind(host)
@@ -155,13 +159,13 @@ impl Store {
         min_messages: u32,
     ) -> Result<Vec<(String, u32)>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT a.from_host AS host, COUNT(*) AS messages
+            "SELECT a.from_host AS host, COUNT(DISTINCT a.message_fingerprint) AS messages
              FROM message_arrivals a
              JOIN messages m ON m.id = a.message_id
-             WHERE a.account_id = ?1 AND a.received_at IS NOT NULL AND a.received_at < ?2
-               AND m.direction = 'inbound'
+             WHERE a.account_id = ?1 AND a.received_at IS NOT NULL AND a.received_at < ?2 AND a.observed_at < ?2
+               AND m.direction = 'inbound' AND a.verified_host=a.from_host AND a.message_fingerprint IS NOT NULL
              GROUP BY a.from_host
-             HAVING COUNT(*) >= ?3",
+             HAVING COUNT(DISTINCT a.message_fingerprint) >= ?3",
         )
         .bind(account_id.as_str())
         .bind(before.timestamp())
@@ -191,18 +195,31 @@ impl Store {
             ));
         };
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let fingerprint: Option<String> = sqlx::query_scalar("SELECT message_fingerprint FROM message_arrivals WHERE message_id=? AND account_id=? AND verified_host IS NOT NULL")
+            .bind(message_id.as_str()).bind(record.account_id.as_str()).fetch_optional(&mut *tx).await?.flatten();
+        let Some(fingerprint) = fingerprint else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
         let claimed = sqlx::query(
-            "INSERT INTO alert_todo_claims(account_id, dedup_key, message_id, alert_kind)
-             VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "INSERT INTO alert_todo_claims(account_id, dedup_key, message_id, alert_kind, message_fingerprint)
+             VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
         )
         .bind(record.account_id.as_str())
         .bind(&record.dedup_key)
         .bind(message_id.as_str())
         .bind(alert_kind)
+        .bind(fingerprint)
         .execute(&mut *tx)
         .await?;
         if claimed.rows_affected() == 0 {
             tx.rollback().await?;
+            return Ok(false);
+        }
+        let existing: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM todos WHERE account_id=? AND source_message_id=? AND kind=?)")
+            .bind(record.account_id.as_str()).bind(message_id.as_str()).bind(&record.kind).fetch_one(&mut *tx).await?;
+        if existing {
+            tx.commit().await?;
             return Ok(false);
         }
         let sql = format!(

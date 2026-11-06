@@ -6,7 +6,8 @@ description: Read notifications twice a day as one line per source, hand what ne
 Updates gathers notifications from services and apps into a digest at
 fixed times, 08:00 and 16:30 by default. You read one line per source,
 see what changed, and let go of the whole digest in one key. Press `t` on a line that needs action, such as a failed payment, to add it
-to To do. A suggested task stays a suggestion until you choose to create it.
+to To do. Qualifying verified alerts create automatically, with the authenticated
+domain in the title and reason. Other alerts explain why they stayed suggestions.
 
 ```bash
 mxr updates                  # the latest digest and what arrived since
@@ -44,6 +45,40 @@ stored deciding claim; Inbox chips and arrivals use the same answer. A done
 mark, snooze or expired item still controls whether it is open in Updates.
 The stored-assessment details require changes made after
 `v0.6.158`; that release does not include them.
+
+## Verified alerts create a to-do once
+
+A new sign-in, failed payment or linked delivery problem can create a task
+when mxr independently verifies Google's receiver seal, aligned sender and
+handling age from the original message. It needs three different earlier
+verified messages from that domain in this account over at least 30 days.
+The candidate must be unread in Inbox, handled within 24 hours and fetched
+live after initial sync. Archived, history, refetched and known imported
+mail do not qualify. Gmail-compatible extensions on another server do not
+make that server trusted; Outlook and generic IMAP explain the missing evidence.
+
+The title names the domain, such as `Check new sign-in · accounts.google.com`.
+There is at most one task per domain and alert kind each local day; copying
+or resealing the same original cannot create another on a later day. Existing
+undo and task controls remain available. No email can trigger a payment,
+external action or automatic task closing.
+
+A verified domain and receiver handling age do not prove the alert's truth
+or a new SMTP delivery. A fresh intact imported/replayed copy can qualify
+when the provider cannot distinguish it, and a domain with established
+history may send misleading text. Read the named domain and source before
+acting. Unsupported signatures, absent evidence and stale mail stay suggestions.
+
+Automatic alert creation defaults on. To switch it off:
+
+```toml
+[updates]
+auto_todo_alerts = false
+```
+
+`mxr updates alert-audit --format json` prints local counts from stored evidence.
+It opens read-only, starts no daemon, sends nothing and emits no mail content.
+It cannot grade false positives without your labels or recover missing evidence.
 
 ## Each source is one line, sorted by what it asks of you
 

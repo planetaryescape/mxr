@@ -12,6 +12,13 @@ mxr todo
 mxr todo --format json
 ```
 
+Verified alerts can also create tasks automatically under the
+[Updates trust gates](/guides/updates/#verified-alerts-create-a-to-do-once).
+Their title and reason name the authenticated domain. Verification identifies
+the origin and receiver handling age; it does not prove the alert's truth
+or a new SMTP delivery. The source quote, normal task controls and undo
+remain available. Set `updates.auto_todo_alerts = false` to keep these as suggestions.
+
 The open web runway refreshes when a sync finishes, including when it was empty.
 Reopening a completed task also refreshes Now and the navigation counts.
 

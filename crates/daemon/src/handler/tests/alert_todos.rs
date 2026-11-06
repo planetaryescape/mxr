@@ -229,15 +229,52 @@ async fn store_prior(fx: &Fixture, host: &str, at: DateTime<Utc>) {
             &message.account_id,
             &message.from.email,
             &ArrivalEvidence {
+                message_fingerprint: Some(message.id.to_string()),
                 received_at: Some(at),
                 is_live: false,
-                sender: SenderCheck::Unverified {
-                    reason: UnverifiedReason::NotRecorded,
+                sender: SenderCheck::Verified {
+                    host: host.to_string(),
                 },
             },
         )
         .await
         .unwrap();
+    // Fixture history was already locally observed at its logical past time.
+    sqlx::query("UPDATE message_arrivals SET observed_at=? WHERE message_id=?")
+        .bind(at.timestamp())
+        .bind(message.id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .expect("past local observation");
+}
+
+/// Decision fixtures model a source whose independently verified originals
+/// predate this candidate. Provider tests separately exercise real signatures.
+pub(super) async fn authenticated_known_source(fx: &Fixture, message: &Envelope) {
+    let host = message
+        .from
+        .email
+        .rsplit_once('@')
+        .expect("fixture address")
+        .1;
+    for days in [60, 40, 20] {
+        store_prior(fx, host, message.date - Duration::days(days)).await;
+    }
+    fx.state
+        .store
+        .record_message_arrival(
+            &message.id,
+            &message.account_id,
+            &message.from.email,
+            &ArrivalEvidence {
+                received_at: Some(message.date),
+                sender: SenderCheck::Verified { host: host.into() },
+                message_fingerprint: Some(message.id.to_string()),
+                is_live: true,
+            },
+        )
+        .await
+        .expect("synthetic verified source");
 }
 
 fn evidence(arrival: &Arrival, from: &str, received: DateTime<Utc>) -> ArrivalEvidence {
@@ -261,6 +298,7 @@ fn evidence(arrival: &Arrival, from: &str, received: DateTime<Utc>) -> ArrivalEv
             ..Default::default()
         },
     };
+    evidence.message_fingerprint = Some(mxr_core::MessageId::new().to_string());
     evidence.is_live = true;
     evidence
 }
@@ -749,4 +787,118 @@ async fn history_excludes_the_candidate_even_when_the_cut_is_after_its_receipt()
         .unwrap();
     assert_eq!(history.messages, 0);
     assert_eq!(history.oldest, None);
+}
+
+#[tokio::test]
+async fn receiver_copies_cannot_manufacture_independent_history_or_borrow_an_account() {
+    let run = arrange(
+        &Case::google_sign_in("copied source history", true),
+        mxr_config::MxrConfig::default(),
+    )
+    .await;
+    sqlx::query(
+        "UPDATE message_arrivals SET message_fingerprint='one-original' WHERE message_id<>?",
+    )
+    .bind(run.candidate.id.as_str())
+    .execute(run.fx.state.store.writer())
+    .await
+    .expect("synthetic copies");
+    let prior = run
+        .fx
+        .state
+        .store
+        .sender_history(
+            &run.fx.account,
+            "accounts.google.com",
+            run.now,
+            &run.candidate.id,
+        )
+        .await
+        .expect("history");
+    assert_eq!(prior.messages, 1);
+    scan(&run).await;
+    assert!(todos_for(&run).await.is_empty());
+    let other = run
+        .fx
+        .state
+        .store
+        .sender_history(
+            &mxr_core::AccountId::new(),
+            "accounts.google.com",
+            run.now,
+            &run.candidate.id,
+        )
+        .await
+        .expect("other account");
+    assert_eq!(other.messages, 0);
+    println!("copy adversaries: inflated_history_created=0 cross_account_history=0");
+}
+
+#[tokio::test]
+async fn original_identity_claim_survives_a_fresh_receiver_reseal_on_a_new_day() {
+    let mut run = arrange(
+        &Case::google_sign_in("reseal", true),
+        mxr_config::MxrConfig::default(),
+    )
+    .await;
+    scan(&run).await;
+    assert_eq!(todos_for(&run).await.len(), 1);
+    let original = run
+        .fx
+        .state
+        .store
+        .message_arrival(&run.candidate.id)
+        .await
+        .expect("arrival")
+        .expect("stored");
+    run.now += Duration::days(2);
+    run.candidate.id = mxr_core::MessageId::new();
+    run.candidate.provider_id = "new-copy-provider-id".into();
+    run.candidate.date = run.now - Duration::minutes(5);
+    run.fx
+        .store_envelope(&run.candidate, MessageDirection::Inbound)
+        .await;
+    run.fx
+        .state
+        .store
+        .record_message_arrival(
+            &run.candidate.id,
+            &run.fx.account,
+            &run.candidate.from.email,
+            &ArrivalEvidence {
+                received_at: Some(run.candidate.date),
+                sender: SenderCheck::Verified {
+                    host: "accounts.google.com".into(),
+                },
+                is_live: true,
+                message_fingerprint: original.message_fingerprint,
+            },
+        )
+        .await
+        .expect("receiver reseal");
+    scan(&run).await;
+    assert_eq!(
+        todos_for(&run).await.len(),
+        1,
+        "same signed original cannot claim a new local day"
+    );
+    println!("replay adversary: extra_tasks_on_new_day=0");
+}
+
+#[tokio::test]
+async fn copied_old_originals_observed_after_the_candidate_do_not_create_source_history() {
+    let run = arrange(
+        &Case::google_sign_in("history copied after candidate", true),
+        mxr_config::MxrConfig::default(),
+    )
+    .await;
+    sqlx::query("UPDATE message_arrivals SET observed_at=? WHERE message_id<>?")
+        .bind(run.now.timestamp())
+        .bind(run.candidate.id.as_str())
+        .execute(run.fx.state.store.writer())
+        .await
+        .expect("newly copied old originals");
+    scan(&run).await;
+    assert!(todos_for(&run).await.is_empty());
+    println!("cross-mailbox old-copy adversary: manufactured_history_created=0");
 }

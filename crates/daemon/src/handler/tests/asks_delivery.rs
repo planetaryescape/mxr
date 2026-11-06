@@ -151,6 +151,7 @@ async fn review3_failed_payment_and_polite_remediation_have_one_stored_task() {
         )
         .await;
     let text = "Your payment failed. Please update your payment details.";
+    super::alert_todos::authenticated_known_source(&fx, &mail).await;
     replace(&fx, &mail, text).await;
     settle(&fx, &mail).await;
     let answers = fx
@@ -173,7 +174,13 @@ async fn review3_failed_payment_and_polite_remediation_have_one_stored_task() {
         .unwrap();
     eprintln!("REVIEW3_PAYMENT answers={answers:?} tasks={tasks:?} packets={packets:?}");
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].reason, text);
+    assert!(tasks[0].reason.contains("verified origin example.com"));
+    assert_eq!(
+        mxr_todo::provenance::FieldSources::from_json(&tasks[0].field_sources)
+            .get("quote")
+            .and_then(|f| f.evidence.as_deref()),
+        Some(text)
+    );
     let ResponseData::Todos { todos } = request(
         &fx,
         Request::ListTodos {
@@ -238,6 +245,7 @@ async fn review3_independent_payment_remediations_keep_their_own_tasks() {
     ] {
         let fx = Fixture::new().await;
         let mail = fx.message(&ThreadId::new(), "billing@example.com", ME, Duration::minutes(5), None).await;
+        super::alert_todos::authenticated_known_source(&fx, &mail).await;
         replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         let tasks = fx.state.store.list_todos_in_state(Some(&fx.account), TodoState::Open, 100).await.unwrap();
@@ -265,6 +273,7 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 )
                 .await;
             let text = "Your payment of £25 failed. Please update your payment details.";
+            super::alert_todos::authenticated_known_source(&fx, &mail).await;
             replace(&fx, &mail, text).await;
             settle(&fx, &mail).await;
             let grouped = fx

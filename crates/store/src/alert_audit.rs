@@ -19,6 +19,8 @@ pub struct AuditMail {
     pub account_id: String,
     pub from_host: String,
     pub received_at: Option<i64>,
+    pub message_fingerprint: String,
+    pub observed_at: i64,
 }
 
 pub async fn alert_audit_candidates(
@@ -27,7 +29,7 @@ pub async fn alert_audit_candidates(
     let rows = sqlx::query(
         "SELECT f.account_id, ac.sync_provider, f.fact_json,
                 (m.list_id IS NOT NULL OR json_extract(b.metadata_json, '$.list_id') IS NOT NULL) AS has_list_id,
-                m.flags, a.received_at, a.verified_host, a.unverified_reason, COALESCE(a.is_live, 0) AS is_live,
+                m.flags, a.message_fingerprint, a.received_at, a.verified_host, a.unverified_reason, COALESCE(a.is_live, 0) AS is_live,
                 EXISTS (SELECT 1 FROM message_labels ml JOIN labels l ON l.id=ml.label_id
                         WHERE ml.message_id=m.id AND l.role='inbox') AS in_inbox
          FROM update_facts f JOIN messages m ON m.id=f.message_id JOIN accounts ac ON ac.id=m.account_id
@@ -50,6 +52,7 @@ pub async fn alert_audit_candidates(
                 arrival: StoredArrival {
                     received_at: crate::decode_optional_timestamp(row.try_get("received_at")?)?,
                     verified_host: row.try_get("verified_host")?,
+                    message_fingerprint: row.try_get("message_fingerprint")?,
                     is_live: row.try_get("is_live")?,
                     unverified_reason: row
                         .try_get::<Option<String>, _>("unverified_reason")?
@@ -64,8 +67,8 @@ pub async fn alert_audit_inbound(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<AuditMail>, sqlx::Error> {
     let rows = sqlx::query(
-        "SELECT a.account_id, a.from_host, a.received_at FROM message_arrivals a
-         JOIN messages m ON m.id=a.message_id WHERE m.direction='inbound'",
+        "SELECT DISTINCT a.account_id, a.from_host, a.received_at, a.message_fingerprint, a.observed_at FROM message_arrivals a
+         JOIN messages m ON m.id=a.message_id WHERE m.direction='inbound' AND a.verified_host=a.from_host AND a.message_fingerprint IS NOT NULL",
     )
     .fetch_all(conn)
     .await?;
@@ -75,6 +78,8 @@ pub async fn alert_audit_inbound(
                 account_id: row.try_get("account_id")?,
                 from_host: row.try_get("from_host")?,
                 received_at: row.try_get("received_at")?,
+                message_fingerprint: row.try_get("message_fingerprint")?,
+                observed_at: row.try_get("observed_at")?,
             })
         })
         .collect()

@@ -31,7 +31,7 @@ pub struct FetchedMessage {
     pub body: Option<Vec<u8>>,
     pub header: Option<Vec<u8>>,
     pub size: Option<u32>,
-    /// IMAP INTERNALDATE (true server receive time). Used as the date
+    /// IMAP INTERNALDATE (server-assigned, caller-selectable on APPEND). Used as the date
     /// fallback when a message has no parseable `Date:` header, so such
     /// messages get a stable time instead of the sync wall-clock.
     pub internal_date: Option<chrono::DateTime<chrono::Utc>>,

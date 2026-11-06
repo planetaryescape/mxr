@@ -62,6 +62,7 @@ pub struct ImapProvider {
     max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
     receiver: parse::ImapReceiver,
+    receiver_verifier: mxr_mail_parse::receiver_arc::ReceiverVerifier,
 }
 
 impl ImapProvider {
@@ -74,6 +75,7 @@ impl ImapProvider {
             max_connections,
             session_factory,
             receiver: parse::ImapReceiver::from_config(&config),
+            receiver_verifier: Default::default(),
         }
     }
 
@@ -89,6 +91,7 @@ impl ImapProvider {
             max_connections: config.max_connections,
             session_factory,
             receiver: parse::ImapReceiver::from_config(&config),
+            receiver_verifier: Default::default(),
         }
     }
 
@@ -274,7 +277,8 @@ impl ImapProvider {
         format!("(FLAGS INTERNALDATE BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
     }
 
-    fn append_fetched_messages(
+    async fn append_fetched_messages(
+        &self,
         fetched: &[types::FetchedMessage],
         request: &mut CollectSyncedMessages<'_>,
     ) {
@@ -288,7 +292,24 @@ impl ImapProvider {
                 request.account_id,
                 request.receiver,
             ) {
-                Ok(sm) => request.synced.push(sm),
+                Ok(mut sm) => {
+                    if matches!(request.receiver, parse::ImapReceiver::Gmail) {
+                        if let Some(raw) = &msg.body {
+                            sm.arrival = self
+                                .receiver_verifier
+                                .verify(
+                                    raw,
+                                    &sm.envelope.from.email,
+                                    mxr_mail_parse::receiver_arc::ReceiverPolicy {
+                                        sealer: "google.com",
+                                        authserv_id: "mx.google.com",
+                                    },
+                                )
+                                .await;
+                        }
+                    }
+                    request.synced.push(sm);
+                }
                 Err(e) => {
                     warn!(
                         mailbox = %request.mailbox,
@@ -332,7 +353,7 @@ impl ImapProvider {
     ) -> mxr_core::provider::Result<Box<dyn session::ImapSession>> {
         match session.uid_fetch(request.uid_set, request.query).await {
             Ok(fetched) => {
-                Self::append_fetched_messages(&fetched, &mut request);
+                self.append_fetched_messages(&fetched, &mut request).await;
                 return Ok(session);
             }
             Err(error) if error.is_malformed_fetch_response() => {
@@ -369,7 +390,7 @@ impl ImapProvider {
         let mut skipped_uids = Vec::new();
         for uid in uids {
             match session.uid_fetch(&uid.to_string(), request.query).await {
-                Ok(fetched) => Self::append_fetched_messages(&fetched, &mut request),
+                Ok(fetched) => self.append_fetched_messages(&fetched, &mut request).await,
                 Err(error) if error.is_malformed_fetch_response() => {
                     skipped_uids.push(uid);
                     drop(session);
@@ -1779,6 +1800,68 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn original_google_bytes_verify_but_gmail_extensions_do_not_change_endpoint_trust() {
+        use mxr_mail_parse::receiver_arc::{
+            test_fixtures::{fixture, SIGNED},
+            ReceiverVerifier,
+        };
+        for host in ["imap.gmail.com", "compatible.example"] {
+            let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, false).await;
+            let config = ImapConfig::new(
+                host.into(),
+                993,
+                "test@example.com".into(),
+                "synthetic".into(),
+                true,
+                true,
+            );
+            let mut provider = ImapProvider::new(AccountId::new(), config);
+            provider.receiver_verifier = ReceiverVerifier::for_test(dns);
+            let mut fetched = make_fetched_message(7, "fixture", "notifications@stripe.com");
+            fetched.body = Some(raw.into_bytes());
+            fetched.internal_date = Some(chrono::DateTime::UNIX_EPOCH);
+            fetched.gmail_msg_id = Some(123);
+            let (mut seen, mut synced, mut failed) = (HashSet::new(), Vec::new(), None);
+            let mut request = CollectSyncedMessages {
+                mailbox: "INBOX",
+                uid_set: "7",
+                query: "BODY.PEEK[]",
+                min_uid: 1,
+                seen_uids: &mut seen,
+                account_id: &provider.account_id,
+                receiver: provider.receiver,
+                synced: &mut synced,
+                min_failed_uid: &mut failed,
+            };
+            provider
+                .append_fetched_messages(&[fetched], &mut request)
+                .await;
+            assert_eq!(synced.len(), 1);
+            if host == "imap.gmail.com" {
+                assert!(
+                    matches!(&synced[0].arrival.sender, mxr_core::SenderCheck::Verified { host } if host == "stripe.com")
+                );
+                assert!(
+                    synced[0]
+                        .arrival
+                        .received_at
+                        .expect("signed handling time")
+                        .timestamp()
+                        > 0
+                );
+            } else {
+                assert!(matches!(
+                    synced[0].arrival.sender,
+                    mxr_core::SenderCheck::Unverified {
+                        reason: mxr_core::UnverifiedReason::ImapGivesNoVerdict
+                    }
+                ));
+                assert!(synced[0].arrival.message_fingerprint.is_none());
+            }
+        }
+    }
 
     fn test_config() -> ImapConfig {
         ImapConfig::new(

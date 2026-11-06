@@ -9,10 +9,14 @@ description = "Internal: shared RFC 5322 / MIME parsing helpers for mxr"
 publish = false
 
 
+[features]
+test-util = ["dep:base64"]
+
 [lints]
 workspace = true
 
 [dependencies]
+base64 = { workspace = true, optional = true }
 mxr-core = { workspace = true }
 chrono = { workspace = true }
 icalendar = { workspace = true }
@@ -20,8 +24,14 @@ list-unsubscribe = { workspace = true, features = ["mail-parser"] }
 mail-parser = { workspace = true }
 regex = { workspace = true }
 thiserror = { workspace = true }
+mail-auth = { workspace = true }
+hickory-resolver = { workspace = true }
+tokio = { workspace = true }
+sha2 = { workspace = true }
+psl = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 insta = { workspace = true }
 mxr-test-support = { workspace = true }
 serde_json = { workspace = true }

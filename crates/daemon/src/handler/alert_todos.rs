@@ -240,7 +240,7 @@ fn created_reason(host: &str, history: History) -> String {
             )
         })
         .unwrap_or_default();
-    format!("Created automatically: your provider confirmed {host} sent this{since}.")
+    format!("Created automatically: verified origin {host} and receiver handling age{since}.")
 }
 
 /// On arrival: create the alert's to-do if the decision says so. Returns
@@ -257,19 +257,8 @@ pub(super) async fn create_on_arrival(
     let Decision::Create(claim) = &assessment.decision else {
         return Ok(false);
     };
-    // An existing task already gives this thread a place in To do.
-    if !state
-        .store
-        .open_todos_for_threads(
-            &message.account_id,
-            std::slice::from_ref(&message.thread_id),
-        )
-        .await?
-        .is_empty()
-    {
-        return Ok(false);
-    }
-    let record = alert_record(state, message, claim, assessment.history, now);
+    let mut record = alert_record(state, message, claim, assessment.history, now);
+    enrich_from_stored_ask(state, message, claim, &mut record, now).await?;
     if !state
         .store
         .insert_alert_todo(&record, claim.kind.as_str())
@@ -289,6 +278,109 @@ pub(super) async fn create_on_arrival(
         context: Some(serde_json::json!({ "kind": claim.kind.as_str() })),
     });
     Ok(true)
+}
+
+/// Asks projection uses the same receiver gate before acknowledging its work.
+/// This avoids creating an untrusted payment task before the Updates scan.
+pub(super) async fn project_payment_ask(
+    state: &AppState,
+    id: &mxr_core::MessageId,
+    now: DateTime<Utc>,
+) -> Result<(), HandlerError> {
+    let Some(envelope) = state.store.get_envelope(id).await? else {
+        return Ok(());
+    };
+    let answers = state
+        .store
+        .asks_for_messages(&envelope.account_id, std::slice::from_ref(id))
+        .await?;
+    let Some(answer) = answers.get(id) else {
+        return Ok(());
+    };
+    if !mxr_todo::asks::items::detections(answer, &envelope)
+        .iter()
+        .any(|(_, d)| d.kind == TodoKind::PaymentFailed)
+    {
+        return Ok(());
+    }
+    if let Some(message) = state.store.place_message(id).await? {
+        if message.direction == "inbound" {
+            create_on_arrival(
+                state,
+                &message,
+                Alert {
+                    kind: NeedsYou::PaymentFailed,
+                    window_until: None,
+                },
+                now,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn enrich_from_stored_ask(
+    state: &AppState,
+    message: &PlaceMessage,
+    claim: &Claim,
+    record: &mut TodoRecord,
+    now: DateTime<Utc>,
+) -> Result<(), HandlerError> {
+    if claim.kind != NeedsYou::PaymentFailed {
+        return Ok(());
+    }
+    let Some(envelope) = state.store.get_envelope(&message.id).await? else {
+        return Ok(());
+    };
+    let answers = state
+        .store
+        .asks_for_messages(&message.account_id, std::slice::from_ref(&message.id))
+        .await?;
+    let Some(answer) = answers.get(&message.id) else {
+        return Ok(());
+    };
+    let Some((_, detection)) = mxr_todo::asks::items::detections(answer, &envelope)
+        .into_iter()
+        .find(|(_, d)| d.kind == TodoKind::PaymentFailed)
+    else {
+        return Ok(());
+    };
+    let rows = state
+        .store
+        .list_todo_scan_rows(std::slice::from_ref(&message.id))
+        .await?;
+    let Some(row) = rows.first() else {
+        return Ok(());
+    };
+    let (projected, _) = mxr_todo::pass::stored_record(
+        &super::todos::pass_config(state, now),
+        row,
+        detection,
+        false,
+    );
+    record.amount_minor = projected.amount_minor;
+    record.currency = projected.currency;
+    record.due_at = projected.due_at;
+    record.due_words = projected.due_words;
+    // Keep exact quote/unit provenance without handing the alert's lifetime to
+    // an evolving content assessment. Durable arrival claims own that lifetime.
+    let mut fields: serde_json::Value =
+        serde_json::from_str(&projected.field_sources).unwrap_or_default();
+    let verified: serde_json::Value =
+        serde_json::from_str(&record.field_sources).unwrap_or_default();
+    if let (Some(fields), Some(verified)) = (fields.as_object_mut(), verified.as_object()) {
+        fields.extend(verified.clone());
+    }
+    record.field_sources = fields.to_string();
+    let mut provenance = FieldSources::from_json(&record.field_sources);
+    retime_record(
+        record,
+        &mut provenance,
+        state.snooze_time_prefs().morning_hour,
+    );
+    record.field_sources = provenance.to_json();
+    Ok(())
 }
 
 fn alert_record(

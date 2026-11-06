@@ -109,6 +109,11 @@ pub(super) async fn facts_for<Tz: TimeZone>(
         let body = bodies.get(&message.id).map(|(plain, html)| {
             clean(plain.as_deref(), html.as_deref(), &ReaderConfig::default()).content
         });
+        let handling_time = state
+            .store
+            .message_arrival(&message.id)
+            .await?
+            .and_then(|a| a.received_at);
         let fact = derive(
             &FactInput {
                 subject: &message.subject,
@@ -117,7 +122,7 @@ pub(super) async fn facts_for<Tz: TimeZone>(
                 from_email: &message.from_email,
                 from_name: message.from_name.as_deref(),
                 list_id: message.list_id.as_deref(),
-                date: message.date,
+                date: handling_time.unwrap_or(message.date),
             },
             tz,
         );

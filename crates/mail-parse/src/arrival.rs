@@ -1,11 +1,6 @@
-//! The receiving provider's verdict on a sender, read from its own
-//! `Authentication-Results` header (RFC 8601).
-//!
-//! The provider's header is identified by the authserv-id the adapter pins,
-//! never by position: a verdict needs exactly one header carrying that id.
-//! A forged copy below (or above) the provider's own makes two, which fails
-//! closed. A header with any other id is ignored. mxr does not verify DKIM
-//! or SPF itself; it reports what the provider said (blueprint 22, D193).
+//! Parse a receiver verdict only after the caller authenticates its provenance.
+//! Matching an authserv-id is syntax validation, not a trust boundary. Live
+//! adapters use receiver_arc over original bytes; bare mail headers never qualify.
 
 use chrono::{DateTime, Utc};
 use mxr_core::{ArrivalEvidence, SenderCheck, UnverifiedReason};
@@ -13,7 +8,8 @@ use mxr_core::{ArrivalEvidence, SenderCheck, UnverifiedReason};
 /// What an adapter knows about its provider's verdict.
 #[derive(Debug, Clone, Copy)]
 pub enum VerdictPolicy<'a> {
-    /// The provider writes `Authentication-Results` with this authserv-id.
+    /// Caller has independently authenticated these results. The string pin
+    /// alone is not evidence of receiver authorship.
     Pinned { authserv_id: &'a str },
     /// The provider gives no verdict mxr can trust.
     Unavailable(UnverifiedReason),
@@ -39,6 +35,7 @@ pub fn arrival_evidence(
         }
     };
     ArrivalEvidence {
+        message_fingerprint: None,
         received_at,
         sender,
         is_live: false,

@@ -4284,9 +4284,6 @@ pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {
             Some("logs") => Some(
                 "`mxr daemon` has no `logs` verb. Use `mxr logs`.".to_string(),
             ),
-            Some("stop") => Some(
-                "`mxr daemon` has no stop verb. Use `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.".to_string(),
-            ),
             Some("restart") => Some(
                 "`mxr daemon` has no restart verb. Use `mxr restart`.".to_string(),
             ),

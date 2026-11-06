@@ -1444,15 +1444,9 @@ async fn materialize_remote_asset(
     // The same guards the reader uses for a linked article: public addresses
     // only, every redirect re-checked, no proxy, a pinned address and a
     // deadline. `Accept::Image` also refuses a body that is not an image.
-    let mut policy = mxr_reading::fetch::FetchPolicy {
-        max_bytes: MAX_REMOTE_ASSET_BYTES as usize,
-        accept: mxr_reading::fetch::Accept::Image,
-        ..mxr_reading::fetch::FetchPolicy::default()
-    };
+    let policy = mxr_reading::fetch::FetchPolicy::for_image(MAX_REMOTE_ASSET_BYTES as usize);
     #[cfg(test)]
-    {
-        policy = policy.allowing_loopback_for_tests();
-    }
+    let policy = policy.allowing_loopback_for_tests();
     let fetched = mxr_reading::fetch::fetch_bytes(source, &policy)
         .await
         .map_err(|error| format!("remote image fetch failed: {error}"))?;

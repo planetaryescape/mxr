@@ -212,6 +212,16 @@ pub fn checked_url(raw: &str) -> Result<Url, FetchError> {
 }
 
 impl FetchPolicy {
+    /// The policy for a message image: any `image/*` declared type, with the
+    /// caller's byte cap.
+    pub fn for_image(max_bytes: usize) -> Self {
+        Self {
+            max_bytes,
+            accept: Accept::Image,
+            ..Self::default()
+        }
+    }
+
     /// Tests only: allow `127.0.0.1` so a mock server can stand in for the
     /// web. This is behind the `test-support` feature, which a dev-dependency
     /// enables; it is not part of the runtime surface.

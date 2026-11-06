@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   plan:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       is_release_pr_merge: ${{ steps.release-merge.outputs.is_release_pr_merge }}
@@ -44,7 +44,7 @@ jobs:
   release-please:
     needs: plan
     if: needs.plan.outputs.has_artifacts == 'true' || needs.plan.outputs.is_release_pr_merge == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - name: Require release token
         env:

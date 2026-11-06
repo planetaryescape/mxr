@@ -35,6 +35,14 @@ pub trait MailSyncProvider: Send + Sync {
         false
     }
 
+    /// Hex SHA-256 of the leaf certificate the server presents, read without
+    /// authenticating (so no credentials are sent) and whether or not it is
+    /// trusted, so a user can pin it. `None` when the provider has no such
+    /// certificate to report (the default) or the connection is unencrypted.
+    async fn server_certificate_sha256(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     async fn authenticate(&mut self) -> Result<()>;
     async fn refresh_auth(&mut self) -> Result<()>;
 

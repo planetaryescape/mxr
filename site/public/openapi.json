@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.224"
+    "version": "0.6.225"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -8425,6 +8425,13 @@
                 "type": "null"
               }
             ]
+          },
+          "tls_cert_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 of the IMAP server's leaf certificate, reported by an account\ntest so it can be copied into `tls_cert_sha256`. Absent for plaintext\naccounts and non-IMAP accounts."
           }
         }
       },
@@ -8735,6 +8742,13 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "tls_cert_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Hex SHA-256 of the server's leaf certificate; see the config reference."
               },
               "type": {
                 "type": "string",

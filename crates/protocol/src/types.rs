@@ -6127,6 +6127,9 @@ pub enum AccountSyncConfigData {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate; see the config reference.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         client_id: Option<String>,
@@ -6165,6 +6168,11 @@ pub struct AccountOperationResult {
     pub device_code_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_code_user_code: Option<String>,
+    /// SHA-256 of the IMAP server's leaf certificate, reported by an account
+    /// test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+    /// accounts and non-IMAP accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_cert_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

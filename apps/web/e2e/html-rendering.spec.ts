@@ -4,9 +4,12 @@ import { openApp } from "./helpers/state";
 
 test.beforeEach(async ({ page }) => {
   // These threads exist only in the fixtures, including their local mode metadata.
-  await page.route(/\/api\/v1\/mail\/modes\/membership\?thread_id=thread-html$/, async (route) => {
-    await route.fulfill({ contentType: "application/json", json: { threads: [] } });
-  });
+  await page.route(
+    /\/api\/v1\/mail\/modes\/membership\?thread_id=thread-html(?:&.*)?$/,
+    async (route) => {
+      await route.fulfill({ contentType: "application/json", json: { threads: [] } });
+    },
+  );
 });
 
 test("HTML mail renders in a sandbox without scripts, trackers stripped and remote images held back", async ({
@@ -46,7 +49,7 @@ test("HTML mail renders in a sandbox without scripts, trackers stripped and remo
     });
   });
 
-  await page.route("**/api/v1/mail/threads/thread-html", async (route) => {
+  await page.route("**/api/v1/mail/threads/thread-html*", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -55,6 +58,7 @@ test("HTML mail renders in a sandbox without scripts, trackers stripped and remo
           id: "thread-html",
           latest_date: "2026-05-11T00:00:00Z",
           message_count: 1,
+          message_ids: ["msg-html"],
           participants: [{ name: "Security Smoke", email: "security@example.com" }],
           snippet: "visible body",
           subject: "sandbox smoke",

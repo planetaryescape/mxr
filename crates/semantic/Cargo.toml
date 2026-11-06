@@ -31,7 +31,7 @@ mxr-core = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-store = { workspace = true }
 anyhow = { workspace = true }
-calamine = { version = "0.37", optional = true }
+calamine = { version = "0.38", optional = true }
 chrono = { workspace = true }
 # Recheck BGE-small and E5 model loading before widening beyond 7.1;
 # download and embedding are verified with the locked 7.1.1 release.

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.223"
+    "version": "0.6.225"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -8425,6 +8425,13 @@
                 "type": "null"
               }
             ]
+          },
+          "tls_cert_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 of the IMAP server's leaf certificate, reported by an account\ntest so it can be copied into `tls_cert_sha256`. Absent for plaintext\naccounts and non-IMAP accounts."
           }
         }
       },
@@ -8735,6 +8742,13 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "tls_cert_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Hex SHA-256 of the server's leaf certificate; see the config reference."
               },
               "type": {
                 "type": "string",
@@ -15057,6 +15071,36 @@
                 "type": "string",
                 "enum": [
                   "AccountAddressesChanged"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A rebuild of the contacts table committed (after the debounce that\nfollows an address change, a sync pass or a manual refresh). Clients\nshowing analytics or contacts refetch them; the counts they hold are\nfrom before the rebuild. Names no account because the rebuild covers\nevery account.",
+            "required": [
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ContactsRefreshed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Any event this build has no variant for, so a client built from here on\nskips a newer daemon's later events instead of failing to decode the\nframe and dropping the connection. The daemon never sends it. Clients\nignore it.",
+            "required": [
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "Unknown"
                 ]
               }
             }

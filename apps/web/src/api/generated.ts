@@ -4761,6 +4761,12 @@ export interface components {
             send?: components["schemas"]["AccountOperationStep"] | null;
             summary: string;
             sync?: components["schemas"]["AccountOperationStep"] | null;
+            /**
+             * @description SHA-256 of the IMAP server's leaf certificate, reported by an account
+             *     test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+             *     accounts and non-IMAP accounts.
+             */
+            tls_cert_sha256?: string | null;
         };
         AccountOperationStep: {
             detail: string;
@@ -4835,6 +4841,8 @@ export interface components {
                   password_ref: string;
                   /** Format: int32 */
                   port: number;
+                  /** @description Hex SHA-256 of the server's leaf certificate; see the config reference. */
+                  tls_cert_sha256?: string | null;
                   /** @enum {string} */
                   type: "imap";
                   use_tls: boolean;
@@ -6982,6 +6990,14 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   event: "AccountAddressesChanged";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "ContactsRefreshed";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "Unknown";
               };
         /** @enum {string} */
         DaemonHealthClass:

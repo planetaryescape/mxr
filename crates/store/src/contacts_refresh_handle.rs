@@ -2,7 +2,7 @@ use crate::Store;
 use mxr_core::id::AccountId;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, oneshot, Semaphore};
+use tokio::sync::{broadcast, mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
@@ -15,6 +15,7 @@ const DEBOUNCE: Duration = Duration::from_secs(10);
 #[derive(Clone)]
 pub struct ContactsRefreshHandle {
     tx: mpsc::Sender<ContactsRefreshCommand>,
+    refreshed: broadcast::Sender<()>,
 }
 
 enum ContactsRefreshCommand {
@@ -34,7 +35,19 @@ impl ContactsRefreshHandle {
     /// across it guarantees interactive/status queries keep their
     /// headroom.
     pub fn start(store: Arc<Store>, background_db: Arc<Semaphore>) -> (Self, JoinHandle<()>) {
+        Self::start_with_debounce(store, background_db, DEBOUNCE)
+    }
+
+    fn start_with_debounce(
+        store: Arc<Store>,
+        background_db: Arc<Semaphore>,
+        debounce_window: Duration,
+    ) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(16);
+        // A receiver only needs to learn that a refresh committed, so a lagged
+        // one loses nothing.
+        let (refreshed, _) = broadcast::channel(4);
+        let refreshed_tx = refreshed.clone();
         let pending = Arc::new(Mutex::new(HashSet::<AccountId>::new()));
         let handle = tokio::spawn({
             let pending = pending.clone();
@@ -58,7 +71,7 @@ impl ContactsRefreshHandle {
                                         pending.extend(account_ids);
                                     }
                                     let _ = resp.send(Ok(()));
-                                    debounce = Some(tokio::time::Instant::now() + DEBOUNCE);
+                                    debounce = Some(tokio::time::Instant::now() + debounce_window);
                                 }
                                 Some(ContactsRefreshCommand::Shutdown { resp }) => {
                                     let _ = resp.send(());
@@ -76,8 +89,14 @@ impl ContactsRefreshHandle {
                                     continue;
                                 }
                                 let _bg_permit = background_db.acquire().await;
-                                if let Err(error) = store.refresh_contacts().await {
-                                    tracing::warn!(%error, "contacts refresh failed");
+                                match store.refresh_contacts().await {
+                                    Ok(_) => {
+                                        // No receiver is fine: nobody is listening.
+                                        let _ = refreshed_tx.send(());
+                                    }
+                                    Err(error) => {
+                                        tracing::warn!(%error, "contacts refresh failed");
+                                    }
                                 }
                             }
                         }
@@ -88,7 +107,7 @@ impl ContactsRefreshHandle {
                                     pending.extend(account_ids);
                                 }
                                 let _ = resp.send(Ok(()));
-                                debounce = Some(tokio::time::Instant::now() + DEBOUNCE);
+                                debounce = Some(tokio::time::Instant::now() + debounce_window);
                             }
                             Some(ContactsRefreshCommand::Shutdown { resp }) => {
                                 let _ = resp.send(());
@@ -100,7 +119,13 @@ impl ContactsRefreshHandle {
                 }
             }
         });
-        (Self { tx }, handle)
+        (Self { tx, refreshed }, handle)
+    }
+
+    /// Wakes once for each refresh that committed. A refresh that failed
+    /// sends nothing.
+    pub fn subscribe_refreshed(&self) -> broadcast::Receiver<()> {
+        self.refreshed.subscribe()
     }
 
     pub async fn enqueue_accounts(&self, account_ids: &[AccountId]) -> Result<(), String> {
@@ -126,5 +151,45 @@ impl ContactsRefreshHandle {
         resp_rx
             .await
             .map_err(|_| "contacts refresh worker stopped".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Store;
+
+    #[tokio::test]
+    async fn a_committed_refresh_wakes_subscribers_once_per_burst() {
+        let store = Arc::new(Store::in_memory().await.expect("in-memory store"));
+        let (handle, worker) = ContactsRefreshHandle::start_with_debounce(
+            store,
+            Arc::new(Semaphore::new(1)),
+            Duration::from_millis(20),
+        );
+        let mut refreshed = handle.subscribe_refreshed();
+
+        handle
+            .enqueue_accounts(&[AccountId::new()])
+            .await
+            .expect("enqueued");
+        handle
+            .enqueue_accounts(&[AccountId::new()])
+            .await
+            .expect("enqueued");
+
+        tokio::time::timeout(Duration::from_secs(5), refreshed.recv())
+            .await
+            .expect("a refresh is announced")
+            .expect("channel open");
+        // The burst coalesced into one refresh, so no second wake follows.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), refreshed.recv())
+                .await
+                .is_err()
+        );
+
+        handle.request_shutdown().await.expect("shutdown");
+        worker.await.expect("worker joins");
     }
 }

@@ -1971,6 +1971,21 @@ pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watc
     }
 }
 
+/// Tell connected clients when the debounced contacts rebuild commits, so an
+/// analytics or contacts view left open refetches. Ends when the refresh worker
+/// stops and closes the channel.
+pub async fn contacts_refreshed_announcer(
+    state: Arc<AppState>,
+    mut refreshed: tokio::sync::broadcast::Receiver<()>,
+) {
+    use tokio::sync::broadcast::error::RecvError;
+    // A lagged receiver missed wakes, but one announcement still covers them:
+    // clients refetch everything the rebuild touched. Closed ends the loop.
+    while let Ok(()) | Err(RecvError::Lagged(_)) = refreshed.recv().await {
+        crate::chimes::emit_daemon_event(&state, mxr_protocol::DaemonEvent::ContactsRefreshed);
+    }
+}
+
 /// Pre-compute the default Wrapped (current YTD, default account) on
 /// startup and keep it warm. Wrapped runs ~10 SQL queries against the
 /// store; on large mailboxes a cold call is multi-second, sometimes
@@ -3087,6 +3102,33 @@ mod tests {
             .unwrap();
         assert!(status.last_error.is_none(), "a success clears it");
         assert!(status.failure_class.is_none());
+    }
+
+    /// The refresh worker's wake becomes a `ContactsRefreshed` event on the
+    /// daemon stream, which is what an open analytics view refetches on.
+    #[tokio::test]
+    async fn a_committed_contacts_refresh_is_announced_to_clients() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut events = state.event_tx.subscribe();
+        let (wake, refreshed) = tokio::sync::broadcast::channel(4);
+        let announcer = tokio::spawn(contacts_refreshed_announcer(state.clone(), refreshed));
+
+        wake.send(()).unwrap();
+
+        let message = tokio::time::timeout(Duration::from_secs(5), events.recv())
+            .await
+            .expect("an event is sent")
+            .unwrap();
+        assert!(matches!(
+            message.payload,
+            mxr_protocol::IpcPayload::Event(mxr_protocol::DaemonEvent::ContactsRefreshed)
+        ));
+        // The worker stopping closes the channel and ends the announcer.
+        drop(wake);
+        tokio::time::timeout(Duration::from_secs(5), announcer)
+            .await
+            .expect("the announcer ends")
+            .unwrap();
     }
 
     /// Stale `sync_in_progress=true` rows from a daemon that died

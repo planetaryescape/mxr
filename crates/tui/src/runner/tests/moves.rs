@@ -688,6 +688,32 @@ fn an_account_address_change_drops_every_cached_reply_context() {
 }
 
 #[test]
+fn a_contacts_rebuild_refreshes_an_open_analytics_screen() {
+    let mut app = inbox_app();
+    app.screen = crate::app::Screen::Analytics;
+    app.analytics.refresh_pending = false;
+
+    handle_daemon_event(&mut app, DaemonEvent::ContactsRefreshed);
+
+    assert!(
+        app.analytics.refresh_pending,
+        "counts built from the old contacts table would stay on screen"
+    );
+}
+
+#[test]
+fn an_event_this_build_does_not_know_changes_nothing() {
+    let mut app = inbox_app();
+    app.analytics.refresh_pending = false;
+    let before = app.mailbox.envelopes.len();
+
+    handle_daemon_event(&mut app, DaemonEvent::Unknown);
+
+    assert!(!app.analytics.refresh_pending);
+    assert_eq!(app.mailbox.envelopes.len(), before);
+}
+
+#[test]
 fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));

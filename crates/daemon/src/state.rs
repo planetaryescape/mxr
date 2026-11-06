@@ -721,6 +721,9 @@ pub struct AppState {
     pub(crate) assistant: crate::assistant::AssistantRuntime,
     runtime: RwLock<ProviderRuntime>,
     draft_operation_locks: ParkingMutex<HashMap<mxr_core::DraftId, Arc<TokioMutex<()>>>>,
+    /// Held across a move to To do's open-to-do check and insert, so two
+    /// overlapping moves of one email cannot both pass the check.
+    todo_move_locks: ParkingMutex<HashMap<mxr_core::MessageId, Arc<TokioMutex<()>>>>,
     attachment_materialization_locks:
         ParkingMutex<HashMap<AttachmentMaterializationKey, AttachmentMaterializationLock>>,
     pub(crate) archive_runners: ParkingMutex<HashSet<String>>,
@@ -1128,6 +1131,7 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -1365,6 +1369,7 @@ impl AppState {
                     auth_required,
                     use_tls,
                     max_connections,
+                    tls_cert_sha256,
                 }) => {
                     // Degrade, never crash: a bad IMAP config skips just this
                     // account (mirroring Gmail above). Credentials resolve
@@ -1378,7 +1383,9 @@ impl AppState {
                         *auth_required,
                         *use_tls,
                         *max_connections,
-                    ) {
+                    )
+                    .and_then(|config| Ok(config.with_tls_cert_sha256(tls_cert_sha256.clone())?))
+                    {
                         Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
                             account_id.clone(),
                             config,
@@ -1688,6 +1695,20 @@ impl AppState {
             let mut locks = self.draft_operation_locks.lock();
             locks
                 .entry(draft_id.clone())
+                .or_insert_with(|| Arc::new(TokioMutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
+    }
+
+    /// Serialises moves of one email to To do. Entries nobody holds or waits on
+    /// are dropped on the way in, so the map does not grow with every email.
+    pub async fn acquire_todo_move(&self, message_id: &mxr_core::MessageId) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.todo_move_locks.lock();
+            locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+            locks
+                .entry(message_id.clone())
                 .or_insert_with(|| Arc::new(TokioMutex::new(())))
                 .clone()
         };
@@ -2624,6 +2645,7 @@ impl AppState {
                 default_send_provider: send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -2727,6 +2749,7 @@ impl AppState {
                 default_send_provider: None,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -2878,6 +2901,7 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 draft_operation_locks: ParkingMutex::new(HashMap::new()),
+                todo_move_locks: ParkingMutex::new(HashMap::new()),
                 attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
                 archive_runners: ParkingMutex::new(HashSet::new()),
                 provider_operation_locks: ParkingMutex::new(HashMap::new()),

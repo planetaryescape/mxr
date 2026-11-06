@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.225](https://github.com/planetaryescape/mxr/compare/v0.6.224...v0.6.225) (2026-11-06)
+
+
+### Bug Fixes
+
+* honour IMAP TLS modes and exact certificate pins ([#910](https://github.com/planetaryescape/mxr/issues/910)) ([5f7259c](https://github.com/planetaryescape/mxr/commit/5f7259cfe5771f02b0a74da5463c4b1d2e539157))
+
+## [0.6.224](https://github.com/planetaryescape/mxr/compare/v0.6.223...v0.6.224) (2026-11-06)
+
+
+### Bug Fixes
+
+* preserve event streams and refresh contacts views with protocol 29 ([#907](https://github.com/planetaryescape/mxr/issues/907)) ([bd7774b](https://github.com/planetaryescape/mxr/commit/bd7774ba48befb8dddd4143163948d2e83266d2b))
+
 ## [0.6.223](https://github.com/planetaryescape/mxr/compare/v0.6.222...v0.6.223) (2026-11-06)
 
 

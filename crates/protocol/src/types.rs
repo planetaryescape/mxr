@@ -6091,6 +6091,9 @@ pub enum AccountSyncConfigData {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate; see the config reference.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         client_id: Option<String>,
@@ -6129,6 +6132,11 @@ pub struct AccountOperationResult {
     pub device_code_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_code_user_code: Option<String>,
+    /// SHA-256 of the IMAP server's leaf certificate, reported by an account
+    /// test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+    /// accounts and non-IMAP accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_cert_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6289,6 +6297,18 @@ pub enum DaemonEvent {
     AccountAddressesChanged {
         account_id: AccountId,
     },
+    /// A rebuild of the contacts table committed (after the debounce that
+    /// follows an address change, a sync pass or a manual refresh). Clients
+    /// showing analytics or contacts refetch them; the counts they hold are
+    /// from before the rebuild. Names no account because the rebuild covers
+    /// every account.
+    ContactsRefreshed,
+    /// Any event this build has no variant for, so a client built from here on
+    /// skips a newer daemon's later events instead of failing to decode the
+    /// frame and dropping the connection. The daemon never sends it. Clients
+    /// ignore it.
+    #[serde(other)]
+    Unknown,
 }
 
 impl DaemonEvent {
@@ -6310,7 +6330,9 @@ impl DaemonEvent {
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
             | Self::ModesChanged { .. }
-            | Self::AccountAddressesChanged { .. } => IpcCategory::CoreMail,
+            | Self::AccountAddressesChanged { .. }
+            | Self::ContactsRefreshed
+            | Self::Unknown => IpcCategory::CoreMail,
             Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }

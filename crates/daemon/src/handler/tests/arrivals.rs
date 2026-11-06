@@ -1555,6 +1555,61 @@ async fn moving_to_to_do_twice_makes_one_task() {
     assert_eq!(row.state, mxr_store::TodoState::Dismissed);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn overlapping_moves_to_to_do_make_one_task() {
+    let fx = Fixture::new().await;
+    let receipt = inbound(&fx, "no-reply@shop.example", false).await;
+    line(&fx).await;
+
+    // Both pass the open-to-do check before either inserts, unless the check
+    // and the insert are serialised.
+    let (a, b, c, d) = tokio::join!(
+        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
+        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
+        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
+        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
+    );
+
+    let open: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM todos WHERE source_message_id = ?1 AND state = 'open'",
+    )
+    .bind(receipt.id.as_str())
+    .fetch_one(fx.state.store.reader())
+    .await
+    .unwrap();
+    assert_eq!(open, 1, "one task for one email");
+    let made = [a, b, c, d]
+        .iter()
+        .filter(|outcome| outcome.aspect_id.is_some())
+        .count();
+    assert_eq!(made, 1, "exactly one move made the task; the rest saw it");
+}
+
+/// The race above is a window of a few store calls, too narrow to hit on
+/// demand. This holds the per-email lock the move must take, so a move that
+/// skips it completes anyway and the test fails.
+#[tokio::test]
+async fn a_move_to_to_do_waits_for_another_move_of_the_same_email() {
+    let fx = Fixture::new().await;
+    let receipt = inbound(&fx, "no-reply@shop.example", false).await;
+    line(&fx).await;
+    let other_move = fx.state.acquire_todo_move(&receipt.id).await;
+
+    let waiting = tokio::time::timeout(
+        std::time::Duration::from_millis(300),
+        move_to(&fx, &receipt.id, ModeKindData::Todo, false),
+    )
+    .await;
+    assert!(
+        waiting.is_err(),
+        "the move ran while another move of the email was in its check-and-insert"
+    );
+
+    drop(other_move);
+    let made = move_to(&fx, &receipt.id, ModeKindData::Todo, false).await;
+    assert_eq!(made.copy, "Added to To do.");
+}
+
 #[tokio::test]
 async fn known_senders_list_purpose_survives_copy_newsletter_address_and_crowd() {
     let fx = Fixture::new().await;

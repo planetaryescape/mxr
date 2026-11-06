@@ -628,6 +628,8 @@ expression: summary
     "TriageVerdictData",
     "TrimmedData",
     "TuiKeysData",
+    "UndoPreview",
+    "UndoPreviewTarget",
     "UnsubscribeMethod",
     "UnsubscribePlanData",
     "UnsubscribePlanRequestData",

@@ -11907,6 +11907,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "UndoPreview";
+                  mutation_id: string;
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "Unsubscribe";
                   message_id: components["schemas"]["MessageId"];
               }
@@ -13859,6 +13864,11 @@ export interface components {
                   job: components["schemas"]["JobData"];
                   /** @enum {string} */
                   kind: "Job";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "UndoPreview";
+                  preview: components["schemas"]["UndoPreview"];
               }
             | {
                   /** @enum {string} */
@@ -16360,6 +16370,31 @@ export interface components {
             keys: string[];
             /** @description The TUI action its dispatcher returns. */
             name: string;
+        };
+        /**
+         * @description What `UndoMutation` would reverse, read from the undo entry without
+         *     changing it.
+         */
+        UndoPreview: {
+            /** @description The mutation's kind, snake_case (`archive`, `labels`, `desk_done`). */
+            kind: string;
+            mutation_id: string;
+            /**
+             * @description True when the undo also puts back local state beyond messages: a desk
+             *     Done's dismissals, promises, reminders or highlights.
+             */
+            restores_desk_state: boolean;
+            /** @description The messages the undo restores, in the order the undo entry holds them. */
+            targets: components["schemas"]["UndoPreviewTarget"][];
+        };
+        UndoPreviewTarget: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description False when the message is gone from the local store, so the real undo
+             *     cannot restore it.
+             */
+            in_local_store: boolean;
+            message_id: components["schemas"]["MessageId"];
         };
         UnsubscribeMethod:
             | {

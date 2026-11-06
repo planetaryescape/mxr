@@ -502,3 +502,32 @@ fn label_edits_over_all_work_only_on_labels_the_user_created() {
         );
     }
 }
+
+#[test]
+fn undo_dry_run_refuses_an_unknown_id_instead_of_promising_an_undo() {
+    let _guard = daemon_lock();
+    let temp = tempfile::tempdir().unwrap();
+    let (_daemon, instance, data_dir, config_dir) = fake_daemon(&temp);
+
+    let preview = run_failing(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["undo", "never-a-mutation", "--dry-run", "--format", "json"],
+    );
+    let commit = run_failing(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["undo", "never-a-mutation", "--format", "json"],
+    );
+    assert_eq!(preview.status.code(), commit.status.code());
+    let preview_error = String::from_utf8(preview.stderr).unwrap();
+    let commit_error = String::from_utf8(commit.stderr).unwrap();
+    assert!(preview_error.contains("not found"), "{preview_error}");
+    assert_eq!(preview_error, commit_error);
+    assert!(
+        preview.stdout.is_empty(),
+        "a refusal prints no successful preview"
+    );
+}

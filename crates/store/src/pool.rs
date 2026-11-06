@@ -1402,6 +1402,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 111, name: "message_arrivals", kind: MigrationKind::Sql(include_str!("../migrations/111_message_arrivals.sql")) },
     Migration { version: 112, name: "thread_role_pages", kind: MigrationKind::Sql(include_str!("../migrations/112_thread_role_pages.sql")) },
     Migration { version: 113, name: "thread_role_page_seek", kind: MigrationKind::Sql(include_str!("../migrations/113_thread_role_page_seek.sql")) },
+    Migration { version: 114, name: "thread_role_page_upsert", kind: MigrationKind::Sql(include_str!("../migrations/114_thread_role_page_upsert.sql")) },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -2381,7 +2382,7 @@ pub(crate) mod tests {
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
                 (83..=106)
-                    .chain([108, 109, 110, 111, 112, 113])
+                    .chain([108, 109, 110, 111, 112, 113, 114])
                     .collect::<Vec<_>>(),
                 "from {from}"
             );

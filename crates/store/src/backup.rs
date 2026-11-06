@@ -238,7 +238,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=113).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=114).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -315,6 +315,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
             "DROP TRIGGER IF EXISTS thread_role_pages_message_insert; ",
             "DROP TRIGGER IF EXISTS thread_role_pages_message_update; ",
             "DROP TRIGGER IF EXISTS thread_role_pages_message_delete; ",
+            "DROP TRIGGER IF EXISTS thread_role_pages_message_flags; ",
             "DROP TRIGGER IF EXISTS thread_role_pages_label_insert; ",
             "DROP TRIGGER IF EXISTS thread_role_pages_label_delete; ",
             "DROP TRIGGER IF EXISTS thread_role_pages_label_role_update; ",
@@ -630,7 +631,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=113).contains(&version) {
+    if !(80..=114).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [

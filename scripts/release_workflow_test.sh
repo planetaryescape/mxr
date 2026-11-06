@@ -82,7 +82,7 @@ if [[ -z "$tap_job" ]] || [[ -z "$verify_job" ]]; then
     echo "Release workflow must define the homebrew tap job and the homebrew-verify job." >&2
     exit 1
 fi
-if grep -Fq 'macos-' <<<"$tap_job" || ! grep -Fq 'runs-on: blacksmith-4vcpu-ubuntu-2404' <<<"$tap_job"; then
+if grep -Fq 'macos-' <<<"$tap_job" || ! grep -Fq 'runs-on: ubuntu-24.04' <<<"$tap_job"; then
     echo "The homebrew tap job must run on the Linux runner, not macOS." >&2
     exit 1
 fi

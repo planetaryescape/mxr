@@ -85,10 +85,10 @@ it.
 
 ## Authentication
 
-Every route except `/api/v1/health`, `/api/v1/auth/local-token`, and
-`/api/v1/i18n` requires a bearer token. That includes
-`/api/v1/openapi.json` and `/api/v1/docs`; the API shape is not secret,
-but it is still part of the local daemon capability surface. By default the token is `<config_dir>/bridge-token`
+Every route except `/api/v1/health` and `/api/v1/auth/local-token`
+requires a bearer token, including the locale bundle and the events
+upgrade. That covers `/api/v1/openapi.json` and `/api/v1/docs`; the API
+shape is not secret, but it is still part of the local daemon capability surface. By default the token is `<config_dir>/bridge-token`
 (mode 0600, generated on first daemon start), where `<config_dir>` is
 the active runtime identity's config directory. Rotate it by deleting
 that file and restarting the daemon.
@@ -137,7 +137,7 @@ where one user shouldn't auto-claim another's bridge token).
 /api/v1/client/*      — client-specific UI shaping
 /api/v1/events        — WebSocket event stream (10 DaemonEvent variants)
 /api/v1/health        — unauthenticated liveness probe
-/api/v1/i18n          — unauthenticated locale bundle for the first-party SPA
+/api/v1/i18n          — locale bundle for the first-party SPA (authenticated)
 /api/v1/openapi.json  — OpenAPI 3.1 spec (authenticated)
 /api/v1/docs          — Swagger UI (authenticated)
 ```
@@ -270,9 +270,11 @@ malicious page in the user's browser can resolve `attacker.com` to
 defends with three layers:
 
 1. **Every authority-bearing route requires bearer auth** — even on
-   loopback. Only `/health`, `/auth/local-token`, and `/i18n` are
-   unauthenticated bootstrap/read-only routes. A page without the token
-   can't do anything useful.
+   loopback. Only `/health` and `/auth/local-token` are unauthenticated
+   bootstrap routes. A page without the token can't do anything useful.
+   Requests a browser marks as cross-site (`Sec-Fetch-Site: cross-site`,
+   or an `Origin` that is neither the bridge's own nor an allowed CORS
+   origin) are refused with 403 even when they carry a valid token.
 2. **Host-header allowlist** — `localhost`, `mxr.localhost`, `127.0.0.1`,
    `[::1]` are always allowed; everything else returns 403. Mismatches
    are how DNS rebinding requests look from the server's side.

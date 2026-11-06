@@ -112,13 +112,97 @@ pub async fn require_bridge_auth(
     request: Request,
     next: Next,
 ) -> Response {
-    if crate::auth::token_matches(
+    if !crate::auth::token_matches(
         crate::auth::extract_token(request.headers()),
         state.config.auth_token.as_str(),
     ) {
-        return next.run(request).await;
+        return crate::auth::BridgeError::Unauthorized.into_response();
     }
-    crate::auth::BridgeError::Unauthorized.into_response()
+    reject_cross_site(&state.config, request, next).await
+}
+
+/// The `/events` WebSocket upgrade still accepts the documented
+/// `?token=<token>` form for command-line clients, so it needs its own layer:
+/// every other `/api/v1` route takes the token from a header only.
+pub async fn require_bridge_auth_with_query_token(
+    State(state): State<crate::AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let query_token = request.uri().query().and_then(|query| {
+        url::form_urlencoded::parse(query.as_bytes())
+            .find(|(key, _)| key == "token")
+            .map(|(_, value)| value.into_owned())
+    });
+    if !crate::auth::token_matches(
+        crate::auth::extract_token(request.headers()).or(query_token.as_deref()),
+        state.config.auth_token.as_str(),
+    ) {
+        return crate::auth::BridgeError::Unauthorized.into_response();
+    }
+    reject_cross_site(&state.config, request, next).await
+}
+
+/// A request that a browser marks as cross-site is refused even with a valid
+/// credential. Without this, a page on another origin could drive the
+/// bridge's mutations with the hosted-browser cookie, or with a token a
+/// same-machine attacker lured into a browser. Requests with no `Origin` and
+/// no `Sec-Fetch-Site` (CLI clients, native apps) pass.
+async fn reject_cross_site(
+    config: &crate::WebServerConfig,
+    request: Request,
+    next: Next,
+) -> Response {
+    if is_cross_site_request(request.headers(), config) {
+        tracing::debug!(
+            path = request.uri().path(),
+            "bridge refused a cross-site request"
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "application/json")],
+            r#"{"error":"cross-site request refused","code":"cross_site"}"#,
+        )
+            .into_response();
+    }
+    next.run(request).await
+}
+
+fn is_cross_site_request(headers: &axum::http::HeaderMap, config: &crate::WebServerConfig) -> bool {
+    if headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("cross-site"))
+    {
+        return true;
+    }
+    let Some(origin) = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    if is_loopback_origin(origin)
+        || config
+            .cors_allowlist
+            .iter()
+            .any(|allowed| allowed.as_str() == origin)
+    {
+        return false;
+    }
+    // A same-origin request from the hosted browser names the bridge itself.
+    let origin_host = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+        .map(host_only);
+    let request_host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .map(host_only);
+    match (origin_host, request_host) {
+        (Some(origin), Some(host)) => !origin.eq_ignore_ascii_case(host),
+        _ => true,
+    }
 }
 
 /// `http(s)://(localhost|127.0.0.1|[::1])(:port)?`
@@ -144,6 +228,57 @@ mod tests {
         assert_eq!(host_only("[::1]:7777"), "[::1]");
         assert_eq!(host_only("[::1]"), "[::1]");
         assert_eq!(host_only("evil.example.com"), "evil.example.com");
+    }
+
+    fn headers(pairs: &[(&str, &str)]) -> axum::http::HeaderMap {
+        let mut headers = axum::http::HeaderMap::new();
+        for (name, value) in pairs {
+            headers.insert(
+                axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                axum::http::HeaderValue::from_str(value).unwrap(),
+            );
+        }
+        headers
+    }
+
+    #[test]
+    fn cross_site_requests_are_detected_from_fetch_metadata_or_origin() {
+        let config =
+            crate::WebServerConfig::new(std::path::PathBuf::from("/tmp/mxr.sock"), "token".into());
+        let host = ("host", "127.0.0.1:42829");
+
+        assert!(is_cross_site_request(
+            &headers(&[("sec-fetch-site", "cross-site")]),
+            &config
+        ));
+        assert!(is_cross_site_request(
+            &headers(&[host, ("origin", "http://evil.example.com")]),
+            &config
+        ));
+        assert!(is_cross_site_request(
+            &headers(&[host, ("origin", "null")]),
+            &config
+        ));
+        assert!(!is_cross_site_request(
+            &headers(&[host, ("origin", "http://127.0.0.1:42829")]),
+            &config
+        ));
+        assert!(!is_cross_site_request(
+            &headers(&[host, ("origin", "http://localhost:5173")]),
+            &config
+        ));
+        assert!(!is_cross_site_request(
+            &headers(&[host, ("sec-fetch-site", "same-origin")]),
+            &config
+        ));
+        // No browser metadata at all: a CLI or native client.
+        assert!(!is_cross_site_request(&headers(&[host]), &config));
+
+        let configured = config.with_cors_allowlist(vec!["https://app.example.com".into()]);
+        assert!(!is_cross_site_request(
+            &headers(&[host, ("origin", "https://app.example.com")]),
+            &configured
+        ));
     }
 
     #[test]

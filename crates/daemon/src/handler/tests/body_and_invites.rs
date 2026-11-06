@@ -699,6 +699,177 @@ async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
 }
 
 #[tokio::test]
+async fn dispatch_get_html_image_assets_refuses_private_remote_origins() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    let stored = mxr_core::types::MessageBody {
+        message_id: id.clone(),
+        text_plain: None,
+        text_html: Some(
+            concat!(
+                "<img src=\"http://10.255.255.1/hero.png\">",
+                "<img src=\"http://169.254.169.254/latest/meta-data.png\">"
+            )
+            .into(),
+        ),
+        attachments: vec![],
+        fetched_at: chrono::Utc::now(),
+        metadata: mxr_core::types::MessageMetadata {
+            text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
+            ..Default::default()
+        },
+    };
+    state.store.insert_body(&stored).await.unwrap();
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 18,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetHtmlImageAssets {
+            message_id: id.clone(),
+            allow_remote: true,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::HtmlImageAssets { assets, .. },
+        }) => {
+            assert_eq!(assets.len(), 2);
+            for asset in &assets {
+                assert_eq!(
+                    asset.status,
+                    mxr_core::types::HtmlImageAssetStatus::Failed,
+                    "{asset:?}"
+                );
+                assert!(asset.path.is_none(), "nothing may be cached: {asset:?}");
+                let detail = asset.detail.as_deref().unwrap_or_default();
+                assert!(
+                    detail.contains("private network"),
+                    "refusal must name the private address rule: {detail}"
+                );
+            }
+        }
+        other => panic!("Expected HtmlImageAssets, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dispatch_get_html_image_assets_refuses_a_redirect_to_a_private_origin() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(302)
+                .insert_header("location", "http://10.0.0.7/pixel.png"),
+        )
+        .mount(&server)
+        .await;
+
+    let stored = mxr_core::types::MessageBody {
+        message_id: id.clone(),
+        text_plain: None,
+        text_html: Some(format!(r#"<img src="{}/redirect">"#, server.uri())),
+        attachments: vec![],
+        fetched_at: chrono::Utc::now(),
+        metadata: mxr_core::types::MessageMetadata {
+            text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
+            ..Default::default()
+        },
+    };
+    state.store.insert_body(&stored).await.unwrap();
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 19,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetHtmlImageAssets {
+            message_id: id.clone(),
+            allow_remote: true,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::HtmlImageAssets { assets, .. },
+        }) => {
+            assert_eq!(assets.len(), 1);
+            assert_eq!(
+                assets[0].status,
+                mxr_core::types::HtmlImageAssetStatus::Failed,
+                "{:?}",
+                assets[0]
+            );
+            assert!(assets[0].path.is_none());
+            assert!(assets[0]
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("10.0.0.7"));
+        }
+        other => panic!("Expected HtmlImageAssets, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dispatch_get_html_image_assets_refuses_a_non_image_remote_body() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/html")
+                .set_body_string("<script>alert(1)</script>"),
+        )
+        .mount(&server)
+        .await;
+
+    let stored = mxr_core::types::MessageBody {
+        message_id: id.clone(),
+        text_plain: None,
+        text_html: Some(format!(r#"<img src="{}/not-an-image">"#, server.uri())),
+        attachments: vec![],
+        fetched_at: chrono::Utc::now(),
+        metadata: mxr_core::types::MessageMetadata {
+            text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
+            ..Default::default()
+        },
+    };
+    state.store.insert_body(&stored).await.unwrap();
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 20,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetHtmlImageAssets {
+            message_id: id.clone(),
+            allow_remote: true,
+        }),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::HtmlImageAssets { assets, .. },
+        }) => {
+            assert_eq!(assets.len(), 1);
+            assert_eq!(
+                assets[0].status,
+                mxr_core::types::HtmlImageAssetStatus::Failed,
+                "{:?}",
+                assets[0]
+            );
+            assert!(
+                assets[0].path.is_none(),
+                "no HTML may be cached as an image"
+            );
+        }
+        other => panic!("Expected HtmlImageAssets, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_download_attachment_persists_local_path() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
     let attachments = tempfile::tempdir().unwrap();

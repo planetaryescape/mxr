@@ -11,6 +11,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Tests only: lets a dependent crate's test point the guarded fetch at a
+# loopback mock server (`FetchPolicy::allowing_loopback_for_tests`). Never
+# enabled by a release build.
+test-support = []
+
 [dependencies]
 mxr-html-worker = { workspace = true }
 mxr-reader = { workspace = true }

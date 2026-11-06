@@ -6695,6 +6695,14 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
                                 detail: None,
                             },
                             HtmlImageAsset {
+                                source: "cid:pixel.svg".into(),
+                                kind: HtmlImageSourceKind::Cid,
+                                status: HtmlImageAssetStatus::Ready,
+                                mime_type: Some("image/svg+xml".into()),
+                                path: Some(served_path.clone()),
+                                detail: None,
+                            },
+                            HtmlImageAsset {
                                 source: "https://tracker.example/pixel.gif".into(),
                                 kind: HtmlImageSourceKind::Remote,
                                 status: HtmlImageAssetStatus::Ready,
@@ -6734,7 +6742,24 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
         .unwrap();
     assert_eq!(ok.status(), reqwest::StatusCode::OK);
     assert_eq!(ok.headers()["content-type"], "image/png");
+    assert_eq!(ok.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(ok.headers()["content-disposition"], "inline");
+    assert_eq!(
+        ok.headers()["content-security-policy"],
+        "default-src 'none'; sandbox"
+    );
     assert_eq!(ok.bytes().await.unwrap().as_ref(), b"\x89PNG fake bytes");
+
+    // An SVG inline part is mail-authored markup and must never be served as a
+    // document on the origin that holds the browser credential.
+    let svg = client
+        .get(url("cid:pixel.svg"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(svg.status(), reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(svg.headers().get("content-type").is_none());
 
     let missing = client
         .get(url("cid:nope"))
@@ -7341,4 +7366,244 @@ fn an_account_step_keeps_saved_state_and_certificate_fingerprint() {
     assert!(!combined.ok);
     assert!(combined.saved);
     assert_eq!(combined.tls_cert_sha256, Some("ab".repeat(32)));
+}
+
+/// SEC-2/SEC-4: the locale bundle is no longer readable without the bridge
+/// token. The SPA is unaffected because its client acquires the token first
+/// (`tryLocalHandshake`), then retries with `Authorization`.
+#[tokio::test]
+async fn i18n_requires_a_bridge_token() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let anonymous = test_http_client()
+        .get(format!("http://{addr}/api/v1/i18n"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    // The query token is documented for the `/events` upgrade only; a data
+    // route must not accept it.
+    let query_token = test_http_client()
+        .get(format!("http://{addr}/api/v1/i18n?token={TEST_AUTH_TOKEN}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(query_token.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let authorized = test_http_client()
+        .get(format!("http://{addr}/api/v1/i18n"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(authorized.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = authorized.json().await.unwrap();
+    assert!(json["invite"]["card_title"].is_string());
+}
+
+/// SEC-4: a browser-marked cross-site request is refused even when it carries
+/// a valid credential. Without this check the hosted-browser cookie could be
+/// driven from another origin.
+#[tokio::test]
+async fn cross_site_requests_are_forbidden_even_with_a_valid_token() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let url = format!("http://{addr}/api/v1/i18n");
+
+    let forged_origin = test_http_client()
+        .get(&url)
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .header("origin", "http://evil.example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forged_origin.status(), reqwest::StatusCode::FORBIDDEN);
+
+    let forged_fetch_metadata = test_http_client()
+        .get(&url)
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .header("sec-fetch-site", "cross-site")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        forged_fetch_metadata.status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+
+    // The dev SPA on a loopback origin and a same-origin hosted browser both
+    // keep working.
+    for origin in [
+        "http://localhost:5173",
+        &url[..url.len() - "/api/v1/i18n".len()],
+    ] {
+        let allowed = test_http_client()
+            .get(&url)
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .header("origin", origin)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), reqwest::StatusCode::OK, "{origin}");
+    }
+}
+
+/// SEC-4: every `.route(...)` literal in the bridge's router modules is probed
+/// unauthenticated at every mount point. A matched route must answer 401 with
+/// no token, so the only public `/api/v1` routes are the two asserted above.
+/// A literal mounted nowhere answers 404 and is ignored.
+#[tokio::test]
+async fn every_api_v1_route_requires_a_bridge_token() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let mut matched_paths = 0usize;
+    for literal in bridge_route_literals() {
+        // Absolute literals are mounted as written; everything else lives in
+        // one of the four `/api/v1` buckets.
+        let prefixes: &[&str] = if literal.starts_with("/api/v1") {
+            &[""]
+        } else {
+            &[
+                "/api/v1/mail",
+                "/api/v1/platform",
+                "/api/v1/admin",
+                "/api/v1/client",
+                "/api/v1",
+            ]
+        };
+        for prefix in prefixes {
+            let path = format!("{prefix}{literal}");
+            let mut statuses = Vec::new();
+            for method in [reqwest::Method::GET, reqwest::Method::POST] {
+                let mut request = client.request(method.clone(), format!("http://{addr}{path}"));
+                if method == reqwest::Method::POST {
+                    request = request.json(&serde_json::json!({}));
+                }
+                let status = request.send().await.unwrap().status();
+                // 404: this literal is not mounted at this prefix. 405: the
+                // path exists but the other method is the one registered, and
+                // axum answers method-not-allowed before the auth layer.
+                if status != reqwest::StatusCode::NOT_FOUND
+                    && status != reqwest::StatusCode::METHOD_NOT_ALLOWED
+                {
+                    statuses.push(status);
+                }
+            }
+            if statuses.is_empty() {
+                continue;
+            }
+            matched_paths += 1;
+            for status in statuses {
+                if path == "/api/v1/health" || path == "/api/v1/auth/local-token" {
+                    assert_eq!(status, reqwest::StatusCode::OK, "{path} is public");
+                } else {
+                    assert_eq!(
+                        status,
+                        reqwest::StatusCode::UNAUTHORIZED,
+                        "{path} answered without a token; the public allowlist must be \
+                         exactly /api/v1/health and /api/v1/auth/local-token"
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        matched_paths > 250,
+        "route inventory unexpectedly small ({matched_paths}); the source scan missed the router"
+    );
+}
+
+/// Every route literal in the modules that build the bridge router, with
+/// `{param}` placeholders replaced by a concrete segment.
+fn bridge_route_literals() -> Vec<String> {
+    const MODULES: &[&str] = &[
+        "router.rs",
+        "routes_v6.rs",
+        "arrival_routes.rs",
+        "assistant_routes.rs",
+        "chime_routes.rs",
+        "compose_assist_routes.rs",
+        "freshness_routes.rs",
+        "insight_routes.rs",
+        "keymap_routes.rs",
+        "messages_routes.rs",
+        "mode_routes.rs",
+        "place_routes.rs",
+        "promise_routes.rs",
+        "reading_routes.rs",
+        "record_routes.rs",
+        "thread_context_routes.rs",
+        "time_routes.rs",
+        "todo_routes.rs",
+        "updates_routes.rs",
+    ];
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut literals: Vec<String> = Vec::new();
+    for module in MODULES {
+        let text = std::fs::read_to_string(src.join(module))
+            .unwrap_or_else(|error| panic!("read {module}: {error}"));
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find(".route(") {
+            rest = &rest[at + ".route(".len()..];
+            let Some(after_quote) = rest.trim_start().strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = after_quote.find('"') else {
+                continue;
+            };
+            let literal = &after_quote[..end];
+            if literal.starts_with('/') {
+                literals.push(concrete_path(literal));
+            }
+            rest = &after_quote[end..];
+        }
+    }
+    literals.sort();
+    literals.dedup();
+    literals
+}
+
+fn concrete_path(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    let mut chars = pattern.chars();
+    while let Some(character) = chars.next() {
+        if character == '{' {
+            for inner in chars.by_ref() {
+                if inner == '}' {
+                    break;
+                }
+            }
+            out.push_str("test");
+        } else {
+            out.push(character);
+        }
+    }
+    out
 }

@@ -455,6 +455,9 @@ inquire = "0.9.4"
 
 [dev-dependencies]
 mxr-provider-gmail = { workspace = true, features = ["test-util"] }
+# Lets the remote-image fetch test point the guarded fetcher at a loopback
+# mock origin; the feature is absent from release builds.
+mxr-reading = { workspace = true, features = ["test-support"] }
 assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }

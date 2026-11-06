@@ -132,14 +132,17 @@ pub fn replay(candidates: &[AuditCandidate], mail: &[AuditMail]) -> AuditReport 
             established: &established,
         };
         match decide(&input, &Local) {
-            Decision::Create(claim) if claims.insert((candidate.account_id.clone(), claim.key)) => {
+            Decision::Create(claim) => {
+                if !claims.insert((candidate.account_id.clone(), claim.key)) {
+                    *report.held.entry("already_claimed".into()).or_default() += 1;
+                    continue;
+                }
                 report.would_create += 1;
                 *report
                     .would_create_by_kind
                     .entry(kind.as_str().to_string())
                     .or_default() += 1;
             }
-            Decision::Create(_) => *report.held.entry("already_claimed".into()).or_default() += 1,
             Decision::Hold(held) => *report.held.entry(held.code()).or_default() += 1,
         }
     }

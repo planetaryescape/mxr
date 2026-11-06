@@ -6,7 +6,6 @@
 //! decides, and the to-do table is what is counted.
 
 use super::desk::{Fixture, ME};
-use super::*;
 use crate::handler::updates;
 use chrono::{DateTime, Duration, FixedOffset, Local, TimeZone, Utc};
 use mxr_core::id::ThreadId;
@@ -406,6 +405,7 @@ async fn a_resync_a_reclassification_or_a_dismissed_to_do_never_makes_a_second()
         .store
         .set_todos_state(
             std::slice::from_ref(&todo.id),
+            &[mxr_store::TodoState::Open],
             mxr_store::TodoState::Dismissed,
             run.now,
         )

@@ -29,6 +29,10 @@ pub const STARTTLS_PORT: u16 = 143;
 /// before the TLS handshake takes over the socket.
 const MAX_NEGOTIATION_LINE: usize = 8 * 1024;
 
+/// A server can send many short untagged lines before completing a command.
+/// Bound their combined size as well as each individual line before TLS.
+const MAX_NEGOTIATION_RESPONSE: usize = 64 * 1024;
+
 /// How long to wait for a plaintext greeting when working out whether a failed
 /// TLS handshake was really a plaintext server.
 const PLAINTEXT_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -448,8 +452,15 @@ async fn command(tcp: &mut TcpStream, tag: &str, text: &str) -> Result<Vec<Strin
         .await
         .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
     let mut untagged = Vec::new();
+    let mut response_bytes = 0;
     loop {
         let line = read_line(tcp).await?;
+        response_bytes += line.len();
+        if response_bytes > MAX_NEGOTIATION_RESPONSE {
+            return Err(ImapProviderError::Connection(
+                "Server sent an oversized response during STARTTLS negotiation.".into(),
+            ));
+        }
         if line.starts_with(&format!("{tag} ")) {
             if status_is(&line, "OK") {
                 return Ok(untagged);
@@ -477,13 +488,13 @@ async fn read_line(tcp: &mut TcpStream) -> Result<String> {
             ));
         }
         line.push(byte[0]);
-        if byte[0] == b'\n' {
-            return Ok(String::from_utf8_lossy(&line).into_owned());
-        }
         if line.len() > MAX_NEGOTIATION_LINE {
             return Err(ImapProviderError::Connection(
                 "Server sent an oversized line during STARTTLS negotiation.".into(),
             ));
+        }
+        if byte[0] == b'\n' {
+            return Ok(String::from_utf8_lossy(&line).into_owned());
         }
     }
 }

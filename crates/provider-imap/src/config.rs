@@ -99,7 +99,6 @@ impl ImapConfig {
     pub(crate) fn pinned_fingerprint(&self) -> Result<Option<CertFingerprint>, ImapProviderError> {
         self.tls_cert_sha256
             .as_deref()
-            .filter(|value| !value.trim().is_empty())
             .map(CertFingerprint::parse)
             .transpose()
     }
@@ -163,6 +162,21 @@ mod tests {
         assert!(config.auth_required);
         assert!(config.use_tls);
         assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
+    }
+
+    #[test]
+    fn rejects_empty_deserialized_certificate_pins() {
+        for value in ["", "  "] {
+            let config: ImapConfig = serde_json::from_value(serde_json::json!({
+                "host": "imap.example.com", "port": 993,
+                "username": "test", "password_ref": "test", "tls_cert_sha256": value
+            }))
+            .unwrap();
+            assert!(
+                config.pinned_fingerprint().is_err(),
+                "an explicit malformed pin must not become system trust"
+            );
+        }
     }
 
     #[test]

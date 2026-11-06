@@ -139,6 +139,33 @@ async fn bind_local() -> (TcpListener, u16) {
     (listener, port)
 }
 
+#[tokio::test]
+async fn rejects_starttls_response_with_excessive_untagged_lines() {
+    let (listener, port) = bind_local().await;
+    let server = async_std::task::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let request = read_line(&mut socket).await.unwrap();
+        assert_eq!(request, "mxr1 CAPABILITY\r\n");
+        let line = format!("* OK {}\r\n", "x".repeat(1024));
+        let response = format!("{}mxr1 OK done\r\n", line.repeat(100));
+        // A refusing client can close before all bytes have been written.
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let result = async_std::future::timeout(
+        Duration::from_secs(5),
+        command(&mut socket, "mxr1", "CAPABILITY"),
+    )
+    .await
+    .expect("a finite oversized response must not hang");
+    drop(socket);
+    server.await;
+    let error = result
+        .err()
+        .expect("individual short lines must still share a response budget");
+    assert!(error.to_string().contains("oversized response"), "{error}");
+}
+
 /// Serve one implicit-TLS connection: handshake, greet, then answer one read.
 fn serve_implicit_tls(listener: TcpListener, cert: &TestCert) {
     let acceptor = cert.acceptor.clone();

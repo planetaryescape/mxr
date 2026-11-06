@@ -41,6 +41,13 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::ClearedWithMessages,
     ),
     ("thread_summaries", MessageDeletionRule::ClearedWithMessages),
+    (
+        "thread_role_pages",
+        MessageDeletionRule::KeptNoText(
+            "the mailbox page order: a role, a thread id and its newest date, never text; the message delete trigger rebuilds it and drops a thread with no messages left",
+        ),
+    ),
+
     // SQLite's conversation_message_delete trigger clears both projections
     // inside the same message deletion transaction, including raw SQL deletes.
     ("conversation_summaries", MessageDeletionRule::ClearedWithMessages),

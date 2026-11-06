@@ -67,28 +67,72 @@ macro_rules! role_filter {
     };
 }
 
-/// Thread id breaks date ties so paging never depends on storage order.
-macro_rules! thread_ids_sql {
-    ($direction:literal) => {
-        concat!(
-            "SELECT m.thread_id AS thread_id
-             FROM messages m
-             WHERE m.account_id IN (SELECT value FROM json_each(?1))
-               AND ",
-            role_filter!(),
-            "
-             GROUP BY m.thread_id
-             ORDER BY MAX(CASE WHEN m.date > ?4 THEN 0 ELSE m.date END) ",
-            $direction,
-            ", m.thread_id ",
-            $direction,
-            "
-             LIMIT ?5 OFFSET ?6"
-        )
-    };
-}
-
+/// The ordered thread page for a role comes from `thread_role_pages` (migration
+/// 111): a maintained one-row-per-(role, account, thread) summary of the
+/// thread's newest date in that role. It is written by triggers in the same
+/// transaction as the message and label writes that change it, so the page is
+/// an ordered index range scan that stops at LIMIT instead of grouping every
+/// message of the account and sorting into a temp B-tree.
 impl super::Store {
+    /// The ordered page of thread ids for a role. The summary keeps one row per
+    /// (role, account, thread), and a legacy thread id can be shared by more
+    /// than one account, so rows are folded by thread id here: the first
+    /// (newest) row wins, and the offset counts distinct threads like the old
+    /// grouped query.
+    async fn page_thread_ids(
+        &self,
+        account_ids: &[AccountId],
+        role: Role,
+        limit: u32,
+        offset: u32,
+        sort: SortOrder,
+    ) -> Result<Vec<ThreadId>, sqlx::Error> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let page_end = (offset as usize).saturating_add(limit as usize);
+        let direction = if matches!(sort, SortOrder::DateAsc) {
+            "ASC"
+        } else {
+            "DESC"
+        };
+        let sql = format!(
+            "SELECT thread_id FROM thread_role_pages
+              WHERE role = ?1
+                AND account_id IN (SELECT value FROM json_each(?2))
+              ORDER BY latest_date {direction}, thread_id {direction}
+              LIMIT ?3"
+        );
+        let accounts_json = account_ids_json(account_ids)?;
+        let mut rows_wanted = page_end.saturating_add(1).max(1);
+        loop {
+            let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(role.storage_name())
+                .bind(&accounts_json)
+                .bind(rows_wanted as i64)
+                .fetch_all(self.reader())
+                .await?;
+            let mut order: Vec<ThreadId> = Vec::with_capacity(rows.len());
+            let mut seen = std::collections::HashSet::with_capacity(rows.len());
+            for row in &rows {
+                let id = decode_id::<ThreadId>(&row.get::<String, _>("thread_id"))?;
+                if seen.insert(id.clone()) {
+                    order.push(id);
+                }
+            }
+            // A shared thread id folded two rows into one: refetch a larger
+            // slice only when that left the page short.
+            if order.len() > page_end || rows.len() < rows_wanted {
+                return Ok(order
+                    .into_iter()
+                    .skip(offset as usize)
+                    .take(limit as usize)
+                    .collect());
+            }
+            rows_wanted = rows_wanted.saturating_mul(2);
+        }
+    }
+
     /// Hydrate threads from the messages of `account_ids` only. A legacy
     /// thread id can span accounts, and `get_threads_batch` aggregates over
     /// all of them, which would leak a disabled or out-of-scope account's
@@ -278,31 +322,15 @@ impl super::Store {
         if account_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let sql = if matches!(sort, SortOrder::DateAsc) {
-            thread_ids_sql!("ASC")
-        } else {
-            thread_ids_sql!("DESC")
-        };
         let started_at = std::time::Instant::now();
-        let rows = sqlx::query(sql)
-            .bind(account_ids_json(account_ids)?)
-            .bind(role_keys_json(role)?)
-            .bind(role_mode(role))
-            .bind(future_date_cutoff_timestamp())
-            .bind(i64::from(limit))
-            .bind(i64::from(offset))
-            .fetch_all(self.reader())
+        let thread_ids = self
+            .page_thread_ids(account_ids, role, limit, offset, sort)
             .await?;
         trace_query(
             "system_mailbox.list_threads_by_role",
             started_at,
-            rows.len(),
+            thread_ids.len(),
         );
-
-        let thread_ids = rows
-            .iter()
-            .map(|row| decode_id::<ThreadId>(&row.get::<String, _>("thread_id")))
-            .collect::<Result<Vec<_>, _>>()?;
         let mut threads = self
             .hydrate_threads_in_accounts(&thread_ids, account_ids)
             .await?;
@@ -379,12 +407,14 @@ mod tests {
         reason = "tests unwrap fixture setup for direct failures"
     )]
 
+    use crate::system_mailbox::account_ids_json;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use crate::Store;
     use chrono::{Duration, Utc};
     use mxr_core::id::{AccountId, LabelId, ThreadId};
     use mxr_core::types::{EventSource, Label, LabelKind, MessageFlags, Role, SortOrder};
     use mxr_core::Account;
+    use sqlx::Row;
 
     async fn account(store: &Store) -> Account {
         let account = test_account();
@@ -841,6 +871,49 @@ mod tests {
         let counts = store.system_mailbox_counts(&both).await.unwrap();
         let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
         assert_eq!(starred.2, 0);
+    }
+
+    #[tokio::test]
+    async fn the_thread_page_reads_the_role_summary_not_the_mailbox() {
+        // The page query must stay an ordered range scan of the summary: no
+        // scan of `messages`, no temp B-tree, and the index that carries the
+        // order. This is the shape that keeps a page's cost flat as the
+        // mailbox grows (migration 112).
+        let t = two_accounts().await;
+        for i in 0..20 {
+            message(&t.store, &t.a.id, i, &[&t.a_inbox], None).await;
+        }
+        let rows = sqlx::query(
+            "EXPLAIN QUERY PLAN
+             SELECT thread_id FROM thread_role_pages
+              WHERE role = ?1
+                AND account_id IN (SELECT value FROM json_each(?2))
+              ORDER BY latest_date DESC, thread_id DESC
+              LIMIT ?3",
+        )
+        .bind(Role::Inbox.storage_name())
+        .bind(account_ids_json(std::slice::from_ref(&t.a.id)).unwrap())
+        .bind(10_i64)
+        .fetch_all(t.store.reader())
+        .await
+        .unwrap();
+        let plan = rows
+            .iter()
+            .map(|row| row.get::<String, _>("detail"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            plan.contains("idx_thread_role_pages_page"),
+            "the page should be served by the summary index: {plan}"
+        );
+        assert!(
+            !plan.contains("TEMP B-TREE"),
+            "the page must not sort: {plan}"
+        );
+        assert!(
+            !plan.contains("SCAN m") && !plan.contains("SCAN messages"),
+            "the page must not scan the mailbox: {plan}"
+        );
     }
 
     #[tokio::test]

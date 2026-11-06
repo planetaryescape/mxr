@@ -722,6 +722,19 @@ async fn wait_for_demo_sync(
                 }
             }
 
+            // The store holding every message asked for is the seed's finish
+            // line. The pass may still be walking its post-sync analysis (the
+            // per-message ask/assessment projection and its LLM calls, which
+            // the daemon throttles per message) with `sync_in_progress` still
+            // true; `mxr demo` does not need that to show a full mailbox, and
+            // waiting on it made the seed window grow with host load. The
+            // surfaces seeded below read only the store, and the count is a
+            // commit that has already landed. `wait_for_seeded_count` below
+            // still confirms the target before the demo is declared ready.
+            if expected_messages > 0 && messages >= expected_messages {
+                return Ok(());
+            }
+
             // `last_success_at` is stored with one-second granularity, and the
             // daemon auto-syncs every account the moment it starts. A seed that
             // finishes inside that same second leaves this request's own sync
@@ -1874,9 +1887,9 @@ mod tests {
         }
     }
 
-    /// A `GetStatus` snapshot whose DB-backed half timed out, which
-    /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
-    fn degraded_status() -> ResponseData {
+    /// A `GetStatus` snapshot as `fetch_message_count` reads it: `degraded`
+    /// and account-less is the unusable reading, anything else the count.
+    fn status_with(total_messages: u32, degraded: bool) -> ResponseData {
         ResponseData::Status {
             recovery_supported: false,
             recovery: None,
@@ -1887,8 +1900,12 @@ mod tests {
             attachment_transfer_supported: true,
             draft_attachment_upload_supported: true,
             uptime_secs: 1,
-            accounts: Vec::new(),
-            total_messages: 0,
+            accounts: if degraded {
+                Vec::new()
+            } else {
+                vec![DEMO_PERSONAL_EMAIL.to_string()]
+            },
+            total_messages,
             daemon_pid: None,
             sync_statuses: Vec::new(),
             protocol_version: 0,
@@ -1897,8 +1914,14 @@ mod tests {
             repair_required: false,
             semantic_runtime: None,
             feature_health: None,
-            degraded: true,
+            degraded,
         }
+    }
+
+    /// A `GetStatus` snapshot whose DB-backed half timed out, which
+    /// `fetch_message_count` reads as [`super::CountPoll::Degraded`].
+    fn degraded_status() -> ResponseData {
+        status_with(0, true)
     }
 
     /// The sync wait used to `continue` straight past the stall accounting on a
@@ -1933,6 +1956,57 @@ mod tests {
                     error.to_string().contains("made no progress"),
                     "expected the stall message, got: {error}"
                 );
+            },
+        );
+    }
+
+    /// A seed whose rows are already stored must not keep waiting for the
+    /// pass's post-sync analysis. The analysis runs per message (asks and
+    /// assessments) while `sync_in_progress` stays true, so on a loaded host
+    /// the demo's seed window grew to minutes even though every message had
+    /// committed. Reaching the requested count is the finish line; the count
+    /// is a landed commit, and `wait_for_seeded_count` still confirms it.
+    /// A seed whose rows are already stored must not keep waiting for the
+    /// pass's post-sync analysis. The analysis runs per message (asks and
+    /// assessments) while `sync_in_progress` stays true, so on a loaded host
+    /// the demo's seed window grew to minutes even though every message had
+    /// committed. Reaching the requested count is the finish line; the count
+    /// is a landed commit, and `wait_for_seeded_count` still confirms it.
+    #[test]
+    fn seed_wait_returns_once_every_message_is_stored_even_while_the_pass_finishes() {
+        with_fake_daemon(
+            |request| match request {
+                Request::GetSyncStatus { .. } => {
+                    let account_id = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
+                    let mut sync = idle_sync_status(&account_id);
+                    sync.sync_in_progress = true;
+                    sync.last_attempt_at = Some("2026-01-01T00:00:00Z".to_string());
+                    Some(Response::Ok {
+                        data: ResponseData::SyncStatus { sync },
+                    })
+                }
+                Request::GetStatus => Some(Response::Ok {
+                    data: status_with(2_000, false),
+                }),
+                _ => None,
+            },
+            || async {
+                let mut client = IpcClient::connect().await.expect("connect to fake daemon");
+                let account_id = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
+                let before = idle_sync_status(&account_id);
+                tokio::time::timeout(
+                    TEST_HANG_GUARD,
+                    wait_for_demo_sync(
+                        &mut client,
+                        &account_id,
+                        &before,
+                        2_000,
+                        Duration::from_secs(5),
+                    ),
+                )
+                .await
+                .expect("the wait must return once the count is reached")
+                .expect("a full mailbox is a finished seed");
             },
         );
     }

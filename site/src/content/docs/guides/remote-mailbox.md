@@ -104,6 +104,8 @@ mxr connect https://mail-host.example-tailnet.ts.net:8443 \
 
 The grants are independent. AI access follows the host's configured models and privacy policy; it does not grant sending or mail changes. Applying writing help to a stored draft also needs `mail_send`. Assistant tools check the originating registration and its grants for every operation, including after a turn starts. Assistant history belongs to that paired installation: its browser sessions share the history, while local host conversations and other installations remain separate. Re-pairing creates a new registration and does not adopt the previous registration's conversations. Continue a remote conversation from its paired client; the host refuses to resume it with local tool privileges.
 
+Model availability reflects the host. Remote status omits its endpoint addresses, environment-variable names and credential locations. Without `mail_ai`, the client reports AI as disabled. Configure models and keys on the host.
+
 Use the same preview and confirmation flows as you do locally. For example, preview a mode move before committing it:
 
 ```sh

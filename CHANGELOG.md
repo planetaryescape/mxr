@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.231](https://github.com/planetaryescape/mxr/compare/v0.6.230...v0.6.231) (2026-11-06)
+
+
+### Bug Fixes
+
+* **semantic:** upgrade calamine to 0.38 for the CFB advisory ([#935](https://github.com/planetaryescape/mxr/issues/935)) ([db2a673](https://github.com/planetaryescape/mxr/commit/db2a673516ee618f6bd83f81a5e64ca48b67ad76))
+
+
+### Performance
+
+* **store:** upsert the thread summary on insert, label add and star ([#936](https://github.com/planetaryescape/mxr/issues/936)) ([5272520](https://github.com/planetaryescape/mxr/commit/5272520438cc20a1b8fb0443df93637912c17849))
+
 ## [0.6.230](https://github.com/planetaryescape/mxr/compare/v0.6.229...v0.6.230) (2026-11-06)
 
 

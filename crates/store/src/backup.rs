@@ -238,7 +238,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=112).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=113).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -630,7 +630,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=112).contains(&version) {
+    if !(80..=113).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -768,11 +768,17 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         .map_err(|e| format!("Referenced resource inventory: {e}"))?;
     let mut connection = store.writer().acquire().await?;
     validate(&mut connection).await?;
+    // The bundle carries the staging schema, which is migrated to the
+    // current version even when the source is older. Stamp that, not the
+    // source's version.
+    let stage_schema: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_migrations")
+        .fetch_one(&mut *connection)
+        .await?;
     drop(connection);
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:112, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version: stage_schema, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 

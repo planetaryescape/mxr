@@ -162,6 +162,51 @@ async fn done_on_an_owed_thread_archives_marks_read_and_undo_restores_each_messa
     assert_eq!(lanes(&fx).await[0], vec![thread]);
 }
 
+/// How many `ModesChanged` events the daemon sent since the last drain.
+fn modes_changed_events(
+    events: &mut tokio::sync::broadcast::Receiver<mxr_protocol::IpcMessage>,
+) -> usize {
+    let mut seen = 0;
+    while let Ok(message) = events.try_recv() {
+        if matches!(
+            message.payload,
+            IpcPayload::Event(DaemonEvent::ModesChanged { .. })
+        ) {
+            seen += 1;
+        }
+    }
+    seen
+}
+
+#[tokio::test]
+async fn done_on_the_desk_tells_every_client_the_row_is_gone() {
+    let fx = Fixture::new().await;
+    let (thread, _, _) = owed_thread(&fx).await;
+    let mut events = fx.state.event_tx.subscribe();
+
+    // The preview changes nothing, so it says nothing.
+    done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], true).await;
+    assert_eq!(modes_changed_events(&mut events), 0, "a dry run is silent");
+
+    let (outcome, _) = done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], false).await;
+    assert!(outcome[0].error.is_none(), "{:?}", outcome[0].error);
+    assert_eq!(
+        modes_changed_events(&mut events),
+        1,
+        "the committed Done reaches every client once"
+    );
+
+    // A conversation that doesn't exist changes nothing and is silent.
+    let missing = ThreadId::new();
+    let (outcome, _) = done(&fx, vec![item(&missing, Some(DeskLaneKind::Owed))], false).await;
+    assert!(outcome[0].error.is_some());
+    assert_eq!(
+        modes_changed_events(&mut events),
+        0,
+        "an all-error plan stays silent"
+    );
+}
+
 #[tokio::test]
 async fn a_new_message_brings_a_done_thread_back() {
     let fx = Fixture::new().await;

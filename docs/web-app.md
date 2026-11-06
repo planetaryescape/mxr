@@ -441,9 +441,11 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
 `lib/ws.ts` holds one socket with backoff and a heartbeat (the bridge answers
 `ping` and releases the daemon socket when the browser goes away).
 `hooks/useDaemonEventInvalidation.ts` handles the daemon's real events
-(`NewMessages`, `MessageUnsnoozed`, `LabelCountsUpdated`, `Sync*`,
-`Operation*`, `ReminderTriggered`, `MutationReconciliationFailed`,
-`EventsLagged`) and refreshes mail through `invalidateMailQueries`.
+(`NewMessages`, `MessageUnsnoozed`, `ModesChanged`, `LabelCountsUpdated`,
+`Sync*`, `Operation*`, `ReminderTriggered`, `MutationReconciliationFailed`,
+`EventsLagged`) and refreshes mail through `invalidateMailQueries`. `ModesChanged`
+is how another client's move, mode Done or desk Done reaches this one; a client
+that commits either must emit it once per affected account.
 
 ## Design system
 

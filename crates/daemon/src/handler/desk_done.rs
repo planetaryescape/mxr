@@ -419,12 +419,21 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     // The messages changed already: whatever happens here, their undo is
     // saved below.
     let mut desk = DeskUndo::default();
+    let mut put_away_failed = false;
     if let Err(error) = put_away(state, &mut plans, &mut desk).await {
+        put_away_failed = true;
         tracing::warn!(%error, "desk done could not record dismissals or promises");
         for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
             plan.error = Some(format!("couldn't put it away ({error}); run Done again"));
         }
     }
+
+    // Every account whose messages, dismissal or promise actually changed.
+    // Captured before the undo entry takes the snapshots.
+    let mut changed_accounts: HashSet<AccountId> = snapshots
+        .iter()
+        .map(|snapshot| snapshot.account_id.clone())
+        .collect();
 
     let (mutation_id, undo_unavailable) = if snapshots.is_empty() && desk.is_empty() {
         (None, false)
@@ -446,6 +455,20 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
             }
         }
     };
+
+    // A row that was put away leaves the desk on every client; without this
+    // the second client keeps showing it. A dry run never reaches `run`, a
+    // plan whose every write failed changed nothing, and a failed put_away
+    // may have written some, so it notifies every plan account.
+    changed_accounts.extend(
+        plans
+            .iter()
+            .filter(|plan| put_away_failed || plan.error.is_none())
+            .filter_map(|plan| plan.account_id.clone()),
+    );
+    for account in &changed_accounts {
+        super::arrivals::modes_changed(state, account);
+    }
 
     Ok(ResponseData::DeskItemsResolved {
         items: plans.iter().map(Plan::outcome).collect(),

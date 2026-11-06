@@ -495,12 +495,21 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     }
 
     let mut desk = DeskUndo::default();
+    let mut put_away_failed = false;
     if let Err(error) = Box::pin(put_away(state, &mut plans, &mut desk)).await {
+        put_away_failed = true;
         tracing::warn!(%error, "mode done could not record its marks or to-dos");
         for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
             plan.error = Some(format!("couldn't mark it done ({error}); run done again"));
         }
     }
+
+    // Every account whose message or mark actually changed. Captured before
+    // the undo entry takes the snapshots.
+    let mut changed_accounts: HashSet<AccountId> = snapshots
+        .iter()
+        .map(|snapshot| snapshot.account_id.clone())
+        .collect();
 
     let (mutation_id, undo_unavailable) = if snapshots.is_empty() && desk.is_empty() {
         (None, false)
@@ -522,6 +531,20 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
             }
         }
     };
+
+    // A plan that completed committed its marks or ticks; put_away may have
+    // written some before it failed, so a failed put_away notifies every plan
+    // account rather than staying silent. A dry run never reaches `run`, and a
+    // plan whose every write failed added no snapshot and stays silent.
+    changed_accounts.extend(
+        plans
+            .iter()
+            .filter(|plan| put_away_failed || plan.error.is_none())
+            .filter_map(|plan| plan.account_id.clone()),
+    );
+    for account in &changed_accounts {
+        super::arrivals::modes_changed(state, account);
+    }
 
     for plan in &plans {
         if let Some(error) = &plan.error {

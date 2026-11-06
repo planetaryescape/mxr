@@ -270,6 +270,51 @@ async fn done_in_messages_leaves_the_to_do_and_gmail_and_the_preview_matches() {
     );
 }
 
+/// How many `ModesChanged` events the daemon sent since the last drain.
+fn modes_changed_events(
+    events: &mut tokio::sync::broadcast::Receiver<mxr_protocol::IpcMessage>,
+) -> usize {
+    let mut seen = 0;
+    while let Ok(message) = events.try_recv() {
+        if matches!(
+            message.payload,
+            IpcPayload::Event(DaemonEvent::ModesChanged { .. })
+        ) {
+            seen += 1;
+        }
+    }
+    seen
+}
+
+#[tokio::test]
+async fn done_tells_every_client_where_the_conversation_went() {
+    let fx = Fixture::new().await;
+    let (thread, _ask) = landlord(&fx).await;
+    let mut events = fx.state.event_tx.subscribe();
+
+    // The preview changes nothing, so it says nothing.
+    done(&fx, &thread, ModeKindData::Messages, true).await;
+    assert_eq!(modes_changed_events(&mut events), 0, "a dry run is silent");
+
+    let (outcome, _) = done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert!(outcome.error.is_none(), "{:?}", outcome.error);
+    assert_eq!(
+        modes_changed_events(&mut events),
+        1,
+        "the committed done reaches every client once"
+    );
+
+    // A plan whose conversation doesn't exist changes nothing and is silent.
+    let missing = ThreadId::new();
+    let (outcome, _) = done(&fx, &missing, ModeKindData::Messages, false).await;
+    assert!(outcome.error.is_some());
+    assert_eq!(
+        modes_changed_events(&mut events),
+        0,
+        "an all-error plan stays silent"
+    );
+}
+
 #[tokio::test]
 async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     let fx = Fixture::new().await;

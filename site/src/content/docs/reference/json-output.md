@@ -500,6 +500,34 @@ touched; otherwise it gets the usual not-found. To
 reverse a run, act on a search the other way (`unlabel --all` after
 `label --all`).
 
+`mxr undo MUTATION_ID --dry-run` changes nothing. It asks the daemon for the
+same lookup the undo makes, so an unknown, expired or already undone id is
+refused with the undo's own error and exit code. A valid id with something
+left to restore prints the messages the undo would restore. If every message
+and desk row is gone or changed, the preview returns the same `irreversible`
+error as the undo. Its JSON adds a `preview` object (absent on a real undo):
+
+```json
+{
+  "mutation_id": "mut_123",
+  "dry_run": true,
+  "undone": false,
+  "preview": {
+    "mutation_id": "mut_123",
+    "kind": "archive",
+    "targets": [
+      { "message_id": "msg_1", "account_id": "acc_1", "in_local_store": true }
+    ],
+    "restores_desk_state": false
+  }
+}
+```
+
+`in_local_store: false` marks a message that is gone from the local store. When
+other targets remain restorable, the undo leaves it out. A provider can still
+refuse a message the store holds; the dry run cannot see that, only the undo
+does.
+
 `mxr jobs JOB_ID` carries the first 50 `failures` and every `undo_id`;
 `undo_id_count` and `failure_count` say how many the job holds. Jobs other
 than `--all` (a sweep, `--async`) are undone from that list. The `mxr jobs`

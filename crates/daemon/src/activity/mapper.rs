@@ -904,6 +904,9 @@ pub fn map_request(
         Request::PreviewSelection { .. } => {
             skip_activity!("selection_preview", "a selection preview changes nothing");
         }
+        Request::UndoPreview { .. } => {
+            skip_activity!("undo_preview", "an undo preview changes nothing");
+        }
         Request::GetArchiveWorkspace
         | Request::PreviewArchive { .. }
         | Request::GetArchiveOperation { .. }

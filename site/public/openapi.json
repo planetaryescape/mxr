@@ -29616,6 +29616,25 @@
           },
           {
             "type": "object",
+            "description": "What `UndoMutation` with this id would reverse, read without changing\nanything. `mxr undo --dry-run` asks this, so it refuses the ids the\nreal undo refuses, with the same messages.",
+            "required": [
+              "mutation_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoPreview"
+                ]
+              },
+              "mutation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "cmd"
@@ -37059,6 +37078,24 @@
                 "enum": [
                   "Job"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UndoPreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/UndoPreview"
               }
             }
           },
@@ -44986,6 +45023,56 @@
           "name": {
             "type": "string",
             "description": "The TUI action its dispatcher returns."
+          }
+        }
+      },
+      "UndoPreview": {
+        "type": "object",
+        "description": "What `UndoMutation` would reverse, read from the undo entry without\nchanging it.",
+        "required": [
+          "mutation_id",
+          "kind",
+          "targets",
+          "restores_desk_state"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "The mutation's kind, snake_case (`archive`, `labels`, `desk_done`)."
+          },
+          "mutation_id": {
+            "type": "string"
+          },
+          "restores_desk_state": {
+            "type": "boolean",
+            "description": "True when the undo also puts back local state beyond messages: a desk\nDone's dismissals, promises, reminders or highlights."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UndoPreviewTarget"
+            },
+            "description": "The messages the undo restores, in the order the undo entry holds them."
+          }
+        }
+      },
+      "UndoPreviewTarget": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "in_local_store"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "in_local_store": {
+            "type": "boolean",
+            "description": "False when the message is gone from the local store, so the real undo\ncannot restore it."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           }
         }
       },

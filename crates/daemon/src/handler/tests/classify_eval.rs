@@ -92,7 +92,7 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
     (state, account_id)
 }
 
-async fn authenticate_demo_payment_alerts(
+pub(super) async fn authenticate_demo_payment_alerts(
     state: &AppState,
     account_id: &AccountId,
     now: chrono::DateTime<Utc>,

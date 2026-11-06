@@ -24,6 +24,7 @@ use mxr_protocol::{
     ResponseData, ScreenerQuestionData, TodoData, TodoNextData, UpdatesDigestData, NOW_SECTION_CAP,
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /// What Now and the rail are built from, read once.
 pub(super) struct NowSnapshot {
@@ -61,39 +62,56 @@ pub(super) async fn snapshot<Tz: TimeZone>(
     accounts: &[AccountId],
     now: DateTime<Utc>,
     tz: &Tz,
-) -> Result<NowSnapshot, HandlerError>
+) -> Result<Arc<NowSnapshot>, HandlerError>
 where
     Tz::Offset: std::fmt::Display,
 {
-    Ok(snapshot_inner(state, account_id, accounts, now, tz, false)
-        .await?
-        .0)
+    snapshot_inner(state, account_id, accounts, now, tz).await
 }
 
+/// Rail's own snapshot plus the Messages quiet count, which only the rail
+/// shows. The snapshot itself is shared with Now: whoever builds it first in
+/// a cache tick leaves it in [`ModeCache`], so a change does not read the
+/// inbox, classify it and compose Updates twice.
 pub(super) async fn rail_snapshot<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
     accounts: &[AccountId],
     now: DateTime<Utc>,
     tz: &Tz,
-) -> Result<(NowSnapshot, u32), HandlerError>
+) -> Result<(Arc<NowSnapshot>, u32), HandlerError>
 where
     Tz::Offset: std::fmt::Display,
 {
-    snapshot_inner(state, account_id, accounts, now, tz, true).await
+    let snapshot = snapshot_inner(state, account_id, accounts, now, tz).await?;
+    let quiet = super::modes::quiet_count(state, snapshot.inbox.people_threads.clone(), now).await?;
+    Ok((snapshot, quiet))
 }
 
+/// The one NowSnapshot both Now and the rail are built from. Reused only
+/// inside one cache tick (a second) and only while the change feed and the
+/// mutation counter have not moved, so nothing it words can be more than a
+/// tick late; the mode cache's own freshness window is a minute.
 async fn snapshot_inner<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
     accounts: &[AccountId],
     now: DateTime<Utc>,
     tz: &Tz,
-    include_quiet: bool,
-) -> Result<(NowSnapshot, u32), HandlerError>
+ ) -> Result<Arc<NowSnapshot>, HandlerError>
 where
     Tz::Offset: std::fmt::Display,
 {
+    let offset = now.with_timezone(tz).offset().to_string();
+    let changes = state.store.change_feed().seq();
+    if let Some(snapshot) =
+        state
+            .mode_cache
+            .shared_snapshot(account_id, accounts, &offset, now.timestamp(), changes)
+    {
+        return Ok(snapshot);
+    }
+
     // These independent reads used to add their latencies together. Keep
     // the same membership and digest rules, but let SQLite's reader pool
     // serve the People, To do and inbox branches concurrently.
@@ -107,16 +125,8 @@ where
         let digest = Box::pin(super::updates::digest_from(
             state, accounts, updates, &scope, now, tz,
         ));
-        let people = std::mem::take(&mut inbox.people_threads);
-        let quiet = async {
-            if include_quiet {
-                super::modes::quiet_count(state, people, now).await
-            } else {
-                Ok(0)
-            }
-        };
-        let ((digest, _, _), quiet) = tokio::try_join!(digest, quiet)?;
-        Ok::<_, HandlerError>((inbox, digest, quiet))
+        let (digest, _, _) = digest.await?;
+        Ok::<_, HandlerError>((inbox, digest))
     };
     let todo_records = async {
         Ok::<_, HandlerError>(
@@ -126,7 +136,7 @@ where
                 .await?,
         )
     };
-    let (desk, records, (inbox, digest, quiet)) = tokio::try_join!(
+    let (desk, records, (inbox, digest)) = tokio::try_join!(
         compose_desk(state, account_id, now),
         todo_records,
         inbox_and_digest,
@@ -141,16 +151,24 @@ where
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
-    Ok((
-        NowSnapshot {
-            turn: desk.turn_units(),
-            due_now,
-            next_surface: bands.next_surface,
-            inbox,
-            digest,
-        },
-        quiet,
-    ))
+    let snapshot = Arc::new(NowSnapshot {
+        turn: desk.turn_units(),
+        due_now,
+        next_surface: bands.next_surface,
+        inbox,
+        digest,
+    });
+    state
+        .mode_cache
+        .remember_snapshot(
+            account_id,
+            accounts,
+            &offset,
+            now.timestamp(),
+            changes,
+            Arc::clone(&snapshot),
+        );
+    Ok(snapshot)
 }
 
 pub(super) async fn get_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {

@@ -178,9 +178,29 @@ struct Entry {
     building: Arc<tokio::sync::Mutex<()>>,
 }
 
+/// The NowSnapshot a view build just made, for the other view built in the
+/// same tick. See `now::snapshot_inner`.
+struct SharedSnapshot {
+    account_id: Option<AccountId>,
+    accounts: Vec<AccountId>,
+    offset: String,
+    /// The viewer's clock at the build, to the second: a test or a clock
+    /// change must never be served a snapshot worded for another moment.
+    now_sec: i64,
+    snapshot: Arc<now::NowSnapshot>,
+    /// When it was built, for the one-second reuse window.
+    built: Instant,
+    /// The change feed's sequence at that moment.
+    changes: u64,
+    /// `ModeCache::mutations` at that moment.
+    mutations: u64,
+    hour: i64,
+}
+
 #[derive(Default)]
 pub(crate) struct ModeCache {
     entries: Mutex<Vec<Entry>>,
+    shared_snapshot: Mutex<Option<SharedSnapshot>>,
     mutations: AtomicU64,
     /// Tests: pretend a write stays in flight.
     #[cfg(test)]
@@ -188,6 +208,55 @@ pub(crate) struct ModeCache {
 }
 
 impl ModeCache {
+    /// The NowSnapshot built for this scope within the last tick, when nothing
+    /// it reads has changed since. Now and the rail share one snapshot instead
+    /// of each reading and classifying the inbox; a client that reads both
+    /// back to back, and the refresher that rebuilds both after a change, were
+    /// doing that work twice.
+    pub(super) fn shared_snapshot(
+        &self,
+        account_id: Option<&AccountId>,
+        accounts: &[AccountId],
+        offset: &str,
+        now_sec: i64,
+        changes: u64,
+    ) -> Option<Arc<now::NowSnapshot>> {
+        let slot = self.shared_snapshot.lock();
+        let shared = slot.as_ref()?;
+        (shared.account_id.as_ref() == account_id
+            && shared.accounts == accounts
+            && shared.offset == offset
+            && shared.now_sec == now_sec
+            && shared.changes == changes
+            && shared.mutations == self.mutations.load(Ordering::Acquire)
+            && shared.hour == local_hour()
+            && shared.built.elapsed() < Duration::from_secs(1))
+        .then(|| Arc::clone(&shared.snapshot))
+    }
+
+    /// Keep the snapshot just built for the other view in this tick.
+    pub(super) fn remember_snapshot(
+        &self,
+        account_id: Option<&AccountId>,
+        accounts: &[AccountId],
+        offset: &str,
+        now_sec: i64,
+        changes: u64,
+        snapshot: Arc<now::NowSnapshot>,
+    ) {
+        *self.shared_snapshot.lock() = Some(SharedSnapshot {
+            account_id: account_id.cloned(),
+            accounts: accounts.to_vec(),
+            offset: offset.to_string(),
+            now_sec,
+            snapshot,
+            built: Instant::now(),
+            changes,
+            mutations: self.mutations.load(Ordering::Acquire),
+            hour: local_hour(),
+        });
+    }
+
     /// A request that may have changed mail finished: nothing built before
     /// it may answer a read.
     pub(crate) fn note_mutation(&self) {

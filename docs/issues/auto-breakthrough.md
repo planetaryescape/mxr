@@ -1,4 +1,4 @@
-# Automatic alert to-dos still lack genuine live receiver provenance
+# Automatic alert to-dos need receiver provenance and existing-task integration
 
 D193's candidate decision, arrival history, durable claim, audit and client
 explanations are implemented. It is not ready to ship as a working
@@ -17,7 +17,7 @@ IMAP remain unsupported with an explanation. Sources are linked in
 The expanded synthetic corpus exposed an existing canonical Asks projection
 that created payment-failure tasks before the alert gate. Automatic projection
 now leaves those alerts to the trusted arrival path; existing tasks remain
-for the user to handle. The regression must pass before acceptance.
+for the user to handle. The 22-case synthetic alert regression passes with no false automatic tasks, missed creations or invalid provenance. The affected Asks suite still has four failures involving payment-task creation and saved corrections/undo. Integrate those existing contracts with the trusted alert path before landing; do not remove legitimate cases to make the counts green.
 
 Resolve that receiver and timestamp boundary with a trustworthy provider
 attestation or independently verifiable evidence. Demonstrate legitimate

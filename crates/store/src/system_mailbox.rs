@@ -917,6 +917,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_summary_clear_seeks_by_thread() {
+        // Migration 113: a message or label write must not scan the summary.
+        // The clear is keyed by (account_id, thread_id), so it has to reach the
+        // row through the new index rather than the role-first primary key.
+        let t = two_accounts().await;
+        let rows = sqlx::query(
+            "EXPLAIN QUERY PLAN
+             DELETE FROM thread_role_pages
+              WHERE account_id = ?1 AND thread_id = ?2",
+        )
+        .bind(t.a.id.as_str())
+        .bind("thread")
+        .fetch_all(t.store.reader())
+        .await
+        .unwrap();
+        let plan = rows
+            .iter()
+            .map(|row| row.get::<String, _>("detail"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            plan.contains("idx_thread_role_pages_thread"),
+            "the clear should seek the summary by thread: {plan}"
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_threads_last_message_removes_its_summary_row() {
+        let t = two_accounts().await;
+        let (thread_id, message_id) = message(&t.store, &t.a.id, 0, &[&t.a_inbox], None).await;
+        let provider_id = t
+            .store
+            .get_envelope(&message_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .provider_id;
+        let page = t
+            .store
+            .list_threads_by_role(
+                std::slice::from_ref(&t.a.id),
+                Role::Inbox,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.len(), 1);
+
+        t.store
+            .delete_messages_and_derived(&t.a.id, std::slice::from_ref(&provider_id))
+            .await
+            .unwrap();
+
+        let ghosts: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM thread_role_pages WHERE thread_id = ?1")
+                .bind(thread_id.as_str())
+                .fetch_one(t.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(ghosts, 0, "a deleted thread must not leave a summary row");
+        let page = t
+            .store
+            .list_threads_by_role(
+                std::slice::from_ref(&t.a.id),
+                Role::Inbox,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
+            .await
+            .unwrap();
+        assert!(
+            page.is_empty(),
+            "the page must not count a thread whose mail is gone"
+        );
+    }
+
+    #[tokio::test]
     async fn counts_cover_accounts_without_an_all_mail_label() {
         let t = two_accounts().await;
         t.store

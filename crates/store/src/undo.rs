@@ -145,6 +145,30 @@ pub struct UndoEntry {
     pub expires_at: i64,
 }
 
+impl UndoEntry {
+    /// Decode one `mutation_undo_log` row, read or claimed.
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        let kind_value: String = row.try_get("mutation_kind")?;
+        // Re-add quotes so serde can decode the kebab-case unit variant.
+        let kind: UndoableMutationKind =
+            super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
+        let snapshots_json: String = row.try_get("prior_state_json")?;
+        let snapshots: Vec<UndoEntrySnapshot> = super::decode_json(&snapshots_json)?;
+        let desk = row
+            .try_get::<Option<String>, _>("desk_state_json")?
+            .map(|json| super::decode_json::<DeskUndo>(&json))
+            .transpose()?;
+        Ok(Self {
+            mutation_id: row.try_get("mutation_id")?,
+            kind,
+            snapshots,
+            desk,
+            applied_at: row.try_get("applied_at")?,
+            expires_at: row.try_get("expires_at")?,
+        })
+    }
+}
+
 impl super::Store {
     /// Persist a batch undo entry. Idempotent on `mutation_id` — re-inserts
     /// of the same id replace the row (the caller controls id generation
@@ -189,30 +213,33 @@ impl super::Store {
         .bind(mutation_id)
         .fetch_optional(self.reader())
         .await?;
-        let Some(row) = row else { return Ok(None) };
-
-        let kind_value: String = row.try_get("mutation_kind")?;
-        // Re-add quotes so serde can decode the kebab-case unit variant.
-        let kind: UndoableMutationKind =
-            super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
-        let snapshots_json: String = row.try_get("prior_state_json")?;
-        let snapshots: Vec<UndoEntrySnapshot> = super::decode_json(&snapshots_json)?;
-        let desk = row
-            .try_get::<Option<String>, _>("desk_state_json")?
-            .map(|json| super::decode_json::<DeskUndo>(&json))
-            .transpose()?;
-        Ok(Some(UndoEntry {
-            mutation_id: row.try_get("mutation_id")?,
-            kind,
-            snapshots,
-            desk,
-            applied_at: row.try_get("applied_at")?,
-            expires_at: row.try_get("expires_at")?,
-        }))
+        row.as_ref().map(UndoEntry::from_row).transpose()
     }
 
-    /// Delete an undo entry by id. Used after a successful undo so the
-    /// same `mutation_id` cannot be replayed.
+    /// Claim an undo entry: read and delete it in one statement, so two
+    /// overlapping undos of the same id can't both see it live. Returns
+    /// `Ok(None)` when another caller already took it (or it never existed).
+    /// A partly failed undo writes what still needs retrying back under the
+    /// same id with [`Self::write_undo_entry`].
+    pub async fn take_undo_entry(
+        &self,
+        mutation_id: &str,
+    ) -> Result<Option<UndoEntry>, sqlx::Error> {
+        let row = sqlx::query(
+            "DELETE FROM mutation_undo_log
+             WHERE mutation_id = ?1
+             RETURNING mutation_id, mutation_kind, prior_state_json,
+                       desk_state_json, applied_at, expires_at",
+        )
+        .bind(mutation_id)
+        .fetch_optional(self.writer())
+        .await?;
+        row.as_ref().map(UndoEntry::from_row).transpose()
+    }
+
+    /// Delete an undo entry by id. The undo itself claims with
+    /// [`Self::take_undo_entry`]; this serves callers that already hold the
+    /// entry, such as recovery cleanup.
     pub async fn delete_undo_entry(&self, mutation_id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM mutation_undo_log WHERE mutation_id = ?")
             .bind(mutation_id)

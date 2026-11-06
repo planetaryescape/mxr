@@ -4313,6 +4313,68 @@ async fn delete_undo_entry_is_exact_and_idempotent() {
     );
 }
 
+/// One undo id is claimed once: two overlapping `take_undo_entry` calls can't
+/// both get the entry, so a concurrent double-undo can't apply twice. A
+/// different id is untouched.
+#[tokio::test]
+async fn take_undo_entry_claims_an_id_once() {
+    use crate::undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let entry = UndoEntry {
+        mutation_id: "mut-claim".into(),
+        kind: UndoableMutationKind::Archive,
+        snapshots: vec![UndoEntrySnapshot {
+            message_id: MessageId::new(),
+            account_id: account.id.clone(),
+            provider_id: "fake-msg-claim".into(),
+            prior_flags_bits: MessageFlags::READ.bits(),
+            prior_label_provider_ids: vec!["INBOX".into()],
+            uncertain: false,
+        }],
+        desk: None,
+        applied_at: 1_700_000_000,
+        expires_at: 1_700_000_060,
+    };
+    store.write_undo_entry(&entry).await.unwrap();
+
+    let (first, second) = tokio::join!(
+        store.take_undo_entry("mut-claim"),
+        store.take_undo_entry("mut-claim"),
+    );
+    let claims = [first.unwrap(), second.unwrap()];
+    assert_eq!(
+        claims.iter().filter(|claim| claim.is_some()).count(),
+        1,
+        "exactly one caller wins the claim"
+    );
+    let claimed = claims
+        .into_iter()
+        .flatten()
+        .next()
+        .expect("the winner has the entry");
+    assert_eq!(claimed.mutation_id, "mut-claim");
+    assert_eq!(claimed.snapshots.len(), 1);
+    assert!(
+        store.read_undo_entry("mut-claim").await.unwrap().is_none(),
+        "the claim consumes the entry"
+    );
+
+    store
+        .write_undo_entry(&UndoEntry {
+            mutation_id: "mut-other".into(),
+            ..entry
+        })
+        .await
+        .unwrap();
+    assert!(
+        store.take_undo_entry("mut-other").await.unwrap().is_some(),
+        "a different id is not affected"
+    );
+}
+
 /// Phase 1.4: pruning drops only entries whose `expires_at <= now`.
 /// Bounds the table under heavy mutation traffic without dropping
 /// in-window entries.

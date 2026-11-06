@@ -79,7 +79,7 @@ export function ThreadReader({
   const loadedMessages = useMemo(() => {
     const seen = new Set<string>();
     return [
-      ...[...olderPages].reverse().flatMap((page) => page.messages),
+      ...[...olderPages].toReversed().flatMap((page) => page.messages),
       ...data.messages,
       ...newerPages.flatMap((page) => page.messages),
     ].filter((message) => {

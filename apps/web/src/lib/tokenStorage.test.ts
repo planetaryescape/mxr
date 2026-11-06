@@ -2,7 +2,13 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { bootstrapFromHash, getBridgeBaseUrl, getToken, setToken } from "./tokenStorage";
+import {
+  bootstrapFromHash,
+  getBridgeBaseUrl,
+  getToken,
+  setToken,
+  clearToken,
+} from "./tokenStorage";
 
 // Node 26 shadows jsdom's storage with an inert global, so the test brings
 // its own to behave the same on every Node version.
@@ -63,5 +69,28 @@ describe("bootstrapFromHash", () => {
     expect(getToken()).toBe("abc");
     // The router's entry index survives the scrub (else "back" leaves the app).
     expect(window.history.state).toEqual({ __TSR_index: 0 });
+  });
+});
+
+describe("offline privacy on account changes", () => {
+  test("clearing or replacing a saved token tells the worker to discard private mail", () => {
+    const postMessage = vi.fn<(message: { type: "CLEAR_OFFLINE_MAIL" }) => void>();
+    const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker");
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { controller: { postMessage } },
+    });
+    try {
+      setToken("first-browser-token");
+      postMessage.mockClear();
+      setToken("replacement-browser-token");
+      expect(postMessage).toHaveBeenCalledWith({ type: "CLEAR_OFFLINE_MAIL" });
+      postMessage.mockClear();
+      clearToken();
+      expect(postMessage).toHaveBeenCalledWith({ type: "CLEAR_OFFLINE_MAIL" });
+    } finally {
+      if (original) Object.defineProperty(navigator, "serviceWorker", original);
+      else Reflect.deleteProperty(navigator, "serviceWorker");
+    }
   });
 });

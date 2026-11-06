@@ -26,6 +26,7 @@ import createClient, { type Middleware } from "openapi-fetch";
 import type { paths } from "./generated";
 import { tryLocalHandshake } from "@/lib/localHandshake";
 import { clearToken, getBridgeBaseUrl, getToken } from "@/lib/tokenStorage";
+import { OFFLINE_HEADER } from "@/pwa/offlineReads";
 
 export class UnauthorizedError extends Error {
   constructor() {
@@ -104,7 +105,8 @@ async function sendToBridge(
     throw new DaemonUnavailableError({ cause: error });
   }
   // A 5xx is judged by its body in `failureFrom`.
-  if (res.status < 500) reportReachability(true);
+  if (res.headers.get(OFFLINE_HEADER) === "1") reportReachability(false);
+  else if (res.status < 500) reportReachability(true);
   return res;
 }
 
@@ -117,6 +119,7 @@ async function failureFrom(res: Response): Promise<Error> {
   const text = await res.text().catch(() => "");
   const failure = bridgeRequestError(res.status, res.statusText, text);
   if (res.status < 500) return failure;
+  if (res.headers.get(OFFLINE_HEADER) === "1") return failure;
   const unreachable = failure.code === "connect" || text.trim() === "";
   reportReachability(!unreachable);
   return unreachable ? new DaemonUnavailableError({ cause: failure }) : failure;

@@ -59,6 +59,15 @@ export function explainError(error: unknown, subject?: string): ErrorExplanation
   if (!(error instanceof BridgeRequestError)) return generic();
 
   const { status, code } = error;
+  if (code === "offline_not_cached") {
+    return {
+      heading: "This item isn't saved offline",
+      body: "Previously opened mail is still available. Reconnect to load this item.",
+      fix: "retry",
+      generic: false,
+      technical,
+    };
+  }
   if (code === "protocol_mismatch" || status === 426) {
     return {
       heading: "mxr needs updating",

@@ -18,6 +18,7 @@
  */
 
 import { onWorkspaceChanged } from "./workspaceOwner";
+import { clearOfflineMail } from "@/pwa/offlineReads";
 import { requestCoordinator } from "./requestCoordinator";
 import { onlineManager, type Query, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -109,6 +110,7 @@ function retainedPrivateQuery(query: Query): boolean {
 
 export function startDaemonAvailability(queryClient: QueryClient): () => void {
   const offWorkspace = onWorkspaceChanged(() => {
+    clearOfflineMail();
     requestCoordinator.cancelAll();
     void queryClient
       .cancelQueries({ predicate: (query) => !retainedPrivateQuery(query) })

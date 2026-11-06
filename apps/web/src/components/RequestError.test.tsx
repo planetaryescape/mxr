@@ -4,6 +4,12 @@ import { BridgeRequestError, DaemonUnavailableError, UnauthorizedError } from "@
 import { explainError } from "./RequestError";
 
 describe("explainError", () => {
+  it("distinguishes an uncached offline item from rejected authentication", () => {
+    const result = explainError(new BridgeRequestError(503, "not saved", "offline_not_cached"));
+    expect(result.heading).toBe("This item isn't saved offline");
+    expect(result.fix).toBe("retry");
+    expect(result.body).toContain("Previously opened mail");
+  });
   it("says the daemon isn't running, offers the start command and keeps the raw error", () => {
     const result = explainError(new DaemonUnavailableError());
     expect(result.heading).toBe("mxr isn't running");

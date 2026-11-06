@@ -191,6 +191,30 @@ command palette has **Install as app**. Installed, mxr opens in its own
 window. Hide the offer with its **×**; it stays hidden after that. Firefox
 and Safari do not fire the install event, so the offer does not show there.
 
+On iPhone, use Safari's Share menu → Add to Home Screen with **Open as Web
+App** enabled. The manifest has a stable app ID, standalone display, and
+touch icons. Hosted sign-in must use the server's browser-session cookie to
+carry across installation; iOS does not copy Safari's localStorage into the app.
+
+### Read opened mail offline
+
+Open the app and the conversations you want while connected. Its service
+worker saves the app resources, visited mail lists, and opened conversations on
+that device. When the mail host is unreachable, saved reads stay available;
+items that were not saved explain that they need a connection. The hosted app
+shows an offline banner and refreshes its views when the host returns.
+
+The private cache holds up to 200 read responses for up to 30 days, subject to
+browser storage availability. It excludes authentication, account configuration,
+drafts, attachments, and writes. Send and other mutations fail while offline;
+they are not queued for replay. Sign-out, token replacement, workspace changes,
+and rejected authentication clear saved mail. Cache keys contain read URLs,
+not bearer-token headers, and each daemon protocol uses a separate private cache.
+
+An app update offers an **Update** action. Finish editing before accepting it;
+the worker waits rather than reloading an open composer automatically. The
+daemon protocol check still applies when the app reconnects.
+
 ### Stop extensions reading mxr's keys
 
 Extensions that run on every page can take mxr's single keys (`j`, `k`,

@@ -25,6 +25,7 @@ export function getActiveQueryClient(): QueryClient | null {
  */
 export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
   if (err instanceof UnauthorizedError) return false;
+  if (err instanceof BridgeRequestError && err.code === "offline_not_cached") return false;
   if (
     err instanceof BridgeRequestError &&
     err.status >= 400 &&
@@ -46,6 +47,8 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     }),
     defaultOptions: {
       queries: {
+        // The first read must reach the service worker even without a network.
+        networkMode: "offlineFirst",
         staleTime: 30_000,
         gcTime: 5 * 60_000,
         refetchOnWindowFocus: false,

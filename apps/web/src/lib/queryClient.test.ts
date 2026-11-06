@@ -6,6 +6,9 @@ import { BridgeRequestError, UnauthorizedError } from "@/api/client";
 
 describe("query retries", () => {
   test("answers that won't change are not retried", () => {
+    expect(
+      shouldRetryQuery(0, new BridgeRequestError(503, "not saved", "offline_not_cached")),
+    ).toBe(false);
     expect(shouldRetryQuery(0, new BridgeRequestError(404, "thread not found"))).toBe(false);
     expect(shouldRetryQuery(0, new BridgeRequestError(400, "invalid thread id"))).toBe(false);
     expect(shouldRetryQuery(0, new UnauthorizedError())).toBe(false);
@@ -25,6 +28,26 @@ describe("query retries", () => {
 });
 
 describe("mutations while the daemon is down", () => {
+  test("a cold offline read can still reach the service worker cache", async () => {
+    const client = createQueryClient();
+    onlineManager.setOnline(false);
+    try {
+      let calls = 0;
+      const saved = await client.fetchQuery({
+        queryKey: ["thread", "saved-offline"],
+        queryFn: async () => {
+          calls += 1;
+          return { subject: "Saved conversation" };
+        },
+      });
+      expect(calls).toBe(1);
+      expect(saved.subject).toBe("Saved conversation");
+    } finally {
+      onlineManager.setOnline(true);
+      client.clear();
+    }
+  });
+
   test("a scoped mutation runs (and fails) at once instead of waiting to replay", async () => {
     const client = createQueryClient();
     onlineManager.setOnline(false);

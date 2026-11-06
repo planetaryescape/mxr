@@ -125,7 +125,7 @@ The reported fingerprint is unverified. Check it against the bridge's own certif
 tls_cert_sha256 = "e51a57a240fc06f519fd775afd20ae622d7fb8bfa0cc628c612ebf78f5eaae80"
 ```
 
-Or pass `--imap-tls-cert-sha256 <hex>` (and `--imap-no-tls` for a plaintext loopback bridge) to `mxr accounts add imap-smtp`. See the [IMAP reference](/reference/config/#imap-sync-provider) for how each mode verifies the server.
+Pass `--imap-tls-cert-sha256 <hex>` to `mxr accounts add imap-smtp` to create an account with a certificate pin. For a plaintext loopback bridge, use `--imap-no-tls` without a certificate pin. See the [IMAP reference](/reference/config/#imap-sync-provider) for how each mode verifies the server.
 
 For SMTP, `use_tls = true` selects implicit TLS on port 465 and STARTTLS on
 other ports, including 587. If your provider publishes port 465 instead of 587,

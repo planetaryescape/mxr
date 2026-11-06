@@ -275,7 +275,7 @@ fn body_for(
                         );
                     }
                 }
-                // A to-do mxr made itself says what confirmed the sender.
+                // Hold reasons already appear in the manual suggestion.
                 if let Some(auto) = line.auto_todo.as_ref().filter(|a| a.state == "created") {
                     for text in wrap(&one_line(&auto.reason_text), width.saturating_sub(8)) {
                         body.text(format!("    {text}"), secondary);

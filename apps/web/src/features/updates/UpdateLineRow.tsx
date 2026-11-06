@@ -466,7 +466,6 @@ function Peek({
       ) : null}
       <EmailPreview line={line} />
       <p data-testid="update-why">{line.why}</p>
-      {/* Whether mxr made this alert's to-do itself, and why not when it didn't. */}
       {line.auto_todo ? <p data-testid="update-auto-todo">{line.auto_todo.reason_text}</p> : null}
       {numbers.length > 0 ? (
         <p data-testid="update-numbers">

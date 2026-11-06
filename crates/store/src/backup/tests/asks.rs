@@ -181,7 +181,10 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105, 106, 108]);
+            assert_eq!(
+                versions,
+                [98, 99, 100, 101, 102, 103, 104, 105, 106, 108, 109]
+            );
             restored.reader().close().await;
             restored.writer().close().await;
         }

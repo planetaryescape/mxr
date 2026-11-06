@@ -444,7 +444,7 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                             tracing::info!("Hosted daemon draining after durable operator stop");
                             state.begin_remote_drain(5);
                             let status=state.remote_lifecycle.snapshot(chrono::Utc::now().timestamp());
-                            let remaining=status.deadline_at.map(|at|at.saturating_mul(1000).saturating_sub(chrono::Utc::now().timestamp_millis())).unwrap_or(5000).clamp(0,5000) as u64;
+                            let remaining=status.deadline_at.map_or(5000, |at|at.saturating_mul(1000).saturating_sub(chrono::Utc::now().timestamp_millis())).clamp(0,5000) as u64;
                             operator_stop_deadline=Some(tokio::time::Instant::now()+Duration::from_millis(remaining));
                         }
                     } else {operator_stop_deadline=None;}

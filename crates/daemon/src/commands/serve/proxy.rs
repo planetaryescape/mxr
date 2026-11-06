@@ -31,9 +31,9 @@ pub(super) async fn status() -> anyhow::Result<Value> {
 }
 
 pub(super) fn port(config: &Hosting) -> anyhow::Result<u16> {
-    Ok(url::Url::parse(&config.public_origin)?
+    url::Url::parse(&config.public_origin)?
         .port_or_known_default()
-        .ok_or_else(|| anyhow::anyhow!("HTTPS port missing"))?)
+        .ok_or_else(|| anyhow::anyhow!("HTTPS port missing"))
 }
 
 pub(super) fn target(config: &Hosting) -> String {

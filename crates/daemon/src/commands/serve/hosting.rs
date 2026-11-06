@@ -332,8 +332,9 @@ pub(super) async fn drain_remote() -> anyhow::Result<()> {
 fn drain_notice_remaining(deadline_at: Option<i64>, now_millis: i64) -> Duration {
     Duration::from_millis(
         deadline_at
-            .map(|at| at.saturating_mul(1000).saturating_sub(now_millis))
-            .unwrap_or(5000)
+            .map_or(5000, |at| {
+                at.saturating_mul(1000).saturating_sub(now_millis)
+            })
             .clamp(0, 5000) as u64,
     )
 }

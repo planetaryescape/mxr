@@ -224,7 +224,7 @@ async fn authorize(
             .headers()
             .get(header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .is_some_and(|h| is_json(h))
+            .is_some_and(is_json)
     {
         let (parts, body) = request.into_parts();
         let bytes = match axum::body::to_bytes(body, 16 * 1024 * 1024).await {
@@ -436,18 +436,18 @@ pub(super) fn public_event(mut event: mxr_protocol::DaemonEvent) -> mxr_protocol
     use mxr_protocol::DaemonEvent;
     match &mut event {
         DaemonEvent::SyncError { error, .. } | DaemonEvent::OperationFailed { error, .. } => {
-            *error = "Remote operation failed; inspect host diagnostics".into()
+            *error = "Remote operation failed; inspect host diagnostics".into();
         }
         DaemonEvent::OperationStarted { message, .. }
         | DaemonEvent::OperationProgress { message, .. }
         | DaemonEvent::OperationCompleted { message, .. }
         | DaemonEvent::OperationCancelled { message, .. } => {
-            *message = "Remote operation state changed".into()
+            *message = "Remote operation state changed".into();
         }
         DaemonEvent::MutationReconciliationFailed { error_summary, .. } => {
             *error_summary =
                 "Remote change could not be reconciled; refresh mail and inspect host diagnostics"
-                    .into()
+                    .into();
         }
         _ => (),
     }

@@ -1,5 +1,5 @@
 import { onlineManager, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from "vitest";
 
 import { apiFetch, DaemonUnavailableError } from "@/api/client";
 
@@ -21,11 +21,18 @@ vi.mock("@/lib/tokenStorage", () => ({
   getToken: () => "test-token",
 }));
 
-const socket = vi.hoisted(() => ({
-  state: "connected" as string,
+interface AvailabilitySocket {
+  state: string;
+  reconnectNow: Mock<() => void>;
+  eventListener: ((event: { type: string; deadline_at: number }) => void) | undefined;
+  listener: ((status: { state: string }) => void) | undefined;
+}
+
+const socket = vi.hoisted<AvailabilitySocket>(() => ({
+  state: "connected",
   reconnectNow: vi.fn<() => void>(),
-  eventListener: undefined as ((event: { type: string; deadline_at: number }) => void) | undefined,
-  listener: undefined as ((status: { state: string }) => void) | undefined,
+  eventListener: undefined,
+  listener: undefined,
 }));
 vi.mock("@/lib/ws", () => ({
   daemonEvents: {

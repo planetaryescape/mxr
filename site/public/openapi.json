@@ -14577,6 +14577,29 @@
           {
             "type": "object",
             "required": [
+              "boot_id",
+              "deadline_at",
+              "event"
+            ],
+            "properties": {
+              "boot_id": {
+                "type": "string"
+              },
+              "deadline_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ServerStopping"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "account_id",
               "messages_synced",
               "event"
@@ -18116,6 +18139,33 @@
           }
         }
       },
+      "InlineImageChunkData": {
+        "type": "object",
+        "required": [
+          "offset",
+          "total_length",
+          "mime_type",
+          "data_base64"
+        ],
+        "properties": {
+          "data_base64": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "IpcErrorKind": {
         "type": "string",
         "enum": [
@@ -18725,7 +18775,8 @@
         ],
         "properties": {
           "base_url": {
-            "type": "string"
+            "type": "string",
+            "description": "Empty in remote status, where endpoint addresses remain on the host."
           },
           "model": {
             "type": "string"
@@ -19299,6 +19350,13 @@
               "$ref": "#/components/schemas/LlmObservationData"
             },
             "description": "Last process-local endpoint outcomes, separated by routed feature.\nThese contain typed failure classes only, never provider error text."
+          },
+          "policy_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cache identity for a redacted host endpoint, not an authentication credential."
           },
           "provider": {
             "type": "string"
@@ -25678,11 +25736,211 @@
         "type": "string",
         "enum": [
           "mail_read",
-          "mail_send"
+          "mail_send",
+          "mail_triage",
+          "mail_ai"
         ]
+      },
+      "RemotePresence": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "session_id",
+          "surface",
+          "last_seen_at",
+          "expires_at",
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "surface": {
+            "type": "string"
+          }
+        }
       },
       "RemoteRequest": {
         "oneOf": [
+          {
+            "type": "object",
+            "description": "Authenticated lease refresh; closing a surface never deregisters its installation.",
+            "required": [
+              "client_id",
+              "mail_secret",
+              "session_id",
+              "surface",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "TouchSession"
+                ]
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "surface": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "mail_secret",
+              "session_id",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "CloseSession"
+                ]
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Sessions"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "dry_run",
+              "deadline_seconds",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "Drain"
+                ]
+              },
+              "deadline_seconds": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "dry_run": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "ResumeHosting"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "mail_secret",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "IssueBrowserCode"
+                ]
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "code",
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "ClaimBrowserCode"
+                ]
+              },
+              "code": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "replace_session": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": false,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string",
+                    "description": "Credential or verifier on the wire. Debug output never reveals its contents."
+                  }
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -25897,6 +26155,132 @@
           {
             "type": "object",
             "required": [
+              "status",
+              "result"
+            ],
+            "properties": {
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Sessions"
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/RemoteSessions"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status",
+              "registered_clients",
+              "scheduled_sends",
+              "scheduled_snoozes",
+              "scheduled_reminders",
+              "active_jobs",
+              "active_assistant_turns",
+              "dry_run",
+              "result"
+            ],
+            "properties": {
+              "active_assistant_turns": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "active_jobs": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "registered_clients": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "Drain"
+                ]
+              },
+              "scheduled_reminders": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "scheduled_sends": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "scheduled_snoozes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "status": {
+                "$ref": "#/components/schemas/RemoteSessions"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "code",
+              "expires_at",
+              "result"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "expires_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "BrowserCode"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "mail_secret",
+              "expires_at",
+              "result"
+            ],
+            "properties": {
+              "expires_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "mail_secret": {
+                "$ref": "#/components/schemas/RemoteSecret"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "BrowserSession"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "authority",
               "result"
             ],
@@ -26021,6 +26405,41 @@
       "RemoteSecret": {
         "type": "string",
         "description": "Credential or verifier on the wire. Debug output never reveals its contents."
+      },
+      "RemoteSessions": {
+        "type": "object",
+        "required": [
+          "boot_id",
+          "draining",
+          "in_flight",
+          "sessions"
+        ],
+        "properties": {
+          "boot_id": {
+            "type": "string"
+          },
+          "deadline_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "draining": {
+            "type": "boolean"
+          },
+          "in_flight": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemotePresence"
+            }
+          }
+        }
       },
       "RenameCategoryBody": {
         "type": "object",
@@ -26489,6 +26908,41 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Read one bounded chunk of an inline source present in this message's HTML.\nRemote web resources and host file sources cannot be requested.",
+            "required": [
+              "message_id",
+              "source",
+              "offset",
+              "length",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ReadInlineImage"
+                ]
+              },
+              "length": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "source": {
+                "type": "string"
               }
             }
           },
@@ -35095,8 +35549,16 @@
               "kind"
             ],
             "properties": {
+              "accepting_mail": {
+                "type": "boolean",
+                "description": "A draining host still admits status and original-operation recovery."
+              },
               "attachment_transfer_supported": {
                 "type": "boolean"
+              },
+              "boot_id": {
+                "type": "string",
+                "description": "Changes with every daemon boot; stale lifecycle notices must not cross it."
               },
               "capabilities": {
                 "type": "array",
@@ -35129,6 +35591,13 @@
               },
               "send_outcome_supported": {
                 "type": "boolean"
+              },
+              "shutdown_deadline_at": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
               },
               "workspace": {
                 "$ref": "#/components/schemas/ArchiveWorkspaceData"
@@ -35334,6 +35803,24 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "chunk",
+              "kind"
+            ],
+            "properties": {
+              "chunk": {
+                "$ref": "#/components/schemas/InlineImageChunkData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "InlineImageChunk"
+                ]
               }
             }
           },

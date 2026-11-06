@@ -261,8 +261,9 @@ mod tests {
 mod cleanup_retry_tests {
     use super::*;
     #[test]
-    fn cleanup_retry_backoff_survives_a_new_process_and_new_intents_can_run_immediately() {
-        let dir = tempfile::tempdir().unwrap();
+    fn cleanup_retry_backoff_survives_a_new_process_and_new_intents_can_run_immediately(
+    ) -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("connection.json");
         update(&path, None, |state| {
             state.cleanup.push(RetiredRegistration {
@@ -273,8 +274,7 @@ mod cleanup_retry_tests {
             assert!(state.claim_cleanup_retry(100));
             assert_eq!(state.cleanup_retry_at, 130);
             Ok(())
-        })
-        .unwrap();
+        })?;
         update(&path, None, |state| {
             assert!(!state.claim_cleanup_retry(129));
             assert!(state.claim_cleanup_retry(130));
@@ -283,10 +283,10 @@ mod cleanup_retry_tests {
             assert!(state.claim_cleanup_retry(131));
             assert_eq!(state.cleanup_retry_at, 161);
             Ok(())
-        })
-        .unwrap();
-        let state = read(&path).unwrap();
+        })?;
+        let state = read(&path)?;
         assert_eq!(state.cleanup_retry_at, 161);
         assert_eq!(state.cleanup.len(), 1);
+        Ok(())
     }
 }

@@ -78,7 +78,8 @@ pub(super) fn interrupted(mut recovery: Value, response: &Response) -> ClientErr
 mod tests {
     use super::*;
     #[test]
-    fn selection_failure_retains_send_identity_without_approval_credentials() {
+    fn selection_failure_retains_send_identity_without_approval_credentials(
+    ) -> Result<(), &'static str> {
         let owner = ArchiveWorkspaceData {
             workspace_id: "original".into(),
             recovery_generation: "epoch".into(),
@@ -105,7 +106,7 @@ mod tests {
             ..
         } = error
         else {
-            panic!("typed recovery error");
+            return Err("expected a typed recovery error with recovery details");
         };
         assert_eq!(code, "selection_changed_after_request");
         assert!(!retryable);
@@ -116,5 +117,6 @@ mod tests {
         );
         assert_eq!(details["send_identity"]["expected_revision"], 7);
         assert!(!details.to_string().contains("private-approval"));
+        Ok(())
     }
 }

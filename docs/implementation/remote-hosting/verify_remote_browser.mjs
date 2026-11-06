@@ -39,7 +39,9 @@ if (process.argv[2] === 'proxy') {
 } else {
   const require = createRequire(`${config.repo}/apps/web/package.json`);
   const { chromium, expect } = require('@playwright/test');
-  const browser = await chromium.launch({ headless: true, ...(config.browser_channel === 'chrome' ? { channel: 'chrome' } : {}) });
+  const launchOptions = { headless: true };
+  if (config.browser_channel === 'chrome') launchOptions.channel = 'chrome';
+  const browser = await chromium.launch(launchOptions);
   let step = 'launch';
   const failures = [];
   const check = (name) => emit({ event: 'check', name });

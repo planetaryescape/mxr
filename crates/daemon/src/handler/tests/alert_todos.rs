@@ -683,3 +683,52 @@ async fn deleting_a_source_and_resyncing_it_cannot_release_its_alert_claim() {
         "a successful claim survives source deletion"
     );
 }
+
+#[tokio::test]
+async fn a_warmed_attacker_domain_is_an_explicit_truthfully_named_residual() {
+    let case = Case {
+        from: "no-reply@evil.example",
+        display: Some("Google"),
+        arrival: Arrival::Gmail(vec![pass("evil.example")]),
+        prior: vec![("evil.example", 12, 200)],
+        ..Case::google_sign_in("warmed attacker domain", true)
+    };
+    let run = arrange(&case, mxr_config::MxrConfig::default()).await;
+    scan(&run).await;
+    let made = todos_for(&run).await;
+    println!(
+        "documented heuristic residual: warmed_attacker_domain_created={}",
+        made.len()
+    );
+    assert_eq!(
+        made.len(),
+        1,
+        "sender identity does not establish alert truth"
+    );
+    assert_eq!(made[0].title, "Check new sign-in · evil.example");
+    assert!(made[0].reason.contains("evil.example"));
+    assert!(!made[0].title.contains("Google"));
+}
+
+#[tokio::test]
+async fn history_excludes_the_candidate_even_when_the_cut_is_after_its_receipt() {
+    let case = Case {
+        prior: vec![],
+        ..Case::google_sign_in("first sender", false)
+    };
+    let run = arrange(&case, mxr_config::MxrConfig::default()).await;
+    let history = run
+        .fx
+        .state
+        .store
+        .sender_history(
+            &run.fx.account,
+            "accounts.google.com",
+            run.now + Duration::days(1),
+            &run.candidate.id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(history.messages, 0);
+    assert_eq!(history.oldest, None);
+}

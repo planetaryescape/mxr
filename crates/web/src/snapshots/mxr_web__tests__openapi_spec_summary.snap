@@ -114,6 +114,7 @@ expression: summary
     "AuthSessionData",
     "AuthSessionId",
     "AuthSessionStateData",
+    "AutoTodoData",
     "BodyFailure",
     "BodyPartSource",
     "CadenceDriftRowData",

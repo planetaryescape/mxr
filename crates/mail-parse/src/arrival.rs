@@ -348,16 +348,15 @@ mod tests {
     #[test]
     fn an_unpinned_provider_never_verifies_whatever_the_headers_say() {
         let headers = vec![PASS.to_string()];
-        for why in [UnverifiedReason::ImapGivesNoVerdict] {
-            let evidence = arrival_evidence(
-                VerdictPolicy::Unavailable(why),
-                &headers,
-                "no-reply@accounts.google.com",
-                Some(DateTime::UNIX_EPOCH),
-            );
-            assert_eq!(evidence.sender, SenderCheck::Unverified { reason: why });
-            assert!(evidence.received_at.is_some());
-        }
+        let why = UnverifiedReason::ImapGivesNoVerdict;
+        let evidence = arrival_evidence(
+            VerdictPolicy::Unavailable(why),
+            &headers,
+            "no-reply@accounts.google.com",
+            Some(DateTime::UNIX_EPOCH),
+        );
+        assert_eq!(evidence.sender, SenderCheck::Unverified { reason: why });
+        assert!(evidence.received_at.is_some());
     }
 
     #[test]

@@ -33,12 +33,16 @@ pub struct AuditReport {
     pub would_create_by_kind: BTreeMap<String, usize>,
 }
 
+type InboundKey = (String, String);
+type InboundEntry = (i64, String, i64);
+type InboundMap = HashMap<InboundKey, Vec<InboundEntry>>;
+
 /// Provider receipts per (account, host), sorted to count earlier mail.
-struct Inbound(HashMap<(String, String), Vec<(i64, String, i64)>>);
+struct Inbound(InboundMap);
 
 impl Inbound {
     fn new(mail: &[AuditMail]) -> Self {
-        let mut map: HashMap<(String, String), Vec<(i64, String, i64)>> = HashMap::new();
+        let mut map: InboundMap = HashMap::new();
         for item in mail {
             if let Some(received_at) = item.received_at {
                 map.entry((item.account_id.clone(), item.from_host.clone()))
@@ -146,8 +150,8 @@ fn replay(
         let verified = evidence
             .message_fingerprint
             .as_ref()
-            .and(evidence.verified_host.clone());
-        let code = evidence.unverified_reason.map(|reason| reason.code());
+            .and_then(|_| evidence.verified_host.clone());
+        let code = evidence.unverified_reason.map(mxr_core::UnverifiedReason::code);
         let (history, established) = match (&verified, evidence.received_at) {
             (Some(host), Some(at)) => (
                 inbound.history(

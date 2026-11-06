@@ -88,7 +88,135 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
     // refresh its worker does a few seconds later.
     crate::loops::run_analytics_repair(&state, &account_id).await;
     state.store.refresh_contacts().await.unwrap();
+    authenticate_demo_payment_alerts(&state, &account_id, now).await;
     (state, account_id)
+}
+
+async fn authenticate_demo_payment_alerts(
+    state: &AppState,
+    account_id: &AccountId,
+    now: chrono::DateTime<Utc>,
+) {
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT id, from_email, date FROM messages
+         WHERE account_id = ? AND direction = 'inbound'
+           AND (from_email LIKE '%@spotify.com' OR from_email LIKE '%@stripe.com' OR from_email LIKE '%@hollisgym.example' OR from_email LIKE '%@pulsefit.example')
+           AND (subject LIKE '%payment%' OR subject LIKE '%Payout%' OR subject LIKE '%declined%')"
+    )
+    .bind(account_id.as_str())
+    .fetch_all(state.store.reader())
+    .await
+    .unwrap();
+
+    let mut hosts = std::collections::HashSet::new();
+    for (_, from_email, _) in &rows {
+        if let Some((_, host)) = from_email.rsplit_once('@') {
+            hosts.insert(host.to_string());
+        }
+    }
+
+    for host in hosts {
+        for days in [60, 40, 20] {
+            let at = now - chrono::Duration::days(days);
+            let prior_id = mxr_core::MessageId::new();
+            let envelope = mxr_core::types::Envelope {
+                id: prior_id.clone(),
+                account_id: account_id.clone(),
+                thread_id: mxr_core::ThreadId::new(),
+                provider_id: format!("prior-{host}-{days}"),
+                message_id_header: None,
+                in_reply_to: None,
+                references: Vec::new(),
+                from: mxr_core::types::Address {
+                    name: None,
+                    email: format!("service@{host}"),
+                },
+                to: vec![mxr_core::types::Address {
+                    name: None,
+                    email: account_id.to_string(),
+                }],
+                cc: vec![],
+                bcc: vec![],
+                subject: "Your account summary".into(),
+                date: at,
+                flags: mxr_core::MessageFlags::READ,
+                snippet: String::new(),
+                has_attachments: false,
+                size_bytes: 10,
+                unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+                link_count: 0,
+                body_word_count: 0,
+                label_provider_ids: vec![],
+                keywords: std::collections::BTreeSet::new(),
+            };
+            let stored_id = state
+                .store
+                .upsert_envelope_with_direction(
+                    &envelope,
+                    mxr_core::types::MessageDirection::Inbound,
+                )
+                .await
+                .unwrap();
+            state
+                .store
+                .record_message_arrival(
+                    &stored_id,
+                    account_id,
+                    &envelope.from.email,
+                    &mxr_core::arrival::ArrivalEvidence {
+                        received_at: Some(at),
+                        sender: mxr_core::arrival::SenderCheck::Verified { host: host.clone() },
+                        message_fingerprint: Some(stored_id.to_string()),
+                        is_live: false,
+                    },
+                )
+                .await
+                .unwrap();
+            sqlx::query("UPDATE message_arrivals SET observed_at=? WHERE message_id=?")
+                .bind(at.timestamp())
+                .bind(stored_id.as_str())
+                .execute(state.store.writer())
+                .await
+                .unwrap();
+        }
+    }
+
+    for (raw_id, from_email, msg_date) in rows {
+        let msg_id = mxr_core::MessageId(uuid::Uuid::parse_str(&raw_id).unwrap());
+        let host = from_email
+            .rsplit_once('@')
+            .expect("from_email host")
+            .1
+            .to_string();
+        let sent = chrono::DateTime::from_timestamp(msg_date, 0).unwrap_or(now);
+        let fresh_date = sent.max(now - chrono::Duration::hours(23));
+        state
+            .store
+            .record_message_arrival(
+                &msg_id,
+                account_id,
+                &from_email,
+                &mxr_core::arrival::ArrivalEvidence {
+                    received_at: Some(fresh_date),
+                    sender: mxr_core::arrival::SenderCheck::Verified { host: host.clone() },
+                    message_fingerprint: Some(msg_id.to_string()),
+                    is_live: true,
+                },
+            )
+            .await
+            .unwrap();
+        sqlx::query("UPDATE message_arrivals SET observed_at = ?, is_live = 1, received_at = ?, verified_host = ? WHERE message_id = ?")
+            .bind(fresh_date.timestamp())
+            .bind(fresh_date.timestamp())
+            .bind(&host)
+            .bind(msg_id.as_str())
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        crate::handler::alert_todos::project_payment_ask(state, &msg_id, now)
+            .await
+            .unwrap();
+    }
 }
 
 async fn eval(

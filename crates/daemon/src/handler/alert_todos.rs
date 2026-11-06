@@ -378,6 +378,9 @@ async fn enrich_from_stored_ask(
     record.currency = projected.currency;
     record.due_at = projected.due_at;
     record.due_words = projected.due_words;
+    if projected.counterparty.is_some() {
+        record.counterparty = projected.counterparty;
+    }
     let verified = FieldSources::from_json(&record.field_sources);
     let mut fields = FieldSources::from_json(&projected.field_sources);
     fields.0.extend(verified.0.clone());

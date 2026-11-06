@@ -499,10 +499,50 @@ saved searches can be created, renamed, re-queried, pinned and deleted.
 
 ## Bundle
 
-The entry chunk is about 63 kB gzipped. Compose (editors, sanitizer, address
-parsing), the palettes, help, mail dialogs and the right rail load the first
-time they open (`components/AppShell.tsx`). Route search params use small
-validators (`lib/searchParams.ts`) instead of zod. Budget: 70 kB gzipped.
+What the first screen downloads, measured on the production build (`npm run
+build`; gzipped transfer as `vite` reports it):
+
+| Chunk | gzip | Contents |
+|---|---|---|
+| `index` (entry) | 127 kB | the shell: sidebar, topbar, key dispatcher, action registry, keymap catalog, query client, WS client |
+| `vendor-react` | 76 kB | react, react-dom |
+| `vendor-tanstack` | 44 kB | router, query, virtual |
+| `vendor-radix` | 44 kB | the Radix primitives the shell and lists use |
+| `vendor-icons` | 11 kB | lucide, tree-shaken to the icons used |
+| `index.css` | 23 kB | tokens, Tailwind output, the Recursive face declarations |
+
+Compose (editors, sanitizer, address parsing), the palettes, help, mail
+dialogs, the assistant and the right rail load the first time they open
+(`components/AppShell.tsx`). The editors are the two largest downloads in the
+app — CodeMirror is 732 kB raw and Tiptap 377 kB — so nothing outside the
+composer may import them, directly or through a shared dependency.
+
+- **Do not give `@tiptap`, `@codemirror` or `@lezer` a named chunk** in
+  `vite.config.ts`. A named group also collects that group's dependencies, so
+  `linkifyjs` (used by plain-text message bodies) rode inside `vendor-tiptap`
+  and every thread route downloaded 637 kB of editor it never opened. Named
+  chunks are only for libraries every route loads: react, tanstack, radix,
+  icons. Everything lazy keeps Rollup's automatic chunking.
+- **Keep zod off the entry path.** The router uses small validators
+  (`lib/searchParams.ts`) and `state/uiPrefsStore.ts` repairs the four stored
+  Reading display fields itself instead of calling `parseReaderSettings` from
+  `@planetaryescape/reader`, whose barrel pulls zod (about 26 kB gzipped).
+  `uiPrefsStore.test.ts` fails if the two schemas diverge.
+- **Don't defer the toast viewport.** Sonner's `Toaster` starts from an empty
+  list and only sees toasts raised after it mounts, so mounting it late drops
+  the Undo toast of whatever the person did first.
+- Budget: the entry chunk is 127 kB gzipped and the first screen 324 kB (down
+  from 148 kB and 346 kB). Measured warm, back to back, on Fast 4G with the
+  demo profile: Messages LCP 4.34 s → 4.18 s at 1× and 4.61 s → 4.47 s at 4×;
+  Reading 6.08 s → 6.65 s at 1× and 6.31 s → 6.12 s at 4×. Reading's LCP waits
+  on daemon data, not assets, so it moves with cache warmth; the reliable
+  numbers there are transfer (1.01 MB → 993 kB) and the thread route
+  (963 kB → 748 kB, with the 637 kB of editor code gone). Raising either
+  budget needs a measurement in the PR.
+  `docs/web-app-rubric.md` row 9.2 still says 70 kB; the shell alone (router,
+  query, keymap catalog, sidebar, topbar) is past that, so the row needs its
+  owner's decision rather than a quiet rewrite. Use 130 kB as the regression
+  line until then.
 
 ## Testing
 

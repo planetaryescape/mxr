@@ -159,6 +159,18 @@ async fn authenticate_demo_payment_alerts(
                 .unwrap();
             state
                 .store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: stored_id.clone(),
+                    text_plain: Some("Your account summary".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: at,
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+            state
+                .store
                 .record_message_arrival(
                     &stored_id,
                     account_id,

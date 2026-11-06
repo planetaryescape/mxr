@@ -85,7 +85,12 @@ impl super::Store {
             for upsert in chunk {
                 let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
-                upsert.arrival.is_live &= !stored.existed;
+                let first_inbox: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM labels WHERE account_id=? AND role='inbox' AND id IN (SELECT value FROM json_each(?)))")
+                    .bind(upsert.envelope.account_id.as_str()).bind(crate::encode_json(&upsert.label_ids)?).fetch_one(&mut *tx).await?;
+                upsert.arrival.is_live &= !stored.existed
+                    && first_inbox
+                    && upsert.direction == MessageDirection::Inbound
+                    && !upsert.envelope.flags.contains(mxr_core::MessageFlags::READ);
                 vacated_threads.extend(stored.vacated_thread_id);
                 upsert.retarget(stored.id);
                 // A message whose id was deleted before (an IMAP UID reused
@@ -212,6 +217,43 @@ mod tests {
             label_ids,
             arrival: Default::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn mail_first_seen_outside_inbox_never_becomes_a_live_alert_on_refetch() {
+        let account = test_account();
+        let store = Store::in_memory().await.expect("synthetic store");
+        store.insert_account(&account).await.expect("account");
+        let inbox = label(&account, "INBOX");
+        store.upsert_label(&inbox).await.expect("inbox");
+        let mut page = [upsert(&account, 1, vec![])];
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("first non-inbox arrival");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
+        page[0].label_ids = vec![inbox.id];
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("later inbox refetch");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
     }
 
     #[tokio::test]

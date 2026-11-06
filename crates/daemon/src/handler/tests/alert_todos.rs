@@ -1007,3 +1007,63 @@ async fn original_gmail_raw_crosses_sync_store_and_daemon_with_authenticated_tim
     );
     println!("signed Gmail RAW -> sync -> store -> daemon: created=1 rescan_extra=0 API_date_used_for_age=false");
 }
+
+#[tokio::test]
+async fn filing_or_reading_between_decision_and_insert_cannot_create_an_alert_task() {
+    for archive in [true, false] {
+        let run = arrange(
+            &Case::google_sign_in("concurrent eligibility change", true),
+            mxr_config::MxrConfig::default(),
+        )
+        .await;
+        let message = run
+            .fx
+            .state
+            .store
+            .place_message(&run.candidate.id)
+            .await
+            .expect("message")
+            .expect("stored");
+        let alert = super::super::alert_todos::Alert {
+            kind: mxr_updates::NeedsYou::SignIn,
+            window_until: None,
+        };
+        let assessment = super::super::alert_todos::assess(&run.fx.state, &message, alert, run.now)
+            .await
+            .expect("decision");
+        let mxr_updates::trust::Decision::Create(claim) = assessment.decision else {
+            std::panic::resume_unwind(Box::new("eligible before user action"));
+        };
+        let record = super::super::alert_todos::alert_record(
+            &run.fx.state,
+            &message,
+            &claim,
+            assessment.history,
+            assessment.handled_at,
+            run.now,
+        );
+        if archive {
+            run.fx
+                .state
+                .store
+                .set_message_labels(&run.candidate.id, &[], mxr_core::EventSource::User)
+                .await
+                .expect("archive");
+        } else {
+            sqlx::query("UPDATE messages SET flags=flags | ? WHERE id=?")
+                .bind(i64::from(mxr_core::MessageFlags::READ.bits()))
+                .bind(run.candidate.id.as_str())
+                .execute(run.fx.state.store.writer())
+                .await
+                .expect("opened elsewhere");
+        }
+        assert!(!run
+            .fx
+            .state
+            .store
+            .insert_alert_todo(&record, claim.kind.as_str())
+            .await
+            .expect("atomic insert fence"));
+        assert!(todos_for(&run).await.is_empty());
+    }
+}

@@ -195,8 +195,9 @@ impl Store {
             ));
         };
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
-        let fingerprint: Option<String> = sqlx::query_scalar("SELECT message_fingerprint FROM message_arrivals WHERE message_id=? AND account_id=? AND verified_host IS NOT NULL")
-            .bind(message_id.as_str()).bind(record.account_id.as_str()).fetch_optional(&mut *tx).await?.flatten();
+        let fingerprint: Option<String> = sqlx::query_scalar("SELECT a.message_fingerprint FROM message_arrivals a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id WHERE a.message_id=? AND a.account_id=? AND a.verified_host=a.from_host AND a.verified_host=? AND a.is_live=1 AND m.direction='inbound' AND (m.flags & ?) = 0 AND EXISTS (SELECT 1 FROM message_labels ml JOIN labels l ON l.id=ml.label_id AND l.account_id=m.account_id WHERE ml.message_id=m.id AND l.role='inbox')")
+            .bind(message_id.as_str()).bind(record.account_id.as_str()).bind(&record.sender_domain)
+            .bind(i64::from(mxr_core::MessageFlags::READ.bits())).fetch_optional(&mut *tx).await?.flatten();
         let Some(fingerprint) = fingerprint else {
             tx.rollback().await?;
             return Ok(false);

@@ -110,7 +110,7 @@ impl Held {
                 "imap_gives_no_verdict" => {
                     "your mail server doesn't give mxr a verified sender".to_string()
                 }
-                "gmail_verdict_unproven" => "Gmail does not give mxr an attested receiving verdict for this message".to_string(),
+                "gmail_verdict_unproven" => "mxr could not verify Gmail’s receiver evidence for this message".to_string(),
                 "not_recorded" => "it arrived before mxr kept sender checks".to_string(),
                 "no_verdict_header" => "your provider didn't say who sent it".to_string(),
                 "ambiguous_verdict" => "your provider's sender check was ambiguous".to_string(),

@@ -383,7 +383,7 @@ async fn enrich_from_stored_ask(
     Ok(())
 }
 
-fn alert_record(
+pub(super) fn alert_record(
     state: &AppState,
     message: &PlaceMessage,
     claim: &Claim,

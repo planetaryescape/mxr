@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::config::ImapConfig;
 use crate::error::ImapProviderError;
+use crate::transport::{self, Greeting, ImapStream};
 use crate::types::{
     FetchedMessage, FolderInfo, ImapAddress, ImapCapabilities, ImapEnvelope, MailboxInfo,
     NamespaceInfo, QresyncInfo,
@@ -76,15 +77,16 @@ pub trait ImapSessionFactory: Send + Sync {
     }
 }
 
-/// Type alias for the TLS stream used by async-imap (futures-based async IO).
-type ImapTlsStream = async_native_tls::TlsStream<async_std::net::TcpStream>;
+/// Stream used by async-imap (futures-based async IO): TLS, or a bare socket
+/// for loopback bridges. See `transport` for when each is allowed.
+type ImapTlsStream = ImapStream;
 
 /// Upper bound on establishing an authenticated IMAP session (TCP connect +
 /// TLS handshake + greeting + auth). None of those reads has an inherent
 /// timeout, so a dead or half-open network would otherwise hang session
 /// setup indefinitely — wedging whichever sync currently holds the
 /// per-account provider lock.
-const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub(crate) const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Deadline for a single IMAP round trip — and, on streaming commands, an
 /// *inactivity* bound on the next response item (each arriving item resets
@@ -117,7 +119,7 @@ fn command_timeout_error(what: &str, limit: std::time::Duration) -> ImapProvider
 /// unknown protocol state; callers must not keep using the session after
 /// an error (all call sites open a session per operation and drop it on
 /// failure, which closes the socket).
-async fn bounded<T>(
+pub(crate) async fn bounded<T>(
     what: &str,
     limit: std::time::Duration,
     fut: impl std::future::Future<Output = Result<T>>,
@@ -232,7 +234,7 @@ impl XOAuth2ImapSessionFactory {
             .await
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
-        let mut client = async_imap::Client::new(tls_stream);
+        let mut client = async_imap::Client::new(ImapStream::Tls(tls_stream));
         let greeting = client
             .read_response()
             .await
@@ -289,44 +291,18 @@ impl RealImapSessionFactory {
     }
 
     async fn open_authenticated_session_inner(&self) -> Result<async_imap::Session<ImapTlsStream>> {
-        let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
-            .await
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
-        let tls = async_native_tls::TlsConnector::new();
-        let tls_stream = tls
-            .connect(&self.config.host, tcp)
-            .await
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
-        let mut client = async_imap::Client::new(tls_stream);
-        let greeting = client
-            .read_response()
-            .await
-            .ok_or_else(|| {
-                ImapProviderError::Connection(
-                    "Server closed the IMAP connection before sending a greeting.".into(),
-                )
-            })?
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+        let (client, greeting) = transport::connect(&self.config).await?;
 
-        let session = match greeting.parsed() {
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::PreAuth,
-                ..
-            } => client.into_session(),
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::Ok,
-                ..
-            } if self.config.auth_required => {
+        let session = match greeting {
+            Greeting::PreAuth => client.into_session(),
+            Greeting::Ready if self.config.auth_required => {
                 let password = self.config.resolve_password()?;
                 client
                     .login(&self.config.username, &password)
                     .await
                     .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
             }
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::Ok,
-                ..
-            } => match client
+            Greeting::Ready => match client
                 .authenticate("ANONYMOUS", AnonymousAuthenticator)
                 .await
             {
@@ -352,55 +328,22 @@ impl RealImapSessionFactory {
                         .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
                 }
             },
-            other => {
-                return Err(ImapProviderError::Connection(format!(
-                    "Unexpected IMAP greeting from server: {other:?}"
-                )));
-            }
         };
         Ok(session)
     }
     async fn create_session_inner(&self) -> Result<Box<dyn ImapSession>> {
-        let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
-            .await
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+        let (client, greeting) = transport::connect(&self.config).await?;
 
-        let tls = async_native_tls::TlsConnector::new();
-        let tls_stream = tls
-            .connect(&self.config.host, tcp)
-            .await
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
-
-        let mut client = async_imap::Client::new(tls_stream);
-        let greeting = client
-            .read_response()
-            .await
-            .ok_or_else(|| {
-                ImapProviderError::Connection(
-                    "Server closed the IMAP connection before sending a greeting.".into(),
-                )
-            })?
-            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
-
-        let session = match greeting.parsed() {
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::PreAuth,
-                ..
-            } => client.into_session(),
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::Ok,
-                ..
-            } if self.config.auth_required => {
+        let session = match greeting {
+            Greeting::PreAuth => client.into_session(),
+            Greeting::Ready if self.config.auth_required => {
                 let password = self.config.resolve_password()?;
                 client
                     .login(&self.config.username, &password)
                     .await
                     .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
             }
-            async_imap::imap_proto::Response::Data {
-                status: async_imap::imap_proto::Status::Ok,
-                ..
-            } => match client
+            Greeting::Ready => match client
                 .authenticate("ANONYMOUS", AnonymousAuthenticator)
                 .await
             {
@@ -444,11 +387,6 @@ impl RealImapSessionFactory {
                     }
                 }
             },
-            other => {
-                return Err(ImapProviderError::Connection(format!(
-                    "Unexpected IMAP greeting from server: {other:?}"
-                )));
-            }
         };
 
         Ok(Box::new(RealImapSession { session }))

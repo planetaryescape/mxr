@@ -7280,6 +7280,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                         send: None,
                         device_code_url: None,
                         device_code_user_code: None,
+                        tls_cert_sha256: None,
                     },
                 },
             }),
@@ -7327,15 +7328,17 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
 }
 
 #[test]
-fn an_account_step_that_saved_before_failing_keeps_the_combined_result_saved() {
+fn an_account_step_keeps_saved_state_and_certificate_fingerprint() {
     let mut combined = empty_account_operation_result();
     let mut saved_then_failed = empty_account_operation_result();
     saved_then_failed.ok = false;
     saved_then_failed.saved = true;
+    saved_then_failed.tls_cert_sha256 = Some("ab".repeat(32));
 
     merge_account_operation_result(&mut combined, saved_then_failed);
     merge_account_operation_result(&mut combined, empty_account_operation_result());
 
     assert!(!combined.ok);
     assert!(combined.saved);
+    assert_eq!(combined.tls_cert_sha256, Some("ab".repeat(32)));
 }

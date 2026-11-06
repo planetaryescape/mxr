@@ -28,7 +28,7 @@ env:
 jobs:
   changes:
     name: Detect Changes
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
@@ -71,7 +71,7 @@ jobs:
 
   deny:
     name: cargo deny
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -80,7 +80,7 @@ jobs:
 
   secret-scan:
     name: Secret Scan
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -109,7 +109,7 @@ jobs:
 
   architecture:
     name: Architecture Boundaries
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -122,7 +122,7 @@ jobs:
   # silently. Build it here so the adapter example fails loudly instead.
   adapter-skeleton:
     name: Adapter Skeleton Example
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -144,7 +144,7 @@ jobs:
   # it silently. Build it here so the transport example fails loudly instead.
   transport-skeleton:
     name: Transport Skeleton Example
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -163,7 +163,7 @@ jobs:
 
   release-gates:
     name: Release Gate Scripts
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - run: bash scripts/release_version_gate_test.sh
@@ -180,7 +180,7 @@ jobs:
 
   fmt:
     name: Format
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -192,7 +192,7 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     env:
@@ -223,7 +223,7 @@ jobs:
 
   test:
     name: Test (fast / no semantic)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     # On a PR, skip it while the PR is a draft — draft pushes still get the
     # cheap jobs (fmt/clippy/etc.) on every push; this one is expensive enough
@@ -249,7 +249,7 @@ jobs:
 
   test-semantic:
     name: Test (semantic-local)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     # See the draft-skip note on the `test` job above.
     if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
@@ -269,7 +269,7 @@ jobs:
   # .github/workflows/prune-key-moves.yml deletes expired moves weekly.
   keymap:
     name: Key definition
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust != 'true'
     steps:
@@ -290,7 +290,7 @@ jobs:
   # it waits for a PR to leave draft.
   classifier-eval:
     name: Classifier Eval (full set)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.classifier == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # About 12 minutes on a usual runner; a runner 2.5 times slower took 29
@@ -333,12 +333,15 @@ jobs:
 
   test-quality-audit:
     name: Test Quality Audit (non-blocking)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      # test_quality_audit.sh searches with rg; the GitHub-hosted image does not ship it.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: scripts/test_quality_audit_test.sh
       - run: scripts/test_quality_audit.sh
       - uses: actions/upload-artifact@v7
@@ -348,19 +351,22 @@ jobs:
 
   test-quality-gate:
     name: Test Quality Gate (changed files)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true')
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # test_quality_audit.sh searches with rg; the GitHub-hosted image does not ship it.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: scripts/test_quality_audit_test.sh
       - run: scripts/test_quality_audit.sh --strict --changed-only --base-ref origin/${{ github.base_ref }}
 
   build-e2e-daemon:
     name: Build E2E Daemon
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: |
       (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true') &&
@@ -381,7 +387,7 @@ jobs:
 
   raycast:
     name: Raycast Typecheck
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     # It imports the web app's generated bridge types, so any web change can break it.
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
@@ -402,7 +408,7 @@ jobs:
 
   web-tests:
     name: Web Unit Tests
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -433,7 +439,7 @@ jobs:
 
   web-e2e:
     name: Web E2E
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: [changes, test, web-tests, build-e2e-daemon]
     # See the draft-skip note on the `test` job above — this is the single
     # most expensive job in the matrix (full Playwright suite plus the
@@ -515,7 +521,7 @@ jobs:
 
   coverage:
     name: Coverage
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
@@ -576,7 +582,7 @@ jobs:
 
   sqlx:
     name: SQLx Offline
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
@@ -593,7 +599,7 @@ jobs:
 
   docs:
     name: Docs Build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
@@ -618,7 +624,7 @@ jobs:
     if: needs.changes.outputs.expensive == 'true'
     strategy:
       matrix:
-        os: [blacksmith-4vcpu-ubuntu-2404, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -630,7 +636,7 @@ jobs:
 
   rustdoc:
     name: Rustdoc
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     # Runs on Rust changes, not just expensive/dispatch runs: -Dwarnings
     # rustdoc is the only gate that catches broken intra-doc links, and
@@ -647,7 +653,7 @@ jobs:
 
   msrv:
     name: MSRV (${{ needs.changes.outputs.rust_version }})
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
@@ -661,7 +667,7 @@ jobs:
 
   install-check:
     name: Install Smoke Test
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:

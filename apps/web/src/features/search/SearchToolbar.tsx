@@ -115,6 +115,7 @@ export function SearchToolbar({
           className="h-10"
           disabled={!q.trim()}
           onClick={onSaveClick}
+          aria-label="Save search"
         >
           <BookmarkPlus className="size-4" /> <span className="hidden @lg:inline">Save</span>
         </Button>

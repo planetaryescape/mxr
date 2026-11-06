@@ -36,6 +36,25 @@ function docsContentId(file) {
 
 let failed = false;
 
+// Unresolved merge markers inside a merged document are unambiguous: they
+// are never legitimate prose. The decision log carried one to main twice,
+// so check every markdown tree the repo publishes, not only the docs site.
+const conflictMarker = /^(?:<{7}|>{7}|\|{7})\s/;
+for (const root of [docsRoot, join(repoRoot, 'docs')]) {
+  for (const file of walk(root)) {
+    const text = readFileSync(file, 'utf8');
+    const lines = text.split('\n');
+    lines.forEach((line, index) => {
+      if (conflictMarker.test(line)) {
+        console.error(
+          `[docs-validate] ${relative(repoRoot, file)}:${index + 1}: unresolved merge marker`,
+        );
+        failed = true;
+      }
+    });
+  }
+}
+
 const contentIds = new Map();
 
 for (const file of walk(docsRoot)) {

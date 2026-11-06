@@ -17,7 +17,7 @@ function clockTime(at: number): string {
   });
 }
 
-/** The one band under the top bar: what is wrong, and that what is on screen still works. */
+/** A floating notice: the shell never makes room for it, so nothing moves. */
 function Banner({
   kind,
   role,
@@ -33,7 +33,7 @@ function Banner({
     <div
       data-offline-banner={kind}
       role={role}
-      className="type-body flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-ink-lamp px-5 py-2 text-text-1"
+      className="type-body pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border-strong bg-ink-lamp px-4 py-2.5 text-text-1 shadow-xl"
     >
       <span aria-hidden className="size-1.5 shrink-0 bg-cue" />
       <span className="min-w-0 flex-1">{children}</span>
@@ -49,6 +49,11 @@ const FADE_OUT_MS = 120;
  * The banner renders nothing when all is well, so a fade out needs the last
  * banner kept on screen while it goes: it fades in on mount and, once there
  * is nothing to say, fades out and unmounts. Reduced motion keeps the fades.
+ *
+ * It floats under the top bar instead of sitting in the main column's flow:
+ * a daemon outage or a paused stream must not shove the list and reader down
+ * the moment it starts, or back up when it ends. The band still covers the
+ * page's own header while it shows, but no mail row moves.
  */
 export function OfflineBanner() {
   const banner = useBannerContent();
@@ -70,7 +75,7 @@ export function OfflineBanner() {
   return (
     <div
       className={cn(
-        "shrink-0 duration-fast",
+        "pointer-events-none absolute inset-x-3 top-3 z-30 flex justify-center duration-fast",
         present ? "animate-in fade-in-0" : "animate-out fade-out-0 fill-mode-forwards",
       )}
     >

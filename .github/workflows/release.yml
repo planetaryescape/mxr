@@ -21,7 +21,7 @@ env:
 jobs:
   plan:
     name: Plan Release
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       cli_changed: ${{ steps.scope.outputs.cli_changed }}
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
@@ -58,7 +58,7 @@ jobs:
 
   release-smoke:
     name: Release CLI Smoke
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: plan
     env:
       CARGO_TARGET_DIR: target
@@ -316,7 +316,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # --clobber deletes an asset before re-uploading it, so two publishers on one
     # tag (tag push plus a manual dispatch) could publish with an asset missing.
     # Queue them instead; never cancel one mid-upload.
@@ -379,7 +379,7 @@ jobs:
   # release's download URLs, which are not public while the release is a draft.
   homebrew:
     name: Homebrew tap update
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     outputs:

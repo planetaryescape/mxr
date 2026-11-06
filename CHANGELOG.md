@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.227](https://github.com/planetaryescape/mxr/compare/v0.6.226...v0.6.227) (2026-11-06)
+
+
+### Bug Fixes
+
+* web design loop accessibility, touch targets, and query serialization ([#916](https://github.com/planetaryescape/mxr/issues/916)) ([8923199](https://github.com/planetaryescape/mxr/commit/8923199298212688aadba7dd4cafc421cba7f2b7))
+
+
+### Documentation
+
+* explain serving mxr on a custom HTTPS origin ([#913](https://github.com/planetaryescape/mxr/issues/913)) ([a0a22d9](https://github.com/planetaryescape/mxr/commit/a0a22d9ab9796ef7f7f91b46fa7d011140c1395d))
+* record the remote-hosting release and correct protocol drift ([#914](https://github.com/planetaryescape/mxr/issues/914)) ([c74baf4](https://github.com/planetaryescape/mxr/commit/c74baf47430c9bca47b87dc98c10ecd88721434f))
+
 ## [0.6.226](https://github.com/planetaryescape/mxr/compare/v0.6.225...v0.6.226) (2026-11-06)
 
 

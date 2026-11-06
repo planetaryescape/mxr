@@ -117,7 +117,12 @@ async function failureFrom(res: Response): Promise<Error> {
   const text = await res.text().catch(() => "");
   const failure = bridgeRequestError(res.status, res.statusText, text);
   if (res.status < 500) return failure;
-  const unreachable = failure.code === "connect" || text.trim() === "";
+  const isJson = jsonObject(text) !== null;
+  const unreachable =
+    failure.code === "connect" ||
+    text.trim() === "" ||
+    (!isJson &&
+      (res.status >= 502 || text.includes("ECONNREFUSED") || text.includes("fetch failed")));
   reportReachability(!unreachable);
   return unreachable ? new DaemonUnavailableError({ cause: failure }) : failure;
 }

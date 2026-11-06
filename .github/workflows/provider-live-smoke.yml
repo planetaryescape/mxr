@@ -7,7 +7,7 @@ on:
 
 jobs:
   provider-offline-smoke:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -29,7 +29,7 @@ jobs:
   # crates/daemon/tests/integration/live_gmail_e2e.rs for what is covered.
   live-gmail-e2e:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
       MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}

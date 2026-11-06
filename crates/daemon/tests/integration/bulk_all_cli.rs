@@ -521,6 +521,7 @@ fn undo_dry_run_refuses_an_unknown_id_instead_of_promising_an_undo() {
         &config_dir,
         &["undo", "never-a-mutation", "--format", "json"],
     );
+    assert_eq!(preview.status.code(), commit.status.code());
     let preview_error = String::from_utf8(preview.stderr).unwrap();
     let commit_error = String::from_utf8(commit.stderr).unwrap();
     assert!(preview_error.contains("not found"), "{preview_error}");

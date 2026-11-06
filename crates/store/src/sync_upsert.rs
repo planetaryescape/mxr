@@ -13,6 +13,7 @@ use crate::keywords::replace_message_keywords_tx;
 use crate::message::{replace_message_labels_tx, upsert_envelope_tx};
 use mxr_core::id::{LabelId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageBody, MessageDirection};
+use mxr_core::ArrivalEvidence;
 
 /// One synced message, with everything the store needs to persist it.
 ///
@@ -25,6 +26,8 @@ pub struct SyncUpsert {
     pub direction: MessageDirection,
     pub body: MessageBody,
     pub label_ids: Vec<LabelId>,
+    /// The provider's receipt time and verdict, stored with the message.
+    pub arrival: ArrivalEvidence,
 }
 
 impl SyncUpsert {
@@ -82,6 +85,12 @@ impl super::Store {
             for upsert in chunk {
                 let stored =
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
+                let first_inbox: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM labels WHERE account_id=? AND role='inbox' AND id IN (SELECT value FROM json_each(?)))")
+                    .bind(upsert.envelope.account_id.as_str()).bind(crate::encode_json(&upsert.label_ids)?).fetch_one(&mut *tx).await?;
+                upsert.arrival.is_live &= !stored.existed
+                    && first_inbox
+                    && upsert.direction == MessageDirection::Inbound
+                    && !upsert.envelope.flags.contains(mxr_core::MessageFlags::READ);
                 vacated_threads.extend(stored.vacated_thread_id);
                 upsert.retarget(stored.id);
                 // A message whose id was deleted before (an IMAP UID reused
@@ -92,6 +101,14 @@ impl super::Store {
                     .execute(&mut *tx)
                     .await?;
                 insert_body_tx(&mut tx, &upsert.body).await?;
+                crate::message_arrivals::record_message_arrival_tx(
+                    &mut tx,
+                    &upsert.envelope.id,
+                    &upsert.envelope.account_id,
+                    &upsert.envelope.from.email,
+                    &upsert.arrival,
+                )
+                .await?;
                 replace_message_labels_tx(
                     &mut tx,
                     &upsert.envelope.id,
@@ -198,7 +215,110 @@ mod tests {
             direction: MessageDirection::Inbound,
             body,
             label_ids,
+            arrival: Default::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn mail_first_seen_outside_inbox_never_becomes_a_live_alert_on_refetch() {
+        let account = test_account();
+        let store = Store::in_memory().await.expect("synthetic store");
+        store.insert_account(&account).await.expect("account");
+        let mut inbox = label(&account, "INBOX");
+        inbox.role = Some(mxr_core::Role::Inbox);
+        store.upsert_label(&inbox).await.expect("inbox");
+        let mut page = [upsert(&account, 1, vec![])];
+        page[0].envelope.flags.remove(MessageFlags::READ);
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("first non-inbox arrival");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
+        page[0].label_ids = vec![inbox.id.clone()];
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("later inbox refetch");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
+        let mut fresh = [upsert(&account, 2, vec![inbox.id])];
+        fresh[0].envelope.flags.remove(MessageFlags::READ);
+        fresh[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut fresh)
+            .await
+            .expect("new unread Inbox mail");
+        assert!(
+            store
+                .message_arrival(&fresh[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
+    }
+
+    #[tokio::test]
+    async fn receiver_evidence_on_refetch_cannot_turn_preexisting_mail_into_live_arrivals() {
+        let account = test_account();
+        let store = Store::in_memory().await.expect("synthetic store");
+        store.insert_account(&account).await.expect("account");
+        let mut inbox = label(&account, "INBOX");
+        inbox.role = Some(mxr_core::Role::Inbox);
+        store.upsert_label(&inbox).await.expect("inbox");
+        let mut page = [upsert(&account, 1, vec![inbox.id])];
+        page[0].envelope.flags.remove(MessageFlags::READ);
+        store
+            .upsert_envelope_with_direction(&page[0].envelope, MessageDirection::Inbound)
+            .await
+            .expect("pre-upgrade stored mail");
+        page[0].arrival = ArrivalEvidence {
+            received_at: Some(chrono::Utc::now()),
+            sender: mxr_core::SenderCheck::Verified {
+                host: "example.com".into(),
+            },
+            message_fingerprint: Some("original-before-refetch".into()),
+            is_live: true,
+        };
+        store.apply_sync_upserts(&mut page).await.expect("refetch");
+        let stored = store
+            .message_arrival(&page[0].envelope.id)
+            .await
+            .expect("arrival")
+            .expect("stored evidence");
+        assert!(!stored.is_live);
+        assert_eq!(
+            stored.message_fingerprint.as_deref(),
+            Some("original-before-refetch")
+        );
+        page[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut page)
+            .await
+            .expect("repeat refetch");
+        assert!(
+            !store
+                .message_arrival(&page[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("evidence")
+                .is_live
+        );
     }
 
     #[tokio::test]

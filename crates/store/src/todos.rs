@@ -411,6 +411,7 @@ impl super::Store {
         let sql = format!(
             "INSERT INTO todos ({COLUMNS})
              SELECT {values} {predicate}
+             AND (?6 != 'payment_failed' OR json_extract(?31, '$.alert_notice.evidence') IS NOT 'payment_failed' OR EXISTS (SELECT 1 FROM todos prior WHERE prior.account_id=?2 AND prior.dedup_key=?35 AND prior.state='open'))
              ON CONFLICT(account_id, dedup_key) DO UPDATE SET
                 thread_id = excluded.thread_id,
                 source_message_id = excluded.source_message_id,

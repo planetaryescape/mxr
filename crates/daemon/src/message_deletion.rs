@@ -442,6 +442,7 @@ mod tests {
                                 envelope: revived,
                                 direction: mxr_core::types::MessageDirection::Inbound,
                                 label_ids: vec![],
+                                arrival: Default::default(),
                             }])
                             .await
                             .unwrap();

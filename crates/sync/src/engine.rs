@@ -412,9 +412,19 @@ impl SyncEngine {
             };
             // Consumed, not borrowed: holding the provider's page alongside
             // the upserts would keep two copies of every body alive.
+            // The final initial page is history too, even if it is recent.
+            let live_arrivals = !cursor.is_empty()
+                && !provider.is_backfill_cursor(&cursor)
+                && self
+                    .store
+                    .initial_sync_done(account_id)
+                    .await
+                    .map_err(|error| MxrError::Store(error.to_string()))?;
             let mut upserts = Vec::with_capacity(batch.upserted.len());
             for synced in std::mem::take(&mut batch.upserted) {
                 let mut body = synced.body;
+                let mut arrival = synced.arrival;
+                arrival.is_live = live_arrivals;
                 body.ensure_best_effort_readable();
 
                 let direction = self.classify_direction(
@@ -453,6 +463,7 @@ impl SyncEngine {
                     direction,
                     body,
                     label_ids,
+                    arrival,
                 });
             }
 

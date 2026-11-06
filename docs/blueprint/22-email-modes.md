@@ -124,7 +124,7 @@ new message brings the thread back to that mode only (now-and-handoff.md
 | Any mode | `e` | Done here; provider archive only when no other mode holds the thread | "Done in Messages. Still in To do (due Wed)." or "Done. Archived in Gmail." |
 | Messages, Updates, Reading, Archive | `t` | A to-do prefilled from the ask and due words, in a one-line inline editor | "Added to To do: Sign lease renewal, act by Mon 13. g x" |
 | To do | `e` | Tick off; the source's record is filed in Archive with no prompt | "Ticked off. Filed in Archive." |
-| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Nothing is added on arrival (see "Decisions made on BK's behalf") | "Added to To do: …" |
+| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Automatic creation requires verified receiver evidence (D193; cryptographically verified receiver evidence) | "Added to To do: …" |
 | Any mode | `T` | Pass to another mode, from a menu | names the destination |
 
 The destination's rail count ticks up (120 ms) and the item carries "Just
@@ -907,7 +907,9 @@ The cut is a stable set, so let go acts on exactly what the preview listed.
 Leftovers fold into the next cut instead of stacking.
 
 **In and out.** Enters by an Automated base mode or a copied thread;
-`needs_you` leads Needs a look as a suggested to-do that `t` adds; nothing goes to To do on arrival. Leaves by let go. Trackers
+`needs_you` leads Needs a look as a suggested to-do that `t` adds, unless
+the alert is verified (next section), in which case it is already a to-do.
+Leaves by let go. Trackers
 that end well leave on their own (a delivered parcel goes to Archive); bad
 endings move to Needs a look. After eight digests let go without opening
 a source, mxr asks once whether to mute it.
@@ -915,6 +917,100 @@ a source, mxr asks once whether to mute it.
 **Not a list of emails.** Thirty-one emails from twelve senders are twelve
 lines, mostly folded; four parcel emails are one track; the text is the
 fact; numbers come compared; replying isn't offered.
+
+### Verified receiver evidence is required before an alert creates a to-do
+
+D193 creates a to-do for a new sign-in, failed payment or linked delivery
+problem only with verified sender origin and receiver handling age. Gmail
+API uses original `format=raw` bytes; Gmail IMAP uses original RFC bytes
+from the configured TLS endpoint `imap.gmail.com:993`. A maintained
+`mail-auth` verifier checks the complete ARC chain and body. The latest
+ARC seal and message signature must belong to `google.com`; their signed
+results must identify `mx.google.com` and contain one exact DMARC pass for
+the From domain. A bare Authentication-Results string never qualifies.
+Gmail extensions on a generic IMAP endpoint do not establish Google identity.
+Generic IMAP and Outlook remain unsupported with a provider-specific reason.
+
+Content interpretation headers must be covered by the receiver signature
+or the aligned sender DKIM signature that the receiver covered. Exactly
+one aligned sender signature must verify, with SHA-256 and the whole body
+covered. Missing evidence, ambiguous headers, partial signatures, unsupported
+algorithms, DNS errors and timeouts fail closed. SPF-only messages and
+ambiguous aligned signatures stay suggestions. Verification is bounded to
+2 MiB, 64 KiB of headers, four ARC sets and two seconds. DNS uses the system
+resolver configuration with a bounded cache; no mail is sent to a new service.
+
+Parent decision, 6 November 2026: accept a fresh genuine receiver-sealed
+copy even when the provider cannot distinguish intact replay/import from
+new delivery. This is verified origin and receiver handling age, **not a
+guarantee of new SMTP receipt or content truth**. A seal's timestamp is a
+handling clock. Neither Gmail internalDate, IMAP INTERNALDATE nor Date can
+establish authenticated freshness. If both receiver signature clocks exist,
+the earlier clock governs and neither may be in the future. Explicitly
+known history, backfill, refetch and import remain non-live. This decision
+uses BK's saved automatic-creation and decide-and-ship policies; it does not
+add source enrollment or weaken sender verification.
+
+The adapter persists verified evidence and a stable digest of the aligned
+sender signature in `message_arrivals` (reserved migration 109, subject to
+fresh-main landing order). Three different authenticated originals must
+already exist in this account, both authenticated handling and local first
+observation strictly before the candidate's handling time, with the oldest at least 30 days earlier. Repeated copies and reseals
+of one original count once, and the candidate's original never counts as
+its own history. Other accounts cannot supply history. The unread inbox
+candidate must have a handling age of at most 24 hours, be outside initial
+sync/backfill/refetch, have no List-Id and not imitate a better-known domain.
+A delivery exception is tied to the email reporting the problem stage.
+
+Titles and reasons name the full authenticated domain:
+`Check new sign-in · accounts.google.com`. An atomic durable claim limits
+creation to one task per account, domain, alert kind and local day. A second
+unique claim on authenticated original and kind also prevents resealing or
+copying a message into a later day from creating again. Claims survive task
+and source deletion, dismissal, rules changes and re-sync. Existing Asks
+payment tasks retain correction/undo handling. An alert and independent payment
+remediation requests remain separate tasks with their own quote, amount and
+unit provenance. They are inserted together under the one guarded alert claim;
+an unverified or first-time notice cannot bypass the gate through a second
+remediation unit. A replay cannot create any of the group again. Ordinary
+personal requests without a failure notice keep the existing Asks workflow.
+The audit counts eligible alert claims, not the extra independent owner tasks.
+Mail never triggers tools, payments, external actions or automatic closing.
+
+`[updates] auto_todo_alerts` defaults on; setting it false holds automatic
+creation. Unsupported or ineligible alerts stay suggestions in Updates with
+a reason in CLI JSON, TUI and web; `t` remains available. Existing undo and
+to-do controls apply to created tasks.
+
+Authentication does not make an alert true. A warmed attacker-owned domain
+can meet the history heuristic, and a legitimate service may carry a user's
+text. The title names the actual domain. Parent withdrew its earlier
+absolute rejection of this residual after consulting the original issue
+and BK's saved policies. A fresh intact copy can qualify once in another
+account only if that account independently meets the same history and
+eligibility gates. Such copy/replay cases remain separately reported
+residuals, not relabelled legitimate cases or proof of universal precision.
+
+Synthetic signed fixtures use deterministic test keys and fake DNS; they
+are not observations of live Gmail or an attestation of SMTP delivery.
+Decision fixtures cover the original spoof/first-time/branding/backfill
+criteria. Parent owns adversarial acceptance, CI and published acceptance.
+
+- [ARC signatures, verification and replay: RFC 8617](https://www.rfc-editor.org/rfc/rfc8617.html)
+- [Gmail RAW format](https://developers.google.com/workspace/gmail/api/reference/rest/v1/Format)
+- [Gmail timestamps](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)
+- [Gmail import does not perform SPF checks](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/import)
+- [mail-auth verifier](https://github.com/stalwartlabs/mail-auth)
+
+```sh
+mxr updates alert-audit --format json
+```
+
+BK can run this local counts-only audit. It opens the store read-only,
+starts no daemon, sends no data and prints no senders, subjects or bodies.
+It uses stored evidence and current eligibility; it cannot reconstruct
+missing provenance or label semantic false positives. `precision_evaluated`
+stays false. No real-mail evaluation is authorised in this pass.
 
 ## Reading is a front page you visit, not a pile you owe
 
@@ -2129,18 +2225,12 @@ rules above; D117 records them.
   of a digest takes the whole cut, including mail tuning hid (muted,
   changes only) and mail past its window, and the preview says how many of
   those it is, so nothing piles up out of sight in the inbox.
-- **Breakthroughs are suggestions, not tasks (phase 4).** A new sign-in, a
-  failed payment and a delivery problem lead Needs a look with a
-  highlighted suggested to-do and its reason; `t` turns one into a to-do,
-  and nothing is added on arrival. Two review rounds found ways to forge an
-  automatic one (a forged lower `Authentication-Results`, the alert
-  counting as its own prior mail, a borrowed display name on an
-  authenticated domain, UTC-day claims, backfill order, Outlook failing
-  silently), so automatic creation waits for a design that survives
-  review, as the pay link does:
-  [auto-breakthrough.md](../issues/auto-breakthrough.md). Needs a look
-  lines and `t` titles show the sending host beside the display name
-  ("Google (accounts.google.com)").
+- **Breakthroughs require genuine receiver evidence (phase 4, D193).**
+  A new sign-in, failed payment or delivery problem leads Needs a look as
+  a suggested to-do with a reason when it lacks the verified receiver
+  evidence and history D193 requires; `t` adds it. Qualifying alerts create
+  automatically with a durable claim. Names and manual titles
+  retain the sender's domain beside the display name.
 - **The Updates fact chunk is deferred (phase 4).** Facts are cached in
   `update_facts` but are not yet a semantic index recipe; search still
   indexes Updates mail the way it indexes all mail.

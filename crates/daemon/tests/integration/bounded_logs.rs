@@ -522,3 +522,22 @@ fn real_cli_follow_reads_replacement_inode_even_when_larger() {
     reader.join().unwrap();
     assert!(equal.unwrap().contains("replacement-with-equal--content"));
 }
+
+#[test]
+fn alert_audit_does_not_start_a_daemon_or_create_a_log_directory() {
+    let dir = profile();
+    let output = cli(dir.path())
+        .args(["updates", "alert-audit", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "the synthetic profile has no database"
+    );
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(error.contains("No mxr database"), "{error}");
+    assert!(
+        !dir.path().join("data").exists(),
+        "a read-only audit must not create runtime state or logs"
+    );
+}

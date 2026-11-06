@@ -192,6 +192,7 @@ impl ImapProvider {
                             min_uid: 1,
                             seen_uids: &mut seen_uids,
                             account_id: &self.account_id,
+                            receiver: self.receiver,
                             synced,
                             min_failed_uid: &mut folder.min_failed_uid,
                         },

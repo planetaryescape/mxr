@@ -33,6 +33,7 @@ const GMAIL_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy)]
 pub enum MessageFormat {
+    Raw,
     Metadata,
     Full,
     Minimal,
@@ -41,6 +42,7 @@ pub enum MessageFormat {
 impl MessageFormat {
     fn as_str(&self) -> &str {
         match self {
+            Self::Raw => "raw",
             Self::Metadata => "metadata",
             Self::Full => "full",
             Self::Minimal => "minimal",

@@ -19,7 +19,7 @@ use crate::client::{GmailApi, GmailClient, MessageFormat};
 use crate::cursor::GmailCursor;
 use crate::error::GmailError;
 use crate::parse::{
-    calendar_metadata_from_attachment_bytes, extract_message_body_for_account,
+    calendar_metadata_from_attachment_bytes, extract_message_body_for_account, gmail_arrival,
     gmail_message_to_envelope,
 };
 use crate::send;
@@ -145,11 +145,21 @@ fn classify_send_error(error: GmailError) -> mxr_core::SendFailure {
 pub struct GmailProvider {
     account_id: AccountId,
     client: Box<dyn GmailApi>,
+    receiver_verifier: mxr_mail_parse::receiver_arc::ReceiverVerifier,
     #[cfg(test)]
     parse_observer: Option<ParseObserver>,
 }
 
 impl GmailProvider {
+    #[cfg(feature = "test-util")]
+    pub fn with_test_receiver(
+        mut self,
+        verifier: mxr_mail_parse::receiver_arc::ReceiverVerifier,
+    ) -> Self {
+        self.receiver_verifier = verifier;
+        self
+    }
+
     async fn send_reply_thread_id(
         &self,
         draft: &Draft,
@@ -180,6 +190,7 @@ impl GmailProvider {
         Self {
             client: Box::new(client.with_account(&account_id)),
             account_id,
+            receiver_verifier: Default::default(),
             #[cfg(test)]
             parse_observer: None,
         }
@@ -189,6 +200,7 @@ impl GmailProvider {
     fn with_api(account_id: AccountId, client: Box<dyn GmailApi>) -> Self {
         Self {
             account_id,
+            receiver_verifier: Default::default(),
             client,
             parse_observer: None,
         }
@@ -202,6 +214,7 @@ impl GmailProvider {
     ) -> Self {
         Self {
             account_id,
+            receiver_verifier: Default::default(),
             client,
             parse_observer: Some(parse_observer),
         }
@@ -247,6 +260,16 @@ impl GmailProvider {
         &self,
         messages: Vec<crate::types::GmailMessage>,
     ) -> Result<Vec<SyncedMessage>, MxrError> {
+        let arc_ids: std::collections::HashSet<String> = messages
+            .iter()
+            .filter(|m| {
+                m.payload
+                    .as_ref()
+                    .and_then(|p| p.headers.as_ref())
+                    .is_some_and(|hs| hs.iter().any(|h| h.name.eq_ignore_ascii_case("ARC-Seal")))
+            })
+            .map(|m| m.id.clone())
+            .collect();
         let parsed: Vec<(String, SyncedMessage)> = if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD
         {
             messages
@@ -312,15 +335,20 @@ impl GmailProvider {
         // `metadata.calendar` empty after the synchronous body parse, because
         // Gmail keeps attachment bytes behind a separate fetch. Backfill those.
         let enrich_concurrency = gmail_parse_concurrency_limit(parsed.len());
+        let arc_ids = &arc_ids;
         let mut enriched: Vec<(usize, SyncedMessage)> =
             stream::iter(parsed.into_iter().enumerate().map(
                 |(index, (provider_message_id, mut synced))| async move {
+                    if arc_ids.contains(&provider_message_id) {
+                        self.verify_receiver(&provider_message_id, &mut synced)
+                            .await;
+                    }
                     self.enrich_calendar_from_attachment(&provider_message_id, &mut synced)
                         .await;
                     (index, synced)
                 },
             ))
-            .buffer_unordered(enrich_concurrency)
+            .buffer_unordered(enrich_concurrency.min(5))
             .collect()
             .await;
         enriched.sort_by_key(|(index, _)| *index);
@@ -332,6 +360,40 @@ impl GmailProvider {
     /// attachment (`.ics` / `text/calendar` / `application/ics`), fetch that
     /// attachment and parse its iCalendar payload into `metadata.calendar`.
     ///
+    async fn verify_receiver(&self, id: &str, synced: &mut SyncedMessage) {
+        use base64::Engine;
+        use mxr_mail_parse::receiver_arc::{ReceiverPolicy, MAX_RAW_BYTES};
+        // Raw bytes are required; rebuilding MIME from Full invalidates signatures.
+        // Avoid fetching giant attachments solely to authenticate an alert.
+        if synced.envelope.size_bytes > MAX_RAW_BYTES as u64 {
+            return;
+        }
+        // Every eligible source message needs evidence for independent history,
+        // not only messages the content classifier happens to call an alert.
+        let Ok(message) = self.client.get_message(id, MessageFormat::Raw).await else {
+            return;
+        };
+        let Some(encoded) = message.raw.filter(|s| s.len() <= MAX_RAW_BYTES * 4 / 3 + 8) else {
+            return;
+        };
+        let Ok(raw) =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(encoded.trim_end_matches('='))
+        else {
+            return;
+        };
+        synced.arrival = self
+            .receiver_verifier
+            .verify(
+                &raw,
+                &synced.envelope.from.email,
+                ReceiverPolicy {
+                    sealer: "google.com",
+                    authserv_id: "mx.google.com",
+                },
+            )
+            .await;
+    }
+
     /// A no-op for the common case (no calendar attachment, or calendar already
     /// parsed from an inline part), so it costs a network round-trip only for
     /// attachment-delivered invites.
@@ -719,7 +781,12 @@ fn parse_synced_message(
     match gmail_message_to_envelope(&message, &account_id) {
         Ok(envelope) => {
             let body = extract_message_body_for_account(&message, &account_id);
-            Some(SyncedMessage { envelope, body })
+            let arrival = gmail_arrival(&message, &envelope.from.email);
+            Some(SyncedMessage {
+                envelope,
+                body,
+                arrival,
+            })
         }
         Err(error) => {
             warn!(
@@ -819,6 +886,11 @@ impl MailSyncProvider for GmailProvider {
             .get_message(provider_message_id, MessageFormat::Full)
             .await
             .map_err(MxrError::from)?;
+        let has_arc = message
+            .payload
+            .as_ref()
+            .and_then(|p| p.headers.as_ref())
+            .is_some_and(|hs| hs.iter().any(|h| h.name.eq_ignore_ascii_case("ARC-Seal")));
         let mut synced = parse_synced_message(
             self.account_id.clone(),
             message,
@@ -826,6 +898,9 @@ impl MailSyncProvider for GmailProvider {
             self.parse_observer.clone(),
         );
         if let Some(ref mut synced) = synced {
+            if has_arc {
+                self.verify_receiver(provider_message_id, synced).await;
+            }
             self.enrich_calendar_from_attachment(provider_message_id, synced)
                 .await;
         }
@@ -1691,6 +1766,55 @@ mod tests {
         async fn delete_label(&self, _label_id: &str) -> Result<(), GmailError> {
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn raw_receiver_verification_ignores_unsigned_api_dates_and_copies() {
+        use base64::Engine;
+        use mxr_mail_parse::receiver_arc::{
+            test_fixtures::{fixture, SIGNED},
+            ReceiverVerifier,
+        };
+        let (raw, dns) = fixture("google.com", "stripe.com", &SIGNED, false).await;
+        let message: GmailMessage = serde_json::from_value(serde_json::json!({
+            "id":"signed-raw", "threadId":"signed-thread", "internalDate":"1", "sizeEstimate":raw.len(),
+            "raw":base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw),
+            "labelIds":["INBOX","UNREAD"],
+            "payload":{"mimeType":"text/plain", "headers":[
+                {"name":"From","value":"notifications@stripe.com"},
+                {"name":"Subject","value":"Your payment of $20.00 failed"},
+                {"name":"ARC-Seal","value":"metadata is not the verdict"}
+            ]}
+        })).expect("synthetic Gmail response");
+        let mut provider = GmailProvider::with_api(
+            AccountId::new(),
+            Box::new(BulkSyncGmailApi {
+                messages: vec![message.clone()],
+            }),
+        );
+        provider.receiver_verifier = ReceiverVerifier::for_test(dns);
+        let result = provider
+            .parse_synced_messages(vec![message.clone()])
+            .await
+            .expect("parse");
+        assert!(
+            matches!(result[0].arrival.sender, mxr_core::SenderCheck::Verified { ref host } if host == "stripe.com")
+        );
+        assert!(
+            result[0]
+                .arrival
+                .received_at
+                .expect("signed handling time")
+                .timestamp()
+                > 1
+        );
+        let mut copied = message;
+        copied.internal_date = Some("4102444800000".into());
+        let copy = provider
+            .parse_synced_messages(vec![copied])
+            .await
+            .expect("copy");
+        assert_eq!(result[0].arrival, copy[0].arrival);
     }
 
     fn gmail_provider() -> GmailProvider {

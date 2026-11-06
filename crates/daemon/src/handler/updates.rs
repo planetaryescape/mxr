@@ -11,6 +11,7 @@
 //! anywhere else, and the preview selects exactly the messages the run
 //! lets go.
 
+use super::alert_todos::Alert;
 use super::modes::inbox_modes;
 use super::places::{scoped_accounts, AccountKinds, Placed};
 use super::updates_digest::{self, DigestInputs, Scope};
@@ -108,6 +109,11 @@ pub(super) async fn facts_for<Tz: TimeZone>(
         let body = bodies.get(&message.id).map(|(plain, html)| {
             clean(plain.as_deref(), html.as_deref(), &ReaderConfig::default()).content
         });
+        let handling_time = state
+            .store
+            .message_arrival(&message.id)
+            .await?
+            .and_then(|a| a.received_at);
         let fact = derive(
             &FactInput {
                 subject: &message.subject,
@@ -116,7 +122,7 @@ pub(super) async fn facts_for<Tz: TimeZone>(
                 from_email: &message.from_email,
                 from_name: message.from_name.as_deref(),
                 list_id: message.list_id.as_deref(),
-                date: message.date,
+                date: handling_time.unwrap_or(message.date),
             },
             tz,
         );
@@ -280,6 +286,12 @@ where
     let never_had_any = items.is_empty() && !state.store.any_update_facts(accounts).await?;
     let seen_key = seen_key(scope.account_id.as_ref());
     let last_seen = state.store.mode_last_viewed(&seen_key).await?;
+    let alerts: Vec<(&PlaceMessage, Alert)> = items
+        .iter()
+        .filter_map(|item| Some((&item.message, Alert::of_fact(&item.fact)?)))
+        .collect();
+    let alert_notes = super::alert_todos::hold_notes(state, &alerts, now).await;
+    let parcel_notes = super::alert_todos::parcel_notes(state, &deliveries, now).await;
     let (digest, selection) = updates_digest::compose(&DigestInputs {
         filed: &filed,
         items: &items,
@@ -288,6 +300,8 @@ where
         todos: &todos,
         deliveries: &deliveries,
         delivery_sources: &delivery_sources,
+        alert_notes: &alert_notes,
+        parcel_notes: &parcel_notes,
         cuts: &cuts(state),
         scope,
         last_seen,
@@ -681,15 +695,15 @@ pub(crate) async fn warm(state: &AppState) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Read newly synced Updates mail into facts, so the next digest doesn't
-/// pay for them. Nothing here makes a to-do: an alert that needs you is a
-/// suggestion at the top of Needs a look, and `t` is yours to press.
-/// Never errors the caller; failures are logged, like the delivery and
-/// to-do scans.
-pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
+/// pay for them, and make the to-do for an alert the receiving provider
+/// vouches for (blueprint 22, D193). Any other alert is a suggestion at the
+/// top of Needs a look, and `t` is yours to press. Never errors the caller;
+/// failures are logged, like the delivery and to-do scans.
+pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId], now: DateTime<Utc>) {
     if message_ids.is_empty() {
         return;
     }
-    if let Err(error) = scan(state, message_ids).await {
+    if let Err(error) = scan(state, message_ids, now).await {
         tracing::warn!(%error, "updates scan failed");
     }
 }
@@ -698,6 +712,7 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
 pub(super) async fn scan(
     state: &AppState,
     message_ids: &[MessageId],
+    now: DateTime<Utc>,
 ) -> Result<usize, HandlerError> {
     let mut by_account: HashMap<AccountId, Vec<PlaceMessage>> = HashMap::new();
     for id in message_ids {
@@ -718,7 +733,44 @@ pub(super) async fn scan(
             })
             .filter(|m| kinds.classification(m).kind.to_data() == SenderKindData::PaperTrail)
             .collect();
-        read += facts_for(state, &updates, &Local).await?.len();
+        let facts = facts_for(state, &updates, &Local).await?;
+        read += facts.len();
+        for message in &updates {
+            let Some(alert) = facts.get(&message.id).and_then(Alert::of_fact) else {
+                continue;
+            };
+            if let Err(error) =
+                super::alert_todos::create_on_arrival(state, message, alert, now).await
+            {
+                tracing::warn!(%error, "could not make an alert's to-do");
+            }
+        }
+        // The email that told mxr a parcel went wrong is an alert too.
+        for message in messages
+            .iter()
+            .filter(|m| m.is_delivery && !kinds.is_outbound(m))
+        {
+            match state
+                .store
+                .message_reports_delivery_problem(&message.id)
+                .await
+            {
+                Ok(true) => {
+                    if let Err(error) = super::alert_todos::create_on_arrival(
+                        state,
+                        message,
+                        Alert::delivery_problem(),
+                        now,
+                    )
+                    .await
+                    {
+                        tracing::warn!(%error, "could not make a delivery alert's to-do");
+                    }
+                }
+                Ok(false) => {}
+                Err(error) => tracing::warn!(%error, "could not read a delivery problem"),
+            }
+        }
     }
     Ok(read)
 }

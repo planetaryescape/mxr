@@ -1,62 +1,55 @@
-# Automatic breakthrough to To do is deferred
+# Signed receiver integration still needs final acceptance
 
-Updates shows a new sign-in, a failed payment or a delivery problem at the
-top of Needs a look as a suggested to-do, with its reason. Only the user's
-`t` turns one into a to-do. The first build created the to-do on arrival;
-two review rounds found ways to make mxr create a task from mail an
-attacker wrote, so automatic creation is off until a design survives
-review. This follows the pay link decision
-([one-click-pay-link.md](one-click-pay-link.md)).
+The candidate now verifies original Gmail RAW and pinned Google IMAP bytes
+with mail-auth 0.15.1. Complete ARC/body verification, a trusted Google sealer,
+exact signed DMARC/From alignment and a receiver-bound aligned DKIM signature
+replace bare Authentication-Results trust. Generic IMAP remains unsupported.
+The signed-fixture research proof passed five tests; production integration,
+Asks regression checks and final scoped gates are pending. Preserve NO GO
+until those checks and parent adversarial acceptance complete.
 
-## What the first build did
+Parent clarified on 6 November 2026 that fresh genuine receiver-sealed copies
+may qualify even if an intact replay/import cannot be distinguished from
+new delivery. Current-mailbox SMTP ingestion is not another required factor.
+The enforceable promise is verified origin and receiver handling age, not
+guaranteed new SMTP receipt or content truth. Known history, import, backfill,
+refetch and archive remain excluded. API timestamps cannot establish freshness.
 
-On sync, a message whose rules said `needs_you` became an open to-do
-("Check new sign-in to Google"), claimed by a dedup key so a re-sync never
-made a second. A source tuned to `breakthrough` sent every message.
+Replay must not manufacture prior history or release a claim. The candidate
+counts distinct authenticated originals and excludes the candidate original;
+claims bind account/domain/kind/local day and authenticated original/kind.
+The former query counted three copies as three messages: retained fail-first
+evidence records observed 3, required 1. Copy, reseal, cross-account, stale,
+future and original adversarial cases must pass before acceptance. Preserve
+all existing legitimate Asks source/correction/undo coverage through this gate.
+The first affected Asks run passed14/failed2: an independent remediation task
+was suppressed, and a historic policy14 fixture incorrectly reused the new
+alert identity. Both are addressed in the candidate while retaining the original
+counts and correction/Undo assertions: one guarded claim atomically inserts the
+alert and independent requests, and historic rows use their canonical Asks keys.
+The original failing receipt/log remains retained; rerun and full gates are pending.
 
-## Round 1 findings
+No source enrollment is required. Parent corrected its earlier absolute
+rejection of a warmed attacker-owned domain after consulting the original
+issue and BK's saved automatic-creation and decide-and-ship policies. A
+truthfully named warmed domain, service-controlled user content and an
+indistinguishable fresh intact copy are disclosed heuristic residuals.
+Report these separately without relabeling adversarial cases or claiming
+universal zero false tasks. No tools, payments, external actions or task
+closing are authorised by message content.
 
-- Any sender could create a to-do: the subject is mail-controlled text, so
-  `security@evil.example` with "New sign-in" made a task.
-- The claim was keyed by subject template, so differently worded alerts of
-  one kind made several tasks and one kind could suppress another.
-- Backfilled or archived mail (not in the inbox) created tasks.
-- A code mentioned in a sign-in alert gave it a 10-minute window, so the
-  alert expired almost at once.
+Migration 109 message_arrivals is reserved here but has no landing priority.
+PR906 also proposes 109 and 110. The second candidate to land must fetch fresh
+main, renumber above the actual shipped maximum and prove that DB upgrade.
+Parent owns sequencing, CI, published acceptance and shipping.
 
-## Round 2 findings, after a DMARC and prior-mail gate
+```sh
+mxr updates alert-audit --format json
+```
 
-The gate required the receiving provider's `Authentication-Results` to say
-`dmarc=pass` for the sender, and mail from that source before today.
-
-- A forged `Authentication-Results` lower in the headers was accepted when
-  the topmost one came from an authserv-id the account didn't trust.
-- The candidate message counted as its own prior mail when it was dated
-  before "today", so a first-time sender passed.
-- Display-name branding: an attacker's own authenticated domain could send
-  as "Google", and the task read "Check new sign-in to Google".
-- The claim day was a UTC day, so alerts either side of UTC midnight made
-  two tasks for one local day.
-- Backfill order: older mail classified after newer mail could create a
-  task for an alert the user had already dealt with.
-- Outlook results carry no authserv-id, so Outlook accounts failed the gate
-  silently with no explanation to the user.
-
-## What a design must answer before automatic creation returns
-
-1. Which `Authentication-Results` header is the provider's, for every
-   provider mxr supports, and what happens when it is missing, duplicated
-   or below a forged one. The answer must not depend on header order an
-   attacker controls.
-2. How "a source you already know" is established without the candidate
-   counting itself, across backfill and re-sync, and in the user's time
-   zone.
-3. How the task shows who really sent it, so a borrowed display name can
-   never read as the real brand. (Needs a look and `t` titles already show
-   the sending host beside the name.)
-4. How the claim works per source, alert kind and local day, and survives
-   rules-version changes without re-creating tasks.
-5. What the user sees when an alert is not trusted, per provider, so
-   silence never looks like safety.
-6. An eval on real mail showing false automatic tasks below an agreed
-   threshold, as D117 requires for To do's badge.
+BK can run this counts-only audit on his own local store. It opens read-only,
+starts no daemon, sends nothing and prints no senders, subjects or bodies.
+It uses persisted evidence and current eligibility; it cannot reconstruct
+missing evidence or grade semantic precision without labels. No real-mail
+evaluation is authorised for this worker. The exact contract and primary
+sources are in [D193](../blueprint/22-email-modes.md#verified-receiver-evidence-is-required-before-an-alert-creates-a-to-do).

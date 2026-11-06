@@ -180,6 +180,7 @@ mod tests {
                 .map(|env| SyncedMessage {
                     body: make_empty_body(&env.id),
                     envelope: env,
+                    arrival: Default::default(),
                 })
                 .collect();
             Self {
@@ -213,6 +214,7 @@ mod tests {
                 .map(|envelope| SyncedMessage {
                     body: make_empty_body(&envelope.id),
                     envelope,
+                    arrival: Default::default(),
                 })
                 .collect(),
             deleted_provider_ids: vec![],
@@ -723,6 +725,7 @@ mod tests {
                 .map(|envelope| SyncedMessage {
                     envelope: envelope.clone(),
                     body: make_empty_body(&envelope.id),
+                    arrival: Default::default(),
                 })
                 .collect(),
             expunged: vec!["gone".to_string(), "alone".to_string()],
@@ -1232,6 +1235,7 @@ mod tests {
                     keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&id),
+                arrival: Default::default(),
             };
 
         let provider = NativeThreadingProvider {
@@ -1304,6 +1308,7 @@ mod tests {
                 keywords: std::collections::BTreeSet::new(),
             },
             body: make_empty_body(&first_id),
+            arrival: Default::default(),
         };
         let second = SyncedMessage {
             envelope: Envelope {
@@ -1334,6 +1339,7 @@ mod tests {
                 keywords: std::collections::BTreeSet::new(),
             },
             body: make_empty_body(&second_id),
+            arrival: Default::default(),
         };
 
         let provider = ThreadingProvider {
@@ -1409,10 +1415,12 @@ mod tests {
                 SyncedMessage {
                     body: make_empty_body(&first_id),
                     envelope: first,
+                    arrival: Default::default(),
                 },
                 SyncedMessage {
                     body: make_empty_body(&second_id),
                     envelope: second,
+                    arrival: Default::default(),
                 },
             ],
         };
@@ -3061,6 +3069,7 @@ mod tests {
                     keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&message_id),
+                arrival: Default::default(),
             },
             calls: std::sync::Mutex::new(Vec::new()),
         };
@@ -3132,6 +3141,7 @@ mod tests {
                     keywords: std::collections::BTreeSet::new(),
                 },
                 body: make_empty_body(&message_id),
+                arrival: Default::default(),
             },
         };
 
@@ -3247,6 +3257,7 @@ mod tests {
                 direction: MessageDirection::Inbound,
                 body: legacy_body.clone(),
                 label_ids: Vec::new(),
+                arrival: Default::default(),
             }])
             .await
             .unwrap();
@@ -3339,6 +3350,7 @@ mod tests {
                 direction: MessageDirection::Inbound,
                 body: synced.body,
                 label_ids: Vec::new(),
+                arrival: Default::default(),
             }])
             .await
             .unwrap();

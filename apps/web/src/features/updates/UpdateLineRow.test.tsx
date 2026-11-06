@@ -594,6 +594,23 @@ describe("UpdateLineRow's peek", () => {
     expect(within(peek).getByRole("button", { name: "Open email" })).toBeInTheDocument();
   });
 
+  test("an unverified alert explains the hold and keeps the manual to-do action", () => {
+    const reason = "Not created automatically: Outlook doesn't give mxr a verified sender.";
+    const line = lineFixture({
+      section: "needs_a_look",
+      todo_suggestion: "Suggested to-do: new sign-in. t adds it.",
+      auto_todo: {
+        state: "not_created",
+        reason_code: "imap_gives_no_verdict",
+        reason_text: reason,
+      },
+    });
+    const { row, handlers } = renderLine(line, { peeked: true });
+    expect(within(row).getByTestId("update-auto-todo")).toHaveTextContent(reason);
+    fireEvent.click(within(row).getByTestId("update-todo-suggestion"));
+    expect(handlers.onNeedsMe).toHaveBeenCalledWith(line);
+  });
+
   test("clicking the row body toggles the peek; its controls and text do not", () => {
     const { row, handlers: h } = renderLine(
       lineFixture({

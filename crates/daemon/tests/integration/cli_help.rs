@@ -551,6 +551,10 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_messages_merge", &["messages", "merge", "--help"]),
         ("cli_help_messages_split", &["messages", "split", "--help"]),
         ("cli_help_updates", &["updates", "--help"]),
+        (
+            "cli_help_updates_alert_audit",
+            &["updates", "alert-audit", "--help"],
+        ),
         ("cli_help_updates_let_go", &["updates", "let-go", "--help"]),
         ("cli_help_updates_source", &["updates", "source", "--help"]),
         ("cli_help_deliveries", &["deliveries", "--help"]),

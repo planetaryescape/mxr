@@ -2890,7 +2890,7 @@ pub enum TodoMicrosoftAction {
 
 const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.
 
-Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem leads Needs a look as a suggested to-do; nothing goes to To do until you add it. One-time codes, sign-in alerts and offers expire and never show past their window.
+Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem can create a to-do only with a verified receiving verdict, trusted receipt and independent prior-source history. Current live adapters cannot attest that boundary, so alerts remain suggestions with an explanation. Automatic alert creation is controlled by `updates.auto_todo_alerts` (default on). One-time codes, sign-in alerts and offers expire and never show past their window.
 
 With no subcommand, prints the latest digest and what arrived since.";
 
@@ -2919,6 +2919,12 @@ pub enum UpdatesAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Count what the automatic alert to-do rule would do on your own mail.
+    /// Reads the local store read-only, without the daemon, and prints counts
+    /// by outcome and reason: no senders, subjects or bodies. Run it to see
+    /// how often a new sign-in or failed-payment alert would become a to-do
+    /// by itself, and why the rest would not.
+    AlertAudit,
 }
 
 const ARRIVALS_LONG_ABOUT: &str = "Where every email that arrived went, counted once each.

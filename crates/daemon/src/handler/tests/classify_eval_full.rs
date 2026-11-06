@@ -173,6 +173,8 @@ async fn demo_state_timed(total: usize) -> (Arc<AppState>, AccountId, AccountId,
     crate::loops::run_analytics_repair(&state, &personal.id).await;
     state.store.refresh_contacts().await.unwrap();
     timing_row("analytics repair and contacts", "", None, started.elapsed());
+    super::classify_eval::authenticate_demo_payment_alerts(&state, &personal.id, now).await;
+    super::classify_eval::authenticate_demo_payment_alerts(&state, &work.id, now).await;
     assert_directions_are_known(&state).await;
     (state, personal.id, work.id, total_sync)
 }

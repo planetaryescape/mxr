@@ -5860,6 +5860,22 @@ export interface components {
             | "authorized"
             | "failed"
             | "cancelled";
+        /**
+         * @description The outcome of automatic to-do creation for one alert (blueprint 22,
+         *     D193).
+         */
+        AutoTodoData: {
+            /**
+             * @description Stable code: `verified_alert`, or why not (`imap_gives_no_verdict`,
+             *     `not_dmarc_pass`, `thin_history`, `lookalike`, `mailing_list`,
+             *     `too_old`, `parcel_not_tied`, `switched_off`, ...).
+             */
+            reason_code: string;
+            /** @description The sentence the row shows. */
+            reason_text: string;
+            /** @description `created` or `not_created`. */
+            state: string;
+        };
         BodyFailure: {
             error: string;
             message_id: components["schemas"]["MessageId"];
@@ -16639,6 +16655,7 @@ export interface components {
          */
         UpdateLineData: {
             account_id: components["schemas"]["AccountId"];
+            auto_todo?: components["schemas"]["AutoTodoData"] | null;
             /**
              * @description The one-time code the newest message gives, to copy: "482913".
              *     Only while the code is in its window; expired lines never show.
@@ -16703,7 +16720,7 @@ export interface components {
             /**
              * @description A sign-in alert, failed payment or delivery problem not yet in To
              *     do: "Suggested to-do: new sign-in alert (rule). t adds it." mxr
-             *     never adds it for you.
+             *     makes it automatically only with verified receiver evidence.
              */
             todo_suggestion?: string | null;
             /**

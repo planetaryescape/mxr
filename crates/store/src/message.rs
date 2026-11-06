@@ -102,6 +102,7 @@ pub(crate) async fn replace_message_labels_tx(
 /// and their own caches in step with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StoredEnvelope {
+    pub(crate) existed: bool,
     /// The id the row lives under, which is not always `envelope.id`.
     pub(crate) id: MessageId,
     /// The thread the row was in before this upsert, when the upsert moved it
@@ -223,6 +224,7 @@ pub(crate) async fn upsert_envelope_tx(
             &envelope.provider_id,
         )?;
         return Ok(StoredEnvelope {
+            existed: true,
             id: decode_stored_id(&existing_id, "id", &account_id, &envelope.provider_id)?,
             vacated_thread_id: (previous_thread_id != envelope.thread_id)
                 .then_some(previous_thread_id),
@@ -266,6 +268,7 @@ pub(crate) async fn upsert_envelope_tx(
     Ok(StoredEnvelope {
         id: envelope.id.clone(),
         vacated_thread_id: None,
+        existed: false,
     })
 }
 

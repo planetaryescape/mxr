@@ -289,6 +289,7 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
             metadata: Default::default(),
         },
         envelope,
+        arrival: Default::default(),
     }
 }
 

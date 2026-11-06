@@ -61,6 +61,7 @@ mod conversation_summaries;
 pub use conversation_summaries::{
     ConversationHistoryToken, ConversationRevision, ConversationSummary, ConversationSummaryWrite,
 };
+mod alert_audit;
 mod decision_log;
 mod deliveries;
 mod desk;
@@ -78,6 +79,7 @@ mod history_text;
 mod keywords;
 mod label;
 mod message;
+mod message_arrivals;
 mod message_deletion;
 mod message_events;
 mod message_flags;
@@ -141,6 +143,9 @@ mod wrapped;
 
 pub use account::AccountIdentitySlot;
 pub use account::PRIMARY_REMOVAL_REFUSED;
+pub use alert_audit::{
+    alert_audit_candidates, alert_audit_claims, alert_audit_inbound, AuditCandidate, AuditMail,
+};
 pub use analytics::AccountDirectionChanges;
 pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
@@ -173,6 +178,7 @@ pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
 pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
 pub use event_log::{count_prunable_events, EventLogEntry, EventLogFilter, EventLogRefs};
 pub use got_it::{GotItClaim, GotItRecord};
+pub use message_arrivals::{PriorSenderHistory, StoredArrival};
 pub use message_deletion::{DeletedMessages, MAX_FORGET_ATTEMPTS};
 pub use message_flags::{DeskReplyLater, ReplyLaterState};
 pub use mode_done::{ModeDoneMark, ModeDonePrior};

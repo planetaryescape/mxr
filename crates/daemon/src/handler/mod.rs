@@ -12,6 +12,7 @@ pub(crate) mod account_scope;
 mod accounts;
 pub(crate) mod activity;
 mod admin;
+mod alert_todos;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;

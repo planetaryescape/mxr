@@ -6,7 +6,8 @@ description: Read notifications twice a day as one line per source, hand what ne
 Updates gathers notifications from services and apps into a digest at
 fixed times, 08:00 and 16:30 by default. You read one line per source,
 see what changed, and let go of the whole digest in one key. Press `t` on a line that needs action, such as a failed payment, to add it
-to To do. A suggested task stays a suggestion until you choose to create it.
+to To do. Qualifying verified alerts create automatically, with the authenticated
+domain in the title and reason. Other alerts explain why they stayed suggestions.
 
 ```bash
 mxr updates                  # the latest digest and what arrived since
@@ -44,6 +45,42 @@ stored deciding claim; Inbox chips and arrivals use the same answer. A done
 mark, snooze or expired item still controls whether it is open in Updates.
 The stored-assessment details require changes made after
 `v0.6.158`; that release does not include them.
+
+## Verified alerts create a to-do once
+
+A new sign-in, failed payment or linked delivery problem can create a task
+when mxr independently verifies Google's receiver seal, aligned sender and
+handling age from the original message. It needs three different earlier
+verified messages from that domain in this account over at least 30 days.
+The candidate must be unread in Inbox, handled within 24 hours and fetched
+live after initial sync. Archived, history, refetched and known imported
+mail do not qualify. Gmail-compatible extensions on another server do not
+make that server trusted; Outlook and generic IMAP explain the missing evidence.
+
+The title names the domain, such as `Check new sign-in · accounts.google.com`.
+There is at most one alert group per domain and alert kind each local day.
+Independent requests in that email, such as updating details for a different
+account, keep separate tasks under the same verified claim. Copying or
+resealing the original cannot create that group again on a later day. Existing
+undo and task controls remain available. No email can trigger a payment,
+external action or automatic task closing.
+
+A verified domain and receiver handling age do not prove the alert's truth
+or a new SMTP delivery. A fresh intact imported/replayed copy can qualify
+when the provider cannot distinguish it, and a domain with established
+history may send misleading text. Read the named domain and source before
+acting. Unsupported signatures, absent evidence and stale mail stay suggestions.
+
+Automatic alert creation defaults on. To switch it off:
+
+```toml
+[updates]
+auto_todo_alerts = false
+```
+
+`mxr updates alert-audit --format json` prints local counts from stored evidence.
+It opens read-only, starts no daemon, sends nothing and emits no mail content.
+It cannot grade false positives without your labels or recover missing evidence.
 
 ## Each source is one line, sorted by what it asks of you
 
@@ -219,19 +256,42 @@ do not offer a sender sweep.
 In the TUI, the `Account:` line shows the configured name and address when
 they fit; otherwise, it favors the address.
 
-## What needs you leads Needs a look as a suggested to-do
+## Alert suggestions explain why no automatic to-do was created
 
-A new sign-in alert, a failed payment and a parcel with a delivery problem
-sit at the top of Needs a look. The line carries a To do button, and its
-details say why: "Suggested to-do: new sign-in alert from Google
-(accounts.google.com) (rule). t adds it." mxr never adds the to-do for
-you; `t` or the button does, with the title filled in ("Check new sign-in
-to Google (accounts.google.com)"). The line then shows "already in To do".
+A new sign-in, failed payment or delivery problem leads Needs a look.
+Press `t` or use the button to add it to To do. The suggestion shows the
+sender's domain beside its display name and explains why automatic
+creation was held.
 
-Anyone can put "New sign-in" in a subject or "Google" in a display name, so
-every line in Needs a look and every title `t` fills in shows the host the
-mail came from beside the name. A sign-in alert from "Google" at
-`g00gle-alerts.example` reads "Google (g00gle-alerts.example)".
+Gmail reports that it does not give mxr an attested receiving verdict for
+the message. Outlook and generic IMAP report that the server does not give
+mxr a verified sender. A header that merely says `mx.google.com` is not
+sufficient proof; imported mail can contain supplied headers and dates.
+No current live adapter enables automatic alert creation. Other to-do
+detection continues as before.
+
+The automatic-alert decision requires genuine receiver evidence,
+independent earlier mail from the exact domain and a fresh unread inbox
+arrival outside backfill. Its title names the authenticated domain; its
+claim permits one task per account, domain, alert kind and local day.
+`[updates] auto_todo_alerts` defaults on; `false` disables this path without
+changing manual `t`.
+
+```sh
+mxr updates --format json
+mxr updates alert-audit --format json
+```
+
+Alert lines carry `auto_todo` with `state`, `reason_code` and `reason_text`.
+The audit reads stored provenance and current eligibility locally,
+without starting a daemon, writing data or printing message content.
+Its counts do not measure semantic accuracy: `precision_evaluated` stays
+false. Run it after the daemon has upgraded the database schema.
+
+Authentication proves sender identity, not alert truth. A domain with
+enough prior history or a service that includes user-controlled text
+could satisfy the heuristic. Any automatically created title must name
+the actual authenticated domain.
 
 `t` on any other line makes a to-do from it too.
 

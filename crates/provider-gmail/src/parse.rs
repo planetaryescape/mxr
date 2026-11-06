@@ -128,6 +128,21 @@ fn parse_internal_date(
     }
 }
 
+/// The API exposes RFC message headers, not an attestation that Gmail authored
+/// a verdict. Insert/import can preserve supplied headers, and migrated mail's
+/// internalDate can come from Date. Do not promote either to trusted evidence.
+/// See docs/issues/auto-breakthrough.md for the outstanding receiver boundary.
+pub fn gmail_arrival(_msg: &GmailMessage, _from_email: &str) -> mxr_core::ArrivalEvidence {
+    mxr_core::ArrivalEvidence {
+        message_fingerprint: None,
+        received_at: None,
+        is_live: false,
+        sender: mxr_core::SenderCheck::Unverified {
+            reason: mxr_core::UnverifiedReason::GmailVerdictUnproven,
+        },
+    }
+}
+
 pub fn labels_to_flags(label_ids: &[String]) -> MessageFlags {
     let mut flags = MessageFlags::empty();
 
@@ -523,6 +538,7 @@ mod tests {
 
     fn make_test_message() -> GmailMessage {
         GmailMessage {
+            raw: None,
             id: "msg-001".to_string(),
             thread_id: "thread-001".to_string(),
             label_ids: Some(vec!["INBOX".to_string(), "UNREAD".to_string()]),
@@ -591,6 +607,7 @@ mod tests {
             .unwrap_or_default();
 
         GmailMessage {
+            raw: None,
             id: format!("fixture-{}", fixture_stem(name)),
             thread_id: format!("fixture-thread-{}", fixture_stem(name)),
             label_ids: Some(vec!["INBOX".to_string(), "UNREAD".to_string()]),
@@ -809,6 +826,7 @@ mod tests {
     fn parse_deeply_nested_mime() {
         // multipart/mixed containing multipart/alternative
         let msg = GmailMessage {
+            raw: None,
             id: "msg-nested".to_string(),
             thread_id: "thread-nested".to_string(),
             label_ids: None,
@@ -879,6 +897,7 @@ mod tests {
     #[test]
     fn parse_message_with_attachments_metadata() {
         let msg = GmailMessage {
+            raw: None,
             id: "msg-att".to_string(),
             thread_id: "thread-att".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -999,6 +1018,7 @@ mod tests {
     #[test]
     fn body_extraction_multipart() {
         let msg = GmailMessage {
+            raw: None,
             id: "msg-mp".to_string(),
             thread_id: "thread-mp".to_string(),
             label_ids: None,
@@ -1142,6 +1162,7 @@ mod tests {
     fn plain_only_body_preserves_exact_text_and_does_not_invent_html() {
         let plain = "Hello team, \nthis paragraph is flowed and \nshould stay exact.\n";
         let msg = GmailMessage {
+            raw: None,
             id: "msg-flowed".to_string(),
             thread_id: "thread-flowed".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1185,6 +1206,7 @@ mod tests {
     fn extract_message_body_preserves_inline_asset_metadata() {
         let html = r#"<p>Hello <img src="cid:logo@example.com" alt="Logo"></p>"#;
         let msg = GmailMessage {
+            raw: None,
             id: "msg-inline".to_string(),
             thread_id: "thread-inline".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1258,6 +1280,7 @@ mod tests {
         let plain = "Hello from padded plain text";
         let html = "<p>Hello from padded html</p>";
         let msg = GmailMessage {
+            raw: None,
             id: "msg-padded".to_string(),
             thread_id: "thread-padded".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1326,6 +1349,7 @@ mod tests {
         // `from_utf8` turned the whole body into `None`, silently losing it.
         let raw: &[u8] = b"Caf\xe9 co\x92ee"; // windows-1252: "Café co’ee"
         let msg = GmailMessage {
+            raw: None,
             id: "msg-win1252".to_string(),
             thread_id: "thread-win1252".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1367,6 +1391,7 @@ mod tests {
         // label resolves. iso-8859-1 0xE9 also decodes to `é`.
         let raw: &[u8] = b"r\xe9sum\xe9"; // iso-8859-1: "résumé"
         let msg = GmailMessage {
+            raw: None,
             id: "msg-latin1".to_string(),
             thread_id: "thread-latin1".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1403,6 +1428,7 @@ mod tests {
         // double-decode, no mangling).
         let text = "Café déjà vu — 日本語";
         let msg = GmailMessage {
+            raw: None,
             id: "msg-utf8".to_string(),
             thread_id: "thread-utf8".to_string(),
             label_ids: Some(vec!["INBOX".to_string()]),
@@ -1430,5 +1456,41 @@ mod tests {
 
         let (text_plain, _, _) = extract_body(&msg);
         assert_eq!(text_plain.as_deref(), Some(text));
+    }
+    #[test]
+    fn sole_supplied_verdict_and_migrated_dates_are_not_receiver_proof() {
+        // An insert/import can carry this ordinary header and a chosen date;
+        // the response has no attestation that Gmail authored either value.
+        for headers in [
+            vec![],
+            vec![GmailHeader {
+                name: "Authentication-Results".into(),
+                value: "mx.google.com; dmarc=pass header.from=accounts.google.com".into(),
+            }],
+        ] {
+            for date in [
+                None,
+                Some("1793964000000".to_string()),
+                Some("1".to_string()),
+            ] {
+                let message: GmailMessage = serde_json::from_value(serde_json::json!({
+                    "id": "synthetic-import", "threadId": "synthetic-thread",
+                    "internalDate": date,
+                    "payload": {"headers": headers.iter().map(|h| serde_json::json!({
+                        "name": h.name, "value": h.value
+                    })).collect::<Vec<_>>()}
+                }))
+                .unwrap();
+                let evidence = gmail_arrival(&message, "no-reply@accounts.google.com");
+                assert_eq!(
+                    evidence.sender,
+                    mxr_core::SenderCheck::Unverified {
+                        reason: mxr_core::UnverifiedReason::GmailVerdictUnproven,
+                    }
+                );
+                assert_eq!(evidence.received_at, None);
+                assert!(!evidence.is_live);
+            }
+        }
     }
 }

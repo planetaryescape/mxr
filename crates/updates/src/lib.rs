@@ -21,6 +21,7 @@ pub mod numbers;
 pub mod source;
 pub mod template;
 pub mod text;
+pub mod trust;
 pub mod window;
 
 pub use code::one_time_code;

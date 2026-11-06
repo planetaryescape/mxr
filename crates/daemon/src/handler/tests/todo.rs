@@ -1310,9 +1310,11 @@ async fn done_undo_and_dismiss_preview_what_they_change() {
         ),
     )
     .await;
+    let envelope = fx.state.store.get_envelope(&id).await.unwrap().unwrap();
+    super::alert_todos::authenticated_known_source(&fx, &envelope).await;
     scan(&fx, &[id], now).await;
     let todo = runway(&fx, now).await.now[0].clone();
-    assert_eq!(todo.title, "Fix payment for Spotify");
+    assert_eq!(todo.title, "Fix failed payment · spotify.com");
     let short = todo.id.trim_start_matches("todo_")[..8].to_string();
     let set = |action, dry_run| Request::SetTodoState {
         todo_ids: vec![short.clone()],
@@ -1340,7 +1342,7 @@ async fn done_undo_and_dismiss_preview_what_they_change() {
     assert!(today.now.is_empty());
     assert_eq!(
         titles(&today.done_this_week),
-        vec!["Fix payment for Spotify"]
+        vec!["Fix failed payment · spotify.com"]
     );
     let ResponseData::TodoChange { change } =
         request(&fx, set(TodoStateActionData::Done, false)).await
@@ -2085,6 +2087,8 @@ async fn ticking_off_leaves_every_hint_alone() {
         ),
     )
     .await;
+    let envelope = fx.state.store.get_envelope(&id).await.unwrap().unwrap();
+    super::alert_todos::authenticated_known_source(&fx, &envelope).await;
     scan(&fx, &[id], now).await;
     let todo_id = runway(&fx, now).await.now[0].id.clone();
     request(

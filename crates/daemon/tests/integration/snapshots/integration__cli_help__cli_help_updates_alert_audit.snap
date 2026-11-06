@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Count what the automatic alert to-do rule would do on your own mail. Reads the local store read-only, without the daemon, and prints counts by outcome and reason: no senders, subjects or bodies. Run it to see how often a new sign-in or failed-payment alert would become a to-do by itself, and why the rest would not
+
+Usage: mxr updates alert-audit [OPTIONS]
+
+Options:
+      --cut <CUT>          A past cut, as its time ("08:00") or RFC3339; the latest cut when omitted
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

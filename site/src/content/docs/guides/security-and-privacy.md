@@ -122,7 +122,7 @@ effects.
 - Event and log views through diagnostics and CLI commands
 - Plain-text-first reader mode, with browser escape hatch for original HTML
 - Daemon IPC socket permissions are set to `0600` on Unix.
-- The bridge requires bearer auth for every authority-bearing route. Only `/api/v1/health`, `/api/v1/auth/local-token`, and `/api/v1/i18n` are unauthenticated bootstrap/read-only routes.
+- The bridge requires bearer auth for every authority-bearing route. Only `/api/v1/health` and `/api/v1/auth/local-token` are unauthenticated bootstrap routes; a request a browser marks as cross-site is refused even with a valid token.
 - The bridge checks Host/CORS allowlists and adds frame, content-sniffing, and referrer-policy headers.
 - Saved attachments and rendered HTML assets are written `0600` on Unix.
 - User-initiated attachment downloads are limited to the configured downloads directory, the current directory, or the system temp directory.

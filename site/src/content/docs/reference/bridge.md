@@ -45,10 +45,12 @@ export MXR_BASE="http://mxr.localhost:$MXR_PORT"
 
 ## Auth
 
-Every request except `/api/v1/health`, `/api/v1/auth/local-token`, and
-`/api/v1/i18n` needs `Authorization: Bearer $MXR_TOKEN`. OpenAPI and
-Swagger UI are not special-cased. WebSocket clients can also pass the token via the
-`Sec-WebSocket-Protocol` subprotocol or as a `?token=` query string.
+Every request except `/api/v1/health` and `/api/v1/auth/local-token`
+needs `Authorization: Bearer $MXR_TOKEN`, including the locale bundle.
+OpenAPI and Swagger UI are not special-cased. WebSocket clients can also
+pass the token via the `Sec-WebSocket-Protocol` subprotocol or as a
+`?token=` query string. A request a browser marks as cross-site is refused
+with 403 even when it carries a valid token.
 
 A plain browser location bar cannot attach an `Authorization` header. For
 generated clients, dump `/api/v1/openapi.json` with `curl` first. For normal
@@ -96,7 +98,7 @@ Response:
 |--------|------|------|---------|
 | `GET` | `/api/v1/health` | No | Liveness probe |
 | `GET` | `/api/v1/auth/local-token` | Loopback peer only | Same-machine token bootstrap |
-| `GET` | `/api/v1/i18n` | No | Locale strings for the first-party web app |
+| `GET` | `/api/v1/i18n` | Yes | Locale strings for the first-party web app |
 | `GET` | `/api/v1/openapi.json` | Yes | OpenAPI 3.1 spec |
 | `GET` | `/api/v1/docs` | Yes | Swagger UI |
 | `GET` | `/api/v1/events` | Yes | WebSocket — daemon events stream |

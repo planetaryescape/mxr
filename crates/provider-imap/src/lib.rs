@@ -71,13 +71,14 @@ impl ImapProvider {
     pub fn new(account_id: AccountId, config: ImapConfig) -> Self {
         let max_connections = config.max_connections;
         let session_factory = Box::new(RealImapSessionFactory::new(config.clone()));
+        let receiver = parse::ImapReceiver::from_config(&config);
         Self {
             account_id,
             config,
             trash_folder: "Trash".to_string(),
             max_connections,
             session_factory,
-            receiver: parse::ImapReceiver::from_config(&config),
+            receiver,
             receiver_verifier: Default::default(),
         }
     }
@@ -88,13 +89,14 @@ impl ImapProvider {
         config: ImapConfig,
         session_factory: Box<dyn ImapSessionFactory>,
     ) -> Self {
+        let receiver = parse::ImapReceiver::from_config(&config);
         Self {
             account_id,
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
             config,
             session_factory,
-            receiver: parse::ImapReceiver::from_config(&config),
+            receiver,
             receiver_verifier: Default::default(),
         }
     }

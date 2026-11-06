@@ -1346,6 +1346,12 @@ pub enum Request {
     UndoMutation {
         mutation_id: String,
     },
+    /// What `UndoMutation` with this id would reverse, read without changing
+    /// anything. `mxr undo --dry-run` asks this, so it refuses the ids the
+    /// real undo refuses, with the same messages.
+    UndoPreview {
+        mutation_id: String,
+    },
     Unsubscribe {
         message_id: MessageId,
     },
@@ -3128,6 +3134,7 @@ impl Request {
             | Self::ListJobs
             | Self::GetJob { .. }
             | Self::UndoMutation { .. }
+            | Self::UndoPreview { .. }
             | Self::Unsubscribe { .. }
             | Self::UnsubscribePurge { .. }
             | Self::CommitUnsubscribePreview { .. }
@@ -3573,6 +3580,31 @@ pub struct JobData {
 
 fn is_zero(value: &u32) -> bool {
     *value == 0
+}
+
+/// What `UndoMutation` would reverse, read from the undo entry without
+/// changing it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UndoPreview {
+    pub mutation_id: String,
+    /// The mutation's kind, snake_case (`archive`, `labels`, `desk_done`).
+    pub kind: String,
+    /// The messages the undo restores, in the order the undo entry holds them.
+    pub targets: Vec<UndoPreviewTarget>,
+    /// True when the undo also puts back local state beyond messages: a desk
+    /// Done's dismissals, promises, reminders or highlights.
+    pub restores_desk_state: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UndoPreviewTarget {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    /// False when the message is gone from the local store, so the real undo
+    /// cannot restore it.
+    pub in_local_store: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4133,6 +4165,9 @@ pub enum ResponseData {
     },
     Job {
         job: JobData,
+    },
+    UndoPreview {
+        preview: UndoPreview,
     },
     SelectionPreview {
         preview: SelectionPreviewData,
@@ -4971,6 +5006,7 @@ impl ResponseData {
             | Self::JobStarted { .. }
             | Self::Jobs { .. }
             | Self::Job { .. }
+            | Self::UndoPreview { .. }
             | Self::SelectionPreview { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::UnsubscribePlan { .. }

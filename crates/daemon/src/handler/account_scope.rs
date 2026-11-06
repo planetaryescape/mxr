@@ -505,7 +505,9 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         }
         Request::GetDecision { id } => Targets(vec![T::Decision(id)]),
         Request::UndoMove { correction_id } => Targets(vec![T::MoveCorrection(*correction_id)]),
-        Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
+        Request::UndoMutation { mutation_id } | Request::UndoPreview { mutation_id } => {
+            Targets(vec![T::Undo(mutation_id)])
+        }
         Request::GetArchiveWorkspace | Request::GetMicrosoftTodoStatus => Unscoped,
         Request::GetArchiveOperation { identity } => Targets(vec![T::Archive(identity)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
@@ -1122,7 +1124,7 @@ pub(super) async fn enforce_account_allowlist(
         }
     }
 
-    if let Request::UndoMutation { mutation_id } = req {
+    if let Request::UndoMutation { mutation_id } | Request::UndoPreview { mutation_id } = req {
         if let Some(accounts) = all_job_accounts_without_undo(state, mutation_id).await? {
             return all_job_undo_scope(state, profile, mutation_id, accounts).await;
         }

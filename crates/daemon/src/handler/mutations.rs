@@ -1924,34 +1924,29 @@ fn log_non_fatal<T, E: std::fmt::Display>(context: &str, result: Result<T, E>) {
 /// and we surface that as an "irreversible" error rather than leaving
 /// the local store and provider out of sync.
 pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> HandlerResult {
-    let entry = state.store.read_undo_entry(mutation_id).await?;
-    let Some(entry) = entry else {
-        if let Some(refusal) = selection_job_undo_refusal(state, mutation_id).await? {
-            return Err(refusal.into());
+    let entry = match lookup_undo_entry(state, mutation_id).await? {
+        UndoLookup::Live(entry) => entry,
+        UndoLookup::Expired(entry) => {
+            log_non_fatal(
+                "undo: failed to delete expired undo entry",
+                state.store.delete_undo_entry(&entry.mutation_id).await,
+            );
+            return Err(undo_window_expired(mutation_id).into());
         }
-        return Err(format!(
-            "undo: mutation `{mutation_id}` not found (expired or already undone)"
-        )
-        .into());
     };
-    let now = chrono::Utc::now().timestamp();
-    if entry.expires_at <= now {
-        log_non_fatal(
-            "undo: failed to delete expired undo entry",
-            state.store.delete_undo_entry(&entry.mutation_id).await,
-        );
-        return Err(format!("undo: window expired for mutation `{mutation_id}`").into());
-    }
 
     // Group snapshots by account so we resolve the provider once per
     // account (not per message). Inside each account, restore each
-    // message's labels and read flag.
-    let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
-    for snapshot in &entry.snapshots {
+    // message's labels and read flag. Carry the stored snapshot index so
+    // error selection across accounts remains deterministic regardless of
+    // map iteration order.
+    let mut by_account: HashMap<mxr_core::AccountId, Vec<(usize, &UndoEntrySnapshot)>> =
+        HashMap::new();
+    for (index, snapshot) in entry.snapshots.iter().enumerate() {
         by_account
             .entry(snapshot.account_id.clone())
             .or_default()
-            .push(snapshot);
+            .push((index, snapshot));
     }
 
     // The desk's Done also dismissed conversations and resolved promises.
@@ -1979,16 +1974,20 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     // same id undoes just those next time.
     let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
     let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
+    let mut snapshot_errors: Vec<(usize, String)> = Vec::new();
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
             Ok(p) => p,
             Err(error) => {
-                last_error = Some(format!("account unavailable: {error}"));
-                retryable.extend(snapshots.into_iter().cloned());
+                let msg = format!("account unavailable: {error}");
+                for (index, snapshot) in snapshots {
+                    snapshot_errors.push((index, msg.clone()));
+                    retryable.push(snapshot.clone());
+                }
                 continue;
             }
         };
-        for snapshot in snapshots {
+        for (index, snapshot) in snapshots {
             match restore_snapshot(state, provider.as_ref(), entry.kind, snapshot).await {
                 Ok(()) => {
                     restored += 1;
@@ -1996,14 +1995,18 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
                 }
                 Err(SnapshotError::Irreversible(msg)) => {
                     irreversible += 1;
-                    last_error = Some(msg);
+                    snapshot_errors.push((index, msg));
                 }
                 Err(SnapshotError::Other(msg)) => {
                     retryable.push(snapshot.clone());
-                    last_error = Some(msg);
+                    snapshot_errors.push((index, msg));
                 }
             }
         }
+    }
+
+    if let Some((_, msg)) = snapshot_errors.into_iter().max_by_key(|(index, _)| *index) {
+        last_error = Some(msg);
     }
 
     // One search commit for the whole undo, as `apply_mutation_batch` does:
@@ -2018,9 +2021,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     if retryable.is_empty() {
         if restored == 0 {
             let detail = last_error.unwrap_or_else(|| "no messages restored".into());
-            return Err(
-                format!("undo: irreversible ({irreversible} message(s)) — {detail}").into(),
-            );
+            return Err(undo_irreversible(irreversible, &detail).into());
         }
         // Done: drop the entry so the same id can't be replayed.
         log_non_fatal(
@@ -2046,6 +2047,141 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         "undo: partly done: restored {restored}, {failed} failed and can be retried with the same undo ({detail})"
     )
     .into())
+}
+
+/// The undo entry `mutation_id` names, read without changing it. The undo and
+/// its preview both take this path, so they refuse the same ids with the same
+/// messages.
+enum UndoLookup {
+    Live(UndoEntry),
+    /// Past its window. The undo removes the entry; a preview leaves it.
+    Expired(UndoEntry),
+}
+
+async fn lookup_undo_entry(
+    state: &AppState,
+    mutation_id: &str,
+) -> Result<UndoLookup, HandlerError> {
+    let Some(entry) = state.store.read_undo_entry(mutation_id).await? else {
+        if let Some(refusal) = selection_job_undo_refusal(state, mutation_id).await? {
+            return Err(refusal.into());
+        }
+        return Err(undo_not_found(mutation_id).into());
+    };
+    if entry.expires_at <= chrono::Utc::now().timestamp() {
+        return Ok(UndoLookup::Expired(entry));
+    }
+    Ok(UndoLookup::Live(entry))
+}
+
+fn undo_window_expired(mutation_id: &str) -> String {
+    format!("undo: window expired for mutation `{mutation_id}`")
+}
+
+fn undo_irreversible(count: u32, detail: &str) -> String {
+    format!("undo: irreversible ({count} message(s)) — {detail}")
+}
+
+/// What `undo_mutation` would do with `mutation_id`, changing nothing. It
+/// refuses what the undo refuses without contacting the provider: a provider
+/// can still refuse a message the store holds, and only the undo finds that.
+pub(super) async fn undo_preview(state: &AppState, mutation_id: &str) -> HandlerResult {
+    let entry = match lookup_undo_entry(state, mutation_id).await? {
+        UndoLookup::Live(entry) => entry,
+        UndoLookup::Expired(_) => return Err(undo_window_expired(mutation_id).into()),
+    };
+    let mut targets = Vec::with_capacity(entry.snapshots.len());
+    let mut last_missing = None;
+    for snapshot in &entry.snapshots {
+        let in_local_store = state
+            .store
+            .get_envelope(&snapshot.message_id)
+            .await?
+            .is_some();
+        if !in_local_store {
+            last_missing = Some(snapshot.message_id.clone());
+        }
+        targets.push(mxr_protocol::UndoPreviewTarget {
+            message_id: snapshot.message_id.clone(),
+            account_id: snapshot.account_id.clone(),
+            in_local_store,
+        });
+    }
+    let mut restores_desk_state = false;
+    let mut restored_desk_rows = 0usize;
+    let mut last_error = None;
+    if let Some(desk) = &entry.desk {
+        restores_desk_state = !desk.promise_resolutions.is_empty()
+            || !desk.dismissals.is_empty()
+            || !desk.commitments.is_empty()
+            || !desk.reply_later.is_empty()
+            || !desk.reply_later_priors.is_empty()
+            || !desk.reminder_priors.is_empty()
+            || !desk.mode_done.is_empty()
+            || !desk.todos_ticked.is_empty();
+        restored_desk_rows += desk.dismissals.len()
+            + desk.commitments.len()
+            + desk.reply_later_priors.len()
+            + desk.reminder_priors.len()
+            + desk.mode_done.len()
+            + desk.todos_ticked.len();
+
+        for prior in &desk.highlights {
+            let current = state.store.reading_highlight(&prior.row.id).await?;
+            let restored = if prior.removed {
+                current.is_none()
+                    && state
+                        .store
+                        .get_envelope(&prior.row.message_id)
+                        .await?
+                        .is_some()
+            } else {
+                current.is_some_and(|row| row.origin == mxr_store::LOCAL_HIGHLIGHT_ORIGIN)
+            };
+            if restored {
+                restores_desk_state = true;
+                restored_desk_rows += 1;
+            } else {
+                last_error = Some("a highlight's mail was deleted, or it was changed again".into());
+            }
+        }
+    }
+    let any_restorable = restored_desk_rows > 0 || targets.iter().any(|t| t.in_local_store);
+    if !any_restorable {
+        // The undo's own refusal for this case: a missing snapshot message
+        // takes precedence over desk/highlight refusal, matching the real
+        // undo's error priority.
+        let detail = match last_missing {
+            Some(id) => format!("message `{id}` no longer exists locally"),
+            None => last_error.unwrap_or_else(|| "no messages restored".into()),
+        };
+        let count = u32::try_from(entry.snapshots.len()).unwrap_or(u32::MAX);
+        return Err(undo_irreversible(count, &detail).into());
+    }
+    Ok(ResponseData::UndoPreview {
+        preview: mxr_protocol::UndoPreview {
+            mutation_id: entry.mutation_id,
+            kind: undo_kind_name(entry.kind).into(),
+            targets,
+            restores_desk_state,
+        },
+    })
+}
+
+fn undo_kind_name(kind: UndoableMutationKind) -> &'static str {
+    match kind {
+        UndoableMutationKind::Archive => "archive",
+        UndoableMutationKind::Trash => "trash",
+        UndoableMutationKind::Spam => "spam",
+        UndoableMutationKind::SetRead => "set_read",
+        UndoableMutationKind::Star => "star",
+        UndoableMutationKind::ReadAndArchive => "read_and_archive",
+        UndoableMutationKind::Labels => "labels",
+        UndoableMutationKind::DeskDone => "desk_done",
+        UndoableMutationKind::Deferral => "deferral",
+        UndoableMutationKind::ModeDone => "mode_done",
+        UndoableMutationKind::Highlight => "highlight",
+    }
 }
 
 /// An `--all` job keeps no undo (D192). Its id sent to undo is refused for

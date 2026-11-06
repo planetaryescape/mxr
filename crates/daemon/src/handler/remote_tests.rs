@@ -63,6 +63,23 @@ async fn revocation_denies_the_next_operation_on_an_already_authenticated_client
 }
 
 #[tokio::test]
+async fn remote_read_status_is_available_without_enabling_ai_or_exposing_host_key_locations() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (client_id, mail) = registered_client(&state).await;
+    let ResponseData::LlmStatus { snapshot } =
+        remote::read(&state, &client_id, &mail, &Request::GetLlmStatus)
+            .await
+            .unwrap()
+    else {
+        panic!("expected remote model availability");
+    };
+    assert!(!snapshot.enabled);
+    assert!(snapshot.keys.is_empty());
+    assert!(snapshot.base_url.is_none());
+    assert!(snapshot.api_key_env.is_none());
+}
+
+#[tokio::test]
 async fn authenticated_remote_client_can_count_mail_search_results() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (client_id, mail) = registered_client(&state).await;
@@ -704,11 +721,400 @@ async fn remote_account_discovery_omits_provider_config_but_preserves_local_acco
         serde_json::from_str::<serde_json::Value>(&local_json).unwrap()
     );
     let (read_only, mail) = registered_client(&state).await;
-    let refusal = remote::read(&state, &read_only, &mail, &Request::ListAccounts)
+    let read_only_accounts = remote::read(&state, &read_only, &mail, &Request::ListAccounts)
         .await
-        .unwrap_err()
-        .into_response();
-    assert!(
-        matches!(refusal, mxr_protocol::Response::Error { kind:mxr_protocol::IpcErrorKind::Auth, code, .. } if code == "remote_authority_denied")
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(read_only_accounts).unwrap(),
+        serde_json::from_str::<serde_json::Value>(&wire).unwrap(),
+        "read-only discovery must expose the same credential-free account metadata"
     );
+}
+
+async fn workflow_client(state: &AppState, grants: &[RemoteCapability]) -> (String, RemoteSecret) {
+    let now = chrono::Utc::now().timestamp();
+    let mail = RemoteSecret::new("c".repeat(64));
+    let cleanup = RemoteSecret::new("d".repeat(64));
+    let pairing = state
+        .store
+        .start_remote_pairing(
+            "workflow test",
+            grants,
+            &verifier(&mail),
+            &verifier(&cleanup),
+            now,
+        )
+        .await
+        .unwrap();
+    state
+        .store
+        .approve_remote_pairing(&pairing.request_id, false, now)
+        .await
+        .unwrap();
+    let client = state
+        .store
+        .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, now)
+        .await
+        .unwrap();
+    (client.client_id, mail)
+}
+
+#[tokio::test]
+async fn triage_grant_previews_commits_and_undoes_a_mode_move_without_granting_host_admin() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (reader_id, reader_mail) = registered_client(&state).await;
+    let (client_id, mail) = workflow_client(
+        &state,
+        &[RemoteCapability::MailRead, RemoteCapability::MailTriage],
+    )
+    .await;
+    let envelope = TestEnvelopeBuilder::new()
+        .account_id(state.default_account_id())
+        .build();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    let request = |dry_run| Request::MoveMessage {
+        message_id: envelope.id.clone(),
+        mode: mxr_protocol::ModeKindData::Reading,
+        sender: false,
+        dry_run,
+        source: None,
+    };
+    assert!(
+        remote::read(&state, &reader_id, &reader_mail, &request(true))
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        remote::read(&state, &client_id, &mail, &request(true))
+            .await
+            .unwrap(),
+        ResponseData::MessageMoved { .. }
+    ));
+    let ResponseData::Corrections { corrections } = remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::ListCorrections {
+            account_id: None,
+            limit: 20,
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("corrections")
+    };
+    assert!(
+        corrections.is_empty(),
+        "preview must not create a correction"
+    );
+    assert!(matches!(
+        remote::read(&state, &client_id, &mail, &request(false))
+            .await
+            .unwrap(),
+        ResponseData::MessageMoved { .. }
+    ));
+    let ResponseData::Corrections { corrections } = remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::ListCorrections {
+            account_id: None,
+            limit: 20,
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("corrections")
+    };
+    assert_eq!(corrections.len(), 1);
+    assert!(matches!(
+        remote::read(
+            &state,
+            &client_id,
+            &mail,
+            &Request::UndoMove {
+                correction_id: corrections[0].id
+            }
+        )
+        .await
+        .unwrap(),
+        ResponseData::MoveUndone { .. }
+    ));
+    for request in [
+        Request::Shutdown,
+        Request::GetLlmConfig,
+        Request::ListAccountsConfig,
+        Request::GetDoctorReport,
+    ] {
+        assert!(remote::read(&state, &client_id, &mail, &request)
+            .await
+            .is_err());
+    }
+    state
+        .store
+        .revoke_remote_client(&client_id, false, chrono::Utc::now().timestamp())
+        .await
+        .unwrap();
+    assert!(remote::read(&state, &client_id, &mail, &request(true))
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn inline_image_transfer_is_bounded_message_owned_and_contains_no_host_path() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (client_id, mail) = registered_client(&state).await;
+    let envelope = TestEnvelopeBuilder::new()
+        .account_id(state.default_account_id())
+        .build();
+    state.store.upsert_envelope(&envelope).await.unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let image_path = temp.path().join("private-logo.png");
+    let bytes = vec![0x55; mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES as usize + 3];
+    std::fs::write(&image_path, &bytes).unwrap();
+    let mut body = make_empty_body(&envelope.id);
+    body.text_html = Some(
+        "<img src=\"cid:logo@example.com\"><img src=\"https://example.com/tracker.png\">".into(),
+    );
+    body.metadata.text_html_source = Some(mxr_core::BodyPartSource::Exact);
+    body.attachments.push(AttachmentMeta {
+        id: AttachmentId::new(),
+        message_id: envelope.id.clone(),
+        filename: "logo.png".into(),
+        mime_type: "image/png".into(),
+        disposition: AttachmentDisposition::Inline,
+        content_id: Some("logo@example.com".into()),
+        content_location: None,
+        size_bytes: bytes.len() as u64,
+        local_path: Some(image_path.clone()),
+        provider_id: "inline-fixture".into(),
+    });
+    state.store.insert_body(&body).await.unwrap();
+    let request = |source: &str, offset, length| Request::ReadInlineImage {
+        message_id: envelope.id.clone(),
+        source: source.into(),
+        offset,
+        length,
+    };
+    let mut received = Vec::new();
+    for offset in [0, u64::from(mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES)] {
+        let result = remote::read(
+            &state,
+            &client_id,
+            &mail,
+            &request(
+                "cid:logo@example.com",
+                offset,
+                mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES,
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(!serde_json::to_string(&result)
+            .unwrap()
+            .contains(&image_path.to_string_lossy().to_string()));
+        let ResponseData::InlineImageChunk { chunk } = result else {
+            panic!("image chunk")
+        };
+        assert_eq!(chunk.offset, offset);
+        assert_eq!(chunk.total_length, bytes.len() as u64);
+        assert_eq!(chunk.mime_type, "image/png");
+        received.extend(STANDARD.decode(chunk.data_base64).unwrap());
+    }
+    assert_eq!(received, bytes);
+    for invalid in [
+        request("file:///etc/passwd", 0, 1),
+        request("https://example.com/tracker.png", 0, 1),
+        request("cid:logo@example.com", 0, 0),
+        request(
+            "cid:logo@example.com",
+            0,
+            mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES + 1,
+        ),
+        request("cid:logo@example.com", u64::MAX, 1),
+    ] {
+        assert!(remote::read(&state, &client_id, &mail, &invalid)
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test]
+async fn remote_presence_is_authenticated_revocable_and_drain_closes_new_admission() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (client_id, mail) = registered_client(&state).await;
+    let peer = mxr_transport::PeerInfo::local();
+    let touch = mxr_protocol::RemoteRequest::TouchSession {
+        client_id: client_id.clone(),
+        mail_secret: mail.clone(),
+        session_id: "fixture-session".into(),
+        surface: "web".into(),
+    };
+    remote::handle(&state, &peer, &touch).await.unwrap();
+    let now = chrono::Utc::now().timestamp();
+    assert!(state.remote_lifecycle.snapshot(now).sessions[0].active);
+    let bad = mxr_protocol::RemoteRequest::TouchSession {
+        client_id: client_id.clone(),
+        mail_secret: mxr_core::RemoteSecret::new("f".repeat(64)),
+        session_id: "forged".into(),
+        surface: "web".into(),
+    };
+    assert!(remote::handle(&state, &peer, &bad).await.is_err());
+    assert_eq!(state.remote_lifecycle.snapshot(now).sessions.len(), 1);
+    remote::handle(
+        &state,
+        &peer,
+        &mxr_protocol::RemoteRequest::Drain {
+            dry_run: true,
+            deadline_seconds: 5,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(remote::read(&state, &client_id, &mail, &Request::Ping)
+        .await
+        .is_ok());
+    let mut events = state.event_tx.subscribe();
+    remote::handle(
+        &state,
+        &peer,
+        &mxr_protocol::RemoteRequest::Drain {
+            dry_run: false,
+            deadline_seconds: 5,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        events.recv().await.unwrap().payload,
+        mxr_protocol::IpcPayload::Event(mxr_protocol::DaemonEvent::ServerStopping { .. })
+    ));
+    let ready = remote::read(&state, &client_id, &mail, &Request::GetRemoteReady)
+        .await
+        .unwrap();
+    assert!(matches!(
+        ready,
+        ResponseData::RemoteReady {
+            accepting_mail: false,
+            shutdown_deadline_at: Some(_),
+            ..
+        }
+    ));
+    assert!(
+        remote::read(&state, &client_id, &mail, &Request::GetArchiveWorkspace)
+            .await
+            .is_ok()
+    );
+    let rejected = remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::ListLabels {
+            account_id: None,
+            all_accounts: false,
+        },
+    )
+    .await
+    .unwrap_err()
+    .into_response();
+    assert!(
+        matches!(rejected,mxr_protocol::Response::Error{code,retryable:true,kind:mxr_protocol::IpcErrorKind::RateLimited,..} if code=="remote_host_stopping")
+    );
+    assert!(remote::handle(&state, &peer, &touch).await.is_err());
+    remote::handle(&state, &peer, &mxr_protocol::RemoteRequest::ResumeHosting)
+        .await
+        .unwrap();
+    assert!(
+        remote::read(&state, &client_id, &mail, &Request::GetRemoteReady)
+            .await
+            .is_ok()
+    );
+    remote::handle(
+        &state,
+        &peer,
+        &mxr_protocol::RemoteRequest::RevokeClient {
+            client_id: client_id.clone(),
+            dry_run: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(!state.remote_lifecycle.snapshot(now).sessions[0].active);
+    assert!(remote::handle(&state, &peer, &touch).await.is_err());
+}
+
+#[tokio::test]
+async fn remote_assistant_history_is_scoped_to_the_parent_registration_and_local_continuation_cannot_escalate(
+) {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let (client_id, mail) = workflow_client(
+        &state,
+        &[RemoteCapability::MailRead, RemoteCapability::MailAi],
+    )
+    .await;
+    let local = "asst_local_private";
+    let other = "asst_remote_other_private";
+    let owned = format!("asst_remote_{client_id}_owned");
+    for id in [local, other, owned.as_str()] {
+        state
+            .store
+            .create_assistant_conversation(id, id)
+            .await
+            .unwrap();
+    }
+    let ResponseData::AssistantConversations { conversations } = remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::ListAssistantConversations { limit: Some(1) },
+    )
+    .await
+    .unwrap() else {
+        panic!("conversation list")
+    };
+    assert_eq!(conversations.len(), 1);
+    assert_eq!(conversations[0].id, owned);
+    for id in [local, other] {
+        for request in [
+            Request::GetAssistantConversation {
+                conversation_id: id.into(),
+            },
+            Request::AssistantCancel {
+                conversation_id: id.into(),
+            },
+            Request::DeleteAssistantConversation {
+                conversation_id: id.into(),
+                dry_run: false,
+            },
+            Request::AssistantDecide {
+                conversation_id: id.into(),
+                decisions: vec![],
+            },
+        ] {
+            assert!(remote::read(&state, &client_id, &mail, &request)
+                .await
+                .is_err());
+        }
+    }
+    assert!(remote::read(
+        &state,
+        &client_id,
+        &mail,
+        &Request::GetAssistantConversation {
+            conversation_id: owned.clone()
+        }
+    )
+    .await
+    .is_ok());
+    assert!(super::assistant::handle(
+        &state,
+        &Request::AssistantSend {
+            conversation_id: Some(owned),
+            message: "Continue with local privileges".into(),
+            context: Default::default(),
+        }
+    )
+    .await
+    .is_err());
 }

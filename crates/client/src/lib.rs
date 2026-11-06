@@ -31,6 +31,7 @@
 
 pub mod remote_connection;
 pub mod selected_daemon;
+mod selection_recovery;
 pub use selected_daemon::SelectedDaemonTarget;
 mod archive;
 pub use archive::ArchiveJournal;
@@ -59,6 +60,7 @@ pub use mxr_transport::TransportAddr;
 /// service manager owns daemon creation and replacement.
 pub fn daemon_autostart_enabled() -> bool {
     daemon_autostart_enabled_for(std::env::var("MXR_DAEMON_AUTOSTART").ok().as_deref())
+        && matches!(mxr_config::hosting_daemon_desired_stopped(), Ok(false))
 }
 
 fn daemon_autostart_enabled_for(value: Option<&str>) -> bool {
@@ -68,7 +70,14 @@ fn daemon_autostart_enabled_for(value: Option<&str>) -> bool {
 /// Remediation shared by clients that cannot reach a daemon while autostart
 /// is disabled.
 pub fn daemon_autostart_disabled_message() -> &'static str {
-    "MXR_DAEMON_AUTOSTART=off and no compatible daemon is available; check the service manager and its logs, then restart the supervised service"
+    if !daemon_autostart_enabled_for(std::env::var("MXR_DAEMON_AUTOSTART").ok().as_deref()) {
+        return "MXR_DAEMON_AUTOSTART=off and no compatible daemon is available; check the service manager and its logs, then restart the supervised service";
+    }
+    match mxr_config::hosting_daemon_desired_stopped() {
+        Ok(true) => "This hosted daemon was explicitly stopped. Run mxr serve start --confirm or explicitly run mxr daemon; client reconnects cannot reverse the stopped state",
+        Err(_) => "Hosting desired state is invalid; inspect hosting.json before starting the daemon",
+        Ok(false) => "No compatible daemon is available; inspect the selected local profile or its service manager and start it explicitly",
+    }
 }
 
 /// Build identity used by the daemon and clients that must leave a supervised
@@ -233,6 +242,8 @@ pub struct IpcConnection {
     remote_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     remote_registration_identity: Option<(String, String)>,
     selection_generation: Option<u64>,
+    remote_admission: Option<(String, mxr_core::RemoteSecret)>,
+    pub(crate) remote_shutdown_notice: Option<DaemonEvent>,
 }
 
 impl IpcConnection {
@@ -399,6 +410,8 @@ impl IpcConnection {
             remote_workspace: None,
             remote_registration_identity: None,
             selection_generation: None,
+            remote_admission: None,
+            remote_shutdown_notice: None,
         };
         // Token-bearing transports (the TCP-loopback adapter) authenticate
         // in-band as the FIRST request on the connection. The byte-stream seam
@@ -443,6 +456,19 @@ impl IpcConnection {
     #[must_use]
     pub fn with_start_id(mut self, start: u64) -> Self {
         self.next_id = AtomicU64::new(start);
+        self
+    }
+
+    /// Forward every request through daemon-validated registration authority.
+    /// Used by the same-origin hosted browser adapter over the local socket.
+    pub fn with_remote_admission(
+        mut self,
+        client_id: String,
+        secret: mxr_core::RemoteSecret,
+    ) -> Self {
+        self.selected_remote = true;
+        self.remote_registration_identity = Some(("browser".into(), client_id.clone()));
+        self.remote_admission = Some((client_id, secret));
         self
     }
 
@@ -571,7 +597,8 @@ impl IpcConnection {
                 )
                 .await?;
             match status {
-                Response::Ok { data: ResponseData::RemoteReady { .. } } => return Ok(Response::error_kinded("Category rules are unavailable on paired remote hosts", IpcErrorKind::Unsupported)),
+                Response::Ok { data: ResponseData::RemoteReady { .. } } if matches!(request, Request::ExplainCategoryMembership { .. }) => {},
+                Response::Ok { data: ResponseData::RemoteReady { .. } } => return Ok(Response::error_kinded("Executable category rules require local host administration", IpcErrorKind::Unsupported)),
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => {},
                 Response::Ok {data:ResponseData::Status {protocol_version,..}} => return Ok(Response::error_kinded(format!("Category rules require daemon IPC protocol {}; running daemon uses {protocol_version}. Update or restart the daemon before retrying.",mxr_protocol::IPC_PROTOCOL_VERSION),IpcErrorKind::Unsupported)),
                 error @ Response::Error {..} => return Ok(error),
@@ -651,10 +678,13 @@ impl IpcConnection {
             match status {
                 error @ Response::Error { .. } => return Ok(error),
                 Response::Ok {
+                    data: ResponseData::RemoteReady { capabilities, .. },
+                } if capabilities.contains(&mxr_core::RemoteCapability::MailTriage) => {}
+                Response::Ok {
                     data: ResponseData::RemoteReady { .. },
                 } => {
                     return Ok(Response::error_kinded(
-                        "Recoverable Archive is unavailable on paired remote hosts",
+                        "Recoverable Archive requires host-approved triage access",
                         IpcErrorKind::Unsupported,
                     ));
                 }
@@ -755,6 +785,10 @@ impl IpcConnection {
                 return Ok(Response::error_kinded("Daemon does not support durable draft revisions; upgrade the daemon before saving or deleting drafts", mxr_protocol::IpcErrorKind::Unsupported));
             }
         }
+        let recovery = selection_recovery::identity(
+            &request,
+            expected_workspace.or(self.remote_workspace.as_ref()),
+        );
         let response = self
             .request_response_unchecked_owned(
                 request,
@@ -763,7 +797,9 @@ impl IpcConnection {
                 expected_workspace,
             )
             .await?;
-        self.verify_selection().await?;
+        if self.verify_selection().await.is_err() {
+            return Err(selection_recovery::interrupted(recovery, &response));
+        }
         if safety_preview {
             if let Response::Ok {
                 data: ResponseData::DraftPreview { report, .. },
@@ -801,6 +837,15 @@ impl IpcConnection {
         F: FnMut(DaemonEvent),
     {
         let id = self.take_id();
+        let request = match &self.remote_admission {
+            Some((client_id, mail_secret)) => Request::RemoteRead {
+                expected_workspace: expected_workspace.cloned(),
+                client_id: client_id.clone(),
+                mail_secret: mail_secret.clone(),
+                request: Box::new(request),
+            },
+            None => request,
+        };
         let mut message = self.envelope(id, request);
         message.expected_workspace = expected_workspace.cloned();
         self.framed.send(message).await?;
@@ -855,8 +900,7 @@ impl IpcConnection {
         F: FnMut(DaemonEvent),
     {
         self.verify_selection().await?;
-        if let Some(expected) = &self.remote_workspace {
-            let expected = expected.clone();
+        if self.is_paired_remote() {
             match self
                 .request_response_unchecked(
                     Request::GetRemoteReady,
@@ -872,10 +916,14 @@ impl IpcConnection {
                             protocol_version,
                             ..
                         },
-                } if workspace == expected
+                } if self
+                    .remote_workspace
+                    .as_ref()
+                    .is_none_or(|expected| expected == &workspace)
                     && protocol_version == mxr_protocol::IPC_PROTOCOL_VERSION =>
                 {
-                    return Ok(workspace)
+                    self.remote_workspace = Some(workspace.clone());
+                    return Ok(workspace);
                 }
                 _ => {
                     return Err(workspace_error(
@@ -985,6 +1033,9 @@ impl IpcConnection {
     /// Fire-and-forget: send `request` without awaiting a response.
     pub async fn notify(&mut self, request: Request) -> Result<(), ClientError> {
         self.verify_selection().await?;
+        if self.remote_admission.is_some() {
+            return self.request(request).await.map(|_| ());
+        }
         if matches!(
             request,
             Request::PreviewArchive { .. }
@@ -1009,6 +1060,15 @@ impl IpcConnection {
     /// frame buffered inside the connection, so it is safe to use as a
     /// `tokio::select!` branch.
     pub async fn next_event(&mut self) -> Result<IpcMessage, ClientError> {
+        self.verify_selection().await?;
+        if let Some(event) = self.remote_shutdown_notice.take() {
+            return Ok(IpcMessage {
+                expected_workspace: None,
+                id: 0,
+                source: ClientKind::Daemon,
+                payload: IpcPayload::Event(event),
+            });
+        }
         loop {
             self.verify_selection().await?;
             remote_connection::schedule_cleanup();
@@ -1172,6 +1232,115 @@ mod tests {
             account_id: mxr_core::id::AccountId::new(),
             messages_synced: 3,
         }
+    }
+
+    #[tokio::test]
+    async fn browser_admission_wraps_requests_notifications_and_original_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let workspace = mxr_protocol::ArchiveWorkspaceData {
+            workspace_id: "original".into(),
+            recovery_generation: "epoch".into(),
+        };
+        let expected = workspace.clone();
+        let server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+            let IpcPayload::Request(Request::RemoteRead {
+                expected_workspace,
+                client_id,
+                mail_secret,
+                request,
+            }) = &message.payload
+            else {
+                panic!("unscoped browser request");
+            };
+            assert_eq!(client_id, "browser:fixture");
+            assert_eq!(mail_secret.expose(), "a".repeat(64));
+            assert!(matches!(**request, Request::Ping));
+            if let Some(owner) = expected_workspace {
+                assert_eq!(owner, &expected);
+            }
+            Some(Response::Ok {
+                data: ResponseData::Pong,
+            })
+        })
+        .await;
+        let mut connection = IpcConnection::connect(&sock, ClientKind::Web)
+            .await
+            .unwrap()
+            .with_remote_admission(
+                "browser:fixture".into(),
+                mxr_core::RemoteSecret::new("a".repeat(64)),
+            );
+        assert!(matches!(
+            connection.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+        connection.notify(Request::Ping).await.unwrap();
+        connection
+            .request_response_unchecked_owned(Request::Ping, |_| {}, None, Some(&workspace))
+            .await
+            .unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn browser_captures_remote_owner_and_refuses_a_changed_owner_before_private_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let calls = Arc::new(AtomicU64::new(0));
+        let seen = calls.clone();
+        let server = spawn_fake_daemon(&sock, Vec::new(), move |message| {
+            let IpcPayload::Request(Request::RemoteRead { request, .. }) = &message.payload else {
+                panic!("browser request lost its authority");
+            };
+            assert!(
+                matches!(**request, Request::GetRemoteReady),
+                "private work reached a changed owner"
+            );
+            let generation = if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                "original"
+            } else {
+                "restored"
+            };
+            Some(Response::Ok {
+                data: ResponseData::RemoteReady {
+                    accepting_mail: true,
+                    shutdown_deadline_at: None,
+                    boot_id: "boot".into(),
+                    attachment_transfer_supported: true,
+                    capabilities: vec![mxr_core::RemoteCapability::MailRead],
+                    draft_attachment_upload_supported: true,
+                    draft_revision_supported: true,
+                    send_outcome_supported: true,
+                    protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+                    host_id: "host".into(),
+                    client_id: "browser:fixture".into(),
+                    workspace: mxr_protocol::ArchiveWorkspaceData {
+                        workspace_id: "mailbox".into(),
+                        recovery_generation: generation.into(),
+                    },
+                },
+            })
+        })
+        .await;
+        let mut connection = IpcConnection::connect(&sock, ClientKind::Web)
+            .await
+            .unwrap()
+            .with_remote_admission(
+                "browser:fixture".into(),
+                mxr_core::RemoteSecret::new("a".repeat(64)),
+            );
+        let original = connection.capture_workspace().await.unwrap();
+        assert_eq!(original.recovery_generation, "original");
+        let error = connection
+            .request_owned(Request::Ping, &original)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ClientError::Daemon { ref code, .. } if code == "workspace_conflict")
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
     }
 
     #[tokio::test]
@@ -1676,9 +1845,18 @@ mod tests {
     #[tokio::test]
     async fn remote_preflights_return_unsupported_without_dispatching_the_operation() {
         for request in [
-            Request::ExplainCategoryMembership {
-                message_id: mxr_core::MessageId::new(),
-                category_id: mxr_core::CategoryId::new(),
+            Request::RuleCategories {
+                form: mxr_protocol::RuleFormData {
+                    account_id: None,
+                    id: None,
+                    name: "Fixture category".into(),
+                    condition: "all".into(),
+                    action: "archive".into(),
+                    priority: 0,
+                    enabled: true,
+                },
+                preview_token: None,
+                delete: false,
             },
             Request::GetArchiveOperation {
                 identity: mxr_protocol::ArchiveIdentityData {
@@ -1707,6 +1885,9 @@ mod tests {
                 server_calls.fetch_add(1, Ordering::SeqCst);
                 Some(Response::Ok {
                     data: ResponseData::RemoteReady {
+                        boot_id: "fixture-boot".into(),
+                        accepting_mail: true,
+                        shutdown_deadline_at: None,
                         attachment_transfer_supported: false,
                         capabilities: vec![mxr_core::RemoteCapability::MailRead],
                         draft_attachment_upload_supported: false,

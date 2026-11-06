@@ -2227,6 +2227,9 @@ async fn get_inline_image(
 ) -> Result<axum::response::Response, BridgeError> {
     let id = MessageId::from_str(&message_id)
         .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
+    if crate::remote_browser::proof().is_some() {
+        return crate::inline_images::read(&state, &headers, id, query.source).await;
+    }
     let response = dispatch(
         &state,
         &headers,

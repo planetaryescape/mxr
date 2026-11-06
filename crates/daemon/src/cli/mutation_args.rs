@@ -390,6 +390,18 @@ pub enum ConfigAction {
 
 #[derive(Subcommand)]
 pub enum AttachmentAction {
+    /// Read a bounded inline-image chunk as JSON, without a host cache path.
+    InlineBytes {
+        message_id: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long, default_value_t = 0)]
+        offset: u64,
+        #[arg(long, default_value_t = mxr_protocol::MAX_ATTACHMENT_CHUNK_BYTES)]
+        length: u32,
+        #[arg(long)]
+        format: Option<crate::cli::OutputFormat>,
+    },
     /// List attachments for one message, or for every match of a
     /// `--search QUERY`. Multi-message output prefixes each section
     /// with `--- MESSAGE_ID ---`.

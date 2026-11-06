@@ -43,6 +43,31 @@ pub struct ConnectionState {
     pub cleanup: Vec<RetiredRegistration>,
     #[serde(default)]
     pub retired_pairings: Vec<RetiredPairing>,
+    #[serde(default)]
+    pub cleanup_retry_at: i64,
+    #[serde(default)]
+    pub cleanup_retry_attempts: u32,
+}
+
+impl ConnectionState {
+    /// Reserve the retry before network work so separate short-lived clients share backoff.
+    pub fn claim_cleanup_retry(&mut self, now: i64) -> bool {
+        if self.cleanup.is_empty() && self.retired_pairings.is_empty() {
+            self.reset_cleanup_retry();
+            return false;
+        }
+        if now < self.cleanup_retry_at {
+            return false;
+        }
+        let delay = (30i64 << self.cleanup_retry_attempts.min(7)).min(3600);
+        self.cleanup_retry_at = now.saturating_add(delay);
+        self.cleanup_retry_attempts = self.cleanup_retry_attempts.saturating_add(1);
+        true
+    }
+    pub fn reset_cleanup_retry(&mut self) {
+        self.cleanup_retry_at = 0;
+        self.cleanup_retry_attempts = 0;
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -229,5 +254,39 @@ mod tests {
         std::os::unix::fs::symlink(&victim, path.with_extension("lock")).unwrap();
         assert!(update(&path, None, |_| Ok(())).is_err());
         assert_eq!(std::fs::read_to_string(victim).unwrap(), "keep");
+    }
+}
+
+#[cfg(test)]
+mod cleanup_retry_tests {
+    use super::*;
+    #[test]
+    fn cleanup_retry_backoff_survives_a_new_process_and_new_intents_can_run_immediately() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connection.json");
+        update(&path, None, |state| {
+            state.cleanup.push(RetiredRegistration {
+                origin: "https://offline.test".into(),
+                client_id: "old".into(),
+                cleanup_secret: RemoteSecret::new("a".repeat(64)),
+            });
+            assert!(state.claim_cleanup_retry(100));
+            assert_eq!(state.cleanup_retry_at, 130);
+            Ok(())
+        })
+        .unwrap();
+        update(&path, None, |state| {
+            assert!(!state.claim_cleanup_retry(129));
+            assert!(state.claim_cleanup_retry(130));
+            assert_eq!(state.cleanup_retry_at, 190);
+            state.reset_cleanup_retry();
+            assert!(state.claim_cleanup_retry(131));
+            assert_eq!(state.cleanup_retry_at, 161);
+            Ok(())
+        })
+        .unwrap();
+        let state = read(&path).unwrap();
+        assert_eq!(state.cleanup_retry_at, 161);
+        assert_eq!(state.cleanup.len(), 1);
     }
 }

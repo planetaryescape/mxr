@@ -24,11 +24,18 @@ vi.mock("@/lib/tokenStorage", () => ({
 const socket = vi.hoisted(() => ({
   state: "connected" as string,
   reconnectNow: vi.fn<() => void>(),
+  eventListener: undefined as ((event: { type: string; deadline_at: number }) => void) | undefined,
   listener: undefined as ((status: { state: string }) => void) | undefined,
 }));
 vi.mock("@/lib/ws", () => ({
   daemonEvents: {
     getStatus: () => ({ state: socket.state }),
+    subscribe: (listener: (event: { type: string; deadline_at: number }) => void) => {
+      socket.eventListener = listener;
+      return () => {
+        socket.eventListener = undefined;
+      };
+    },
     onStatus: (listener: (status: { state: string }) => void) => {
       socket.listener = listener;
       return () => {
@@ -236,4 +243,15 @@ describe("daemon availability", () => {
       description: "Nothing changed. Try again once it's back.",
     });
   });
+});
+
+test("a planned stop holds submissions until the deadline and a successful probe", async () => {
+  stop = startDaemonAvailability(new QueryClient());
+  socket.eventListener?.({ type: "ServerStopping", deadline_at: Date.now() / 1_000 + 5 });
+  expect(isDaemonDown()).toBe(true);
+  await probeDaemon();
+  expect(isDaemonDown()).toBe(true);
+  await vi.advanceTimersByTimeAsync(5_001);
+  await probeDaemon();
+  expect(isDaemonDown()).toBe(false);
 });

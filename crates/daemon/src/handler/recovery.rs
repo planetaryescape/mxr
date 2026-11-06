@@ -277,6 +277,7 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | FinalizeDraftAttachment { .. }
             | GetAttachmentTransferMetadata { .. }
             | ReadAttachmentChunk { .. }
+            | ReadInlineImage { .. }
             | DownloadAttachment { .. }
             | GetHtmlImageAssets {
                 allow_remote: false,

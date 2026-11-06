@@ -42,7 +42,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 28;
+pub const IPC_PROTOCOL_VERSION: u32 = 29;
 
 #[cfg(test)]
 mod tests {
@@ -1355,6 +1355,7 @@ mod tests {
                         model: "noop".into(),
                         configured_model: "qwen2.5:3b-instruct".into(),
                         base_url: None,
+                        policy_key: None,
                         api_key_env: None,
                         api_key_present: false,
                         context_window: 0,

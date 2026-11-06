@@ -14,6 +14,7 @@ mod compose_assist;
 mod desk;
 mod draft_provenance;
 mod freshness;
+mod inline_images;
 mod keymap;
 mod llm_routes;
 mod messages;
@@ -37,6 +38,7 @@ pub use compose_assist::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
+pub use inline_images::*;
 pub use keymap::*;
 pub use llm_routes::*;
 pub use messages::*;
@@ -192,6 +194,9 @@ pub struct LlmStatusSnapshot {
     pub model: String,
     pub configured_model: String,
     pub base_url: Option<String>,
+    /// Cache identity for a redacted host endpoint, not an authentication credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_key: Option<String>,
     pub api_key_env: Option<String>,
     pub api_key_present: bool,
     pub context_window: u32,
@@ -727,6 +732,14 @@ pub enum Request {
     GetHtmlImageAssets {
         message_id: MessageId,
         allow_remote: bool,
+    },
+    /// Read one bounded chunk of an inline source present in this message's HTML.
+    /// Remote web resources and host file sources cannot be requested.
+    ReadInlineImage {
+        message_id: MessageId,
+        source: String,
+        offset: u64,
+        length: u32,
     },
     DownloadAttachment {
         message_id: MessageId,
@@ -3076,6 +3089,7 @@ impl Request {
             | Self::PrepareInviteResponse { .. }
             | Self::MarkInviteAnswered { .. }
             | Self::GetHtmlImageAssets { .. }
+            | Self::ReadInlineImage { .. }
             | Self::DownloadAttachment { .. }
             | Self::GetAttachmentTransferMetadata { .. }
             | Self::ReadAttachmentChunk { .. }
@@ -3780,6 +3794,14 @@ pub enum ResponseData {
         report: mxr_core::DraftSafetyReport,
     },
     RemoteReady {
+        /// A draining host still admits status and original-operation recovery.
+        #[serde(default)]
+        accepting_mail: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shutdown_deadline_at: Option<i64>,
+        /// Changes with every daemon boot; stale lifecycle notices must not cross it.
+        #[serde(default)]
+        boot_id: String,
         #[serde(default)]
         attachment_transfer_supported: bool,
         #[serde(default)]
@@ -3834,6 +3856,9 @@ pub enum ResponseData {
     HtmlImageAssets {
         message_id: MessageId,
         assets: Vec<HtmlImageAsset>,
+    },
+    InlineImageChunk {
+        chunk: InlineImageChunkData,
     },
     AttachmentFile {
         file: AttachmentFile,
@@ -4899,6 +4924,7 @@ impl ResponseData {
             | Self::InviteResponsePreview { .. }
             | Self::InviteResponseSent { .. }
             | Self::HtmlImageAssets { .. }
+            | Self::InlineImageChunk { .. }
             | Self::AttachmentFile { .. }
             | Self::AttachmentTransferMetadata { .. }
             | Self::AttachmentChunk { .. }
@@ -6172,6 +6198,10 @@ fn default_imap_max_connections() -> usize {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "event")]
 pub enum DaemonEvent {
+    ServerStopping {
+        boot_id: String,
+        deadline_at: i64,
+    },
     // Core mail/runtime events.
     SyncCompleted {
         account_id: AccountId,
@@ -6300,7 +6330,8 @@ impl DaemonEvent {
             | Self::MessageUnsnoozed { .. }
             | Self::ReminderTriggered { .. }
             | Self::LabelCountsUpdated { .. } => IpcCategory::CoreMail,
-            Self::OperationStarted { .. }
+            Self::ServerStopping { .. }
+            | Self::OperationStarted { .. }
             | Self::OperationProgress { .. }
             | Self::OperationCompleted { .. }
             | Self::OperationFailed { .. }

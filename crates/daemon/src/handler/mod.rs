@@ -93,7 +93,7 @@ pub(crate) mod record_subscriptions;
 pub(crate) mod records;
 mod recovery;
 mod relationship_profile;
-mod remote;
+pub(crate) mod remote;
 #[cfg(test)]
 mod remote_tests;
 pub(crate) mod reply_later;
@@ -457,6 +457,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::SyncMicrosoftTodos { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::ReadInlineImage { .. }
         | Request::PreviewDraftAttachment { .. }
         | Request::BeginDraftAttachment { .. }
         | Request::WriteDraftAttachmentChunk { .. }
@@ -725,6 +726,12 @@ async fn dispatch(
             message_id,
             allow_remote,
         } => mailbox::get_html_image_assets(state, message_id, *allow_remote).await,
+        Request::ReadInlineImage {
+            message_id,
+            source,
+            offset,
+            length,
+        } => mailbox::read_inline_image(state, message_id, source, *offset, *length).await,
         Request::DownloadAttachment {
             message_id,
             attachment_id,
@@ -2868,6 +2875,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DownloadAttachment { .. }
         | Request::GetAttachmentTransferMetadata { .. }
         | Request::ReadAttachmentChunk { .. }
+        | Request::ReadInlineImage { .. }
         | Request::OpenAttachment { .. }
         | Request::CreateLabel { .. }
         | Request::RenameLabel { .. }
@@ -3076,6 +3084,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::PrepareInviteResponse { .. } => "prepare_invite_response",
         Request::MarkInviteAnswered { .. } => "mark_invite_answered",
         Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
+        Request::ReadInlineImage { .. } => "read_inline_image",
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::GetAttachmentTransferMetadata { .. } => "attachment_transfer_metadata",
         Request::ReadAttachmentChunk { .. } => "read_attachment_chunk",

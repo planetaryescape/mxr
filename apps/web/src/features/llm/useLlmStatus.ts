@@ -36,7 +36,7 @@ export function llmPolicyKey(status: LlmStatus | undefined): string {
   return [
     status.provider,
     status.model,
-    status.base_url ?? "",
+    status.policy_key ?? status.base_url ?? "",
     status.allow_cloud_relationship_data ? "share" : "private",
   ].join("|");
 }

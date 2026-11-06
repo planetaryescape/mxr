@@ -13,6 +13,7 @@
 import type { components } from "./generated";
 
 export type DaemonEvent =
+  | { type: "ServerStopping"; event?: "ServerStopping"; boot_id: string; deadline_at: number }
   | { type: "SyncCompleted"; event?: "SyncCompleted"; account_id: string; messages_synced: number }
   | { type: "SyncError"; event?: "SyncError"; account_id: string; error: string }
   | {

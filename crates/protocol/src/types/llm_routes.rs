@@ -114,6 +114,7 @@ pub struct LlmRouteStatusData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmEndpointStatusData {
+    /// Empty in remote status, where endpoint addresses remain on the host.
     pub base_url: String,
     pub model: String,
     /// Never `no_key`.

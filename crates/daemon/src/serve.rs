@@ -342,6 +342,9 @@ pub(crate) async fn serve_client_connection<S>(
             changed = shutdown_rx.changed(), if !shutdown_requested => {
                 match changed {
                     Ok(()) if *shutdown_rx.borrow_and_update() => {
+                        // The lifecycle notice was enqueued before shutdown intent. Deliver it
+                        // while the socket can still write, including for idle remote clients.
+                        if can_send && auth.is_authenticated() && !flush_queued_events(&mut sink, &state, event_profile, &mut event_rx).await {can_send=false;}
                         shutdown_requested = true;
                         accept_requests = false;
                     }

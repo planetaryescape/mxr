@@ -674,6 +674,7 @@ pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 pub struct AppState {
+    pub(crate) remote_lifecycle: crate::remote_lifecycle::Lifecycle,
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
     /// An in-memory test state's attachment folder, deleted with the state so
     /// test runs don't fill the temp directory.
@@ -1096,6 +1097,7 @@ impl AppState {
         let locale = mxr_core::i18n::select(&resolve_locale_code(&config));
 
         Ok(Self {
+            remote_lifecycle: Default::default(),
             restore_pending: std::sync::atomic::AtomicBool::new(pending),
             #[cfg(test)]
             _test_attachment_dir: None,
@@ -2025,7 +2027,25 @@ impl AppState {
         *self.shutdown_tx.borrow()
     }
 
+    pub(crate) fn begin_remote_drain(&self, deadline_seconds: u32) {
+        let now = chrono::Utc::now().timestamp();
+        let seconds = deadline_seconds.clamp(1, 30);
+        if self.remote_lifecycle.drain(now, seconds) {
+            let _ = self.event_tx.send(mxr_protocol::IpcMessage {
+                expected_workspace: None,
+                id: 0,
+                source: mxr_protocol::ClientKind::Daemon,
+                payload: mxr_protocol::IpcPayload::Event(
+                    mxr_protocol::DaemonEvent::ServerStopping {
+                        boot_id: self.remote_lifecycle.boot_id().into(),
+                        deadline_at: now + i64::from(seconds),
+                    },
+                ),
+            });
+        }
+    }
     pub fn request_shutdown(&self) {
+        self.begin_remote_drain(5);
         self.shutdown_tx.send_replace(true);
     }
 
@@ -2593,6 +2613,7 @@ impl AppState {
 
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
+            remote_lifecycle: Default::default(),
             restore_pending: std::sync::atomic::AtomicBool::new(false),
             _test_attachment_dir: Some(attachment_dir),
             store,
@@ -2696,6 +2717,7 @@ impl AppState {
 
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
+            remote_lifecycle: Default::default(),
             restore_pending: std::sync::atomic::AtomicBool::new(false),
             _test_attachment_dir: Some(attachment_dir),
             store,
@@ -2847,6 +2869,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok((
             Self {
+                remote_lifecycle: Default::default(),
                 restore_pending: std::sync::atomic::AtomicBool::new(false),
                 _test_attachment_dir: Some(attachment_dir),
                 store,

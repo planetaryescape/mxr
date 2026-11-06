@@ -147,7 +147,8 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         DaemonEvent::SyncError { .. }
         | DaemonEvent::OperationFailed { .. }
         | DaemonEvent::MutationReconciliationFailed { .. } => Some(ChimeEvent::Error),
-        DaemonEvent::SyncCompleted { .. }
+        DaemonEvent::ServerStopping { .. }
+        | DaemonEvent::SyncCompleted { .. }
         | DaemonEvent::LabelCountsUpdated { .. }
         | DaemonEvent::OperationStarted { .. }
         | DaemonEvent::OperationProgress { .. }

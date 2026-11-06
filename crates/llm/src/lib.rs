@@ -468,6 +468,11 @@ impl LlmRuntime {
         &self.route_health
     }
 
+    /// Cache invalidation after provider replacement without exposing endpoint configuration.
+    pub fn policy_generation(&self) -> u64 {
+        self.observations.with_generation(|generation| generation)
+    }
+
     /// Override the background-work timeout (from `[llm]
     /// background_request_timeout_secs`).
     pub fn set_background_timeout(&self, timeout: Duration) {

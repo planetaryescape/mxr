@@ -289,6 +289,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::PrepareInviteResponse { message_id, .. }
         | Request::MarkInviteAnswered { message_id, .. }
         | Request::GetHtmlImageAssets { message_id, .. }
+        | Request::ReadInlineImage { message_id, .. }
         | Request::DownloadAttachment { message_id, .. }
         | Request::GetAttachmentTransferMetadata { message_id, .. }
         | Request::ReadAttachmentChunk { message_id, .. }
@@ -1670,6 +1671,7 @@ pub(crate) async fn scope_event(
         // Its summary can name another account's messages, and nothing
         // ties it to an account.
         DaemonEvent::MutationReconciliationFailed { .. } => None,
+        DaemonEvent::ServerStopping { .. } => Some(event),
         // The count covers every account's events, so a scoped client is
         // told to resync without learning how much the others got.
         DaemonEvent::EventsLagged { .. } => Some(DaemonEvent::EventsLagged { skipped: 0 }),

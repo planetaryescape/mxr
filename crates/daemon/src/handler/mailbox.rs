@@ -745,6 +745,9 @@ fn escape_param(value: &str) -> String {
     value.replace('"', "'")
 }
 
+mod inline_images;
+pub(super) use inline_images::read_inline_image;
+
 pub(super) async fn get_html_image_assets(
     state: &AppState,
     message_id: &MessageId,

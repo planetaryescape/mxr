@@ -37,6 +37,13 @@ pub enum McpCommand {
 
 #[derive(Subcommand)]
 pub enum DaemonAction {
+    /// Preview stopping the local daemon; hosted profiles retain stopped intent across reboot.
+    Stop {
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
     /// Pipe raw bytes between stdin/stdout and the local daemon's Unix
     /// socket (the Docker `connhelper` model). Lets any transport that can
     /// exec a process and pipe stdio reach the daemon — for example
@@ -114,8 +121,37 @@ pub enum BackupAction {
 
 #[derive(Subcommand)]
 pub enum ServeAction {
-    /// Inspect local pairing authority; supervised gateway setup is not available
+    /// Inspect local pairing authority and any recorded hosting setup
     Status,
+    /// Preview installation of an owned private HTTPS user service; --confirm applies it
+    Setup {
+        #[arg(long)]
+        public_origin: String,
+        #[arg(long, default_value = "127.0.0.1:18741")]
+        listen: std::net::SocketAddr,
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Preview resuming recorded hosting and local daemon recovery
+    Start {
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Preview stopping remote hosting; --all also stops the local provider owner
+    Stop {
+        #[arg(long)]
+        all: bool,
+        #[arg(long, conflicts_with = "confirm")]
+        dry_run: bool,
+        #[arg(long)]
+        confirm: bool,
+    },
+    #[command(hide = true)]
+    Supervised,
     /// Inspect or approve local pairing requests
     Pair {
         #[command(subcommand)]
@@ -158,6 +194,21 @@ pub enum Command {
         /// Request host-approved draft, attachment and send access; default pairing is read-only.
         #[arg(long, conflicts_with_all = ["local", "status"])]
         allow_send: bool,
+        /// Request host-approved mail organization, modes and todo access.
+        #[arg(long, conflicts_with_all = ["local", "status"])]
+        allow_triage: bool,
+        /// Request host-approved AI mail features; host privacy policy still applies.
+        #[arg(long, conflicts_with_all = ["local", "status"])]
+        allow_ai: bool,
+        /// Cancel only the pending pairing, preserving the selected registration.
+        #[arg(long, conflicts_with_all = ["url", "local", "status", "restart_pairing", "forget_cleanup", "allow_send", "allow_triage", "allow_ai"])]
+        cancel_pairing: bool,
+        /// Retire a pending pairing and request a fresh challenge at this URL.
+        #[arg(long, requires = "url", conflicts_with_all = ["local", "status", "forget_cleanup"])]
+        restart_pairing: bool,
+        /// Forget the previewed cleanup intents locally; the old host may still have them registered.
+        #[arg(long, conflicts_with_all = ["url", "local", "status", "allow_send", "allow_triage", "allow_ai"])]
+        forget_cleanup: bool,
         url: Option<String>,
         #[arg(long, conflicts_with = "url")]
         local: bool,
@@ -174,9 +225,12 @@ pub enum Command {
     },
     /// Manage local pairing authority or run the loopback gateway in foreground
     Serve {
-        /// Run the native gateway beside the explicit local daemon.
+        /// Run the gateway beside the explicit local daemon.
         #[arg(long)]
         foreground: bool,
+        /// Exact HTTPS origin served by the private proxy; enables browser sessions.
+        #[arg(long)]
+        public_origin: Option<String>,
         #[arg(long, default_value = "127.0.0.1:18741")]
         listen: std::net::SocketAddr,
         #[arg(long)]
@@ -1229,6 +1283,9 @@ pub enum Command {
         /// Print the launch URL instead of opening the browser.
         #[arg(long)]
         print_url: bool,
+        /// Emit a private desktop launch packet on stdout; never put the code in a URL.
+        #[arg(long, hide = true, conflicts_with = "foreground")]
+        session_json: bool,
         /// Do not open the system browser; just print the URL.
         #[arg(long)]
         no_open: bool,
@@ -4475,6 +4532,7 @@ mod tests {
                 host,
                 port,
                 print_url,
+                session_json,
                 no_open,
                 auto_port,
                 strict_port,
@@ -4486,6 +4544,7 @@ mod tests {
                 assert_eq!(host, "127.0.0.1");
                 assert_eq!(port, 4321);
                 assert!(print_url);
+                assert!(!session_json);
                 assert!(!no_open);
                 assert!(!auto_port);
                 assert!(!strict_port);

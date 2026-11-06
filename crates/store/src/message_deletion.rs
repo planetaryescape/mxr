@@ -79,6 +79,10 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("contact_style", MessageDeletionRule::ClearedWithContact),
     (
+        "alert_todo_claims",
+        MessageDeletionRule::KeptNoText("ids and dedup keys only; prevent replay after deletion"),
+    ),
+    (
         "pending_message_forgets",
         MessageDeletionRule::KeptNoText(
             "ids of deleted messages awaiting cleanup outside SQLite; the daemon drains it",

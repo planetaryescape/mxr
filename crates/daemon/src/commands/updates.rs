@@ -27,6 +27,10 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    // The audit reads the store itself: it needs no daemon.
+    if matches!(action, Some(UpdatesAction::AlertAudit)) {
+        return super::alert_audit::run(format).await;
+    }
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let format = resolve_format(format);
@@ -42,6 +46,8 @@ pub async fn run(
             .await?;
             print!("{}", render_digest(&digest, format, &marks)?);
         }
+        // Handled above, before the daemon connection.
+        Some(UpdatesAction::AlertAudit) => {}
         Some(UpdatesAction::LetGo { source, dry_run }) => {
             let preview = let_go(
                 &mut client,
@@ -481,6 +487,7 @@ mod tests {
             todo_id: None,
             in_todo: None,
             todo_suggestion: None,
+            auto_todo: None,
             todo_title: String::new(),
             why: String::new(),
             setting: UpdateSourceSettingData::EveryDigest,

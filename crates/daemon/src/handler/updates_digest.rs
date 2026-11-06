@@ -13,7 +13,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_deliveries::DeliveryStatus;
 use mxr_protocol::{
-    updates_copy, UpdateDeltaData, UpdateExpiredData, UpdateLineData, UpdateLinkData,
+    updates_copy, AutoTodoData, UpdateDeltaData, UpdateExpiredData, UpdateLineData, UpdateLinkData,
     UpdateNumberData, UpdateProvenanceData, UpdateSectionData, UpdateSignalData,
     UpdateSourceSettingData, UpdateTrackerData, UpdatesCutData, UpdatesDigestData,
     UpdatesSinceData,
@@ -126,6 +126,10 @@ pub(super) struct DigestInputs<'a, Tz: TimeZone> {
     pub todos: &'a [TodoRecord],
     pub deliveries: &'a [Delivery],
     pub delivery_sources: &'a HashMap<mxr_core::DeliveryId, HashSet<MessageId>>,
+    /// Why an alert in view was not made into a to-do on arrival.
+    pub alert_notes: &'a HashMap<MessageId, AutoTodoData>,
+    /// The same for a parcel that went wrong.
+    pub parcel_notes: &'a HashMap<mxr_core::DeliveryId, AutoTodoData>,
     pub cuts: &'a Cuts,
     pub scope: &'a Scope,
     pub last_seen: Option<DateTime<Utc>>,
@@ -399,11 +403,22 @@ where
             thread_ids.push(member.item.message.thread_id.clone());
         }
     }
-    let todo = thread_ids
+    let todo_record = thread_ids
         .iter()
-        .find_map(|thread| ctx.todo_by_thread.get(thread))
-        .map(|todo| todo.id.clone());
-    // A suggestion, never a to-do: `t` is the user's to press.
+        .find_map(|thread| ctx.todo_by_thread.get(thread));
+    let todo = todo_record.map(|todo| todo.id.clone());
+    // Why the alert is, or is not, already a to-do: the provider's word.
+    let alert = members.iter().any(|m| m.item.fact.needs_you.is_some());
+    let auto_todo = match todo_record.and_then(|record| super::alert_todos::created_note(record)) {
+        Some(created) => Some(created),
+        None if alert && todo.is_none() => members
+            .iter()
+            .filter_map(|m| ctx.inputs.alert_notes.get(&m.item.message.id))
+            .next()
+            .cloned(),
+        None => None,
+    };
+    // Otherwise a suggestion: `t` is the user's to press.
     let todo_suggestion = if todo.is_some() {
         None
     } else {
@@ -411,11 +426,16 @@ where
             .iter()
             .find_map(|m| m.item.fact.needs_you)
             .map(|needs| {
-                format!(
+                let mut text = format!(
                     "Suggested to-do: {} from {} (rule). t adds it.",
                     needs.label(),
                     mxr_updates::fact::branded_name(&fact.source_name, &fact.sender_host)
-                )
+                );
+                if let Some(note) = &auto_todo {
+                    text.push(' ');
+                    text.push_str(&note.reason_text);
+                }
+                text
             })
     };
     let tracker = fact.tracked.as_ref().map(|tracked| {
@@ -492,6 +512,7 @@ where
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
         todo_suggestion,
+        auto_todo,
         todo_title: fact.todo_title.clone(),
         why: format!(
             "Here because: {} ({source}). In the {} digest.",
@@ -931,6 +952,7 @@ where
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
         todo_suggestion: None,
+        auto_todo: None,
         todo_title: parcel_todo_title(&name),
         why: format!(
             "Here because: a parcel with a tracking state ({}). Leaves Updates when it ends.",
@@ -1096,6 +1118,18 @@ where
                 })
                 .filter_map(|d| {
                     let mut line = parcel_line(d, window.previous, inputs.todos, now, tz)?;
+                    // Why the parcel problem is, or is not, already a to-do.
+                    line.auto_todo = match line
+                        .todo_id
+                        .as_ref()
+                        .and_then(|id| inputs.todos.iter().find(|todo| &todo.id == id))
+                    {
+                        Some(todo) => super::alert_todos::created_note(todo),
+                        None if line.section == UpdateSectionData::NeedsALook => {
+                            inputs.parcel_notes.get(&d.id).cloned()
+                        }
+                        None => None,
+                    };
                     let held: Vec<_> = inputs
                         .items
                         .iter()

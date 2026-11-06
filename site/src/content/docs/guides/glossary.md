@@ -146,8 +146,10 @@ ends badly moves to Needs a look.
 
 **Suggested to-do**: an update that leads Needs a look with a highlighted
 line saying why: a new sign-in, a failed payment, a delivery problem, or
-any message from a source tuned to `breakthrough`. mxr never adds the to-do
-itself; `t` does, and the line then shows "already in To do".
+any message from a source tuned to `breakthrough`. `t` adds it, and the line
+then shows "already in To do". An alert also explains why automatic
+creation was held. Current live providers do not supply the receiving
+verdict mxr requires for automatic alert creation.
 
 **Reading**: the mode for newsletters and posts you chose (`mxr reading`,
 `g r`), shown as an [edition](/guides/reading/): readable items in three

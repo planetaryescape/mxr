@@ -275,6 +275,12 @@ fn body_for(
                         );
                     }
                 }
+                // A to-do mxr made itself says what confirmed the sender.
+                if let Some(auto) = line.auto_todo.as_ref().filter(|a| a.state == "created") {
+                    for text in wrap(&one_line(&auto.reason_text), width.saturating_sub(8)) {
+                        body.text(format!("    {text}"), secondary);
+                    }
+                }
                 if let Some(suggestion) = &line.suggestion {
                     for text in wrap(
                         &format!("{}  P tune", one_line(suggestion)),
@@ -634,6 +640,7 @@ pub(crate) mod tests {
             todo_id: None,
             in_todo: None,
             todo_suggestion: None,
+            auto_todo: None,
             todo_title: format!("Check {source}: {fact}"),
             why: "Here because: automated sender (rule). In the 08:00 digest.".into(),
             setting: UpdateSourceSettingData::EveryDigest,

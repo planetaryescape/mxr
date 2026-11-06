@@ -936,7 +936,15 @@ local time.
 ```toml
 [updates]
 cuts = ["08:00", "16:30"]
+auto_todo_alerts = true
 ```
+
+- `auto_todo_alerts`: default `true`. Allows automatic alert to-dos only
+  with genuine receiver evidence, earlier sender history and a fresh
+  unread inbox arrival outside backfill. Current live adapters cannot
+  attest to that evidence and hold creation with an explanation. `false`
+  disables this path; manual `t` remains available. See
+  [Updates](/guides/updates/#alert-suggestions-explain-why-no-automatic-to-do-was-created).
 
 - `cuts`: one to four `HH:MM` times, each once. Default `["08:00", "16:30"]`.
   The digest holds what arrived by the latest cut; mail after it waits for

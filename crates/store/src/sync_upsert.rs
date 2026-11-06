@@ -13,6 +13,7 @@ use crate::keywords::replace_message_keywords_tx;
 use crate::message::{replace_message_labels_tx, upsert_envelope_tx};
 use mxr_core::id::{LabelId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageBody, MessageDirection};
+use mxr_core::ArrivalEvidence;
 
 /// One synced message, with everything the store needs to persist it.
 ///
@@ -25,6 +26,8 @@ pub struct SyncUpsert {
     pub direction: MessageDirection,
     pub body: MessageBody,
     pub label_ids: Vec<LabelId>,
+    /// The provider's receipt time and verdict, stored with the message.
+    pub arrival: ArrivalEvidence,
 }
 
 impl SyncUpsert {
@@ -92,6 +95,14 @@ impl super::Store {
                     .execute(&mut *tx)
                     .await?;
                 insert_body_tx(&mut tx, &upsert.body).await?;
+                crate::message_arrivals::record_message_arrival_tx(
+                    &mut tx,
+                    &upsert.envelope.id,
+                    &upsert.envelope.account_id,
+                    &upsert.envelope.from.email,
+                    &upsert.arrival,
+                )
+                .await?;
                 replace_message_labels_tx(
                     &mut tx,
                     &upsert.envelope.id,
@@ -198,6 +209,7 @@ mod tests {
             direction: MessageDirection::Inbound,
             body,
             label_ids,
+            arrival: Default::default(),
         }
     }
 

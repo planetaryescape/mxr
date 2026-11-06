@@ -85,7 +85,11 @@ impl FolderCopyProvider {
                     fetched_at: chrono::Utc::now(),
                     metadata: mxr_core::MessageMetadata::default(),
                 };
-                mxr_core::SyncedMessage { envelope, body }
+                mxr_core::SyncedMessage {
+                    envelope,
+                    body,
+                    arrival: Default::default(),
+                }
             })
             .collect()
     }
@@ -726,6 +730,7 @@ fn rules_form_maps_link_filters_to_link_density() {
 }
 
 mod account_scope;
+mod alert_todos;
 mod approved_send_recovery;
 mod archive_recovery;
 mod arrivals;

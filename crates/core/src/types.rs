@@ -2434,6 +2434,10 @@ impl fmt::Debug for SyncCursor {
 pub struct SyncedMessage {
     pub envelope: Envelope,
     pub body: MessageBody,
+    /// The provider's own receipt time and verdict on the sender, written
+    /// by the adapter that fetched the message.
+    #[serde(default)]
+    pub arrival: crate::arrival::ArrivalEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

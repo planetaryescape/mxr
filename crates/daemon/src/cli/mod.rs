@@ -2862,6 +2862,12 @@ pub enum UpdatesAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Count what the automatic alert to-do rule would do on your own mail.
+    /// Reads the local store read-only, without the daemon, and prints counts
+    /// by outcome and reason: no senders, subjects or bodies. Run it to see
+    /// how often a new sign-in or failed-payment alert would become a to-do
+    /// by itself, and why the rest would not.
+    AlertAudit,
 }
 
 const ARRIVALS_LONG_ABOUT: &str = "Where every email that arrived went, counted once each.

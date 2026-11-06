@@ -128,6 +128,20 @@ fn parse_internal_date(
     }
 }
 
+/// The API exposes RFC message headers, not an attestation that Gmail authored
+/// a verdict. Insert/import can preserve supplied headers, and migrated mail's
+/// internalDate can come from Date. Do not promote either to trusted evidence.
+/// See docs/issues/auto-breakthrough.md for the outstanding receiver boundary.
+pub fn gmail_arrival(_msg: &GmailMessage, _from_email: &str) -> mxr_core::ArrivalEvidence {
+    mxr_core::ArrivalEvidence {
+        received_at: None,
+        is_live: false,
+        sender: mxr_core::SenderCheck::Unverified {
+            reason: mxr_core::UnverifiedReason::GmailVerdictUnproven,
+        },
+    }
+}
+
 pub fn labels_to_flags(label_ids: &[String]) -> MessageFlags {
     let mut flags = MessageFlags::empty();
 
@@ -1430,5 +1444,41 @@ mod tests {
 
         let (text_plain, _, _) = extract_body(&msg);
         assert_eq!(text_plain.as_deref(), Some(text));
+    }
+    #[test]
+    fn sole_supplied_verdict_and_migrated_dates_are_not_receiver_proof() {
+        // An insert/import can carry this ordinary header and a chosen date;
+        // the response has no attestation that Gmail authored either value.
+        for headers in [
+            vec![],
+            vec![GmailHeader {
+                name: "Authentication-Results".into(),
+                value: "mx.google.com; dmarc=pass header.from=accounts.google.com".into(),
+            }],
+        ] {
+            for date in [
+                None,
+                Some("1793964000000".to_string()),
+                Some("1".to_string()),
+            ] {
+                let message: GmailMessage = serde_json::from_value(serde_json::json!({
+                    "id": "synthetic-import", "threadId": "synthetic-thread",
+                    "internalDate": date,
+                    "payload": {"headers": headers.iter().map(|h| serde_json::json!({
+                        "name": h.name, "value": h.value
+                    })).collect::<Vec<_>>()}
+                }))
+                .unwrap();
+                let evidence = gmail_arrival(&message, "no-reply@accounts.google.com");
+                assert_eq!(
+                    evidence.sender,
+                    mxr_core::SenderCheck::Unverified {
+                        reason: mxr_core::UnverifiedReason::GmailVerdictUnproven,
+                    }
+                );
+                assert_eq!(evidence.received_at, None);
+                assert!(!evidence.is_live);
+            }
+        }
     }
 }

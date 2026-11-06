@@ -70,6 +70,7 @@ impl DeltaLabelProvider {
             .map(|env| SyncedMessage {
                 body: make_empty_body(&env.id),
                 envelope: env,
+                arrival: Default::default(),
             })
             .collect();
         Self {

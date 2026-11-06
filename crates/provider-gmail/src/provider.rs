@@ -19,7 +19,7 @@ use crate::client::{GmailApi, GmailClient, MessageFormat};
 use crate::cursor::GmailCursor;
 use crate::error::GmailError;
 use crate::parse::{
-    calendar_metadata_from_attachment_bytes, extract_message_body_for_account,
+    calendar_metadata_from_attachment_bytes, extract_message_body_for_account, gmail_arrival,
     gmail_message_to_envelope,
 };
 use crate::send;
@@ -719,7 +719,12 @@ fn parse_synced_message(
     match gmail_message_to_envelope(&message, &account_id) {
         Ok(envelope) => {
             let body = extract_message_body_for_account(&message, &account_id);
-            Some(SyncedMessage { envelope, body })
+            let arrival = gmail_arrival(&message, &envelope.from.email);
+            Some(SyncedMessage {
+                envelope,
+                body,
+                arrival,
+            })
         }
         Err(error) => {
             warn!(

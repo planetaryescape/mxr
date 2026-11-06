@@ -1237,7 +1237,7 @@ pub(crate) async fn post_sync_classification(
     }
 
     // Facts for new Updates mail, so the next digest reads them cached.
-    crate::handler::updates::scan_messages(state, upserted_message_ids).await;
+    crate::handler::updates::scan_messages(state, upserted_message_ids, now).await;
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
@@ -3405,7 +3405,11 @@ mod tests {
                     .provider_id(format!("page-{served}"))
                     .build();
                 let body = crate::test_fixtures::make_empty_body(&envelope.id);
-                vec![mxr_core::types::SyncedMessage { envelope, body }]
+                vec![mxr_core::types::SyncedMessage {
+                    envelope,
+                    body,
+                    arrival: Default::default(),
+                }]
             } else {
                 // The empty final page: nothing synced, nothing left to page.
                 Vec::new()

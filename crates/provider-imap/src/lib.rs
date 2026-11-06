@@ -48,6 +48,7 @@ struct CollectSyncedMessages<'a> {
     min_uid: u32,
     seen_uids: &'a mut HashSet<u32>,
     account_id: &'a AccountId,
+    receiver: parse::ImapReceiver,
     synced: &'a mut Vec<SyncedMessage>,
     /// Lowest UID in the batch that failed to parse. The caller floors the
     /// persisted `uid_next` to this so the next delta re-fetches it, instead
@@ -60,6 +61,7 @@ pub struct ImapProvider {
     trash_folder: String,
     max_connections: usize,
     session_factory: Box<dyn ImapSessionFactory>,
+    receiver: parse::ImapReceiver,
 }
 
 impl ImapProvider {
@@ -71,6 +73,7 @@ impl ImapProvider {
             trash_folder: "Trash".to_string(),
             max_connections,
             session_factory,
+            receiver: parse::ImapReceiver::from_config(&config),
         }
     }
 
@@ -85,6 +88,7 @@ impl ImapProvider {
             trash_folder: "Trash".to_string(),
             max_connections: config.max_connections,
             session_factory,
+            receiver: parse::ImapReceiver::from_config(&config),
         }
     }
 
@@ -278,7 +282,12 @@ impl ImapProvider {
             if msg.uid < request.min_uid || !request.seen_uids.insert(msg.uid) {
                 continue;
             }
-            match parse::imap_fetch_to_synced_message(msg, request.mailbox, request.account_id) {
+            match parse::imap_fetch_from_receiver(
+                msg,
+                request.mailbox,
+                request.account_id,
+                request.receiver,
+            ) {
                 Ok(sm) => request.synced.push(sm),
                 Err(e) => {
                     warn!(
@@ -613,7 +622,12 @@ impl ImapProvider {
                 .map_err(mxr_core::error::MxrError::from)?;
 
             for msg in &fetched {
-                match parse::imap_fetch_to_synced_message(msg, &all_mail.name, &self.account_id) {
+                match parse::imap_fetch_from_receiver(
+                    msg,
+                    &all_mail.name,
+                    &self.account_id,
+                    self.receiver,
+                ) {
                     Ok(sm) => synced.push(sm),
                     Err(e) => warn!(
                         mailbox = %all_mail.name,
@@ -814,6 +828,7 @@ impl ImapProvider {
                         min_uid,
                         seen_uids: &mut seen_uids,
                         account_id: &self.account_id,
+                        receiver: self.receiver,
                         synced: &mut synced,
                         min_failed_uid: &mut min_failed_uid,
                     },
@@ -897,6 +912,7 @@ impl ImapProvider {
                                             min_uid: 1,
                                             seen_uids: &mut seen_uids,
                                             account_id: &self.account_id,
+                                            receiver: self.receiver,
                                             synced: &mut synced,
                                             min_failed_uid: &mut min_failed_uid,
                                         },
@@ -972,6 +988,7 @@ impl ImapProvider {
                                 min_uid: 1,
                                 seen_uids: &mut seen_uids,
                                 account_id: &self.account_id,
+                                receiver: self.receiver,
                                 synced: &mut synced,
                                 min_failed_uid: &mut min_failed_uid,
                             },
@@ -1066,6 +1083,7 @@ impl ImapProvider {
                         min_uid,
                         seen_uids: &mut seen_uids,
                         account_id: &self.account_id,
+                        receiver: self.receiver,
                         synced: &mut synced,
                         min_failed_uid: &mut min_failed_uid,
                     },
@@ -1256,7 +1274,7 @@ impl MailSyncProvider for ImapProvider {
             return Ok(None);
         };
 
-        match parse::imap_fetch_to_synced_message(message, &mailbox, &self.account_id) {
+        match parse::imap_fetch_from_receiver(message, &mailbox, &self.account_id, self.receiver) {
             Ok(synced) => Ok(Some(synced)),
             Err(error) => Err(mxr_core::error::MxrError::Provider(error.to_string())),
         }

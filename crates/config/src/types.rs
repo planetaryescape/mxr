@@ -205,12 +205,18 @@ pub struct UpdatesConfig {
     /// When the digest is gathered each day, local time: one to four
     /// "HH:MM" times. A bad list falls back to the defaults with a warning.
     pub cuts: Vec<String>,
+    /// A new sign-in or failed-payment alert that the receiving provider
+    /// vouches for, from a sender the account already knows, becomes its
+    /// own to-do on arrival. Off: every alert stays a suggestion in Needs
+    /// a look.
+    pub auto_todo_alerts: bool,
 }
 
 impl Default for UpdatesConfig {
     fn default() -> Self {
         Self {
             cuts: vec!["08:00".to_string(), "16:30".to_string()],
+            auto_todo_alerts: true,
         }
     }
 }

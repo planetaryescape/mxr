@@ -529,7 +529,7 @@ async fn a_sign_in_alert_leads_needs_a_look_as_a_suggestion_and_t_makes_the_to_d
     )
     .await;
     // Arrival reads facts and makes nothing: no to-do without you.
-    updates::scan(&fx.state, &[alert.id.clone(), routine.id.clone()])
+    updates::scan(&fx.state, &[alert.id.clone(), routine.id.clone()], now)
         .await
         .unwrap();
     let open = fx
@@ -595,7 +595,7 @@ async fn a_borrowed_brand_shows_its_real_host_and_is_still_only_a_suggestion() {
     .await;
     forged.from.name = Some("Google".into());
     fx.store_envelope(&forged, MessageDirection::Inbound).await;
-    updates::scan(&fx.state, std::slice::from_ref(&forged.id))
+    updates::scan(&fx.state, std::slice::from_ref(&forged.id), now)
         .await
         .unwrap();
     assert!(fx

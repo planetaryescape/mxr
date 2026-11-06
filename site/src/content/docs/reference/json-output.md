@@ -883,7 +883,7 @@ would write, from the same rows:
 
 From the 2,000-message demo; lines are trimmed here. Every line also carries `id`, `section`,
 `account_id`, `message_ids`, `thread_ids`, `latest_message_id`,
-`latest_at`, `why`, `setting`, `todo_title` and `provenance` (where each
+`latest_at`, `why`, `setting`, `todo_title`, `auto_todo` (on alerts: `state` of `created` or `not_created`, `reason_code`, `reason_text`) and `provenance` (where each
 field came from: `rule`, `code` or `default`), and, where they apply,
 `link` (`url`, `domain`), `tracker` (`kind` of `parcel`, `build` or
 `incident`, with `state` and `outcome`). Parcel trackers retain `steps` and

@@ -74,8 +74,10 @@ references and the reason for the update; From email opens its source message.
 Pickup and delivery problems are named in the status. A parcel that moved
 since the last digest is under Changed; one that didn't is routine. A
 delivered parcel shows for a day, then leaves on its own. A delivery problem,
-a failed attempt or a return goes under Needs a look for a week and becomes a
-to-do as soon as it syncs ("Check delivery from Bookshop").
+a failed attempt or a return goes under Needs a look for a week. The line
+explains when mxr cannot verify the receiver's sender verdict; `t` adds the
+suggested to-do. Current live adapters hold automatic alert creation.
+See [Updates](/guides/updates/).
 
 ## Backfill existing mail
 

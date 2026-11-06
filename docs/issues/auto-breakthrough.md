@@ -1,62 +1,38 @@
-# Automatic breakthrough to To do is deferred
+# Automatic alert to-dos still lack genuine live receiver provenance
 
-Updates shows a new sign-in, a failed payment or a delivery problem at the
-top of Needs a look as a suggested to-do, with its reason. Only the user's
-`t` turns one into a to-do. The first build created the to-do on arrival;
-two review rounds found ways to make mxr create a task from mail an
-attacker wrote, so automatic creation is off until a design survives
-review. This follows the pay link decision
-([one-click-pay-link.md](one-click-pay-link.md)).
+D193's candidate decision, arrival history, durable claim, audit and client
+explanations are implemented. It is not ready to ship as a working
+automatic-alert feature: no live adapter currently supplies a genuine
+verified receiver verdict and receipt.
 
-## What the first build did
+Gmail exposes ordinary RFC headers and a timestamp that can use Date for
+migrated mail. Insert bypasses most scanning; import does not perform SPF
+checks. A sole `Authentication-Results: mx.google.com` does not prove Google
+authored it. Gmail IMAP extensions are compatibility claims, not endpoint
+identity. The candidate uses configured TLS endpoint identity separately,
+then still fails closed without a genuine verdict. Outlook and generic
+IMAP remain unsupported with an explanation. Sources are linked in
+[blueprint 22](../blueprint/22-email-modes.md#verified-receiver-evidence-is-required-before-an-alert-creates-a-to-do).
 
-On sync, a message whose rules said `needs_you` became an open to-do
-("Check new sign-in to Google"), claimed by a dedup key so a re-sync never
-made a second. A source tuned to `breakthrough` sent every message.
+Resolve that receiver and timestamp boundary with a trustworthy provider
+attestation or independently verifiable evidence. Demonstrate legitimate
+creation through the actual adapter and daemon, retaining zero synthetic
+spoof/first-time/display-brand/backfill creations. Parent adversarial
+acceptance, CI and published checks remain required.
 
-## Round 1 findings
+No source enrollment is required. Parent clarified this on 6 November
+after consulting BK's saved automatic-to-do and decide-and-ship policies.
+Authentication proves a domain, not alert truth: a warmed attacker-owned
+domain or a service's user-controlled text remains a disclosed heuristic
+residual, with the actual domain shown in the title and reason.
 
-- Any sender could create a to-do: the subject is mail-controlled text, so
-  `security@evil.example` with "New sign-in" made a task.
-- The claim was keyed by subject template, so differently worded alerts of
-  one kind made several tasks and one kind could suppress another.
-- Backfilled or archived mail (not in the inbox) created tasks.
-- A code mentioned in a sign-in alert gave it a 10-minute window, so the
-  alert expired almost at once.
+```sh
+mxr updates alert-audit --format json
+```
 
-## Round 2 findings, after a DMARC and prior-mail gate
-
-The gate required the receiving provider's `Authentication-Results` to say
-`dmarc=pass` for the sender, and mail from that source before today.
-
-- A forged `Authentication-Results` lower in the headers was accepted when
-  the topmost one came from an authserv-id the account didn't trust.
-- The candidate message counted as its own prior mail when it was dated
-  before "today", so a first-time sender passed.
-- Display-name branding: an attacker's own authenticated domain could send
-  as "Google", and the task read "Check new sign-in to Google".
-- The claim day was a UTC day, so alerts either side of UTC midnight made
-  two tasks for one local day.
-- Backfill order: older mail classified after newer mail could create a
-  task for an alert the user had already dealt with.
-- Outlook results carry no authserv-id, so Outlook accounts failed the gate
-  silently with no explanation to the user.
-
-## What a design must answer before automatic creation returns
-
-1. Which `Authentication-Results` header is the provider's, for every
-   provider mxr supports, and what happens when it is missing, duplicated
-   or below a forged one. The answer must not depend on header order an
-   attacker controls.
-2. How "a source you already know" is established without the candidate
-   counting itself, across backfill and re-sync, and in the user's time
-   zone.
-3. How the task shows who really sent it, so a borrowed display name can
-   never read as the real brand. (Needs a look and `t` titles already show
-   the sending host beside the name.)
-4. How the claim works per source, alert kind and local day, and survives
-   rules-version changes without re-creating tasks.
-5. What the user sees when an alert is not trusted, per provider, so
-   silence never looks like safety.
-6. An eval on real mail showing false automatic tasks below an agreed
-   threshold, as D117 requires for To do's badge.
+BK can run this counts-only audit on his own local store after the daemon
+has upgraded its schema. It opens read-only, starts no daemon, sends
+nothing and prints no senders, subjects or bodies. It uses stored
+provenance and current eligibility; it cannot reconstruct missing receipt
+evidence or measure false tasks without human labels. No real-mail eval
+is authorised for this worker.

@@ -13,6 +13,7 @@ use mxr_core::types::{
     Address, AttachmentDisposition, AttachmentMeta, BodyPartSource, Envelope, MessageBody,
     MessageFlags, SyncedMessage, TextPlainFormat, UnsubscribeMethod,
 };
+use mxr_core::UnverifiedReason;
 use mxr_mail_parse::{
     body_unsubscribe_from_html, calendar_metadata_from_text, extract_raw_header_block,
     parse_headers_from_raw,
@@ -102,6 +103,35 @@ pub fn imap_fetch_to_synced_message(
     msg: &FetchedMessage,
     mailbox: &str,
     account_id: &AccountId,
+) -> Result<SyncedMessage, ImapProviderError> {
+    imap_fetch_from_receiver(msg, mailbox, account_id, ImapReceiver::Generic)
+}
+
+/// Configured transport identity, independent of server capability claims.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ImapReceiver {
+    Gmail,
+    Generic,
+}
+
+impl ImapReceiver {
+    pub(crate) fn from_config(config: &crate::config::ImapConfig) -> Self {
+        if config.use_tls
+            && config.port == 993
+            && config.host.eq_ignore_ascii_case("imap.gmail.com")
+        {
+            Self::Gmail
+        } else {
+            Self::Generic
+        }
+    }
+}
+
+pub(crate) fn imap_fetch_from_receiver(
+    msg: &FetchedMessage,
+    mailbox: &str,
+    account_id: &AccountId,
+    receiver: ImapReceiver,
 ) -> Result<SyncedMessage, ImapProviderError> {
     let raw = msg
         .body
@@ -236,7 +266,23 @@ pub fn imap_fetch_to_synced_message(
         keywords,
     };
 
-    Ok(SyncedMessage { envelope, body })
+    // Gmail extensions identify a wire dialect, not the configured server.
+    // Even on Google's TLS endpoint, APPEND/import and RFC headers alone do
+    // not attest to a receiving verdict or a trustworthy receipt timestamp.
+    let reason = match receiver {
+        ImapReceiver::Gmail => UnverifiedReason::GmailVerdictUnproven,
+        ImapReceiver::Generic => UnverifiedReason::ImapGivesNoVerdict,
+    };
+    let arrival = mxr_core::ArrivalEvidence {
+        received_at: None,
+        is_live: false,
+        sender: mxr_core::SenderCheck::Unverified { reason },
+    };
+    Ok(SyncedMessage {
+        envelope,
+        body,
+        arrival,
+    })
 }
 
 /// Parse raw RFC822 message body into mxr MessageBody.
@@ -1056,4 +1102,68 @@ mod tests {
     }
 
     use chrono::Datelike;
+    #[test]
+    fn gmail_extensions_on_a_generic_endpoint_do_not_verify_the_sender() {
+        let raw = b"From: security@accounts.google.com\r\nTo: user@example.com\r\nSubject: New sign-in\r\nAuthentication-Results: mx.google.com; dmarc=pass header.from=accounts.google.com\r\n\r\nSynthetic";
+        let message = FetchedMessage {
+            uid: 7,
+            flags: vec![],
+            envelope: None,
+            body: Some(raw.to_vec()),
+            header: None,
+            size: None,
+            internal_date: Some(Utc::now()),
+            gmail_labels: vec![],
+            gmail_msg_id: Some(123),
+            gmail_thread_id: Some(456),
+        };
+        for (host, tls, reason) in [
+            (
+                "compatible.example",
+                true,
+                UnverifiedReason::ImapGivesNoVerdict,
+            ),
+            (
+                "imap.gmail.com.evil.example",
+                true,
+                UnverifiedReason::ImapGivesNoVerdict,
+            ),
+            (
+                "imap.gmail.com",
+                false,
+                UnverifiedReason::ImapGivesNoVerdict,
+            ),
+            (
+                "imap.gmail.com",
+                true,
+                UnverifiedReason::GmailVerdictUnproven,
+            ),
+        ] {
+            let config = serde_json::from_value(serde_json::json!({
+                "host": host, "port": 993, "username": "test", "password_ref": "test",
+                "use_tls": tls
+            }))
+            .unwrap();
+            let synced = imap_fetch_from_receiver(
+                &message,
+                "INBOX",
+                &AccountId::new(),
+                ImapReceiver::from_config(&config),
+            )
+            .unwrap();
+            assert_eq!(
+                synced.arrival.sender,
+                mxr_core::SenderCheck::Unverified { reason },
+                "{host}"
+            );
+            assert_eq!(synced.arrival.received_at, None);
+        }
+        let generic = imap_fetch_to_synced_message(&message, "INBOX", &AccountId::new()).unwrap();
+        assert_eq!(
+            generic.arrival.sender,
+            mxr_core::SenderCheck::Unverified {
+                reason: UnverifiedReason::ImapGivesNoVerdict,
+            }
+        );
+    }
 }

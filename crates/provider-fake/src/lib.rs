@@ -68,12 +68,17 @@ impl Dataset {
                 .map(|envelope| SyncedMessage {
                     body: body_for(bodies, envelope),
                     envelope: envelope.clone(),
+                    arrival: Default::default(),
                 })
                 .collect(),
             Self::Demo(stream) => stream
                 .page(offset, limit)
                 .into_iter()
-                .map(|(envelope, body)| SyncedMessage { envelope, body })
+                .map(|(envelope, body)| SyncedMessage {
+                    envelope,
+                    body,
+                    arrival: Default::default(),
+                })
                 .collect(),
         }
     }
@@ -86,10 +91,17 @@ impl Dataset {
                 .map(|envelope| SyncedMessage {
                     body: body_for(bodies, envelope),
                     envelope: envelope.clone(),
+                    arrival: Default::default(),
                 }),
-            Self::Demo(stream) => stream
-                .find(provider_message_id)
-                .map(|(envelope, body)| SyncedMessage { envelope, body }),
+            Self::Demo(stream) => {
+                stream
+                    .find(provider_message_id)
+                    .map(|(envelope, body)| SyncedMessage {
+                        envelope,
+                        body,
+                        arrival: Default::default(),
+                    })
+            }
         }
     }
 }

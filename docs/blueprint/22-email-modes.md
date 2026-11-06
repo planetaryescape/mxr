@@ -124,7 +124,7 @@ new message brings the thread back to that mode only (now-and-handoff.md
 | Any mode | `e` | Done here; provider archive only when no other mode holds the thread | "Done in Messages. Still in To do (due Wed)." or "Done. Archived in Gmail." |
 | Messages, Updates, Reading, Archive | `t` | A to-do prefilled from the ask and due words, in a one-line inline editor | "Added to To do: Sign lease renewal, act by Mon 13. g x" |
 | To do | `e` | Tick off; the source's record is filed in Archive with no prompt | "Ticked off. Filed in Archive." |
-| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Nothing is added on arrival (see "Decisions made on BK's behalf") | "Added to To do: …" |
+| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Automatic creation requires verified receiver evidence (D193; live provenance remains blocked) | "Added to To do: …" |
 | Any mode | `T` | Pass to another mode, from a menu | names the destination |
 
 The destination's rail count ticks up (120 ms) and the item carries "Just
@@ -918,138 +918,79 @@ a source, mxr asks once whether to mute it.
 lines, mostly folded; four parcel emails are one track; the text is the
 fact; numbers come compared; replying isn't offered.
 
-### A verified alert becomes its own to-do; anything less stays a suggestion
+### Verified receiver evidence is required before an alert creates a to-do
 
-D193. Promise: a security or account alert (a new sign-in, a failed
-payment) that mxr can prove came from the real sender, a source the
-account already receives mail from, becomes one open to-do when it
-arrives, titled with the sending domain. Mail an attacker wrote never
-creates one. Everything else keeps the suggestion at the top of Needs a
-look, and the suggestion says why it was not created. Delivery problems
-stay suggestions (see "What stays a suggestion"). Auto-closing stays a
-suggestion too. `[updates] auto_todo_alerts = false` turns creation off.
+D193 targets an automatic to-do for a new sign-in, failed payment or linked
+delivery problem, titled with its authenticated domain. The candidate
+implements the decision and durable claim, but live provider provenance
+remains a release blocker. No current live adapter marks a sender
+verified. Gmail API and the configured TLS endpoint `imap.gmail.com:993`
+report `gmail_verdict_unproven`; generic IMAP, Outlook included, reports
+`imap_gives_no_verdict`. Suggestions explain this and `t` remains available.
+`[updates] auto_todo_alerts` defaults on but cannot bypass missing evidence.
 
-Two review rounds on the first build found ten ways past a gate that read
-mail-controlled text. Each is an acceptance case below.
+The receiver boundary must come from authenticated provider data, never a
+header's claim about itself. Gmail extensions identify compatibility, not
+Google: endpoint identity comes from configured host and TLS independently
+of `X-GM-MSGID`. Even the genuine Google endpoint does not attest to a
+message's ingestion route. Gmail exposes RFC headers; `internalDate` can
+use Date for migrated mail, `insert` bypasses most scanning, and `import`
+does not check SPF. A sole `Authentication-Results: mx.google.com` cannot
+establish that Google authored it. RFC 8601 section 5 requires ingress
+stripping; it does not prove a particular ingestion route follows it.
 
-**The test is made once, when the mail arrives.** The provider adapter
-that fetched the message writes an arrival record in the same sync
-transaction as the message: the provider's own receipt time, and the
-provider's own verdict about the sender. Nothing is recomputed from the
-message later, so classification order, `mxr classify --rebuild`, a
-backfill or a re-sync cannot change it. A message synced before the
-record existed has none, and counts as unverified.
+- [RFC 8601 section 5](https://www.rfc-editor.org/rfc/rfc8601.html#section-5)
+- [Gmail Message fields](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)
+- [Gmail insert](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/insert)
+- [Gmail import](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/import)
 
-**Whose verdict counts, per provider.** The verdict is `dmarc=pass` for
-the message's own From host, read from an `Authentication-Results` header
-whose authserv-id is the receiving provider's, pinned in the adapter. mxr
-never reads the sender's `Date`, display name, or any `Authentication-
-Results` whose id is not the pinned one.
+Once a receiver supplies genuine evidence, its adapter records the receipt
+and sender check in `message_arrivals` (migration 109). Old message dates
+never seed receipt history. Sync marks mail live only after initial sync,
+with a nonempty steady-state cursor outside backfill. The first stored
+status survives re-sync, including a recent final backfill page.
 
-| Provider | Verdict used | Receipt time | Alert can auto-create |
-|---|---|---|---|
-| Gmail API | `Authentication-Results: mx.google.com` | `internalDate` | yes |
-| Gmail over IMAP (server says `X-GM-EXT-1`) | the same header | `INTERNALDATE` | yes |
-| Outlook.com and Microsoft 365 (IMAP) | none: Exchange writes `Authentication-Results` without an authserv-id, so a header added by a relay is indistinguishable from the server's | `INTERNALDATE` | no |
-| Any other IMAP server | none | `INTERNALDATE` | no |
+The decision requires an aligned DMARC pass for the exact From host; at
+least three different earlier inbound messages in the account, with
+provider receipts strictly before the alert and the oldest at least 30
+days earlier; no confusable of a better-known host; an unread inbox
+message received within 24 hours and never in the future; and no List-Id.
+A delivery problem uses the email that reported a problem stage, not its
+merged parcel state alone. Missing or ambiguous evidence fails closed
+with an explanation in CLI JSON, TUI and web.
 
-Header order is not trusted; presence is. The adapter requires exactly
-one `Authentication-Results` header carrying the pinned authserv-id. None
-is "missing"; two or more is "duplicated", which is what a forged copy
-below the provider's own looks like; both fail closed, as does a header
-that does not parse, a version other than 1, `dmarc` absent, not `pass`,
-or a `header.from` that is not the From host. A header with any other
-authserv-id is ignored, so a forged `mx.google.com.evil.example` or
-`evil.example` pass cannot help or hurt. The reason is recorded:
-`provider_gives_no_verdict`, `no_verdict_header`, `ambiguous_verdict`,
-`not_dmarc_pass`, `no_receipt_time` or `not_recorded`.
+The task title and reason name the full authenticated domain:
+`Check new sign-in · accounts.google.com`. One claim per account, domain,
+alert kind and receipt-local day is stored separately in
+`alert_todo_claims`, atomically with the to-do. Rules-version changes,
+dismissal, source deletion, re-sync and timezone changes cannot release a
+successful claim for the same message and kind. Existing to-do actions
+remain available. Mail never triggers tools, payments or automatic closing.
 
-**A source you already know.** The verified host (exact host, not
-registrable domain: `evil.camden.gov.uk` does not inherit
-`camden.gov.uk`) must have, in this account, at least three earlier
-inbound messages, none of them the candidate, whose provider receipt is
-strictly before the candidate's, the oldest at least 30 days before it.
-That is the history rule two reviews tested for pay links, without the
-mail-controlled `Date`. The count reads the arrival records at decision
-time, so it is the same whether the candidate is classified first or
-last. Last, a host that is a confusable of, or one edit from, a different
-host this account has more history with (Unicode skeletons folded, `rn`
-and `m`, `0` and `o`, transpositions) is not known.
+Sender identity is not alert truth. An attacker-owned domain that has
+built the same history can meet the heuristic, and legitimate services
+may include user-controlled text. Its title must name the actual domain.
+Parent policy clarification, 6 November 2026: do not add source enrollment;
+the earlier absolute rejection of this residual was withdrawn after
+checking BK's saved automatic-to-do and decide-and-ship policies. Synthetic
+spoof counts cannot establish universal false-task precision.
 
-**What is eligible.** On top of the verdict and history, the message must
-be in the inbox, unread, received within the last 24 hours by the
-provider's clock, a sign-in alert whose window has not ended or a
-failed-payment alert, not relayed through a mailing list (`List-Id`
-means someone else's words under the list's host), and in an account whose
-provider can give a verdict. A backfill, an archived message, one the user
-already opened, or an old message reclassified later, never creates.
+The decision corpus in `crates/daemon/src/handler/tests/alert_todos.rs`
+uses explicit synthetic receiver evidence; it does not attest to live
+Gmail behavior. Provider tests separately reject a sole supplied own-id
+verdict, missing verdicts, migrated timestamps and Gmail extensions on a
+generic endpoint. Parent adversarial acceptance, CI and published-binary
+checks remain required.
 
-**The claim.** One to-do per (account, verified host, alert kind, local
-day), kept as the to-do's `dedup_key` `alert|<host>|<kind>|<YYYY-MM-DD>`
-with the day taken from the provider receipt in the user's zone, so a
-pair either side of UTC midnight in one local day is one to-do and a
-different local day is a new one. The key lives on the to-do row, which is
-never deleted, so a rules-version change, a re-sync or a reclassification
-finds it and creates nothing, even after the user dismisses the to-do.
-Insert-or-nothing: the uniqueness is the database's, not a check made
-before.
+```sh
+mxr updates alert-audit --format json
+```
 
-**What the to-do shows.** "Check new sign-in · accounts.google.com" and
-"Fix failed payment · stripe.com": the verified host, never the display
-name. Its reason reads "Created automatically: your provider confirmed
-accounts.google.com sent this, and you have had mail from it since <date>."
-`origin` is `alert`, the row says what verified it, and
-`mxr todo` JSON carries `origin`, `reason` and the claim.
-
-**What the user sees when it was not created.** The suggestion row keeps
-`t` and adds the reason, per provider:
-"Not created automatically: Outlook doesn't give mxr a verified sender",
-"…: your mail server doesn't give mxr a verified sender",
-"…: your provider did not confirm this sender", "…: mxr has seen fewer
-than three emails from this sender over 30 days", "…: looks like
-<known host>", "…: sent through a mailing list", "…: this arrived before
-mxr kept sender checks". Silence never means safe. It is in
-`mxr updates` JSON as `todo_suggestion` and `auto_todo` on each line
-(`created`, `not_created` with a `reason` code and a `reason_text`).
-
-**What stays a suggestion.** Delivery problems. A parcel's state comes
-from several emails read by the deliveries detector, which records the
-latest thread, not the message that carried the exception, so no single
-verified message stands behind it. Making one stand behind it is a
-change to deliveries, not to this gate, so a parcel keeps its suggestion
-with the reason "mxr can't tie this parcel to one verified email yet".
-
-**Eval.** `crates/daemon/tests` carries a synthetic corpus run through the
-same code the daemon runs on arrival. The adversarial half has one case
-for each finding of the two review rounds, plus these: a forged lower
-`mx.google.com` header; a forged `Authentication-Results` with another
-id; a verdict for another From host; a first-time sender dated before
-today; the candidate counted as its own history; a look-alike display
-name on an unrelated authenticated domain; two alerts either side of UTC
-midnight and across two local days; a backfill that classifies the older
-message after the newer; a reclassification; an Outlook and a generic
-IMAP account; a mailing-list relay; a lookalike host. All must create
-zero. The legitimate half (a real Google sign-in with long history, a
-Stripe failed payment, a second one the same day, the next day) must
-create exactly as many as it should. The result prints as
-`false_automatic` and `missed`. `mxr updates alert-audit` opens the user's
-own store read-only (no daemon, no IPC, nothing written), replays the same
-decision over every stored alert candidate from the headers kept with each
-message, and prints counts by outcome and reason: no subjects, senders,
-hosts or bodies. It is how real-mail precision gets measured, and its
-output is the false-automatic check D117 asks for.
-
-**Limits stated.** mxr trusts Google's verdict, not the sender's
-signature; a Google account that forwards for an attacker's rule is
-outside it. An attacker who owns a domain, sends the account three
-ordinary emails over 30 days and then an alert is shown as "Check new
-sign-in · their-domain.example": the title names the real sender and the
-reason line names the history it rests on, which is the point of
-showing the host. A service that lets anyone put words in its own
-transactional mail without a `List-Id` can still create an alert to-do.
-Gmail's API is assumed to deliver headers as received; the "exactly one
-header" rule does not depend on their order. Real-mail precision is not
-measured here: the audit command is how.
+The audit opens the local store read-only without a daemon, uses persisted
+arrival evidence and current stored eligibility, dedupes claims and emits
+counts only. It cannot reconstruct missing receipt provenance or label
+semantic false positives; `precision_evaluated` stays false. No real-mail
+eval is authorised in this implementation pass.
 
 ## Reading is a front page you visit, not a pile you owe
 
@@ -2264,18 +2205,13 @@ rules above; D117 records them.
   of a digest takes the whole cut, including mail tuning hid (muted,
   changes only) and mail past its window, and the preview says how many of
   those it is, so nothing piles up out of sight in the inbox.
-- **Breakthroughs are suggestions, not tasks (phase 4).** A new sign-in, a
-  failed payment and a delivery problem lead Needs a look with a
-  highlighted suggested to-do and its reason; `t` turns one into a to-do,
-  and nothing is added on arrival. Two review rounds found ways to forge an
-  automatic one (a forged lower `Authentication-Results`, the alert
-  counting as its own prior mail, a borrowed display name on an
-  authenticated domain, UTC-day claims, backfill order, Outlook failing
-  silently), so automatic creation waits for a design that survives
-  review, as the pay link does:
-  [auto-breakthrough.md](../issues/auto-breakthrough.md). Needs a look
-  lines and `t` titles show the sending host beside the display name
-  ("Google (accounts.google.com)").
+- **Breakthroughs require genuine receiver evidence (phase 4, D193).**
+  A new sign-in, failed payment or delivery problem leads Needs a look as
+  a suggested to-do with a reason; `t` adds it. Current live adapters hold
+  automatic creation because a matching authentication header does not
+  prove receiver provenance. The candidate decision, durable claim and
+  remaining blocker are described in D193 above. Names and manual titles
+  retain the sender's domain beside the display name.
 - **The Updates fact chunk is deferred (phase 4).** Facts are cached in
   `update_facts` but are not yet a semantic index recipe; search still
   indexes Updates mail the way it indexes all mail.

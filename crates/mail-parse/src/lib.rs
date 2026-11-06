@@ -6,6 +6,8 @@
     )
 )]
 
+pub mod arrival;
+
 use chrono::{DateTime, Utc};
 use icalendar::parser::{
     read_calendar, unfold, Component as ParsedCalendarComponent, Property as ParsedCalendarProperty,

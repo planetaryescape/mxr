@@ -36,6 +36,7 @@
 )]
 
 pub mod account_identity;
+pub mod arrival;
 pub mod asks;
 pub mod assessment;
 pub mod error;
@@ -50,6 +51,7 @@ pub mod text;
 pub mod types;
 
 pub use account_identity::*;
+pub use arrival::{ArrivalEvidence, SenderCheck, UnverifiedReason};
 pub use error::MxrError;
 pub use id::*;
 pub use provider::*;

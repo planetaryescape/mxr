@@ -219,19 +219,42 @@ do not offer a sender sweep.
 In the TUI, the `Account:` line shows the configured name and address when
 they fit; otherwise, it favors the address.
 
-## What needs you leads Needs a look as a suggested to-do
+## Alert suggestions explain why no automatic to-do was created
 
-A new sign-in alert, a failed payment and a parcel with a delivery problem
-sit at the top of Needs a look. The line carries a To do button, and its
-details say why: "Suggested to-do: new sign-in alert from Google
-(accounts.google.com) (rule). t adds it." mxr never adds the to-do for
-you; `t` or the button does, with the title filled in ("Check new sign-in
-to Google (accounts.google.com)"). The line then shows "already in To do".
+A new sign-in, failed payment or delivery problem leads Needs a look.
+Press `t` or use the button to add it to To do. The suggestion shows the
+sender's domain beside its display name and explains why automatic
+creation was held.
 
-Anyone can put "New sign-in" in a subject or "Google" in a display name, so
-every line in Needs a look and every title `t` fills in shows the host the
-mail came from beside the name. A sign-in alert from "Google" at
-`g00gle-alerts.example` reads "Google (g00gle-alerts.example)".
+Gmail reports that it does not give mxr an attested receiving verdict for
+the message. Outlook and generic IMAP report that the server does not give
+mxr a verified sender. A header that merely says `mx.google.com` is not
+sufficient proof; imported mail can contain supplied headers and dates.
+No current live adapter enables automatic alert creation. Other to-do
+detection continues as before.
+
+The automatic-alert decision requires genuine receiver evidence,
+independent earlier mail from the exact domain and a fresh unread inbox
+arrival outside backfill. Its title names the authenticated domain; its
+claim permits one task per account, domain, alert kind and local day.
+`[updates] auto_todo_alerts` defaults on; `false` disables this path without
+changing manual `t`.
+
+```sh
+mxr updates --format json
+mxr updates alert-audit --format json
+```
+
+Alert lines carry `auto_todo` with `state`, `reason_code` and `reason_text`.
+The audit reads stored provenance and current eligibility locally,
+without starting a daemon, writing data or printing message content.
+Its counts do not measure semantic accuracy: `precision_evaluated` stays
+false. Run it after the daemon has upgraded the database schema.
+
+Authentication proves sender identity, not alert truth. A domain with
+enough prior history or a service that includes user-controlled text
+could satisfy the heuristic. Any automatically created title must name
+the actual authenticated domain.
 
 `t` on any other line makes a to-do from it too.
 

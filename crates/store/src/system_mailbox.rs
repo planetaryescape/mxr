@@ -409,12 +409,12 @@ mod tests {
 
     use crate::system_mailbox::account_ids_json;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
-    use sqlx::Row;
     use crate::Store;
     use chrono::{Duration, Utc};
     use mxr_core::id::{AccountId, LabelId, ThreadId};
     use mxr_core::types::{EventSource, Label, LabelKind, MessageFlags, Role, SortOrder};
     use mxr_core::Account;
+    use sqlx::Row;
 
     async fn account(store: &Store) -> Account {
         let account = test_account();
@@ -892,7 +892,7 @@ mod tests {
               LIMIT ?3",
         )
         .bind(Role::Inbox.storage_name())
-        .bind(account_ids_json(&[t.a.id.clone()]).unwrap())
+        .bind(account_ids_json(std::slice::from_ref(&t.a.id)).unwrap())
         .bind(10_i64)
         .fetch_all(t.store.reader())
         .await

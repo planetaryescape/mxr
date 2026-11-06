@@ -84,7 +84,8 @@ where
     Tz::Offset: std::fmt::Display,
 {
     let snapshot = snapshot_inner(state, account_id, accounts, now, tz).await?;
-    let quiet = super::modes::quiet_count(state, snapshot.inbox.people_threads.clone(), now).await?;
+    let quiet =
+        super::modes::quiet_count(state, snapshot.inbox.people_threads.clone(), now).await?;
     Ok((snapshot, quiet))
 }
 
@@ -98,7 +99,7 @@ async fn snapshot_inner<Tz: TimeZone>(
     accounts: &[AccountId],
     now: DateTime<Utc>,
     tz: &Tz,
- ) -> Result<Arc<NowSnapshot>, HandlerError>
+) -> Result<Arc<NowSnapshot>, HandlerError>
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -158,16 +159,14 @@ where
         inbox,
         digest,
     });
-    state
-        .mode_cache
-        .remember_snapshot(
-            account_id,
-            accounts,
-            &offset,
-            now.timestamp(),
-            changes,
-            Arc::clone(&snapshot),
-        );
+    state.mode_cache.remember_snapshot(
+        account_id,
+        accounts,
+        &offset,
+        now.timestamp(),
+        changes,
+        Arc::clone(&snapshot),
+    );
     Ok(snapshot)
 }
 

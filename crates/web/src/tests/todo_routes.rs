@@ -213,7 +213,7 @@ async fn now_rail_membership_and_done_routes_forward_their_requests() {
     assert!(matches!(&seen[1], Request::GetRail { account_id: Some(id) } if *id == account));
     assert!(matches!(
         &seen[2],
-        Request::GetModeMembership { thread_id: Some(id), message_id: None, thread_ids } if *id == thread && thread_ids.is_empty()
+        Request::GetModeMembership { thread_id: Some(id), message_id: None, thread_ids, .. } if *id == thread && thread_ids.is_empty()
     ));
     assert!(matches!(
         &seen[3],

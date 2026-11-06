@@ -2383,6 +2383,11 @@ pub enum Request {
         thread_id: Option<ThreadId>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         thread_ids: Vec<ThreadId>,
+        /// Keep only the newest `limit` messages' asks, assessments and
+        /// pending asks in each answer. Omitted returns every message's
+        /// evidence, which the CLI and TUI still read.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
     },
     /// One preview per thread in `thread_ids` (at most 100): subject, the
     /// latest sender, date and snippet, counts and an attachment flag, with

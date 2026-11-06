@@ -92,6 +92,7 @@ async fn membership(fx: &Fixture, thread: &ThreadId) -> ThreadModesData {
             message_id: None,
             thread_id: Some(thread.clone()),
             thread_ids: Vec::new(),
+            limit: None,
         },
     )
     .await
@@ -207,6 +208,7 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
             message_id: Some(ask.id.clone()),
             thread_id: None,
             thread_ids: vec![thread.clone()],
+            limit: None,
         },
     )
     .await

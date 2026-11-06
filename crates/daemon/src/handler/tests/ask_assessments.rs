@@ -27,6 +27,7 @@ async fn membership(fx: &Fixture, thread: &ThreadId) -> ThreadModesData {
             message_id: None,
             thread_id: Some(thread.clone()),
             thread_ids: vec![],
+            limit: None,
         },
     )
     .await

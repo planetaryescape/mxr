@@ -1980,8 +1980,16 @@ async fn dispatch(
             message_id,
             thread_id,
             thread_ids,
+            limit,
         } => {
-            modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
+            modes::get_membership(
+                state,
+                message_id.as_ref(),
+                thread_id.as_ref(),
+                thread_ids,
+                *limit,
+            )
+            .await
         }
         // One boxed call for all of Reading: its arms inline make
         // `dispatch`'s poll frame big enough to overflow a debug build's

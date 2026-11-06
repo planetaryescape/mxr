@@ -106,7 +106,29 @@ pub(super) async fn place_threads(
     thread_ids: &[ThreadId],
     now: DateTime<Utc>,
 ) -> Result<Vec<Placement>, HandlerError> {
-    place_threads_with_evidence(state, account_id, thread_ids, now, true).await
+    place_threads_with_evidence(state, account_id, thread_ids, now, true, None).await
+}
+
+/// The same placements, with per-message evidence kept only for the newest
+/// `evidence_limit` messages. The reader's mode line needs the thread-level
+/// modes and done state; carrying every message's asks and assessments made
+/// one long thread's membership a megabyte.
+pub(super) async fn place_threads_windowed(
+    state: &AppState,
+    account_id: &AccountId,
+    thread_ids: &[ThreadId],
+    now: DateTime<Utc>,
+    evidence_limit: usize,
+) -> Result<Vec<Placement>, HandlerError> {
+    place_threads_with_evidence(
+        state,
+        account_id,
+        thread_ids,
+        now,
+        true,
+        Some(evidence_limit),
+    )
+    .await
 }
 
 async fn place_threads_with_evidence(
@@ -115,6 +137,7 @@ async fn place_threads_with_evidence(
     thread_ids: &[ThreadId],
     now: DateTime<Utc>,
     include_evidence: bool,
+    evidence_limit: Option<usize>,
 ) -> Result<Vec<Placement>, HandlerError> {
     let store = &state.store;
     let mut messages = store
@@ -256,6 +279,7 @@ async fn place_threads_with_evidence(
             marks: &marks,
             senders: &senders,
             detailed_asks: &detailed_asks,
+            evidence_limit,
             written_to: &written_to,
             externally_filed: &externally_filed,
             is_self: &is_self,
@@ -289,6 +313,8 @@ struct PlaceInputs<'a> {
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
     detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
+    /// `Some(n)`: carry evidence only for the newest n messages.
+    evidence_limit: Option<usize>,
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     /// Messages whose source left the inbox through a provider sync and stayed
@@ -446,28 +472,36 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .filter(|mode| mode.holds_inbox())
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
+    // Thread-level mode lines stay whole-thread; only the per-message
+    // evidence is windowed. A reader that names the loaded page gets asks
+    // and assessments for the messages it actually renders.
+    let evidence: &[DeskMessage] = match inputs.evidence_limit {
+        Some(limit) => &thread[thread.len().saturating_sub(limit)..],
+        None => thread,
+    };
+    let asks: Vec<_> = evidence
+        .iter()
+        .filter_map(|m| {
+            inputs
+                .detailed_asks
+                .get(&m.id)
+                .map(mxr_core::asks::AskAssessment::summary)
+        })
+        .take(32)
+        .collect();
+    let detailed_ask_count = thread
+        .iter()
+        .filter(|m| inputs.detailed_asks.contains_key(&m.id))
+        .count();
     ThreadModesData {
-        asks_more: thread
-            .iter()
-            .filter(|m| inputs.senders.asks.contains_key(&m.id))
-            .count()
-            > 32,
-        asks: thread
-            .iter()
-            .filter_map(|m| {
-                inputs
-                    .detailed_asks
-                    .get(&m.id)
-                    .map(mxr_core::asks::AskAssessment::summary)
-            })
-            .take(32)
-            .collect(),
-        asks_pending: thread
+        asks_more: detailed_ask_count > asks.len(),
+        asks,
+        asks_pending: evidence
             .iter()
             .filter(|m| !inputs.senders.asks.contains_key(&m.id))
             .map(|m| m.id.clone())
             .collect(),
-        assessments: thread
+        assessments: evidence
             .iter()
             .filter_map(|m| inputs.senders.assessments.get(&m.id).cloned())
             .collect(),
@@ -570,6 +604,7 @@ pub(super) async fn get_membership(
     message_id: Option<&MessageId>,
     thread_id: Option<&ThreadId>,
     thread_ids: &[ThreadId],
+    limit: Option<u32>,
 ) -> HandlerResult {
     let mut wanted: Vec<ThreadId> = thread_ids.to_vec();
     wanted.extend(thread_id.cloned());
@@ -596,7 +631,13 @@ pub(super) async fn get_membership(
     let now = Utc::now();
     let mut placed: HashMap<ThreadId, ThreadModesData> = HashMap::new();
     for (account, threads) in threads_by_account(state, &wanted).await? {
-        for placement in place_threads(state, &account, &threads, now).await? {
+        let placements = match limit {
+            Some(limit) => {
+                place_threads_windowed(state, &account, &threads, now, limit as usize).await?
+            }
+            None => place_threads(state, &account, &threads, now).await?,
+        };
+        for placement in placements {
             placed.insert(placement.data.thread_id.clone(), placement.data);
         }
     }
@@ -764,7 +805,7 @@ async fn quiet_account(
 ) -> Result<u32, HandlerError> {
     let mut quiet = 0u32;
     for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-        let placed = place_threads_with_evidence(state, &account, chunk, now, false).await?;
+        let placed = place_threads_with_evidence(state, &account, chunk, now, false, None).await?;
         quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
     }
     Ok(quiet)

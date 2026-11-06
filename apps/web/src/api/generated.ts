@@ -9101,6 +9101,11 @@ export interface components {
         ModeKindData: "messages" | "todo" | "updates" | "reading" | "archive";
         /** @description Body of `POST /api/v1/mail/modes/membership`. */
         ModeMembershipBody: {
+            /**
+             * Format: int32
+             * @description Keep per-message evidence only for the newest `limit` messages.
+             */
+            limit?: number | null;
             /** @description At most 100 threads, answered in this order. */
             thread_ids: string[];
         };

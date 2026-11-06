@@ -403,6 +403,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             message_id,
             thread_id,
             thread_ids,
+            ..
         } => {
             let mut targets: Vec<_> = thread_ids.iter().map(T::Thread).collect();
             targets.extend(thread_id.as_ref().map(T::Thread));

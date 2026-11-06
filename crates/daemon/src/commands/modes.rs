@@ -222,6 +222,7 @@ async fn why(
                 message_id,
                 thread_id,
                 thread_ids: Vec::new(),
+                limit: None,
             })
             .await?,
         |response| match response {

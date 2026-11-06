@@ -153,6 +153,7 @@ async fn observe(
             message_id: None,
             thread_id: Some(mail.thread_id.clone()),
             thread_ids: vec![],
+            limit: None,
         },
     )
     .await

@@ -726,6 +726,7 @@ async fn membership(fx: &Fixture, thread: &ThreadId) -> ThreadModesData {
             message_id: None,
             thread_id: Some(thread.clone()),
             thread_ids: Vec::new(),
+            limit: None,
         },
     )
     .await

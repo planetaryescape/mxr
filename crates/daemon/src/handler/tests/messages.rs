@@ -681,6 +681,7 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
             message_id: None,
             thread_id: Some(copied.clone()),
             thread_ids: vec![],
+            limit: None,
         },
     )
     .await

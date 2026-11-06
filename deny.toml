@@ -12,15 +12,6 @@ ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
     { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
-    # calamine 0.37's CFB/OLE2 parser can panic or allocate without bound on a crafted
-    # workbook, and mxr is exposed: shipped binaries build semantic-local, which reads
-    # downloaded .xls/.xlsx/.xlsb attachments through open_workbook_auto, and even the
-    # .xlsx path probes CFB for password protection. Impact is denial of service (a
-    # panic, or an out-of-memory abort of the daemon), not memory unsafety. The only fix,
-    # calamine 0.38.0, was published 2026-11-02 and is inside our 7-day crates.io
-    # quarantine. Revisit on 2026-11-09: bump crates/semantic to calamine 0.38 and delete
-    # this entry (docs/issues/calamine-cfb-advisory-waiting-on-quarantine.md).
-    { id = "RUSTSEC-2026-0436", reason = "calamine fix 0.38.0 (2026-11-02) is under 7 days old; bump on 2026-11-09" },
 ]
 
 [licenses]

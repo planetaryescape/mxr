@@ -224,9 +224,11 @@ mod tests {
         let account = test_account();
         let store = Store::in_memory().await.expect("synthetic store");
         store.insert_account(&account).await.expect("account");
-        let inbox = label(&account, "INBOX");
+        let mut inbox = label(&account, "INBOX");
+        inbox.role = Some(mxr_core::Role::Inbox);
         store.upsert_label(&inbox).await.expect("inbox");
         let mut page = [upsert(&account, 1, vec![])];
+        page[0].envelope.flags.remove(MessageFlags::READ);
         page[0].arrival.is_live = true;
         store
             .apply_sync_upserts(&mut page)
@@ -240,7 +242,7 @@ mod tests {
                 .expect("stored")
                 .is_live
         );
-        page[0].label_ids = vec![inbox.id];
+        page[0].label_ids = vec![inbox.id.clone()];
         page[0].arrival.is_live = true;
         store
             .apply_sync_upserts(&mut page)
@@ -254,6 +256,21 @@ mod tests {
                 .expect("stored")
                 .is_live
         );
+        let mut fresh = [upsert(&account, 2, vec![inbox.id])];
+        fresh[0].envelope.flags.remove(MessageFlags::READ);
+        fresh[0].arrival.is_live = true;
+        store
+            .apply_sync_upserts(&mut fresh)
+            .await
+            .expect("new unread Inbox mail");
+        assert!(
+            store
+                .message_arrival(&fresh[0].envelope.id)
+                .await
+                .expect("arrival")
+                .expect("stored")
+                .is_live
+        );
     }
 
     #[tokio::test]
@@ -261,7 +278,11 @@ mod tests {
         let account = test_account();
         let store = Store::in_memory().await.expect("synthetic store");
         store.insert_account(&account).await.expect("account");
-        let mut page = [upsert(&account, 1, vec![])];
+        let mut inbox = label(&account, "INBOX");
+        inbox.role = Some(mxr_core::Role::Inbox);
+        store.upsert_label(&inbox).await.expect("inbox");
+        let mut page = [upsert(&account, 1, vec![inbox.id])];
+        page[0].envelope.flags.remove(MessageFlags::READ);
         store
             .upsert_envelope_with_direction(&page[0].envelope, MessageDirection::Inbound)
             .await

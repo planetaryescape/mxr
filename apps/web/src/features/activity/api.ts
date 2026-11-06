@@ -80,10 +80,10 @@ function toQuery(params: FetchListParams): string {
   const search = new URLSearchParams();
   if (params.since !== undefined) search.set("since", params.since.toString());
   if (params.until !== undefined) search.set("until", params.until.toString());
-  for (const s of params.source ?? []) search.append("source", s);
-  for (const a of params.action ?? []) search.append("action", a);
+  params.source?.forEach((s, i) => search.append(`source[${i}]`, s));
+  params.action?.forEach((a, i) => search.append(`action[${i}]`, a));
   if (params.prefix) search.set("prefix", params.prefix);
-  for (const t of params.tier ?? []) search.append("tier", t);
+  params.tier?.forEach((t, i) => search.append(`tier[${i}]`, t));
   if (params.query) search.set("query", params.query);
   if (params.include_redacted) search.set("include_redacted", "true");
   if (params.limit !== undefined) search.set("limit", params.limit.toString());

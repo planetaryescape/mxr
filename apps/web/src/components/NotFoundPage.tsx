@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 export function NotFoundPage() {
   const path = useRouterState({ select: (state) => state.location.pathname });
   return (
-    <Page title="Not found">
+    <Page title="Not found" eyebrow="404">
       <PageEmpty
         title={`Nothing at ${path}`}
         body="The link may be from an older version of mxr."

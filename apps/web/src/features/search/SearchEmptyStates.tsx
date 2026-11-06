@@ -63,16 +63,16 @@ function SearchHelp({
       <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-4 gap-y-1 text-sm">
         {searchSyntaxRows.map(([operator, description]) => (
           <div key={operator} className="contents">
-            <dt>
+            <dt className="flex items-center">
               <button
                 type="button"
                 onClick={() => onRun(operator)}
-                className="font-mono text-xs text-primary hover:underline"
+                className="inline-flex min-h-[24px] items-center py-1 font-mono text-xs text-primary hover:underline"
               >
                 {operator}
               </button>
             </dt>
-            <dd className="text-muted-foreground">{description}</dd>
+            <dd className="flex items-center text-muted-foreground">{description}</dd>
           </div>
         ))}
       </dl>

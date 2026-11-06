@@ -168,6 +168,14 @@ async fn authorize(
         return StatusCode::FORBIDDEN.into_response();
     }
     if request.method() == Method::GET && request.uri().path() == "/api/v1/remote/browser-launch" {
+        // A launch URL carrying a code signs the browser in directly. The code is
+        // single-use and two minutes old at most, and only the host can mint one.
+        if let Some(code) = launch_code(&request) {
+            if valid_secret(code) {
+                let existing = cookie(&request).map(|proof| (proof.id, proof.secret));
+                return issue_session(&state, existing, code.to_string()).await;
+            }
+        }
         return login(launch_code(&request));
     }
     if request.uri().path() == "/api/v1/remote/browser-session" {
@@ -272,23 +280,18 @@ async fn authenticate(state: &BrowserState, proof: &Proof) -> Result<String, Sta
 struct Claim {
     code: String,
 }
-async fn claim(
-    State(state): State<Arc<BrowserState>>,
-    headers: axum::http::HeaderMap,
-    Form(form): Form<Claim>,
+/// Exchange a connection code for a session cookie. Shared by the form POST and
+/// by the launch URL, so `mxr web` can sign a browser in with no form at all.
+async fn issue_session(
+    state: &BrowserState,
+    replace_session: Option<(String, RemoteSecret)>,
+    code: String,
 ) -> Response {
-    if !valid_secret(&form.code) {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
     match authority(
         &state.app.config.socket_path,
         RemoteRequest::ClaimBrowserCode {
-            code: RemoteSecret::new(form.code),
-            replace_session: {
-                let mut request = Request::new(axum::body::Body::empty());
-                *request.headers_mut() = headers;
-                cookie(&request).map(|proof| (proof.id, proof.secret))
-            },
+            code: RemoteSecret::new(code),
+            replace_session,
         },
     )
     .await
@@ -315,6 +318,20 @@ async fn claim(
         Err(status) => status.into_response(),
         _ => StatusCode::UNAUTHORIZED.into_response(),
     }
+}
+
+async fn claim(
+    State(state): State<Arc<BrowserState>>,
+    headers: axum::http::HeaderMap,
+    Form(form): Form<Claim>,
+) -> Response {
+    if !valid_secret(&form.code) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mut request = Request::new(axum::body::Body::empty());
+    *request.headers_mut() = headers;
+    let existing = cookie(&request).map(|proof| (proof.id, proof.secret));
+    issue_session(&state, existing, form.code).await
 }
 
 pub(super) async fn status(socket: &Path) -> Result<ResponseData, BridgeError> {

@@ -78,6 +78,20 @@ pub(crate) async fn record_message_arrival_tx(
     Ok(())
 }
 
+/// What one guarded alert insert produced. `alert_created` says the alert's
+/// own task was written; `requests_created` counts the independent owner
+/// requests written beside it.
+pub struct AlertTodoOutcome {
+    pub alert_created: bool,
+    pub requests_created: u64,
+}
+
+impl AlertTodoOutcome {
+    pub fn tasks(&self) -> u64 {
+        u64::from(self.alert_created) + self.requests_created
+    }
+}
+
 impl Store {
     /// Record one message's arrival outside a sync page (a repair or a
     /// test); the same first-record-wins rule applies.
@@ -189,18 +203,25 @@ impl Store {
         record: &crate::TodoRecord,
         alert_kind: &str,
     ) -> Result<bool, sqlx::Error> {
-        self.insert_alert_todo_with_requests(record, alert_kind, &[])
-            .await
+        Ok(self
+            .insert_alert_todo_with_requests(record, alert_kind, &[])
+            .await?
+            .alert_created)
     }
 
     /// One guarded alert and its independent owner requests commit together.
     /// The enduring alert claim prevents partial replay after a rule change.
+    ///
+    /// A same-kind task may already be there (the user made one by hand, or an
+    /// older flow made one). The independent owner requests are still their
+    /// own work: they are written under the same durable claim, once each, and
+    /// the alert task is left alone.
     pub async fn insert_alert_todo_with_requests(
         &self,
         record: &crate::TodoRecord,
         alert_kind: &str,
         requests: &[crate::TodoRecord],
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<AlertTodoOutcome, sqlx::Error> {
         if requests.iter().any(|r| {
             r.account_id != record.account_id
                 || r.source_message_id != record.source_message_id
@@ -224,7 +245,10 @@ impl Store {
             .bind(i64::from(mxr_core::MessageFlags::READ.bits())).fetch_optional(&mut *tx).await?.flatten();
         let Some(fingerprint) = fingerprint else {
             tx.rollback().await?;
-            return Ok(false);
+            return Ok(AlertTodoOutcome {
+                alert_created: false,
+                requests_created: 0,
+            });
         };
         let claimed = sqlx::query(
             "INSERT INTO alert_todo_claims(account_id, dedup_key, message_id, alert_kind, message_fingerprint)
@@ -239,28 +263,50 @@ impl Store {
         .await?;
         if claimed.rows_affected() == 0 {
             tx.rollback().await?;
-            return Ok(false);
+            return Ok(AlertTodoOutcome {
+                alert_created: false,
+                requests_created: 0,
+            });
         }
         let existing: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM todos WHERE account_id=? AND source_message_id=? AND kind=?)")
             .bind(record.account_id.as_str()).bind(message_id.as_str()).bind(&record.kind).fetch_one(&mut *tx).await?;
+        let columns = crate::todos::COLUMNS;
+        let placeholders = std::iter::repeat_n("?", columns.split(',').count())
+            .collect::<Vec<_>>()
+            .join(", ");
         if existing {
+            // The alert task is already there, but an independent owner
+            // request is its own task. Keep it, once, under the durable claim
+            // instead of dropping it with the early return.
+            let sql = format!(
+                "INSERT INTO todos ({columns}) VALUES ({placeholders}) \
+                 ON CONFLICT(account_id, dedup_key) DO NOTHING"
+            );
+            let mut requests_created = 0;
+            for task in requests {
+                requests_created +=
+                    crate::todos::bind_record(sqlx::query(sqlx::AssertSqlSafe(sql.clone())), task)
+                        .execute(&mut *tx)
+                        .await?
+                        .rows_affected();
+            }
             tx.commit().await?;
-            return Ok(false);
+            return Ok(AlertTodoOutcome {
+                alert_created: false,
+                requests_created,
+            });
         }
-        let sql = format!(
-            "INSERT INTO todos ({}) VALUES ({})",
-            crate::todos::COLUMNS,
-            std::iter::repeat_n("?", crate::todos::COLUMNS.split(',').count())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        let sql = format!("INSERT INTO todos ({columns}) VALUES ({placeholders})");
         for task in std::iter::once(record).chain(requests) {
             crate::todos::bind_record(sqlx::query(sqlx::AssertSqlSafe(sql.clone())), task)
                 .execute(&mut *tx)
                 .await?;
         }
         tx.commit().await?;
-        Ok(true)
+        Ok(AlertTodoOutcome {
+            alert_created: true,
+            requests_created: requests.len() as u64,
+        })
     }
 
     /// Whether this message is the email that told mxr its parcel went

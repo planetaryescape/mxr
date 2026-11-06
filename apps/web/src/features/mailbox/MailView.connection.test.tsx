@@ -23,6 +23,7 @@ vi.mock("@/lib/ws", () => ({
   daemonEvents: {
     getStatus: () => ({ state: "connected" }),
     onStatus: () => () => {},
+    subscribe: () => () => {},
     reconnectNow: vi.fn<() => void>(),
   },
 }));

@@ -15,6 +15,7 @@ pub struct Args {
     pub host: String,
     pub port: u16,
     pub print_url: bool,
+    pub session_json: bool,
     pub no_open: bool,
     pub auto_port: bool,
     pub strict_port: bool,
@@ -34,11 +35,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         };
     }
 
-    if let Some(remote) = args.remote_host {
+    if args.remote_host.is_some() {
+        anyhow::bail!(
+            "Use mxr connect for paired HTTPS web access; legacy token launch URLs are unsupported"
+        );
+    }
+    if crate::server::selected_daemon_target()?.is_paired_remote() {
         if args.foreground || args.detached_child {
-            anyhow::bail!("--foreground is only supported for the local web bridge");
+            anyhow::bail!("--foreground requires the local bridge");
         }
-        return run_remote(remote, args.print_url, args.no_open);
+        return run_selected_remote(&args).await;
     }
 
     if args.foreground {
@@ -55,7 +61,7 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
 
     if let Some((host, port)) = existing_bridge(&fallback_host, args.port).await {
         let (bridge_url, display_url) = local_bridge_url(&host, port)?;
-        present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
+        present_local_launch(&bridge_url, &display_url, &args);
         return Ok(());
     }
 
@@ -63,7 +69,7 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
         if let Some(port) = read_web_port() {
             let host = read_web_host().unwrap_or(fallback_host);
             let (bridge_url, display_url) = local_bridge_url(&host, port)?;
-            present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
+            present_local_launch(&bridge_url, &display_url, &args);
             return Ok(());
         }
 
@@ -76,7 +82,7 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
     let child = spawn_detached_web_child(&args)?;
     let (host, port) = wait_for_detached_web_ready(child, &fallback_host, args.port).await?;
     let (bridge_url, display_url) = local_bridge_url(&host, port)?;
-    present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
+    present_local_launch(&bridge_url, &display_url, &args);
     Ok(())
 }
 
@@ -169,38 +175,58 @@ async fn stop_local() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_remote(remote: String, print_url: bool, no_open: bool) -> anyhow::Result<()> {
-    let host_only = remote.split(':').next().unwrap_or(&remote).to_string();
-    let path = mxr_config::remote_bridge_token_path(&host_only);
-    let token = std::fs::read_to_string(&path)
-        .map_err(|error| {
-            anyhow::anyhow!(
-                "failed to read remote bridge token at {}: {error}\n\nPlace the token there with mode 0600 to authorize this client.",
-                path.display()
-            )
-        })?
-        .trim()
-        .to_string();
-    if token.is_empty() {
-        anyhow::bail!("remote bridge token at {} is empty", path.display());
-    }
-
-    let scheme = if remote.starts_with("localhost") || remote.starts_with("127.") {
-        "http"
-    } else {
-        "https"
+async fn run_selected_remote(args: &Args) -> anyhow::Result<()> {
+    let state = mxr_config::connection_state::read(&mxr_config::connection_state::path())?;
+    let saved = state
+        .selected
+        .ok_or_else(|| anyhow::anyhow!("Saved remote selection changed; retry mxr web"))?;
+    // Identity/version/grants are checked through the same saved target as other clients.
+    let _connection =
+        mxr_client::selected_daemon::connect_registration(&saved, mxr_protocol::ClientKind::Web)
+            .await?;
+    let data = mxr_client::remote_connection::authority(
+        &saved.origin,
+        "browser-grants",
+        mxr_protocol::RemoteRequest::IssueBrowserCode {
+            client_id: saved.client_id.clone(),
+            mail_secret: saved.mail_secret.clone(),
+        },
+    )
+    .await?;
+    let mxr_protocol::ResponseData::RemoteAuthority {
+        response: mxr_protocol::RemoteResponse::BrowserCode { code, .. },
+    } = data
+    else {
+        anyhow::bail!(
+            "Host did not issue a browser code; upgrade host and clients to matching mxr versions"
+        );
     };
-    let bridge_url = format!("{scheme}://{remote}/#token={token}&remote={remote}");
-
-    if print_url || no_open {
-        println!("{bridge_url}");
+    let current = mxr_config::connection_state::read(&mxr_config::connection_state::path())?;
+    if current.generation != state.generation {
+        anyhow::bail!("Saved selection changed during launch; retry mxr web");
+    }
+    if args.session_json {
+        println!(
+            "{}",
+            serde_json::json!({"url": saved.origin, "browser_code":code.expose()})
+        );
     } else {
-        eprintln!("opening browser to {scheme}://{remote}");
-        if let Err(error) = open::that(&bridge_url) {
-            eprintln!("failed to open browser: {error}; visit {bridge_url} manually");
-        }
+        eprintln!(
+            "Enter this single-use code in the browser (expires in two minutes):\n{}",
+            code.expose()
+        );
+        let launch = format!("{}/api/v1/remote/browser-launch", saved.origin);
+        present_launch_url(&launch, &launch, args.print_url, args.no_open);
     }
     Ok(())
+}
+
+fn present_local_launch(url: &str, display: &str, args: &Args) {
+    if args.session_json {
+        println!("{}", serde_json::json!({"url":url}));
+    } else {
+        present_launch_url(url, display, args.print_url, args.no_open);
+    }
 }
 
 fn parse_host(host: &str) -> anyhow::Result<IpAddr> {
@@ -681,6 +707,7 @@ mod tests {
                             host: "127.0.0.1".into(),
                             port,
                             print_url: false,
+                            session_json: false,
                             no_open: true,
                             auto_port: false,
                             strict_port: false,

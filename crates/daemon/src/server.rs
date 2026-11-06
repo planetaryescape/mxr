@@ -122,6 +122,13 @@ pub async fn run_stdio() -> anyhow::Result<()> {
 }
 
 pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> anyhow::Result<()> {
+    let client_autostart = std::env::var_os("MXR_DAEMON_CLIENT_AUTOSTART").is_some();
+    if client_autostart {
+        anyhow::ensure!(
+            !mxr_config::hosting_daemon_desired_stopped()?,
+            "Hosted daemon was explicitly stopped; client startup was cancelled"
+        );
+    }
     // Bind where every CLI-side probe/request will look (honors MXR_DAEMON_ADDR).
     let sock_path = resolve_daemon_socket()?;
     if let Some(parent) = sock_path.parent() {
@@ -159,6 +166,18 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
         Err(error) => return Err(error),
     });
+    // Initialization may take minutes. Serialize the final start boundary with
+    // desired-state writes so a stop committed during initialization wins.
+    let startup_gate = if client_autostart {
+        let gate = tokio::task::spawn_blocking(mxr_config::lock_hosting_daemon_startup).await??;
+        anyhow::ensure!(
+            !mxr_config::hosting_daemon_desired_stopped()?,
+            "Hosted daemon was stopped during initialization; no provider work was started"
+        );
+        Some(gate)
+    } else {
+        None
+    };
     // Only the daemon that holds the lock traces, so a refused second start
     // never opens an exporter.
     #[cfg(feature = "langfuse")]
@@ -408,6 +427,9 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             tracing::info!("bridge disabled by --no-bridge flag");
         }
 
+        drop(startup_gate);
+        let mut desired_state_tick=tokio::time::interval(Duration::from_secs(1));
+        let mut operator_stop_deadline:Option<tokio::time::Instant>=None;
         let mut shutdown_rx = state.shutdown_receiver();
         // The bridge reaches the daemon over the socket too, so an open web
         // tab or TUI shows up as an open connection here.
@@ -420,6 +442,19 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                 .filter(|_| connections.is_empty())
                 .map(|after| idle_since + after);
             tokio::select! {
+                _=desired_state_tick.tick(),if client_autostart=> {
+                    if !matches!(mxr_config::hosting_daemon_desired_stopped(),Ok(false)) {
+                        if let Some(deadline)=operator_stop_deadline {
+                            if tokio::time::Instant::now()>=deadline {state.request_shutdown();break;}
+                        } else {
+                            tracing::info!("Hosted daemon draining after durable operator stop");
+                            state.begin_remote_drain(5);
+                            let status=state.remote_lifecycle.snapshot(chrono::Utc::now().timestamp());
+                            let remaining=status.deadline_at.map_or(5000, |at|at.saturating_mul(1000).saturating_sub(chrono::Utc::now().timestamp_millis())).clamp(0,5000) as u64;
+                            operator_stop_deadline=Some(tokio::time::Instant::now()+Duration::from_millis(remaining));
+                        }
+                    } else {operator_stop_deadline=None;}
+                }
                 joined = connections.join_next(), if !connections.is_empty() => {
                     match joined {
                         Some(Ok(())) => {}
@@ -732,6 +767,7 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     if selected_daemon_target()?.is_remote() {
         return Ok(());
     }
+    anyhow::ensure!(!crate::commands::serve::daemon_desired_stopped()?,"This hosted daemon was explicitly stopped. Run `mxr serve start --confirm` to resume hosting or `mxr daemon` to start only the local owner; client reconnects cannot reverse the stopped state");
     let sock_path = resolve_daemon_socket()?;
     let autostart_enabled = mxr_client::daemon_autostart_enabled();
 
@@ -1107,7 +1143,7 @@ fn read_daemon_identity_file() -> Option<DaemonIdentity> {
     toml::from_str(&std::fs::read_to_string(daemon_identity_file_path()).ok()?).ok()
 }
 
-fn process_is_alive(pid: u32) -> bool {
+pub(crate) fn process_is_alive(pid: u32) -> bool {
     match kill(Pid::from_raw(pid as i32), None) {
         Ok(()) | Err(Errno::EPERM) => true,
         Err(Errno::ESRCH) => false,
@@ -2147,10 +2183,11 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
     let exe = std::env::current_exe()?;
     let mut command = std::process::Command::new(exe);
+    // Recovery compares selectors exactly, including absent defaults. The
+    // inherited environment already resolves the same instance and socket.
     command
         .arg("daemon")
-        .arg("--instance")
-        .arg(mxr_config::app_instance_name())
+        .env("MXR_DAEMON_CLIENT_AUTOSTART", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -2270,8 +2307,8 @@ mod tests {
         let target = super::selected_daemon_target().unwrap();
         assert!(target.is_paired_remote());
         assert!(super::resolve_daemon_socket_unix_only().is_err());
-        assert!(crate::ensure_web_target_supported(None, None).is_err());
-        assert!(crate::ensure_web_target_supported(Some("https://legacy.example"), None).is_ok());
+        assert!(crate::ensure_web_target_supported(None, None).is_ok());
+        assert!(crate::ensure_web_target_supported(Some("https://legacy.example"), None).is_err());
         assert!(
             crate::ensure_web_target_supported(None, Some(&crate::cli::WebAction::Stop)).is_ok()
         );

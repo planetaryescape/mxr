@@ -1,10 +1,12 @@
 pub mod connection_state;
 mod defaults;
+mod hosting;
 mod resolve;
 mod secret_store;
 pub mod snooze;
 mod types;
 
+pub use hosting::{hosting_daemon_desired_stopped, lock_hosting_daemon_startup};
 pub use resolve::{
     app_instance_name, apply_env_overrides, bridge_port_path, bridge_token_path, clear_bridge_port,
     config_dir, config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service,

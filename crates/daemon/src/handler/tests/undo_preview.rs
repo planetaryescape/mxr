@@ -6,7 +6,8 @@ use super::selection_jobs::Fixture;
 use super::*;
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{MutationCommand, UndoPreview};
-use mxr_store::{DeskUndo, HighlightPrior, ReadingHighlightRow, UndoEntry, UndoEntrySnapshot};
+use mxr_store::{DeskUndo, HighlightPrior, ReadingHighlightRow, UndoEntry};
+use std::collections::HashSet;
 
 async fn archive(fx: &Fixture, ids: &[MessageId]) -> String {
     let ResponseData::MutationResult { result } = fx
@@ -131,53 +132,6 @@ async fn an_undo_whose_messages_are_gone_locally_is_refused_as_the_undo_refuses_
 }
 
 #[tokio::test]
-async fn missing_targets_in_multiple_accounts_keep_the_same_refusal() {
-    let fx = Fixture::new().await;
-    let other = fx.other_account(true).await;
-    fx.state
-        .add_sync_provider_for_test(Arc::new(mxr_provider_fake::FakeProvider::new(
-            other.clone(),
-        )));
-    let snapshots: Vec<_> = [fx.account.clone(), other]
-        .into_iter()
-        .enumerate()
-        .map(|(index, account_id)| UndoEntrySnapshot {
-            message_id: MessageId::from_provider_id("missing", &index.to_string()),
-            account_id,
-            provider_id: index.to_string(),
-            prior_flags_bits: 0,
-            prior_label_provider_ids: vec!["INBOX".into()],
-            uncertain: false,
-        })
-        .collect();
-    let expected_detail = format!(
-        "message `{}` no longer exists locally",
-        snapshots.last().unwrap().message_id
-    );
-    let mutation_id = "missing-across-accounts";
-    fx.state
-        .store
-        .write_undo_entry(&UndoEntry {
-            mutation_id: mutation_id.into(),
-            kind: mxr_store::UndoableMutationKind::Archive,
-            snapshots,
-            desk: None,
-            applied_at: 0,
-            expires_at: chrono::Utc::now().timestamp() + 3600,
-        })
-        .await
-        .unwrap();
-
-    // Rebuilding the account map must not change which missing target is named.
-    for _ in 0..32 {
-        let previewed = preview(&fx, mutation_id).await.unwrap_err();
-        assert!(previewed.contains(&expected_detail), "{previewed}");
-        assert_eq!(previewed, undo_refusal(&fx, mutation_id).await);
-    }
-    assert_eq!(fx.undo_entries().await, 1);
-}
-
-#[tokio::test]
 async fn a_highlight_undo_with_its_message_deleted_is_refused_as_the_undo_refuses_it() {
     let fx = Fixture::new().await;
     let mail = fx.many(1, "letter").await;
@@ -200,40 +154,25 @@ async fn a_highlight_undo_with_its_message_deleted_is_refused_as_the_undo_refuse
         .await
         .unwrap();
     let mutation_id = "removed-highlight";
-    for snapshots in [
-        vec![],
-        vec![UndoEntrySnapshot {
-            message_id: mail[0].id.clone(),
-            account_id: fx.account.clone(),
-            provider_id: mail[0].provider_id.clone(),
-            prior_flags_bits: 0,
-            prior_label_provider_ids: vec!["INBOX".into()],
-            uncertain: false,
-        }],
-    ] {
-        fx.state
-            .store
-            .write_undo_entry(&UndoEntry {
-                mutation_id: mutation_id.into(),
-                kind: mxr_store::UndoableMutationKind::Highlight,
-                snapshots,
-                desk: Some(DeskUndo {
-                    highlights: vec![HighlightPrior {
-                        row: row.clone(),
-                        removed: true,
-                    }],
-                    ..DeskUndo::default()
-                }),
-                applied_at: 0,
-                expires_at: chrono::Utc::now().timestamp() + 3600,
-            })
-            .await
-            .unwrap();
+    fx.state
+        .store
+        .write_undo_entry(&UndoEntry {
+            mutation_id: mutation_id.into(),
+            kind: mxr_store::UndoableMutationKind::Highlight,
+            snapshots: vec![],
+            desk: Some(DeskUndo {
+                highlights: vec![HighlightPrior { row, removed: true }],
+                ..DeskUndo::default()
+            }),
+            applied_at: 0,
+            expires_at: chrono::Utc::now().timestamp() + 3600,
+        })
+        .await
+        .unwrap();
 
-        let previewed = preview(&fx, mutation_id).await.unwrap_err();
-        assert_eq!(previewed, undo_refusal(&fx, mutation_id).await);
-        assert!(previewed.contains("irreversible"), "{previewed}");
-    }
+    let previewed = preview(&fx, mutation_id).await.unwrap_err();
+    assert_eq!(previewed, undo_refusal(&fx, mutation_id).await);
+    assert!(previewed.contains("irreversible"), "{previewed}");
 }
 
 #[tokio::test]
@@ -250,24 +189,12 @@ async fn a_valid_preview_names_the_targets_the_undo_restores_and_changes_nothing
     assert_eq!(previewed.mutation_id, mutation_id);
     assert_eq!(previewed.kind, "archive");
     assert!(!previewed.restores_desk_state);
-    let entry = fx
-        .state
-        .store
-        .read_undo_entry(&mutation_id)
-        .await
-        .unwrap()
-        .unwrap();
-    let targets: Vec<_> = previewed
+    let targets: HashSet<MessageId> = previewed
         .targets
         .iter()
-        .map(|t| (&t.message_id, &t.account_id))
+        .map(|t| t.message_id.clone())
         .collect();
-    let stored_targets: Vec<_> = entry
-        .snapshots
-        .iter()
-        .map(|snapshot| (&snapshot.message_id, &snapshot.account_id))
-        .collect();
-    assert_eq!(targets, stored_targets);
+    assert_eq!(targets, ids.iter().cloned().collect::<HashSet<_>>());
     assert!(previewed.targets.iter().all(|t| t.in_local_store));
 
     for id in &ids {

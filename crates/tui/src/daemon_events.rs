@@ -53,6 +53,10 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         apply_user_sync_outcome(app, &event);
     }
     match event {
+        DaemonEvent::ServerStopping { .. } => {
+            app.status_message =
+                Some("Server is stopping; drafts are kept. Reconnecting when it returns.".into());
+        }
         DaemonEvent::SyncCompleted {
             account_id,
             messages_synced,

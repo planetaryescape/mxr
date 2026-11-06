@@ -49,6 +49,10 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
     Ok(match format {
         OutputFormat::Json | OutputFormat::Jsonl => serde_json::to_string(event)?,
         _ => match event {
+            DaemonEvent::ServerStopping {
+                boot_id,
+                deadline_at,
+            } => format!("server stopping boot_id={boot_id} deadline_at={deadline_at}"),
             DaemonEvent::SyncCompleted {
                 account_id,
                 messages_synced,

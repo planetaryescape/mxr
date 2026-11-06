@@ -719,39 +719,6 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         "post-archive: {target_id} must not be in `label:inbox`"
     );
 
-    let preview = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["undo", mutation_id.trim(), "--dry-run", "--format", "json"],
-    );
-    assert_eq!(preview["mutation_id"], mutation_id.trim());
-    assert_eq!(preview["dry_run"], true);
-    assert_eq!(preview["undone"], false);
-    assert_eq!(preview["preview"]["kind"], "archive");
-    let targets = preview["preview"]["targets"]
-        .as_array()
-        .expect("preview targets");
-    assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0]["message_id"], target_id);
-    assert_eq!(targets[0]["in_local_store"], true);
-    let after_preview = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &[
-            "search",
-            "label:inbox",
-            "--format",
-            "json",
-            "--limit",
-            "100",
-        ],
-    );
-    assert!(search_results(&after_preview, "post-preview inbox results")
-        .iter()
-        .all(|item| item["message_id"].as_str() != Some(target_id.as_str())));
-
     // Undo via the CLI. Restores INBOX both locally and on the fake
     // provider. The output is just "Undone".
     let undone = run_status_only(

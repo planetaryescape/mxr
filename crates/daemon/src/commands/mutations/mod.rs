@@ -3,6 +3,8 @@ pub use archive::archive_operation;
 mod bulk_all;
 pub use bulk_all::{run as bulk_all, BulkAction, BulkAllRun};
 mod attachments;
+mod inline_images;
+pub use inline_images::inline_image_bytes;
 mod compose;
 mod compose_html;
 mod helpers;

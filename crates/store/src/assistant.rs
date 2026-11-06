@@ -81,12 +81,24 @@ impl super::Store {
         &self,
         limit: u32,
     ) -> Result<Vec<AssistantConversationRow>, sqlx::Error> {
+        self.list_assistant_conversations_with_prefix(limit, "")
+            .await
+    }
+
+    /// Apply the caller's conversation namespace before limiting, so another installation's
+    /// recent turns cannot hide the selected installation's retained history.
+    pub async fn list_assistant_conversations_with_prefix(
+        &self,
+        limit: u32,
+        prefix: &str,
+    ) -> Result<Vec<AssistantConversationRow>, sqlx::Error> {
         let rows = sqlx::query(concat!(
             "SELECT ",
             conversation_columns!(),
-            " FROM assistant_conversations c ORDER BY c.updated_at DESC, c.id DESC LIMIT ?1"
+            " FROM assistant_conversations c WHERE substr(c.id,1,length(?2))=?2 ORDER BY c.updated_at DESC, c.id DESC LIMIT ?1"
         ))
         .bind(i64::from(limit))
+        .bind(prefix)
         .fetch_all(self.reader())
         .await?;
         Ok(rows.iter().map(conversation_from_row).collect())
@@ -348,5 +360,30 @@ mod tests {
         assert_eq!(waiting.pending_json.as_deref(), Some("[{}]"));
         let listed = store.list_assistant_conversations(10).await.unwrap();
         assert_eq!(listed.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod scoped_tests {
+    #[tokio::test]
+    async fn conversation_namespace_is_filtered_before_the_result_limit() {
+        let store = crate::Store::in_memory().await.unwrap();
+        for id in ["asst_remote_a_001", "asst_remote_b_999", "asst_z_local"] {
+            store.create_assistant_conversation(id, id).await.unwrap();
+        }
+        let rows = store
+            .list_assistant_conversations_with_prefix(1, "asst_remote_a_")
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "asst_remote_a_001");
+        assert!(
+            store
+                .list_assistant_conversations_with_prefix(10, "asst_remote_%_")
+                .await
+                .unwrap()
+                .is_empty(),
+            "namespace is an exact prefix, not a LIKE wildcard"
+        );
     }
 }

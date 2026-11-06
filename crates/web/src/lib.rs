@@ -14,6 +14,7 @@ mod chrome;
 mod compose_assist_routes;
 mod envelope_list;
 mod freshness_routes;
+mod inline_images;
 mod insight_routes;
 mod keymap_routes;
 mod legacy;
@@ -26,6 +27,7 @@ mod place_routes;
 mod promise_routes;
 mod reading_routes;
 mod record_routes;
+mod remote_browser;
 pub mod remote_gateway;
 #[cfg(test)]
 mod remote_gateway_tests;
@@ -61,7 +63,7 @@ use envelope_list::{
     list_envelopes_by_message_ids, mailbox_message_rows, mailbox_thread_rows,
     message_row_view_with_labels, reorder_envelopes, thread_reader_mode,
 };
-use mxr_client::{ClientError, IpcConnection};
+use mxr_client::ClientError;
 use mxr_compose::{
     frontmatter::{parse_compose_file, render_compose_file, ComposeFrontmatter},
     render::render_markdown,
@@ -169,6 +171,11 @@ impl AppState {
         &self,
         path: &Path,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, BridgeError> {
+        if let Some(parent) = remote_browser::session_id() {
+            remote_browser::validate_compose_path(path, &parent)
+                .await
+                .map_err(|_| BridgeError::Unauthorized)?;
+        }
         let key = tokio::fs::canonicalize(path)
             .await
             .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -1629,7 +1636,7 @@ async fn upload_compose_attachment(
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
     let mut connection =
-        IpcConnection::connect(&state.config.socket_path, mxr_protocol::ClientKind::Web)
+        remote_browser::connect(&state.config.socket_path, mxr_protocol::ClientKind::Web)
             .await
             .map_err(map_bridge_error)?;
     connection
@@ -2637,10 +2644,14 @@ async fn events(
     } else {
         ws
     };
-    ws.on_upgrade(move |socket| bridge_events(socket, state.config.socket_path))
+    let proof = remote_browser::proof();
+    ws.on_upgrade(move |socket| remote_browser::events(socket, state.config.socket_path, proof))
 }
 
 async fn ipc_request(socket_path: &Path, request: Request) -> Result<ResponseData, BridgeError> {
+    if remote_browser::proof().is_some() && matches!(request, Request::GetStatus) {
+        return remote_browser::status(socket_path).await;
+    }
     ipc_request_with_id(socket_path, next_bridge_request_id(), request).await
 }
 
@@ -2654,7 +2665,7 @@ async fn ipc_request_with_id(
     // externally-chosen correlation id on the wire so daemon logs still line up
     // with the bridge's `request_id`. The `ClientKind::Web` tag is preserved so
     // daemon activity attributes web traffic correctly.
-    let mut connection = IpcConnection::connect(socket_path, mxr_protocol::ClientKind::Web)
+    let mut connection = remote_browser::connect(socket_path, mxr_protocol::ClientKind::Web)
         .await
         .map_err(map_bridge_error)?
         .with_start_id(request_id);
@@ -2690,7 +2701,7 @@ async fn system_mailbox_counts_request(
     account_id: Option<AccountId>,
 ) -> Result<Option<Vec<mxr_protocol::SystemMailboxCount>>, BridgeError> {
     let connect = || async {
-        IpcConnection::connect(socket_path, mxr_protocol::ClientKind::Web)
+        remote_browser::connect(socket_path, mxr_protocol::ClientKind::Web)
             .await
             .map(|connection| connection.with_start_id(next_bridge_request_id()))
     };
@@ -2760,7 +2771,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
 
 async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
     let mut connection =
-        match IpcConnection::connect(&socket_path, mxr_protocol::ClientKind::Web).await {
+        match remote_browser::connect(&socket_path, mxr_protocol::ClientKind::Web).await {
             Ok(connection) => connection,
             Err(error) => {
                 // Preserve the pre-refactor payload: the bare io-error string,
@@ -2778,11 +2789,15 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
             }
         };
 
+    let mut auth_check = tokio::time::interval(std::time::Duration::from_secs(2));
     // Read the browser side too: without it a closed tab keeps the daemon
     // socket open until the next event happens to fail its send. Both
     // `next_event` and `recv` are cancel-safe, so `select!` loses no frame.
     loop {
         tokio::select! {
+            _ = auth_check.tick(), if remote_browser::proof().is_some() => {
+                if !remote_browser::validate_current(&socket_path).await { break; }
+            }
             event = connection.next_event() => {
                 let Ok(message) = event else {
                     break;
@@ -2790,6 +2805,9 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
                 let IpcPayload::Event(event) = message.payload else {
                     continue;
                 };
+                if remote_browser::session_id().is_some_and(|parent| !remote_browser::event_visible(&parent, &event)) { continue; }
+                if !matches!(event, mxr_protocol::DaemonEvent::ServerStopping { .. }) && !remote_browser::validate_current(&socket_path).await { break; }
+                let event = if remote_browser::proof().is_some() { remote_browser::public_event(event) } else { event };
                 let Ok(payload) = serde_json::to_string(&event) else {
                     break;
                 };
@@ -3101,6 +3119,7 @@ async fn write_recovery_metadata(
         serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     value["compose_recovery_source"] = json!(source);
     value["compose_workspace"] = json!(workspace_owner::captured());
+    value["compose_browser"] = json!(remote_browser::session_id());
     replace_compose_file(&draft_session_metadata_path(path), value.to_string()).await
 }
 
@@ -3154,6 +3173,7 @@ async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), 
     let mut value =
         serde_json::to_value(draft).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     value["compose_workspace"] = json!(workspace_owner::captured());
+    value["compose_browser"] = json!(remote_browser::session_id());
     let bytes = serde_json::to_vec(&value).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let metadata = draft_session_metadata_path(path);
     replace_compose_file(
@@ -3426,6 +3446,22 @@ async fn compose_draft_from_snapshot(
     metadata: Option<Draft>,
 ) -> Result<Draft, BridgeError> {
     let (frontmatter, body) = parse_compose_content(raw_content)?;
+    if remote_browser::proof().is_some() {
+        let allowed = metadata
+            .as_ref()
+            .and_then(|draft| draft.managed_attachments.as_ref());
+        if frontmatter.attach.iter().any(|reference| {
+            !allowed.is_some_and(|resources| {
+                resources.iter().any(|resource| {
+                    *reference == format!("mxr-resource:{}/{}", resource.id, resource.filename)
+                })
+            })
+        }) {
+            return Err(BridgeError::BadRequest(
+                "Remote drafts use portable uploads; host file paths are unavailable".into(),
+            ));
+        }
+    }
     validate_compose_submission(&frontmatter, &body, validation)?;
     if let Some(mut existing) = metadata {
         if draft_id.as_ref().is_some_and(|id| id != &existing.id)
@@ -3526,7 +3562,11 @@ async fn restore_saved_draft_session(
     let owner = workspace_owner::captured();
     let owner_key =
         serde_json::to_string(&owner).map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    let session_key = format!("{}:{owner_key}", draft.id);
+    let session_key = format!(
+        "{}:{owner_key}:{:?}",
+        draft.id,
+        remote_browser::session_id()
+    );
     let mut active_sessions = state.active_compose_sessions.lock().await;
     if let Some(active_path) = active_sessions.get(&session_key).cloned() {
         if tokio::fs::try_exists(&active_path).await.unwrap_or(false) {

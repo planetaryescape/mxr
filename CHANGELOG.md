@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.230](https://github.com/planetaryescape/mxr/compare/v0.6.229...v0.6.230) (2026-11-06)
+
+
+### Bug Fixes
+
+* **store:** seek the thread summary on writes and drop ghost rows ([#933](https://github.com/planetaryescape/mxr/issues/933)) ([2014dac](https://github.com/planetaryescape/mxr/commit/2014dac36b6ac039311046d02de10ed3dd447f6d))
+
+
+### Performance
+
+* **web:** first-screen LCP on Messages and Reading (P-5 residual) ([#932](https://github.com/planetaryescape/mxr/issues/932)) ([685037d](https://github.com/planetaryescape/mxr/commit/685037d133c51c568d65d055784b78e7f4ea6689))
+
 ## [0.6.229](https://github.com/planetaryescape/mxr/compare/v0.6.228...v0.6.229) (2026-11-06)
 
 

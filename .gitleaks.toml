@@ -19,3 +19,10 @@ id = "generic-api-key"
   paths = ['''(^|/)crates/web/src/remote_gateway_tests\.rs$''']
   regexTarget = "secret"
   regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+  [[rules.allowlists]]
+  description = "RFC 6455 example nonce in the hosting probe's earlier commit"
+  condition = "AND"
+  paths = ['''(^|/)crates/daemon/src/commands/serve/hosting\.rs$''']
+  regexTarget = "secret"
+  regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']

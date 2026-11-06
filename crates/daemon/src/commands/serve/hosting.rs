@@ -429,6 +429,7 @@ async fn wait_local(config: &Hosting) -> anyhow::Result<()> {
     )
 }
 async fn verify_public(config: &Hosting) -> anyhow::Result<()> {
+    use base64::Engine as _;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
@@ -446,12 +447,17 @@ async fn verify_public(config: &Hosting) -> anyhow::Result<()> {
         health_matches(&body, config),
         "Public gateway identity/protocol did not match the installed build"
     );
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(std::io::Error::other)?;
     let response = client
         .get(format!("{}/api/v1/remote/ipc", config.public_origin))
         .header("connection", "Upgrade")
         .header("upgrade", "websocket")
         .header("sec-websocket-version", "13")
-        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .header(
+            "sec-websocket-key",
+            base64::engine::general_purpose::STANDARD.encode(nonce),
+        )
         .send()
         .await?;
     anyhow::ensure!(

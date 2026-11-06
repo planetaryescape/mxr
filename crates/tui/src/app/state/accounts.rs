@@ -40,6 +40,10 @@ pub struct AccountFormState {
     pub imap_password_ref: String,
     pub imap_password: String,
     pub imap_auth_required: bool,
+    /// Not editable in the form; carried through so saving an account does not
+    /// reset a loopback bridge to TLS or drop its certificate pin.
+    pub imap_use_tls: bool,
+    pub imap_tls_cert_sha256: Option<String>,
     pub smtp_host: String,
     pub smtp_port: String,
     pub smtp_username: String,
@@ -77,6 +81,8 @@ impl Default for AccountFormState {
             imap_password_ref: String::new(),
             imap_password: String::new(),
             imap_auth_required: true,
+            imap_use_tls: true,
+            imap_tls_cert_sha256: None,
             smtp_host: String::new(),
             smtp_port: "587".into(),
             smtp_username: String::new(),

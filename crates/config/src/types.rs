@@ -831,6 +831,10 @@ pub enum SyncProviderConfig {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate. When set, only that
+        /// certificate is accepted, even self-signed (for local bridges).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.

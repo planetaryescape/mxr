@@ -52,6 +52,14 @@ pub enum AccountsAction {
         /// Maximum concurrent IMAP connections for this account.
         #[arg(long, default_value_t = 4)]
         imap_max_connections: usize,
+        /// Connect to IMAP without TLS. Only accepted for loopback hosts
+        /// (127.0.0.0/8, ::1, localhost), such as a local bridge.
+        #[arg(long)]
+        imap_no_tls: bool,
+        /// Trust only the IMAP server certificate with this SHA-256 (hex), even if
+        /// self-signed. `mxr accounts test <account>` prints it.
+        #[arg(long)]
+        imap_tls_cert_sha256: Option<String>,
         // SMTP-specific.
         #[arg(long)]
         smtp_host: Option<String>,

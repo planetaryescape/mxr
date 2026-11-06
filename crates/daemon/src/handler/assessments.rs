@@ -513,9 +513,10 @@ async fn replay_projections_at(
         )
         .await
         {
-            Ok(summary) => {
-                super::alert_todos::project_payment_ask(state, &ticket.answer.message_id, now)
-                    .await?;
+            Ok(mut summary) => {
+                summary.created +=
+                    super::alert_todos::project_payment_ask(state, &ticket.answer.message_id, now)
+                        .await?;
                 if state.store.acknowledge_asks_projection(&ticket).await? {
                     acknowledged += 1;
                     projected.add(&summary);

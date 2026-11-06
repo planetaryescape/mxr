@@ -22,6 +22,12 @@ The former query counted three copies as three messages: retained fail-first
 evidence records observed 3, required 1. Copy, reseal, cross-account, stale,
 future and original adversarial cases must pass before acceptance. Preserve
 all existing legitimate Asks source/correction/undo coverage through this gate.
+The first affected Asks run passed14/failed2: an independent remediation task
+was suppressed, and a historic policy14 fixture incorrectly reused the new
+alert identity. Both are addressed in the candidate while retaining the original
+counts and correction/Undo assertions: one guarded claim atomically inserts the
+alert and independent requests, and historic rows use their canonical Asks keys.
+The original failing receipt/log remains retained; rerun and full gates are pending.
 
 No source enrollment is required. Parent corrected its earlier absolute
 rejection of a warmed attacker-owned domain after consulting the original

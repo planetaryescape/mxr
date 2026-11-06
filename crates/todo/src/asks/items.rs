@@ -328,7 +328,7 @@ pub fn has_payment_failure_notice(answer: &mxr_core::asks::AskAssessment) -> boo
 /// reported failure from an ordinary request to change payment details.
 pub fn has_failure_status(text: &str) -> bool {
     static STATUS: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-        regex::Regex::new(r"(?i)\b(failed|declined|unsuccessful|expired|unpaid|returned|bounced|cancelled|unable|couldn'?t|could not|problem|trouble|didn'?t go through)\b")
+        regex::Regex::new(r"(?i)\b(failed|declined|unsuccessful|expired|unpaid|returned|bounced|cancelled|unable|couldn['’]?t|could not|problem|trouble|didn['’]?t go through)\b")
             .expect("valid failure-status regex")
     });
     STATUS.is_match(text)

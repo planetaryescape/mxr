@@ -968,8 +968,13 @@ creation to one task per account, domain, alert kind and local day. A second
 unique claim on authenticated original and kind also prevents resealing or
 copying a message into a later day from creating again. Claims survive task
 and source deletion, dismissal, rules changes and re-sync. Existing Asks
-payment tasks retain correction/undo handling; new automatic payment tasks
-use this same gate and retain their exact source quote and unit provenance.
+payment tasks retain correction/undo handling. An alert and independent payment
+remediation requests remain separate tasks with their own quote, amount and
+unit provenance. They are inserted together under the one guarded alert claim;
+an unverified or first-time notice cannot bypass the gate through a second
+remediation unit. A replay cannot create any of the group again. Ordinary
+personal requests without a failure notice keep the existing Asks workflow.
+The audit counts eligible alert claims, not the extra independent owner tasks.
 Mail never triggers tools, payments, external actions or automatic closing.
 
 `[updates] auto_todo_alerts` defaults on; setting it false holds automatic

@@ -58,8 +58,10 @@ mail do not qualify. Gmail-compatible extensions on another server do not
 make that server trusted; Outlook and generic IMAP explain the missing evidence.
 
 The title names the domain, such as `Check new sign-in · accounts.google.com`.
-There is at most one task per domain and alert kind each local day; copying
-or resealing the same original cannot create another on a later day. Existing
+There is at most one alert group per domain and alert kind each local day.
+Independent requests in that email, such as updating details for a different
+account, keep separate tasks under the same verified claim. Copying or
+resealing the original cannot create that group again on a later day. Existing
 undo and task controls remain available. No email can trigger a payment,
 external action or automatic task closing.
 

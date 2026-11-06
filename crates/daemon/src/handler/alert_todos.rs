@@ -246,7 +246,7 @@ fn created_reason(host: &str, history: History) -> String {
 }
 
 /// On arrival: create the alert's to-do if the decision says so. Returns
-/// whether a new to-do was made. A claim already held (a re-sync, a
+/// the number of tasks made. A claim already held (a re-sync, a
 /// reclassification, the same alert twice in a local day, a to-do the user
 /// since dismissed) makes nothing.
 pub(super) async fn create_on_arrival(
@@ -254,10 +254,10 @@ pub(super) async fn create_on_arrival(
     message: &PlaceMessage,
     alert: Alert,
     now: DateTime<Utc>,
-) -> Result<bool, HandlerError> {
+) -> Result<usize, HandlerError> {
     let assessment = assess(state, message, alert, now).await?;
     let Decision::Create(claim) = &assessment.decision else {
-        return Ok(false);
+        return Ok(0);
     };
     let mut record = alert_record(
         state,
@@ -273,7 +273,7 @@ pub(super) async fn create_on_arrival(
         .insert_alert_todo_with_requests(&record, claim.kind.as_str(), &requests)
         .await?
     {
-        return Ok(false);
+        return Ok(0);
     }
     // Kind only: the host and the message stay out of the activity log.
     state.activity.record(crate::activity::OwnedEntry {
@@ -286,7 +286,7 @@ pub(super) async fn create_on_arrival(
         tier: mxr_store::Tier::Important,
         context: Some(serde_json::json!({ "kind": claim.kind.as_str() })),
     });
-    Ok(true)
+    Ok(1 + requests.len())
 }
 
 /// Asks projection uses the same receiver gate before acknowledging its work.
@@ -295,29 +295,29 @@ pub(super) async fn project_payment_ask(
     state: &AppState,
     id: &mxr_core::MessageId,
     now: DateTime<Utc>,
-) -> Result<(), HandlerError> {
+) -> Result<usize, HandlerError> {
     let Some(envelope) = state.store.get_envelope(id).await? else {
-        return Ok(());
+        return Ok(0);
     };
     let answers = state
         .store
         .asks_for_messages(&envelope.account_id, std::slice::from_ref(id))
         .await?;
     let Some(answer) = answers.get(id) else {
-        return Ok(());
+        return Ok(0);
     };
     if !mxr_todo::asks::items::has_payment_failure_notice(answer) {
-        return Ok(());
+        return Ok(0);
     }
     if !mxr_todo::asks::items::detections(answer, &envelope)
         .iter()
         .any(|(_, d)| d.kind == TodoKind::PaymentFailed)
     {
-        return Ok(());
+        return Ok(0);
     }
     if let Some(message) = state.store.place_message(id).await? {
         if message.direction == "inbound" {
-            create_on_arrival(
+            return create_on_arrival(
                 state,
                 &message,
                 Alert {
@@ -326,10 +326,10 @@ pub(super) async fn project_payment_ask(
                 },
                 now,
             )
-            .await?;
+            .await;
         }
     }
-    Ok(())
+    Ok(0)
 }
 
 async fn enrich_from_stored_ask(
@@ -398,6 +398,12 @@ async fn enrich_from_stored_ask(
         request.counterparty = Some(claim.host.clone());
         request.sender_domain = Some(claim.host.clone());
         request.source_date = record.source_date;
+        request.state = TodoState::Open;
+        request.expired_at = None;
+        request.expired_at_birth = false;
+        request.catchup = None;
+        request.action_url = None;
+        request.action_domain = None;
         request.reason = format!("{} Source request: {}", record.reason, request.reason);
         let mut fields = FieldSources::from_json(&request.field_sources);
         fields.0.extend(verified.0.clone());

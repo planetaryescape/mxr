@@ -252,6 +252,19 @@ pub struct Thread {
 
 Threads are computed/aggregated from messages sharing a `thread_id`.
 
+A system mailbox's thread page is not grouped from `messages` at read time.
+`thread_role_pages` (migration 111) keeps one row per (role, account, thread)
+with the newest date of that thread's messages in the role: All Mail is every
+message, Starred is the message flag, and every other role is the stored
+`labels.role` of a System label, or its name for a label that carries none.
+Triggers on `messages`, `message_labels` and `labels` rebuild one thread's rows
+in the same transaction as the write, and the first migration backfills the
+table. The page query is an ordered range scan of
+`idx_thread_role_pages_page(role, latest_date, thread_id)` that stops at LIMIT,
+instead of a mailbox-wide `GROUP BY thread_id ORDER BY MAX(date)` with a temp
+B-tree. It is derived data: deleting the table and re-running the backfill
+reproduces it.
+
 Legacy Gmail thread ids from before v0.4.52 were derived from the provider's thread id alone, so two accounts that saw the same Gmail thread can share one `thread_id`; a merged "All accounts" listing shows such a thread once, under one account. Mail synced since v0.4.52 gets account-scoped ids and cannot collide. This is not rewritten: changing stored ids risks stranding stored links (to-dos, records, commitments) for a display-only benefit.
 
 ### Draft (compose state)

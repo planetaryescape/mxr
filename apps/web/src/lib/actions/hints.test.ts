@@ -46,6 +46,20 @@ describe("shortcutSections", () => {
     expect(titles).not.toContain("Mail list (this view)");
   });
 
+  test("in Now, lists its mail verbs as its own and puts Mail actions after the global keys", () => {
+    const sections = shortcutSections(ctx(["now", "global"]));
+    const titles = sections.map((section) => section.title);
+    const now = sections.find((section) => section.id === "now")!;
+
+    expect(titles[0]).toBe("Now (this view)");
+    // b and X work in Now; help said nothing of them there.
+    expect(now.hints.map((item) => item.id)).toEqual(
+      expect.arrayContaining(["mail.snooze", "modes.move"]),
+    );
+    // Mail actions' e is Archive; in Now e is Done, so they come after Go to.
+    expect(titles.indexOf("Mail actions")).toBeGreaterThan(titles.indexOf("Go to"));
+  });
+
   test("lists ? as keyboard help, live everywhere", () => {
     const help = allHints(["global"]).find((hint) => hint.id === "shell.help");
 

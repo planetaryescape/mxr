@@ -7,7 +7,7 @@ use crate::state::AppState;
 use chrono::{Local, NaiveDate, TimeZone, Utc};
 use mxr_protocol::{
     MicrosoftTodoSendData, MicrosoftTodoStatusData, MicrosoftTodoSyncData,
-    MicrosoftTodoSyncItemData, ResponseData, TodoEditData,
+    MicrosoftTodoSyncItemData, ResponseData,
 };
 use mxr_store::{TodoMicrosoftExport, TodoRecord, TodoState};
 use mxr_todo::linked::{self, LinkedTodoFields};
@@ -507,16 +507,27 @@ fn local_update(
     local: &LinkedTodoFields,
     desired: &LinkedTodoFields,
 ) -> Result<TodoRecord, HandlerError> {
-    let edits = if local.due != desired.due {
-        vec![TodoEditData {
-            field: "due".into(),
-            value: desired.due.map_or_else(String::new, |day| day.to_string()),
-        }]
-    } else {
-        Vec::new()
-    };
-    let mut edited = super::todos::apply_edits(state, record.clone(), &edits, Utc::now(), None)?;
+    let mut edited = super::todos::apply_edits(state, record.clone(), &[], Utc::now(), None)?;
     let mut sources = FieldSources::from_json(&edited.field_sources);
+    // Set directly, not as an edit phrase: the phrase parser refuses a day
+    // that has passed, and a task overdue in Microsoft To Do (or due today,
+    // after the morning hour) is still a task.
+    if local.due != desired.due {
+        edited.due_at = desired
+            .due
+            .map(|day| mxr_todo::dates::end_of_day(day, &Local));
+        edited.due_words = None;
+        edited.window_source = Some("user".to_string());
+        sources.set(
+            "due_at",
+            FieldProvenance::with_evidence(FieldSource::User, "you set it"),
+        );
+        super::todos::retime_record(
+            &mut edited,
+            &mut sources,
+            state.snooze_time_prefs().morning_hour,
+        );
+    }
     if local.title != desired.title {
         if desired.title.trim().is_empty() || desired.title.len() > 32_768 {
             return Err(HandlerError::InvalidRequest(

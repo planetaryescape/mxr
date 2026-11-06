@@ -8,6 +8,13 @@ is a front page you visit when you like, not a pile you owe: there is no
 unread count, the sources you read most come first, and items fade on their
 own unless you keep them.
 
+Archiving the email in Gmail or another client does not mean you finished
+reading. When sync observes that change, an eligible item stays in the edition
+or on Later and shows "left the inbox" with the date mxr observed the change,
+not necessarily the date it was archived. The marker clears if the email returns
+to the inbox. Reading's own let-go, Later and expiry rules still apply; mail
+that was already archived before mxr observed it is not pulled into the edition.
+
 The unit is a readable item, not an email:
 
 | The email | What Reading shows |
@@ -231,12 +238,19 @@ issue as opened.
 
 ## Highlight what you want to keep
 
-In the web reader, select text and a small toolbar appears over the
-selection: **Highlight**, or **Highlight with note**. `"` still highlights
-the selection without the toolbar. The TUI saves the paragraph at the top of
-the reader with `"`. The web reader marks a highlight on the passage you
-selected: it remembers which paragraph you were in, so selecting the second
-of two identical phrases marks the second. Older highlights, highlights made in
+`"` highlights the paragraph at the top of the reader, in both clients, so a
+highlight needs no mouse: scroll with `j` and `k` until the paragraph you
+want is at the top, then press `"`. A paragraph partly scrolled past still
+counts as the top one. The toast names its first words; if it took the wrong
+one, `3` lists the item's highlights, where you can remove it. In the web
+app the sender's own layout (`R`) has no paragraphs to take, so switch back
+to the cleaned text first.
+
+In the web reader, you can also select text, and a small toolbar appears over
+the selection: **Highlight**, or **Highlight with note**. With text selected,
+`"` highlights the selection instead of the paragraph. A highlight remembers
+which paragraph it came from, so selecting the second of two identical
+phrases marks the second. Older highlights, highlights made in
 the other view (issue or article), and highlights from Marginalia are
 marked wherever their text appears instead. Highlights are
 listed under the article with their notes.
@@ -296,7 +310,7 @@ makes no unsubscribe offers.
 | `D` | Unsubscribe, with evidence and a preview |
 | `R` | The sender's own layout |
 | `E` | Let go of everything shown, with a preview |
-| `"` | Highlight the selection |
+| `"` | Highlight the paragraph at the top of the reader, or the selection |
 | `1` `2` `3` | The tabs: the edition, Later, the open item's highlights |
 | `o` | Open the email itself |
 | `O` | Open in Marginalia, sending it the first time |

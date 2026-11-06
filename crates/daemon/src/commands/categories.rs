@@ -1,4 +1,5 @@
 use crate::cli::{CategoriesAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -143,7 +144,7 @@ pub async fn run(
         }
     };
     match response {
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         Response::Ok { data } => print_response(data, format)?,
     }
     Ok(())
@@ -176,7 +177,7 @@ fn ensure_category_name_available(response: Response) -> anyhow::Result<()> {
                     available: false, ..
                 },
         } => anyhow::bail!("a category with that name already exists"),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("unexpected response to category name preview"),
     }
 }

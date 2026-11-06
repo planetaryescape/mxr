@@ -164,6 +164,36 @@ fn chip_spans(
     }
 }
 
+/// Marks for a view of several accounts, `(id, name, tag)` each, plain
+/// depth so a test can read the chip as text.
+#[cfg(test)]
+pub(crate) fn plain_marks_for_tests(accounts: &[(&AccountId, &str, &str)]) -> AccountMarks {
+    let summaries: Vec<AccountSummaryData> = accounts
+        .iter()
+        .map(|(id, name, tag)| AccountSummaryData {
+            account_id: (*id).clone(),
+            key: Some(name.to_lowercase()),
+            name: (*name).into(),
+            email: format!("{}@example.com", name.to_lowercase()),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: None,
+            enabled: true,
+            is_default: false,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+            identity: Some(mxr_protocol::AccountIdentityData {
+                color: AccountColor::Sky,
+                tag: (*tag).into(),
+            }),
+        })
+        .collect();
+    AccountMarks::from_accounts(&summaries, false, ChipDepth::Plain)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,6 +281,20 @@ mod tests {
         assert_eq!(spans[0].style.fg, Some(theme.account.ink));
         let width: usize = spans.iter().map(|span| span.content.chars().count()).sum();
         assert_eq!(width, CHIP_WIDTH);
+    }
+
+    #[test]
+    fn an_unknown_colour_slot_draws_as_slate() {
+        let work = account("work", true, Some(AccountColor::Unknown));
+        let home = account("home", true, Some(AccountColor::Amber));
+        let marks = AccountMarks::from_accounts(&[work.clone(), home], false, ChipDepth::Truecolor);
+        let theme = Theme::dark();
+        let spans = marks.row_cell(&work.account_id, &theme).unwrap();
+        assert_eq!(spans[0].content, " W  ");
+        assert_eq!(
+            spans[0].style.bg,
+            Some(theme.account.fill(AccountColor::Slate))
+        );
     }
 
     #[test]

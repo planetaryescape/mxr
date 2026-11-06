@@ -79,7 +79,10 @@ fn is_imap_parse_detail(detail: &str) -> bool {
 
 impl From<ImapProviderError> for mxr_core::error::MxrError {
     fn from(e: ImapProviderError) -> Self {
-        Self::Provider(e.to_string())
+        match e {
+            ImapProviderError::Auth(_) => Self::ProviderAuth(e.to_string()),
+            other => Self::Provider(other.to_string()),
+        }
     }
 }
 

@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Inspect local pairing authority; supervised gateway setup is not available
+
+Usage: mxr serve status [OPTIONS]
+
+Options:
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

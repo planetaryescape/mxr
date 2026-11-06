@@ -8,7 +8,8 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { TodoSkeleton } from "@/features/modes/ModeSkeletons";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -39,6 +40,7 @@ import type { LampVia } from "@/components/Row";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
 import { listMotions } from "@/features/modes/listMotions";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 
 /**
  * The runway for the account scope. The first fetch on each visit records
@@ -77,7 +79,7 @@ const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
  * To do: things email asked you to do, as a runway of instructions
  * ordered by when to act. Not a list of emails: each row is an action titled
  * verb plus object, with its dates and primary action visible; supporting
- * details and the source email are one key away (`o`).
+ * details peek under the row on `Space`, and `o` opens the source email.
  */
 export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
   const { runway, expiredOnOpen } = useRunway();
@@ -113,9 +115,9 @@ function Runway({
   const data = status.data;
   return (
     <>
-      <TodoHeader runway={data} guide={guide.data} />
+      <TodoHeader runway={phase === "ready" ? data : undefined} guide={guide.data} />
       {phase !== "ready" ? (
-        <PageSkeleton framed shown={phase === "skeleton"} />
+        <TodoSkeleton shown={phase === "skeleton"} />
       ) : status.isError ? (
         <PageError
           framed
@@ -265,16 +267,39 @@ function Bands({
   const { dismiss: dismissRunwayHint } = runwayHint;
   const closeHint = useActiveHintDismiss();
 
+  const markRowSeen = useMarkRowSeen("todo");
+  const openedThread = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!params.threadId) {
+      openedThread.current = undefined;
+      return;
+    }
+    if (openedThread.current === params.threadId) return;
+    const opened =
+      current?.todo.thread_id === params.threadId
+        ? current.todo
+        : live.find((item) => item.todo.thread_id === params.threadId)?.todo;
+    if (opened) {
+      openedThread.current = params.threadId;
+      markRowSeen(opened);
+    }
+  }, [params.threadId, current, live, markRowSeen]);
   const openEmail = useCallback(
     (todo: Todo) => {
       // The hint names `e` and `o`; doing either is what it asked for.
       dismissRunwayHint();
-      if (todo.thread_id) nav?.open(todo.thread_id);
+      if (todo.thread_id) {
+        openedThread.current = todo.thread_id;
+        markRowSeen(todo);
+        nav?.open(todo.thread_id);
+      }
     },
-    [dismissRunwayHint, nav],
+    [dismissRunwayHint, nav, markRowSeen],
   );
   const openResolutionEmail = useCallback(
     (todo: Todo, threadId: string, messageId: string) => {
+      openedThread.current = threadId;
+      markRowSeen(todo);
       setActivePane("reader");
       void navigate({
         to: "/todo/$threadId",
@@ -286,7 +311,7 @@ function Bands({
         }),
       });
     },
-    [navigate, setActivePane],
+    [navigate, setActivePane, markRowSeen],
   );
   const runPrimary = useCallback(
     (todo: Todo) => {
@@ -299,6 +324,8 @@ function Bands({
         return;
       }
       if (action.kind === "email" && todo.thread_id) {
+        openedThread.current = todo.thread_id;
+        markRowSeen(todo);
         // The link rides in the URL, so the mark lasts exactly as long as
         // this opening of the email.
         setActivePane("reader");
@@ -317,7 +344,7 @@ function Bands({
       }
       openEmail(todo);
     },
-    [dismissRunwayHint, navigate, openEmail, setActivePane],
+    [dismissRunwayHint, navigate, openEmail, setActivePane, markRowSeen],
   );
   const done = useCallback(
     (todo: Todo, how: LampVia) => {
@@ -376,7 +403,11 @@ function Bands({
     runway: () => undefined,
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
-    closeHint,
+    // Escape closes an open peek first, then a hint, as in Updates.
+    closeHint: () => {
+      if (expandedId !== null) setExpandedId(null);
+      else closeHint?.();
+    },
   });
 
   // The status bar says why the lit row is here and which keys work on it.

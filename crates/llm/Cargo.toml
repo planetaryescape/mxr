@@ -20,9 +20,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-# `time` only: bounds background completions via `tokio::time::timeout`.
+# `time` bounds background completions via `tokio::time::timeout`; `sync`
+# carries the recovery signal (`watch`).
 # No runtime/macros — the caller supplies the runtime context.
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true }
 # Parses endpoint URLs to decide what is provably on this machine.
 url = { workspace = true }

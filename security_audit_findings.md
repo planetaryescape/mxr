@@ -175,7 +175,7 @@ As of 2026-05-28, all P1/P2/P3 findings are resolved or explicitly tracked:
 
 These are worth surfacing in `SECURITY.md` / privacy page — they're the things a careful reviewer will want to see.
 
-- **Local-first by default.** Zero telemetry/analytics/crash reporters. No phone-home on startup or update check. Activity log is local-only with a `MXR_ACTIVITY=off` kill switch, redaction support, retention pruning, and a structural test (`crates/daemon/tests/activity_invariants.rs`) that forbids credential keys in `context_json` and forbids new writers outside `crates/daemon/src/activity/`.
+- **Local-first by default.** Zero telemetry/analytics/crash reporters. No phone-home on startup or update check. Activity log is local-only with a `MXR_ACTIVITY=off` kill switch, redaction support, retention pruning, and a structural test (`crates/daemon/tests/integration/activity_invariants.rs`) that forbids credential keys in `context_json` and forbids new writers outside `crates/daemon/src/activity/`.
 - **Credentials in OS keychain.** macOS Keychain and Linux Secret Service via `crates/keychain/`. Disk fallback writes with explicit `0o600` (e.g. `crates/provider-gmail/src/auth_storage.rs:119`).
 - **Minimal OAuth scopes.** Gmail: `readonly`, `modify`, `labels`. Outlook: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`. No calendar, contacts, drive, or admin scopes.
 - **TLS-mandatory transport.** IMAP via `async_native_tls` with hostname verification; no `danger_accept_invalid_certs`. SMTP picks implicit TLS on 465 or STARTTLS otherwise; plaintext only when explicitly opted in via config.

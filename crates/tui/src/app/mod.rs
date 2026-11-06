@@ -33,6 +33,8 @@ pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
     account_id: None,
     limit: Some(0),
 };
+#[cfg(test)]
+mod label_accounts_tests;
 mod message_actions;
 mod messages_actions;
 mod modal_actions;
@@ -455,6 +457,10 @@ pub struct App {
     /// reports back via `AsyncResult::DraftEditReady` so `$EDITOR` can
     /// be opened on it.
     pub pending_draft_edit_request: Option<mxr_core::Draft>,
+    /// Set by a reply in Messages on a conversation with an unsent reply;
+    /// the runtime resolves the draft and continues through the same
+    /// `DraftEditReady` path as editing a stored draft.
+    pub pending_reply_draft_resume: Option<ReplyDraftResume>,
     /// Confirmed delete/provider-copy operation captured from the stored-drafts
     /// preview. The runtime drains this into the matching daemon request.
     pub pending_draft_operation: Option<StoredDraftOperation>,
@@ -647,6 +653,7 @@ impl App {
             pending_reply_queue_refresh: false,
             pending_drafts_refresh: false,
             pending_draft_edit_request: None,
+            pending_reply_draft_resume: None,
             pending_draft_operation: None,
             pending_deliveries_refresh: false,
             pending_delivery_resolve: None,
@@ -677,7 +684,7 @@ impl App {
             }),
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
-            keybindings: crate::keybindings::default_keybindings(),
+            keybindings: crate::keybindings::shown_keybindings().clone(),
             input_context: None,
         }
     }
@@ -688,6 +695,19 @@ impl App {
     /// - On `Reconnecting` or `Connecting`, leave the modal alone — the
     ///   tick-based opener decides when to surface it.
     pub fn set_connection_state(&mut self, state: ConnectionState) {
+        // The IPC worker re-emits `Reconnecting` with a fresh `since` on every
+        // failed retry. Keep the first one so the watchdog times the whole
+        // outage; a successful reconnect goes through `Connected`, which clears it.
+        let state = match (&self.connection_state, state) {
+            (
+                ConnectionState::Reconnecting { since, .. },
+                ConnectionState::Reconnecting { reason, .. },
+            ) => ConnectionState::Reconnecting {
+                since: *since,
+                reason,
+            },
+            (_, state) => state,
+        };
         if matches!(state, ConnectionState::Connected) {
             // Only close error modals that were opened by the connection
             // watchdog. Heuristic: title mentions "daemon".
@@ -1274,10 +1294,14 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 username,
                 password_ref,
                 auth_required,
+                use_tls,
                 max_connections,
+                tls_cert_sha256,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
+                form.imap_use_tls = use_tls;
+                form.imap_tls_cert_sha256 = tls_cert_sha256;
                 form.imap_host = host;
                 form.imap_port = port.to_string();
                 form.imap_max_connections = max_connections.to_string();
@@ -1513,6 +1537,16 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
         SnoozePreset::Weekend,
         SnoozePreset::NextMonday,
     ]
+}
+
+/// The presets whose label is still true now: "Tonight" leaves once the
+/// evening hour has passed, as it does in the web app's Not now, instead of
+/// meaning tomorrow evening.
+pub fn available_snooze_presets(config: &mxr_config::SnoozeConfig) -> Vec<SnoozePreset> {
+    snooze_presets()
+        .into_iter()
+        .filter(|preset| mxr_config::snooze::resolve_snooze_preset_time(*preset, config).is_some())
+        .collect()
 }
 
 pub fn resolve_snooze_preset(

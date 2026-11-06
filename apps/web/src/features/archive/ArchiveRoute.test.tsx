@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
       },
     };
   })(),
+  answer: { current: undefined as unknown },
   subscriptions: (() => {
     let current: RecordSubscriptions | undefined;
     return {
@@ -100,7 +101,10 @@ vi.mock("@/hooks/useSplitPane", () => ({
 }));
 vi.mock("@/hooks/useShortcutScope", () => ({ useShortcutScope: vi.fn<() => void>() }));
 vi.mock("@/features/archive/api", () => ({
-  useAnswer: () => ({ data: undefined, isFetching: false }),
+  useAnswer: (question: string) => ({
+    data: question ? mocks.answer.current : undefined,
+    isFetching: false,
+  }),
   useLedger: () => ({ data: mocks.ledger.current, isLoading: false, isError: false }),
   useRecord: () => ({ data: undefined }),
   useSubscriptions: () => ({ data: mocks.subscriptions.current }),
@@ -144,6 +148,7 @@ afterEach(() => {
   mocks.openMailDialog.mockReset();
   mocks.toastInfo.mockReset();
   mocks.url.reset();
+  mocks.answer.current = undefined;
   act(() => useUiPrefs.setState({ accountScope: null }));
   HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
 });
@@ -192,5 +197,37 @@ describe("Archive actions while subscriptions are displayed", () => {
     expect(mocks.toastInfo).toHaveBeenCalledWith(
       "That works on a record: choose All to return to the ledger, or p for this issuer",
     );
+  });
+});
+
+describe("Esc on Archive's matches", () => {
+  test("clears the search and leaves the keys on the list, not in the Ask box", async () => {
+    const record = recordFixture({ id: "hotel", title: "Harbor Hotels" });
+    mocks.ledger.current = {
+      header: "Archive has one record",
+      records: [record],
+      months: [],
+      matching: 1,
+      total: 1,
+      filter: {},
+      facets: { checked: 0, has_pdf: 0, issuers: [], kinds: [], unchecked: 0, years: [] },
+      coming_up: [],
+    };
+    mocks.answer.current = {
+      mode: "list",
+      list: { records: [record], first: null, last: null, total: 1 },
+    };
+    mocks.url.replace({ q: "hotel" });
+
+    render(<ArchiveRoute />);
+    const ask = screen.getByTestId("archive-ask");
+    expect(ask).toHaveValue("hotel");
+    await waitFor(() => expect(getController("archive")).toBeDefined());
+
+    act(() => getController("archive")?.close?.());
+
+    expect(ask).toHaveValue("");
+    // A j typed next must move the list, not type into the box.
+    expect(document.activeElement).not.toBe(ask);
   });
 });

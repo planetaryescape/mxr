@@ -73,9 +73,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                 app.mailbox.pending_rail_refresh = true;
             }
             app.diagnostics.pending_status_refresh = true;
-            if let Some(label_id) = app.mailbox.active_label.clone() {
-                app.mailbox.pending_label_fetch = Some(label_id);
-            }
+            queue_active_list_fetch(app);
             if messages_synced > 0
                 && !sync_event_hidden_by_batch_failure(app, "sync", Some(&account_id))
             {
@@ -212,9 +210,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                     app.mailbox.pending_labels_refresh = true;
                     app.mailbox.pending_all_envelopes_refresh = true;
                     app.mailbox.pending_subscriptions_refresh = true;
-                    if let Some(label_id) = app.mailbox.active_label.clone() {
-                        app.mailbox.pending_label_fetch = Some(label_id);
-                    }
+                    queue_active_list_fetch(app);
                 }
             }
         }
@@ -230,6 +226,15 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.compose.invalidate_reply_contexts();
             // Analytics count the same direction. Forget what was fetched, so
             // entering the screen refetches, and refresh it if it is open.
+            app.analytics.last_refresh_at.clear();
+            if app.screen == app::Screen::Analytics {
+                app.analytics.refresh_pending = true;
+            }
+        }
+        // The contacts table was rebuilt, and analytics read from it. Forget
+        // what was fetched, so entering the screen refetches, and refresh it
+        // if it is open.
+        DaemonEvent::ContactsRefreshed => {
             app.analytics.last_refresh_at.clear();
             if app.screen == app::Screen::Analytics {
                 app.analytics.refresh_pending = true;
@@ -256,6 +261,8 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             refresh_after_event_gap(app);
             tracing::debug!(skipped, "event stream lagged; resyncing TUI views");
         }
+        // Added by a newer daemon than this build knows; nothing to do.
+        DaemonEvent::Unknown => {}
         _ => {}
     }
 }
@@ -270,16 +277,22 @@ pub(crate) fn refresh_after_event_gap(app: &mut App) {
     app.mailbox.pending_labels_refresh = true;
     app.mailbox.pending_all_envelopes_refresh = true;
     if app.is_paired_remote_read_only() {
-        if let Some(label_id) = app.mailbox.active_label.clone() {
-            app.mailbox.pending_label_fetch = Some(label_id);
-        }
+        queue_active_list_fetch(app);
         return;
     }
     app.mailbox.pending_subscriptions_refresh = true;
     app.refresh_places();
     app.diagnostics.pending_status_refresh = true;
+    queue_active_list_fetch(app);
+}
+
+/// Refetch the list on screen: its label, or the role view of a system
+/// mailbox no label names (Starred on an account set with no Starred label).
+pub(crate) fn queue_active_list_fetch(app: &mut App) {
     if let Some(label_id) = app.mailbox.active_label.clone() {
         app.mailbox.pending_label_fetch = Some(label_id);
+    } else if let Some(role) = app.mailbox.active_role {
+        app.mailbox.pending_role_fetch = Some(role);
     }
 }
 
@@ -647,6 +660,39 @@ mod tests {
             arrivals: vec![],
         });
         app
+    }
+
+    #[test]
+    fn sync_completed_refetches_the_starred_role_view() {
+        let mut app = App::new();
+        app.mailbox.active_role = Some(mxr_core::Role::Starred);
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: mxr_core::AccountId::new(),
+                messages_synced: 0,
+            },
+        );
+
+        assert_eq!(
+            app.mailbox.pending_role_fetch,
+            Some(mxr_core::Role::Starred),
+            "a sync must refetch the starred role view, as it refetches a label"
+        );
+    }
+
+    #[test]
+    fn events_lagged_refetches_the_starred_role_view() {
+        let mut app = App::new();
+        app.mailbox.active_role = Some(mxr_core::Role::Starred);
+
+        handle_daemon_event(&mut app, DaemonEvent::EventsLagged { skipped: 3 });
+
+        assert_eq!(
+            app.mailbox.pending_role_fetch,
+            Some(mxr_core::Role::Starred)
+        );
     }
 
     #[test]

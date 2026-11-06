@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Inspect or approve local pairing requests
+
+Usage: mxr serve pair [OPTIONS] <COMMAND>
+
+Commands:
+  list
+  approve  Preview by default; compare the challenge before --confirm
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  Structured output (json or jsonl) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

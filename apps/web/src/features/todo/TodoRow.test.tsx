@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Todo } from "./api";
@@ -9,7 +9,13 @@ import type { Band } from "./todoRows";
 import { resetDaemonAvailabilityForTest } from "@/lib/daemonAvailability";
 import { setToken } from "@/lib/tokenStorage";
 
-beforeEach(() => resetDaemonAvailabilityForTest());
+const markRowSeen = vi.fn<(row: Todo) => void>();
+vi.mock("@/features/modes/rowSeen", () => ({ useMarkRowSeen: () => markRowSeen }));
+
+beforeEach(() => {
+  resetDaemonAvailabilityForTest();
+  markRowSeen.mockReset();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowProps> = {}) {
@@ -51,18 +57,91 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
-  test("shows the task, who it is from and the window in words, with no bar or icon", () => {
+  test("details keep one reason and disclose field sources separately from raw diagnostics", () => {
+    const quote = "We couldn't charge your card.";
+    const source = { source: "rule", source_label: "a pattern in the email", checked: true };
+    const { row } = renderRow(
+      todoFixture({
+        thread_id: null,
+        why: quote,
+        fields: [
+          { ...source, field: "title", evidence: quote },
+          { ...source, field: "kind", evidence: quote },
+          { ...source, field: "quote", evidence: quote },
+          { ...source, field: "amount", evidence: "£11.99", checked: false },
+          { ...source, field: "asks_fingerprint", evidence: "raw-input-fingerprint" },
+          { ...source, field: "asks_provenance", evidence: "raw-policy-unit-span" },
+        ],
+      }),
+      "now",
+      { details: true },
+    );
+    const details = within(row).getByTestId("todo-source");
+    const sources = within(details).getByText("Field sources");
+    expect(details.textContent?.match(/We couldn't charge your card\./g)).toHaveLength(1);
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
+    expect(within(details).getByText("£11.99", { exact: false })).not.toBeVisible();
+    fireEvent.click(sources);
+    expect(within(details).getByText("£11.99", { exact: false })).toBeVisible();
+    expect(within(details).getByTestId("todo-field-unchecked")).toBeVisible();
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).not.toBeVisible();
+    fireEvent.click(within(details).getByText("Diagnostics"));
+    expect(within(details).getByText("raw-input-fingerprint", { exact: false })).toBeVisible();
+    expect(within(details).getByText("raw-policy-unit-span", { exact: false })).toBeVisible();
+  });
+
+  test("background task revisions stay unseen until details are reopened", () => {
+    const original = todoFixture({ unread: true, seen_revision: "opened" });
+    const { rerender } = renderRow(original, "now", { details: true });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+    rerender({ ...original, title: "New content", seen_revision: "new-revision" });
+    expect(markRowSeen).toHaveBeenCalledTimes(1);
+  });
+  test("details mark a row seen, but keyboard focus does not", () => {
+    const todo = todoFixture({ unread: true, seen_revision: "revision" });
+    renderRow(todo, "now", { lit: true, details: false });
+    expect(markRowSeen).not.toHaveBeenCalled();
+    cleanup();
+    renderRow(todoFixture({ id: "peeked", unread: true, seen_revision: "revision-2" }), "now", {
+      lit: false,
+      details: true,
+    });
+    expect(markRowSeen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "peeked", seen_revision: "revision-2" }),
+    );
+  });
+  test("shows the task, who it is from and the window in words, with no bar or leading pictogram", () => {
     const { row } = renderRow(todoFixture(), "now", { lit: false });
     const view = within(row);
     expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
     expect(row).toHaveTextContent("Camden Council");
-    expect(row).toHaveTextContent(/from \w+|from today|from yesterday/);
+    expect(row).toHaveTextContent(/arrived \w+|arrived today|arrived yesterday/);
     expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
     expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
     expect(view.queryByTestId("runway-bar")).toBeNull();
     expect(view.queryByTestId("todo-action")).toBeNull();
     expect(view.queryByTestId("todo-provenance")).toBeNull();
-    expect(row.querySelector("svg")).toBeNull();
+    expect(
+      [...row.querySelectorAll("svg")].filter(
+        (icon) => !icon.closest("button:not([role='checkbox'])"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  test("an unseen row reads bright and semibold; a seen one calms", () => {
+    const { row, rerender } = renderRow(todoFixture({ unread: true }), "now", { lit: false });
+    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass(
+      "font-semibold",
+      "text-text-1",
+    );
+    rerender(todoFixture({ unread: false }));
+    expect(within(row).getByTestId("todo-title").parentElement).toHaveClass("text-text-2");
+    expect(within(row).getByTestId("todo-title").parentElement).not.toHaveClass("font-semibold");
+  });
+
+  test("a completed row stays struck even when its email is unread", () => {
+    const { row } = renderRow(todoFixture({ unread: true }), "done", { lit: false });
+    expect(within(row).getByTestId("todo-title")).toHaveClass("text-text-3", "line-through");
   });
 
   test("a field to check shows as one word in the trail, not a chip", () => {
@@ -89,6 +168,32 @@ describe("TodoRow", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
+  test("selected task actions have compact phone icons without losing their names or handlers", () => {
+    const { row, props } = renderRow(todoFixture());
+    const done = within(row).getByTestId("todo-tick");
+    const email = within(row).getByRole("button", { name: "email" });
+    const details = within(row).getByRole("button", { name: "details" });
+    for (const button of [done, email, details]) {
+      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
+      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
+    }
+    expect(done).toHaveAccessibleName(`Tick off ${props.todo.title}`);
+    fireEvent.click(details);
+    expect(props.onToggleDetails).toHaveBeenCalledWith(props.todo);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("done band reopen and details keep compact phone icons", () => {
+    const { row } = renderRow(todoFixture(), "done");
+    for (const button of [
+      within(row).getByRole("button", { name: /reopen/ }),
+      within(row).getByRole("button", { name: "details" }),
+    ]) {
+      expect(button.querySelector("svg.sm\\:hidden")).toBeInTheDocument();
+      expect(button.querySelector("span.sm\\:hidden")).toBeNull();
+    }
+  });
+
   test("a row with no email offers no o email", () => {
     const { row } = renderRow(todoFixture({ thread_id: null }));
     expect(within(row).queryByRole("button", { name: "email" })).toBeNull();
@@ -106,6 +211,28 @@ describe("TodoRow", () => {
       }),
     );
     expect(within(later.row).getByTestId("todo-when").className).not.toContain("text-cue");
+  });
+
+  test("a later-email notice never hides when the email arrived", () => {
+    const todo = todoFixture({
+      resolution: {
+        id: "resolution-1",
+        message_id: "msg_resolution",
+        thread_id: "thread_bill",
+        source_date: "2026-10-04T09:00:00Z",
+        quote: "Your card was declined.",
+        quote_location: "body",
+        source_method: "rule",
+        action: "complete",
+        proposed_due_at: null,
+        proposed_due_words: null,
+        status: "pending",
+      },
+    });
+    const { row } = renderRow(todo);
+    const line = within(row).getByTestId("todo-request-and-quote");
+    expect(line).toHaveTextContent(/arrived /);
+    expect(line).toHaveTextContent("a later email may change this");
   });
 
   test("a later-mail resolution shows its evidence and opens that exact source", () => {
@@ -188,6 +315,14 @@ describe("TodoRow", () => {
     expect(screen.queryByRole("button", { name: "Accept and complete" })).toBeNull();
   });
 
+  test("a filed source shows its date and keeps the to-do open", () => {
+    const todo = todoFixture({ source_filed_at: "2026-10-30T08:00:00Z" });
+    const { row } = renderRow(todo, "now", { details: true });
+    const filed = within(row).getByTestId("todo-filed");
+    expect(filed).toHaveAttribute("dateTime", "2026-10-30T08:00:00Z");
+    expect(within(row).getByTestId("todo-request-and-quote")).toHaveTextContent(/left the inbox/);
+  });
+
   test("expanded details preserve arrival, why, next and per-field unchecked words", () => {
     const { row } = renderRow(
       todoFixture({ next: "Check the council tax account", thread_id: null }),
@@ -218,6 +353,31 @@ describe("TodoRow", () => {
       }),
     );
     expect(row.querySelector("a[href]")).toBeNull();
+  });
+
+  test("expanded details constrain their grid and wrap long source evidence without dropping it", () => {
+    const evidence = `https://example.test/payment/${"a".repeat(96)}`;
+    const { row } = renderRow(
+      todoFixture({
+        thread_id: null,
+        why: evidence,
+        fields: [
+          {
+            field: "quote",
+            evidence,
+            source: "rule",
+            source_label: "a pattern in the email",
+            checked: true,
+          },
+        ],
+      }),
+      "now",
+      { details: true },
+    );
+    const details = within(row).getByTestId("todo-source");
+    expect(within(details).getByTestId("todo-why")).toHaveTextContent(evidence);
+    expect(within(details).getAllByText(evidence)).toHaveLength(1);
+    expect(details).toHaveClass("grid-cols-[minmax(0,1fr)]", "[overflow-wrap:anywhere]");
   });
 
   test("overdue reads 'was due' and nothing is red", () => {

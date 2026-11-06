@@ -4352,6 +4352,107 @@ async fn prune_expired_undo_entries_drops_only_stale_rows() {
     assert!(store.read_undo_entry("fresh").await.unwrap().is_some());
 }
 
+/// Startup finds the jobs the last daemon left `queued` or `running`, and
+/// nothing else (not finished jobs, not archive receipts).
+#[tokio::test]
+async fn list_unfinished_mutation_jobs_returns_only_queued_and_running_jobs() {
+    let store = Store::in_memory().await.unwrap();
+    for (id, kind, status) in [
+        ("queued", "mutation.archive", "queued"),
+        ("running", "mutation.archive", "running"),
+        ("done", "mutation.archive", "succeeded"),
+        ("failed", "mutation.archive", "failed"),
+        ("receipt", "recoverable_archive", "running"),
+    ] {
+        store
+            .upsert_mutation_job(id, kind, status, 1, None, &format!("{{\"id\":\"{id}\"}}"))
+            .await
+            .unwrap();
+    }
+    let mut found = store.list_unfinished_mutation_jobs().await.unwrap();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            r#"{"id":"queued"}"#.to_string(),
+            r#"{"id":"running"}"#.to_string()
+        ]
+    );
+}
+
+/// A job id is taken by one insert: of any number of callers with the same id,
+/// one wins and the row is the winner's.
+#[tokio::test]
+async fn claim_mutation_job_is_won_by_exactly_one_caller() {
+    let store = Store::in_memory().await.unwrap();
+    let (a, b, c) = tokio::join!(
+        store.claim_mutation_job("job", "mutation.archive", "queued", 1, r#"{"by":"a"}"#),
+        store.claim_mutation_job("job", "mutation.archive", "queued", 2, r#"{"by":"b"}"#),
+        store.claim_mutation_job("job", "mutation.archive", "queued", 3, r#"{"by":"c"}"#),
+    );
+    let results = [a.unwrap(), b.unwrap(), c.unwrap()];
+    assert_eq!(results.iter().filter(|won| **won).count(), 1);
+    let winner = ["a", "b", "c"][results.iter().position(|won| *won).unwrap()];
+    assert_eq!(
+        store.get_mutation_job("job").await.unwrap().unwrap(),
+        format!(r#"{{"by":"{winner}"}}"#)
+    );
+}
+
+/// The existence check behind a search selection: three columns, in the
+/// order asked, with ids the store dropped left out, across the bind chunk.
+#[tokio::test]
+async fn stored_message_homes_returns_the_account_and_thread_of_stored_messages_only() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut stored = Vec::new();
+    for n in 0..3 {
+        let mut envelope = test_envelope(&account.id);
+        // The fixture's provider id is fixed, and a repeat would upsert one row.
+        envelope.provider_id = format!("homes-{n}");
+        store.upsert_envelope(&envelope).await.unwrap();
+        stored.push(envelope);
+    }
+    let ghost = MessageId::new();
+    let asked = vec![
+        stored[2].id.clone(),
+        ghost,
+        stored[0].id.clone(),
+        stored[1].id.clone(),
+    ];
+    let homes = store.stored_message_homes(&asked).await.unwrap();
+    assert_eq!(
+        homes,
+        vec![
+            (
+                stored[2].id.clone(),
+                account.id.clone(),
+                stored[2].thread_id.clone()
+            ),
+            (
+                stored[0].id.clone(),
+                account.id.clone(),
+                stored[0].thread_id.clone()
+            ),
+            (
+                stored[1].id.clone(),
+                account.id.clone(),
+                stored[1].thread_id.clone()
+            ),
+        ]
+    );
+    assert!(store.stored_message_homes(&[]).await.unwrap().is_empty());
+
+    // More ids than one statement binds.
+    let many: Vec<MessageId> = (0..1_200).map(|_| MessageId::new()).collect();
+    let mut with_stored = many.clone();
+    with_stored.push(stored[1].id.clone());
+    let found = store.stored_message_homes(&with_stored).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].0, stored[1].id);
+}
+
 /// Phase D: dedup log starts empty, was_mutation_applied returns false
 /// for an unseen key, true after record. Same key recorded twice is a
 /// no-op (single row).

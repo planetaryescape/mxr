@@ -247,10 +247,10 @@ Before adding a feature in this area, ask:
 The final consolidation passed:
 
 ```bash
-scripts/cargo-test -p mxr --test cli_journey -- --nocapture
+scripts/cargo-test -p mxr --test integration cli_journey:: -- --nocapture
 scripts/cargo-test -p mxr-store --lib scheduled_send -- --nocapture
 scripts/cargo-test -p mxr --lib remind_after -- --nocapture
-scripts/cargo-test -p mxr --test cli_help cli_help_snapshots_cover_all_commands -- --nocapture
+scripts/cargo-test -p mxr --test integration cli_help::cli_help_snapshots_cover_all_commands -- --nocapture
 scripts/cargo-test -p mxr-llm --lib -- --nocapture
 scripts/cargo-test -p mxr --lib demo -- --nocapture
 cd site && npm run build

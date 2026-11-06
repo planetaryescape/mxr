@@ -40,12 +40,23 @@ pub struct FtsClause {
     pub text: String,
 }
 
+/// A bare term that is a whole sender address. A message matches when the
+/// words match (an AND, as for any bare term) or its sender address equals
+/// `address`, which is how the index treats a bare address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressOrWords {
+    pub address: String,
+    pub words: Vec<FtsClause>,
+}
+
 /// An AND of clauses over the accounts the caller may show.
 #[derive(Debug, Clone)]
 pub struct FtsFallbackQuery {
     pub clauses: Vec<FtsClause>,
     /// Whole sender addresses, each an exact case-insensitive match.
     pub sender_addresses: Vec<String>,
+    /// Bare address terms, each one an AND of its own clause (see above).
+    pub address_words: Vec<AddressOrWords>,
     /// The accounts whose mail is readable now. The caller resolves this the
     /// same way the lexical path does, so a disabled account never leaks.
     pub visible_accounts: Vec<AccountId>,
@@ -112,6 +123,21 @@ fn push_filters(
             .push(" AND LOWER(m.from_email) = ")
             .push_bind(address.to_ascii_lowercase());
     }
+    for group in &query.address_words {
+        // SQLite refuses MATCH as a direct operand of OR, so the words
+        // are a rowid subquery on the table.
+        builder.push(" AND (");
+        if let Some(words) = match_expression(&group.words) {
+            builder
+                .push("m.rowid IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ")
+                .push_bind(words)
+                .push(") OR ");
+        }
+        builder
+            .push("LOWER(m.from_email) = ")
+            .push_bind(group.address.to_ascii_lowercase())
+            .push(")");
+    }
     if let Some(account_id) = &query.account_id {
         builder
             .push(" AND m.account_id = ")
@@ -149,7 +175,9 @@ impl super::Store {
     ) -> Result<FtsFallbackPage, sqlx::Error> {
         let started_at = std::time::Instant::now();
         let expression = match_expression(&query.clauses);
-        let nothing_to_match = expression.is_none() && query.sender_addresses.is_empty();
+        let nothing_to_match = expression.is_none()
+            && query.sender_addresses.is_empty()
+            && query.address_words.is_empty();
         if nothing_to_match || query.visible_accounts.is_empty() {
             return Ok(FtsFallbackPage {
                 hits: Vec::new(),
@@ -166,9 +194,9 @@ impl super::Store {
         )
         .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
-        // Without words there is no FTS5 query to run, and the join would only
-        // narrow the sender match to messages the table holds.
-        let source = if expression.is_some() {
+        // Without words or address groups there is no FTS5 query to run. With
+        // them, the join keeps every match to messages the table holds.
+        let source = if expression.is_some() || !query.address_words.is_empty() {
             "messages_fts JOIN messages m ON m.rowid = messages_fts.rowid"
         } else {
             "messages m"
@@ -247,6 +275,7 @@ mod tests {
         FtsFallbackQuery {
             clauses,
             sender_addresses: Vec::new(),
+            address_words: Vec::new(),
             visible_accounts: accounts.iter().map(|account| account.id.clone()).collect(),
             account_id: None,
             hide_trash: false,
@@ -656,5 +685,41 @@ mod tests {
 
         assert!(old.is_empty());
         assert_eq!(new, vec![message.id]);
+    }
+
+    #[tokio::test]
+    async fn a_bare_address_matches_its_sender_or_its_words() {
+        let account = test_account();
+        let by_sender = envelope(
+            &account,
+            "a",
+            "unrelated subject",
+            "alice@example.com",
+            "",
+            1,
+        );
+        let by_words = envelope(
+            &account,
+            "b",
+            "alice example com note",
+            "bob@other.test",
+            "",
+            2,
+        );
+        let neither = envelope(&account, "c", "nothing here", "carol@other.test", "", 3);
+        let store = store_with(&[&account], &[&by_sender, &by_words, &neither]).await;
+        let mut by_address = query(Vec::new(), &[&account]);
+        by_address.address_words = vec![AddressOrWords {
+            address: "Alice@Example.com".into(),
+            words: ["alice", "example", "com"]
+                .into_iter()
+                .map(|word| clause(FtsColumns::Any, word))
+                .collect(),
+        }];
+
+        assert_eq!(
+            ids(&store, &by_address).await,
+            vec![by_sender.id.clone(), by_words.id.clone()]
+        );
     }
 }

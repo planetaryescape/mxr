@@ -55,7 +55,7 @@ If it ships, it has a doc page:
 Run the CLI help tests after changing a command or flag:
 
 ```bash
-scripts/cargo-test -p mxr --test cli_help
+scripts/cargo-test -p mxr --test integration cli_help::
 ```
 
 The test compares help cases with clap's visible canonical command tree,
@@ -325,8 +325,8 @@ generated from `--help` snapshots. **Never hand-edit pages there.**
 To change a CLI page:
 
 1. Add or change the flag in `crates/daemon/src/cli/`.
-2. Run the daemon test suite (`scripts/cargo-test -p mxr --test cli_help`).
-3. Accept the new snapshot (`crates/daemon/tests/snapshots/cli_help__*.snap`).
+2. Run the daemon test suite (`scripts/cargo-test -p mxr --test integration cli_help::`).
+3. Accept the new snapshot (`crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap`).
 4. Edit `site/scripts/generate-cli-reference.mjs` if the
    `COMMAND_EXAMPLES` map needs new examples.
 5. `cd site && npm run generate`.
@@ -463,7 +463,7 @@ it with a "we'll fix it later."
 | Doc-site framework config | `site/astro.config.mjs` | Anyone adding a new section to the sidebar |
 | CLI-reference generator | `site/scripts/generate-cli-reference.mjs` | Anyone adding a new CLI command |
 | Doc validator | `site/scripts/validate-docs.mjs` | Run by CI; do not bypass |
-| CLI help snapshots | `crates/daemon/tests/snapshots/cli_help__*.snap` | Regenerate with `cargo test cli_help` and accept |
+| CLI help snapshots | `crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap` | Regenerate with `cargo test cli_help` and accept |
 
 The site builds with `cd site && npm run build`. The build itself runs
 `npm run generate` (CLI reference), `npm run validate` (content and schema

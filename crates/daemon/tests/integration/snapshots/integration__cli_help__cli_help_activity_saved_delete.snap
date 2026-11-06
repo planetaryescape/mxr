@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Delete a preset by slug
+
+Usage: mxr activity saved delete <SLUG>
+
+Arguments:
+  <SLUG>
+
+Options:
+  -h, --help  Print help

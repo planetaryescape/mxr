@@ -1,7 +1,7 @@
 //! A thread's headline facts with no bodies (`GetThreadPreviews`): what a
 //! hover card or a script needs to say what a thread is.
 
-use mxr_core::id::ThreadId;
+use mxr_core::id::{AccountId, ThreadId};
 use serde::{Deserialize, Serialize};
 
 /// The most threads one `GetThreadPreviews` request may name.
@@ -27,6 +27,9 @@ pub struct ThreadPreviewData {
     /// Any message in the thread carries an attachment.
     #[serde(default)]
     pub has_attachments: bool,
+    /// The account the latest message came to. Absent from older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
 }
 
 #[cfg(test)]
@@ -61,6 +64,7 @@ mod tests {
             unread_count: 1,
             snippet: "Please confirm".into(),
             has_attachments: true,
+            account_id: None,
         };
         let response = crate::ResponseData::ThreadPreviews {
             previews: vec![preview.clone()],

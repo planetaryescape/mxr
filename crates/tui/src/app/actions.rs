@@ -135,7 +135,9 @@ impl App {
             | Action::TodoSchedule
             | Action::TodoEdit
             | Action::TodoDismiss
+            | Action::TodoMightNeedYou
             | Action::TodoOpenEmail
+            | Action::TodoPeek
             | Action::TodoReviewResolution
             | Action::TodoSendToMicrosoft
             | Action::TodoSyncMicrosoft

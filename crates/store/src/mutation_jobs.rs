@@ -43,6 +43,32 @@ impl super::Store {
         Ok(())
     }
 
+    /// Insert a new job's row, unless a job with this id exists. Of any number
+    /// of concurrent callers with one id exactly one gets `true`; the others
+    /// find that caller's job. The row is the job itself, never a placeholder.
+    pub async fn claim_mutation_job(
+        &self,
+        job_id: &str,
+        kind: &str,
+        status: &str,
+        started_at: i64,
+        data_json: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            r#"INSERT INTO mutation_jobs (job_id, kind, status, started_at, data_json)
+               VALUES (?1, ?2, ?3, ?4, ?5)
+               ON CONFLICT(job_id) DO NOTHING"#,
+        )
+        .bind(job_id)
+        .bind(kind)
+        .bind(status)
+        .bind(started_at)
+        .bind(data_json)
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Initialize the database identity once, including under concurrent first use.
     pub async fn archive_workspace(&self) -> Result<(String, String), sqlx::Error> {
         sqlx::query(
@@ -141,6 +167,19 @@ impl super::Store {
                LIMIT ?1"#,
         )
         .bind(limit)
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())
+    }
+
+    /// The `data_json` of every job still marked `queued` or `running`. At
+    /// daemon startup these are jobs the previous process died with.
+    pub async fn list_unfinished_mutation_jobs(&self) -> Result<Vec<String>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT data_json FROM mutation_jobs
+               WHERE kind != 'recoverable_archive' AND status IN ('queued', 'running')
+               ORDER BY started_at, job_id"#,
+        )
         .fetch_all(self.reader())
         .await?;
         Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())

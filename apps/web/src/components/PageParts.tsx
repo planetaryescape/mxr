@@ -70,8 +70,9 @@ function Bar({ className, delay }: { className: string; delay: number }) {
 }
 
 /**
- * The page's own rows with bars where the words go, so the shape matches what
- * replaces it. Drawn only once a load has taken 150ms; a page that answers
+ * A simple list's rows with bars where the words go. Modes with summaries,
+ * bands or multiple panes use their own layouts from the Skeleton primitives.
+ * Drawn only once a load has taken 150ms; a page that answers
  * from cache never flashes one. A page that already waits on its own timer
  * (`useDelayedPending`, which also holds a skeleton long enough not to
  * flicker) passes `shown` instead.
@@ -301,9 +302,7 @@ export function RuledRow({
       className={cn(
         // The lamp, not a tint: the current row is the one lit thing (D124).
         "group relative flex items-center gap-3 px-3 py-2.5",
-        current
-          ? "bg-ink-lamp before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-signal"
-          : "hover:bg-ink-lamp/50",
+        current ? "bg-ink-lamp" : "hover:bg-ink-lamp/50",
         className,
       )}
     >

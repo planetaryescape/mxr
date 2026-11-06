@@ -102,8 +102,8 @@ pub(crate) mod tests {
         fn has_unsubscribe(&self) -> bool {
             self.has_unsub
         }
-        fn body_text(&self) -> Option<&str> {
-            self.body.as_deref()
+        fn body_parts(&self) -> Option<Vec<&str>> {
+            self.body.as_deref().map(|body| vec![body])
         }
     }
 

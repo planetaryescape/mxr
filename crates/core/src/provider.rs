@@ -35,6 +35,14 @@ pub trait MailSyncProvider: Send + Sync {
         false
     }
 
+    /// Hex SHA-256 of the leaf certificate the server presents, read without
+    /// authenticating (so no credentials are sent) and whether or not it is
+    /// trusted, so a user can pin it. `None` when the provider has no such
+    /// certificate to report (the default) or the connection is unencrypted.
+    async fn server_certificate_sha256(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     async fn authenticate(&mut self) -> Result<()>;
     async fn refresh_auth(&mut self) -> Result<()>;
 
@@ -221,6 +229,17 @@ pub trait MailSendProvider: Send + Sync {
         Err(MxrError::Provider(
             "Server-side draft updates not supported by this provider".to_string(),
         ))
+    }
+
+    /// Read the current revision without downloading draft contents when the
+    /// provider supports metadata-only lookups. `Ok(None)` means the draft no
+    /// longer exists; lookup failures must remain errors, never deletions.
+    /// The fallback supports adapters that only expose full snapshots.
+    async fn fetch_draft_revision(&self, provider_draft_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .fetch_draft(provider_draft_id)
+            .await?
+            .map(|snapshot| snapshot.revision))
     }
 
     /// Fetch the provider's current raw MIME draft plus its revision marker.

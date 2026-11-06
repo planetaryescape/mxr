@@ -1,4 +1,5 @@
 use crate::cli::{ContactsAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::AccountId;
@@ -32,7 +33,7 @@ async fn refresh() -> anyhow::Result<()> {
             println!("Refreshed {rows} contact rows.");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected response: {other:?}"),
     }
 }

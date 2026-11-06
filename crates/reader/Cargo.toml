@@ -15,10 +15,12 @@ workspace = true
 [dependencies]
 data-url = { workspace = true }
 ego-tree = { workspace = true }
+mxr-html-worker = { workspace = true }
 html2text = { workspace = true }
 once_cell = { workspace = true }
 regex = { workspace = true }
 scraper = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }

@@ -422,13 +422,6 @@ fn updates_refetch_the_open_conversation_one_at_a_time() {
 fn delete_asks_the_daemon_first_and_confirms() {
     let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    // `D` deleted until K3; it says `#` does now and sends nothing.
-    press(&mut app, KeyCode::Char('D'), KeyModifiers::SHIFT);
-    assert!(app.assistant.take_outbound().is_empty());
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Delete conversation is now #")
-    );
     press(&mut app, KeyCode::Char('#'), KeyModifiers::SHIFT);
     let preview = app.assistant.take_outbound();
     assert!(matches!(

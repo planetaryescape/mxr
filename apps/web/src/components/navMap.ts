@@ -33,6 +33,7 @@ import {
 import type { ComponentType } from "react";
 
 import { definedShortcut } from "@/lib/actions/definition";
+import type { ArchiveSearch } from "@/features/archive/archiveSearch";
 
 export type NavIcon = ComponentType<{ className?: string }>;
 
@@ -40,7 +41,7 @@ export interface NavEntry {
   key: string;
   to: string;
   /** Query the place is defined by (Messages, waiting on them). */
-  search?: { turn: "theirs" } | { account?: string };
+  search?: { turn: "theirs" } | { account?: string } | ArchiveSearch;
   /** Says what a count covers when the page it opens shows less of it. */
   hint?: string;
   label: string;
@@ -54,6 +55,8 @@ export interface NavEntry {
   shortcut?: string;
   /** A label's own colour, a validated hex, for the square before its name. */
   color?: string;
+  /** The account a label belongs to; its chip shows when rows are marked (blueprint 33). */
+  accountId?: string;
 }
 
 export interface NavSection {

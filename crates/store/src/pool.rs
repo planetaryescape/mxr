@@ -1,5 +1,6 @@
+use mxr_core::types::Role;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::SqlitePool;
+use sqlx::{ConnectOptions, SqlitePool};
 
 use crate::ChangeFeed;
 use std::path::Path;
@@ -50,8 +51,13 @@ pub struct Store {
     resource_dir: std::path::PathBuf,
     reader: SqlitePool,
     /// Reads and writes share the writer's one connection (in-memory and
-    /// backup stores), so dropping it would lose an in-memory database.
+    /// backup stores). An in-memory database survives that connection
+    /// being replaced because `_memory_anchor` keeps it open.
     shared_connection: bool,
+    /// An idle connection to an in-memory database, held so the database
+    /// outlives whichever connection the pool currently has. `None` for a
+    /// database on disk.
+    _memory_anchor: Option<sqlx::SqliteConnection>,
     /// Serialises the cleanup of a deleted message's files and index
     /// entries with sync storing messages, so a message id that comes back
     /// (an IMAP UID reused for a new message) is never cleaned up as the
@@ -116,11 +122,41 @@ impl Store {
             changes,
             reader,
             shared_connection: false,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
+        // Migrations may have just added indexes; give the planner statistics
+        // before the first read. Not fatal: a store without statistics still works.
+        if let Err(error) = store.optimize_all_tables().await {
+            tracing::warn!(%error, "initial PRAGMA optimize failed");
+        }
         Ok(store)
+    }
+
+    /// `PRAGMA optimize=0x10002`: SQLite's advice for a long-lived connection on
+    /// open. 0x10000 checks every table, not only those this connection has
+    /// queried, so the first run after an upgrade analyses tables the new
+    /// indexes touch. SQLite caps the ANALYZE it runs with a temporary
+    /// `analysis_limit`, so this holds the single writer connection briefly.
+    async fn optimize_all_tables(&self) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql("PRAGMA optimize=0x10002")
+            .execute(&self.writer)
+            .await?;
+        Ok(())
+    }
+
+    /// `PRAGMA optimize`: the periodic form for a long-lived connection. Usually
+    /// a no-op; when a table has changed size enough it re-analyses it under a
+    /// capped `analysis_limit`. It writes `sqlite_stat1`, so it goes through the
+    /// writer (the readers are read-only) and queues behind other writes like
+    /// any of them.
+    pub async fn optimize(&self) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql("PRAGMA optimize")
+            .execute(&self.writer)
+            .await?;
+        Ok(())
     }
 
     // Only private staging databases use this constructor; the offline caller owns the workspace lease.
@@ -145,6 +181,7 @@ impl Store {
             changes: Arc::new(ChangeFeed::default()),
             reader: pool,
             shared_connection: true,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -152,14 +189,65 @@ impl Store {
         Ok(store)
     }
 
+    /// A freshly migrated database that lives only in memory.
+    ///
+    /// Migrating takes about a second, and a test process opens hundreds of
+    /// these, so the first call migrates once and every call copies that
+    /// database into its own.
     pub async fn in_memory() -> Result<Self, sqlx::Error> {
-        let opts = SqliteConnectOptions::from_str("sqlite::memory:")?
+        static MIGRATED: tokio::sync::OnceCell<Vec<u8>> = tokio::sync::OnceCell::const_new();
+        let migrated = MIGRATED
+            .get_or_try_init(|| async {
+                let (store, _) = Self::empty_in_memory().await?;
+                store.run_migrations().await?;
+                let mut connection = store.writer.acquire().await?;
+                Ok::<_, sqlx::Error>(connection.serialize(None).await?.to_vec())
+            })
+            .await?;
+
+        let (store, name) = Self::empty_in_memory().await?;
+        // A deserialized database belongs to the one connection that loaded
+        // it, so the copy goes into a scratch connection first. VACUUM INTO
+        // then writes it into the shared database every connection opens.
+        let mut scratch = SqliteConnectOptions::from_str("sqlite::memory:")?
+            .connect()
+            .await?;
+        scratch
+            .deserialize(None, migrated.as_slice().try_into()?, false)
+            .await?;
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "VACUUM INTO 'file:{name}?mode=memory&cache=shared'"
+        )))
+        .execute(&mut scratch)
+        .await?;
+        sqlx::Connection::close(scratch).await?;
+        Ok(store)
+    }
+
+    /// An empty memory database and the name it is shared under.
+    async fn empty_in_memory() -> Result<(Self, String), sqlx::Error> {
+        // A named shared-cache memory database lives while any connection to
+        // it is open. The unique name keeps each store's database its own.
+        let name = format!("mxr-memory-{}", uuid::Uuid::now_v7());
+        let opts = SqliteConnectOptions::new()
+            .filename(format!("file:{name}"))
+            .in_memory(true)
+            .shared_cache(true)
             .journal_mode(SqliteJournalMode::Wal)
             .pragma("foreign_keys", "ON");
 
+        // sqlx replaces a pooled connection on its own: one whose acquire is
+        // cancelled mid-ping, one that fails its ping on release, one dropped
+        // while connecting. Without another open connection, the replacement
+        // would open an empty database.
+        let memory_anchor = opts.connect().await?;
+
         let changes = Arc::new(ChangeFeed::default());
+        // Recycling on age or idleness buys nothing for a memory database.
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            .max_lifetime(None)
+            .idle_timeout(None)
             .after_connect(watch_changes(&changes))
             .connect_with(opts)
             .await?;
@@ -171,10 +259,10 @@ impl Store {
             changes,
             reader: pool,
             shared_connection: true,
+            _memory_anchor: Some(memory_anchor),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
-        store.run_migrations().await?;
-        Ok(store)
+        Ok((store, name))
     }
 
     pub(crate) async fn run_migrations(&self) -> Result<(), sqlx::Error> {
@@ -197,6 +285,9 @@ impl Store {
         // Runs on every open, not once: a restored bundle from before 96
         // brings accounts without a colour or tag.
         self.backfill_account_identity().await?;
+        // Same reason as above: a dev database from before 093 was edited in
+        // place lacks the receipts foreign key.
+        self.repair_unsubscribe_receipts_foreign_key().await?;
 
         self.validate_schema().await?;
         Ok(())
@@ -238,6 +329,9 @@ impl Store {
             }
             MigrationKind::DecisionLogStableId => {
                 self.apply_decision_log_stable_id_migration().await?;
+            }
+            MigrationKind::LabelRole => {
+                self.apply_label_role_migration().await?;
             }
         }
 
@@ -291,6 +385,35 @@ impl Store {
                 .fetch_optional(&self.writer)
                 .await?;
         Ok(row.is_some())
+    }
+
+    /// Stores `labels.role` and fills the rows synced before it existed from
+    /// the system label names. Providers report the role at sync from here on, so the name
+    /// table is only read here, once.
+    async fn apply_label_role_migration(&self) -> Result<(), sqlx::Error> {
+        self.add_column_if_missing("labels", "role", "ALTER TABLE labels ADD COLUMN role TEXT")
+            .await?;
+        self.backfill_label_roles_from_names().await?;
+        Ok(())
+    }
+
+    /// Sets `role` on System labels that have none, from their names. Migration
+    /// 105 runs it on existing databases. A backup taken before 105 runs it on
+    /// its copy, because those labels arrive with no role.
+    pub(crate) async fn backfill_label_roles_from_names(&self) -> Result<(), sqlx::Error> {
+        for role in Role::system_mailboxes() {
+            for name in role.system_label_names() {
+                sqlx::query(
+                    "UPDATE labels SET role = ?
+                     WHERE kind = 'system' AND role IS NULL AND lower(name) = ?",
+                )
+                .bind(role.storage_name())
+                .bind(*name)
+                .execute(&self.writer)
+                .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn apply_decision_log_stable_id_migration(&self) -> Result<(), sqlx::Error> {
@@ -375,9 +498,9 @@ impl Store {
     /// done with it, a cancelled or closing commit included. Holding it,
     /// nothing can be mid-commit, so every commit in the count is visible.
     ///
-    /// A store whose one connection serves reads too waits without a limit:
-    /// sqlx drops a connection whose acquire is cancelled mid-ping, which
-    /// would lose an in-memory database.
+    /// A store whose one connection serves reads too waits without a limit.
+    /// That guarded an in-memory database before `_memory_anchor` kept it
+    /// alive across a dropped connection; the limit could now apply here too.
     pub async fn changes_landed(&self, wait: Duration) -> Option<u64> {
         let writer = if self.shared_connection {
             self.writer.acquire().await.ok()?
@@ -412,6 +535,7 @@ enum MigrationKind {
     },
     Composite(&'static [MigrationStep]),
     DecisionLogStableId,
+    LabelRole,
 }
 
 enum MigrationStep {
@@ -1265,6 +1389,9 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 102, name: "ask_view_summaries", kind: MigrationKind::Sql(include_str!("../migrations/102_ask_view_summaries.sql")) },
     Migration { version: 103, name: "navigation_lookups", kind: MigrationKind::Sql(include_str!("../migrations/103_navigation_lookups.sql")) },
     Migration { version: 104, name: "conversation_summaries", kind: MigrationKind::Sql(include_str!("../migrations/104_conversation_summaries.sql")) },
+    Migration { version: 105, name: "label_role", kind: MigrationKind::LabelRole },
+    Migration { version: 106, name: "mode_row_seen", kind: MigrationKind::Sql(include_str!("../migrations/106_mode_row_seen.sql")) },
+    Migration { version: 108, name: "account_identity_tag_unique", kind: MigrationKind::Sql(include_str!("../migrations/108_account_identity_tag_unique.sql")) },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -1509,7 +1636,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
 ];
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     #![expect(
         clippy::unwrap_used,
         reason = "tests unwrap fixture setup for direct failures"
@@ -1520,6 +1647,36 @@ mod tests {
     use std::path::Path;
     use std::str::FromStr;
     use tempfile::tempdir;
+
+    /// The planner picked an account-wide index in the reader-pool starvation
+    /// incident because the store had no statistics. A file store must have
+    /// gathered them by the time `Store::new` returns, and the periodic form
+    /// must keep working on the writer.
+    #[tokio::test]
+    async fn optimize_gathers_planner_statistics() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("mxr.db");
+        let store = Store::new(&db_path).await.unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE optimize_probe (a INTEGER, b INTEGER);
+             CREATE INDEX optimize_probe_a ON optimize_probe(a);
+             WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 2000)
+             INSERT INTO optimize_probe SELECT i % 10, i FROM n;",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        store.optimize_all_tables().await.unwrap();
+        store.optimize().await.unwrap();
+
+        let analysed: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl = 'optimize_probe'")
+                .fetch_one(store.writer())
+                .await
+                .unwrap();
+        assert!(analysed > 0, "optimize left the probe table unanalysed");
+    }
 
     async fn open_test_writer(db_path: &Path) -> sqlx::SqlitePool {
         let url = format!("sqlite:{}", db_path.display());
@@ -1533,7 +1690,8 @@ mod tests {
             .unwrap()
     }
 
-    async fn store_at_version(db_path: &Path, version: u32) -> Store {
+    /// A store migrated only as far as `version`, as a database from that release.
+    pub(crate) async fn store_at_version(db_path: &Path, version: u32) -> Store {
         let url = format!("sqlite:{}", db_path.display());
         let opts = SqliteConnectOptions::from_str(&url)
             .unwrap()
@@ -1549,13 +1707,14 @@ mod tests {
             changes: std::sync::Arc::new(crate::ChangeFeed::default()),
             reader: writer,
             shared_connection: true,
+            _memory_anchor: None,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         sqlx::raw_sql(
             "CREATE TABLE schema_migrations (
-                version INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
+                version    INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
                 applied_at INTEGER NOT NULL
             )",
         )
@@ -1586,6 +1745,64 @@ mod tests {
                 .await
                 .unwrap();
         row.is_some()
+    }
+
+    async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
+        // `sqlite_stat1` appears once PRAGMA optimize has analysed a table; it
+        // holds planner statistics, not schema.
+        sqlx::query_as(
+            "SELECT type, name, sql FROM sqlite_schema \
+             WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
+    }
+
+    /// In-memory stores load a copy of one migrated database, so the copy
+    /// must match what migrating a new database file produces.
+    #[tokio::test]
+    async fn an_in_memory_store_has_the_schema_migrations_produce() {
+        let temp = tempdir().unwrap();
+        let migrated = Store::new(&temp.path().join("fresh.db")).await.unwrap();
+        let copied = Store::in_memory().await.unwrap();
+
+        assert_eq!(
+            schema_of(copied.writer()).await,
+            schema_of(migrated.writer()).await
+        );
+        let versions = "SELECT version FROM schema_migrations ORDER BY version";
+        let copied_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(copied.writer())
+            .await
+            .unwrap();
+        let migrated_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(migrated.writer())
+            .await
+            .unwrap();
+        assert_eq!(copied_versions, migrated_versions);
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(copied.writer())
+            .await
+            .unwrap();
+        assert_eq!(foreign_keys, 1);
+    }
+
+    #[tokio::test]
+    async fn in_memory_stores_do_not_share_writes() {
+        let first = Store::in_memory().await.unwrap();
+        let second = Store::in_memory().await.unwrap();
+
+        sqlx::raw_sql("CREATE TABLE only_in_first (id INTEGER)")
+            .execute(first.writer())
+            .await
+            .unwrap();
+
+        assert!(test_table_exists(first.writer(), "only_in_first").await);
+        assert!(!test_table_exists(second.writer(), "only_in_first").await);
+        assert!(
+            !test_table_exists(Store::in_memory().await.unwrap().writer(), "only_in_first").await
+        );
     }
 
     #[tokio::test]
@@ -1619,6 +1836,43 @@ mod tests {
             error.to_string().contains("bodies.text_plain"),
             "expected missing column error, got {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_in_memory_store_never_recycles_its_only_connection() {
+        let store = Store::in_memory().await.unwrap();
+        let options = store.writer().options();
+        assert_eq!(options.get_max_lifetime(), None);
+        assert_eq!(options.get_idle_timeout(), None);
+    }
+
+    #[tokio::test]
+    async fn the_in_memory_store_keeps_its_data_when_the_pool_replaces_its_connection() {
+        let store = Store::in_memory().await.unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE survivor (id INTEGER PRIMARY KEY); INSERT INTO survivor VALUES (7)",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        // sqlx closes a pooled connection on its own too: after a query or
+        // acquire is cancelled mid-flight, or when a ping fails.
+        store
+            .writer()
+            .acquire()
+            .await
+            .unwrap()
+            .close()
+            .await
+            .unwrap();
+
+        let (id,): (i64,) = sqlx::query_as("SELECT id FROM survivor")
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(id, 7);
+        assert!(test_table_exists(store.writer(), "accounts").await);
     }
 
     #[tokio::test]
@@ -2116,7 +2370,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=104).collect::<Vec<_>>(),
+                (83..=106).chain([108]).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);
@@ -2397,5 +2651,59 @@ mod tests {
                 ("undated".to_string(), None),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn label_role_migration_fills_system_rows_synced_before_it_from_their_names() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-104.db");
+        {
+            let store = store_at_version(&db_path, 104).await;
+            sqlx::query("PRAGMA foreign_keys = OFF")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            for (id, name, kind) in [
+                ("sent", "SENT", "system"),
+                ("draft", "Draft", "system"),
+                ("inbox", "inbox", "system"),
+                ("folder", "Sent", "folder"),
+                ("user", "Sent", "user"),
+                ("gesendet", "Gesendete Elemente", "system"),
+            ] {
+                sqlx::query(
+                    "INSERT INTO labels (id, account_id, name, kind, provider_id, unread_count, total_count)
+                     VALUES (?, 'a', ?, ?, ?, 0, 0)",
+                )
+                .bind(id)
+                .bind(name)
+                .bind(kind)
+                .bind(id)
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+            store.writer().close().await;
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT id, role FROM labels ORDER BY id")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        let role = |id: &str| {
+            rows.iter()
+                .find(|(row_id, _)| row_id == id)
+                .and_then(|(_, role)| role.clone())
+        };
+        assert_eq!(role("sent").as_deref(), Some("sent"));
+        assert_eq!(role("draft").as_deref(), Some("drafts"));
+        assert_eq!(role("inbox").as_deref(), Some("inbox"));
+        // Only System labels are backfilled from a name.
+        assert_eq!(role("folder"), None);
+        assert_eq!(role("user"), None);
+        // A name the table does not know stays unset.
+        assert_eq!(role("gesendet"), None);
     }
 }

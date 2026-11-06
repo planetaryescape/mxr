@@ -49,7 +49,7 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 104);
+    assert_eq!(manifest.schema_version, 108);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -87,21 +87,27 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
 
 #[tokio::test]
 async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_history() {
+    // One current backup, staged once and copied for each older schema.
+    // Staging runs every migration twice, which was most of this test's
+    // time when it was redone for each version.
+    let source = tempfile::tempdir().unwrap();
+    let staged = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    seed_resolution_queue(&store).await;
+    sqlx::query("UPDATE todos SET title='Keep edited closed history', user_edited=1, state='done', done_at=1 WHERE id='backup-task'")
+        .execute(store.writer()).await.unwrap();
+    let before = store.get_todo("backup-task").await.unwrap().unwrap();
+    store.writer().close().await;
+    let staged_manifest = write_manifest(
+        staged.path(),
+        populate(source.path(), staged.path()).await.unwrap(),
+    );
     for version in [97, 98, 99, 100, 101, 102, 103] {
-        let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
-        let store = Store::fresh_backup(&source.path().join("mxr.db"))
-            .await
-            .unwrap();
-        seed_resolution_queue(&store).await;
-        sqlx::query("UPDATE todos SET title='Keep edited closed history', user_edited=1, state='done', done_at=1 WHERE id='backup-task'")
-            .execute(store.writer()).await.unwrap();
-        let before = store.get_todo("backup-task").await.unwrap().unwrap();
-        store.writer().close().await;
-        let mut manifest = write_manifest(
-            stage.path(),
-            populate(source.path(), stage.path()).await.unwrap(),
-        );
+        copy_bundle(staged.path(), stage.path());
+        let mut manifest = staged_manifest.clone();
         let mut db = SqliteConnection::connect_with(
             &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
         )
@@ -135,6 +141,15 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
                 .await
                 .unwrap();
         }
+        // Labels gained `role` in 105.
+        sqlx::raw_sql("DROP TABLE mode_row_seen; ALTER TABLE labels DROP COLUMN role")
+            .execute(&mut db)
+            .await
+            .unwrap();
+        sqlx::query("DROP INDEX IF EXISTS idx_accounts_identity_tag")
+            .execute(&mut db)
+            .await
+            .unwrap();
         sqlx::query("DELETE FROM schema_migrations WHERE version > ?")
             .bind(version)
             .execute(&mut db)
@@ -166,7 +181,7 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104]);
+            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104, 105, 106, 108]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

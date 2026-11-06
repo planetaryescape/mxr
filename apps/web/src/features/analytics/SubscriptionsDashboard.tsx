@@ -47,7 +47,7 @@ export function SubscriptionsDashboard() {
       toast.success("Unsubscribe requested");
       setConfirm(null);
     },
-    onError: (error) => toast.error("Unsubscribe failed", { description: error.message }),
+    onError: (error) => toast.error("Unsubscribe not finished", { description: error.message }),
   });
   const rows = sortSubscriptions(subscriptions.data?.subscriptions ?? [], sort);
   const { rowProps } = useLitRow(rows.map(rowId));

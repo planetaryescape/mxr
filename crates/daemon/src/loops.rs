@@ -1194,7 +1194,7 @@ pub(crate) async fn post_sync_fanout(
 /// the second half of [`post_sync_fanout`], split out so `mxr classify eval
 /// --set full` can run exactly this over a 50,000-message demo. The indexing
 /// and profile building before it decide nothing the eval grades and are most
-/// of the time. The to-do and record scans run as of `now`; the eval pins it.
+/// of the time. Every scan that reads the clock runs as of `now`; the eval pins it.
 pub(crate) async fn post_sync_classification(
     state: &AppState,
     account_id: &AccountId,
@@ -1233,7 +1233,7 @@ pub(crate) async fn post_sync_classification(
 
     // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {
-        Box::pin(crate::handler::reading::after_sync(state, account_id)).await;
+        Box::pin(crate::handler::reading::after_sync(state, account_id, now)).await;
     }
 
     // Facts for new Updates mail, so the next digest reads them cached.
@@ -1241,9 +1241,13 @@ pub(crate) async fn post_sync_classification(
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
-    if let Err(error) =
-        crate::handler::assessments::reconcile_messages(state, account_id, upserted_message_ids)
-            .await
+    if let Err(error) = crate::handler::assessments::reconcile_messages_at(
+        state,
+        account_id,
+        upserted_message_ids,
+        now,
+    )
+    .await
     {
         tracing::warn!(account = %account_id, %error, "assessment reconciliation pending after sync");
     }
@@ -1798,6 +1802,9 @@ pub(crate) struct RuleMessage {
     body: Option<mxr_core::MessageBody>,
     to: Vec<String>,
     labels: Vec<String>,
+    /// The parts rules match, built on first use. `None` when the body is
+    /// absent or has no text part, so body rules report unknown.
+    searchable_body: std::sync::OnceLock<Option<Vec<String>>>,
 }
 
 impl RuleMessage {
@@ -1812,6 +1819,7 @@ impl RuleMessage {
             envelope,
             body,
             labels,
+            searchable_body: std::sync::OnceLock::new(),
         }
     }
 
@@ -1893,10 +1901,16 @@ impl mxr_rules::MessageView for RuleMessage {
             mxr_core::types::UnsubscribeMethod::None
         )
     }
-    fn body_text(&self) -> Option<&str> {
-        self.body
+    fn body_parts(&self) -> Option<Vec<&str>> {
+        // Part 0 is the stored plain text as it was before HTML was matched;
+        // part 1 is the HTML converted to text. See `mxr_reader::body_match_parts`.
+        self.searchable_body
+            .get_or_init(|| {
+                let body = self.body.as_ref()?;
+                mxr_reader::body_match_parts(body.text_plain.as_deref(), body.text_html.as_deref())
+            })
             .as_ref()
-            .and_then(|body| body.text_plain.as_deref().or(body.text_html.as_deref()))
+            .map(|parts| parts.iter().map(String::as_str).collect())
     }
     fn link_density_inputs(&self) -> (u32, u32) {
         (self.envelope.link_count, self.envelope.body_word_count)
@@ -1954,6 +1968,21 @@ pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watc
             Ok(n) => tracing::debug!(rows = n, "contacts refresher updated table"),
             Err(e) => tracing::warn!("Contacts refresh error: {e}"),
         }
+    }
+}
+
+/// Tell connected clients when the debounced contacts rebuild commits, so an
+/// analytics or contacts view left open refetches. Ends when the refresh worker
+/// stops and closes the channel.
+pub async fn contacts_refreshed_announcer(
+    state: Arc<AppState>,
+    mut refreshed: tokio::sync::broadcast::Receiver<()>,
+) {
+    use tokio::sync::broadcast::error::RecvError;
+    // A lagged receiver missed wakes, but one announcement still covers them:
+    // clients refetch everything the rebuild touched. Closed ends the loop.
+    while let Ok(()) | Err(RecvError::Lagged(_)) = refreshed.recv().await {
+        crate::chimes::emit_daemon_event(&state, mxr_protocol::DaemonEvent::ContactsRefreshed);
     }
 }
 
@@ -2478,7 +2507,8 @@ pub async fn mutation_dedup_prune_loop(
     // Mutation dedup rows have a 24h TTL; prune hourly so the table
     // stays bounded under heavy mutation traffic. The undo log gets
     // pruned alongside since both tables share the daemon's
-    // maintenance cadence.
+    // maintenance cadence. `PRAGMA optimize` rides the same tick: SQLite
+    // recommends it hourly or daily on a long-lived connection.
     let mut ticker = interval(Duration::from_secs(3600));
     loop {
         tokio::select! {
@@ -2501,6 +2531,9 @@ pub async fn mutation_dedup_prune_loop(
             Ok(0) => {}
             Ok(n) => tracing::debug!(rows = n, "mutation undo prune deleted rows"),
             Err(e) => tracing::warn!(error = %e, "mutation undo prune failed"),
+        }
+        if let Err(e) = state.store.optimize().await {
+            tracing::warn!(error = %e, "PRAGMA optimize failed");
         }
     }
 }
@@ -3069,6 +3102,33 @@ mod tests {
             .unwrap();
         assert!(status.last_error.is_none(), "a success clears it");
         assert!(status.failure_class.is_none());
+    }
+
+    /// The refresh worker's wake becomes a `ContactsRefreshed` event on the
+    /// daemon stream, which is what an open analytics view refetches on.
+    #[tokio::test]
+    async fn a_committed_contacts_refresh_is_announced_to_clients() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut events = state.event_tx.subscribe();
+        let (wake, refreshed) = tokio::sync::broadcast::channel(4);
+        let announcer = tokio::spawn(contacts_refreshed_announcer(state.clone(), refreshed));
+
+        wake.send(()).unwrap();
+
+        let message = tokio::time::timeout(Duration::from_secs(5), events.recv())
+            .await
+            .expect("an event is sent")
+            .unwrap();
+        assert!(matches!(
+            message.payload,
+            mxr_protocol::IpcPayload::Event(mxr_protocol::DaemonEvent::ContactsRefreshed)
+        ));
+        // The worker stopping closes the channel and ends the announcer.
+        drop(wake);
+        tokio::time::timeout(Duration::from_secs(5), announcer)
+            .await
+            .expect("the announcer ends")
+            .unwrap();
     }
 
     /// Stale `sync_in_progress=true` rows from a daemon that died
@@ -4221,5 +4281,147 @@ mod history_prune_tests {
             .await
             .expect("history prune loop exits after shutdown")
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod rule_message_text_tests {
+    use super::RuleMessage;
+    use crate::test_fixtures::{make_empty_body, TestEnvelopeBuilder};
+    use mxr_rules::{Conditions, FieldCondition, MessageView, StringMatch};
+
+    fn body_contains(word: &str) -> Conditions {
+        Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Contains(word.to_string()),
+        })
+    }
+
+    fn message(text_plain: Option<&str>, text_html: Option<&str>) -> RuleMessage {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let mut body = make_empty_body(&envelope.id);
+        body.text_plain = text_plain.map(str::to_string);
+        body.text_html = text_html.map(str::to_string);
+        RuleMessage::from_parts(envelope, Some(body), Vec::new())
+    }
+
+    #[test]
+    fn a_word_only_inside_style_does_not_match_a_body_rule() {
+        let html = "<html><head><style>.a{b:c} zzcssword{d:e}</style></head>\
+                    <body><p>Visible text</p></body></html>";
+        let view = message(None, Some(html));
+        assert_eq!(
+            body_contains("zzcssword").evaluate_known(&view),
+            Some(false)
+        );
+        assert_eq!(
+            body_contains("visible text").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_word_in_the_html_part_matches_when_the_plain_part_lacks_it() {
+        let view = message(
+            Some("Plain part without it"),
+            Some("<p>The html part says zzhtmlword</p>"),
+        );
+        assert_eq!(
+            body_contains("zzhtmlword").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn rule_body_parts_are_the_search_parts_and_are_stable_across_calls() {
+        let view = message(Some("plain words"), Some("<p>html words</p>"));
+        let expected =
+            mxr_reader::body_match_parts(Some("plain words"), Some("<p>html words</p>")).unwrap();
+        let parts = |view: &RuleMessage| -> Vec<String> {
+            view.body_parts()
+                .unwrap_or_default()
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(parts(&view), expected);
+        assert_eq!(parts(&view), expected);
+    }
+
+    #[test]
+    fn exact_and_anchored_rules_match_a_plain_and_html_duplicate() {
+        // The same word in both parts must still satisfy a whole-text rule.
+        let view = message(Some("invoice"), Some("<p>invoice</p>"));
+        let exact = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Exact("invoice".to_string()),
+        });
+        let anchored = Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Regex("^invoice$".to_string()),
+        });
+        assert_eq!(exact.evaluate_known(&view), Some(true));
+        assert_eq!(anchored.evaluate_known(&view), Some(true));
+    }
+
+    #[test]
+    fn a_message_without_body_or_text_is_unknown_to_body_rules() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let no_body = RuleMessage::from_parts(envelope.clone(), None, Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_body), None);
+
+        let mut empty = make_empty_body(&envelope.id);
+        empty.text_plain = None;
+        let no_text = RuleMessage::from_parts(envelope, Some(empty), Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_text), None);
+    }
+
+    #[test]
+    fn a_long_html_paragraph_matches_a_phrase_rule_across_its_display_wrap() {
+        // The reader breaks this paragraph at 80 columns; the rule must still
+        // see "payment overdue" as the words the sender wrote.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let view = message(None, Some(&html));
+        assert_eq!(
+            body_contains("payment overdue").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    fn body_rule(pattern: StringMatch) -> Conditions {
+        Conditions::Field(FieldCondition::BodyContains { pattern })
+    }
+
+    #[test]
+    fn pre_html_plain_rules_keep_their_exact_results() {
+        // A trailing newline is part of the stored plain text, so an exact rule
+        // written against it still matches.
+        let plain = message(Some("invoice\n"), None);
+        assert_eq!(
+            body_rule(StringMatch::Exact("invoice\n".to_string())).evaluate_known(&plain),
+            Some(true)
+        );
+        assert_eq!(
+            body_rule(StringMatch::Regex("\\Ainvoice\\n\\z".to_string())).evaluate_known(&plain),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_negated_empty_check_on_empty_mail_is_unchanged() {
+        // Empty plain text matches ^$, so NOT ^$ is false, as before HTML matching.
+        let empty = message(Some(""), None);
+        let not_empty = Conditions::Not {
+            condition: Box::new(body_rule(StringMatch::Regex("^$".to_string()))),
+        };
+        assert_eq!(not_empty.evaluate_known(&empty), Some(false));
+        let with_html = message(Some(""), Some("<p>words</p>"));
+        assert_eq!(not_empty.evaluate_known(&with_html), Some(false));
+    }
+
+    #[test]
+    fn a_message_with_no_body_parts_is_unknown_to_body_rules() {
+        let no_body = RuleMessage::from_parts(TestEnvelopeBuilder::new().build(), None, Vec::new());
+        assert_eq!(
+            body_rule(StringMatch::Contains("x".to_string())).evaluate_known(&no_body),
+            None
+        );
     }
 }

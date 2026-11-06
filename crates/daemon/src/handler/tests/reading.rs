@@ -130,6 +130,86 @@ fn titles(items: &[&ReadingItemData]) -> Vec<String> {
 
 const WEEKLY: (&str, &str) = ("Long Reads Weekly", "essays@longreads.example");
 
+#[tokio::test]
+async fn externally_filed_reading_stays_in_the_edition_until_let_go() {
+    use mxr_core::EventSource;
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let (message, thread) = issue(
+        &fx,
+        WEEKLY,
+        "Keep reading this essay",
+        &essay(400),
+        now - Duration::hours(1),
+    )
+    .await;
+    let visit = ReadingVisitRow {
+        first_seen: Some(now - Duration::days(2)),
+        boundary: Some(now - Duration::days(1)),
+        last_seen: Some(now - Duration::days(1)),
+    };
+    let before = plan(&fx, &visit, now).await;
+    assert!(before
+        .edition
+        .bands
+        .iter()
+        .flat_map(|band| &band.items)
+        .any(|item| item.message_id == message));
+    fx.state
+        .store
+        .remove_message_label(&message, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let retained = plan(&fx, &visit, now).await;
+    let item = retained
+        .edition
+        .bands
+        .iter()
+        .flat_map(|band| &band.items)
+        .find(|item| item.message_id == message)
+        .expect("archived issue stays visible");
+    assert!(item.source_filed_at.is_some());
+    assert!(!item.finished);
+    fx.state
+        .store
+        .add_message_label(&message, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let restored = plan(&fx, &visit, now).await;
+    assert!(restored
+        .edition
+        .bands
+        .iter()
+        .flat_map(|band| &band.items)
+        .find(|item| item.message_id == message)
+        .unwrap()
+        .source_filed_at
+        .is_none());
+    fx.state
+        .store
+        .remove_message_label(&message, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let done = |dry_run| Request::SetModeDone {
+        thread_ids: vec![thread.clone()],
+        mode: ModeKindData::Reading,
+        dry_run,
+        todo_ids: vec![],
+        sender: None,
+    };
+    let ResponseData::ModeDone { items: preview, .. } = request(&fx, done(true)).await else {
+        panic!("preview");
+    };
+    let ResponseData::ModeDone { items: applied, .. } = request(&fx, done(false)).await else {
+        panic!("applied");
+    };
+    assert_eq!(preview, applied);
+    assert!(applied
+        .iter()
+        .all(|item| item.error.is_none() && item.archived == 0));
+    assert!(plan(&fx, &visit, now).await.edition.bands.is_empty());
+}
+
 /// A weekly source: issues 0.5, 7.5, 13.5 and 21 days old, plus older
 /// ones that set its fourteen-day window.
 async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> {

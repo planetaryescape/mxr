@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Calm the exact To do or Updates revision you opened. Get the row id, account_id and seen_revision from `todo` or `updates --format json`
+
+Usage: mxr modes seen [OPTIONS] --account <ACCOUNT> --revision <REVISION> <MODE> <ROW_ID>
+
+Arguments:
+  <MODE>    [possible values: todo, updates]
+  <ROW_ID>
+
+Options:
+      --account <ACCOUNT>
+      --revision <REVISION>
+      --dry-run
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+  -h, --help                 Print help

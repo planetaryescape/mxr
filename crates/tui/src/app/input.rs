@@ -277,6 +277,14 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Option<Action> {
         let action = self.input.handle_key(key)?;
+        // Expiring a moved-key notice must not restore these legacy defaults
+        // in mailbox lists. Reader/search keys and explicit remaps stay intact.
+        if matches!(action, Action::NextSearchResult | Action::PrevSearchResult)
+            && self.screen == Screen::Mailbox
+            && self.mailbox.active_pane != ActivePane::MessageView
+        {
+            return None;
+        }
         if matches!(
             self.current_ui_context(),
             UiContext::MailboxList
@@ -668,11 +676,6 @@ impl App {
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
                 (KeyCode::Enter, _) => Some(Action::StoredDraftsModalEdit),
                 (KeyCode::Char('#'), _) => Some(Action::StoredDraftsModalPreviewDelete),
-                // Moved keys (blueprint 35): `#` deletes and Enter edits.
-                (KeyCode::Char(c @ ('d' | 'e')), KeyModifiers::NONE) => {
-                    self.announce_moved("drafts", &c.to_string());
-                    None
-                }
                 (KeyCode::Char('c'), _) => Some(Action::StoredDraftsModalPreviewCancelSchedule),
                 (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
@@ -877,22 +880,32 @@ impl App {
                                 }
                             };
                             let draft_id = pending.draft_id();
-                            let draft = match draft_from_pending(&pending, draft_id.clone(), now) {
-                                Ok(draft) => draft,
-                                Err(error) => {
-                                    self.compose.pending_send_confirm = Some(pending);
-                                    self.compose.pending_send_at_input = Some(input);
-                                    self.push_toast(Toast::error(error.to_string()));
-                                    return None;
+                            // A stored draft was saved before its review; saving it
+                            // again would move the revision the schedule names.
+                            let prelude = if pending.stored_draft.is_some() {
+                                Vec::new()
+                            } else {
+                                match draft_from_pending(&pending, draft_id.clone(), now) {
+                                    Ok(draft) => vec![Request::SaveDraft { draft }],
+                                    Err(error) => {
+                                        self.compose.pending_send_confirm = Some(pending);
+                                        self.compose.pending_send_at_input = Some(input);
+                                        self.push_toast(Toast::error(error.to_string()));
+                                        return None;
+                                    }
                                 }
                             };
+                            let expected_revision = match pending.stored_draft.as_ref() {
+                                Some(stored) => stored.revision,
+                                None => pending.draft_revision.or(Some(1)),
+                            };
                             self.queue_platform_request_after(
-                                vec![Request::SaveDraft { draft }],
+                                prelude,
                                 Request::ScheduleSend {
                                     managed_attachments_reviewed: true,
                                     draft_id,
                                     send_at,
-                                    expected_revision: pending.draft_revision.or(Some(1)),
+                                    expected_revision,
                                 },
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
@@ -965,7 +978,13 @@ impl App {
                     }
                     return None;
                 }
+                // Ctrl-a is GNU screen's prefix, which a TUI default never
+                // takes (blueprint 35); it says where add-to-Cc went.
                 (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                    self.announce_moved("send-review", "Ctrl+a");
+                    return None;
+                }
+                (KeyCode::Char('c'), KeyModifiers::NONE) => {
                     // Slice 5.3 (C2.7 cont): add the top "maybe
                     // include" suggestion to the draft's Cc and
                     // remove it from the suggestions list.
@@ -1030,6 +1049,21 @@ impl App {
                             return None;
                         }
                         let retained = pending.clone();
+                        if let Some(stored) = pending.stored_draft.as_deref() {
+                            // Already saved before the review: keep it, and put it
+                            // on the server as a fresh reply's save does.
+                            let id = self.queue_mutation(
+                                Request::SaveDraftToServer {
+                                    draft: stored.clone(),
+                                },
+                                MutationEffect::StatusOnly("Draft saved".into()),
+                                "Saving draft...".into(),
+                            );
+                            self.compose
+                                .pending_send_mutations
+                                .insert(id, (retained, false));
+                            return None;
+                        }
                         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
                             mxr_core::types::ReplyHeaders {
@@ -1089,19 +1123,44 @@ impl App {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
-                        self.compose.pending_compose = Some(ComposeAction::EditDraft {
-                            path: pending.draft_path,
-                            account_id: pending.account_id,
-                        });
+                        if let Some(stored) = pending.stored_draft {
+                            // Its saved text is the only copy that matters now.
+                            self.schedule_draft_cleanup(pending.draft_path);
+                            self.pending_draft_edit_request = Some(*stored);
+                        } else {
+                            self.compose.pending_compose = Some(ComposeAction::EditDraft {
+                                path: pending.draft_path,
+                                account_id: pending.account_id,
+                            });
+                        }
                     }
                     return None;
                 }
                 (KeyCode::Char('r'), KeyModifiers::NONE) => {
+                    // Draft for me rewrites the review's text, which a stored
+                    // draft sends exactly as saved: edit it instead.
+                    if self
+                        .compose
+                        .pending_send_confirm
+                        .as_ref()
+                        .is_some_and(|pending| pending.stored_draft.is_some())
+                    {
+                        return None;
+                    }
                     return Some(Action::RefinePendingDraft);
                 }
                 // Discard only on the option that names it, with the shared
                 // destroy key (blueprint 36's "# discard draft").
                 (KeyCode::Char('#'), _) => {
+                    // A stored draft is deleted from Drafts, behind its own preview.
+                    if self
+                        .compose
+                        .pending_send_confirm
+                        .as_ref()
+                        .is_some_and(|pending| pending.stored_draft.is_some())
+                    {
+                        return None;
+                    }
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -1229,10 +1288,6 @@ impl App {
                 }
                 (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
-                }
-                (KeyCode::Char(c @ ('a' | 'A')), modifiers) if plain_or_shift(modifiers) => {
-                    self.announce_moved("unsubscribe", &c.to_string());
-                    None
                 }
                 // A yes or no question: n is Esc, and q closes too.
                 (KeyCode::Esc | KeyCode::Char('n' | 'q'), _) => Some(Action::CancelUnsubscribe),
@@ -1826,12 +1881,6 @@ impl App {
                 {
                     Some(Action::DeleteSavedSearch)
                 }
-                (KeyCode::Char('d'), KeyModifiers::NONE)
-                    if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
-                {
-                    self.announce_moved("saved-searches", "d");
-                    None
-                }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
@@ -1925,9 +1974,8 @@ impl App {
     /// Key handling for the calendar-invites lens (a list pane with inline
     /// RSVP). The `i` chords respond, as everywhere else (`i a`, `i m`,
     /// `i d`, and with a capital to add a comment); Enter opens the
-    /// underlying message. The bare letters they replaced say so until
-    /// 0.6.185. Unhandled keys fall through to the shared vim/chord input
-    /// so j/k/gg/G still navigate.
+    /// underlying message. Unhandled keys fall through to the shared
+    /// vim/chord input so j/k/gg/G still navigate.
     fn calendar_invites_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
@@ -1940,12 +1988,6 @@ impl App {
             }
             // Cancel a just-issued RSVP while it's still in its send window.
             (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
-            (KeyCode::Char(c @ ('a' | 't' | 'm' | 'd' | 'A' | 'T' | 'M' | 'D')), m)
-                if plain_or_shift(m) =>
-            {
-                self.announce_moved("invites", &c.to_string());
-                None
-            }
             _ => self.contextual_input_action(key),
         }
     }
@@ -2466,10 +2508,6 @@ impl App {
             (KeyCode::Char('#'), _) => Some(Action::DeleteRule),
             // c creates what this place holds (blueprint 35).
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenRuleFormNew),
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                self.announce_moved("rules", "n");
-                None
-            }
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenRuleFormEdit)
             }
@@ -2805,10 +2843,6 @@ impl App {
             // c creates what this place holds (blueprint 35); Edit Config,
             // which had c here, is in the palette.
             (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenAccountFormNew),
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                self.announce_moved("accounts", "n");
-                None
-            }
             (KeyCode::Char('r'), _) => {
                 // Phase 2.3: when the selected account is reporting an
                 // unhealthy sync, `r` repairs it instead of refreshing
@@ -2937,6 +2971,21 @@ impl App {
                 }
                 _ => None,
             };
+        }
+
+        // With single-key shortcuts off, a letter typed into a text field is
+        // text, not the form's command for that letter (`s` saves, `r`
+        // reauthorises). Enter is not needed first.
+        if !self.keybindings.single_keys
+            && matches!(key.code, KeyCode::Char(_))
+            && plain_or_shift(key.modifiers)
+            && account_form_field_is_editable(&self.accounts.page.form)
+        {
+            self.accounts.page.form.editing_field = true;
+            self.accounts.page.form.field_cursor =
+                account_form_field_value(&self.accounts.page.form)
+                    .map_or(0, |value| value.chars().count());
+            return self.handle_account_form_key(key);
         }
 
         match (key.code, key.modifiers) {

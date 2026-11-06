@@ -18,6 +18,10 @@ const MAIL_QUERY_ROOTS = new Set([
   "snoozed",
   "saved-search-counts",
   "now",
+  // Messages' people list and person pages: Not now, a mode move or an
+  // archive from Messages takes the person off the list.
+  "messages-mode",
+  "todos",
   "mode-membership",
   "reading",
   "arrivals",

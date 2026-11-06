@@ -1,0 +1,24 @@
+---
+source: crates/tui/src/ui/place_lens.rs
+expression: rendered
+---
+"╭ Updates ─ early version: automated mail in your inbox by sender ─────────────────────────────────╮"
+"│  6 messages from 2 senders                                                                       │"
+"│                                                                                                  │"
+"│  Shop  3                                                                                         │"
+"│    here because: automated sender, has List-Unsubscribe                                          │"
+"│▌     Receipt 2                                                                         [W]  1 Oct│"
+"│      and 2 more (palette: More from this sender)                                                 │"
+"│                                                                                                  │"
+"│  Bank  3                                                                                         │"
+"│    here because: automated sender, has List-Unsubscribe                                          │"
+"│      Statement 1                                                                       [H]  1 Oct│"
+"│      and 2 more (palette: More from this sender)                                                 │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│  enter open · e done here · s pin · P move sender · E sweep all · u undo · : sweep one sender    │"
+"╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"

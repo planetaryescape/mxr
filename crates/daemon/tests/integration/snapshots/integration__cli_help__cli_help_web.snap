@@ -1,0 +1,22 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Start or reopen the local HTTP/WebSocket bridge and open the web app in the default browser. Runs detached by default; use `mxr web stop` to stop the detached bridge
+
+Usage: mxr web [OPTIONS] [COMMAND]
+
+Commands:
+  stop  Stop the detached local web bridge started by `mxr web`
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --host <HOST>         Bind address for the bridge. Defaults to loopback [default: 127.0.0.1]
+      --port <PORT>         Bridge port. Defaults to a fixed local URL port. `0` picks an ephemeral port (useful for tests) [default: 42829]
+      --print-url           Print the launch URL instead of opening the browser
+      --no-open             Do not open the system browser; just print the URL
+      --auto-port           Try the next available port if `--port` is in use
+      --strict-port         Fail immediately if `--port` is in use. This is the default; kept as an explicit compatibility flag
+      --remote-host <HOST>  Open the browser pointed at a manually configured remote bridge. Prefer SSH/Tailscale tunnels unless you've set up TLS, CORS, and Host allowlists. Format: `host[:port]`, e.g. `mxr.example.com` or `mxr.example.com:443`. Reads the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`
+      --foreground          Run the bridge in the foreground instead of detaching it
+  -h, --help                Print help

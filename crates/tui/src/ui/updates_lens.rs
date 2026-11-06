@@ -14,8 +14,9 @@ use mxr_protocol::{
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use super::now_lens::{marker, section, Body};
+use super::now_lens::{section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::mail_list::format_date_relative;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -125,14 +126,20 @@ pub(crate) fn line_row(
         format!("{fact} \u{b7} {extra}")
     };
     let mut spans = vec![
-        Span::raw(marker(selected)),
+        Span::raw("  "),
         Span::styled(mark, mark_style),
         Span::styled(
             format!(
                 "{:<source_width$}  ",
                 truncate(&one_line(&line.source_name), source_width)
             ),
-            Style::default().fg(theme.text_primary),
+            match line.unread {
+                Some(true) => Style::default()
+                    .fg(theme.text_primary)
+                    .add_modifier(Modifier::BOLD),
+                Some(false) => Style::default().fg(theme.text_secondary),
+                None => Style::default().fg(theme.text_primary),
+            },
         ),
         Span::styled(
             format!("{:<rest$}", truncate(&text, rest)),
@@ -142,6 +149,11 @@ pub(crate) fn line_row(
     spans.extend(chip.unwrap_or_default());
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     spans.push(Span::styled(count, Style::default().fg(theme.text_muted)));
+    if selected {
+        for span in &mut spans {
+            span.style = span.style.bg(theme.selection_bg);
+        }
+    }
     Line::from(spans)
 }
 
@@ -188,10 +200,14 @@ fn body_for(
         plural(digest.source_count, "source", "sources")
     );
     // The key hint goes first when space runs short; the footer has it.
+    let let_go_hint = format!(
+        "{} let go all",
+        mxr_keymap::guide_key("updates.let-go-all").unwrap_or_default()
+    );
     let let_go = if digest.let_go_line.is_some()
-        && cut.chars().count() + "A let go all".len() + 5 <= width
+        && cut.chars().count() + let_go_hint.chars().count() + 5 <= width
     {
-        "A let go all"
+        let_go_hint.as_str()
     } else {
         ""
     };
@@ -204,7 +220,7 @@ fn body_for(
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" ".repeat(gap)),
-        Span::styled(let_go, muted),
+        Span::styled(let_go.to_string(), muted),
     ]));
     if !digest.headline.is_empty() {
         for line in wrap(&one_line(&digest.headline), width.saturating_sub(4)) {
@@ -236,10 +252,19 @@ fn body_for(
                 }
                 let chip = view.account_marks.row_cell(&line.account_id, theme);
                 let row_width = width.saturating_sub(view.account_marks.column_width());
-                body.select(
+                body.select_styled(
                     line_row(line, selected, row_width, theme, view.now, chip),
                     selected,
                 );
+                if let Some(filed) = line.source_filed_at {
+                    let label = format!(
+                        "left the inbox · observed {}",
+                        filed.with_timezone(&chrono::Local).format("%-d %b %Y")
+                    );
+                    for text in wrap(&label, width.saturating_sub(4)) {
+                        body.text(format!("  {text}"), secondary);
+                    }
+                }
                 if let Some(suggested) = &line.todo_suggestion {
                     for text in wrap(&one_line(suggested), width.saturating_sub(8)) {
                         body.text(
@@ -284,11 +309,16 @@ fn body_for(
                     plural(*more as u32, "quieter source", "quieter sources"),
                     plural(folded, "update", "updates")
                 );
-                body.select(
+                body.select_styled(
                     Line::from(vec![
-                        Span::raw(marker(selected)),
+                        Span::raw("  "),
                         Span::styled(truncate(&text, width.saturating_sub(4)), muted),
-                    ]),
+                    ])
+                    .style(if selected {
+                        Style::default().bg(theme.selection_bg)
+                    } else {
+                        Style::default()
+                    }),
                     selected,
                 );
             }
@@ -309,22 +339,37 @@ fn body_for(
     body
 }
 
-fn keys_line(page: &UpdatesPageState) -> String {
-    let keys: Vec<String> = match &page.guide {
+/// The footer's keys in `width`: undo and help always, the rest in the
+/// guide's order, the last ones dropped first when space runs short.
+fn keys_line(page: &UpdatesPageState, width: usize) -> String {
+    let keys: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
             .keys
             .iter()
-            .filter(|key| key.key != "?")
-            .map(|key| format!("{} {}", key.key, key.verb))
+            .map(|key| (key.key.clone(), key.verb.clone()))
             .collect(),
         None => UPDATES_GUIDE
             .keys
             .iter()
-            .filter(|(key, _)| *key != "?")
-            .map(|(key, verb)| format!("{key} {verb}"))
+            // Before the daemon's guide arrives, the compiled-in copy names
+            // actions by id; show their keys, as the guide would.
+            .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, (*verb).to_string())))
             .collect(),
     };
-    format!("{}  ? keys", keys.join("  "))
+    let mut entries: Vec<FooterKey> = keys
+        .into_iter()
+        .filter(|(key, _)| key != "?")
+        .map(|(key, verb)| {
+            let text = format!("{key} {verb}");
+            if key == "u" {
+                FooterKey::keep(text)
+            } else {
+                FooterKey::optional(text)
+            }
+        })
+        .collect();
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 /// The selected row's why line, with where its link goes.
@@ -400,10 +445,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &UpdatesView<'_>, theme: &crate
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),
@@ -411,25 +453,32 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &UpdatesView<'_>, theme: &crate
     );
 
     if let Some(preview) = &view.page.let_go_preview {
-        draw_let_go_preview(frame, area, preview, theme);
+        let title = if view.page.let_go_source.is_some() {
+            " Let go of this source "
+        } else {
+            " Let go of this digest "
+        };
+        draw_let_go_preview(frame, area, preview, title, theme);
     }
     if let Some(menu) = &view.page.tune {
         draw_tune_menu(frame, area, menu, theme);
     }
 }
 
-/// Letting go of a digest as the daemon previewed it: Enter lets go of
-/// exactly that selection. Shared with Now's Updates card.
+/// Letting go of a digest, or one source in it (`title` says which), as
+/// the daemon previewed it: Enter lets go of exactly that selection.
+/// Shared with Now's Updates card.
 pub(crate) fn draw_let_go_preview(
     frame: &mut Frame,
     area: Rect,
     preview: &UpdatesLetGoData,
+    title: &str,
     theme: &crate::theme::Theme,
 ) {
     let popup = super::centered_rect(60, 40, area);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
-        .title(" Let go of this digest ")
+        .title(title)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning))
         .style(Style::default().bg(theme.modal_bg));
@@ -510,6 +559,25 @@ fn draw_tune_menu(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn filed_update_marker_survives_a_long_fact() {
+        let mut digest = populated();
+        let update = &mut digest.needs_a_look[0];
+        update.fact = "A very long fact ".repeat(30);
+        update.source_filed_at = Some(update.latest_at);
+        let page = UpdatesPageState {
+            digest: Some(digest),
+            ..Default::default()
+        };
+        for width in [40, 60, 120] {
+            let rendered = render(&page, width);
+            assert!(
+                rendered.contains("left the inbox"),
+                "width={width}: {rendered}"
+            );
+            assert!(rendered.contains("observed"), "width={width}: {rendered}");
+        }
+    }
     use super::*;
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -518,6 +586,13 @@ pub(crate) mod tests {
         UpdateTrackerData, UpdatesCutData, UpdatesSinceData,
     };
     use mxr_test_support::render_to_string;
+
+    /// The clock the view renders against. The fixture's mail is from
+    /// October 2026, and the snapshots show it as earlier this year; on the
+    /// wall clock they change on 1 January.
+    fn fixture_now() -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+    }
 
     pub(crate) fn line(
         section: UpdateSectionData,
@@ -547,6 +622,9 @@ pub(crate) mod tests {
             thread_ids: vec![ThreadId::new()],
             latest_message_id: Some(MessageId::new()),
             latest_message_pinned: false,
+            unread: None,
+            seen_revision: None,
+            source_filed_at: None,
             fact_message_id: Some(MessageId::new()),
             latest_thread_id: Some(ThreadId::new()),
             latest_at: Utc.with_ymd_and_hms(2026, 10, 7, 7, 0, 0).unwrap(),
@@ -707,7 +785,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 30),
                 &UpdatesView {
-                    now: chrono::Utc::now(),
+                    now: fixture_now(),
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
@@ -724,6 +802,34 @@ pub(crate) mod tests {
             |_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()),
             &mxr_keymap::guide_key,
         )
+    }
+
+    #[test]
+    fn selected_updates_keep_a_uniform_background_without_reverse_video() {
+        let theme = crate::theme::Theme::default();
+        let digest = populated();
+        let page = UpdatesPageState {
+            digest: Some(digest.clone()),
+            ..Default::default()
+        };
+        let view = UpdatesView {
+            now: fixture_now(),
+            page: &page,
+            selected_index: 0,
+            active_pane: &ActivePane::MailList,
+            account_marks: crate::ui::account_mark::AccountMarks::default(),
+            peek_body: None,
+        };
+        let body = body_for(&view, &digest, 120, &theme);
+        let selected = &body.lines[body.selected_line];
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| span.style.bg == Some(theme.selection_bg)));
+        assert!(selected
+            .spans
+            .iter()
+            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
     }
 
     #[test]
@@ -771,5 +877,17 @@ pub(crate) mod tests {
         assert!(matches!(page.rows()[8], UpdatesRow::MoreRoutine(2)));
         page.routine_open = true;
         assert_eq!(page.row_count(), 10);
+    }
+
+    #[test]
+    fn the_footer_keeps_undo_and_help_at_every_width() {
+        let page = UpdatesPageState {
+            digest: Some(populated()),
+            ..Default::default()
+        };
+        for width in [80, 100, 120] {
+            let rendered = render(&page, width);
+            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
+        }
     }
 }

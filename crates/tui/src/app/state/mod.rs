@@ -41,6 +41,7 @@ pub use command_palette::CommandPaletteState;
 pub use compose::{
     ComposeAction, ComposeAssistReview, ComposeModelPicker, ComposeModelPickerPurpose,
     ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
+    ReplyDraftResume,
 };
 pub use confirm_choice::{ConfirmChoice, ConfirmKey};
 pub use deliveries::{DeliveriesState, DeliveryFilter};

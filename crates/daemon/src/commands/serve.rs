@@ -1,3 +1,4 @@
+use crate::commands::daemon_response_error;
 use crate::{
     cli::{ServeAction, ServeClientAction, ServePairAction},
     ipc_client::IpcClient,
@@ -64,8 +65,11 @@ pub async fn run(
         } => {
             anyhow::bail!("Local pairing authority requires IPC protocol {}; local daemon uses {protocol_version}. Upgrade mxr and restart the local daemon.", mxr_protocol::IPC_PROTOCOL_VERSION);
         }
-        Response::Error { message, .. } => {
-            anyhow::bail!("Cannot inspect local daemon compatibility: {message}")
+        Response::Error { message, kind, .. } => {
+            return Err(daemon_response_error(
+                format!("Cannot inspect local daemon compatibility: {message}"),
+                kind,
+            ));
         }
         _ => anyhow::bail!(
             "Local daemon did not report its protocol; upgrade mxr and restart the local daemon"
@@ -73,8 +77,16 @@ pub async fn run(
     }
     match client.request(Request::RemoteAuthority { request }).await? {
         Response::Ok { data } => crate::output::print_json(&data, format)?,
-        Response::Error { message, code, .. } => {
-            anyhow::bail!("Local pairing authority failed ({code}): {message}")
+        Response::Error {
+            message,
+            code,
+            kind,
+            ..
+        } => {
+            return Err(daemon_response_error(
+                format!("Local pairing authority failed ({code}): {message}"),
+                kind,
+            ));
         }
     }
     Ok(())

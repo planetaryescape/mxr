@@ -1,0 +1,32 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+The one-time code from your latest sign-in email, ready to paste.
+
+mxr reads the codes that verification, login and two-factor emails give you ("Your verification code is 482913", "G-123456 is your Google code") by rules, never by a model, in any folder but Trash and Spam. A code counts as current for the lifetime the email states, else ten minutes. Promo, gift, booking and branch codes are never one-time codes.
+
+By default it prints the newest current code. --copy also puts it on the clipboard, saying so on stderr so stdout stays the code. --all lists the codes from the last day, expired ones marked. When stdout is not a terminal the output is JSON; --format ids prints the code alone.
+
+Examples:
+  mxr code --copy
+  mxr code --format ids | pbcopy
+  mxr code --all
+
+Usage: mxr code [OPTIONS]
+
+Options:
+      --all
+          List recent codes, expired ones too, instead of only the latest
+
+      --copy
+          Put the code on the clipboard as well (pbcopy, wl-copy or xclip)
+
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

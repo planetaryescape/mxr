@@ -3,6 +3,7 @@
 //! `GetThreadGists`.
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::owed::csv_escape;
 use crate::ipc_client::IpcClient;
 use crate::output::terminal_text;
@@ -42,7 +43,7 @@ pub(crate) async fn fetch(
         Response::Ok {
             data: ResponseData::ThreadGists { batch },
         } => Ok(batch),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response to GetThreadGists"),
     }
 }

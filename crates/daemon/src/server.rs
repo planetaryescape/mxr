@@ -9,7 +9,7 @@
 use crate::cli_error::CliError;
 use crate::ipc_client::IpcClient;
 use crate::loops;
-use crate::reindex::{reindex, ReindexProgress};
+use crate::reindex::{reindex_for, ReindexProgress};
 use crate::serve::{
     drain_connection_tasks, serve_client_connection, BULK_CONCURRENCY_LIMIT,
     CONNECTION_DRAIN_TIMEOUT, REQUEST_CONCURRENCY_LIMIT,
@@ -245,6 +245,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             tracing::warn!(%error, "could not mark interrupted assistant turns");
         }
 
+        // A bulk job the previous daemon was running died with it. Mark it,
+        // with the counts it had, instead of leaving it running forever.
+        crate::handler::job_recovery::mark_interrupted_mutation_jobs(&state).await;
+
         // Cleanup a previous daemon owed for deleted mail (it failed or died
         // between the delete and the cleanup). Off the startup path: it only
         // touches files and the semantic worker.
@@ -258,6 +262,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         loops::spawn_sync_loops(state.clone());
         let startup_handle = spawn_startup_maintenance(state.clone());
         state.register_startup_maintenance(startup_handle);
+
+        // Saves the LLM background state and re-runs work an endpoint
+        // outage put off. Its last save happens in the shutdown drain.
+        crate::llm_background::spawn(state.clone());
 
         let snooze_state = state.clone();
         let snooze_handle = tokio::spawn(async move {
@@ -314,6 +322,12 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
         });
         state.register_contacts_refresher(contacts_handle);
+
+        // Ends by itself when the refresh worker shuts down.
+        tokio::spawn(loops::contacts_refreshed_announcer(
+            state.clone(),
+            state.contacts_refresh.subscribe_refreshed(),
+        ));
 
         let wrapped_warmer_state = state.clone();
         let wrapped_warmer_handle = tokio::spawn(async move {
@@ -395,9 +409,16 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
 
         let mut shutdown_rx = state.shutdown_receiver();
+        // The bridge reaches the daemon over the socket too, so an open web
+        // tab or TUI shows up as an open connection here.
+        let idle_exit_after = crate::idle_exit::idle_exit_after();
+        let mut idle_since = tokio::time::Instant::now();
 
         // Accept connections from every bound transport.
         loop {
+            let idle_deadline = idle_exit_after
+                .filter(|_| connections.is_empty())
+                .map(|after| idle_since + after);
             tokio::select! {
                 joined = connections.join_next(), if !connections.is_empty() => {
                     match joined {
@@ -407,6 +428,28 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                         }
                         None => {}
                     }
+                    if connections.is_empty() {
+                        idle_since = tokio::time::Instant::now();
+                    }
+                }
+                () = sleep_until_deadline(idle_deadline) => {
+                    // Read accounts at the deadline, not at startup: one can
+                    // be added while the daemon runs.
+                    match state.store.list_accounts().await {
+                        Ok(accounts) if !crate::idle_exit::has_real_account(&accounts) => {
+                            tracing::info!(
+                                idle_secs = idle_exit_after.unwrap_or_default().as_secs(),
+                                "no real account and no client connected; stopping idle daemon"
+                            );
+                            state.request_shutdown();
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(%error, "could not list accounts for idle exit; staying up");
+                        }
+                    }
+                    idle_since = tokio::time::Instant::now();
                 }
                 changed = shutdown_rx.changed() => {
                     if changed.is_ok() && *shutdown_rx.borrow_and_update() {
@@ -552,6 +595,14 @@ impl ShutdownSignals {
             .await
             .context("failed to receive Ctrl-C while daemon was running")?;
         Ok(ShutdownSignal::Interrupt)
+    }
+}
+
+/// Sleeps until `deadline`, or forever when there is none.
+async fn sleep_until_deadline(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
     }
 }
 
@@ -1936,6 +1987,28 @@ fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()
     })
 }
 
+/// Event text for a scheduled send that may not have finished before a restart.
+///
+/// The outcome query needs the account. The draft row normally still holds it,
+/// so the text names it. Without the row, the text says where to find the
+/// account instead of printing a placeholder to copy.
+fn lost_scheduled_send_message(
+    draft_id: &mxr_core::DraftId,
+    account_id: Option<&mxr_core::AccountId>,
+) -> String {
+    let query = match account_id {
+        Some(account_id) => {
+            format!("Query mxr send-outcome 'draft:{draft_id}' --account {account_id}")
+        }
+        None => format!(
+            "The draft is no longer stored. Find its account with mxr accounts, then query mxr send-outcome 'draft:{draft_id}' with that account"
+        ),
+    };
+    format!(
+        "Scheduled send for draft {draft_id} may not have completed (daemon restarted mid-send). {query}; do not resend blindly."
+    )
+}
+
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     // Decisions whose cited mail was deleted before decision evidence was
     // tracked are invisible to every later delete; clear them once.
@@ -1961,19 +2034,23 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
                     "startup: scheduled send may not have completed before a daemon restart; \
                      query the send outcome; do not resend blindly"
                 );
+                let account_id = match state.store.get_draft(&entry.draft_id).await {
+                    Ok(draft) => draft.map(|draft| draft.account_id),
+                    Err(error) => {
+                        tracing::warn!(%error, "startup: could not read the draft for a lost scheduled send");
+                        None
+                    }
+                };
                 let _ = state
-                .store
-                .insert_event(
-                    "warn",
-                    "scheduled_send",
-                    &format!(
-                        "Scheduled send for draft {} may not have completed (daemon restarted mid-send). Query mxr send-outcome 'draft:{}' --account <account-id>; do not resend blindly.",
-                        entry.draft_id, entry.draft_id
-                    ),
-                    None,
-                    Some(&format!("draft_id={}", entry.draft_id)),
-                )
-                .await;
+                    .store
+                    .insert_event(
+                        "warn",
+                        "scheduled_send",
+                        &lost_scheduled_send_message(&entry.draft_id, account_id.as_ref()),
+                        None,
+                        Some(&format!("draft_id={}", entry.draft_id)),
+                    )
+                    .await;
                 let _ = state
                     .store
                     .record_scheduled_send_outcome(
@@ -1994,29 +2071,26 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     let total_messages = state.store.count_all_messages().await.unwrap_or_default();
     let stale_content = state.lexical_content_stale.get();
     if total_messages == 0 && stale_content.is_none() {
-        state.search.clear_incomplete();
+        state.search.end_startup_rebuild(true);
         return Ok(());
     }
 
     let indexed_messages = state.search.num_docs().await.unwrap_or_default();
 
-    if stale_content.is_some() || indexed_messages != total_messages as u64 {
-        if stale_content.is_some() {
-            // The index holds text from before the reader-text change. Its
-            // marker is recorded only after this rebuild completes, so an
-            // interrupted rebuild runs again on the next start.
+    if crate::reindex::startup_rebuild_needed(
+        stale_content.is_some(),
+        total_messages,
+        indexed_messages,
+    ) {
+        // The index holds text from before the reader-text change. Its marker is
+        // recorded only after this rebuild completes, so an interrupted rebuild
+        // runs again on the next start.
+        let reason = if stale_content.is_some() {
             tracing::info!("Lexical index predates the current indexed text; rebuilding");
-            let _ = state
-                .store
-                .insert_event(
-                    "info",
-                    "search",
-                    "Lexical index rebuild started",
-                    None,
-                    Some("reason=content_version"),
-                )
-                .await;
-        }
+            crate::reindex::REASON_CONTENT_VERSION
+        } else {
+            crate::reindex::REASON_FULL_REINDEX
+        };
         // Startup maintenance only repairs the lexical Tantivy index from SQLite.
         // Semantic chunks/embeddings remain an optional platform layer and are not
         // part of this mandatory mail-readiness repair path.
@@ -2025,28 +2099,35 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
             total_messages,
             "Reindexing lexical index from SQLite"
         );
-        let _ = reindex(&state.search, &state.store, |progress| match progress {
-            ReindexProgress::Starting { total } => {
-                tracing::info!(total, "Lexical reindex started");
-            }
-            ReindexProgress::Indexing { indexed, total }
-                if indexed == total || indexed % 10_000 == 0 =>
-            {
-                tracing::info!(indexed, total, "Lexical reindex progress");
-            }
-            ReindexProgress::Indexing { .. } => {}
-            ReindexProgress::Complete { indexed } => {
-                tracing::info!(indexed, "Lexical reindex complete");
-            }
-        })
-        .await?;
+        let rebuilt = reindex_for(
+            &state.search,
+            &state.store,
+            reason,
+            |progress| match progress {
+                ReindexProgress::Starting { total } => {
+                    tracing::info!(total, "Lexical reindex started");
+                }
+                ReindexProgress::Indexing { indexed, total }
+                    if indexed == total || indexed % 10_000 == 0 =>
+                {
+                    tracing::info!(indexed, total, "Lexical reindex progress");
+                }
+                ReindexProgress::Indexing { .. } => {}
+                ReindexProgress::Complete { indexed } => {
+                    tracing::info!(indexed, "Lexical reindex complete");
+                }
+            },
+        )
+        .await;
+        state.search.end_startup_rebuild(rebuilt.is_ok());
+        rebuilt?;
         if let Some(index_path) = stale_content {
             mxr_search::record_lexical_content_version(index_path)?;
         }
     } else {
         // Sync may have filled a gap a short index had. Nothing needs rebuilding,
         // so the index is complete.
-        state.search.clear_incomplete();
+        state.search.end_startup_rebuild(true);
     }
 
     // The count check above cannot see a stale entry, only a missing one.
@@ -2153,8 +2234,8 @@ fn detach_daemon_child(_command: &mut std::process::Command) {}
 mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_ping,
-        daemon_responds_to_status, is_index_lock_error, request_shutdown_to,
-        run_startup_maintenance, spawn_startup_maintenance,
+        daemon_responds_to_status, is_index_lock_error, lost_scheduled_send_message,
+        request_shutdown_to, run_startup_maintenance, spawn_startup_maintenance,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -3312,5 +3393,30 @@ mod tests {
             state.search.availability(),
             mxr_search::IndexAvailability::Ready { .. }
         ));
+    }
+
+    #[test]
+    fn lost_send_event_names_the_account_to_query() {
+        let draft_id = mxr_core::DraftId::new();
+        let account_id = mxr_core::AccountId::new();
+
+        let message = lost_scheduled_send_message(&draft_id, Some(&account_id));
+
+        assert!(
+            message.contains(&format!("--account {account_id}")),
+            "{message}"
+        );
+        assert!(!message.contains("<account-id>"), "{message}");
+    }
+
+    #[test]
+    fn lost_send_event_without_a_stored_draft_says_where_to_find_the_account() {
+        let draft_id = mxr_core::DraftId::new();
+
+        let message = lost_scheduled_send_message(&draft_id, None);
+
+        assert!(message.contains("mxr accounts"), "{message}");
+        assert!(!message.contains("<account-id>"), "{message}");
+        assert!(message.contains("do not resend blindly"), "{message}");
     }
 }

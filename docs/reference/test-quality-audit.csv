@@ -30,8 +30,8 @@ crates/daemon/src/reindex.rs,4,6,4,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3
 crates/daemon/src/server.rs,8,5,10,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
 crates/daemon/src/state.rs,3,6,5,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
 crates/daemon/src/unsubscribe.rs,2,0,2,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
-crates/daemon/tests/cli_help.rs,1,1,0,0,1,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
-crates/daemon/tests/daemon_lifecycle.rs,1,1,3,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
+crates/daemon/tests/integration/cli_help.rs,1,1,0,0,1,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
+crates/daemon/tests/integration/daemon_lifecycle.rs,1,1,3,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
 crates/export/src/json.rs,10,10,5,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
 crates/export/src/lib.rs,2,1,4,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3
 crates/export/src/llm.rs,13,1,24,0,0,0,30,high_confidence,keep,3,3,3,3,3,3,3,3,3,3

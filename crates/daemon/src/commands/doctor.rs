@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::diagnostics::{client_local_metadata, selected_target_metadata};
 use crate::commands::progress::{format_thousands, request_with_progress, ProgressPrinter};
 use crate::handler::{
@@ -64,8 +65,11 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     elapsed.as_secs_f64()
                 );
             }
-            Response::Error { message, .. } => {
-                anyhow::bail!("recompute-link-counts failed: {message}");
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(
+                    format!("recompute-link-counts failed: {message}"),
+                    kind,
+                ));
             }
             other => anyhow::bail!("unexpected response: {other:?}"),
         }
@@ -156,7 +160,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     }
                 }
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -170,7 +176,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             } => {
                 println!("Refreshed {rows} contact rows.");
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -225,7 +233,9 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     }
                 }
             },
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
         if options.semantic_status && !options.reindex {
@@ -313,7 +323,7 @@ async fn collect_selected_report(remote_target: bool) -> anyhow::Result<DoctorRe
         Response::Ok {
             data: ResponseData::DoctorReport { report },
         } => Ok(report),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("unexpected doctor response: {other:?}"),
     }
 }
@@ -391,17 +401,19 @@ fn print_report_with_context(
     }
 }
 
-/// Asks the running daemon for its stale-registry flag. A daemon that cannot
-/// answer is already reported by the other checks, so that reads as not stale.
-async fn daemon_address_cache_stale() -> bool {
+/// What only the running daemon can say about itself: whether its
+/// address-registry is stale and how its HTML helper has fared. A daemon that
+/// cannot answer is already reported by the other checks, so that reads as not
+/// stale and no helper counts.
+async fn daemon_live_signals() -> (bool, mxr_protocol::HtmlHelperStats) {
     let Ok(mut client) = IpcClient::connect().await else {
-        return false;
+        return (false, mxr_protocol::HtmlHelperStats::default());
     };
     match client.request(Request::GetDoctorReport).await {
         Ok(Response::Ok {
             data: ResponseData::DoctorReport { report },
-        }) => report.address_cache_stale,
-        _ => false,
+        }) => (report.address_cache_stale, report.html_helper),
+        _ => (false, mxr_protocol::HtmlHelperStats::default()),
     }
 }
 
@@ -535,10 +547,10 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
 
     // Only the running daemon knows its address registry. Without one, there
     // is no sync that could write Unknown direction.
-    let address_cache_stale = if socket_reachable {
-        daemon_address_cache_stale().await
+    let (address_cache_stale, html_helper) = if socket_reachable {
+        daemon_live_signals().await
     } else {
-        false
+        (false, mxr_protocol::HtmlHelperStats::default())
     };
     let (index_lock_held, index_lock_error) = probe_index_lock(&index_path, socket_reachable);
     let recent_error_logs = recent_log_lines_sync(10, Some("error")).unwrap_or_default();
@@ -646,6 +658,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
             &mxr_config::config_file_path(),
         ),
         address_cache_stale,
+        html_helper,
     })
 }
 
@@ -760,6 +773,7 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 "Lifecycle:    restart_required={} repair_required={}",
                 report.restart_required, report.repair_required
             );
+            println!("HTML helper:  {}", report.html_helper.summary());
             println!(
                 "Freshness:    last_sync={} lexical={} rebuilt_at={} semantic={} profile={} indexed_at={}",
                 report.last_successful_sync_at.as_deref().unwrap_or("never"),

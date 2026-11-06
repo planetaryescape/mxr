@@ -1,4 +1,5 @@
 use crate::cli::{DeskAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
@@ -23,7 +24,7 @@ pub async fn run(
         .await?;
     let desk = match resp {
         Response::Ok { data } if matches!(data, ResponseData::Desk { .. }) => data,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     let gists = if with_gists {
@@ -77,7 +78,9 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
                 Response::Ok {
                     data: ResponseData::DeskThreadsDismissed { threads, dry_run },
                 } => (threads, dry_run),
-                Response::Error { message, .. } => anyhow::bail!(message),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             };
             match resolve_format(format) {
@@ -133,7 +136,9 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
                     "Waiting again on {}.",
                     plural(restored as u32, "conversation", "conversations")
                 ),
-                Response::Error { message, .. } => anyhow::bail!(message),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

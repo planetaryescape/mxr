@@ -1,0 +1,21 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Draft a new email or refine an existing local draft with LLM assistance
+
+Usage: mxr draft [OPTIONS] [COMMAND]
+
+Commands:
+  refine  Refine an existing local draft
+  eval    Measure drafting with your LLM. Nothing is saved or sent
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --to <TO>              Recipient email for a new draft
+      --purpose <PURPOSE>    Plain-language purpose for a new draft
+      --account <ACCOUNT>    Account key, email, or id
+      --register <REGISTER>  Register to use when recipient has no relationship profile [possible values: casual, neutral, formal]
+      --length <LENGTH>      Desired length [possible values: short, medium, long]
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+  -h, --help                 Print help

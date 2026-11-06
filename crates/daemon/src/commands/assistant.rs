@@ -4,6 +4,7 @@
 //! anything left waiting.
 
 use crate::cli::{AssistantAction, AssistantModelAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::progress::ProgressPrinter;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -647,7 +648,7 @@ fn change_text(change: &AssistantModelChangeData) -> String {
 fn ok(response: Response) -> anyhow::Result<ResponseData> {
     match response {
         Response::Ok { data } => Ok(data),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 

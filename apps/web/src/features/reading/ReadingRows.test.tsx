@@ -60,6 +60,16 @@ function renderIssue(lit: boolean, extra: Partial<ReadingItem> = {}, h = handler
 }
 
 describe("ReadingIssueRow", () => {
+  test("an externally filed issue keeps its read action and a labelled date", () => {
+    const value = "2026-10-30T09:00:00Z";
+    renderIssue(false, { source_filed_at: value });
+    for (const marker of screen.getAllByTestId("source-filed")) {
+      expect(marker).toHaveTextContent("left the inbox");
+      expect(marker.querySelector("time")).toHaveAttribute("dateTime", value);
+    }
+    expect(screen.getByTestId("reading-read")).toBeInTheDocument();
+  });
+
   test("is a row: the title, the standfirst as its one secondary line, no card", () => {
     renderIssue(false);
     const row = screen.getByTestId("reading-item");

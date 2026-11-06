@@ -1,0 +1,12 @@
+---
+source: crates/tui/src/ui/owed_lens.rs
+expression: rendered
+---
+"╭ Owed Replies ────────────────────────────────────────────────────────────────────────────────────╮"
+"│  Score  Waiting  Cadence       From / Subject                                                    │"
+"│  5.00       5d       1d  [W]  alice@example.com  Status update?                                  │"
+"│  0.29       2d       7d  [H]  bob@example.com  Quick question                                    │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"

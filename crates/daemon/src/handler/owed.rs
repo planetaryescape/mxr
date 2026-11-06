@@ -69,6 +69,7 @@ async fn desk_rows(
             expected_days: pace_seconds(&row) as f64 / SECONDS_PER_DAY,
             waiting_days: row.age_seconds as f64 / SECONDS_PER_DAY,
             usual_seconds: row.usual_seconds,
+            account_id: Some(row.account_id),
             thread_id: row.thread_id,
             latest_inbound_msg_id: row.message_id,
             from_email: row.counterparty_email,
@@ -107,6 +108,7 @@ async fn raw_rows(
             expected_days: r.expected_days,
             overdue_score: r.overdue_score,
             usual_seconds: None,
+            account_id: Some(account_id.clone()),
         })
         .collect())
 }

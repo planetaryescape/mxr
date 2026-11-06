@@ -243,6 +243,9 @@ fn map_connect_error(error: ClientError) -> anyhow::Error {
         } => CliError::daemon_auth(format!(
             "Daemon authentication failed: {message}. Set MXR_DAEMON_TOKEN (or check the daemon token file)."
         )),
+        ClientError::DaemonIncompatible { message } => {
+            CliError::daemon_incompatible(describe_ipc_failure(&message))
+        }
         other => map_request_error(other),
     }
 }
@@ -253,8 +256,11 @@ fn map_connect_error(error: ClientError) -> anyhow::Error {
 /// guidance.
 fn map_request_error(error: ClientError) -> anyhow::Error {
     match error {
-        ClientError::Closed => CliError::daemon_incompatible(
-            "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.",
+        // A clean close is what a restarting or crashing daemon looks like too,
+        // and nothing on this path has shown a version mismatch, so it stays
+        // retryable rather than claiming an incompatible daemon.
+        ClientError::Closed => CliError::daemon_unavailable(
+            "Connection closed before the daemon answered. The daemon may have restarted or crashed; retry, and if it keeps happening, restart the daemon after upgrading.",
         ),
         ClientError::Timeout(duration) => {
             anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
@@ -343,5 +349,35 @@ mod tests {
             "unexpected error: {error:#}"
         );
         peer.abort();
+    }
+
+    fn exit_class(error: &anyhow::Error) -> Option<(&'static str, u8)> {
+        CliError::find(error).map(|cli| (cli.kind(), cli.exit_code()))
+    }
+
+    #[test]
+    fn a_supervised_incompatible_daemon_exits_as_daemon_incompatible() {
+        let error = map_connect_error(ClientError::DaemonIncompatible {
+            message: "MXR_DAEMON_AUTOSTART=off (/tmp/mxr.sock): the running daemon is incompatible with this mxr binary".to_string(),
+        });
+        assert_eq!(exit_class(&error), Some(("daemon_incompatible", 3)));
+        assert_eq!(
+            error.to_string(),
+            "IPC error: MXR_DAEMON_AUTOSTART=off (/tmp/mxr.sock): the running daemon is incompatible with this mxr binary"
+        );
+    }
+
+    #[test]
+    fn a_closed_connection_is_daemon_unavailable_without_a_mismatch() {
+        let error = map_request_error(ClientError::Closed);
+        assert_eq!(exit_class(&error), Some(("daemon_unavailable", 3)));
+    }
+
+    #[test]
+    fn an_unknown_variant_frame_still_reads_as_daemon_incompatible() {
+        let error = map_request_error(ClientError::Io(std::io::Error::other(
+            "unknown variant `FutureRequest`",
+        )));
+        assert_eq!(exit_class(&error), Some(("daemon_incompatible", 3)));
     }
 }

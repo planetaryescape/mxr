@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+List attachments for one message, or for every match of a `--search QUERY`. Multi-message output prefixes each section with `--- MESSAGE_ID ---`
+
+Usage: mxr attachments list [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]
+
+Options:
+      --search <SEARCH>
+      --account <ACCOUNT>
+      --first
+      --limit <LIMIT>
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

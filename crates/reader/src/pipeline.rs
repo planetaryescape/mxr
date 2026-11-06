@@ -126,7 +126,9 @@ pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> R
     }
 }
 
-fn normalize_whitespace(text: &str) -> String {
+/// Collapses runs of blank lines to two and trims the ends. Shared with the
+/// matching text, so a rule sees the same line structure the reader does.
+pub(crate) fn normalize_whitespace(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut blank_count = 0;
     for line in text.lines() {

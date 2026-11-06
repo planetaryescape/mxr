@@ -25,8 +25,9 @@ pub struct MoveMenu {
     pub sender_only: bool,
     /// Opened on a Not-sure question: the answer is stored as one.
     pub not_sure: bool,
-    /// Where a Not-sure question's email is for now: keeping it there is
-    /// an answer too, so the highlight starts on it.
+    /// The mode the email is in now, marked "here now". On a Not-sure
+    /// question keeping it there is an answer too, so the highlight starts
+    /// on it.
     pub current: Option<ModeKindData>,
     /// A new sender's question on the row: the sender's options answer it
     /// (`SetSenderKind`), and Block joins them.

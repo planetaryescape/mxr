@@ -2,8 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
-import { useKeyScope } from "@/state/keyScopeStore";
 
 import { ArrivalsView } from "./ArrivalsLine";
 import { arrivals, notSure, outcome } from "./testing";
@@ -218,15 +218,43 @@ describe("Not sure", () => {
     expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
   });
 
-  test("X on a question opens the move picker as its answer; the old letters say so", () => {
-    useMailDialogs.getState().close();
+  test("Now's e and r act on a question's email, as on any Now row; m and x are not Now keys", async () => {
+    useComposeUi.getState().closeCompose();
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
     openSortingDetails();
     const row = screen.getAllByTestId("not-sure-row")[0]!;
     fireEvent.keyDown(row, { key: "m" });
+    fireEvent.keyDown(row, { key: "x" });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(useKeyScope.getState().moved).toEqual({ label: "Move", key: "X" });
+    expect(useMailDialogs.getState().dialog).toBeNull();
 
+    fireEvent.keyDown(row, { key: "r" });
+    expect(useComposeUi.getState().intent).toMatchObject({
+      kind: "reply",
+      key: "compose:reply:msg-1",
+    });
+    useComposeUi.getState().closeCompose();
+
+    fetchMock.mockResolvedValueOnce({
+      kind: "ModeDone",
+      dry_run: false,
+      mutation_id: "m-1",
+      items: [{ thread_id: "thread-1", mode: "updates", provider: "Gmail", copy: "Done." }],
+    });
+    fireEvent.keyDown(row, { key: "e" });
+    // Done where it is for now; only an answer settles the question.
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/modes/updates/done", {
+      method: "POST",
+      body: { thread_ids: ["thread-1"], dry_run: false },
+    });
+    expect(await screen.findAllByTestId("not-sure-row")).toHaveLength(2);
+  });
+
+  test("X on a question opens the move picker as its answer", () => {
+    useMailDialogs.getState().close();
+    render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
+    const row = screen.getAllByTestId("not-sure-row")[0]!;
     fireEvent.keyDown(row, { key: "X", shiftKey: true });
     const dialog = useMailDialogs.getState().dialog;
     expect(dialog?.kind).toBe("move-to-mode");

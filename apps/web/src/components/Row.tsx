@@ -3,6 +3,7 @@ import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "r
 
 import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
+import { rowPrimaryTone } from "@/components/rowTone";
 import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useLanded } from "@/state/landingStore";
@@ -13,11 +14,16 @@ export type LampVia = "key" | "pointer";
 export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children"> {
   /** The row's `<li>`, for a page that returns focus to it (React 19 passes `ref` as a prop). */
   ref?: Ref<HTMLLIElement>;
-  /** The one lit row: the lamp surface and the leading hairline. */
+  /** The one lit row: the lamp surface, and nothing on the leading edge. */
   lit: boolean;
   via?: LampVia;
-  /** Unread: a gutter bar, hidden while lit (the primary line's weight still shows it). */
+  /**
+   * Unread mail or unseen mode rows read bright and semibold; read/seen
+   * calms to `--text-2`. Omit for lists with no attention state.
+   */
   unread?: boolean;
+  /** Screen-reader name for the attention state (mode rows use "Unseen"). */
+  unreadLabel?: string;
   /** The row is folding away (pointer done). Not interactive meanwhile. */
   leaving?: boolean;
   /**
@@ -30,10 +36,12 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   lead?: ReactNode;
   /** The lead is a control (a checkbox): it sits beside the row's link, not inside it. */
   leadControl?: boolean;
-  /** The primary line: Body, `--text-1`, semibold when unread or your turn. */
+  /** The primary line: Body, semibold and `--text-1` when unread, `--text-2` when read. */
   primary: ReactNode;
-  /** One secondary line: Body, `--text-2`, truncated. */
+  /** One secondary line: Body, `--text-1` while unread, else `--text-2`, truncated. */
   secondary?: ReactNode;
+  /** Hide a desktop-only secondary line without leaving an empty phone line. */
+  secondaryDesktopOnly?: boolean;
   /** Marks and values. Shown while unlit; the lit row shows the verbs in their place. */
   trail?: ReactNode;
   /**
@@ -67,21 +75,24 @@ const MAIN = "relative flex min-w-0 flex-1 items-center gap-3 text-left outline-
  * and cannot add slots. The height is fixed by the density token, so lighting
  * a row, folding a verb in or showing a mark never moves the rows below it.
  *
- * Lit: `--ink-lamp` surface and a 2px `--signal` hairline inside the leading
- * edge. Hovering with a pointer shows the verbs without lighting the row. The
- * verbs take the trail's place on the same line, so only the text's ellipsis
- * can move, never the row's height.
+ * Lit: `--ink-lamp` surface, and nothing on the leading edge. Unread is the
+ * text's job (semibold and `--text-1` against a read row's `--text-2`), so the
+ * left edge says only where you are. Hovering with a pointer shows the verbs
+ * without lighting the row. The verbs take the trail's place on the same line,
+ * so only the text's ellipsis can move, never the row's height.
  */
 export const Row = memo(function Row({
   lit,
   via = "key",
-  unread = false,
+  unread,
+  unreadLabel = "Unread",
   leaving = false,
   land = NO_IDS,
   lead,
   leadControl = false,
   primary,
   secondary,
+  secondaryDesktopOnly = false,
   trail,
   time,
   verbs,
@@ -94,13 +105,29 @@ export const Row = memo(function Row({
 }: RowProps) {
   const landed = useLanded(...land);
   const identity = useRowAccountMark(accountId);
+  // `undefined` means the list has no read state, so the row keeps the neutral
+  // tier. Only an explicit `false` calms the row.
+  const primaryTone = rowPrimaryTone(unread);
+  const secondaryTone = unread ? "text-text-1" : "text-text-2";
   const text = (
     <>
+      {/* The inbox spells "Unread" into its own aria-label; elsewhere the
+          state is typographic, so give assistive tech the same fact without
+          changing the visible text. */}
+      {unread ? <span className="sr-only">{unreadLabel}. </span> : null}
       {leadControl ? null : lead}
       <span className="min-w-0 flex-1">
-        <span className="type-body block truncate text-text-1">{primary}</span>
+        <span className={cn("type-body block truncate", primaryTone)}>{primary}</span>
         {secondary ? (
-          <span className="type-body block truncate text-text-2">{secondary}</span>
+          <span
+            className={cn(
+              "type-body block truncate",
+              secondaryTone,
+              secondaryDesktopOnly && "hidden sm:block",
+            )}
+          >
+            {secondary}
+          </span>
         ) : null}
       </span>
     </>
@@ -119,27 +146,13 @@ export const Row = memo(function Row({
         className,
       )}
     >
-      {/* The unread bar sits in the gutter outside the leading edge, in the text tier, so it never reads as the lamp's cyan hairline. */}
-      {unread && !lit ? (
-        <span
-          aria-hidden
-          data-testid="unread-bar"
-          className="absolute -left-1.5 inset-y-2 w-[2px] bg-text-1"
-        />
-      ) : null}
+      {/* The lamp surface is the one mark of where you are: no leading-edge
+          hairline, so nothing sits at a different inset from anything else. */}
       <div className="relative isolate flex h-(--row-height) items-center gap-3 px-3">
         <span
           aria-hidden
           className={cn(
             "absolute inset-0 -z-10 bg-ink-lamp opacity-0",
-            lit && "opacity-100",
-            via === "pointer" && "transition-[opacity] duration-fast",
-          )}
-        />
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-0 left-0 -z-10 w-[2px] bg-signal opacity-0",
             lit && "opacity-100",
             via === "pointer" && "transition-[opacity] duration-fast",
           )}
@@ -235,7 +248,11 @@ export function RowVerb({
   );
   const content = (
     <>
-      {keys ? <KeyChip className="h-4 px-1 pointer-coarse:hidden">{keys}</KeyChip> : null}
+      {keys ? (
+        <KeyChip className={cn("h-4 px-1 pointer-coarse:hidden", Icon && "max-sm:hidden")}>
+          {keys}
+        </KeyChip>
+      ) : null}
       {Icon ? <Icon aria-hidden className="size-4 sm:hidden" /> : null}
       <span className={nameFrom === "list" ? "hidden @xl/list:inline" : "hidden sm:inline"}>
         {label}

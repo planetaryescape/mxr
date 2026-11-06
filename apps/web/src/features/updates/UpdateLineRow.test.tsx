@@ -9,8 +9,10 @@ import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
 import { UpdateLineRow } from "./UpdateLineRow";
 
-const apiFetch = vi.fn<(path: string) => Promise<unknown>>();
-vi.mock("@/api/client", () => ({ apiFetch: (path: string) => apiFetch(path) }));
+const apiFetch = vi.fn<typeof import("@/api/client").apiFetch>();
+vi.mock("@/api/client", () => ({
+  apiFetch: (...args: Parameters<typeof apiFetch>) => apiFetch(...args),
+}));
 
 beforeEach(() => {
   apiFetch.mockReset();
@@ -59,6 +61,18 @@ function openMenu(row: HTMLElement, name: string) {
 }
 
 describe("UpdateLineRow at rest", () => {
+  test("an externally filed email stays actionable and names its server location", () => {
+    const value = "2026-10-30T09:00:00Z";
+    const { row } = renderLine(lineFixture({ source_filed_at: value }), {
+      focused: false,
+    });
+    for (const marker of within(row).getAllByTestId("source-filed")) {
+      expect(marker).toHaveTextContent("left the inbox");
+      expect(marker.querySelector("time")).toHaveAttribute("dateTime", value);
+    }
+    expect(within(row).getByRole("button", { name: "let go" })).toBeInTheDocument();
+  });
+
   test("a row is its source, its fact and one trailing value, with no buttons in the way", () => {
     const { row } = renderLine(lineFixture(), { focused: false });
     const view = within(row);
@@ -231,13 +245,26 @@ describe("UpdateLineRow's source", () => {
     const source = within(row).getByTestId("update-source");
     expect(source).toHaveTextContent("Google (accounts.google.com)");
     expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
-    expect(source).toHaveClass("font-medium");
   });
 
-  test("a changed source is regular weight and carries no host", () => {
-    const { row } = renderLine(lineFixture({ source_name: "Strava" }));
-    expect(within(row).getByTestId("update-source")).toHaveClass("font-normal");
-    expect(within(row).queryByTestId("update-host")).toBeNull();
+  test("an unread email reads bright and semibold", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: true }));
+    expect(within(row).getByTestId("update-source").parentElement).toHaveClass(
+      "font-semibold",
+      "text-text-1",
+    );
+  });
+
+  test("a read email calms to the second text tier", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: false }));
+    const source = within(row).getByTestId("update-source");
+    expect(source.parentElement).toHaveClass("text-text-2");
+    expect(source.parentElement).not.toHaveClass("font-semibold");
+  });
+
+  test("a line with no email keeps the neutral tier", () => {
+    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: undefined }));
+    expect(within(row).getByTestId("update-source").parentElement).toHaveClass("text-text-1");
   });
 });
 
@@ -439,19 +466,21 @@ describe("UpdateLineRow's more menu", () => {
     const second = lineFixture({ id: "b", source_key: "b.example", source_name: "Beta" });
     const h = makeHandlers();
     render(
-      <ul>
-        {[first, second].map((line, index) => (
-          <UpdateLineRow
-            key={line.id}
-            line={line}
-            index={index}
-            lit={false}
-            via="key"
-            peeked={false}
-            {...h}
-          />
-        ))}
-      </ul>,
+      <QueryClientProvider client={new QueryClient()}>
+        <ul>
+          {[first, second].map((line, index) => (
+            <UpdateLineRow
+              key={line.id}
+              line={line}
+              index={index}
+              lit={false}
+              via="key"
+              peeked={false}
+              {...h}
+            />
+          ))}
+        </ul>
+      </QueryClientProvider>,
     );
     const rows = screen.getAllByTestId("update-line");
     openMenu(rows[1]!, "More actions for Beta");
@@ -462,6 +491,60 @@ describe("UpdateLineRow's more menu", () => {
 });
 
 describe("UpdateLineRow's peek", () => {
+  test("refetching an open peek never acknowledges a newer revision until reopened", async () => {
+    const client = new QueryClient();
+    const handlers = makeHandlers();
+    const original = lineFixture({ unread: true, seen_revision: "opened" });
+    const content = (line: UpdateLine, peeked: boolean) => (
+      <QueryClientProvider client={client}>
+        <ul>
+          <UpdateLineRow line={line} index={0} lit via="key" peeked={peeked} {...handlers} />
+        </ul>
+      </QueryClientProvider>
+    );
+    const view = render(content(original, true));
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen"),
+      ).toHaveLength(1),
+    );
+    const changed = { ...original, fact: "New update", seen_revision: "new-revision" };
+    await act(async () => view.rerender(content(changed, true)));
+    expect(apiFetch.mock.calls.filter(([path]) => path === "/api/v1/mail/rows/seen")).toHaveLength(
+      1,
+    );
+    view.rerender(content(changed, false));
+    view.rerender(content(changed, true));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          account_id: changed.account_id,
+          mode: "updates",
+          row_id: changed.id,
+          revision: "new-revision",
+        },
+      }),
+    );
+  });
+  test("peeking acknowledges this row, while keyboard focus alone does not", async () => {
+    const line = lineFixture({ unread: true, seen_revision: "exact-revision" });
+    renderLine(line, { peeked: false });
+    expect(apiFetch).not.toHaveBeenCalledWith("/api/v1/mail/rows/seen", expect.anything());
+    cleanup();
+    renderLine(line, { peeked: true });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/rows/seen", {
+        method: "POST",
+        body: {
+          mode: "updates",
+          account_id: line.account_id,
+          row_id: line.id,
+          revision: "exact-revision",
+        },
+      }),
+    );
+  });
   test("it holds the why, the numbers, the suggestion with its answers, and the links", () => {
     const { row, handlers: h } = renderLine(
       lineFixture({

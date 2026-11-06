@@ -2,8 +2,9 @@ use crate::cli::{LlmAction, LlmKeyAction, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    LlmFeatureStatusData, LlmKeyChangeData, LlmKeySourceData, LlmKeyStatusData, LlmProviderData,
-    LlmRouteStateData, LlmRouteStatusData, LlmStatusSnapshot, Request, Response, ResponseData,
+    LlmEndpointStatusData, LlmFeatureStatusData, LlmKeyChangeData, LlmKeySourceData,
+    LlmKeyStatusData, LlmProviderData, LlmRouteStateData, LlmRouteStatusData, LlmStatusSnapshot,
+    Request, Response, ResponseData,
 };
 use std::io::{IsTerminal, Read};
 
@@ -131,9 +132,25 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
                 "context_window={} supports_streaming={} timeout_secs={}",
                 snapshot.context_window, snapshot.supports_streaming, snapshot.request_timeout_secs
             );
+            if let Some(model) = &snapshot.fallback_model {
+                println!("fallback={model}");
+            }
+            if let Some(error) = &snapshot.fallback_error {
+                println!("fallback not used: {error}");
+            }
+            if let Some(until) = snapshot.background_paused_until {
+                println!(
+                    "background calls paused after repeated endpoint failures until {}",
+                    until.with_timezone(&chrono::Local).format("%H:%M")
+                );
+            }
             if snapshot.enabled {
                 print!("{}", features_table(&snapshot.features));
-                if snapshot.features.iter().any(|row| row.routed) {
+                if snapshot
+                    .features
+                    .iter()
+                    .any(|row| row.routed || !row.fallback.is_empty())
+                {
                     print!("{}", keys_table(&snapshot.keys));
                 }
             }
@@ -150,6 +167,8 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
     for feature in features {
         let route = if !feature.enabled {
             "off".to_string()
+        } else if let Some(endpoint) = &feature.endpoint {
+            chain_label(endpoint, feature)
         } else if feature.routed {
             feature
                 .routes
@@ -158,7 +177,14 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
                 .collect::<Vec<_>>()
                 .join(" → ")
                 + &feature.routes.iter().find(|route| route.next).map_or_else(
-                    || "  (no route available)".to_string(),
+                    || {
+                        none_available(
+                            feature
+                                .routes
+                                .iter()
+                                .map(|route| (route.provider.key(), route.state, route.retry_at)),
+                        )
+                    },
                     |route| format!("  [now: {}]", route.provider.key()),
                 )
         } else {
@@ -180,27 +206,100 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
     out
 }
 
-fn route_label(route: &LlmRouteStatusData) -> String {
-    let reason = route
-        .reason
-        .as_ref()
-        .map_or_else(String::new, |reason| format!(" ({reason})"));
-    let at = |route: &LlmRouteStatusData| {
-        route
-            .retry_at
-            .map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string())
+/// `base_url` first, then the fallback's routes, and which is in use.
+fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData) -> String {
+    let mut parts = vec![format!(
+        "{}: {}",
+        endpoint.base_url,
+        state_label(
+            endpoint.state,
+            endpoint.reason.as_deref(),
+            endpoint.retry_at
+        )
+    )];
+    parts.extend(
+        feature
+            .fallback
+            .iter()
+            .map(|route| format!("{}: {}", route.provider.key(), route_label(route))),
+    );
+    let now = if endpoint.next {
+        "  [now: base_url]".to_string()
+    } else {
+        feature
+            .fallback
+            .iter()
+            .find(|route| route.next)
+            .map_or_else(
+                || {
+                    none_available(
+                        std::iter::once(("base_url", endpoint.state, endpoint.retry_at)).chain(
+                            feature
+                                .fallback
+                                .iter()
+                                .map(|route| (route.provider.key(), route.state, route.retry_at)),
+                        ),
+                    )
+                },
+                |route| format!("  [now: {}]", route.provider.key()),
+            )
     };
-    match route.state {
+    let withheld = feature
+        .fallback_withheld
+        .as_ref()
+        .map_or_else(String::new, |reason| format!("  [no fallback: {reason}]"));
+    parts.join(" → ") + &now + &withheld
+}
+
+/// Every route is out. Background work waits, but a command you run still
+/// tries the one that comes back soonest, once; name it. A route already due
+/// or being checked comes first; a route with no key is never tried.
+fn none_available<'a>(
+    routes: impl Iterator<
+        Item = (
+            &'a str,
+            LlmRouteStateData,
+            Option<chrono::DateTime<chrono::Utc>>,
+        ),
+    >,
+) -> String {
+    routes
+        .filter(|(_, state, _)| *state != LlmRouteStateData::NoKey)
+        .filter_map(|(name, state, at)| match state {
+            LlmRouteStateData::Recovering | LlmRouteStateData::Probing => {
+                Some((name, at.unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC)))
+            }
+            _ => Some((name, at?)),
+        })
+        .min_by_key(|(_, at)| *at)
+        .map_or_else(
+            || "  (no route available)".to_string(),
+            |(name, _)| format!("  (no route available; a command you run tries {name} once)"),
+        )
+}
+
+fn route_label(route: &LlmRouteStatusData) -> String {
+    state_label(route.state, route.reason.as_deref(), route.retry_at)
+}
+
+fn state_label(
+    state: LlmRouteStateData,
+    reason_text: Option<&str>,
+    retry_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> String {
+    let reason = reason_text.map_or_else(String::new, |reason| format!(" ({reason})"));
+    let at = retry_at.map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string());
+    match state {
         LlmRouteStateData::Ok => "ok".to_string(),
         LlmRouteStateData::NoKey => "no key".to_string(),
         LlmRouteStateData::Cooling => format!(
             "cooling until {}{reason}",
-            at(route).unwrap_or_else(|| "soon".to_string())
+            at.unwrap_or_else(|| "soon".to_string())
         ),
         LlmRouteStateData::Broken => format!(
             "broken: {}{}",
-            route.reason.as_deref().unwrap_or("needs attention"),
-            at(route).map_or_else(String::new, |at| format!(" (rechecked {at})"))
+            reason_text.unwrap_or("needs attention"),
+            at.map_or_else(String::new, |at| format!(" (rechecked {at})"))
         ),
         LlmRouteStateData::Recovering => format!("retry due{reason}"),
         LlmRouteStateData::Probing => format!("being retried{reason}"),
@@ -366,6 +465,9 @@ mod tests {
                     ),
                 ],
                 blocked: None,
+                endpoint: None,
+                fallback: Vec::new(),
+                fallback_withheld: None,
             },
             LlmFeatureStatusData {
                 feature: "commitments".into(),
@@ -376,6 +478,9 @@ mod tests {
                 base_url: Some("http://localhost:11434/v1".into()),
                 routes: Vec::new(),
                 blocked: None,
+                endpoint: None,
+                fallback: Vec::new(),
+                fallback_withheld: None,
             },
         ];
         let table = features_table(&features);
@@ -390,6 +495,122 @@ mod tests {
         assert!(
             table.contains("http://localhost:11434/v1 (local)"),
             "{table}"
+        );
+    }
+
+    fn endpoint(
+        state: LlmRouteStateData,
+        reason: Option<&str>,
+        next: bool,
+    ) -> LlmEndpointStatusData {
+        LlmEndpointStatusData {
+            base_url: "https://ollama.example/v1".into(),
+            model: "gemma4:latest".into(),
+            state,
+            retry_at: Some(
+                chrono::Utc
+                    .with_ymd_and_hms(2026, 10, 14, 14, 32, 0)
+                    .unwrap(),
+            ),
+            reason: reason.map(str::to_string),
+            next,
+        }
+    }
+
+    fn chained(
+        feature: &str,
+        endpoint: LlmEndpointStatusData,
+        fallback: Vec<LlmRouteStatusData>,
+        withheld: Option<&str>,
+    ) -> LlmFeatureStatusData {
+        LlmFeatureStatusData {
+            feature: feature.into(),
+            enabled: true,
+            model: "gemma4:latest".into(),
+            routed: false,
+            cloud: !fallback.is_empty(),
+            base_url: Some("https://ollama.example/v1".into()),
+            routes: Vec::new(),
+            blocked: None,
+            endpoint: Some(endpoint),
+            fallback,
+            fallback_withheld: withheld.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_fallback_chain_shows_the_endpoint_then_the_cloud_and_the_route_in_use() {
+        let features = vec![
+            chained(
+                "summarize",
+                endpoint(LlmRouteStateData::Cooling, Some("unreachable"), false),
+                vec![
+                    route(
+                        LlmProviderData::Openai,
+                        LlmRouteStateData::NoKey,
+                        None,
+                        false,
+                    ),
+                    route(
+                        LlmProviderData::Openrouter,
+                        LlmRouteStateData::Ok,
+                        None,
+                        true,
+                    ),
+                ],
+                None,
+            ),
+            chained(
+                "briefing",
+                endpoint(LlmRouteStateData::Ok, None, true),
+                Vec::new(),
+                Some("relationship data stays off the cloud fallback"),
+            ),
+            chained(
+                "commitments",
+                endpoint(LlmRouteStateData::Cooling, Some("unreachable"), false),
+                vec![route(
+                    LlmProviderData::Openai,
+                    LlmRouteStateData::NoKey,
+                    None,
+                    false,
+                )],
+                None,
+            ),
+        ];
+        let table = features_table(&features);
+        let summarize = table
+            .lines()
+            .find(|line| line.contains("summarize"))
+            .unwrap();
+        assert!(
+            summarize.contains("https://ollama.example/v1: cooling until "),
+            "{summarize}"
+        );
+        assert!(
+            summarize
+                .contains("(unreachable) → openai: no key → openrouter: ok  [now: openrouter]"),
+            "{summarize}"
+        );
+        let briefing = table
+            .lines()
+            .find(|line| line.contains("briefing"))
+            .unwrap();
+        // Nothing is available now, but a command still tries the endpoint,
+        // the only route with a time to come back.
+        let commitments = table
+            .lines()
+            .find(|line| line.contains("commitments"))
+            .unwrap();
+        assert!(
+            commitments.ends_with("(no route available; a command you run tries base_url once)"),
+            "{commitments}"
+        );
+        assert!(
+            briefing.ends_with(
+                "https://ollama.example/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback]"
+            ),
+            "{briefing}"
         );
     }
 

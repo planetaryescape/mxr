@@ -832,7 +832,7 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Why**: BK, 2026-10-02: "when we do the first classification I imagine there'll be tonnes of incoming todos and all that of old things." His store has 1,842 open promises, 93% undated, 90 of them from the last 14 days; as specified, `ListTodos` would open with all of them. Every product that handles a backlog bounds the window (HEY Screener 90 days, Superhuman a chosen time frame, Sunsama four days), saves what matters by a cheap signal, and makes the bulk action reversible; Todoist's own writer abandoned the app at around 50 overdue tasks. Over 90% of email replies come within a day (Kooti et al., WWW 2015), so an undated item older than two weeks is rarely still live. Model output on mail past its window would be discarded, so spending it there is waste; 90 days on BK's store is 4,605 messages against 110,285. Linear skips already-imported issues on re-import, the precedent for re-runs never re-flooding.
 
-**Trade-offs accepted**: A live undated item older than 14 days is missed until a new message revives it or the user restores it from the Expired list. The IMAP adapter must page newest first, since its initial sync fetches ascending UIDs and returns the folder in one batch today. The cap of 25 is judgement, and on BK's mail undated promise precision decides whether the catch-up fits under it.
+**Trade-offs accepted**: A live undated item older than 14 days is missed until a new message revives it or the user restores it from the Expired list. The generic IMAP adapter pages newest first (shipped: batches of 500 messages, INBOX first, then the other folders in LIST order, one folder at a time), which gives up the old parallel per-folder download; Gmail over IMAP still pages All Mail ascending. The cap of 25 is judgement, and on BK's mail undated promise precision decides whether the catch-up fits under it.
 
 ## D117: The open modes questions are decided, so building can start
 
@@ -1417,13 +1417,15 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 ## D171: Retired keys show where their action went, and never run it
 
-**Chosen**: For 30 patch releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. Each move is an `[[action.moved]]` entry in `keymap.toml` with an `until` version, and the definition check fails once mxr reaches it, so the entry is deleted rather than kept forever. (Amended 2026-10-23: the first draft said two releases, but mxr ships several releases a day.) An action run from the palette or by click shows "Next time: `e`" once per action and profile.
+**Chosen**: For 30 patch releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. Each move is an `[[action.moved]]` entry in `keymap.toml` with an `until` version, and the definition check fails once mxr reaches it, so the entry is deleted rather than kept forever (superseded by the 2026-10-29 amendment below). (Amended 2026-10-23: the first draft said two releases, but mxr ships several releases a day.) An action run from the palette or by click shows "Next time: `e`" once per action and profile.
 
 **Considered**: Keeping old keys as working aliases (`retiredAliases`); silent removal.
 
 **Why**: Working aliases keep two keys per verb alive indefinitely (`g R` and `g P` outlived their 0.6.41 removal by a hundred releases). NN/g and Superhuman teach a key right after the action is done another way.
 
 **Trade-offs accepted**: An old habit costs one extra keystroke during the window.
+
+**Amended 2026-10-29: an expired notice just stops.** Failing the check at `until` blocked the release PR every few days until someone deleted the entries by hand (#770, #784). Now an entry is ignored from its `until` release on: the clients build their key map without it (`mxr_keymap::defaults()` in Rust; the web app filters the generated JSON against the version baked into its build, so both agree), so the old key does nothing and shows nothing. The definition check never fails on expiry. CI's Key definition job prints a warning naming each expired entry, and a weekly workflow (`.github/workflows/prune-key-moves.yml`, `scripts/prune_expired_key_moves`) deletes them in one `chore:` PR, with any TUI-only action that only carried them. It runs the TUI and web unit tests before opening that PR and fails instead when one breaks, so tests of the notice build their own moves (`with_move` in the TUI runner tests) and never lean on a shipped entry (#836). Hand-written TUI `announce_moved` call sites go quiet on their own, since they announce only what the definition still has; deleting them stays a human's cleanup. *Trade-off*: expired entries can sit in `keymap.toml` for up to a week.
 
 ## D172: Keys move in four rungs, and the first two change no key
 
@@ -1515,6 +1517,8 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: A sender that puts no reference in its mail still merges two accounts with the same due day; the not-sure path is the fallback.
 
+**Amended 2026-10-29: same email, same to-do.** The due period keeps next month's bill, which arrives in a new email, a new to-do. A rescan of the same email that moves the due date into another month (a corrected 31 October that becomes 1 November) now keeps that email's row: the row takes the new key with its id, state, snooze and edits, and shows the new due date unless the user edited the row. Before, the rescan made a second row with the new date; an untouched old row dropped out of the list, while a snoozed or edited one stayed open beside it with the old date. One email with two dated items keeps one row per item. The key format is unchanged, so existing rows need no migration (`Store::adopt_asks_same_source`).
+
 ## D181: The eval grades asks per kind and field on the positives
 
 **Chosen**: Label schema v2 lists every expected item with kind, verb, object, actor, direction, state, counterparty, amount and due words. `classify eval` reports per-kind precision and recall, field exact-match, duplicates, abstention, twin pair accuracy, slices by sender kind, locale, template family, zone, thread position and rule abstention, and held-out phrasings, template families and `--set mine` separately. A surface-only baseline must fail the twins. Model calls are recorded and replayed in CI. Accuracy is not reported.
@@ -1568,3 +1572,70 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 ## D186: The lexical index converts HTML to text but keeps quotes and signatures
 
 The lexical index converts HTML to text with the reader's built-in converter and keeps quoted replies and signatures, because every removal heuristic can drop words the reader shows (G10c review).
+
+## D187: Leaving a conversation saves its reply as a draft on the row
+
+**Chosen**: When the user leaves a conversation with a reply open (Back on a phone, another person, another topic), the web app saves the reply and closes it. Messages shows that person's row with `Draft:` in the accent colour and the start of the reply in place of the preview, and opening the row resumes the reply inline with the cursor in it. The daemon puts the draft on the row (`MessagesRowData.draft`), so the CLI, TUI and MCP see it too. A reply that cannot save stays open in the sheet.
+
+**Considered**: Keeping the reply in a full sheet over the list (b2ea14e8b); a docked title bar above the tab bar (before b2ea14e8b); a first Back that closes the reply and a second that reaches the list.
+
+**Why**: BK, 2026-10-29: "close the draft, show draft on the message in the message list in the accent color, similar to what whatsapp does, I think imessage does the same, if they open the message, their draft is there and they can continue". On a phone the sheet looked like Back had done nothing.
+
+**Trade-offs accepted**: The same rule applies on wide layouts, where b2ea14e8b had already replaced the docked window with the sheet. Moving the lamp with `j` and `k` does not resume the reply, so the keys stay with the list; the reply box under the conversation shows the draft instead.
+
+## D188: Read is typographic and the row's leading edge is unmarked
+
+**Partly superseded by D190**: To do and Updates now use exact-revision seen state, not section-based tiers. The unmarked leading edge and background-only selection remain.
+
+**Chosen**: Unread rows carry a semibold primary line in `--text-1` with the secondary in `--text-1`; read rows drop to normal weight in `--text-2`. The unread gutter bar and the lit row's 2px `--signal` hairline are removed; the lit row is the `--ink-lamp` surface alone. Messages' Your turn keeps its band and pin dot and no longer adds weight, so weight has one meaning. In To do and Updates, which have no per-row read state, the same tiers follow the section: now and needs-a-look bright and bold, coming-up, whenever and routine in `--text-2`, done struck in `--text-3`.
+
+**Considered**: Keeping the bar and aligning it with the hairline; an unread dot alone; colouring the whole row; a per-row seen ledger for To do and Updates.
+
+**Why**: BK, 2026-10-30, on the inbox: the unread bar sat 6px outside the row while the blue hairline sat on its edge, so the two marks read as one offset mark, and because the bar hid while lit, blue appeared on read rows too. Gmail's convention (bold and near-white for unread, normal and grey for read) removes the ambiguity and frees the leading edge to mean only where you are. It works in every theme without new tokens, and weight is not colour.
+
+**Trade-offs accepted**: Read rows lose the bar's scan-aid at the list edge, so the contrast between read and unread is typographic. The To do and Updates tiers mean "needs you" rather than literally "read" until those modes get a seen state.
+
+## D189: To do and Updates take the source email's read state
+
+**Superseded by D190**: row attention is now independent of source read flags.
+
+**Chosen**: To-do and Updates rows carry the read state of the email they came from: `TodoData.unread` and `UpdateLineData.unread`. Unread reads bright and semibold, read calms to `--text-2`, and a row with no email (a promise, a parcel tracker) keeps the neutral tier. Reading the email calms the row even before the to-do is ticked; ticking it still leaves the row as it is. Section emphasis remains for lines with no email, replacing the To do and Updates half of D188.
+
+**Considered**: A per-row "seen" ledger marked when the row is focused; dimming whole sections; leaving To do and Updates on section emphasis only.
+
+**Why**: BK asked for the same read/read distinction as the inbox: "that I've read even though I haven't done'd them". The email already carries a read flag, so no new state and no new sync surface: the row derives it with the same kind of subquery as `source_filed_at` in the store, and from the digest's own message in Updates. It keeps mxr's rule that unread is not a to-do flag.
+
+**Trade-offs accepted**: A to-do created from an email read long ago is born calm, because the axis is the email, not the row. A true per-row seen state would need a ledger and every client; this deliberately does not add one.
+
+## D190: Opening a To do or Updates row calms that revision
+
+**Chosen**: Each account's To do and Updates rows have a local seen ledger keyed by mode, row id and content revision. Opening the row's email or its details/peek marks only the displayed revision seen. Moving focus and reading a list do not. Unseen is bright and bold in every section; seen is normal-weight `--text-2`, even while the task is open or the update remains in its digest. Section placement does not override attention styling. This supersedes D189, including its neutral exception for rows without email, and D188's section-based mode tiers. Selection stays background-only.
+
+**Why**: BK chose “Calm rows once seen”: the source email can remain unread after the row has been inspected. Provider flags, completion and letting go are separate decisions.
+
+**Freshness**: The daemon hashes stable task fields/source evidence or the update's folded message ids, fact and tracker state. Clock labels, cut placement and provider read flags are excluded. Exact revisions persist, so an old client acknowledgment cannot overwrite newer attention. `SetModeRowSeen`, the bridge's `POST /api/v1/mail/rows/seen`, `mxr modes seen` and `mxr_mode_row_seen` share the same ledger and preview path.
+
+**Trade-offs accepted**: Existing rows start unseen. Content changes can make a row unseen again; revisiting identical content keeps it calm. Seen state is local, survives restarts and portable backups, and never changes provider flags or task completion.
+
+## D191: Untrusted mail HTML is parsed in a resource-limited helper process
+
+**Chosen**: Every parse of mail HTML (reader render, quote split, TUI styled render, search and rule text, link and image extraction, the Reading and safety checks, the send-side validator and text alternative) runs in a child process, `mxr __html-worker`, which is the `mxr` executable in a hidden mode. The child limits its own memory (a watchdog at 512 MiB above its start, plus `RLIMIT_AS` on Linux) and CPU, and the parent stops it after 5 seconds. A lost child gives the caller its existing plain-text fallback, is replaced on the next request, and an input that stopped it is remembered for the life of the process. `mxr doctor` and the diagnostics page count fallbacks.
+
+**Considered**: More input limits, which the F1 review rounds kept extending without closing the class. A thread with a timeout, which cannot stop a runaway allocation that aborts the process. A fast path that parses small documents in-process, dropped because size does not predict cost: on a release build, a 57 KB document (3,000 distinct formatting elements, so about 9 million rebuilt elements) passes the reader's budget and still took the helper past its 512 MiB ceiling, and the round trip costs about 65 microseconds on top of a 430 microsecond parse of a 7 KB newsletter. A process per parse, dropped because starting the helper takes 9 to 40 ms once it is warm against a parse of under a millisecond.
+
+**Why**: BK, 2026-10-29: "Isolate it, ship limits now". html5ever and html2text have super-linear paths no cheap pre-scan bounds, and an allocation failure takes the daemon down with it.
+
+**Trade-offs accepted**: A document that is slow or large renders as its tag-stripped text, and takes a timeout the first time it is seen in a process. The child is not a sandbox: the limits are about resources, not what it may read. macOS has no enforced address-space limit, so memory there is bounded by a sampling watchdog that can overshoot by tens of megabytes. Every call is a pipe round trip.
+
+## D192: `--all` is a daemon job over a selection, not a client loop over ids
+
+**Chosen**: `archive`, `read-archive`, `label` and `unlabel` take `--all` with `--search`. The client sends the selection (`PreviewSelection`, then `StartSelectionJob` with a single-use preview token), never message ids. The daemon resolves the search once (lexical, newest first, the same filters as the paged search), keeps the ids under the token, and runs them as one job with one job id. An `--all` job cannot be undone: it takes no snapshots and writes no undo entries, so the preview (its exact count, accounts and newest messages) is the check. The preview and the confirmation prompt say so, and `mxr undo <job_id>` on an `--all` job says it cannot be undone instead of "not found".
+
+**Considered**: A client that fetches ids and sends them in chunks (dropped after three review rounds found defects in it: frame overflow from per-item receipts, a partial failure that kept sending, a lost reply reported as "not applied", job ids missing from ids and CSV output); extending `StartMutationJob` with a selector; running archive through the reviewed-operation flow. Whole-job undo (`UndoJob`, `mxr undo <job_id>` for an hour after the job ended, with undo entries claimed in the store through a new `claimed_by` column) was built and then dropped after verifier round 4 still found four undo defects (`docs/issues/whole-job-undo-for-all.md`): a restarted undo restored a message twice, a restart during a read-archive rate-limit pause lost the unread snapshot, an uncertain label addition was reported undone while it stayed applied upstream, and pruning job history to 100 rows deleted undo inside its hour. BK decided in advance (2026-10-29) that `--all` ships without whole-job undo if round 4 found material undo defects.
+
+**Why**: The client could not see what the daemon did with a chunk, so every defect came from the client deciding something it could not know. With the selection in the daemon the client never holds ids, never chunks and never decides whether to continue. The job id is chosen by the client, so a lost reply is recovered with `GetJob`. The reviewed archive flow keeps every item in one JSON blob it rewrites per state change and overflows a frame near 60,000 items. Each round of review found new ways for whole-job undo to restore the wrong state; an action that says up front it cannot be undone is honest, and a wrong undo is worse than none.
+
+**Invariants**: A start takes the token from memory first, then inserts the job's full row as `queued` with an insert that fails on an existing id, then spawns; on a conflict the token goes back and the request gets that job only if it is the same selection and action, so a job id is never returned without a real job behind it. A label edit's preview resolves each name to the label's id in every account the resolved selection reaches (and only those), and the job applies those ids to every batch; a label gone at start refuses it. A selection's frozen label ids are matched to local labels by provider id only, never by name, so the local copy gets the label the provider got. A selection job waits out provider rate limits and retries what the provider refused; a message a limit stopped part way (read, archive refused) is finished by the retry. Ordinary mutations, `StartMutationJob` jobs and sweeps keep the immediate rules and their per-chunk undo unchanged. Job text is bounded when the row is written (512 bytes per error, 128 per account name), and a preview's sample text to 256 bytes; `GetJob` carries 50 failures and every undo id, and `ListJobs` neither, only `undo_id_count` and `failure_count`; selections are capped at a 2,048-byte query and 8 labels so a listing of 100 jobs stays under 4 MiB. A CLI whose start reply is lost looks for the job for 10 seconds and otherwise reports the outcome as unknown with the job id, never "nothing started".
+
+**Trade-offs accepted**: No undo for `--all`: a mistaken run is reversed by running the opposite action over a search (`label` after `unlabel`, or moving archived mail back by hand). `archive --all` uses the generic job, so it has no per-message "never repeat" receipts; archive is a set-semantic label removal. A daemon restart ends a running job as `failed` ("interrupted") with its persisted counts and a re-run finishes it; resume needs a durable item table. The batch in flight at a restart (at most 100 messages) is not counted. CLI only: web, TUI and MCP follow. `trash`, `spam` and the flag commands wait until this has soaked.
+||||||| f6c25292c

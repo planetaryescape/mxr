@@ -315,6 +315,7 @@ fn smtp_only_form_test_allows_no_auth_and_marks_operation_pending() {
     app.accounts.page.form.smtp_auth_required = false;
     app.accounts.page.form.last_result = Some(mxr_protocol::AccountOperationResult {
         ok: false,
+        saved: false,
         summary: "stale".into(),
         save: None,
         auth: None,
@@ -322,6 +323,7 @@ fn smtp_only_form_test_allows_no_auth_and_marks_operation_pending() {
         send: None,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     });
 
     app.apply(Action::TestAccountForm);
@@ -382,6 +384,7 @@ fn failed_account_operation_opens_details_modal() {
     let mut app = App::new();
     let result = mxr_protocol::AccountOperationResult {
             ok: false,
+            saved: false,
             summary: "Account 'consulting' test failed.".into(),
             save: None,
             auth: None,
@@ -395,6 +398,7 @@ fn failed_account_operation_opens_details_modal() {
             }),
             device_code_url: None,
             device_code_user_code: None,
+            tls_cert_sha256: None,
         };
 
     app.apply_account_operation_result(result);
@@ -412,6 +416,7 @@ fn account_form_o_reopens_result_details_modal() {
     app.accounts.page.form.visible = true;
     app.accounts.page.form.last_result = Some(mxr_protocol::AccountOperationResult {
         ok: false,
+        saved: false,
         summary: "Account 'consulting' test failed.".into(),
         save: None,
         auth: None,
@@ -422,6 +427,7 @@ fn account_form_o_reopens_result_details_modal() {
         send: None,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     });
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));

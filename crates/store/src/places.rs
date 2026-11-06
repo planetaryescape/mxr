@@ -88,6 +88,39 @@ impl super::Store {
         Ok(messages)
     }
 
+    /// Mode lists include mail filed outside mxr, but never all archived mail.
+    /// Start with inbox candidates and union observed inbox-removal events;
+    /// exclude Trash/Spam and keep the real provider location on each row.
+    pub async fn mode_candidates(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
+        let columns = place_columns(false);
+        let sql = format!(
+            "{} UNION
+             SELECT {columns}, 0 AS in_inbox FROM messages m
+             WHERE m.account_id = ?1 AND m.id IN (
+                 SELECT e.message_id FROM message_events e
+                 JOIN labels l ON l.id = e.label_id
+                 WHERE e.account_id = ?1 AND l.provider_id = 'INBOX'
+                   AND {}
+             ) AND NOT EXISTS (
+                 SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                 WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
+             ) AND {NOT_TRASHED}",
+            place_candidates_sql(),
+            crate::message_events::EXTERNAL_FILING
+        );
+        sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(hidden_flags())
+            .fetch_all(self.reader())
+            .await?
+            .iter()
+            .map(decode_place_message)
+            .collect()
+    }
+
     /// Mail dated between `since` and `until`, in any folder but Trash and
     /// Spam, newest first, at most `limit`: where a one-time code you just
     /// asked for has landed, whether or not a rule moved it out of the inbox.
@@ -524,6 +557,47 @@ pub(crate) mod tests {
         assert_eq!(store.set_message_pins(&ids[..1], false).await.unwrap(), 1);
         let archived = store.place_message(&ids[2]).await.unwrap().unwrap();
         assert!(!archived.in_inbox);
+
+        // Only an observed outside archive is retained, not all historical mail.
+        store
+            .remove_message_label(&ids[0], &inbox, EventSource::Sync)
+            .await
+            .unwrap();
+        let mode = store.mode_candidates(&account.id).await.unwrap();
+        assert_eq!(mode.len(), 2);
+        assert!(mode.iter().any(|m| m.id == ids[0] && !m.in_inbox));
+        assert!(mode.iter().any(|m| m.id == ids[1] && m.in_inbox));
+        assert!(!mode.iter().any(|m| m.id == ids[2]));
+        assert_eq!(
+            store.place_candidates(&account.id).await.unwrap().len(),
+            1,
+            "provider sweeps still start from the real inbox"
+        );
+        let filed = store
+            .externally_filed_messages(Some(&account.id), &ids)
+            .await
+            .unwrap();
+        assert_eq!(filed.len(), 1);
+        assert!(filed.contains_key(&ids[0]));
+        assert!(store
+            .externally_filed_messages(Some(&AccountId::new()), &ids)
+            .await
+            .unwrap()
+            .is_empty());
+        store
+            .add_message_label(&ids[0], &inbox, EventSource::Sync)
+            .await
+            .unwrap();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store.mode_candidates(&account.id).await.unwrap().len(),
+            2,
+            "unarchiving must not duplicate the item"
+        );
     }
 
     #[tokio::test]

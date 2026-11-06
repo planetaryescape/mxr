@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
-import { memo, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelMark } from "@/components/ModelMark";
+import { SourceFiled } from "@/components/SourceFiled";
 import { Received, When } from "@/components/When";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { fetchThread } from "@/features/mailbox/api";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 import { formatLongDate, initials, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +95,16 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   hint?: ReactNode;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
+  const markRowSeen = useMarkRowSeen("updates");
+  const openedRow = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!peeked) {
+      openedRow.current = undefined;
+    } else if (openedRow.current !== line.id) {
+      openedRow.current = line.id;
+      markRowSeen(line);
+    }
+  }, [peeked, line, markRowSeen]);
   const hide = useUpdatesHidden((s) => s.hide);
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLLIElement>(null);
@@ -139,6 +151,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       data-focused={lit ? "true" : undefined}
       lit={lit}
       via={via}
+      unread={line.unread ?? undefined}
+      unreadLabel="Unseen"
       leaving={leaving}
       land={landIds}
       // Focus comes back here when the menu closes, so Space peeks in the normal flow.
@@ -154,11 +168,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       lead={<SourceMark name={name} />}
       primary={
         <>
-          <span
-            data-testid="update-source"
-            title={line.source_name}
-            className={cn("font-medium", line.section !== "needs_a_look" && "font-normal")}
-          >
+          <span data-testid="update-source" title={line.source_name}>
             {name}
             {host ? (
               <span data-testid="update-host" className="type-meta ml-1 text-text-3 max-sm:hidden">
@@ -194,6 +204,14 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           </span>
         </>
       }
+      secondary={
+        line.source_filed_at ? (
+          <span className="hidden sm:inline">
+            <SourceFiled value={line.source_filed_at} />
+          </span>
+        ) : undefined
+      }
+      secondaryDesktopOnly
       trail={
         trailing ? (
           <TrailingValue
@@ -315,6 +333,11 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       }
       hint={
         <>
+          {line.source_filed_at ? (
+            <div className="ml-10 mb-1 sm:hidden">
+              <SourceFiled value={line.source_filed_at} />
+            </div>
+          ) : null}
           {peeked ? (
             <Peek
               line={line}

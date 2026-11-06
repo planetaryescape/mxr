@@ -151,9 +151,11 @@ fn subscription_data(
     let last_record: &ArchiveRecord = loaded.records.get(last_id)?;
     let n = subscription.charges.len();
     let one_offs = loaded
-        .detection
         .one_offs
-        .get(&subscription.issuer_key)
+        .get(&(
+            last_record.account_id.clone(),
+            subscription.issuer_key.clone(),
+        ))
         .map_or(0, Vec::len);
     let charges = subscription
         .charges

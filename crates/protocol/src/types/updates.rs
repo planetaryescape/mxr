@@ -228,6 +228,17 @@ pub struct UpdateLineData {
     /// digest payloads omit this and are deliberately treated as unpinned.
     #[serde(default)]
     pub latest_message_pinned: bool,
+    /// This line revision has not been opened or peeked, including trackers.
+    /// Independent of the source email's READ flag. Omitted by older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unread: Option<bool>,
+    /// Opaque version to acknowledge with `SetModeRowSeen`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_revision: Option<String>,
+    /// The newest email left the inbox outside mxr; the update is still here.
+    /// Absent for parcel trackers, which represent a delivery, not one email.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// The message `fact` and `todo_title` came from, for `t`. In Changed
     /// it can be older than the newest.
     #[serde(default, skip_serializing_if = "Option::is_none")]

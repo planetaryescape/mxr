@@ -228,7 +228,14 @@ impl App {
                 format!("{list_name} ({list_count})")
             }
         } else {
-            format!("All Mail {list_name} ({list_count})")
+            // A mailbox listed by role (Starred with no Starred label) is
+            // named for its role, not All Mail.
+            let name = self
+                .mailbox
+                .active_role
+                .and_then(mxr_core::Role::system_mailbox_title)
+                .unwrap_or("All Mail");
+            format!("{name} {list_name} ({list_count})")
         };
         // Where the selected email went and why (D119): "→ Updates ·
         // automated sender".
@@ -311,6 +318,30 @@ impl App {
                 },
                 |label| label.total_count as usize,
             )
+    }
+
+    /// Whether the mailbox view draws the reader beside its list in the
+    /// three-pane layout. The modes and lenses fill that pane themselves.
+    pub(crate) fn view_draws_reader(&self) -> bool {
+        matches!(
+            self.mailbox.mailbox_view,
+            MailboxView::Messages
+                | MailboxView::Snoozed
+                | MailboxView::Subscriptions
+                | MailboxView::Todo
+        )
+    }
+
+    /// A system mailbox by its Gmail name (`INBOX`, `SENT`, …). The demo
+    /// names them `Inbox` and `Sent`, so the match ignores case,
+    /// as `resolve_desired_system_mailbox` does; an exact match wins.
+    pub(crate) fn system_label(&self, name: &str) -> Option<&Label> {
+        let labels = &self.mailbox.labels;
+        labels.iter().find(|label| label.name == name).or_else(|| {
+            labels
+                .iter()
+                .find(|label| label.name.eq_ignore_ascii_case(name))
+        })
     }
 
     pub fn resolve_desired_system_mailbox(&mut self) {
@@ -521,7 +552,13 @@ impl App {
     /// invite opened from the calendar-invites lens. Opens the message view.
     pub(crate) fn open_invite_envelope(&mut self, env: Envelope) {
         self.open_envelope(env);
-        self.mailbox.layout_mode = LayoutMode::ThreePane;
+        // A mode or lens fills the list's pane and draws no reader beside
+        // it, so the email opens full width there; Esc goes back to it.
+        self.mailbox.layout_mode = if self.view_draws_reader() {
+            LayoutMode::ThreePane
+        } else {
+            LayoutMode::FullScreen
+        };
         self.mailbox.active_pane = ActivePane::MessageView;
         self.status_message = None;
     }
@@ -751,6 +788,14 @@ impl App {
 
     pub(super) fn move_message_view_up(&mut self) {
         self.mailbox.message_scroll_offset = self.mailbox.message_scroll_offset.saturating_sub(1);
+    }
+
+    /// A deferred HTML parse landed. The open message's body state was built
+    /// from its stand-in, so build it again; a thread view rebuilds every frame.
+    pub(crate) fn html_render_landed(&mut self) {
+        if self.mailbox.viewing_envelope.is_some() {
+            self.ensure_current_body_state();
+        }
     }
 
     pub(super) fn ensure_current_body_state(&mut self) {

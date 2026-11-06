@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Score or rewrite text using the deterministic humanizer gate
+
+Usage: mxr humanize [OPTIONS] <COMMAND>
+
+Commands:
+  score    Score arbitrary text
+  rewrite  Rewrite arbitrary text using the LLM rewrite pass
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

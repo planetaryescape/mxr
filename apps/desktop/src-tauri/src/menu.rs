@@ -182,6 +182,14 @@ pub fn is_command(id: &str) -> bool {
         .any(|command| command.id == id)
 }
 
+/// The text muda needs to show `title` as written. muda reads a lone `&` as a
+/// mnemonic marker and drops it (on macOS too, where there are no mnemonics),
+/// so "Focus & reply" would show as "Focus  reply"; `&&` shows one `&`.
+/// App Shortcuts matches the shown title, so it has to be the label.
+fn menu_text(title: &str) -> String {
+    title.replace('&', "&&")
+}
+
 fn submenu<R: Runtime>(app: &AppHandle<R>, section: &Section) -> tauri::Result<Submenu<R>> {
     let mut builder = SubmenuBuilder::new(app, section.title);
     for (index, group) in section.groups.iter().enumerate() {
@@ -192,7 +200,7 @@ fn submenu<R: Runtime>(app: &AppHandle<R>, section: &Section) -> tauri::Result<S
             builder = builder.item(&MenuItem::with_id(
                 app,
                 &command.id,
-                &command.title,
+                menu_text(&command.title),
                 true,
                 command.accelerator.as_deref(),
             )?);
@@ -379,6 +387,20 @@ mod tests {
             assert_eq!(same, 1, "two commands are titled {:?}", command.title);
             assert!(!command.title.contains('('), "{:?}", command.title);
         }
+    }
+
+    /// muda drops a lone `&` as a mnemonic marker, so a label's `&` is
+    /// doubled to show as written.
+    #[test]
+    fn an_ampersand_in_a_label_is_escaped() {
+        assert_eq!(menu_text("Focus & reply"), "Focus && reply");
+        assert_eq!(menu_text("Go to Inbox"), "Go to Inbox");
+        let focus = commands()
+            .into_iter()
+            .find(|command| command.id == "nav.focus")
+            .unwrap();
+        assert_eq!(focus.title, "Focus & reply");
+        assert_eq!(menu_text(&focus.title), "Focus && reply");
     }
 
     #[test]

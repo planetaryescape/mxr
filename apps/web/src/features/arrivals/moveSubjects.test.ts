@@ -48,6 +48,7 @@ describe("X and K on a row", () => {
       messageId: "msg-1",
       label: "Lease",
       senderLabel: "Sam",
+      here: "messages",
     });
     // The Updates card is a digest, not one email.
     // SAFETY: an Updates card's contents are never read for a move.

@@ -92,8 +92,14 @@ the message came to.
 
 Press `gh` for [Now](/guides/now/), the front page of people waiting on you,
 tasks due soon, the Updates digest and an evening Reading pick. Open a row to
-continue in its mode. `gm` opens [Messages](/guides/messages/), `gx` opens
-[To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/).
+continue in its mode: `Enter` on a person opens Messages on that
+conversation, and `r`, `a` and `f` reply, reply all and forward. `o` opens the
+email itself, full width, since the modes draw no reader beside their list;
+`Esc` comes back to the mode. `gm` opens [Messages](/guides/messages/), `gx`
+opens [To do](/guides/todo/), and `ge` opens [Archive](/guides/archive/). In
+To do, `Space` opens the lit row's details under it, as the web app's do: its
+dates, why it is here, the email's first lines and where each field came
+from. `Space` again or `Esc` closes them.
 
 `mxr desk` remains available from the CLI for the full You owe, Due,
 Waiting on and New from people lanes. See the
@@ -136,7 +142,8 @@ it away again. `mxr snoozed` and `mxr unsnooze` do the same from the CLI.
 ## Reading and Paper trail
 
 Reading (`gr`) is the [edition](/guides/reading/): the bands, a reader, the
-tabs `1` Edition, `2` Later and `3` Highlights, and `"` to highlight in the reader. Its keys are in
+tabs `1` Edition, `2` Later and `3` Highlights, and `"` to highlight the
+paragraph at the top of the reader. Its keys are in
 the [keybindings reference](/reference/keybindings/#reading).
 
 Paper trail is a lens
@@ -145,8 +152,8 @@ bundled by sender, each bundle with its "here because" line and no unread
 count. From a bundle, `s` pins a message, `P` moves the sender to another
 place and `E` sweeps the whole place; sweeping one sender's bundle and loading
 more senders, or more of one sender's messages, are in the palette (`:`).
-They were `p`, `K`, `A`, `S`, `>` and `+` until K3, and each old key says
-where it went until 0.6.185. Every sweep shows its preview first; the
+They were `p`, `K`, `A`, `S`, `>` and `+` until K3. Every sweep shows its
+preview first; the
 whole-place sweep opens on **Cancel**, so confirming it takes a deliberate
 extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
 star, trash) act on the message under the cursor. The keys are in the
@@ -187,8 +194,8 @@ not ask the model about every row. The CLI equivalent is
 
 ## Thread summaries
 
-Run `:` → **Summarize thread** from the mailbox, message, or thread view. Its
-old key, `y`, now points you at the thread briefing (`B`). The LLM request runs in the background, so navigation, body loads,
+Run `:` → **Summarize thread** from the mailbox, message, or thread view. The
+LLM request runs in the background, so navigation, body loads,
 and other mail actions keep working.
 
 Cached summaries appear above the message body when a thread opens. If a long
@@ -288,7 +295,16 @@ them too.
   `[#]` discards it. When the safety check returns an override token, `[O]`
   overrides that block and sends once; a gap block has no override. A bare
   `Enter` runs the option marked `›`: Send, or Edit again when the safety
-  check found something or the draft can't go as it is.
+  check found something or the draft can't go as it is. When it suggests
+  someone to copy in, `[c]` adds the first suggestion to Cc (`Ctrl-a` says
+  where it went until 0.6.225).
+- Drafts (`g d`): `Enter` opens the selected draft in `$EDITOR`, as `r` does
+  for a conversation's unsent reply in Messages. Closing the editor saves your
+  changes to that draft and opens the compose confirmation for it. `[s]`,
+  `[a]` and `[n]` send it, schedule it or send it with a reminder, `[d]` keeps
+  it as a draft, and `[e]` or `Esc` reopens it in `$EDITOR`. The confirmation
+  doesn't offer `[#]` or `[r]` for a saved draft: delete it from the Drafts
+  list, and edit it to change its text.
 - Writing proof: additions are highlighted and removals are struck through;
   set `NO_COLOR` to show `[-removed-]{+added+}` marks. Gap ranges use the
   warning style, and the warning says sending remains blocked. `Esc` keeps the
@@ -314,8 +330,8 @@ them too.
   schedules a to-do. `j` and `k`, the arrows, or `Ctrl-n` and `Ctrl-p` move,
   as in the web app's Not now. `Z` says where it went until 0.6.197.
 - Move to (`X`): a lowercase letter moves this email to a mode, a capital
-  moves the sender; on Now it also answers a Not-sure question and a new
-  sender's question (`D` blocks). `T` and the new-sender digits say where
+  moves the sender, and the mode it is in now says "here now"; on Now it
+  also answers a Not-sure question and a new sender's question (`D` blocks). `T` and the new-sender digits say where
   they went until 0.6.197.
   Tab switches between readings of an ambiguous phrase such as `fri 3`;
   the send-at and remind prompts work the same way

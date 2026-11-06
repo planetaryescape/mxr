@@ -468,6 +468,7 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 100,
+                all_accounts: false,
             },
         ] {
             let response = super::super::dispatch(

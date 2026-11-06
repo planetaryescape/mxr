@@ -3,8 +3,9 @@
 //! sidebar is built from mailbox roles, and counts come from the daemon.
 
 use super::*;
-use mxr_core::{LabelId, LabelKind};
-use std::sync::Arc;
+use crate::mailbox_threads::{thread_rows, Membership};
+use mxr_core::{LabelId, LabelKind, Role};
+use std::sync::{Arc, Mutex};
 
 struct World {
     gmail: AccountId,
@@ -67,6 +68,20 @@ fn envelope(account: &AccountId, thread: &ThreadId, subject: &str, minutes_ago: 
     envelope
 }
 
+fn user_label(account: &AccountId, name: &str, total: u32) -> Label {
+    Label {
+        id: LabelId::from_scoped_provider_id(account, "test", name),
+        account_id: account.clone(),
+        name: name.into(),
+        kind: LabelKind::User,
+        color: None,
+        provider_id: name.into(),
+        unread_count: 0,
+        total_count: total,
+        role: None,
+    }
+}
+
 fn thread_of(account: &AccountId, envelopes: &[&Envelope]) -> Thread {
     let mut thread = sample_thread(envelopes[0]);
     thread.account_id = account.clone();
@@ -82,6 +97,20 @@ async fn serve_world(
     threads: Vec<Thread>,
     counts: Vec<mxr_protocol::SystemMailboxCount>,
 ) -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
+    serve_world_recording(socket_path, world, envelopes, threads, counts, None).await
+}
+
+/// Every request the bridge sent the fake daemon, when a recorder is given.
+type Seen = Arc<Mutex<Vec<Request>>>;
+
+async fn serve_world_recording(
+    socket_path: PathBuf,
+    world: &World,
+    envelopes: Vec<Envelope>,
+    threads: Vec<Thread>,
+    counts: Vec<mxr_protocol::SystemMailboxCount>,
+    seen: Option<Seen>,
+) -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
     let default_labels = world.gmail_labels.clone();
     let all_labels = world
         .gmail_labels
@@ -92,6 +121,9 @@ async fn serve_world(
     let ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
+            if let Some(seen) = &seen {
+                seen.lock().unwrap().push(request.clone());
+            }
             let data = match request {
                 Request::GetStatus => sample_status(),
                 Request::ListLabels { all_accounts, .. } => ResponseData::Labels {
@@ -329,4 +361,186 @@ async fn navigation_comes_from_roles_and_counts_from_the_daemon() {
     let all_mail = get_json(addr, "lens_kind=all_mail&view=messages").await;
     assert_eq!(all_mail["mailbox"]["counts"]["total"], 9124);
     let _ = Arc::new(());
+}
+
+#[tokio::test]
+async fn user_labels_list_every_accounts_with_its_own_counts_and_chip_key() {
+    let temp = TempDir::new().unwrap();
+    let mut world = World::new();
+    // "Work" is on both accounts, "Travel" only on the second one.
+    world.gmail_labels.push(user_label(&world.gmail, "Work", 4));
+    world.imap_labels.push(user_label(&world.imap, "Work", 7));
+    world.imap_labels.push(user_label(&world.imap, "Travel", 2));
+    let (_ipc, addr) = serve_world(
+        temp.path().join("mxr.sock"),
+        &world,
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .await;
+
+    let json = get_json(addr, "view=messages").await;
+    let sections = json["sidebar"]["sections"].as_array().unwrap();
+    let labels = sections
+        .iter()
+        .find(|section| section["id"] == "labels")
+        .expect("a labels section");
+    let items = labels["items"].as_array().unwrap();
+    assert_eq!(items.len(), 3, "{items:?}");
+    // Same-name labels sit together, and each keeps its own account and counts.
+    assert_eq!(items[0]["label"], "Travel");
+    assert_eq!(items[0]["accountId"], world.imap.to_string());
+    assert_eq!(items[0]["id"], "travel");
+    assert_eq!(items[0]["total"], 2);
+    let work: Vec<&serde_json::Value> = items[1..].iter().collect();
+    assert!(work.iter().all(|item| item["label"] == "Work"));
+    let by_account = |account: &AccountId| {
+        work.iter()
+            .find(|item| item["accountId"] == account.to_string())
+            .unwrap()
+    };
+    assert_eq!(by_account(&world.gmail)["total"], 4);
+    assert_eq!(by_account(&world.imap)["total"], 7);
+    // Two labels with one name need distinct lens ids, or the lenses collide.
+    assert_ne!(work[0]["id"], work[1]["id"]);
+    assert_eq!(
+        by_account(&world.gmail)["lens"]["labelId"],
+        world.gmail_labels.last().unwrap().id.to_string()
+    );
+}
+
+#[tokio::test]
+async fn categories_and_subscriptions_span_every_account_when_none_is_chosen() {
+    let temp = TempDir::new().unwrap();
+    let world = World::new();
+    let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+    let (_ipc, addr) = serve_world_recording(
+        temp.path().join("mxr.sock"),
+        &world,
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Some(seen.clone()),
+    )
+    .await;
+    get_json(addr, "view=messages").await;
+    let seen = seen.lock().unwrap();
+    assert!(
+        seen.iter().any(|request| matches!(
+            request,
+            Request::ListSubscriptions {
+                account_id: None,
+                all_accounts: true,
+                ..
+            }
+        )),
+        "subscriptions must ask for every account: {seen:?}"
+    );
+    assert!(
+        seen.iter()
+            .any(|request| matches!(request, Request::ListCategories { account_id: None })),
+        "categories are unscoped: {seen:?}"
+    );
+}
+
+#[tokio::test]
+async fn starred_is_listed_by_role_when_no_account_has_a_starred_label() {
+    let temp = TempDir::new().unwrap();
+    let mut world = World::new();
+    // IMAP-only set of accounts: no STARRED label anywhere.
+    world.gmail_labels.retain(|label| label.name != "STARRED");
+    let thread = ThreadId::new();
+    let mut starred = envelope(&world.imap, &thread, "Flagged", 30);
+    starred.flags = MessageFlags::STARRED;
+    starred.label_provider_ids = vec!["Junk".into()];
+    let mut plain = envelope(&world.imap, &thread, "Re: Flagged", 5);
+    plain.label_provider_ids = vec!["INBOX".into()];
+    let counts = vec![mxr_protocol::SystemMailboxCount {
+        role: "starred".into(),
+        unread: 1,
+        total: 1,
+    }];
+    let (_ipc, addr) = serve_world(
+        temp.path().join("mxr.sock"),
+        &world,
+        vec![starred.clone(), plain.clone()],
+        vec![thread_of(&world.imap, &[&starred, &plain])],
+        counts,
+    )
+    .await;
+
+    let json = get_json(addr, "view=messages").await;
+    let items = json["sidebar"]["sections"][0]["items"].as_array().unwrap();
+    let item = items
+        .iter()
+        .find(|item| item["label"] == "Starred")
+        .expect("a Starred item without a label");
+    assert_eq!(item["lens"]["kind"], "starred");
+    assert_eq!(item["total"], 1);
+    assert!(item["lens"]["labelId"].is_null());
+
+    let json = get_json(addr, "lens_kind=starred&view=threads").await;
+    assert_eq!(json["mailbox"]["lensLabel"], "Starred");
+    let rows = rows(&json);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0]["message_ids"],
+        serde_json::json!([starred.id.to_string()])
+    );
+    assert_eq!(json["mailbox"]["counts"]["total"], 1);
+}
+
+#[test]
+fn a_role_view_lists_only_threads_with_a_message_in_the_mailbox_and_counts_the_rest() {
+    let account = AccountId::new();
+    // A German IMAP folder that the provider reports as Sent: the stored role
+    // places it, not the name.
+    let sent = Label {
+        id: LabelId::from_scoped_provider_id(&account, "imap", "Gesendete Elemente"),
+        account_id: account.clone(),
+        name: "Gesendete Elemente".into(),
+        kind: LabelKind::System,
+        color: None,
+        provider_id: "Gesendete Elemente".into(),
+        unread_count: 0,
+        total_count: 0,
+        role: Some(Role::Sent),
+    };
+    let mut in_sent = sample_envelope();
+    in_sent.account_id = account.clone();
+    in_sent.label_provider_ids = vec!["Gesendete Elemente".into()];
+    let mut in_inbox = sample_envelope();
+    in_inbox.account_id = account.clone();
+    in_inbox.label_provider_ids = vec!["INBOX".into()];
+    // A thread the daemon listed whose message the page did not fetch.
+    let unfetched = sample_envelope();
+    let missing = sample_thread(&unfetched);
+
+    let threads = vec![
+        sample_thread(&in_sent),
+        sample_thread(&in_inbox),
+        missing.clone(),
+    ];
+    let envelopes: std::collections::HashMap<MessageId, Envelope> =
+        [in_sent.clone(), in_inbox.clone()]
+            .into_iter()
+            .map(|envelope| (envelope.id.clone(), envelope))
+            .collect();
+    let labels = [sent];
+    let membership = Membership::Role {
+        role: Role::Sent,
+        labels: &labels,
+    };
+
+    let built = thread_rows(&threads, &envelopes, &membership);
+
+    assert_eq!(built.rows.len(), 1);
+    assert_eq!(built.row_envelopes.len(), 1);
+    assert_eq!(built.row_envelopes[0].id, in_sent.id);
+    // The Inbox-only thread and the unfetched one are counted, not shown.
+    assert_eq!(
+        built.dropped,
+        vec![threads[1].id.clone(), missing.id.clone()]
+    );
 }

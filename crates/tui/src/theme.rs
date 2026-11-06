@@ -86,6 +86,14 @@ const LIGHT_FILLS: [Color; 8] = [
 ];
 const LIGHT_INK: Color = Color::Rgb(0xff, 0xff, 0xff);
 
+// Built once: every `App` builds a theme, and choosing eight distinct
+// 256-colour picks searches the whole colour cube, which made the palette
+// most of the cost of `App::new` in debug builds.
+static DARK_ACCOUNTS: std::sync::LazyLock<AccountPalette> =
+    std::sync::LazyLock::new(|| AccountPalette::new(DARK_FILLS, DARK_INK));
+static LIGHT_ACCOUNTS: std::sync::LazyLock<AccountPalette> =
+    std::sync::LazyLock::new(|| AccountPalette::new(LIGHT_FILLS, LIGHT_INK));
+
 impl AccountPalette {
     pub fn new(fills: [Color; 8], ink: Color) -> Self {
         Self {
@@ -110,6 +118,7 @@ impl AccountPalette {
     }
 
     pub fn fill(&self, color: AccountColor) -> Color {
+        // A slot this build doesn't know (`Unknown`) falls back to slate, the last one.
         let slot = AccountColor::ALL
             .iter()
             .position(|candidate| *candidate == color)
@@ -208,7 +217,7 @@ impl Theme {
             signature_fg: Color::DarkGray,
             line_number_fg: Color::Rgb(80, 80, 80),
             link_fg: Color::Rgb(96, 165, 250), // blue, underlined in render
-            account: AccountPalette::new(DARK_FILLS, DARK_INK),
+            account: *DARK_ACCOUNTS,
         }
     }
 
@@ -236,7 +245,7 @@ impl Theme {
             signature_fg: Color::DarkGray,
             line_number_fg: Color::DarkGray,
             link_fg: Color::Cyan,
-            account: AccountPalette::new(DARK_FILLS, DARK_INK),
+            account: *DARK_ACCOUNTS,
         }
     }
 
@@ -270,7 +279,7 @@ impl Theme {
             signature_fg: Color::Rgb(153, 166, 181),
             line_number_fg: Color::Rgb(114, 129, 144),
             link_fg: Color::Rgb(126, 190, 255),
-            account: AccountPalette::new(DARK_FILLS, DARK_INK),
+            account: *DARK_ACCOUNTS,
         }
     }
 
@@ -298,7 +307,7 @@ impl Theme {
             signature_fg: Color::Gray,
             line_number_fg: Color::Gray,
             link_fg: Color::Blue,
-            account: AccountPalette::new(LIGHT_FILLS, LIGHT_INK),
+            account: *LIGHT_ACCOUNTS,
         }
     }
 
@@ -326,7 +335,7 @@ impl Theme {
             signature_fg: Color::Rgb(127, 132, 156),
             line_number_fg: Color::Rgb(88, 91, 112),
             link_fg: Color::Rgb(137, 180, 250),
-            account: AccountPalette::new(DARK_FILLS, DARK_INK),
+            account: *DARK_ACCOUNTS,
         }
     }
 

@@ -51,6 +51,9 @@ pub(super) enum MailboxLensKind {
     #[default]
     Inbox,
     AllMail,
+    /// The Starred mailbox by the starred flag. Used when no account has a
+    /// Starred label to name.
+    Starred,
     Label,
     Category,
     SavedSearch,

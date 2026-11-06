@@ -50,9 +50,40 @@ pub struct TerminalImageSupport {
     protocol_type: ProtocolType,
 }
 
+/// Whether ratatui-image's capability query timed out with nobody
+/// answering. It then falls back to halfblocks with no capabilities, but its
+/// reader thread is still blocked on stdin, and the first key the person
+/// presses goes to it instead of the TUI. Inside tmux the query goes
+/// through passthrough, which tmux drops when `allow-passthrough` is off
+/// (its default) or the pane isn't visible, so there it is never answered.
+fn query_went_unanswered(
+    elapsed: std::time::Duration,
+    timeout: std::time::Duration,
+    no_capabilities: bool,
+) -> bool {
+    no_capabilities && elapsed >= timeout
+}
+
+/// Ask for a device status report outside any passthrough. tmux and every
+/// terminal answer it, and the answer is the one the blocked reader waits
+/// for: it reads it and stops, so no key is lost.
+fn release_unanswered_query() {
+    use std::io::Write as _;
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(b"\x1b[5n");
+    let _ = stdout.flush();
+}
+
 impl TerminalImageSupport {
     pub fn detect() -> Self {
-        let picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
+        let options = ratatui_image::picker::cap_parser::QueryStdioOptions::default();
+        let timeout = options.timeout;
+        let started = std::time::Instant::now();
+        let picker =
+            Picker::from_query_stdio_with_options(options).unwrap_or_else(|_| Picker::halfblocks());
+        if query_went_unanswered(started.elapsed(), timeout, picker.capabilities().is_empty()) {
+            release_unanswered_query();
+        }
         let protocol_type = picker.protocol_type();
         Self {
             picker,
@@ -244,4 +275,32 @@ fn decode_image(path: &PathBuf) -> Result<DynamicImage, MxrError> {
     reader
         .decode()
         .map_err(|error| MxrError::Ipc(error.to_string()))
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::query_went_unanswered;
+    use std::time::Duration;
+
+    #[test]
+    fn only_a_timed_out_query_with_nothing_learnt_left_a_reader_behind() {
+        let timeout = Duration::from_millis(2000);
+        assert!(query_went_unanswered(
+            Duration::from_millis(2001),
+            timeout,
+            true
+        ));
+        // Answered quickly, even with nothing useful: the reader finished.
+        assert!(!query_went_unanswered(
+            Duration::from_millis(40),
+            timeout,
+            true
+        ));
+        // Capabilities came back: the terminal answered.
+        assert!(!query_went_unanswered(
+            Duration::from_millis(2001),
+            timeout,
+            false
+        ));
+    }
 }

@@ -72,7 +72,20 @@ async fn apply_llm_change_to_running_daemon() {
         return;
     };
     match client.request(Request::ReloadLlmConfig).await {
-        Ok(Response::Ok { .. }) => println!("Applied to the running daemon."),
+        Ok(Response::Ok { .. }) => {
+            println!("Applied to the running daemon.");
+            // A hand-edited `[llm.fallback]` mxr can't use is left out
+            // rather than holding back the change; say so while someone is
+            // looking.
+            if let Ok(Response::Ok {
+                data: mxr_protocol::ResponseData::LlmStatus { snapshot },
+            }) = client.request(Request::GetLlmStatus).await
+            {
+                if let Some(error) = snapshot.fallback_error {
+                    println!("[llm.fallback] is not used: {error}");
+                }
+            }
+        }
         Ok(Response::Error { message, .. }) => println!(
             "Saved, but the running daemon did not apply it ({message}). Restart the daemon to apply: mxr restart"
         ),
@@ -123,6 +136,11 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "llm.allow_cloud_relationship_data" => {
             Ok(config.llm.allow_cloud_relationship_data.to_string())
         }
+        "llm.fallback.model" => Ok(config
+            .llm
+            .fallback
+            .as_ref()
+            .map_or_else(|| "(no fallback)".into(), |fallback| fallback.model.clone())),
         // snooze
         "snooze.morning_hour" => Ok(config.snooze.morning_hour.to_string()),
         "snooze.evening_hour" => Ok(config.snooze.evening_hour.to_string()),
@@ -137,7 +155,7 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         // appearance
         "appearance.theme" => Ok(config.appearance.theme.clone()),
         key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
-        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.compose.model, llm.models, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
+        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.compose.model, llm.models, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data, llm.fallback.model\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
     }
 }
 
@@ -233,6 +251,16 @@ fn set_config_value(
         }
         "llm.allow_cloud_relationship_data" => {
             config.llm.allow_cloud_relationship_data = parse_bool(value)?;
+        }
+        // An empty value turns the fallback off.
+        "llm.fallback.model" => {
+            if value.trim().is_empty() {
+                config.llm.fallback = None;
+            } else {
+                let fallback = config.llm.fallback.get_or_insert_with(Default::default);
+                fallback.model = value.trim().to_string();
+                crate::state::llm_fallback(&config.llm).map_err(|error| anyhow::anyhow!(error))?;
+            }
         }
         // snooze
         "snooze.morning_hour" => {
@@ -349,6 +377,29 @@ mod tests {
         assert_eq!(config.llm.context_window, 80_000);
         assert_eq!(config.llm.request_timeout_secs, 30);
         assert!(config.llm.allow_cloud_relationship_data);
+    }
+
+    #[test]
+    fn fallback_model_is_checked_and_an_empty_value_turns_it_off() {
+        let mut config = mxr_config::MxrConfig::default();
+        assert_eq!(
+            get_config_value(&config, "llm.fallback.model").unwrap(),
+            "(no fallback)"
+        );
+        set_config_value(&mut config, "llm.fallback.model", " gpt-6-luna ").unwrap();
+        assert_eq!(
+            config.llm.fallback.as_ref().map(|f| f.model.as_str()),
+            Some("gpt-6-luna")
+        );
+        let error = set_config_value(&mut config, "llm.fallback.model", "gemma4:latest")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("`gemma4:latest` is not a hosted model mxr can route"),
+            "{error}"
+        );
+        set_config_value(&mut config, "llm.fallback.model", "").unwrap();
+        assert!(config.llm.fallback.is_none());
     }
 
     #[test]

@@ -388,6 +388,16 @@ pub(crate) async fn reconcile_account(
     state: &AppState,
     account: &AccountId,
 ) -> Result<(), HandlerError> {
+    reconcile_account_at(state, account, chrono::Utc::now()).await
+}
+
+/// [`reconcile_account`] as of `now`, for the classifier eval's pinned clock.
+#[cfg(test)]
+pub(crate) async fn reconcile_account_at(
+    state: &AppState,
+    account: &AccountId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), HandlerError> {
     let mut after: Option<String> = None;
     loop {
         let threads = state
@@ -398,13 +408,13 @@ pub(crate) async fn reconcile_account(
             break;
         };
         after = Some(last.as_str());
-        materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
+        materialize_threads_at(state, account, &threads, || async { Ok(()) }, now).await?;
         tokio::task::yield_now().await;
     }
     // A thread page can contain more than 100 messages. Finish its durable
     // projection pages through the same bounded seam as the background worker.
     let mut after = None;
-    while let Some(last) = reconcile_dirty_page(state, account, after.as_deref()).await? {
+    while let Some(last) = reconcile_dirty_page_at(state, account, after.as_deref(), now).await? {
         after = Some(last);
     }
     Ok(())
@@ -526,16 +536,23 @@ pub(super) async fn reconcile_dirty_page(
     account: &AccountId,
     after: Option<&str>,
 ) -> Result<Option<String>, HandlerError> {
-    let replayed = replay_projections_at(state, account, chrono::Utc::now())
-        .await?
-        .0;
+    reconcile_dirty_page_at(state, account, after, chrono::Utc::now()).await
+}
+
+async fn reconcile_dirty_page_at(
+    state: &AppState,
+    account: &AccountId,
+    after: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Option<String>, HandlerError> {
+    let replayed = replay_projections_at(state, account, now).await?.0;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
         // Yield between bounded projection pages even when no thread is dirty.
         // Keep the cursor so completing an outbox page never rescans the account.
         return Ok((replayed == 100).then(|| after.unwrap_or_default().to_string()));
     };
-    materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
+    materialize_threads_at(state, account, &threads, || async { Ok(()) }, now).await?;
     Ok(Some(last))
 }
 

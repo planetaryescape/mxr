@@ -259,8 +259,13 @@ pub fn app(config: WebServerConfig) -> Router {
         .route("/events", get(events))
         .with_state(state.clone());
 
+    // The UI only points at the document; `openapi_json` serves it.
     let docs_router = Router::new()
-        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::cached_spec()))
+        .merge(
+            SwaggerUi::new("/api/v1/docs")
+                .config(utoipa_swagger_ui::Config::new(["/api/v1/openapi.json"])),
+        )
+        .route("/api/v1/openapi.json", get(openapi_json))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::require_bridge_auth,
@@ -283,6 +288,23 @@ pub fn app(config: WebServerConfig) -> Router {
         ))
         .layer(cors)
         .layer(axum::middleware::from_fn(middleware::security_headers))
+}
+
+/// The OpenAPI document, built on its first request rather than with the
+/// router. Building it takes about a second in a debug build, which every
+/// bridge start paid before serving anything, and so did every bridge test,
+/// each in its own process, whether or not it asked for the document.
+async fn openapi_json() -> Response {
+    if let Some(spec) = openapi::built_spec() {
+        return Json(spec).into_response();
+    }
+    match tokio::task::spawn_blocking(openapi::cached_spec).await {
+        Ok(spec) => Json(spec).into_response(),
+        Err(error) => {
+            tracing::error!(%error, "building the OpenAPI document failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 pub async fn serve(listener: TcpListener, config: WebServerConfig) -> std::io::Result<()> {

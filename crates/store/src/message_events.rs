@@ -1,7 +1,25 @@
-use crate::{decode_id, trace_query};
+use crate::{decode_id, decode_timestamp, trace_query};
+use chrono::{DateTime, Utc};
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::{QueryBuilder, Row, Sqlite};
+use std::collections::HashMap;
 use std::time::Instant;
+
+/// `e` is an event for inbox label `l`. The last observed transition wins,
+/// using event ids to distinguish archive/undo in the same second.
+pub(crate) const EXTERNAL_FILING: &str = "e.event_type IN ('unlabeled', 'archived')
+    AND e.source = 'sync'
+    AND NOT EXISTS (
+        SELECT 1 FROM message_events newer
+        WHERE newer.message_id=e.message_id AND newer.label_id=e.label_id
+          AND newer.id>e.id
+          AND newer.event_type IN ('labeled','unlabeled','archived','unarchived')
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM message_labels ml
+        WHERE ml.message_id=e.message_id AND ml.label_id=l.id
+    )";
 
 impl super::Store {
     /// Append a state-transition event for a message. Callers must have
@@ -82,5 +100,46 @@ impl super::Store {
             });
         }
         Ok(events)
+    }
+
+    /// The messages whose inbox label was last removed by a provider sync and
+    /// that are still out of the inbox.
+    ///
+    /// This is the evidence behind "left the inbox". A local archive or
+    /// return to inbox supersedes the outside signal, even in the same second.
+    pub async fn externally_filed_messages(
+        &self,
+        account_id: Option<&AccountId>,
+        message_ids: &[MessageId],
+    ) -> Result<HashMap<MessageId, DateTime<Utc>>, sqlx::Error> {
+        let started_at = Instant::now();
+        let mut filed = HashMap::new();
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let mut qb = QueryBuilder::<Sqlite>::new(
+                r#"SELECT e.message_id, MAX(e.occurred_at) AS filed_at
+                     FROM message_events e
+                     JOIN labels l ON l.id = e.label_id
+                    WHERE ("#,
+            );
+            qb.push_bind(account_id.map(AccountId::as_str));
+            qb.push(" IS NULL OR e.account_id = ");
+            qb.push_bind(account_id.map(AccountId::as_str));
+            qb.push(") AND UPPER(l.provider_id) = 'INBOX' AND ");
+            qb.push(EXTERNAL_FILING);
+            qb.push(" AND e.message_id IN (");
+            let mut ids = qb.separated(", ");
+            for id in chunk {
+                ids.push_bind(id.as_str().clone());
+            }
+            qb.push(") GROUP BY e.message_id");
+            for row in qb.build().fetch_all(self.reader()).await? {
+                filed.insert(
+                    decode_id(&row.get::<String, _>(0))?,
+                    decode_timestamp(row.try_get("filed_at")?)?,
+                );
+            }
+        }
+        trace_query("message_events.externally_filed", started_at, filed.len());
+        Ok(filed)
     }
 }

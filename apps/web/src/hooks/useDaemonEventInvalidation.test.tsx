@@ -125,6 +125,13 @@ describe("useDaemonEventInvalidation", () => {
     expect(invalidatedKeys()).toContain(JSON.stringify(["shell"]));
   });
 
+  test("SyncCompleted refreshes the To do runway and catchup view", () => {
+    const { emit, invalidates } = setup();
+    emit({ type: "SyncCompleted", account_id: "acct-1", messages_synced: 1 });
+    expect(invalidates(["todos", "runway", "all"])).toBe(true);
+    expect(invalidates(["todos", "catchup", "all"])).toBe(true);
+  });
+
   test("ReminderTriggered refreshes the reply queue and mailbox", () => {
     const { emit, invalidatedKeys } = setup();
     emit({ type: "ReminderTriggered", sent_message_id: "msg-1" });
@@ -142,6 +149,16 @@ describe("useDaemonEventInvalidation", () => {
     const keys = invalidatedKeys();
     expect(keys).toContain(JSON.stringify(["reply-queue"]));
     expect(keys).toContain(JSON.stringify(["mailbox"]));
+  });
+
+  test("SyncCompleted refreshes the starred lens, which is listed by its flag", () => {
+    const { emit, invalidates } = setup();
+    const starredLens = ["mailbox", { lens_kind: "starred", view: "threads", limit: 150 }];
+    expect(invalidates(starredLens)).toBe(false);
+
+    emit({ type: "SyncCompleted", account_id: "acct-1", messages_synced: 2 });
+
+    expect(invalidates(starredLens)).toBe(true);
   });
 
   test("ModesChanged (a move in any client) refreshes every mode, Now's line and Inbox's chips", () => {
@@ -165,6 +182,20 @@ describe("useDaemonEventInvalidation", () => {
     emit({ type: "AccountAddressesChanged", account_id: "acct-1" });
 
     expect(invalidatedKeys()).toContain(JSON.stringify(["analytics"]));
+  });
+
+  test("ContactsRefreshed refetches analytics and nothing else", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "ContactsRefreshed" });
+
+    expect(invalidatedKeys()).toEqual([JSON.stringify(["analytics"])]);
+  });
+
+  test("an event this build does not know changes nothing and does not throw", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "SomeEventAddedLater", account_id: "acct-1" });
+
+    expect(invalidatedKeys()).toEqual([]);
   });
 
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {

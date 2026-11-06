@@ -37,6 +37,7 @@ pub struct MxrConfig {
     pub records: RecordsConfig,
     pub updates: UpdatesConfig,
     pub reading: ReadingConfig,
+    pub safety: SafetyConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -156,6 +157,45 @@ pub struct ReadingConfig {
     /// kept in the secrets file, never here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub marginalia_url: Option<String>,
+}
+
+/// Pre-send safety tuning (`[safety]`). Mirrors `mxr_safety::SafetyConfig`;
+/// the daemon converts it when it runs the send-path checks. This crate
+/// cannot name `mxr-safety`, so the defaults here are kept equal to the
+/// crate's by a daemon test.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SafetyConfig {
+    pub recipients: SafetyRecipientConfig,
+    pub tone: SafetyToneConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SafetyRecipientConfig {
+    /// Domains treated as internal. An internal marker in the body, such as
+    /// `INTERNAL`, paired with a recipient outside this list is a Blocker.
+    pub internal_domains: Vec<String>,
+    /// Any recipient at one of these domains is a Blocker.
+    pub sensitive_domains: Vec<String>,
+    /// Warn when a recipient's domain has no prior history with you.
+    pub warn_on_first_time_external: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SafetyToneConfig {
+    /// How far the draft's formality must sit from the recipient's baseline
+    /// before a tone warning fires. 0.0 warns on every send, 1.0 never.
+    pub formality_delta_threshold: f64,
+}
+
+impl Default for SafetyToneConfig {
+    fn default() -> Self {
+        Self {
+            formality_delta_threshold: 0.4,
+        }
+    }
 }
 
 /// Updates' digest (blueprint 22, phase 4).
@@ -387,6 +427,10 @@ pub struct LlmConfig {
     /// One persistent default for new drafts. When unset, legacy feature
     /// overrides continue to apply and otherwise drafting inherits `[llm]`.
     pub compose: Option<LlmComposeConfig>,
+    /// A hosted model to use while `base_url` is out. Off unless the
+    /// `[llm.fallback]` table is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<LlmFallbackConfig>,
     /// Optional feature-specific provider overrides. Each override inherits
     /// unspecified fields from this base `[llm]` section.
     pub overrides: LlmOverrides,
@@ -406,7 +450,37 @@ impl Default for LlmConfig {
             gist_concurrency: 1,
             models: DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec(),
             compose: None,
+            fallback: None,
             overrides: LlmOverrides::default(),
+        }
+    }
+}
+
+/// `[llm.fallback]`: the hosted model requests go to while the model on
+/// `base_url` (or a feature override's own endpoint) is out, after one
+/// failed attempt, until it answers again. It applies only to models
+/// `base_url` serves; a model mxr already routes (`claude-*`, `gpt-*`) has
+/// its own fallback through OpenRouter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmFallbackConfig {
+    /// A model id mxr routes to a hosted provider with a stored key, e.g.
+    /// `gpt-6-luna` (OpenAI, then OpenRouter).
+    pub model: String,
+    /// The fallback model's context window. Prompts are built to fit the
+    /// smaller of this and the endpoint's. Defaults to the endpoint's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+}
+
+/// The fallback model when `[llm.fallback]` names none.
+pub const DEFAULT_LLM_FALLBACK_MODEL: &str = "gpt-6-luna";
+
+impl Default for LlmFallbackConfig {
+    fn default() -> Self {
+        Self {
+            model: DEFAULT_LLM_FALLBACK_MODEL.to_string(),
+            context_window: None,
         }
     }
 }
@@ -436,13 +510,11 @@ pub struct LlmOverrides {
     pub draft_assist: Option<LlmOverrideConfig>,
     pub draft_new: Option<LlmOverrideConfig>,
     pub draft_refine: Option<LlmOverrideConfig>,
-    pub voice_match: Option<LlmOverrideConfig>,
     pub humanize_rewrite: Option<LlmOverrideConfig>,
     pub answer_coverage: Option<LlmOverrideConfig>,
     pub archive_ask: Option<LlmOverrideConfig>,
     pub decision_log: Option<LlmOverrideConfig>,
     pub briefing: Option<LlmOverrideConfig>,
-    pub expert: Option<LlmOverrideConfig>,
     pub delivery_extraction: Option<LlmOverrideConfig>,
     pub assistant: Option<LlmOverrideConfig>,
 }
@@ -759,6 +831,10 @@ pub enum SyncProviderConfig {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate. When set, only that
+        /// certificate is accepted, even self-signed (for local bridges).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.

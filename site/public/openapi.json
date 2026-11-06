@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.183"
+    "version": "0.6.225"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -5652,6 +5652,38 @@
         }
       }
     },
+    "/api/v1/mail/rows/seen": {
+      "post": {
+        "tags": [],
+        "summary": "Mark the opened To do or Updates row revision seen, without completing it",
+        "operationId": "mail_row_seen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowSeenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ack",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/scheduled-sends": {
       "get": {
         "tags": [],
@@ -8130,7 +8162,8 @@
           "blue",
           "vermilion",
           "purple",
-          "slate"
+          "slate",
+          "unknown"
         ]
       },
       "AccountConfigData": {
@@ -8366,6 +8399,10 @@
               }
             ]
           },
+          "saved": {
+            "type": "boolean",
+            "description": "True when the config change was written to disk even though `ok` is\nfalse, because a later phase (runtime reload, cached mail) failed. The\nchange is saved but not fully applied."
+          },
           "send": {
             "oneOf": [
               {
@@ -8388,6 +8425,13 @@
                 "type": "null"
               }
             ]
+          },
+          "tls_cert_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 of the IMAP server's leaf certificate, reported by an account\ntest so it can be copied into `tls_cert_sha256`. Absent for plaintext\naccounts and non-IMAP accounts."
           }
         }
       },
@@ -8698,6 +8742,13 @@
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "tls_cert_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Hex SHA-256 of the server's leaf certificate; see the config reference."
               },
               "type": {
                 "type": "string",
@@ -15023,6 +15074,36 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "A rebuild of the contacts table committed (after the debounce that\nfollows an address change, a sync pass or a manual refresh). Clients\nshowing analytics or contacts refetch them; the counts they hold are\nfrom before the rebuild. Names no account because the rebuild covers\nevery account.",
+            "required": [
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ContactsRefreshed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Any event this build has no variant for, so a client built from here on\nskips a newer daemon's later events instead of failing to decode the\nframe and dropping the connection. The daemon never sends it. Clients\nignore it.",
+            "required": [
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "Unknown"
+                ]
+              }
+            }
           }
         ]
       },
@@ -16082,6 +16163,10 @@
             "format": "int32",
             "description": "`logging.event_retention_days` as the daemon reads the config file now.\n`None` from a daemon that predates the field, or when the file cannot be\nread or parsed.",
             "minimum": 0
+          },
+          "html_helper": {
+            "$ref": "#/components/schemas/HtmlHelperStats",
+            "description": "Counts for the process that parses mail HTML for this daemon. All zero\nfrom a daemon that predates it, and from a report built without a\nrunning daemon."
           },
           "index_exists": {
             "type": "boolean"
@@ -17866,6 +17951,55 @@
           }
         }
       },
+      "HtmlHelperStats": {
+        "type": "object",
+        "description": "How the HTML helper process has fared since its supervisor started. Counts\nonly; no message content.",
+        "properties": {
+          "deaths": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "fallbacks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Requests answered with the plain-text fallback instead of a parse.",
+            "default": 0,
+            "minimum": 0
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "Mail HTML is parsed in a helper process. False means in-process, or no\nrunning daemon to ask.",
+            "default": false
+          },
+          "job_errors": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          },
+          "restarts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Helpers started to replace one that timed out or died.",
+            "default": 0,
+            "minimum": 0
+          },
+          "timeouts": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0,
+            "minimum": 0
+          }
+        }
+      },
       "HtmlImageAsset": {
         "type": "object",
         "required": [
@@ -18050,11 +18184,35 @@
           "started_at"
         ],
         "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MutationCommand",
+                "description": "What a selection job does to its messages, with `message_ids` empty.\nA repeated start under the same job id must name the same action."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "failure_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many failure records the job holds. `ListJobs` leaves `failures`\n(and `undo_ids`) empty and says how many there are here; `GetJob`\ncarries them.",
+            "minimum": 0
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFailureData"
+            },
+            "description": "The first messages that failed, with why (at most 50); the exact total\nis in `progress.failed`."
           },
           "finished_at": {
             "type": [
@@ -18069,6 +18227,14 @@
           "kind": {
             "type": "string"
           },
+          "paused_until": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix milliseconds. Set while the job waits out a provider rate limit;\nit resumes by itself."
+          },
           "progress": {
             "$ref": "#/components/schemas/JobProgressData"
           },
@@ -18082,6 +18248,17 @@
               }
             ]
           },
+          "selection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SelectionData",
+                "description": "The selection a `StartSelectionJob` ran over."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "started_at": {
             "type": "integer",
             "format": "int64"
@@ -18089,11 +18266,33 @@
           "status": {
             "$ref": "#/components/schemas/JobStatusData"
           },
+          "undo_id_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many undo ids the job holds. `ListJobs` carries none; `GetJob`\ncarries them all, since clients undo a job's chunks from that list. A\nselection job (`StartSelectionJob`) has none: it cannot be undone.",
+            "minimum": 0
+          },
           "undo_ids": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "JobFailureData": {
+        "type": "object",
+        "description": "A message a job could not change, with why.",
+        "required": [
+          "message_id",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           }
         }
       },
@@ -18559,6 +18758,47 @@
           }
         }
       },
+      "LlmEndpointStatusData": {
+        "type": "object",
+        "description": "The user's own endpoint (`base_url`) as the first route of a fallback\nchain. It needs no stored key, so it has no provider.",
+        "required": [
+          "base_url",
+          "model",
+          "state",
+          "next"
+        ],
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "next": {
+            "type": "boolean",
+            "description": "A request would go here now."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is out, e.g. `unreachable`. Fixed phrases only."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a cooling or broken endpoint may be tried again."
+          },
+          "state": {
+            "$ref": "#/components/schemas/LlmRouteStateData",
+            "description": "Never `no_key`."
+          }
+        }
+      },
       "LlmFailureKindData": {
         "type": "string",
         "enum": [
@@ -18601,6 +18841,31 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "endpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LlmEndpointStatusData",
+                "description": "`base_url`'s standing when `[llm.fallback]` stands behind it. Absent\nwithout a fallback."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fallback": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmRouteStatusData"
+            },
+            "description": "The fallback model's routes, tried in order while `base_url` is out.\nEmpty without a fallback or when `fallback_withheld` says why."
+          },
+          "fallback_withheld": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this feature keeps to `base_url` although a fallback is\nconfigured: its data may not go to a cloud model."
           },
           "feature": {
             "type": "string",
@@ -18895,17 +19160,6 @@
             ],
             "default": null
           },
-          "expert": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LlmOverrideData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
           "humanize_rewrite": {
             "oneOf": [
               {
@@ -18929,17 +19183,6 @@
             "default": null
           },
           "summarize": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/LlmOverrideData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "voice_match": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/LlmOverrideData"
@@ -19038,6 +19281,14 @@
           "api_key_present": {
             "type": "boolean"
           },
+          "background_paused_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the pause on background model calls after repeated endpoint\nfailures ends; the first background call after it checks the endpoint\nbefore sending mail. Absent while they run. Features on a routed model\nor with `[llm.fallback]` are never paused; their routes show their\nown health."
+          },
           "base_url": {
             "type": [
               "string",
@@ -19054,6 +19305,20 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "fallback_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the configured fallback isn't used, e.g. a model mxr can't route."
+          },
+          "fallback_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hosted model `[llm.fallback]` names, used while `base_url` is\nout. Absent when no fallback is configured."
           },
           "features": {
             "type": "array",
@@ -19821,6 +20086,17 @@
           "closeness": {
             "$ref": "#/components/schemas/ClosenessData"
           },
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessagesRowDraftData",
+                "description": "Your unsent reply on one of the topics, the latest edited when\nseveral have one. Clients show it in place of the preview."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "`person:<email>` or `group:<thread_id>`: what `GetPerson` takes."
@@ -19912,6 +20188,38 @@
           "your_turn": {
             "type": "boolean",
             "description": "A topic needs attention: an unanswered request or due explicit return."
+          }
+        }
+      },
+      "MessagesRowDraftData": {
+        "type": "object",
+        "description": "Your unsent reply in one of a row's conversations: the line clients show\nas \"Draft: ...\" in place of the preview, and what opening the row resumes.",
+        "required": [
+          "draft_id",
+          "thread_id",
+          "text",
+          "reply_all",
+          "updated_at"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "reply_all": {
+            "type": "boolean",
+            "description": "The reply goes to everyone on the conversation."
+          },
+          "text": {
+            "type": "string",
+            "description": "The start of the reply's text, on one line."
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId",
+            "description": "The conversation the reply answers: one of the row's topics."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -21653,6 +21961,17 @@
           "overdue_score"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the reply is owed from. Absent from older daemons."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expected_days": {
             "type": "number",
             "format": "double",
@@ -22839,6 +23158,14 @@
           },
           "source": {
             "type": "string"
+          },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The source email left the inbox outside mxr; this item stays in Reading."
           },
           "standfirst": {
             "type": [
@@ -27526,6 +27853,10 @@
                   }
                 ]
               },
+              "all_accounts": {
+                "type": "boolean",
+                "description": "With no `account_id`, list every enabled account's senders instead\nof only the default account's. Ignored when `account_id` is set."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -29173,6 +29504,75 @@
               },
               "identity": {
                 "$ref": "#/components/schemas/ArchiveIdentityData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resolve `selection` in the daemon and report what `mutation` would\ncover: an exact count, thread and account counts, a sample of the\nnewest messages, and a single-use token. `mutation.message_ids` must be\nempty. Changes nothing; no message id list is returned.",
+            "required": [
+              "selection",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PreviewSelection"
+                ]
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              "sample_size": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Sample size; the daemon defaults to 20 and caps at 100.",
+                "minimum": 0
+              },
+              "selection": {
+                "$ref": "#/components/schemas/SelectionData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Run `mutation` over exactly the messages a `PreviewSelection` counted,\nas one background job. `job_id` is chosen by the client and makes the\nrequest idempotent: a repeat returns the existing job, so a lost reply\nis recovered with `GetJob`. `mutation.message_ids` must be empty and\n`selection` and `mutation` must equal the preview's. The job keeps no\nundo: it cannot be undone, so the preview is the check.",
+            "required": [
+              "job_id",
+              "preview_token",
+              "selection",
+              "mutation",
+              "cmd"
+            ],
+            "properties": {
+              "client_correlation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "StartSelectionJob"
+                ]
+              },
+              "job_id": {
+                "type": "string"
+              },
+              "mutation": {
+                "$ref": "#/components/schemas/MutationCommand"
+              },
+              "preview_token": {
+                "type": "string"
+              },
+              "selection": {
+                "$ref": "#/components/schemas/SelectionData"
               }
             }
           },
@@ -32697,6 +33097,40 @@
               },
               "seen": {
                 "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Mark only the exact To do or Updates row revision that was opened or\npeeked. Does not read the source email or complete/let go of the row.\nReturns `Ack`; dry runs validate without writing.",
+            "required": [
+              "account_id",
+              "mode",
+              "row_id",
+              "revision",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetModeRowSeen"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/components/schemas/ModeKindData"
+              },
+              "revision": {
+                "type": "string"
+              },
+              "row_id": {
+                "type": "string"
               }
             }
           },
@@ -36645,6 +37079,24 @@
           {
             "type": "object",
             "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SelectionPreview"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/SelectionPreviewData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "result",
               "kind"
             ],
@@ -40115,6 +40567,33 @@
           "starred"
         ]
       },
+      "RowSeenBody": {
+        "type": "object",
+        "description": "The exact row revision the client opened; never a source-email read flag.",
+        "required": [
+          "account_id",
+          "mode",
+          "row_id",
+          "revision"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "row_id": {
+            "type": "string"
+          }
+        }
+      },
       "RuleCategoriesPreviewData": {
         "type": "object",
         "required": [
@@ -40962,6 +41441,152 @@
           "score": {
             "type": "number",
             "format": "float"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "SelectionAccountData": {
+        "type": "object",
+        "description": "How many messages of a selection one account holds.",
+        "required": [
+          "account_id",
+          "account_name",
+          "count"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SelectionData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "query",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "search"
+                ]
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What a bulk action covers. The daemon resolves it lexically, newest first,\nwith the same visibility and trash/spam rules as `Request::Search`."
+      },
+      "SelectionPreviewData": {
+        "type": "object",
+        "description": "What a selection covers right now, and the token that starts a job over\nexactly that set.",
+        "required": [
+          "count",
+          "threads",
+          "accounts",
+          "sample",
+          "sample_size",
+          "capped",
+          "preview_token",
+          "expires_at"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectionAccountData"
+            }
+          },
+          "capped": {
+            "type": "boolean",
+            "description": "Always false: a selection is never cut to a cap. Present so one parser\nreads both this shape and the capped one."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Exact: messages the user can see, still in the store, after the same\nfilters `Request::Search` applies.",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix milliseconds; the token stops working at this time."
+          },
+          "preview_token": {
+            "type": "string",
+            "description": "Single use. `StartSelectionJob` acts on exactly the messages counted\nhere: mail that arrives later is left alone."
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectionSampleData"
+            },
+            "description": "The newest messages, newest first."
+          },
+          "sample_size": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "threads": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "SelectionSampleData": {
+        "type": "object",
+        "description": "One of the newest messages in a selection, for the confirmation table.",
+        "required": [
+          "message_id",
+          "account_id",
+          "thread_id",
+          "from",
+          "subject",
+          "date"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "subject": {
+            "type": "string"
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
@@ -42867,6 +43492,17 @@
           "snippet"
         ],
         "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account the latest message came to. Absent from older daemons."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "has_attachments": {
             "type": "boolean",
             "description": "Any message in the thread carries an attachment."
@@ -43681,12 +44317,27 @@
             "format": "date-time",
             "description": "Your own date; wins over `surface_at`."
           },
+          "seen_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque version to acknowledge with `SetModeRowSeen`."
+          },
           "source_date": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time"
+          },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the source email left the inbox through a provider sync and is\nstill out: \"filed in Gmail\". Never set for an archive mxr made, and\ncleared when the mail comes back."
           },
           "source_message_id": {
             "oneOf": [
@@ -43729,6 +44380,13 @@
           "title": {
             "type": "string",
             "description": "\"Pay council tax\"."
+          },
+          "unread": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "This row revision has not been opened or peeked. Independent of the\nsource email's READ flag. Omitted by older daemons."
           },
           "updated_at": {
             "type": "string",
@@ -44769,6 +45427,13 @@
           "section": {
             "$ref": "#/components/schemas/UpdateSectionData"
           },
+          "seen_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque version to acknowledge with `SetModeRowSeen`."
+          },
           "sender_email": {
             "type": "string"
           },
@@ -44777,6 +45442,14 @@
           },
           "signal": {
             "$ref": "#/components/schemas/UpdateSignalData"
+          },
+          "source_filed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The newest email left the inbox outside mxr; the update is still here.\nAbsent for parcel trackers, which represent a delivery, not one email."
           },
           "source_key": {
             "type": "string"
@@ -44832,6 +45505,13 @@
                 "type": "null"
               }
             ]
+          },
+          "unread": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "This line revision has not been opened or peeked, including trackers.\nIndependent of the source email's READ flag. Omitted by older daemons."
           },
           "why": {
             "type": "string",

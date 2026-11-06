@@ -1,7 +1,7 @@
 use super::account_config::{
     account_operation_result, account_step, authorize_account_config, disable_account_config,
     list_account_configs, list_runtime_accounts, remove_account_config, repair_account_config,
-    set_default_account, test_account_config, upsert_account_config,
+    saved_but_not_applied, set_default_account, test_account_config, upsert_account_config,
 };
 use super::HandlerResult;
 use crate::state::AppState;
@@ -39,8 +39,8 @@ pub(super) async fn upsert_account(
 
 pub(super) async fn set_default_account_key(state: &Arc<AppState>, key: &str) -> HandlerResult {
     set_default_account(state, key).await?;
-    Ok(ResponseData::AccountOperation {
-        result: account_operation_result(
+    let result = match state.reload_accounts_from_disk().await {
+        Ok(()) => account_operation_result(
             true,
             format!("Default account set to '{key}'."),
             Some(account_step(
@@ -51,7 +51,12 @@ pub(super) async fn set_default_account_key(state: &Arc<AppState>, key: &str) ->
             None,
             None,
         ),
-    })
+        Err(error) => saved_but_not_applied(
+            format!("Default account set to '{key}' in config but failed to reload runtime."),
+            account_step(false, error),
+        ),
+    };
+    Ok(ResponseData::AccountOperation { result })
 }
 
 pub(super) async fn test_account(
@@ -348,6 +353,7 @@ mod tests {
                                     auth_required: true,
                                     use_tls: true,
                                     max_connections: 4,
+                                    tls_cert_sha256: None,
                                 }),
                                 send: None,
                                 is_default: false,

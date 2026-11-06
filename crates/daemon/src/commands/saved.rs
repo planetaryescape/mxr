@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, SavedAction};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -64,7 +65,9 @@ pub async fn run(
                         }
                     }
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -83,7 +86,9 @@ pub async fn run(
                 } => {
                     println!("Created saved search: {} -> {}", search.name, search.query);
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -97,7 +102,9 @@ pub async fn run(
                 } => {
                     println!("Deleted saved search: {name}");
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -160,7 +167,9 @@ pub async fn run(
                         }
                     }
                 }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
+                Response::Error { message, kind, .. } => {
+                    return Err(daemon_response_error(message, kind))
+                }
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

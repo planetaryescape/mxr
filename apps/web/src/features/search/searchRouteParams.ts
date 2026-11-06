@@ -9,7 +9,8 @@ export type Verdict = "ACTION" | "FYI" | "ROUTINE";
 export type SearchUpdate = Partial<{
   q: string;
   mode: SearchMode;
-  sort: SearchSort;
+  /** `null` returns to Default, leaving the order to the daemon. */
+  sort: SearchSort | null;
   scope: Scope;
   verdict: Verdict | null;
   groupBy: SearchGroupBy;

@@ -36,6 +36,29 @@ pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<S
         .map(str::to_string)
 }
 
+/// The sidebar's labels when no account is chosen: the default account's
+/// system mailboxes folded across accounts (see `with_unified_system_counts`),
+/// plus every enabled account's user labels, each keeping its account so the
+/// row can carry its chip. `all` is `None` when the all-accounts request
+/// failed; the default account's labels stand.
+pub(crate) fn sidebar_labels_across_accounts(
+    labels: Vec<Label>,
+    all: Option<&[Label]>,
+    counts: &[SystemMailboxCount],
+) -> Vec<Label> {
+    let Some(all) = all else {
+        return labels;
+    };
+    let mut merged = with_unified_system_counts(labels, all, counts);
+    merged.retain(|label| label.kind == LabelKind::System);
+    merged.extend(
+        all.iter()
+            .filter(|label| label.kind != LabelKind::System)
+            .cloned(),
+    );
+    merged
+}
+
 /// Fold every account's system mailboxes into the default account's labels.
 ///
 /// Each system label's unread/total becomes the mailbox's total across
@@ -366,7 +389,7 @@ impl Client {
             }) => mailboxes,
             _ => Vec::new(),
         };
-        Ok(with_unified_system_counts(labels, &all, &counts))
+        Ok(sidebar_labels_across_accounts(labels, Some(&all), &counts))
     }
 
     /// Phase F: paginated thread list. Provides the TUI's read path
@@ -481,6 +504,7 @@ impl Client {
             .request(Request::ListSubscriptions {
                 account_id: None,
                 limit,
+                all_accounts: false,
             })
             .await?;
         match resp {
@@ -541,6 +565,9 @@ fn map_request_error(error: ClientError) -> MxrError {
             "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.".into(),
         ),
         ClientError::Io(source) => MxrError::Ipc(describe_ipc_failure(&source.to_string())),
+        ClientError::DaemonIncompatible { message } => {
+            MxrError::Ipc(describe_ipc_failure(&message))
+        }
         ClientError::Daemon { message, .. } => MxrError::Ipc(message),
         // Intentional deviation: the old `request` loop silently skipped a
         // rogue frame and kept reading; we now surface it as an error. A frame

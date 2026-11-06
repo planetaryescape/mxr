@@ -154,8 +154,23 @@ mod tests {
     #[test]
     fn offline_lease_waits_for_detached_connection_process_exit() {
         use std::process::{Command, Stdio};
+        // Migrating a fresh database takes seconds; under a loaded test run
+        // four children doing it overran the ready deadline. Migrate once
+        // here, in a workspace of its own, and give each child a copy.
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let template_dir = tempfile::tempdir().unwrap();
+        let template = runtime
+            .block_on(crate::Store::new(&template_dir.path().join("mxr.db")))
+            .unwrap();
         for mode in ["pool", "checked", "detach", "leak"] {
             let root = tempfile::tempdir().unwrap();
+            runtime
+                .block_on(
+                    sqlx::query("VACUUM INTO ?")
+                        .bind(root.path().join("mxr.db").to_str().unwrap())
+                        .execute(template.writer()),
+                )
+                .unwrap();
             let alias_parent = tempfile::tempdir().unwrap();
             #[cfg(unix)]
             let alias = {

@@ -1,4 +1,5 @@
 use crate::cli::{HumanizeAction, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
@@ -71,7 +72,7 @@ fn print_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 }
             }
         },
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())

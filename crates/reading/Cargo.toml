@@ -12,6 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
+mxr-html-worker = { workspace = true }
 mxr-reader = { workspace = true }
 # is_loopback_endpoint: the article fetch refuses what an LLM call would.
 mxr-llm = { workspace = true }

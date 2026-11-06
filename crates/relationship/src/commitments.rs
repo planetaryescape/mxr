@@ -68,7 +68,7 @@ pub async fn extract_commitments(
         return Ok(0);
     }
     let feature_llm = llm.for_feature(LlmFeature::Commitments);
-    let attempt_key = format!("{}:{}", account_id.as_str(), email.to_ascii_lowercase());
+    let attempt_key = crate::summary::attempt_key(account_id, email);
     let fingerprint = samples_fingerprint(&selected);
     if !force && !feature_llm.background_attempt_due(&attempt_key, &fingerprint) {
         return Ok(0);
@@ -120,11 +120,16 @@ pub async fn extract_commitments(
         .await
     {
         Ok(response) => response,
-        // Open breaker already warned once; skip instead of a WARN per contact.
-        Err(LlmError::Disabled | LlmError::CircuitOpen { .. }) => return Ok(0),
+        Err(LlmError::Disabled) => return Ok(0),
         Err(error @ LlmError::PrivacyBlocked(_)) => return Err(error.into()),
+        // Put off until the endpoint is back. The open breaker already
+        // warned once; skip instead of a WARN per contact.
+        Err(error @ LlmError::CircuitOpen { .. }) => {
+            feature_llm.record_background_failure(&attempt_key, &fingerprint, &error);
+            return Ok(0);
+        }
         Err(error) => {
-            feature_llm.record_background_attempt(&attempt_key, &fingerprint, false);
+            feature_llm.record_background_failure(&attempt_key, &fingerprint, &error);
             return Err(error.into());
         }
     };
@@ -300,6 +305,9 @@ mod tests {
         responses: Mutex<Vec<String>>,
     }
 
+    /// A scripted response that fails as an endpoint that is down.
+    const UNREACHABLE: &str = "<unreachable>";
+
     #[async_trait::async_trait]
     impl LlmProvider for SequenceLlm {
         async fn complete(
@@ -307,6 +315,9 @@ mod tests {
             _req: CompletionRequest,
         ) -> std::result::Result<CompletionResponse, LlmError> {
             let content = self.responses.lock().expect("responses lock").remove(0);
+            if content == UNREACHABLE {
+                return Err(LlmError::Unreachable("connection refused".into()));
+            }
             Ok(CompletionResponse {
                 content,
                 model: "test-llm".to_string(),
@@ -541,6 +552,33 @@ mod tests {
         extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
             .await
             .expect("forced");
+    }
+
+    #[tokio::test]
+    async fn background_extraction_is_not_charged_for_an_outage() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        insert_message(&store, &account, &ThreadId::new(), "first", 0).await;
+        let llm = sequence_llm(&[UNREACHABLE, UNREACHABLE, r#"{"commitments":[]}"#]);
+
+        // Each call reaches the model: an outage starts no backoff. With the
+        // old charging, the second call was skipped and returned Ok(0).
+        for _ in 0..2 {
+            extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+                .await
+                .expect_err("endpoint down");
+        }
+        assert_eq!(
+            llm.take_deferred_background(LlmFeature::Commitments),
+            [crate::summary::attempt_key(
+                &account.id,
+                "alice@example.com"
+            )]
+        );
+        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect("endpoint back: extracted");
     }
 
     async fn extracted_due(body: &str, written: DateTime<Utc>, due: &str) -> Option<DateTime<Utc>> {

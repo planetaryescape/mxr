@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import { runwayFixture, todoFixture } from "./testing";
 import {
+  arrivedDay,
   linkLine,
   dueByToday,
-  fromDay,
   openCount,
   orderedFields,
   primaryAction,
@@ -69,23 +69,30 @@ describe("a To do row's words", () => {
   const now = new Date(2026, 9, 14, 15, 0); // Wed 14 Oct 2026, local
 
   test("says the day an email arrived, in the fewest words", () => {
-    expect(fromDay(new Date(2026, 9, 14, 8), now)).toBe("today");
-    expect(fromDay(new Date(2026, 9, 13, 23), now)).toBe("yesterday");
-    expect(fromDay(new Date(2026, 9, 12, 9), now)).toBe(
+    expect(arrivedDay(new Date(2026, 9, 14, 8), now)).toBe("today");
+    expect(arrivedDay(new Date(2026, 9, 13, 23), now)).toBe("yesterday");
+    expect(arrivedDay(new Date(2026, 9, 12, 9), now)).toBe(
       new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(new Date(2026, 9, 12)),
     );
-    expect(fromDay(new Date(2026, 8, 1, 9), now)).toBe(
+    expect(arrivedDay(new Date(2026, 8, 1, 9), now)).toBe(
       new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(
         new Date(2026, 8, 1),
       ),
     );
+    expect(arrivedDay(new Date(2025, 8, 1, 9), now)).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(2025, 8, 1)),
+    );
   });
 
-  test("the secondary line is who and from when; a promise is from you", () => {
+  test("the secondary line is who, then when the email arrived; a promise is from you", () => {
     const arrived = new Date(2026, 9, 12, 9).toISOString();
     expect(
       rowSecondary(todoFixture({ source_date: arrived, counterparty: "Frank Billing" }), now),
-    ).toMatch(/^Frank Billing · from \w+/);
+    ).toMatch(/^Frank Billing · arrived \w+/);
     expect(
       rowSecondary(
         todoFixture({ kind: "promise", counterparty: "Quinn Dev", source_date: arrived }),
@@ -95,8 +102,31 @@ describe("a To do row's words", () => {
     expect(rowSecondary(todoFixture({ counterparty: null, source_date: null }), now)).toBeNull();
   });
 
-  test("a pending later email or a looks-done sign takes the line, since that is what to act on", () => {
+  test("an email filed elsewhere says so without hiding when it arrived", () => {
+    const arrived = new Date(2026, 9, 12, 9).toISOString();
+    const filed = new Date(2026, 9, 13, 9).toISOString();
+    expect(
+      rowSecondary(
+        todoFixture({
+          source_date: arrived,
+          source_filed_at: filed,
+          counterparty: "Klarna",
+        }),
+        now,
+      ),
+    ).toBe(
+      `Klarna · arrived ${arrivedDay(new Date(arrived), now)} · left the inbox ${arrivedDay(
+        new Date(filed),
+        now,
+      )}`,
+    );
+  });
+
+  test("an offer or a looks-done sign joins the arrival instead of taking its place", () => {
+    const arrived = new Date(2026, 9, 12, 9).toISOString();
+    const day = arrivedDay(new Date(arrived), now);
     const pending = todoFixture({
+      source_date: arrived,
       resolution: {
         id: "r",
         message_id: "m",
@@ -111,10 +141,18 @@ describe("a To do row's words", () => {
         status: "pending",
       },
     });
-    expect(rowSecondary(pending, now)).toBe("A later email may change this");
+    expect(rowSecondary(pending, now)).toBe(
+      `Camden Council · arrived ${day} · a later email may change this`,
+    );
     expect(
-      rowSecondary(todoFixture({ looks_done: { reason: "you replied", message_id: "m" } }), now),
-    ).toBe("Looks done: you replied");
+      rowSecondary(
+        todoFixture({
+          source_date: arrived,
+          looks_done: { reason: "you replied", message_id: "m" },
+        }),
+        now,
+      ),
+    ).toBe(`Camden Council · arrived ${day} · looks done: you replied`);
   });
 
   test("only a date due or to act by today or earlier takes the cue colour", () => {

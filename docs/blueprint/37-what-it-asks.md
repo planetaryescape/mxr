@@ -280,6 +280,8 @@ remain the next separate rung; R2 does not raise their measured baseline.
 
 ### R2c: Every to-do is something an email asks you, with whose move it is
 
+**Status:** shipped in v0.6.163 ([#702](https://github.com/planetaryescape/mxr/pull/702)). To do, Your turn, Waiting on and promises read one stored assessment of what each email asks, with the requester and the asking sentence on each row, and the four corrections work in every client. No model is used. The week of counts-only dogfooding on real mail in "Done when" has not run yet.
+
 **Previously:** marketing and credit notes make bills, your requests make your promises, and requests to you make nothing. **Now:** to-dos come from units the owner must act on, with the asking sentence as the reason.
 
 **Promise:** "Every to-do is mine to do, says who asked, and quotes the sentence that asked."

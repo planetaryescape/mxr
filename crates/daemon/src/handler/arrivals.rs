@@ -1118,6 +1118,10 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             } else {
                 title
             };
+            // The check and the insert below are two store calls. Held until
+            // this arm returns, the lock makes an overlapping move of the same
+            // email see the first one's task instead of making a second.
+            let _one_at_a_time = state.acquire_todo_move(message_id).await;
             // A repeat (a retry, a second client) reuses the open to-do, so
             // there is one task per email and nothing new to undo.
             if state

@@ -8,6 +8,8 @@
 use mxr_core::types::{
     Draft, DraftContent, DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetySeverity,
 };
+use mxr_html_worker::{AnyJob, FallbackReason, Job};
+use serde::{Deserialize, Serialize};
 
 const OPEN: &str = "[[?:";
 
@@ -16,16 +18,40 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     // `&#91;&#91;?: …]]`, a marker split by tags or one broken across lines by
     // a renderer is a gap although no serialized part holds the literal
     // `[[?:`. Quoted text and the signature count too, since they are sent.
+    let rendered_markdown = match &draft.content {
+        DraftContent::Markdown { source } => {
+            Some(mxr_outbound::render::render_markdown(source).html)
+        }
+        DraftContent::Html { .. } => None,
+    };
+    let html = match (&draft.content, &rendered_markdown) {
+        (DraftContent::Html { html, .. }, _) => html.as_str(),
+        (_, Some(rendered)) => rendered.as_str(),
+        (DraftContent::Markdown { .. }, None) => "",
+    };
+    // Over the parser budget, or when the HTML helper could not read it (it
+    // timed out, died or would not start), the HTML cannot be read, so the gap
+    // check cannot run. That is a blocker with no override: a gap hidden in
+    // such HTML must not be sent.
+    let views = match html_views(html) {
+        Ok(views) => views,
+        Err(reason) => {
+            return vec![DraftSafetyIssue::new(
+                DraftSafetyIssueCode::UnfilledGap,
+                DraftSafetySeverity::Blocker,
+                unchecked_message(reason),
+            )];
+        }
+    };
     let body_views: Vec<String> = match &draft.content {
         DraftContent::Markdown { source } => {
-            let html = mxr_outbound::render::render_markdown(source).html;
-            vec![source.clone(), visible_text(&html), attribute_text(&html)]
+            vec![source.clone(), views.visible_text, views.attribute_text]
         }
-        DraftContent::Html { html, text } => vec![
-            html.clone(),
+        DraftContent::Html { text, .. } => vec![
+            html.to_string(),
             text.clone().unwrap_or_default(),
-            visible_text(html),
-            attribute_text(html),
+            views.visible_text,
+            views.attribute_text,
         ],
     };
     let mut labels = labels_in(std::slice::from_ref(&draft.subject));
@@ -67,28 +93,61 @@ fn squash(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
-/// Every attribute value of an HTML document with its entities decoded, which
-/// is how an image's `alt` or a link's `title` reaches a recipient. Values are
-/// joined by a mark that is not whitespace, so the whitespace-blind scan never
-/// joins the end of one value to the start of the next.
-fn attribute_text(html: &str) -> String {
-    scraper::Html::parse_document(html)
-        .tree
-        .nodes()
-        .filter_map(|node| node.value().as_element())
-        .flat_map(|element| element.attrs().map(|(_, value)| value))
-        .collect::<Vec<_>>()
-        .join("\u{1}")
+/// What a parse of the draft's HTML shows.
+#[derive(Serialize, Deserialize)]
+struct HtmlViews {
+    /// The text of the document as a reader sees it: entities decoded and tags
+    /// dropped, with no line wrapping (the reader's renderer wraps at 80
+    /// columns, which can split a marker in two).
+    visible_text: String,
+    /// Every attribute value with its entities decoded, which is how an
+    /// image's `alt` or a link's `title` reaches a recipient. Values are joined
+    /// by a mark that is not whitespace, so the whitespace-blind scan never
+    /// joins the end of one value to the start of the next.
+    attribute_text: String,
 }
 
-/// The text of an HTML document as a reader sees it: entities decoded and tags
-/// dropped, with no line wrapping (the reader's renderer wraps at 80 columns,
-/// which can split a marker in two).
-fn visible_text(html: &str) -> String {
-    scraper::Html::parse_document(html)
-        .root_element()
-        .text()
-        .collect()
+/// Why not, when the document is over the parser budget or the HTML helper
+/// could not read it.
+fn html_views(html: &str) -> Result<HtmlViews, FallbackReason> {
+    HTML_VIEWS
+        .try_call(html, &())
+        .and_then(|views| views.ok_or(FallbackReason::Oversize))
+}
+
+/// No helper would start: the HTML is fine as far as anyone knows, so the fix
+/// is to wait, not to simplify it.
+fn unchecked_message(reason: FallbackReason) -> &'static str {
+    if reason == FallbackReason::Unavailable {
+        "HTML could not be checked for unfilled gaps because mxr's HTML helper process did \
+         not start, so it cannot be sent yet: try again in a few seconds"
+    } else {
+        "HTML is too complex to check for unfilled gaps, so it cannot be sent: simplify it \
+         (fewer tags, attributes or table cells) and try again"
+    }
+}
+
+/// One parse for both views, run in the HTML helper process.
+static HTML_VIEWS: Job<(), Option<HtmlViews>> = Job::new("safety.html_views", |html, ()| {
+    if !mxr_reader::within_budget(html) {
+        return None;
+    }
+    let document = scraper::Html::parse_document(html);
+    Some(HtmlViews {
+        visible_text: document.root_element().text().collect(),
+        attribute_text: document
+            .tree
+            .nodes()
+            .filter_map(|node| node.value().as_element())
+            .flat_map(|element| element.attrs().map(|(_, value)| value))
+            .collect::<Vec<_>>()
+            .join("\u{1}"),
+    })
+});
+
+/// Every parse this crate runs in the HTML helper process.
+pub fn html_jobs() -> Vec<&'static dyn AnyJob> {
+    vec![&HTML_VIEWS]
 }
 
 /// The label of each `[[?: …]]` in `text`, in order. A marker left open ends
@@ -315,5 +374,75 @@ mod tests {
         assert_eq!(check(&draft("s", only_in_html)).len(), 1);
         let clean = DraftContent::html("<p>Hi</p>", Some("Hi".into()));
         assert!(check(&draft("s", clean)).is_empty());
+    }
+
+    #[test]
+    fn a_gap_hidden_among_65_attributes_is_a_non_overridable_blocker() {
+        let attributes: String = (0..65).map(|n| format!(" a{n}")).collect();
+        let html = format!("<p{attributes}>&#91;&#91;?: the date]]</p>");
+        let issues = check(&draft("subject", DraftContent::Html { html, text: None }));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == DraftSafetyIssueCode::UnfilledGap
+                    && issue.severity == mxr_core::types::DraftSafetySeverity::Blocker
+                    && issue.override_token.is_none()),
+            "got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn html_the_helper_could_not_read_blocks_the_send_with_no_override() {
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let content = DraftContent::html("<p>perfectly ordinary</p>", None);
+        let issues = mxr_html_worker::with_supervisor(lost, || check(&draft("s", content)));
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(
+            issues[0].severity,
+            mxr_core::types::DraftSafetySeverity::Blocker
+        );
+        assert!(issues[0].override_token.is_none());
+        // The HTML may be fine; the helper never saw it, so the fix is a retry.
+        assert!(
+            issues[0].message.contains("try again in a few seconds"),
+            "{issues:?}"
+        );
+        assert!(!issues[0].message.contains("simplify"), "{issues:?}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_called_too_complex() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert!(
+                unchecked_message(reason).contains("too complex"),
+                "{reason:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn a_parsed_document_gives_its_visible_and_attribute_text() {
+        let views = html_views("<p title=\"zztitle\">zzvisible &amp; more</p>").expect("views");
+        assert!(views.visible_text.contains("zzvisible & more"));
+        assert!(views.attribute_text.contains("zztitle"));
+    }
+
+    #[test]
+    fn an_over_budget_document_has_no_views_so_the_check_blocks_it() {
+        let html = format!("<img alt=\"zzalt\">{}", "<br>".repeat(200_000));
+        assert_eq!(html_views(&html).err(), Some(FallbackReason::Oversize));
     }
 }

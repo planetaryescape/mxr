@@ -120,7 +120,8 @@ impl App {
                     Some(form.imap_password.clone())
                 },
                 auth_required: form.imap_auth_required,
-                use_tls: true,
+                use_tls: form.imap_use_tls,
+                tls_cert_sha256: form.imap_tls_cert_sha256.clone(),
             }),
             AccountFormMode::SmtpOnly => None,
             AccountFormMode::OutlookPersonal => {
@@ -367,6 +368,7 @@ impl App {
         Some((
             mxr_protocol::AccountOperationResult {
                 ok: false,
+                saved: false,
                 summary: "Account form has problems. Fix the listed fields and try again.".into(),
                 save,
                 auth,
@@ -374,6 +376,7 @@ impl App {
                 send,
                 device_code_url: None,
                 device_code_user_code: None,
+                tls_cert_sha256: None,
             },
             first_invalid.unwrap_or(0),
         ))

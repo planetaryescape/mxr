@@ -1,5 +1,393 @@
 # Changelog
 
+## [0.6.225](https://github.com/planetaryescape/mxr/compare/v0.6.224...v0.6.225) (2026-11-06)
+
+
+### Bug Fixes
+
+* honour IMAP TLS modes and exact certificate pins ([#910](https://github.com/planetaryescape/mxr/issues/910)) ([5f7259c](https://github.com/planetaryescape/mxr/commit/5f7259cfe5771f02b0a74da5463c4b1d2e539157))
+
+## [0.6.224](https://github.com/planetaryescape/mxr/compare/v0.6.223...v0.6.224) (2026-11-06)
+
+
+### Bug Fixes
+
+* preserve event streams and refresh contacts views with protocol 29 ([#907](https://github.com/planetaryescape/mxr/issues/907)) ([bd7774b](https://github.com/planetaryescape/mxr/commit/bd7774ba48befb8dddd4143163948d2e83266d2b))
+
+## [0.6.223](https://github.com/planetaryescape/mxr/compare/v0.6.222...v0.6.223) (2026-11-06)
+
+
+### Bug Fixes
+
+* recovered draft attachments keep their file names ([#898](https://github.com/planetaryescape/mxr/issues/898)) ([577f71c](https://github.com/planetaryescape/mxr/commit/577f71c48d7a84a8c00d671d90abc6ee5d011bdf))
+* the [safety] config section changes the pre-send checks ([#897](https://github.com/planetaryescape/mxr/issues/897)) ([d55bf4f](https://github.com/planetaryescape/mxr/commit/d55bf4f67cafb5cea5a439414c3657ce91c7a28a))
+* write the Outlook token cache through a private temp file ([#896](https://github.com/planetaryescape/mxr/issues/896)) ([4e71bd3](https://github.com/planetaryescape/mxr/commit/4e71bd3f7c1c067b5ad97d98b259f38ae364f03e))
+
+## [0.6.222](https://github.com/planetaryescape/mxr/compare/v0.6.221...v0.6.222) (2026-11-05)
+
+
+### Bug Fixes
+
+* provenance follows the route that answered, and the other LLM review follow-ups ([#903](https://github.com/planetaryescape/mxr/issues/903)) ([78bf619](https://github.com/planetaryescape/mxr/commit/78bf619a5991e548224a01ee51e3f6c0fa84ee06))
+
+## [0.6.221](https://github.com/planetaryescape/mxr/compare/v0.6.220...v0.6.221) (2026-11-05)
+
+
+### Bug Fixes
+
+* OpenAI rules for gpt models on your own endpoint, OpenRouter reasoning off, a visible background pause, and retire dead overrides ([#901](https://github.com/planetaryescape/mxr/issues/901)) ([b75771b](https://github.com/planetaryescape/mxr/commit/b75771b0e51422c3e947c7dc2a839831d1635970))
+
+## [0.6.220](https://github.com/planetaryescape/mxr/compare/v0.6.219...v0.6.220) (2026-11-05)
+
+
+### Bug Fixes
+
+* keep relationship summaries off cloud thread summaries, and bring the LLM docs to parity ([#899](https://github.com/planetaryescape/mxr/issues/899)) ([a3514a4](https://github.com/planetaryescape/mxr/commit/a3514a462021d7deab0c09ae375cc511c25d975f))
+
+
+### Documentation
+
+* close the no-accounts-table draft-sync flake ([#895](https://github.com/planetaryescape/mxr/issues/895)) ([2395135](https://github.com/planetaryescape/mxr/commit/2395135d1b2df74b93f52f4eef44160165101105))
+
+## [0.6.219](https://github.com/planetaryescape/mxr/compare/v0.6.218...v0.6.219) (2026-11-05)
+
+
+### Bug Fixes
+
+* a client that leaves stops its reads, and the store keeps its query statistics ([#893](https://github.com/planetaryescape/mxr/issues/893)) ([2265a7e](https://github.com/planetaryescape/mxr/commit/2265a7edb55c8ff16f6cb2c175f33e73110ea761))
+
+## [0.6.218](https://github.com/planetaryescape/mxr/compare/v0.6.217...v0.6.218) (2026-11-05)
+
+
+### Bug Fixes
+
+* update the Homebrew tap on Linux so a cancelled Mac runner can't skip it ([#891](https://github.com/planetaryescape/mxr/issues/891)) ([6b863d5](https://github.com/planetaryescape/mxr/commit/6b863d5bd175d0b69ce1ba12de711ef0cfe00557))
+
+## [0.6.217](https://github.com/planetaryescape/mxr/compare/v0.6.216...v0.6.217) (2026-11-05)
+
+
+### Bug Fixes
+
+* owed-reply search pages fill and keep paging ([#889](https://github.com/planetaryescape/mxr/issues/889)) ([b5fb598](https://github.com/planetaryescape/mxr/commit/b5fb59871e1bf7ed6b2cdd50ea991c352b4cfdd8))
+* the TUI says the daemon isn't responding when reconnects keep failing ([#888](https://github.com/planetaryescape/mxr/issues/888)) ([e8b3ca4](https://github.com/planetaryescape/mxr/commit/e8b3ca4bdc720f00aec53e51baa4031a724e9603))
+
+## [0.6.216](https://github.com/planetaryescape/mxr/compare/v0.6.215...v0.6.216) (2026-11-05)
+
+
+### Bug Fixes
+
+* a hook that leaves a background process running is not a timeout ([#886](https://github.com/planetaryescape/mxr/issues/886)) ([8b9f485](https://github.com/planetaryescape/mxr/commit/8b9f485ee1dea76e1fdde93d316ed19bbee601a5))
+
+## [0.6.215](https://github.com/planetaryescape/mxr/compare/v0.6.214...v0.6.215) (2026-11-05)
+
+
+### Features
+
+* fall back to a cloud model when the local LLM endpoint is out ([#883](https://github.com/planetaryescape/mxr/issues/883)) ([dcbfdb0](https://github.com/planetaryescape/mxr/commit/dcbfdb0f6f7898a79a9689716fdfe564cf83d40a))
+
+
+### Bug Fixes
+
+* point diagnostics at mxr restart and fix the records and scheduled-send hints ([#884](https://github.com/planetaryescape/mxr/issues/884)) ([b26468b](https://github.com/planetaryescape/mxr/commit/b26468b15049e605b3b6f1f5c764617adaa0ff4d))
+
+## [0.6.214](https://github.com/planetaryescape/mxr/compare/v0.6.213...v0.6.214) (2026-11-05)
+
+
+### Bug Fixes
+
+* count subscription one-offs per account ([#881](https://github.com/planetaryescape/mxr/issues/881)) ([bedea43](https://github.com/planetaryescape/mxr/commit/bedea4367fee975eec48ea505c437b56a541c61f))
+
+
+### Documentation
+
+* note that agent-work trims targets and seeds new pool slots ([#880](https://github.com/planetaryescape/mxr/issues/880)) ([d3fc900](https://github.com/planetaryescape/mxr/commit/d3fc900c31795712dc5ae154f9bc6bd91407bcd6))
+
+## [0.6.213](https://github.com/planetaryescape/mxr/compare/v0.6.212...v0.6.213) (2026-11-05)
+
+
+### Bug Fixes
+
+* web search uses the configured default order and page size ([#875](https://github.com/planetaryescape/mxr/issues/875)) ([789a96f](https://github.com/planetaryescape/mxr/commit/789a96f7061cb96d069d43a06890f99640b670f0))
+
+
+### Documentation
+
+* delete issue entries that are already fixed ([#874](https://github.com/planetaryescape/mxr/issues/874)) ([efeed3e](https://github.com/planetaryescape/mxr/commit/efeed3e54f1b51cf81a4226f03f1bc0c6b5c107c))
+* log the intermittent no-accounts-table failure in a Gmail draft-sync test ([#877](https://github.com/planetaryescape/mxr/issues/877)) ([d0ac7ac](https://github.com/planetaryescape/mxr/commit/d0ac7acfeaf2e99b5efe3c30233901b9fb91b33c))
+
+## [0.6.212](https://github.com/planetaryescape/mxr/compare/v0.6.211...v0.6.212) (2026-11-05)
+
+
+### Features
+
+* act on every search match with --all as one daemon job ([#851](https://github.com/planetaryescape/mxr/issues/851)) ([39e58a2](https://github.com/planetaryescape/mxr/commit/39e58a2a927d4c3833498bdb224e00c1e838f17e))
+
+
+### Bug Fixes
+
+* keep LLM outages from using up background retries ([#873](https://github.com/planetaryescape/mxr/issues/873)) ([ea682b6](https://github.com/planetaryescape/mxr/commit/ea682b67723938603b600a60576e44c0d215fe3b))
+
+## [0.6.211](https://github.com/planetaryescape/mxr/compare/v0.6.210...v0.6.211) (2026-11-05)
+
+
+### Bug Fixes
+
+* page the first generic IMAP sync newest first ([#869](https://github.com/planetaryescape/mxr/issues/869)) ([63c4577](https://github.com/planetaryescape/mxr/commit/63c45779ee0714ec84aef77d36ae3da22f215a19))
+
+## [0.6.210](https://github.com/planetaryescape/mxr/compare/v0.6.209...v0.6.210) (2026-11-05)
+
+
+### Bug Fixes
+
+* a config save adds only settings that differ from the default ([#866](https://github.com/planetaryescape/mxr/issues/866)) ([d2aebf4](https://github.com/planetaryescape/mxr/commit/d2aebf4cca0d0de81783fddc6d78cb7211f0e755))
+* keep past due dates and pin the post-sync clock ([#867](https://github.com/planetaryescape/mxr/issues/867)) ([5598256](https://github.com/planetaryescape/mxr/commit/55982566cd67381b3860ad5187fef1858ff6c2a0))
+
+
+### Documentation
+
+* record local LLM fallback and outage retry gaps ([c805e14](https://github.com/planetaryescape/mxr/commit/c805e1402eeeb7d46be8c08af4ae333d524d3e29))
+
+## [0.6.209](https://github.com/planetaryescape/mxr/compare/v0.6.208...v0.6.209) (2026-11-04)
+
+
+### Bug Fixes
+
+* parse untrusted mail HTML in a resource-limited helper process ([#858](https://github.com/planetaryescape/mxr/issues/858)) ([5d6994e](https://github.com/planetaryescape/mxr/commit/5d6994e5d805eae9ce38d994527d077aea41eaab))
+* steady the prefix guide tests, drop dead move notices, and let e and r work on Not-sure rows ([#860](https://github.com/planetaryescape/mxr/issues/860)) ([4df11fe](https://github.com/planetaryescape/mxr/commit/4df11fe7c088acf7f3e21931afb23e7c9bc4df98))
+
+## [0.6.208](https://github.com/planetaryescape/mxr/compare/v0.6.207...v0.6.208) (2026-11-04)
+
+
+### Features
+
+* reply-all and forward in Now, To do peek, keyboard highlights, and footers that keep ? keys ([#847](https://github.com/planetaryescape/mxr/issues/847)) ([8201548](https://github.com/planetaryescape/mxr/commit/82015486c15c37c90ada01fa0aed40a10b35f05d))
+
+
+### Bug Fixes
+
+* account config writes save only what the user asked ([#856](https://github.com/planetaryescape/mxr/issues/856)) ([35bf853](https://github.com/planetaryescape/mxr/commit/35bf85365a9ae90c9b72b9bc882ed1e5aff40cea))
+
+## [0.6.207](https://github.com/planetaryescape/mxr/compare/v0.6.206...v0.6.207) (2026-11-04)
+
+
+### Bug Fixes
+
+* refresh Starred on sync and apply labels by each message's account ([#850](https://github.com/planetaryescape/mxr/issues/850)) ([a347309](https://github.com/planetaryescape/mxr/commit/a3473091ea367b6db52535c368516ab44f8c9165))
+
+## [0.6.206](https://github.com/planetaryescape/mxr/compare/v0.6.205...v0.6.206) (2026-11-04)
+
+
+### Bug Fixes
+
+* keep an in-memory store's database when sqlx replaces its connection ([#853](https://github.com/planetaryescape/mxr/issues/853)) ([8a5407d](https://github.com/planetaryescape/mxr/commit/8a5407dd016e50cf63c79ec2222015a2ae98ae76))
+
+## [0.6.205](https://github.com/planetaryescape/mxr/compare/v0.6.204...v0.6.205) (2026-11-04)
+
+
+### Bug Fixes
+
+* what a key-only triage of the TUI found ([#844](https://github.com/planetaryescape/mxr/issues/844)) ([cfc334a](https://github.com/planetaryescape/mxr/commit/cfc334a45a4c8115062f8aee8e0ef26904fea5ab))
+
+
+### Documentation
+
+* record macOS jobs cancelled before a runner was assigned ([7cc4067](https://github.com/planetaryescape/mxr/commit/7cc40675f5bcc469f9b220444b5a09f0cee63766))
+
+## [0.6.204](https://github.com/planetaryescape/mxr/compare/v0.6.203...v0.6.204) (2026-11-04)
+
+
+### Bug Fixes
+
+* clear the calamine advisory gate, a test that fails from 5 November, and serialize-javascript ([#845](https://github.com/planetaryescape/mxr/issues/845)) ([707a714](https://github.com/planetaryescape/mxr/commit/707a7143f5b6194b0337caa0bfe0787429324b86))
+* scan only the commit's own history for secrets ([#849](https://github.com/planetaryescape/mxr/issues/849)) ([0a2aa53](https://github.com/planetaryescape/mxr/commit/0a2aa5305251bf4a8644bd39949f2bba11940982))
+
+
+### Documentation
+
+* mark R2c shipped in v0.6.163 with the real-mail week still to run ([#843](https://github.com/planetaryescape/mxr/issues/843)) ([3a34612](https://github.com/planetaryescape/mxr/commit/3a34612dbba8b4b52975bcb3cdefd2c7a0831611))
+
+## [0.6.203](https://github.com/planetaryescape/mxr/compare/v0.6.202...v0.6.203) (2026-11-02)
+
+
+### Bug Fixes
+
+* avoid downloading unchanged Gmail draft attachments during sync ([#841](https://github.com/planetaryescape/mxr/issues/841)) ([2e0983b](https://github.com/planetaryescape/mxr/commit/2e0983bc8344504e15aa38635cb30636b85dbcf5))
+
+## [0.6.202](https://github.com/planetaryescape/mxr/compare/v0.6.201...v0.6.202) (2026-11-02)
+
+
+### Bug Fixes
+
+* recover nameless-recipient asks and simplify task details ([#838](https://github.com/planetaryescape/mxr/issues/838)) ([86a031f](https://github.com/planetaryescape/mxr/commit/86a031fdfa5ca9a893bb3eb0681818dc81916755))
+
+## [0.6.201](https://github.com/planetaryescape/mxr/compare/v0.6.200...v0.6.201) (2026-11-02)
+
+
+### Bug Fixes
+
+* resolve post-release navigation and task QA findings ([#834](https://github.com/planetaryescape/mxr/issues/834)) ([a00dea9](https://github.com/planetaryescape/mxr/commit/a00dea9a39b95a4c0f0d6d7ca8d7d3e3c4a2feeb))
+
+## [0.6.200](https://github.com/planetaryescape/mxr/compare/v0.6.199...v0.6.200) (2026-11-02)
+
+
+### Bug Fixes
+
+* match mode loading states to their layouts ([#832](https://github.com/planetaryescape/mxr/issues/832)) ([5d9c71a](https://github.com/planetaryescape/mxr/commit/5d9c71a0fb76f5b628ec627d94f64f4da07f1837))
+
+
+### Documentation
+
+* clarify observed filing and independent mode state ([#831](https://github.com/planetaryescape/mxr/issues/831)) ([f638244](https://github.com/planetaryescape/mxr/commit/f6382442829d06731465e6ad4db29a5684dd1919))
+
+## [0.6.199](https://github.com/planetaryescape/mxr/compare/v0.6.198...v0.6.199) (2026-11-01)
+
+
+### Bug Fixes
+
+* retain and label externally filed Updates and Reading ([#827](https://github.com/planetaryescape/mxr/issues/827)) ([c0e1d52](https://github.com/planetaryescape/mxr/commit/c0e1d52407628f85c31dcff09473524b99c1e290))
+
+## [0.6.198](https://github.com/planetaryescape/mxr/compare/v0.6.197...v0.6.198) (2026-11-01)
+
+
+### Features
+
+* calm To do and Updates rows once seen ([#828](https://github.com/planetaryescape/mxr/issues/828)) ([1a56fc6](https://github.com/planetaryescape/mxr/commit/1a56fc65cc0f486bf7410698895b2c65dd87e5b2))
+* read state for To do and Updates rows ([#823](https://github.com/planetaryescape/mxr/issues/823)) ([fbc255b](https://github.com/planetaryescape/mxr/commit/fbc255b094f943014f46ddc3c4d9cacffbb04c36))
+
+## [0.6.197](https://github.com/planetaryescape/mxr/compare/v0.6.196...v0.6.197) (2026-10-30)
+
+
+### Features
+
+* mark a to-do's source as left the inbox ([#821](https://github.com/planetaryescape/mxr/issues/821)) ([2968270](https://github.com/planetaryescape/mxr/commit/29682700fef6d1f02f15d597fdef02371263ae64))
+
+
+### Bug Fixes
+
+* calm read rows and drop the leading-edge marks ([#817](https://github.com/planetaryescape/mxr/issues/817)) ([15ea543](https://github.com/planetaryescape/mxr/commit/15ea54319b39aaeecc3ae0703f053fe18e7515e1))
+
+
+### Documentation
+
+* retire old skill names and record the Messages research ([#820](https://github.com/planetaryescape/mxr/issues/820)) ([5ba392b](https://github.com/planetaryescape/mxr/commit/5ba392ba0f71a0185403412f146e510adc259fbf))
+
+## [0.6.196](https://github.com/planetaryescape/mxr/compare/v0.6.195...v0.6.196) (2026-10-29)
+
+
+### Bug Fixes
+
+* what a key-only triage of the web app found ([#815](https://github.com/planetaryescape/mxr/issues/815)) ([819517f](https://github.com/planetaryescape/mxr/commit/819517ff2f30531b8e52533c91116dc516e1ca39))
+
+## [0.6.195](https://github.com/planetaryescape/mxr/compare/v0.6.194...v0.6.195) (2026-10-29)
+
+
+### Bug Fixes
+
+* store each label's mailbox role ([#810](https://github.com/planetaryescape/mxr/issues/810)) ([58dcb65](https://github.com/planetaryescape/mxr/commit/58dcb65895b32479ce44b00f6111182ab321f7e0))
+
+
+### Documentation
+
+* record the Safari and desktop app check of keys and copy after clicking HTML mail ([3fb686e](https://github.com/planetaryescape/mxr/commit/3fb686e2af9b8626831989f364afb435c6924e18))
+
+## [0.6.194](https://github.com/planetaryescape/mxr/compare/v0.6.193...v0.6.194) (2026-10-29)
+
+
+### Bug Fixes
+
+* rules read the reader's text, and malformed HTML can't exhaust memory ([#801](https://github.com/planetaryescape/mxr/issues/801)) ([3868e46](https://github.com/planetaryescape/mxr/commit/3868e46188c70372a8083a01012dacab0ccee8bf))
+
+## [0.6.193](https://github.com/planetaryescape/mxr/compare/v0.6.192...v0.6.193) (2026-10-29)
+
+
+### Bug Fixes
+
+* quote the integration test filters so the release workflow parses again ([#811](https://github.com/planetaryescape/mxr/issues/811)) ([5776fec](https://github.com/planetaryescape/mxr/commit/5776fec8bc09a186eb3bc2404861ab28e6103694))
+
+## [0.6.192](https://github.com/planetaryescape/mxr/compare/v0.6.191...v0.6.192) (2026-10-29)
+
+
+### Bug Fixes
+
+* leaving a conversation saves the reply as a Draft on its Messages row, in every client ([#808](https://github.com/planetaryescape/mxr/issues/808)) ([2c33f44](https://github.com/planetaryescape/mxr/commit/2c33f44309a42037e236987158c68f8c728b980d))
+
+## [0.6.191](https://github.com/planetaryescape/mxr/compare/v0.6.190...v0.6.191) (2026-10-29)
+
+
+### Bug Fixes
+
+* let expired key-move notices stop instead of blocking releases ([#805](https://github.com/planetaryescape/mxr/issues/805)) ([24cd0a0](https://github.com/planetaryescape/mxr/commit/24cd0a034dbe04ed85c4d4ea77ba4159ac2bfac6))
+
+
+### Documentation
+
+* take mxr worktrees from the warm pool ([#804](https://github.com/planetaryescape/mxr/issues/804)) ([b226b04](https://github.com/planetaryescape/mxr/commit/b226b04cf56caaccc6956e2e53c0a618dfddd049))
+
+## [0.6.190](https://github.com/planetaryescape/mxr/compare/v0.6.189...v0.6.190) (2026-10-29)
+
+
+### Bug Fixes
+
+* keep a to-do when a rescan of the same email moves its due date to another month ([#802](https://github.com/planetaryescape/mxr/issues/802)) ([f062799](https://github.com/planetaryescape/mxr/commit/f0627997e1210a5786584639f0d270cc5534ab5b))
+
+## [0.6.189](https://github.com/planetaryescape/mxr/compare/v0.6.188...v0.6.189) (2026-10-29)
+
+
+### Bug Fixes
+
+* keep keyboard shortcuts working after a click inside an HTML mail ([#797](https://github.com/planetaryescape/mxr/issues/797)) ([7f8e8f3](https://github.com/planetaryescape/mxr/commit/7f8e8f3f9420e476381a0f0888b2243d68e78614))
+
+## [0.6.188](https://github.com/planetaryescape/mxr/compare/v0.6.187...v0.6.188) (2026-10-29)
+
+
+### Bug Fixes
+
+* reopen the right conversation when undo brings a person back in Messages ([#794](https://github.com/planetaryescape/mxr/issues/794)) ([b36d8d3](https://github.com/planetaryescape/mxr/commit/b36d8d33e0c7e9749e74d42d34d92cc0f18afaa8))
+
+## [0.6.187](https://github.com/planetaryescape/mxr/compare/v0.6.186...v0.6.187) (2026-10-29)
+
+
+### Bug Fixes
+
+* list every account's labels and subscriptions under All accounts ([#790](https://github.com/planetaryescape/mxr/issues/790)) ([38f2fd6](https://github.com/planetaryescape/mxr/commit/38f2fd64c3003ddab9c154ce5f0a7d0486cd50df))
+
+## [0.6.186](https://github.com/planetaryescape/mxr/compare/v0.6.185...v0.6.186) (2026-10-29)
+
+
+### Bug Fixes
+
+* a browser unsubscribe is a handoff, not a confirmed send ([#788](https://github.com/planetaryescape/mxr/issues/788)) ([28f1f92](https://github.com/planetaryescape/mxr/commit/28f1f92f56cc577828e038912a23b288917a9b6e))
+
+## [0.6.185](https://github.com/planetaryescape/mxr/compare/v0.6.184...v0.6.185) (2026-10-29)
+
+
+### Bug Fixes
+
+* clear the seroval advisory and pin the clock in the bill re-date to-do test ([#782](https://github.com/planetaryescape/mxr/issues/782)) ([f4b1e2c](https://github.com/planetaryescape/mxr/commit/f4b1e2c6cd02089bde977d74674a57a405260b42))
+* keep daemon auth kinds through every CLI command ([#787](https://github.com/planetaryescape/mxr/issues/787)) ([3950d42](https://github.com/planetaryescape/mxr/commit/3950d4243d6861bee35bde69351a6a5e12a7e2fb))
+* mark account rows in assistant, Owed and Place, and read unknown colour slots ([#785](https://github.com/planetaryescape/mxr/issues/785)) ([22f9624](https://github.com/planetaryescape/mxr/commit/22f9624999be235b5a087cc0b6f6687b85443c62))
+* retire the key moves announced until 0.6.185 ([#784](https://github.com/planetaryescape/mxr/issues/784)) ([be8dccf](https://github.com/planetaryescape/mxr/commit/be8dccf6ef09333997ef6eb1810f67d1bb499420))
+* stop idle daemons that have no real mail account ([#781](https://github.com/planetaryescape/mxr/issues/781)) ([166ccc2](https://github.com/planetaryescape/mxr/commit/166ccc26186d2b09e204b81e922c25d61589c369))
+
+
+### Performance
+
+* make the slowest Rust tests fast without losing any check ([#786](https://github.com/planetaryescape/mxr/issues/786)) ([8278a73](https://github.com/planetaryescape/mxr/commit/8278a7314f04228b2a80aa363972d7ecac96c34a))
+
+## [0.6.184](https://github.com/planetaryescape/mxr/compare/v0.6.183...v0.6.184) (2026-10-29)
+
+
+### Bug Fixes
+
+* show the & in desktop menu titles such as Focus & reply ([#777](https://github.com/planetaryescape/mxr/issues/777)) ([f607e6c](https://github.com/planetaryescape/mxr/commit/f607e6c9aa6ed8353d17fd58346b7a268d824ddd))
+
+
+### Documentation
+
+* amend D169 so the desktop menu gives shortcuts only to Mod-chord actions ([c382641](https://github.com/planetaryescape/mxr/commit/c38264191ce66398795c1490bcce6ce0e13940f8))
+* record the App Shortcuts rebind check for the desktop menu ([928fa34](https://github.com/planetaryescape/mxr/commit/928fa3435c37fe6778ab94ef0e9fa28bd3e25aeb))
+* tell agents how Cargo target dirs get swept ([#775](https://github.com/planetaryescape/mxr/issues/775)) ([9c94b34](https://github.com/planetaryescape/mxr/commit/9c94b34803209a9b6432727da83f1ca8ab6b19ce))
+
 ## [0.6.183](https://github.com/planetaryescape/mxr/compare/v0.6.182...v0.6.183) (2026-10-28)
 
 
@@ -2568,7 +2956,7 @@
 * drop ghost flags, lead with mxr accounts add for IMAP/SMTP ([58ea627](https://github.com/planetaryescape/mxr/commit/58ea627e007bc3f8465e08dcb89359aed9d49213))
 * expand Gmail setup guide with full walkthrough ([b2e7c44](https://github.com/planetaryescape/mxr/commit/b2e7c4499b18840cf4564b3b282980a81817b4bf))
 * fix install instructions to match shipped reality ([1d4fbc9](https://github.com/planetaryescape/mxr/commit/1d4fbc9e8973559f115cd7b013f8685d9022213b))
-* flagship polish on landing page (impeccable pass) ([5b5eda1](https://github.com/planetaryescape/mxr/commit/5b5eda1db95739cefa55aca9c64b4b01c4d9fe12))
+* flagship polish on landing page ([5b5eda1](https://github.com/planetaryescape/mxr/commit/5b5eda1db95739cefa55aca9c64b4b01c4d9fe12))
 * install path, quick-start, troubleshooting, release-please drift ([b5e982d](https://github.com/planetaryescape/mxr/commit/b5e982d305970a0c6931a31a0e304bba1f56abf3))
 * Mail Sync Protocol (MSP) spike — spec, alignment audit, blog draft ([ccdef99](https://github.com/planetaryescape/mxr/commit/ccdef992c9b9dd7721e724f3139159c4c2c15e7f))
 * mark list-unsubscribe extraction complete ([c1c2bea](https://github.com/planetaryescape/mxr/commit/c1c2bea168428607f2cd13a129c4bf037c82ad03))

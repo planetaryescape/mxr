@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Change the note on a highlight you made, by its id (shown by `reading open` and in `reading export --format json`). A blank TEXT clears the note. Preview with --dry-run; `mxr undo` restores the old note. Highlights made in Marginalia are changed there
+
+Usage: mxr reading note [OPTIONS] <HIGHLIGHT> <TEXT>
+
+Arguments:
+  <HIGHLIGHT>
+  <TEXT>
+
+Options:
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

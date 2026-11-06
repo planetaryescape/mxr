@@ -1,0 +1,22 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Archive a message (remove from inbox)
+
+Usage: mxr archive [OPTIONS] [MESSAGE_ID]...
+
+Arguments:
+  [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
+
+Options:
+      --search <SEARCH>        Operate on the newest messages matching a search query, up to 1,000. The command says before acting when more than 1,000 match; add --all to act on every match
+      --account <ACCOUNT>
+      --yes                    Skip confirmation
+      --dry-run                Show what would happen
+      --async                  Submit in the background; query the retained ID with `mxr archive-operation`
+      --all                    Act on every message the search matches, not only the newest 1,000. The daemon resolves the whole set, so the exact count is shown before anything changes, and runs it as one background job that this command waits for. An --all job cannot be undone: preview it with --dry-run first, since the preview is the check
+      --no-wait                With --all, return once the daemon has accepted the job instead of waiting for it. Follow it with `mxr jobs <JOB_ID>`
+      --preview-token <TOKEN>  With --all, run exactly the messages an earlier `--all --dry-run` counted (its `preview_token`; valid for 10 minutes, once)
+      --format <FORMAT>        Output format: table, json, jsonl, ids
+  -h, --help                   Print help

@@ -8,6 +8,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::{get_draft_for_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -403,7 +404,7 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
         Response::Ok {
             data: ResponseData::ReplyContext { context },
         } => context,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     if explicit_account
@@ -518,7 +519,7 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::ForwardContext { context },
         } => context,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     if explicit_account
@@ -810,7 +811,7 @@ pub async fn drafts(account: Option<String>, format: Option<OutputFormat>) -> an
                 }
             }
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -836,7 +837,7 @@ pub async fn drafts_reply(
         Response::Ok {
             data: ResponseData::Envelope { envelope },
         } => envelope,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response reading reply source"),
     };
     if explicit_account
@@ -856,7 +857,7 @@ pub async fn drafts_reply(
         Response::Ok {
             data: ResponseData::Draft { draft },
         } => draft,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response ensuring reply draft"),
     };
     print_reply_draft(&draft, format, dry_run)
@@ -883,7 +884,7 @@ pub async fn drafts_audience(
         Response::Ok {
             data: ResponseData::Draft { draft },
         } => draft,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response reading reply draft"),
     };
     if explicit_account
@@ -904,7 +905,7 @@ pub async fn drafts_audience(
         Response::Ok {
             data: ResponseData::Draft { draft },
         } => draft,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response changing reply audience"),
     };
     if explicit_account
@@ -976,7 +977,7 @@ pub async fn drafts_scheduled(
         Response::Ok {
             data: ResponseData::ScheduledSends { sends },
         } => sends,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     match resolve_format(format) {
@@ -1058,7 +1059,7 @@ pub async fn drafts_recover(
         Response::Ok {
             data: ResponseData::Drafts { drafts },
         } => filter_drafts_by_account(drafts, account_id.as_ref()),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     match resolve_format(format) {
@@ -1119,7 +1120,7 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
             println!("Draft {parsed} has no unresolved send claim. Review with `mxr send {parsed} --dry-run`, then supply that preview's --expected-revision.");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -1149,7 +1150,7 @@ pub async fn drafts_discard(
         Response::Ok {
             data: ResponseData::Ack,
         } => print_draft_delete_result(&draft, false, format),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -1462,7 +1463,7 @@ pub async fn recover_send_outcome(
         Response::Ok { data } => {
             crate::output::print_json(&data, format.unwrap_or(OutputFormat::Json))
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -1647,7 +1648,7 @@ pub async fn check_send(
         Response::Ok {
             data: ResponseData::DraftSafetyReportResponse { report },
         } => report,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from CheckDraftSafety"),
     };
 
@@ -1736,7 +1737,7 @@ pub async fn compose_check(options: ComposeOptions, no_llm: bool) -> anyhow::Res
         Response::Ok {
             data: ResponseData::DraftSafetyReportResponse { report },
         } => report,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from CheckDraftSafety"),
     };
 
@@ -1822,7 +1823,7 @@ pub async fn schedule_send(
             println!("Scheduled draft {draft_id} for {pretty}");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -1847,7 +1848,7 @@ pub async fn cancel_scheduled_send(
             println!("Cancelled scheduled send for draft {draft_id}");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -2069,7 +2070,7 @@ async fn resolve_compose_signature(
             name: signature.name,
             body: signature.body,
         })),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -2575,7 +2576,7 @@ async fn set_auto_reminder_after_send(
             Response::Ok {
                 data: ResponseData::Ack,
             } => Ok(()),
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
             _ => anyhow::bail!("Unexpected response setting reminder"),
         }
     }
@@ -2606,7 +2607,7 @@ async fn resolve_effective_from(
         Response::Ok {
             data: ResponseData::ResolvedSendFrom { from },
         } => Ok(from),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from ResolveSendFrom"),
     }
 }
@@ -2641,7 +2642,7 @@ async fn print_remote_draft_preview(
             &serde_json::json!({"action": if sending { "send" } else { "save draft" }, "dry_run": true, "expected_workspace": workspace, "draft": draft, "from": from, "send_identity": send_identity, "pending_attachments": pending_attachments, "safety_report": report,"requires_save":requires_save}),
             format.unwrap_or(OutputFormat::Json),
         ),
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected portable preview response"),
     }
 }

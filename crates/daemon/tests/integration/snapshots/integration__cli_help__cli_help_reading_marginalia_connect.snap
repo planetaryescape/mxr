@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Connect Marginalia: its address, and a personal token from its Account page, Connected apps. The token is read from standard input (or asked for), checked with Marginalia, then kept in the secrets file
+
+Usage: mxr reading marginalia connect [OPTIONS] --url <URL>
+
+Options:
+      --url <URL>          Marginalia's address, such as `https://reader.example.com`
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

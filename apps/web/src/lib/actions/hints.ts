@@ -92,6 +92,12 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
     const scopes = scopesOf(action);
     if (scopes.includes("list") && scopes.includes("reader")) {
       mailVerbs.push(action);
+      // A mail verb that also works in a mode (`b` and `X` in Now) is one of
+      // that mode's own keys too, so its "this view" section lists it.
+      for (const scope of scopes) {
+        if (scope === "list" || scope === "reader") continue;
+        byScope.set(scope, [...(byScope.get(scope) ?? []), action]);
+      }
       continue;
     }
     for (const scope of scopes) byScope.set(scope, [...(byScope.get(scope) ?? []), action]);
@@ -112,13 +118,15 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
       hints: (byScope.get(scope) ?? []).map((action) => hint(action, ctx)),
     });
   }
-  if (mailVerbs.length > 0) {
-    sections.push({
-      id: "mail",
-      title: "Mail actions",
-      hints: mailVerbs.map((action) => hint(action, ctx)),
-    });
-  }
+  const mailSection: ShortcutSection | null =
+    mailVerbs.length > 0
+      ? { id: "mail", title: "Mail actions", hints: mailVerbs.map((action) => hint(action, ctx)) }
+      : null;
+  // Mail actions are this view's keys only beside a mail list or reader. In
+  // Now or a mode, `e` there would read as Archive where it means Done, so
+  // they go with the other places' keys.
+  const mailHere = ctx.scopes.includes("list") || ctx.scopes.includes("reader");
+  if (mailSection && mailHere) sections.push(mailSection);
 
   const globalGroups = new Map<string, ShortcutHint[]>();
   for (const action of byScope.get("global") ?? []) {
@@ -130,6 +138,7 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
     if (hints) sections.push({ id: `global-${title}`, title, hints });
   }
 
+  if (mailSection && !mailHere) sections.push(mailSection);
   for (const scope of otherPanes) {
     sections.push({
       id: scope,

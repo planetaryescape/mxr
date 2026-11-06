@@ -4,7 +4,7 @@ Status: proposal, 2026-10-16. Source baseline: `origin/main` at `f209d84ef`.
 
 Each main screen, designed in the terms of [26](26-web-design-concept.md) and built from the parts in [27](27-web-design-system.md). What each screen does is specified in [21](21-web-experience.md) and [22](22-email-modes.md); this chapter says how it should be experienced: where the eye lands first, what recedes, what the lit item shows, and what changes from today. Audit references (`01-now`, `30-screener`) are the screenshots in [the audit](../research/web-design/audit-2026-10-16.md).
 
-Mockups are at 1440px with the rail expanded and the assistant closed, unless noted. `▌` is the lamp's hairline on the lit row. Dim text is described, not drawn.
+Mockups are at 1440px with the rail expanded and the assistant closed, unless noted. `▌` marks the lit row. Dim text is described, not drawn.
 
 ## The shell
 
@@ -82,7 +82,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 └──────────────────────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
-**Intent.** iMessage's shape (D112): people on the left, the conversation as a page on the right. The eye lands on the first Your-turn person, then on the open conversation's newest message in the reading voice. Nothing opens until asked (BK, 2026-10-09). The person's page has one Title (their name), one purpose line (the relationship in one sentence), a compact topic control naming the selected subject, then the conversation. The latest message opens in full at its start. A folded People disclosure expands through the reading area and scrolls long address lists internally; message info retains message-specific roles. Reply mode is explicit, and the live draft's populated audience and sending identity appear when writing opens. Done folds recipient editing again; an empty To field offers Add recipient. A reply docks with its source subject when the user changes topics.
+**Intent.** iMessage's shape (D112): people on the left, the conversation as a page on the right. The eye lands on the first Your-turn person, then on the open conversation's newest message in the reading voice. Nothing opens until asked (BK, 2026-10-09). The person's page has one Title (their name), one purpose line (the relationship in one sentence), a compact topic control naming the selected subject, then the conversation. The latest message opens in full at its start. A folded People disclosure expands through the reading area and scrolls long address lists internally; message info retains message-specific roles. Reply mode is explicit, and the live draft's populated audience and sending identity appear when writing opens. Done folds recipient editing again; an empty To field offers Add recipient. Leaving the conversation saves an open reply and closes it; the person's row shows `Draft:` in the accent colour with the start of the reply, and opening the row resumes it inline (D187).
 
 **The lit row** shows the verbs in its trail, and for a new sender the keep-or-move choice with keys (`1` to `4`) in place of the verbs; the status bar gives the reason.
 

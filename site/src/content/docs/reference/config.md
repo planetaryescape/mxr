@@ -31,6 +31,18 @@ For the active `<instance>`, the default roots are:
 `MXR_SOCKET_PATH`, `MXR_BRIDGE_TOKEN_PATH`, and `MXR_BRIDGE_PORT_PATH`
 override individual paths when needed.
 
+`MXR_EDITOR`, `MXR_SYNC_INTERVAL`, `MXR_DEFAULT_ACCOUNT`, `MXR_ATTACHMENT_DIR`,
+`MXR_DOWNLOAD_DIR` and `MXR_SAFETY_POLICY` override the matching `[general]`
+keys for the process that reads them. They are never saved into the file.
+Settings changes, account forms and `mxr config set` read `config.toml` as
+written, change only what you asked, and keep the comments and layout of the
+keys they leave alone. A save adds a setting your file doesn't have only when
+its value differs from the default, so settings you never wrote keep following
+mxr's defaults; a setting you wrote stays, even at its default value. If there
+is no file yet, the first save writes every setting, so `mxr config edit` opens
+a full template. Keys mxr doesn't recognise are dropped on save. Each save
+replaces the file atomically, so an interrupted save leaves the old one.
+
 IMAP/SMTP passwords are stored in `secrets.toml` at mode `0600`, not in
 `config.toml`. The OS keychain is an optional migration fallback. Set
 `MXR_KEYCHAIN=off` when IMAP/SMTP password handling must not touch it, such as
@@ -54,6 +66,12 @@ manager owns a foreground daemon; clients can connect to a compatible owner but
 will not start or replace one. See [`transports`](#transports) and the
 [headless Linux service recipe](/guides/headless-linux/).
 
+A daemon with no enabled real mail account (none, or only the fake provider
+that tests and `mxr demo` use) stops itself after 30 minutes with no client
+connected, so test and demo daemons don't run forever. The next command starts
+it again. A daemon with a real account keeps running. `MXR_IDLE_EXIT_SECS`
+changes the wait in seconds; `0` turns it off.
+
 ## Top-level sections
 
 ```toml
@@ -68,6 +86,7 @@ will not start or replace one. See [`transports`](#transports) and the
 [transports.tcp]
 [notifications.chimes]
 [llm]
+[llm.fallback]
 [llm.overrides.answer_coverage]
 [safety.recipients]
 [safety.tone]
@@ -152,16 +171,21 @@ context_window = 8192
 request_timeout_secs = 120
 allow_cloud_relationship_data = false     # true lets relationship features use a cloud endpoint
 
+# [llm.fallback]
+# Optional. A hosted model used while base_url is out. Off unless present.
+# model = "gpt-6-luna"                    # the default when the table is present
+# context_window = 128000                 # defaults to llm.context_window
+
 [llm.overrides.answer_coverage]
-# Optional per-feature LLM override. Same shape as [llm] above. Useful
-# when answer-coverage benefits from a different model than the default
-# (e.g. a smarter cloud model for the only LLM-backed safety check).
-# Answer coverage carries relationship data, so a cloud endpoint here
-# runs only with allow_cloud_relationship_data = true under [llm].
+# Optional per-feature LLM override. Takes enabled, base_url, model,
+# api_key_env, context_window and request_timeout_secs; anything left out
+# comes from [llm]. Useful when answer coverage benefits from a different
+# model than the default (e.g. a smarter cloud model for the only
+# LLM-backed safety check). Answer coverage carries relationship data, so
+# a cloud model here runs only with allow_cloud_relationship_data = true
+# under [llm].
 # enabled = true
-# base_url = "https://api.openai.com/v1"
-# model = "gpt-5-mini"
-# api_key_env = "OPENAI_API_KEY"
+# model = "gpt-6-luna"                    # key from `mxr llm key set openai`
 
 [safety.recipients]
 internal_domains = ["company.com"]        # paired with internal markers in body
@@ -169,7 +193,7 @@ sensitive_domains = ["competitor.com"]    # always Blocker
 warn_on_first_time_external = true        # warn on never-seen-before domains
 
 [safety.tone]
-formality_delta_threshold = 0.25          # 0.0 = always warn, 1.0 = never
+formality_delta_threshold = 0.4           # 0.0 = always warn, 1.0 = never
 
 [accounts.personal]
 name = "Personal"
@@ -359,7 +383,36 @@ username = "me@example.com"
 auth_required = true              # set to false for relays that pre-authenticate
 use_tls = true
 password_ref = "imap:work"
+# tls_cert_sha256 = "<64 hex digits>"   # optional, see below
 ```
+
+How IMAP is secured depends on `use_tls` and `port`:
+
+| `use_tls` | Port | Connection | Certificate check |
+|---|---|---|---|
+| `true` | anything except 143 (normally 993) | TLS from the first byte | System trust store and hostname, or the `tls_cert_sha256` pin |
+| `true` | 143 | Plain connect, `STARTTLS`, then TLS | Same as above, applied after the upgrade. Refused if the server does not advertise `STARTTLS`; mxr never continues in plaintext |
+| `false` | any | No encryption | None. Allowed only for loopback hosts (`127.0.0.0/8`, `::1`, `localhost`); any other host is refused before connecting |
+
+`tls_cert_sha256` is the SHA-256 of the server's leaf certificate (DER), as 64
+hex digits; `:` separators are accepted. When it is set, mxr accepts exactly
+that certificate, including a self-signed one, and nothing else. The chain and
+hostname are not checked, because the pin replaces them. When it is unset, the
+certificate is verified normally. Use it for a local bridge with its own
+certificate. `mxr accounts test <account>` prints the fingerprint the server
+presents without authenticating on the inspection connection. This fingerprint
+is unverified: check it against the bridge's own certificate before copying it
+into the config. The account test separately attempts a verified sync. A server
+that changes its certificate fails
+until the pin is updated.
+
+For scripts, `mxr accounts --format json test <account>` and `--format jsonl`
+include `tls_cert_sha256` in the result. A failed certificate check still exits
+with an error after printing the result, so you can inspect the fingerprint
+before configuring trust.
+
+An implicit TLS connection to a server that answers in plaintext fails with an error that
+names the mismatch and the fix, instead of a bare "record overflow".
 
 ### SMTP send provider
 
@@ -387,7 +440,7 @@ an unencrypted connection.
 - `max_results`
 - `default_mode`
 
-`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen, the web `/search` API and the MCP `mxr_search` tool. The web app's search page still uses its own sort and page size. `max_results` defaults to 50. `max_results` is the default page size, not a cap, and an explicit `--limit` or `--sort` always wins. The daemon reads these values when it starts, so run `mxr restart` after changing them.
+`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen, the web `/search` API and the MCP `mxr_search` tool. The web app's search page follows them too until you pick a sort: its Sort control starts at Default. `max_results` defaults to 50. `max_results` is the default page size, not a cap, and an explicit `--limit` or `--sort` always wins. The daemon reads these values when it starts, so run `mxr restart` after changing them.
 
 Example:
 
@@ -619,14 +672,24 @@ backends works:
 - **OpenRouter**: `https://openrouter.ai/api/v1`, `OPENROUTER_API_KEY`
 - **Together AI**, **Mistral La Plateforme**, etc.
 
-A `claude-*` model name is the exception: `base_url` and `api_key_env` don't
-apply. It goes to Anthropic's own API with the key from
-`mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), and to OpenRouter with
-`mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) when Anthropic isn't
-working. A `gpt-<number>` model such as `gpt-6-luna` goes to OpenAI's own API
-with the key from `mxr llm key set openai` (or `OPENAI_API_KEY`), and to
-OpenRouter when OpenAI isn't working, unless `base_url` points at a remote
-server of your own. See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback)
+Some model names ignore `base_url` and `api_key_env` and go to a hosted
+provider with its own key:
+
+| `model` | Goes to, in order | Key |
+|---|---|---|
+| `claude-*`, such as `claude-haiku-5-5` | Anthropic, then OpenRouter | `mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), `mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) |
+| `gpt-<number>`, such as `gpt-6-luna` | OpenAI, then OpenRouter | `mxr llm key set openai` (or `OPENAI_API_KEY`), then the OpenRouter key |
+| `anthropic/<model>` | OpenRouter | the OpenRouter key |
+| `<vendor>/<model>` with the default `base_url`, for the vendors `openai`, `google`, `meta-llama`, `mistralai`, `deepseek`, `x-ai`, `qwen`, `cohere`, `perplexity`, `amazon`, `nvidia` and `microsoft` | OpenRouter | the OpenRouter key |
+
+When `base_url` points at a server off this machine, a `gpt-*` model goes to
+that server instead, and so does a `<vendor>/<model>` id from that list. With
+a `base_url` on this machine other than the default (LM Studio, another port),
+a `<vendor>/<model>` id goes to `base_url`, since local servers name some
+models that way. So a model id like `qwen/qwen3-8b` reaches Ollama only when
+you change `base_url`; with the default it goes to OpenRouter.
+
+See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback)
 and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
 
 ```toml
@@ -645,6 +708,11 @@ models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "c
 [llm.compose]
 # Omit to inherit llm.model. A per-draft choice never changes this default.
 model = "gemma4:latest"
+
+[llm.fallback]
+# Omit the table for no fallback. Used while base_url is out.
+model = "gpt-6-luna"                # the default when the table is present
+# context_window = 128000           # defaults to llm.context_window
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
@@ -665,33 +733,81 @@ llm.compose.model <id> --dry-run` to preview the same catalogue-checked change
 without writing it. Legacy drafting overrides keep working when this setting
 is absent and warn that `[llm.compose] model` is the replacement.
 
+`[llm.fallback]` puts a hosted model behind a model that `base_url` serves.
+When `base_url` is unreachable, times out, is rate limited (408, 429, 529),
+returns a server error (5xx), or rejects the key or model (401, 402, 403,
+404, or a 400 naming the model), the request goes to the fallback through the
+providers in the routing table above (`gpt-6-luna`: OpenAI, then OpenRouter,
+each with a stored key or the provider's environment variable). Any other
+error, such as another 400 or an empty reply, is returned without trying the
+fallback. `base_url` is tried again after a cooldown that starts at one
+minute and doubles to 30 minutes (one hour after a key or model error), with
+a cheap `GET /models` check first.
+
+`model` defaults to `gpt-6-luna` and must be an id the routing table sends to
+a hosted provider with the default `base_url`: `gpt-<number>`, `claude-*`,
+`anthropic/<model>`, or a `<vendor>/<model>` id from the listed vendors.
+`context_window` defaults to the feature's own `context_window` (its
+override's, if it sets one), and prompts are built to fit the smaller of the
+two. `context_window = 0` is rejected. Relationship features use the fallback
+only with `allow_cloud_relationship_data = true`.
+
+`mxr config set llm.fallback.model <id>` sets it and refuses an id mxr can't
+route; an empty value removes the table. A bad `[llm.fallback]` in a
+hand-edited file doesn't stop the daemon or hold back the rest of `[llm]`: it
+runs without the fallback, logs why, `mxr llm status` prints `fallback not
+used: <reason>`, and `mxr config set llm.<key>` prints the reason after
+applying a change. See [Fall back to a cloud model](/guides/llm-features/#fall-back-to-a-cloud-model-when-your-endpoint-is-out).
+
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
 time; raise it for a hosted endpoint.
 
-`allow_cloud_relationship_data = false` blocks relationship/profile context
-from being sent to non-local LLM endpoints. Set it to `true` only when you want
-cloud providers to receive that context for relationship-aware summaries,
-briefings, and draft assistance.
+`allow_cloud_relationship_data = false` keeps your wider mail history off any
+endpoint that isn't on this machine. Only `localhost`, a `127.x.x.x` address
+or `::1` count as local. A server on your home network or tailnet counts as
+cloud, and so does every model in the routing table above, whatever
+`base_url` says. With the setting off, mxr:
 
-`mxr config set llm.<key> <value>` applies to a running daemon without a
-restart. If the daemon can't apply it, the command says `Restart the daemon to
-apply: mxr restart`.
+- refuses the history features listed under [Per-feature overrides](#per-feature-overrides) on a non-local endpoint;
+- keeps them off `[llm.fallback]`, so they wait for `base_url`;
+- leaves your other mail, relationship summaries and sent-mail habits out of drafting prompts sent to a non-local endpoint;
+- marks cloud models unavailable in the assistant's model picker.
+
+Set it to `true` only when the provider's data terms cover mail other people
+wrote to you.
+
+`mxr config set` changes these `llm` keys on a running daemon without a
+restart: `llm.enabled`, `llm.base_url`, `llm.model`, `llm.compose.model`,
+`llm.models`, `llm.api_key_env`, `llm.context_window`,
+`llm.request_timeout_secs`, `llm.allow_cloud_relationship_data` and
+`llm.fallback.model`. Any other `llm` key, including
+`background_request_timeout_secs`, `gist_concurrency`,
+`fallback.context_window` and `overrides.*`, is refused as an unknown key.
+Edit those in `config.toml` and run `mxr restart`. If the daemon can't apply
+a change, the command says `Restart the daemon to apply: mxr restart`.
 
 Use `mxr llm status --format json` to inspect the running provider, model,
 context window, timeout, and whether the configured API-key environment variable
-is present. It lists each feature's model and, for Claude models, the
-providers in order with their health. It also reports process-local model request outcomes by provider
-route: initially no observation, then a typed success or failure. A successful
-request on one feature route does not clear another route's failure, and a
-provider reload clears the old outcomes. Status never probes the model endpoint.
-Feature health reports the same observations while core mail remains usable when
-an optional model is unavailable. Daemon config reloads rebuild the LLM provider, so changing
-`base_url`, `model`, or `api_key_env` is reflected after reload without
-restarting the process.
+is present. It lists each feature's model and, for a model in the routing
+table, the providers in order with their health. With `[llm.fallback]` it
+shows `base_url`'s health first, named by its URL, and the fallback's
+providers after it. With `[llm.compose] model` set, the drafting rows
+(`draft_assist`, `draft_new`, `draft_refine`, `humanize_rewrite`) show the
+compose model. When every route is out, status names the one a command you run
+would still try once. Status also reports process-local
+request outcomes per feature (`default` for the base model): initially no
+observation, then a typed success or failure. A success on one feature does
+not clear another feature's failure, and a provider reload clears the old
+outcomes. While background calls are paused after repeated endpoint failures,
+status says until when (`background_paused_until` in JSON). Status never probes the model endpoint. Feature health reports the
+same observations; core mail stays usable when an optional model is
+unavailable.
 
-The web app's Settings > LLM panel edits this same section through the
-daemon and reloads the provider immediately after save.
+The web app's Settings > LLM panel edits the same keys through the daemon and
+reloads the provider immediately after save. `background_request_timeout_secs`,
+`gist_concurrency` and `[llm.fallback]` are config-file only; the panel keeps
+them as they are.
 
 ### Per-feature overrides
 
@@ -703,23 +819,27 @@ answer-coverage on a smarter cloud model.
 ```toml
 [llm.overrides.answer_coverage]
 enabled = true
-base_url = "https://api.openai.com/v1"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
+model = "gpt-6-luna"        # key from `mxr llm key set openai`
 ```
 
-Any field omitted from an override falls back to the top-level `[llm]`
-section. Feature keys: `summarize` (also row gists and `mxr triage`),
+An override takes `enabled`, `base_url`, `model`, `api_key_env`,
+`context_window` and `request_timeout_secs`. Any field you leave out comes
+from `[llm]`. Any other key in an override table, or a feature name not
+listed here, is ignored and named once in the daemon log. Feature keys: `summarize` (also row gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert`,
+`draft_refine`, `humanize_rewrite`, `answer_coverage`,
+`archive_ask`, `decision_log`, `briefing`,
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
 and `assistant` (the [assistant](/guides/assistant/), which needs a model that
 can call tools, and whose model you can pick from a list, and summarises older messages once a conversation nears
-`context_window`).
+`context_window`). The old `voice_match` and `expert` keys are retired:
+voice matching and expert lookup run locally, so mxr ignores those tables and
+logs their names once. With `[llm.compose] model` set, drafts
+use that model and the `draft_assist`, `draft_new`, `draft_refine` and
+`humanize_rewrite` overrides are ignored.
 
-`relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert` and `assistant` carry
+`relationship_summary`, `commitments`, `answer_coverage`, `archive_ask`,
+`decision_log`, `briefing` and `assistant` carry
 relationship data, so the daemon refuses them on a non-local endpoint unless
 `allow_cloud_relationship_data = true`. The `answer_coverage` example above
 needs that setting to run.
@@ -729,6 +849,9 @@ needs that setting to run.
 Pre-send safety pipeline tuning. See the
 [Pre-send safety guide](/guides/pre-send-safety/) for the full check
 inventory and the override-token flow.
+
+The daemon reads `[safety]` when it starts. Edit `config.toml`, then run
+`mxr restart`; the running daemon keeps the values it loaded until then.
 
 ### `safety.recipients`
 
@@ -749,12 +872,12 @@ warn_on_first_time_external = true
 
 ```toml
 [safety.tone]
-formality_delta_threshold = 0.25
+formality_delta_threshold = 0.4
 ```
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `formality_delta_threshold` | float [0.0, 1.0] | `0.25` | How different the draft's formality score must be from the recipient's baseline before the warning fires. `0.0` = always warn (every send vs. baseline). `1.0` = never warn. Lower it if you want stricter checking, raise it to mute noise. |
+| `formality_delta_threshold` | float [0.0, 1.0] | `0.4` | How different the draft's formality score must be from the recipient's baseline before the warning fires. `0.0` = always warn (every send vs. baseline). `1.0` = never warn. Lower it if you want stricter checking, raise it to mute noise. Values outside the range are clamped into it. |
 
 Tone match needs at least 3 prior messages to a recipient — fewer than
 that and the check silently skips (no point warning when there's no

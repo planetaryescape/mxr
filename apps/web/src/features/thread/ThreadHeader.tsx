@@ -222,7 +222,7 @@ function moreItems(state: { starred: boolean; full: boolean }): MoreItem[] {
     { label: "Move to Trash", command: "trash", keys: "#", icon: Trash2 },
     { label: "Mark as spam", command: "spam", keys: "!", icon: ShieldAlert },
     { label: "Unsubscribe…", command: "unsubscribe", keys: "D", icon: MailX, divider: true },
-    { label: "Summarize", command: "summarize", keys: "y", icon: TextQuote },
+    { label: "Summarize", command: "summarize", icon: TextQuote },
     { label: "Thread briefing", command: "briefing", keys: "B", icon: FileText },
     { label: "Who is this sender?", command: "whois", icon: UserSearch },
     { label: "Sender profile", command: "senderProfile", keys: "p", icon: UserRound },

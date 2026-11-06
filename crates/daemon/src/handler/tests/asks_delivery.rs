@@ -1,9 +1,46 @@
 use super::desk::{request, Fixture, ME};
-use super::promise_projection::{replace, settle};
+use super::promise_projection::{month_start, replace, settle, written};
 use super::*;
 use chrono::Duration;
 use mxr_core::{Address, MessageDirection, ThreadId};
 use mxr_store::TodoState;
+
+#[tokio::test]
+async fn a_greeted_sole_recipient_without_a_name_gets_the_public_task() {
+    let fx = Fixture::new().await;
+    let mail = fx
+        .message(
+            &ThreadId::new(),
+            "sam@example.com",
+            ME,
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    replace(
+        &fx,
+        &mail,
+        "Hi Alex,\nThe renewal is attached. Please sign and send it back by tomorrow.\nThanks, Sam",
+    )
+    .await;
+    settle(&fx, &mail).await;
+    let ResponseData::Todos { todos } = request(
+        &fx,
+        Request::ListTodos {
+            account_id: Some(fx.account.clone()),
+            state: mxr_protocol::TodoStateData::Open,
+            limit: 100,
+        },
+    )
+    .await
+    else {
+        panic!("public todos")
+    };
+    assert_eq!(todos.len(), 1);
+    assert_eq!(todos[0].source_message_id.as_ref(), Some(&mail.id));
+    assert_eq!(todos[0].why, "Please sign and send it back by tomorrow.");
+    assert!(todos[0].due_at.is_some());
+}
 
 #[tokio::test]
 async fn review3_outgoing_cc_request_reaches_public_waiting_without_owner_task() {
@@ -193,15 +230,15 @@ async fn review3_failed_payment_and_polite_remediation_have_one_stored_task() {
 #[tokio::test]
 async fn review3_independent_payment_remediations_keep_their_own_tasks() {
     for (text, expected) in [
-        ("Your payment failed. Please update your payment details. Please sign the contract.", 2),
-        ("Your payment failed.\n\nPlease update your payment details.", 2),
-        ("Your payment of £25 for account #A123 failed. Please update your payment details for account #B456, amount due €40 by 1 December 2026.", 2),
-        ("Your payment of £25 due by 1 November 2026 failed. Please update your payment details for £25 due by 1 December 2026.", 2),
-        ("Your payment failed last month but is now resolved.", 0),
+        ("Your payment failed. Please update your payment details. Please sign the contract.".to_string(), 2),
+        ("Your payment failed.\n\nPlease update your payment details.".to_string(), 2),
+        (format!("Your payment of £25 for account #A123 failed. Please update your payment details for account #B456, amount due €40 by {}.", written(month_start(2))), 2),
+        (format!("Your payment of £25 due by {} failed. Please update your payment details for £25 due by {}.", written(month_start(1)), written(month_start(2))), 2),
+        ("Your payment failed last month but is now resolved.".to_string(), 0),
     ] {
         let fx = Fixture::new().await;
         let mail = fx.message(&ThreadId::new(), "billing@example.com", ME, Duration::minutes(5), None).await;
-        replace(&fx, &mail, text).await;
+        replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         let tasks = fx.state.store.list_todos_in_state(Some(&fx.account), TodoState::Open, 100).await.unwrap();
         eprintln!("REVIEW3_INDEPENDENT {text:?} tasks={tasks:?}");

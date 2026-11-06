@@ -351,6 +351,51 @@ async fn mailto_fixture(state: &Arc<AppState>) -> mxr_core::MessageId {
         .expect("mailto fixture")
 }
 
+/// A browser handoff is not a send. The claim is released, so a retry opens
+/// the page again, and nothing reads as sent.
+#[tokio::test]
+async fn a_browser_handoff_is_not_recorded_as_sent_and_a_retry_may_open_again() {
+    let (state, _fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    let envelope = state.store.get_envelope(&id).await.unwrap().unwrap();
+    let claimed_at = chrono::Utc::now().timestamp();
+    assert!(matches!(
+        state
+            .store
+            .claim_unsubscribe(&id, &envelope.account_id, claimed_at)
+            .await
+            .unwrap(),
+        mxr_store::Claim::Claimed { .. }
+    ));
+
+    let error = mutations::browser_handoff(&state, &envelope, claimed_at, "http").await;
+
+    assert!(
+        matches!(
+            error,
+            HandlerError::UnsubscribeAttempt {
+                code: "unsubscribe_opened_in_browser",
+                retryable: true,
+                ..
+            }
+        ),
+        "a handoff reports that the page was opened, and is retryable"
+    );
+    assert_eq!(
+        state.store.unsubscribe_receipt_method(&id).await.unwrap(),
+        None,
+        "nothing is recorded as sent"
+    );
+    assert!(matches!(
+        state
+            .store
+            .claim_unsubscribe(&id, &envelope.account_id, claimed_at + 1)
+            .await
+            .unwrap(),
+        mxr_store::Claim::Claimed { .. }
+    ));
+}
+
 fn expect_error(response: &Response) -> (&str, bool) {
     match response {
         Response::Error {

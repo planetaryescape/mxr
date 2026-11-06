@@ -52,6 +52,8 @@ impl Fx {
             thread_id: Some(source.1.clone()),
             source_message_id: Some(source.0.clone()),
             source_date: Some(date),
+            source_filed_at: None,
+            source_unread: Some(true),
             kind: "bill".to_string(),
             verb: "pay".to_string(),
             doc_type: Some("bill_link".to_string()),
@@ -718,4 +720,347 @@ async fn pending_legacy_catchup_keeps_history_until_source_reconciliation() {
     fx.store.upsert_detected_todo(&row).await.unwrap();
     assert!(fx.store.list_catchup_todos(None).await.unwrap().is_empty());
     assert_eq!(fx.store.get_todo(&row.id).await.unwrap(), Some(row));
+}
+
+/// Current stored answers for `sources`, so asks writes pass their authority check.
+async fn saved_asks(
+    fx: &Fx,
+    sources: &[&(MessageId, ThreadId)],
+) -> Vec<mxr_core::asks::AskAssessment> {
+    use mxr_core::asks::*;
+    let answers: Vec<_> = sources
+        .iter()
+        .map(|source| AskAssessment {
+            message_id: source.0.clone(),
+            account_id: fx.account.clone(),
+            policy_version: ASKS_POLICY_VERSION.into(),
+            input_fingerprint: "stable".into(),
+            pending_body: false,
+            context_token: crate::asks_context_token().unwrap(),
+            calendar: None,
+            html: None,
+            facts: AskFacts {
+                zones: vec![],
+                recipient_role: RecipientRole::AloneTo,
+                owner_authored: false,
+                owner_names: vec![],
+                owner_addresses: vec![],
+                predecessor: None,
+                owner_replied_afterwards: false,
+                amounts: vec![],
+                dates: vec![],
+                references: vec![],
+                template_key: "x".into(),
+            },
+            units: vec![],
+        })
+        .collect();
+    let threads: Vec<_> = sources.iter().map(|source| source.1.clone()).collect();
+    let revisions = fx
+        .store
+        .assessment_thread_revisions(&fx.account, &threads)
+        .await
+        .unwrap();
+    fx.store
+        .save_asks_batch(&fx.account, &revisions, &answers)
+        .await
+        .unwrap();
+    answers
+}
+
+#[tokio::test]
+async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_another_emails() {
+    let fx = Fx::new().await;
+    let source = fx.message("bill", at(0)).await;
+    let next = fx.message("next-bill", at(1)).await;
+    let answers = saved_asks(&fx, &[&source, &next]).await;
+    let (ask, next_ask) = (&answers[0], &answers[1]);
+    let key = |period: &str| format!("asks|payment|fp|{period}");
+    let keyed = |id: &str, source: &(MessageId, ThreadId), period: &str| TodoRecord {
+        dedup_key: key(period),
+        rules_version: 2,
+        ..fx.record(id, source, at(0))
+    };
+    let key_of = |id: &'static str| {
+        let store = &fx.store;
+        async move { store.get_todo(id).await.unwrap().unwrap().dedup_key }
+    };
+    fx.store
+        .insert_todo(&keyed("october", &source, "due:2026-10"))
+        .await
+        .unwrap();
+    fx.store
+        .insert_todo(&keyed("theirs", &next, "due:2026-12"))
+        .await
+        .unwrap();
+    let november = keyed("rescan", &source, "due:2026-11");
+
+    // This email still has an item due in October: that row is its sibling.
+    fx.store
+        .adopt_asks_same_source(&november, ask, &[key("due:2026-10"), key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-10"));
+
+    // A stale answer moves nothing.
+    let mut stale = ask.clone();
+    stale.input_fingerprint = "older".into();
+    fx.store
+        .adopt_asks_same_source(&november, &stale, &[key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-10"));
+
+    fx.store
+        .adopt_asks_same_source(&november, ask, &[key("due:2026-11")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+    assert_eq!(key_of("theirs").await, key("due:2026-12"));
+
+    // Another email's row for the same item is next month's bill, not this one.
+    let next_rescan = keyed("next-rescan", &next, "due:2027-01");
+    fx.store
+        .adopt_asks_same_source(&next_rescan, next_ask, &[key("due:2027-01")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+    assert_eq!(key_of("theirs").await, key("due:2027-01"));
+
+    // A key some row already holds is never taken a second time.
+    let back = keyed("back", &source, "due:2027-01");
+    fx.store
+        .adopt_asks_same_source(&back, ask, &[key("due:2027-01")])
+        .await
+        .unwrap();
+    assert_eq!(key_of("october").await, key("due:2026-11"));
+}
+
+#[test]
+fn the_read_columns_are_the_row_columns_plus_the_derived_state() {
+    assert!(SELECT_COLUMNS.starts_with(COLUMNS));
+    assert!(SELECT_COLUMNS.ends_with("AS source_unread"));
+}
+
+#[tokio::test]
+async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
+    use mxr_core::id::LabelId;
+    use mxr_core::types::{EventSource, Label, LabelKind, Role};
+
+    let fx = Fx::new().await;
+    let inbox = Label {
+        id: LabelId::new(),
+        account_id: fx.account.clone(),
+        name: "Inbox".to_string(),
+        kind: LabelKind::System,
+        color: None,
+        provider_id: "INBOX".to_string(),
+        unread_count: 0,
+        total_count: 0,
+        role: Some(Role::Inbox),
+    };
+    fx.store.upsert_label(&inbox).await.unwrap();
+
+    // Sync saw the mail leave the inbox: the row says filed elsewhere.
+    let (message, thread) = fx.message("filed", at(0)).await;
+    fx.store
+        .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::Sync)
+        .await
+        .unwrap();
+    fx.store
+        .remove_message_label(&message, &inbox.id, EventSource::Sync)
+        .await
+        .unwrap();
+    let filed = fx.record("filed", &(message.clone(), thread.clone()), at(0));
+    fx.store.insert_todo(&filed).await.unwrap();
+    assert!(
+        fx.store
+            .get_todo("filed")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at
+            .is_some(),
+        "a sync unlabel is evidence the user filed the mail elsewhere"
+    );
+
+    // mxr's own archive is attributed locally, never filed elsewhere.
+    let (own, own_thread) = fx.message("own", at(0)).await;
+    fx.store
+        .set_message_labels(&own, std::slice::from_ref(&inbox.id), EventSource::Sync)
+        .await
+        .unwrap();
+    fx.store
+        .set_message_labels(&own, &[], EventSource::User)
+        .await
+        .unwrap();
+    let mut own_record = fx.record("own", &(own, own_thread), at(0));
+    own_record.dedup_key = "bill|own".to_string();
+    fx.store.insert_todo(&own_record).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("own")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at,
+        None
+    );
+
+    // The mail came back to the inbox: the marker clears.
+    fx.store
+        .add_message_label(&message, &inbox.id, EventSource::Sync)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("filed")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_filed_at,
+        None
+    );
+
+    // A local archive after that return must not revive the older sync event.
+    fx.store
+        .set_message_labels(&message, &[], EventSource::User)
+        .await
+        .unwrap();
+    assert!(fx
+        .store
+        .get_todo("filed")
+        .await
+        .unwrap()
+        .unwrap()
+        .source_filed_at
+        .is_none());
+    assert!(fx
+        .store
+        .externally_filed_messages(None, std::slice::from_ref(&message))
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Full sync uses bulk replacement too: its real inbox departure is observed.
+    fx.store
+        .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::User)
+        .await
+        .unwrap();
+    fx.store
+        .set_message_labels(&message, &[], EventSource::Sync)
+        .await
+        .unwrap();
+    assert!(fx
+        .store
+        .get_todo("filed")
+        .await
+        .unwrap()
+        .unwrap()
+        .source_filed_at
+        .is_some());
+    assert!(fx
+        .store
+        .externally_filed_messages(None, std::slice::from_ref(&message))
+        .await
+        .unwrap()
+        .contains_key(&message));
+    let events = fx.store.list_message_events(&message).await.unwrap().len();
+    fx.store
+        .set_message_labels(&message, &[], EventSource::Sync)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.list_message_events(&message).await.unwrap().len(),
+        events,
+        "replaying identical labels creates no filing event"
+    );
+}
+
+#[tokio::test]
+async fn source_message_read_state_is_available_and_a_missing_source_stays_unknown() {
+    use mxr_core::types::EventSource;
+
+    let fx = Fx::new().await;
+    let source = fx.message("unread", at(0)).await;
+    let row = fx.record("unread", &source, at(0));
+    fx.store.insert_todo(&row).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("unread")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        Some(true)
+    );
+
+    fx.store
+        .set_read(&source.0, true, EventSource::User)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("unread")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        Some(false)
+    );
+
+    let mut manual = fx.record("manual", &source, at(0));
+    manual.dedup_key = "manual".to_string();
+    manual.source_message_id = None;
+    fx.store.insert_todo(&manual).await.unwrap();
+    assert_eq!(
+        fx.store
+            .get_todo("manual")
+            .await
+            .unwrap()
+            .unwrap()
+            .source_unread,
+        None
+    );
+}
+
+#[tokio::test]
+async fn reading_the_source_does_not_block_undoing_a_correction() {
+    use mxr_core::types::EventSource;
+
+    let fx = Fx::new().await;
+    let source = fx.message("undo", at(0)).await;
+    fx.store
+        .insert_todo(&fx.record("undo", &source, at(0)))
+        .await
+        .unwrap();
+    let before = fx.store.get_todo("undo").await.unwrap().unwrap();
+    let mut after = before.clone();
+    after.title = "Keep the corrected bill".into();
+    after.user_edited = true;
+    fx.store
+        .correct_todo(
+            "undo-correction",
+            "wrong_details",
+            &before,
+            &after,
+            false,
+            at(1),
+        )
+        .await
+        .unwrap();
+
+    // Reading the email changes the derived tone, not the to-do, so undo
+    // must still be allowed.
+    fx.store
+        .set_read(&source.0, true, EventSource::User)
+        .await
+        .unwrap();
+    let undone = fx
+        .store
+        .undo_todo_correction("undo", "undo-correction", false, at(2))
+        .await
+        .unwrap();
+    assert_eq!(undone.title, before.title);
+    assert_eq!(undone.source_unread, Some(false));
 }

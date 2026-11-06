@@ -76,4 +76,4 @@ Conversations live in the local database and are deleted with `mxr assistant del
 
 ## Not built yet
 
-Known limits and their status are in [docs/issues/assistant-followups.md](../issues/assistant-followups.md).
+The known limits listed at launch are all resolved.

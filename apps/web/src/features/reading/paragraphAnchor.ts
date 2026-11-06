@@ -43,3 +43,30 @@ export function selectionParagraph(container: Element | null): number | null {
   if (!container.contains(range.commonAncestorContainer)) return null;
   return paragraphOfRangeStart(range);
 }
+
+/** Paragraphs either reader anchors. */
+const ANCHORED = `[${PARAGRAPH_ATTRIBUTE}], [data-para]`;
+
+/**
+ * The paragraph at the top of `viewport`, for highlighting from the
+ * keyboard: the first anchored paragraph in `container` that is not
+ * scrolled wholly above the viewport's top, as the TUI takes the paragraph
+ * that owns its first visible line. Null when none is in view (the
+ * sender's own layout has no anchors).
+ */
+export function paragraphAtTop(
+  container: Element | null,
+  viewport: Element | null,
+): { index: number; text: string } | null {
+  if (!container || !viewport) return null;
+  const { top, bottom } = viewport.getBoundingClientRect();
+  for (const element of container.querySelectorAll(ANCHORED)) {
+    const box = element.getBoundingClientRect();
+    if (box.bottom <= top + 1) continue;
+    if (box.top >= bottom) return null;
+    const index = paragraphOfNode(element);
+    const text = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (index !== null && text) return { index, text };
+  }
+  return null;
+}

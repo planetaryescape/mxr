@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Keep a promise from a message you sent, due at a time, so it comes back when due. Adding it again moves the date
+
+Usage: mxr commitments add [OPTIONS] --what <WHAT> --due <DUE> <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  The sent message the promise is in
+
+Options:
+      --what <WHAT>      What you promised, such as "send the deck"
+      --due <DUE>        When it is due: "fri", "tomorrow 9am", "in 3d" or RFC3339
+      --dry-run          Show what would be kept without storing it
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

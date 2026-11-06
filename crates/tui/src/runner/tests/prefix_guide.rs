@@ -34,6 +34,8 @@ fn mailbox(view: MailboxView) -> App {
     app.screen = Screen::Mailbox;
     app.mailbox.mailbox_view = view;
     app.mailbox.active_pane = ActivePane::MailList;
+    // Prefix timing runs on a clock the test moves, never the wall clock.
+    app.freeze_input_clock_for_tests();
     app
 }
 
@@ -54,7 +56,7 @@ fn holding_g_for_300ms_lists_the_places() {
             "{view:?}: the guide waits"
         );
 
-        app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+        app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
         let shown = screen(&mut app);
         assert!(shown.contains("g then…"), "{view:?}:\n{shown}");
         for (key, label) in [
@@ -78,7 +80,7 @@ fn holding_g_for_300ms_lists_the_places() {
 fn the_selection_and_invitation_prefixes_list_theirs() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, '*');
-    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
     let shown = screen(&mut app);
     assert!(shown.contains("* then…"), "{shown}");
     assert!(lists(&shown, "u", "Select unread"), "{shown}");
@@ -88,7 +90,7 @@ fn the_selection_and_invitation_prefixes_list_theirs() {
 fn a_fast_g_i_shows_nothing() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, 'g');
-    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY - std::time::Duration::from_millis(50));
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY - std::time::Duration::from_millis(50));
     assert!(!screen(&mut app).contains("g then…"));
     assert_eq!(press(&mut app, 'i'), Some(Action::GoToInbox));
     assert!(!screen(&mut app).contains("g then…"));
@@ -98,7 +100,7 @@ fn a_fast_g_i_shows_nothing() {
 fn esc_cancels_the_prefix_and_its_guide() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, 'g');
-    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
     assert!(screen(&mut app).contains("g then…"));
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
     assert!(!app.input_pending());
@@ -110,8 +112,8 @@ fn esc_cancels_the_prefix_and_its_guide() {
 fn the_guide_goes_when_the_prefix_times_out() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, 'g');
-    app.age_prefix_for_tests(crate::input::MULTI_KEY_TIMEOUT);
-    app.age_prefix_for_tests(std::time::Duration::from_millis(1));
+    app.advance_input_clock_for_tests(crate::input::MULTI_KEY_TIMEOUT);
+    app.advance_input_clock_for_tests(std::time::Duration::from_millis(1));
     app.tick();
     assert!(!app.input_pending());
     assert!(!screen(&mut app).contains("g then…"));
@@ -128,7 +130,7 @@ fn the_guide_shows_the_persons_keys() {
     let mut app = mailbox(MailboxView::Messages);
     app.load_keybindings_from(dir.path());
     press(&mut app, 'g');
-    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
     let shown = screen(&mut app);
     assert!(lists(&shown, "y", "Go to Starred"), "{shown}");
     assert!(!lists(&shown, "s", "Go to Starred"), "{shown}");
@@ -141,7 +143,7 @@ fn with_single_keys_off_no_prefix_waits() {
     let mut app = mailbox(MailboxView::Messages);
     app.load_keybindings_from(dir.path());
     press(&mut app, 'g');
-    app.age_prefix_for_tests(PREFIX_GUIDE_DELAY);
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
     assert!(!screen(&mut app).contains("g then…"));
 }
 
@@ -156,12 +158,43 @@ fn z_undoes_now_that_z_z_retired() {
 fn g_still_waits_four_seconds() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, 'g');
-    app.age_prefix_for_tests(std::time::Duration::from_millis(3990));
+    app.advance_input_clock_for_tests(std::time::Duration::from_millis(3990));
     app.tick();
     assert!(app.input_pending(), "g waits while its guide can be read");
     assert_eq!(press(&mut app, 'i'), Some(Action::GoToInbox));
     press(&mut app, 'g');
-    app.age_prefix_for_tests(crate::input::MULTI_KEY_TIMEOUT + std::time::Duration::from_millis(1));
+    app.advance_input_clock_for_tests(
+        crate::input::MULTI_KEY_TIMEOUT + std::time::Duration::from_millis(1),
+    );
     app.tick();
     assert!(!app.input_pending());
+}
+
+/// Dogfood 2026-10-29: with four saved searches the guide listed `g 1` to
+/// `g 9` as "Saved search 1" to "Saved search 9", five of them dead. It
+/// names the saved searches there are, and only those.
+#[test]
+fn the_g_guide_names_the_saved_searches_and_leaves_out_empty_digits() {
+    let mut app = mailbox(MailboxView::Messages);
+    app.mailbox.saved_searches = ["Unread today", "From boss"]
+        .into_iter()
+        .enumerate()
+        .map(|(position, name)| mxr_core::SavedSearch {
+            id: mxr_core::SavedSearchId::new(),
+            account_id: None,
+            name: name.into(),
+            query: "is:unread".into(),
+            search_mode: mxr_core::SearchMode::Lexical,
+            sort: mxr_core::SortOrder::DateDesc,
+            icon: None,
+            position: position as i32,
+            created_at: chrono::Utc::now(),
+        })
+        .collect();
+    assert_eq!(press(&mut app, 'g'), None);
+    app.advance_input_clock_for_tests(PREFIX_GUIDE_DELAY);
+    let shown = screen(&mut app);
+    assert!(lists(&shown, "1", "Unread today"), "{shown}");
+    assert!(lists(&shown, "2", "From boss"), "{shown}");
+    assert!(!shown.contains("Saved search"), "{shown}");
 }

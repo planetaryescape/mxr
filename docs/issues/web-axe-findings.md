@@ -2,6 +2,12 @@
 
 Status: logged, not fixed. Two items are follow-ups outside this rung's files.
 
+Re-checked 2026-11-05 on `fix/web-small-followups` (base `d574d0e29`). Item 2 is fixed, and item 1 and the Badge/Chip item are still open. None of the three is a label, role or contrast fix on a named element, so this pass changes no code:
+
+- `region` on the resize handle: the handle is already a labelled focusable separator (`apps/web/src/components/ui/resizable.tsx:80`). Axe flags its place outside any landmark, which needs a landmark decision for the sidebar shell.
+- Badge/Chip merge: a refactor that the rung deferred.
+- Paper contrast: the measured ratios above all pass 4.5:1, and the remaining re-measure belongs with `paper-theme-contrast.md`.
+
 ## What
 
 An axe run (WCAG 2.0/2.1 A and AA plus best-practice rules) covered Now, Messages, To do, Updates, Reading, Archive and Inbox at 1440px in all four themes: Midnight, Light, Eclipse and Paper. That is 28 page-theme runs. Every run passed `color-contrast`, and no run had a serious or critical violation. Two moderate findings remain. Both come from shared chrome or shared loading states that this rung did not change.

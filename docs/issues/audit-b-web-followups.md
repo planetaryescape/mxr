@@ -2,6 +2,8 @@
 
 **Status:** open · **Found:** 2026-10-08 at `3f038c4f` on `fix/audit-b-web-p0`
 
+Re-checked 2026-11-05 on `fix/web-small-followups` (base `d574d0e29`). All three items remain, and each one turns on a design choice that this file leaves open: which hosts mount in the no-account frame, what the neutral frame shows while the first account query is pending, and whether onboarding shows the offline banner. No small change settles them, so they stay here.
+
 ## ⌘K, `/` and `c` can suspend shortcuts during onboarding
 
 In the no-account frame, `AppShell` mounts only `HelpDialog`; the palette,

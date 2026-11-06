@@ -20,6 +20,7 @@ letter, except where Raycast keeps its own key. See [Raycast](/guides/raycast/#w
 
 When a default moves, the old key keeps a reminder for 30 releases: pressing
 it shows "<action> is now <key>" in the status bar and does nothing else.
+After that the old key does nothing, unless another action takes it.
 
 :::tip[The 10 keys that get you 80% of mxr]
 If you only learn ten, learn these:
@@ -253,7 +254,9 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `a` | Reply all |
 | `f` | Forward |
 | `B` | Thread briefing |
+| `p` | Sender profile |
 | `L` | Links in this message |
+| `A` | Attachments |
 | `i a` | Accept invite |
 | `i m` | Maybe (invite) |
 | `i d` | Decline invite |
@@ -269,6 +272,7 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `* s` | Select starred |
 | `g f` | Filter this list |
 | `R` | Reader view, or back to plain |
+| `S` | Show or hide signatures |
 | `O` | Open original in a new tab |
 | `F` | Full-width reader |
 | `X` | Move to… |
@@ -283,8 +287,6 @@ Inbox, labels and saved searches.
 | `e` | Archive |
 | `s` | Star or unstar |
 | `D` | Unsubscribe… |
-| `p` | Sender profile |
-| `A` | Attachments |
 | `j`, `↓` | Next conversation |
 | `k`, `↑` | Previous conversation |
 | `Home`, `g g` | First conversation |
@@ -296,7 +298,6 @@ Inbox, labels and saved searches.
 | `w` | Wake: bring it back now |
 | `Esc` | Clear selection, then close |
 | `Ctrl+f` | Filter this list |
-| `S` | Show or hide signatures |
 | `P` | Send everything from this sender to… |
 | `q` | Quit view |
 
@@ -309,8 +310,6 @@ An open conversation.
 | `e` | Archive |
 | `s` | Star or unstar |
 | `D` | Unsubscribe… |
-| `p` | Sender profile |
-| `A` | Attachments |
 | `Ctrl+f` | Filter this list |
 | `↓`, `j` | Scroll down |
 | `↑`, `k` | Scroll up |
@@ -330,7 +329,6 @@ An open conversation.
 | `Esc`, `q` | Close conversation |
 | `H` | Formatted (HTML) view, or back to plain |
 | `M` | Load remote images |
-| `S` | Show or hide signatures |
 | `Q` | Show or hide quoted text |
 
 ### Sidebar
@@ -414,6 +412,8 @@ The front page the TUI opens on. Acting on a row does it in that row's own mode.
 | `Enter` | Open in its mode |
 | `e` | Done here |
 | `r` | Reply |
+| `a` | Reply all |
+| `f` | Forward |
 | `t` | Make it a to-do |
 | `o` | Open the email |
 | `E` | Let go of the Updates digest… |
@@ -479,6 +479,7 @@ See [Act on To dos](/guides/todo/).
 | `,` | Edit what mxr read… |
 | `X` | Correct to-do |
 | `o` | Open the email it came from |
+| `Space` | Peek: why it is here, its email and where each field came from |
 | `1` | Runway |
 | `3` | Expired list |
 | `2` | Catch-up |
@@ -621,7 +622,7 @@ One item from the edition, open.
 | `2` | Later |
 | `3` | Highlights |
 | `O` | Open in Marginalia |
-| `"` | Highlight the selection |
+| `"` | Highlight the paragraph at the top, or the selection |
 | `←`, `Esc`, `q` | Back to the edition |
 | `X` | Move to… |
 
@@ -651,7 +652,7 @@ The records lens, with the answer box focused.
 | `,` | Fix a field… |
 | `X` | Not a record |
 | `t` | Make a to-do from this record |
-| `g f` | Filters… |
+| `g f` | Filter by kind |
 | `Esc` | Close |
 | `q` | Quit view |
 | `→` | Records open card |
@@ -1309,7 +1310,7 @@ After you save and quit `$EDITOR`. It opens on Send.
 | `e`, `Esc` | Edit again |
 | `r` | Refine with the assistant |
 | `#` | Discard draft |
-| `Ctrl+a` | Add the suggested person to Cc |
+| `c` | Add the suggested person to Cc |
 
 #### Send later or remind me: the time
 
@@ -1659,7 +1660,7 @@ and `M`, and raw headers' `g H` retired; raw headers are in the palette. The
 assistant is `@` as well as `⌘.`, and Summarize folded into the briefing
 (`B`).
 
-The next wave moved these, each saying where it went until 0.6.185: Export
+The next wave moved these: Export
 (`E`, in the mail list and Archive) and Updates' sender sweep (`S`) are in the
 palette; Archive's mark checked (`v`) is in the `,` dialog; To do's details
 (`v`) is in the palette and on the row; Focus skips with `j` (was `s`); the
@@ -1910,6 +1911,8 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `Enter` | Open in its mode |  |
 | `e` | Done here |  |
 | `r` | Reply |  |
+| `a` | Reply all |  |
+| `f` | Forward |  |
 | `t` | Make it a to-do |  |
 | `o` | Open the email |  |
 | `E` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
@@ -1965,6 +1968,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `,` | Edit what mxr read… |  |
 | `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
+| `Space` | Peek: why it is here, its email and where each field came from |  |
 | `1` | Runway |  |
 | `3` | Expired list |  |
 | `2` | Catch-up |  |
@@ -1972,7 +1976,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 
 ### To do: catch-up
 
-The first run's older undated tasks: keep each one, or let it go to the Expired list. `C` on To do opens it.
+The first run's older undated tasks: keep each one, or let it go to the Expired list. `2` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -1992,7 +1996,7 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 
 ### To do: Expired list
 
-Tasks that expired or were let go. `E` on To do opens it.
+Tasks that expired or were let go. `3` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -2075,7 +2079,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `e` | Let go and go back |  |
 | `n` | Next item |  |
 | `R` | Sender's layout or cleaned |  |
-| `"` | Highlight the selection |  |
+| `"` | Highlight the paragraph at the top, or the selection |  |
 | `D` | Unsubscribe… |  |
 | `o` | Open the email as sent |  |
 | `O` | Open in Marginalia |  |
@@ -2103,7 +2107,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `,` | Fix a field… |  |
 | `X` | Not a record |  |
 | `t` | Make a to-do from this record |  |
-| `g f` | Filters… |  |
+| `g f` | Filter by kind | The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked |
 | `Esc` | Close |  |
 
 ### Arrivals
@@ -2468,5 +2472,6 @@ A topic list, the people in a conversation, Search's filters, a link preview or 
 its keys: the new keys are checked as you type, any action already on them is
 named, and **Save** writes `keys.toml` through the daemon, so the TUI uses them
 too. **Use the default keys** puts an action back. The **Single-key shortcuts**
-switch turns every single-character shortcut off; `?` then says so, and `⌘K`
-or `Ctrl+K` still opens the palette. The web app reads your keys when it loads.
+switch turns every single-character shortcut off, `?` included: `⌘K` or
+`Ctrl+K` still opens the palette, and its **Keyboard help** says the switch is
+off. The web app reads your keys when it loads.

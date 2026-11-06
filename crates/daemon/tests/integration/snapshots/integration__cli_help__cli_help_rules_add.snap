@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Usage: mxr rules add [OPTIONS] --when <CONDITION> --then <ACTION> <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+      --account <ACCOUNT>
+      --when <CONDITION>
+      --then <ACTION>
+      --priority <PRIORITY>  [default: 100]
+  -h, --help                 Print help

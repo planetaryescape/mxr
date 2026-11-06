@@ -264,6 +264,7 @@ async fn mailbox(
         lens.kind,
         MailboxLensKind::Inbox
             | MailboxLensKind::AllMail
+            | MailboxLensKind::Starred
             | MailboxLensKind::Label
             | MailboxLensKind::Category
     ) || (lens.kind == MailboxLensKind::Subscription
@@ -1083,7 +1084,7 @@ async fn update_compose_session(
         {
             if replace_compose_file(path, content).await.is_ok() {
                 for attachment in copied {
-                    let _ = tokio::fs::remove_file(attachment).await;
+                    remove_copied_attachment(&attachment).await;
                 }
             }
             return Err(error);
@@ -2730,6 +2731,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
+        ClientError::DaemonIncompatible { message } => BridgeError::Ipc(message),
         // A non-response frame kept mapping to UnexpectedResponse before, so
         // `bridge_error_kind` still reports "unexpected_response".
         ClientError::UnexpectedFrame {
@@ -3647,6 +3649,15 @@ fn snoozed_summary_view(entry: &Snoozed, envelope: &Envelope) -> serde_json::Val
     })
 }
 
+/// Removes one copy made by `copy_recovery_attachments` and the UUID directory
+/// that holds it. `remove_dir` only succeeds when the directory is empty.
+async fn remove_copied_attachment(path: &Path) {
+    let _ = tokio::fs::remove_file(path).await;
+    if let Some(parent) = path.parent() {
+        let _ = tokio::fs::remove_dir(parent).await;
+    }
+}
+
 /// Recovery copies bridge-owned uploads; user-managed paths retain their existing
 /// lifetime because deleting a compose session never deletes those files.
 async fn copy_recovery_attachments(
@@ -3662,9 +3673,8 @@ async fn copy_recovery_attachments(
         let mut paths: HashMap<PathBuf, PathBuf> = HashMap::new();
         for attachment in &mut frontmatter.attach {
             let source = PathBuf::from(&*attachment);
-            if !source.starts_with(&managed_root)
-                || source.parent() == Some(destination_dir.as_path())
-            {
+            // Copies this destination already owns sit in its UUID subdirectories.
+            if !source.starts_with(&managed_root) || source.starts_with(&destination_dir) {
                 continue;
             }
             // Repeated references reuse one copy, while equal basenames from
@@ -3685,7 +3695,8 @@ async fn copy_recovery_attachments(
                         .unwrap_or("attachment"),
                 );
                 let target = compose_attachment_path(destination, &filename)?;
-                tokio::fs::create_dir_all(&destination_dir)
+                let target_dir = target.parent().ok_or(BridgeError::UnexpectedResponse)?;
+                tokio::fs::create_dir_all(target_dir)
                     .await
                     .map_err(|error| BridgeError::Ipc(error.to_string()))?;
                 copied.push(target.clone());
@@ -3726,7 +3737,7 @@ async fn copy_recovery_attachments(
         Ok((rendered, draft)) => Ok((rendered, draft, copied)),
         Err(error) => {
             for path in copied {
-                let _ = tokio::fs::remove_file(path).await;
+                remove_copied_attachment(&path).await;
             }
             Err(error)
         }
@@ -3853,9 +3864,12 @@ fn compose_attachment_dir(path: &Path) -> Result<PathBuf, BridgeError> {
         .join(draft_stem))
 }
 
+/// Each copy gets its own UUID directory so the display name stays intact and
+/// equal basenames still land on distinct bytes.
 fn compose_attachment_path(draft_path: &Path, filename: &str) -> Result<PathBuf, BridgeError> {
-    let unique_name = format!("{}-{filename}", Uuid::now_v7());
-    Ok(compose_attachment_dir(draft_path)?.join(unique_name))
+    Ok(compose_attachment_dir(draft_path)?
+        .join(Uuid::now_v7().to_string())
+        .join(filename))
 }
 
 fn safe_attachment_filename(value: &str) -> String {
@@ -4011,6 +4025,7 @@ async fn run_account_save_workflow(
 fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
     mxr_protocol::AccountOperationResult {
         ok: true,
+        saved: false,
         summary: String::new(),
         save: None,
         auth: None,
@@ -4018,6 +4033,7 @@ fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
         send: None,
         device_code_url: None,
         device_code_user_code: None,
+        tls_cert_sha256: None,
     }
 }
 
@@ -4026,6 +4042,7 @@ fn merge_account_operation_result(
     next: mxr_protocol::AccountOperationResult,
 ) {
     base.ok &= next.ok;
+    base.saved |= next.saved;
     if !next.summary.is_empty() {
         base.summary = next.summary;
     }
@@ -4040,6 +4057,9 @@ fn merge_account_operation_result(
     }
     if next.send.is_some() {
         base.send = next.send;
+    }
+    if next.tls_cert_sha256.is_some() {
+        base.tls_cert_sha256 = next.tls_cert_sha256;
     }
 }
 
@@ -4071,6 +4091,7 @@ async fn list_subscriptions(
     match ipc_request(
         &state.config.socket_path,
         Request::ListSubscriptions {
+            all_accounts: account_id.is_none(),
             account_id,
             limit: 100,
         },

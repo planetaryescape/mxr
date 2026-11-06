@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { SearchPalette } from "./SearchPalette";
 import type { MessageRowView } from "@/features/mailbox/types";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 
 const router = vi.hoisted(() => ({
@@ -100,6 +101,20 @@ describe("SearchPalette", () => {
     });
   });
 
+  test("an opened result gives the reader the keys, as Enter on a list row does", async () => {
+    useMailboxPane.getState().setActivePane("mailbox");
+    renderWithQueryClient(<SearchPalette />);
+
+    const input = await screen.findByRole("textbox", { name: "Search mail" });
+    fireEvent.change(input, { target: { value: "invoice" } });
+    expect(await screen.findByText("Subject 1")).toBeVisible();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // j and e now act on the opened conversation, not the list's lit row.
+    expect(useMailboxPane.getState().activePane).toBe("reader");
+  });
+
   test("moves modal selection through suggestions with up and down keys", async () => {
     renderWithQueryClient(<SearchPalette />);
 
@@ -139,7 +154,7 @@ describe("SearchPalette", () => {
 
     expect(router.navigate).toHaveBeenCalledWith({
       to: "/search",
-      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+      search: { q: "invoice", mode: "lexical" },
     });
     expect(router.navigate).not.toHaveBeenCalledWith(
       expect.objectContaining({ to: "/m/$mailbox/$threadId" }),
@@ -158,7 +173,7 @@ describe("SearchPalette", () => {
 
     expect(router.navigate).toHaveBeenCalledWith({
       to: "/search",
-      search: { q: "invoice", mode: "lexical", sort: "relevance" },
+      search: { q: "invoice", mode: "lexical" },
     });
   });
 });

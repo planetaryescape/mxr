@@ -1,6 +1,7 @@
 //! `mxr signatures` — manage outgoing compose signatures.
 
 use crate::cli::{OutputFormat, SignatureDefaultKindArg, SignaturesAction};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::AccountId;
@@ -37,7 +38,7 @@ async fn list(client: &mut IpcClient, format: Option<OutputFormat>) -> anyhow::R
         Response::Ok {
             data: ResponseData::Signatures { signatures },
         } => signatures,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
 
@@ -89,7 +90,7 @@ async fn set(client: &mut IpcClient, name: String, body: String) -> anyhow::Resu
             println!("Saved signature {}", signature.name);
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -105,7 +106,7 @@ async fn remove(client: &mut IpcClient, name: String) -> anyhow::Result<()> {
             println!("Deleted signature {name}");
             Ok(())
         }
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -115,7 +116,7 @@ async fn defaults(client: &mut IpcClient, format: Option<OutputFormat>) -> anyho
         Response::Ok {
             data: ResponseData::SignatureDefaults { defaults },
         } => defaults,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
 
@@ -176,7 +177,9 @@ async fn set_default(
             .await?
         {
             Response::Ok { .. } => {}
-            Response::Error { message, .. } => anyhow::bail!(message),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
         }
     }
     println!("Set {} default signature to {name}", kind_label(kind));
@@ -200,7 +203,9 @@ async fn clear_default(
             .await?
         {
             Response::Ok { .. } => {}
-            Response::Error { message, .. } => anyhow::bail!(message),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
         }
     }
     println!("Cleared {} default signature", kind_label(kind));
@@ -218,7 +223,7 @@ async fn resolve_account_id(
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     let selector_lower = selector.to_ascii_lowercase();

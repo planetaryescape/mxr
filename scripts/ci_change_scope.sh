@@ -39,12 +39,34 @@ classify_path() {
       ;;
   esac
 
-  # The full-set classifier eval grades the 50,000-email demo through the
-  # crates that generate, sync, classify, place and grade mail, so it runs
-  # when any of them changes. UI, transport and provider crates cannot move
-  # an answer.
+  # The full-set classifier eval takes about 20 minutes, so it runs only when
+  # the code that decides a graded answer changes: the demo generator and its
+  # labels, the detectors (and the reader text they read), the daemon's
+  # post-sync classification (`post_sync_classification` in loops.rs and the
+  # handlers it calls), and the eval itself. A store, sync, core, protocol,
+  # config, llm or dependency change can still move an answer; only a manual
+  # run (workflow_dispatch) catches that. The eval seeds no rules and skips the
+  # relationship workers, and safety only checks drafts, so the rules,
+  # relationship and safety crates can't.
   case "$path" in
-    crates/provider-fake/*|crates/daemon/*|crates/store/*|crates/protocol/*|crates/core/*|crates/todo/*|crates/records/*|crates/deliveries/*|crates/updates/*|crates/reading/*|crates/reader/*|crates/relationship/*|crates/rules/*|crates/safety/*|crates/sync/*|crates/mail-parse/*|crates/config/*|crates/llm/*|Cargo.toml|Cargo.lock|.sqlx/*)
+    crates/provider-fake/src/fixtures*|crates/provider-fake/src/lib.rs)
+      classifier=true
+      ;;
+    crates/todo/src/*|crates/records/src/*|crates/deliveries/src/*|crates/updates/src/*|crates/reading/src/*|crates/reader/src/*)
+      classifier=true
+      ;;
+    crates/daemon/src/loops.rs|crates/daemon/src/handler/classify_eval.rs|crates/daemon/src/handler/classify_eval_asks.rs)
+      classifier=true
+      ;;
+    crates/daemon/src/handler/deliveries.rs|crates/daemon/src/handler/todos.rs|crates/daemon/src/handler/todo_resolution*|crates/daemon/src/handler/asks_upgrade.rs|crates/daemon/src/handler/records.rs|crates/daemon/src/handler/reading/*|crates/daemon/src/handler/updates.rs)
+      classifier=true
+      ;;
+    # Who and home: the stored assessment, where an arrival goes, and the
+    # rules those read.
+    crates/daemon/src/handler/assessments.rs|crates/daemon/src/handler/ask_assessments.rs|crates/daemon/src/handler/arrivals.rs|crates/daemon/src/handler/mail_kind.rs|crates/daemon/src/handler/conversation_shape.rs|crates/daemon/src/handler/mode_rules.rs|crates/daemon/src/handler/desk_lanes.rs)
+      classifier=true
+      ;;
+    crates/daemon/src/handler/tests/classify_eval_*|crates/daemon/src/handler/tests/snapshots/mxr__handler__tests__classify_eval_full__*)
       classifier=true
       ;;
   esac

@@ -251,6 +251,30 @@ async fn a_rebuild_in_progress_answers_from_sqlite_until_it_ends() {
 }
 
 #[tokio::test]
+async fn a_short_index_is_not_read_between_startup_open_and_its_rebuild() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account = state.default_account_id();
+    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
+
+    // Startup open found the index short of SQLite and holds it as rebuilding
+    // until the startup maintenance runs. The message is not in the index yet.
+    state.search.hold_startup_rebuild();
+    let during = page(send(&state, search_request("invoice", None, 10, 0)).await);
+
+    assert_eq!(during.ids, vec![wanted.id.as_str()]);
+    assert_eq!(
+        during.degraded.map(|degraded| degraded.reason),
+        Some(SearchDegradedReason::IndexRebuilding)
+    );
+
+    state.search.end_startup_rebuild(true);
+    assert!(matches!(
+        state.search.availability(),
+        mxr_search::IndexAvailability::Ready { .. }
+    ));
+}
+
+#[tokio::test]
 async fn a_failed_rebuild_keeps_search_limited_until_a_later_rebuild_finishes() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let account = state.default_account_id();

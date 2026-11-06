@@ -1,6 +1,7 @@
 //! `mxr sender <addr>` — relationship aggregates for one contact.
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::types::ResponseTimeBucket;
@@ -140,7 +141,7 @@ pub async fn run(
                 }
             }
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
 
@@ -156,7 +157,7 @@ async fn resolve_account(
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
 

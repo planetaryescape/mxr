@@ -1,10 +1,9 @@
 use crate::schema::MxrSchema;
-use mxr_core::id::MessageId;
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::MessageFlags;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
-use mxr_reader::{clean, ReaderConfig};
-use std::panic::AssertUnwindSafe;
+use mxr_reader::searchable_text;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -26,91 +25,16 @@ pub struct SearchIndex {
     pub(crate) clean_fallbacks: Arc<AtomicU64>,
 }
 
-/// The reader's HTML conversion with every removal step off. Quoted replies,
-/// signatures and boilerplate stay in the text: each removal can drop words the
-/// reader shows. Markup, CSS and scripts are still dropped by the conversion.
-fn conversion_only_config() -> ReaderConfig {
-    ReaderConfig {
-        html_command: None,
-        collapse_quotes: false,
-        strip_signatures: false,
-        strip_boilerplate: false,
-        strip_tracking: false,
-    }
-}
-
-/// The values added to the body field for a message: `text_plain` as stored,
-/// and `text_html` converted to text. A part that is itself an HTML document is
-/// converted rather than indexed as markup. The reader's built-in converter is
-/// used, never `render.html_command`.
-fn indexed_body_parts(body: &MessageBody, clean_fallbacks: &AtomicU64) -> Vec<String> {
-    let mut parts = Vec::with_capacity(2);
-    if let Some(plain) = body.text_plain.as_deref() {
-        parts.push(convert_part(plain, false, clean_fallbacks));
-    }
-    if let Some(html) = body.text_html.as_deref() {
-        parts.push(convert_part(html, true, clean_fallbacks));
-    }
-    parts.retain(|part| !part.trim().is_empty());
-    parts
-}
-
-/// Converts one part with the reader's pipeline. A panic in html2text, which
-/// it hits on some malformed tables, falls back to tag stripping and is counted.
-fn convert_part(text: &str, as_html: bool, clean_fallbacks: &AtomicU64) -> String {
-    let config = conversion_only_config();
-    convert_guarded(text, clean_fallbacks, || {
-        if as_html {
-            clean(None, Some(text), &config).content
-        } else {
-            clean(Some(text), None, &config).content
-        }
-    })
-}
-
-/// Runs one conversion, and on a panic indexes the part as tag-stripped text
-/// and counts it. Taking the conversion as a closure lets tests make it panic.
-fn convert_guarded(
-    text: &str,
-    clean_fallbacks: &AtomicU64,
-    convert: impl FnOnce() -> String,
-) -> String {
-    std::panic::catch_unwind(AssertUnwindSafe(convert)).unwrap_or_else(|_| {
-        clean_fallbacks.fetch_add(1, Ordering::Relaxed);
-        strip_html_tags(text)
-    })
-}
-
-/// Text between tags, with `<style>` and `<script>` contents dropped. Used only
-/// when the reader's HTML conversion cannot run, so it stays deliberately simple.
-fn strip_html_tags(html: &str) -> String {
-    let lower = html.to_ascii_lowercase();
-    let mut out = String::with_capacity(html.len());
-    let mut pos = 0;
-    while let Some(offset) = html[pos..].find('<') {
-        let tag_start = pos + offset;
-        out.push_str(&html[pos..tag_start]);
-        let tag_end = html[tag_start..]
-            .find('>')
-            .map_or(html.len(), |end| tag_start + end + 1);
-        let tag = &lower[tag_start..tag_end];
-        pos = tag_end;
-        for raw in ["style", "script"] {
-            if tag.starts_with(&format!("<{raw}")) {
-                let close = format!("</{raw}");
-                pos = lower[tag_end..]
-                    .find(&close)
-                    .map_or(html.len(), |end| tag_end + end);
-                let close_end = html[pos..]
-                    .find('>')
-                    .map_or(html.len(), |end| pos + end + 1);
-                pos = close_end;
-            }
-        }
-        out.push(' ');
-    }
-    out.push_str(&html[pos..]);
-    out
+/// The body text added to the index: the text rules match too, from
+/// `mxr_reader::searchable_text`. The reader's built-in converter is used,
+/// never `render.html_command`. Panics counted in `clean_fallbacks`.
+fn indexed_body_text(body: &MessageBody, clean_fallbacks: &AtomicU64) -> String {
+    let searchable = searchable_text(body.text_plain.as_deref(), body.text_html.as_deref());
+    clean_fallbacks.fetch_add(
+        u64::try_from(searchable.fallbacks).unwrap_or(u64::MAX),
+        Ordering::Relaxed,
+    );
+    searchable.text
 }
 
 #[derive(Debug, Clone)]
@@ -427,8 +351,9 @@ impl SearchIndex {
             doc.add_text(s.labels, label.to_lowercase());
         }
 
-        for part in indexed_body_parts(body, &self.clean_fallbacks) {
-            doc.add_text(s.body_text, part);
+        let body_text = indexed_body_text(body, &self.clean_fallbacks);
+        if !body_text.is_empty() {
+            doc.add_text(s.body_text, body_text);
         }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
@@ -506,14 +431,13 @@ impl SearchIndex {
         self.search_in_account(query_str, None, limit, offset, sort)
     }
 
-    pub fn search_in_account(
+    /// The query `search_in_account` runs for free text: the default text
+    /// fields, narrowed to one account when given.
+    pub fn text_query(
         &self,
         query_str: &str,
         account_id: Option<&str>,
-        limit: usize,
-        offset: usize,
-        sort: SortOrder,
-    ) -> Result<SearchPage, MxrError> {
+    ) -> Result<Box<dyn Query>, MxrError> {
         let s = &self.schema;
 
         let fields = s.default_text_fields();
@@ -528,7 +452,7 @@ impl SearchIndex {
         let query = query_parser
             .parse_query(query_str)
             .map_err(|e| MxrError::Search(e.to_string()))?;
-        let query = match account_id {
+        Ok(match account_id {
             Some(account_id) => {
                 let account_term = tantivy::Term::from_field_text(s.account_id, account_id);
                 Box::new(BooleanQuery::new(vec![
@@ -540,8 +464,30 @@ impl SearchIndex {
                 ])) as Box<dyn Query>
             }
             None => query,
-        };
+        })
+    }
 
+    /// A handle that reads the index as it is now and can run a whole-result
+    /// scan off the index worker (see [`SearchResolver`]).
+    pub fn resolver(&self) -> SearchResolver {
+        SearchResolver {
+            searcher: self.reader.searcher(),
+            message_id: self.schema.message_id,
+            account_id: self.schema.account_id,
+            thread_id: self.schema.thread_id,
+        }
+    }
+
+    pub fn search_in_account(
+        &self,
+        query_str: &str,
+        account_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+        sort: SortOrder,
+    ) -> Result<SearchPage, MxrError> {
+        let s = &self.schema;
+        let query = self.text_query(query_str, account_id)?;
         let searcher = self.reader.searcher();
         let total = searcher
             .search(&query, &Count)
@@ -930,19 +876,11 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn a_converter_panic_falls_back_to_tag_stripped_text_and_is_counted() {
-        let counter = AtomicU64::new(0);
-        let text = convert_guarded(
-            "<p>keepme</p><script>var hidden=1;</script><b>also</b>",
-            &counter,
-            || std::panic::resume_unwind(Box::new("converter failed")),
-        );
-
-        assert!(text.contains("keepme"));
-        assert!(text.contains("also"));
-        assert!(!text.contains("hidden"));
-        assert!(!text.contains('<'));
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    fn a_long_html_paragraph_is_one_phrase_in_the_index() {
+        // The reader's 80-column view breaks before "overdue"; the index must not.
+        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
+        let (index, id) = index_one(None, Some(html.as_str()));
+        assert_eq!(search_ids(&index, "\"payment overdue\""), vec![id]);
     }
 
     #[test]
@@ -972,24 +910,10 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn strip_html_tags_drops_style_and_script_contents() {
-        let text = strip_html_tags(
-            "<p>keepme</p><style>.hidden{x:1}</style><script>var hiddenjs=1;</script><b>also</b>",
-        );
-
-        assert!(text.contains("keepme"));
-        assert!(text.contains("also"));
-        assert!(!text.contains("hidden"));
-        assert!(!text.contains("hiddenjs"));
-        assert!(!text.contains('<'));
-    }
-
-    #[test]
-    fn indexed_parts_keep_quotes_and_signatures_and_drop_markup() {
+    fn indexed_body_text_keeps_quotes_and_signatures_and_drops_markup() {
         let envelope = TestEnvelopeBuilder::new().build();
         let counter = AtomicU64::new(0);
-        let parts = indexed_body_parts(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
-        let text = parts.join("\n");
+        let text = indexed_body_text(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
 
         assert!(text.contains("visiblebananaword"));
         assert!(text.contains("earlierquotedword"));
@@ -1022,7 +946,7 @@ mod reader_text_tests {
         let counter = AtomicU64::new(0);
         let clean_started = Instant::now();
         for (_, body) in &envelopes {
-            std::hint::black_box(indexed_body_parts(body, &counter));
+            std::hint::black_box(indexed_body_text(body, &counter));
         }
         let clean_elapsed = clean_started.elapsed();
 
@@ -1038,5 +962,192 @@ mod reader_text_tests {
             "reindex timing, {COUNT} messages, debug build: indexed {index_elapsed:?} (conversion alone {clean_elapsed:?})"
         );
         assert_eq!(index.num_docs(), COUNT as u64);
+    }
+}
+
+/// One indexed message a [`SearchResolver`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedHit {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub thread_id: ThreadId,
+}
+
+/// Reads every match of a query in one pass, newest first.
+///
+/// `search_ast` pages: each page counts every match again and re-reads the
+/// ones before it, so reading M matches costs about M/limit full scans. This
+/// scans once. It holds its own searcher, so it can run on the blocking pool
+/// while the index worker keeps serving other commands.
+#[derive(Clone)]
+pub struct SearchResolver {
+    searcher: tantivy::Searcher,
+    message_id: tantivy::schema::Field,
+    account_id: tantivy::schema::Field,
+    thread_id: tantivy::schema::Field,
+}
+
+impl SearchResolver {
+    /// Every match, ordered by the `sort_date_ts` fast field descending: the
+    /// same order `search_ast` gives with `SortOrder::DateDesc`. Documents
+    /// whose stored ids do not parse are left out, as the live pager does.
+    pub fn resolve_date_desc(&self, query: &dyn Query) -> Result<Vec<ResolvedHit>, MxrError> {
+        let search_error = |e: tantivy::TantivyError| MxrError::Search(e.to_string());
+        let total = self.searcher.search(query, &Count).map_err(search_error)?;
+        if total == 0 {
+            return Ok(Vec::new());
+        }
+        let ordered = self
+            .searcher
+            .search(
+                query,
+                &TopDocs::with_limit(total).order_by_fast_field::<i64>("sort_date_ts", Order::Desc),
+            )
+            .map_err(search_error)?;
+
+        // Read stored fields in address order so each doc-store block is
+        // decompressed once, then put the hits back in date order.
+        let mut by_address: Vec<(usize, tantivy::DocAddress)> = ordered
+            .iter()
+            .enumerate()
+            .map(|(rank, (_, address))| (rank, *address))
+            .collect();
+        by_address.sort_unstable_by_key(|(_, address)| *address);
+        let mut hits: Vec<Option<ResolvedHit>> = vec![None; ordered.len()];
+        for (rank, address) in by_address {
+            let doc: TantivyDocument = self.searcher.doc(address).map_err(search_error)?;
+            hits[rank] = self.hit(&doc);
+        }
+        Ok(hits.into_iter().flatten().collect())
+    }
+
+    fn hit(&self, doc: &TantivyDocument) -> Option<ResolvedHit> {
+        fn id<T: std::str::FromStr>(
+            doc: &TantivyDocument,
+            field: tantivy::schema::Field,
+        ) -> Option<T> {
+            doc.get_first(field)?.as_str()?.parse().ok()
+        }
+        Some(ResolvedHit {
+            message_id: id(doc, self.message_id)?,
+            account_id: id(doc, self.account_id)?,
+            thread_id: id(doc, self.thread_id)?,
+        })
+    }
+}
+
+#[cfg(test)]
+mod resolver_tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
+
+    use super::*;
+    use crate::parse_query;
+    use crate::query_builder::QueryBuilder;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+
+    fn query(text: &str) -> Box<dyn Query> {
+        QueryBuilder::new(&MxrSchema::build()).build(&parse_query(text).unwrap())
+    }
+
+    /// 25 messages with only 9 distinct dates, so most are ties.
+    fn index_with_ties() -> (SearchIndex, Vec<Envelope>) {
+        let mut index = SearchIndex::in_memory().unwrap();
+        let mut envelopes = Vec::new();
+        let account_id = AccountId::new();
+        for n in 0..25 {
+            let mut envelope = TestEnvelopeBuilder::new()
+                .subject(format!("report {n}"))
+                .build();
+            envelope.account_id = account_id.clone();
+            envelope.date = chrono::DateTime::from_timestamp(1_700_000_000 + (n % 9) * 60, 0)
+                .expect("a valid timestamp");
+            index.index_envelope(&envelope).unwrap();
+            envelopes.push(envelope);
+        }
+        index.commit().unwrap();
+        (index, envelopes)
+    }
+
+    /// Every match the way a client pages `search_ast`, newest first.
+    fn paged(index: &SearchIndex, text: &str, page: usize) -> Vec<String> {
+        let mut found = Vec::new();
+        let mut offset = 0;
+        loop {
+            let result = index
+                .search_ast(query(text), page, offset, SortOrder::DateDesc)
+                .unwrap();
+            found.extend(result.results.into_iter().map(|hit| hit.message_id));
+            if !result.has_more {
+                return found;
+            }
+            offset += page;
+        }
+    }
+
+    #[test]
+    fn one_scan_lists_what_paging_lists_in_the_same_order() {
+        let (index, envelopes) = index_with_ties();
+        let resolved: Vec<String> = index
+            .resolver()
+            .resolve_date_desc(&*query("report"))
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.message_id.as_str())
+            .collect();
+        assert_eq!(resolved.len(), envelopes.len());
+        for page in [1, 4, 7, 25, 100] {
+            assert_eq!(resolved, paged(&index, "report", page), "page size {page}");
+        }
+    }
+
+    #[test]
+    fn a_hit_carries_the_message_account_and_thread() {
+        let (index, envelopes) = index_with_ties();
+        let hits = index
+            .resolver()
+            .resolve_date_desc(&*query("report"))
+            .unwrap();
+        for hit in hits {
+            let envelope = envelopes
+                .iter()
+                .find(|envelope| envelope.id == hit.message_id)
+                .unwrap();
+            assert_eq!(hit.account_id, envelope.account_id);
+            assert_eq!(hit.thread_id, envelope.thread_id);
+        }
+    }
+
+    #[test]
+    fn no_match_is_an_empty_list_not_an_error() {
+        let (index, _) = index_with_ties();
+        assert!(index
+            .resolver()
+            .resolve_date_desc(&*query("nomatchatall"))
+            .unwrap()
+            .is_empty());
+        let empty = SearchIndex::in_memory().unwrap();
+        assert!(empty
+            .resolver()
+            .resolve_date_desc(&*query("report"))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn the_text_query_narrows_to_one_account() {
+        let (index, envelopes) = index_with_ties();
+        let account = envelopes[0].account_id.as_str();
+        let all = index.text_query("report", None).unwrap();
+        let narrowed = index.text_query("report", Some(&account)).unwrap();
+        let resolver = index.resolver();
+        assert_eq!(resolver.resolve_date_desc(&*all).unwrap().len(), 25);
+        assert_eq!(resolver.resolve_date_desc(&*narrowed).unwrap().len(), 25);
+        let elsewhere = index
+            .text_query("report", Some(&AccountId::new().as_str()))
+            .unwrap();
+        assert!(resolver.resolve_date_desc(&*elsewhere).unwrap().is_empty());
     }
 }

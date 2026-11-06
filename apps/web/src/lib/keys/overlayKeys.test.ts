@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { isOverlayKey, type DefinedAction } from "@/lib/actions/definition";
 import keymap from "@/lib/actions/keymap.generated.json";
 import { useKeyScope } from "@/state/keyScopeStore";
+import { announced } from "@/test/movedKeys";
 
 import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "./overlayKeys";
 
@@ -43,12 +44,12 @@ describe("overlay keys", () => {
     );
   });
 
-  test("a key that moved away says where it went", () => {
-    expect(announceMovedOverlayKey(press("a"), "unsubscribe", true)).toBe(true);
-    expect(useKeyScope.getState().moved).toEqual({
-      label: "Unsubscribe and archive their mail",
-      key: "e",
-    });
+  test("a key that moved away says where it went while announced", () => {
+    const live = announced("unsubscribe.and-archive", "a", "unsubscribe");
+    expect(announceMovedOverlayKey(press("a"), "unsubscribe", true)).toBe(live);
+    expect(useKeyScope.getState().moved).toEqual(
+      live ? { label: "Unsubscribe and archive their mail", key: "e" } : null,
+    );
     expect(announceMovedOverlayKey(press("u"), "unsubscribe", true)).toBe(false);
   });
 

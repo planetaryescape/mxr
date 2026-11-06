@@ -112,6 +112,78 @@ async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
     );
 }
 
+fn snooze_message(id: u64, message_id: mxr_core::MessageId, hours: i64) -> IpcMessage {
+    IpcMessage {
+        expected_workspace: None,
+        id,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Snooze {
+            message_id,
+            wake_at: chrono::Utc::now() + chrono::Duration::hours(hours),
+        }),
+    }
+}
+
+/// Dogfood 2026-10-29: Not now on mail that was already snoozed (Snoozed's
+/// `b`, "send it away again") failed with "UNIQUE constraint failed:
+/// snoozed.message_id". It moves the wake time, and waking still restores
+/// the labels from before the first snooze.
+#[tokio::test]
+async fn snoozing_snoozed_mail_again_moves_its_wake_time() {
+    let state = folder_copy_state().await;
+    let original_id = sync_and_get_first_id(&state).await;
+    match handle_request(&state, &snooze_message(1, original_id, 4))
+        .await
+        .payload
+    {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Snooze, got {other:?}"),
+    }
+    let first = state.store.list_snoozed().await.unwrap().remove(0);
+
+    let again = snooze_message(2, first.message_id.clone(), 48);
+    match handle_request(&state, &again).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for a second Snooze, got {other:?}"),
+    }
+    let snoozed = state.store.list_snoozed().await.unwrap();
+    assert_eq!(snoozed.len(), 1, "still one snooze: {snoozed:?}");
+    assert_eq!(snoozed[0].message_id, first.message_id);
+    assert!(snoozed[0].wake_at > first.wake_at + chrono::Duration::hours(40));
+    assert_eq!(snoozed[0].original_labels, first.original_labels);
+    assert_eq!(snoozed[0].snoozed_at, first.snoozed_at);
+
+    let unsnooze = IpcMessage {
+        expected_workspace: None,
+        id: 3,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Unsnooze {
+            message_id: first.message_id.clone(),
+        }),
+    };
+    match handle_request(&state, &unsnooze).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("Expected Ack for Unsnooze, got {other:?}"),
+    }
+    let inbox = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+        .await
+        .unwrap();
+    assert!(
+        inbox
+            .iter()
+            .all(|envelope| envelope.label_provider_ids == vec!["INBOX".to_string()]),
+        "waking puts it back in the inbox: {inbox:?}"
+    );
+}
+
 #[tokio::test]
 async fn snooze_waits_for_account_provider_lock() {
     let state = folder_copy_state().await;
@@ -4171,4 +4243,243 @@ async fn unsubscribe_preview_commit_preserves_explicit_archive_only_opt_in() {
     assert_eq!(result.message_ids, preview.message_ids);
     assert_eq!(result.archived_count, preview.message_count);
     assert!(fake.sent_drafts().is_empty());
+}
+
+async fn ensure_reply(
+    state: &Arc<AppState>,
+    message_id: &mxr_core::MessageId,
+) -> mxr_core::types::Draft {
+    let response = handle_request(
+        state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id: message_id.clone(),
+            reply_all: false,
+            dry_run: false,
+        }),
+    )
+    .await;
+    match response.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected reply draft, got {other:?}"),
+    }
+}
+
+/// Dogfood 2026-10-29: with an empty reply and one with text on the same
+/// conversation, Messages showed "Draft: <text>" but `r` resumed the older
+/// empty one. Opening the reply continues the draft the row shows.
+#[tokio::test]
+async fn ensure_reply_draft_continues_the_draft_with_text_over_an_older_empty_one() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "resume-text", &[]).await;
+    let state = Arc::new(state);
+    let empty = ensure_reply(&state, &message_id).await;
+    assert_eq!(empty.content.analysis_text(), "");
+    let mut written = empty.clone();
+    written.id = mxr_core::DraftId::new();
+    written.revision = None;
+    written.content = mxr_core::types::DraftContent::markdown("Thanks, sounds good.");
+    written.created_at = empty.created_at + chrono::Duration::seconds(30);
+    written.updated_at = written.created_at;
+    state.store.insert_draft(&written).await.unwrap();
+
+    let resumed = ensure_reply(&state, &message_id).await;
+    assert_eq!(resumed.id, written.id);
+    assert_eq!(resumed.content.analysis_text(), "Thanks, sounds good.");
+}
+
+#[test]
+fn identity_write_leaves_default_account_as_the_file_has_it_under_an_env_override() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_file = config_dir.join("config.toml");
+    std::fs::write(
+        &config_file,
+        "# kept comment\n[accounts.work]\nname = \"Work\"\nemail = \"work@example.com\"\nenabled = true\n",
+    )
+    .expect("write config");
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir)),
+            ("MXR_DATA_DIR", Some(data_dir)),
+            ("MXR_SOCKET_PATH", Some(socket_path)),
+            ("MXR_DEFAULT_ACCOUNT", Some("work".into())),
+        ],
+        || {
+            runtime.block_on(async {
+                let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                let result = crate::handler::account_config::set_account_identity(
+                    &state,
+                    "work",
+                    Some(mxr_core::AccountColor::Amber),
+                    None,
+                    false,
+                    true,
+                )
+                .await;
+                assert!(result.ok, "{}", result.summary);
+
+                let on_disk = std::fs::read_to_string(&config_file).expect("read config");
+                assert!(on_disk.contains("# kept comment"), "{on_disk}");
+                let written =
+                    mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+                assert_eq!(written.general.default_account, None, "{on_disk}");
+                assert_eq!(written.accounts["work"].color.as_deref(), Some("amber"));
+            });
+        },
+    );
+}
+
+fn config_account(key: &str, name: &str, is_default: bool) -> AccountConfigData {
+    AccountConfigData {
+        key: key.into(),
+        name: name.into(),
+        email: format!("{key}@example.com"),
+        enabled: true,
+        sync: None,
+        send: None,
+        is_default,
+        color: None,
+        tag: None,
+    }
+}
+
+const THREE_ACCOUNTS: &str = "[general]\ndefault_account = \"personal\"\n\
+[accounts.work]\nname = \"Work\"\nemail = \"work@example.com\"\nenabled = true\n\
+[accounts.personal]\nname = \"Personal\"\nemail = \"personal@example.com\"\nenabled = true\n\
+[accounts.side]\nname = \"Side\"\nemail = \"side@example.com\"\nenabled = true\n";
+
+/// Runs `body` against a daemon whose config dir is a temp dir holding `config`.
+fn with_config_file<F>(config: &str, env_default: Option<&str>, body: F)
+where
+    F: FnOnce(std::path::PathBuf) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>,
+{
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_file = config_dir.join("config.toml");
+    std::fs::write(&config_file, config).expect("write config");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir.into_os_string())),
+            ("MXR_DATA_DIR", Some(data_dir.into_os_string())),
+            ("MXR_SOCKET_PATH", Some(socket_path.into_os_string())),
+            (
+                "MXR_DEFAULT_ACCOUNT",
+                env_default.map(std::ffi::OsString::from),
+            ),
+        ],
+        || runtime.block_on(body(config_file)),
+    );
+}
+
+#[test]
+fn a_removal_whose_cached_mail_update_fails_reports_the_config_change_as_saved() {
+    with_config_file(THREE_ACCOUNTS, None, |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            // The config write commits; the store write after it cannot. The
+            // in-memory store reads on the same connection, so reads still work.
+            sqlx::query("PRAGMA query_only = ON")
+                .execute(state.store.writer())
+                .await
+                .expect("make the store read-only");
+
+            let result =
+                crate::handler::account_config::remove_account_config(&state, "work", false, false)
+                    .await;
+
+            assert!(!result.ok, "{}", result.summary);
+            assert!(result.saved, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert!(!written.accounts.contains_key("work"));
+        })
+    });
+}
+
+#[test]
+fn two_config_writes_on_one_worker_both_finish() {
+    with_config_file(THREE_ACCOUNTS, None, |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            let identity = crate::handler::account_config::set_account_identity(
+                &state,
+                "work",
+                Some(mxr_core::AccountColor::Amber),
+                None,
+                false,
+                true,
+            );
+            let upsert = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("personal", "Personal Mail", false),
+                true,
+            );
+            // A deadlock would park the only worker and never reach the timeout.
+            let (identity, upsert) =
+                tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                    tokio::join!(identity, upsert)
+                })
+                .await
+                .expect("two config writes on one worker must not deadlock");
+            assert!(identity.ok, "{}", identity.summary);
+            assert!(upsert.ok, "{}", upsert.summary);
+
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.accounts["work"].color.as_deref(), Some("amber"));
+            assert_eq!(written.accounts["personal"].name, "Personal Mail");
+        })
+    });
+}
+
+#[test]
+fn an_env_default_override_is_not_written_by_an_untouched_toggle() {
+    with_config_file(THREE_ACCOUNTS, Some("work"), |config_file| {
+        Box::pin(async move {
+            let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+            // The form for the effective default carries is_default = true.
+            let result = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("work", "Work Mail", true),
+                true,
+            )
+            .await;
+            assert!(result.ok, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.general.default_account.as_deref(), Some("personal"));
+
+            // Toggling a different account on still changes the file.
+            let result = crate::handler::account_config::upsert_account_config(
+                &state,
+                config_account("side", "Side", true),
+                true,
+            )
+            .await;
+            assert!(result.ok, "{}", result.summary);
+            let written =
+                mxr_config::load_config_file_as_written(&config_file).expect("load as written");
+            assert_eq!(written.general.default_account.as_deref(), Some("side"));
+        })
+    });
 }

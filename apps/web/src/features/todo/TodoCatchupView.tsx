@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { ModeFrame } from "@/components/ModeFrame";
+import { rowPrimaryTone } from "@/components/rowTone";
 import { Button } from "@/components/ui/button";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
@@ -81,16 +82,14 @@ function PlainRow({
       onAnimationEnd={leaving ? () => hide([todo.id]) : undefined}
       className={cn(
         "relative mx-2 flex flex-col gap-2 rounded-md px-3 py-2.5 @2xl:flex-row @2xl:items-center @2xl:gap-4",
-        focused ? "bg-accent" : "hover:bg-accent/40",
+        focused ? "bg-ink-lamp" : "hover:bg-accent/40",
         leaving && "todo-fold pointer-events-none",
       )}
     >
-      {focused ? (
-        <span aria-hidden className="absolute inset-y-2 left-0 w-[2px] bg-primary" />
-      ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-3">
-          <span className="text-base font-medium text-foreground">{todo.title}</span>
+          {todo.unread ? <span className="sr-only">Unseen. </span> : null}
+          <span className={cn("text-base", rowPrimaryTone(todo.unread))}>{todo.title}</span>
           {party ? <span className="text-sm text-muted-foreground">{party}</span> : null}
           {todo.amount ? (
             <span className="font-mono text-sm tabular-nums">{todo.amount.display}</span>

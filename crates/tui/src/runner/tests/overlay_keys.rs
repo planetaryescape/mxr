@@ -140,7 +140,12 @@ fn palette(app: &mut App) {
 
 fn label_picker(app: &mut App) {
     *app = inbox();
-    let account_id = AccountId::new();
+    // The picker offers the labels of the selected message's account.
+    let account_id = app
+        .mailbox
+        .envelopes
+        .first()
+        .map_or_else(AccountId::new, |envelope| envelope.account_id.clone());
     app.mailbox.labels = ["Work", "Home", "Bills"]
         .into_iter()
         .map(|name| Label {
@@ -248,6 +253,9 @@ fn sender_kind_picker(app: &mut App) {
 fn not_now(app: &mut App) {
     *app = inbox();
     app.apply(Action::Snooze);
+    // Every preset, whatever the hour of the run: after the evening hour
+    // Tonight leaves the picker, and `4` would have no time behind it.
+    app.modals.snooze_panel.presets = None;
     app.modals.snooze_panel.selected_index = 1;
 }
 
@@ -367,6 +375,7 @@ fn pending_send() -> PendingSend {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     }
 }
 
@@ -819,12 +828,36 @@ fn press_in(setup: fn(&mut App), before: &str, event: KeyEvent) -> Pressed {
     }
 }
 
+/// The probe draws the screen for every key in every overlay, so it is split
+/// into this many tests for a runner to run side by side. Each takes every
+/// `PARTS`th overlay, so a new overlay lands in one without being assigned.
+const PARTS: usize = 4;
+
 #[test]
-fn overlay_keys_are_what_the_definition_says() {
+fn overlay_keys_are_what_the_definition_says_part_1() {
+    overlay_keys_are_what_the_definition_says(0);
+}
+
+#[test]
+fn overlay_keys_are_what_the_definition_says_part_2() {
+    overlay_keys_are_what_the_definition_says(1);
+}
+
+#[test]
+fn overlay_keys_are_what_the_definition_says_part_3() {
+    overlay_keys_are_what_the_definition_says(2);
+}
+
+#[test]
+fn overlay_keys_are_what_the_definition_says_part_4() {
+    overlay_keys_are_what_the_definition_says(3);
+}
+
+fn overlay_keys_are_what_the_definition_says(part: usize) {
     let keymap = mxr_keymap::defaults();
     let keys = screen_probe_keys();
     let mut wrong = Vec::new();
-    for overlay in OVERLAYS {
+    for overlay in OVERLAYS.iter().skip(part).step_by(PARTS) {
         let context = overlay.context;
         let defined = defined(context);
         for key in defined.keys() {

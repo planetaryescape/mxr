@@ -6,17 +6,31 @@ pub mod snooze;
 mod types;
 
 pub use resolve::{
-    app_instance_name, bridge_port_path, bridge_token_path, clear_bridge_port, config_dir,
-    config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service, is_demo_instance,
-    load_config, load_config_from_path, load_config_from_str, lock_config_file,
-    lock_config_file_at, read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path,
-    resolve_daemon_token, retired_config_keys_in, save_config, save_config_to_path,
-    scoped_credential_service, secrets_file_path, socket_path, token_dir, update_config,
+    app_instance_name, apply_env_overrides, bridge_port_path, bridge_token_path, clear_bridge_port,
+    config_dir, config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service,
+    is_demo_instance, load_config, load_config_as_written, load_config_file_as_written,
+    load_config_from_path, load_config_from_str, lock_config_file, lock_config_file_at,
+    read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token,
+    retired_config_keys_in, save_config, save_config_to_path, scoped_credential_service,
+    secrets_file_path, socket_path, token_dir, unknown_llm_override_keys_in, update_config,
     update_config_at_path, write_bridge_port, ConfigError, ConfigFileLock, DAEMON_TOKEN_ENV,
-    DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
+    DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, LLM_OVERRIDE_FEATURES, LLM_OVERRIDE_SETTINGS,
+    PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
 };
 pub use secret_store::SecretStore;
 pub use types::*;
+
+/// Read a file only this user may read, refusing a symlink and tightening
+/// looser permissions, as the secrets file is read. `Ok(None)` when missing.
+pub fn read_private_file(path: &std::path::Path) -> std::io::Result<Option<String>> {
+    secret_store::read_secrets_file(path)
+}
+
+/// Replace a file atomically (temp file, fsync, rename) with permissions for
+/// this user only, as the secrets file is written.
+pub fn write_private_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    secret_store::write_secrets_atomic(path, contents)
+}
 
 #[cfg(test)]
 mod tests {
@@ -197,6 +211,12 @@ subject_max_width = 80
 
 [humanizer]
 apply_to_summaries = true
+
+[llm.overrides.voice_match]
+model = "gemma4:latest"
+
+[llm.overrides.expert]
+model = "gemma4:latest"
 "#;
 
         let config = load_config_from_str(toml_str).expect("retired keys must not break loading");
@@ -204,6 +224,85 @@ apply_to_summaries = true
 
         let table: toml::Table = toml_str.parse().expect("parse raw toml");
         assert_eq!(retired_config_keys_in(&table), RETIRED_CONFIG_KEYS);
+    }
+
+    /// The key lists the loader checks against must be the structs' fields.
+    /// A struct literal names every field, so a new field fails to compile
+    /// here until it is listed.
+    #[test]
+    fn override_key_lists_match_the_override_structs() {
+        let setting = LlmOverrideConfig {
+            enabled: Some(true),
+            base_url: Some(String::new()),
+            model: Some(String::new()),
+            api_key_env: Some(String::new()),
+            context_window: Some(1),
+            request_timeout_secs: Some(1),
+        };
+        let overrides = LlmOverrides {
+            summarize: Some(setting.clone()),
+            relationship_summary: Some(setting.clone()),
+            commitments: Some(setting.clone()),
+            draft_assist: Some(setting.clone()),
+            draft_new: Some(setting.clone()),
+            draft_refine: Some(setting.clone()),
+            humanize_rewrite: Some(setting.clone()),
+            answer_coverage: Some(setting.clone()),
+            archive_ask: Some(setting.clone()),
+            decision_log: Some(setting.clone()),
+            briefing: Some(setting.clone()),
+            delivery_extraction: Some(setting.clone()),
+            assistant: Some(setting.clone()),
+        };
+        let table = toml::Table::try_from(&overrides).unwrap();
+        let mut features: Vec<_> = table.keys().map(String::as_str).collect();
+        features.sort_unstable();
+        let mut listed = LLM_OVERRIDE_FEATURES.to_vec();
+        listed.sort_unstable();
+        assert_eq!(features, listed);
+
+        let table = toml::Table::try_from(&setting).unwrap();
+        let mut settings: Vec<_> = table.keys().map(String::as_str).collect();
+        settings.sort_unstable();
+        let mut listed = LLM_OVERRIDE_SETTINGS.to_vec();
+        listed.sort_unstable();
+        assert_eq!(settings, listed);
+    }
+
+    #[test]
+    fn unknown_override_features_and_settings_are_named() {
+        let toml_str = r#"
+[llm.overrides.summarize]
+model = "gemma4:latest"
+allow_cloud_relationship_data = true
+
+[llm.overrides.sumarize]
+model = "gemma4:latest"
+
+[llm.overrides.voice_match]
+model = "gemma4:latest"
+"#;
+        let config = load_config_from_str(toml_str).expect("unknown keys must not break loading");
+        assert_eq!(
+            config
+                .llm
+                .overrides
+                .summarize
+                .and_then(|summarize| summarize.model)
+                .as_deref(),
+            Some("gemma4:latest")
+        );
+        let table: toml::Table = toml_str.parse().unwrap();
+        // The retired `voice_match` is reported as retired, not here.
+        let mut unknown = unknown_llm_override_keys_in(&table);
+        unknown.sort_unstable();
+        assert_eq!(
+            unknown,
+            [
+                "llm.overrides.sumarize",
+                "llm.overrides.summarize.allow_cloud_relationship_data",
+            ]
+        );
     }
 
     #[test]

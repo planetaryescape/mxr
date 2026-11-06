@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -33,7 +34,7 @@ pub async fn run(
             OutputFormat::Jsonl => println!("{}", serde_json::to_string(&profile)?),
             _ => print_profile(&email, profile),
         },
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())

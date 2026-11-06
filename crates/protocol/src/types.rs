@@ -1,4 +1,7 @@
-use crate::{ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData};
+use crate::{
+    ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData, JobFailureData, SelectionData,
+    SelectionPreviewData,
+};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::AccountColor;
@@ -208,6 +211,20 @@ pub struct LlmStatusSnapshot {
     /// Which providers have a key. Presence only, never the key.
     #[serde(default)]
     pub keys: Vec<LlmKeyStatusData>,
+    /// The hosted model `[llm.fallback]` names, used while `base_url` is
+    /// out. Absent when no fallback is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_model: Option<String>,
+    /// Why the configured fallback isn't used, e.g. a model mxr can't route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_error: Option<String>,
+    /// When the pause on background model calls after repeated endpoint
+    /// failures ends; the first background call after it checks the endpoint
+    /// before sending mail. Absent while they run. Features on a routed model
+    /// or with `[llm.fallback]` are never paused; their routes show their
+    /// own health.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_paused_until: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -312,13 +329,11 @@ pub struct LlmOverridesData {
     pub draft_assist: Option<LlmOverrideData>,
     pub draft_new: Option<LlmOverrideData>,
     pub draft_refine: Option<LlmOverrideData>,
-    pub voice_match: Option<LlmOverrideData>,
     pub humanize_rewrite: Option<LlmOverrideData>,
     pub answer_coverage: Option<LlmOverrideData>,
     pub archive_ask: Option<LlmOverrideData>,
     pub decision_log: Option<LlmOverrideData>,
     pub briefing: Option<LlmOverrideData>,
-    pub expert: Option<LlmOverrideData>,
     #[serde(default)]
     pub delivery_extraction: Option<LlmOverrideData>,
     #[serde(default)]
@@ -958,6 +973,10 @@ pub enum Request {
     ListSubscriptions {
         account_id: Option<AccountId>,
         limit: u32,
+        /// With no `account_id`, list every enabled account's senders instead
+        /// of only the default account's. Ignored when `account_id` is set.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        all_accounts: bool,
     },
     ListStorageBreakdown {
         account_id: Option<AccountId>,
@@ -1290,6 +1309,31 @@ pub enum Request {
     },
     GetArchiveOperation {
         identity: ArchiveIdentityData,
+    },
+    /// Resolve `selection` in the daemon and report what `mutation` would
+    /// cover: an exact count, thread and account counts, a sample of the
+    /// newest messages, and a single-use token. `mutation.message_ids` must be
+    /// empty. Changes nothing; no message id list is returned.
+    PreviewSelection {
+        selection: SelectionData,
+        mutation: MutationCommand,
+        /// Sample size; the daemon defaults to 20 and caps at 100.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sample_size: Option<u32>,
+    },
+    /// Run `mutation` over exactly the messages a `PreviewSelection` counted,
+    /// as one background job. `job_id` is chosen by the client and makes the
+    /// request idempotent: a repeat returns the existing job, so a lost reply
+    /// is recovered with `GetJob`. `mutation.message_ids` must be empty and
+    /// `selection` and `mutation` must equal the preview's. The job keeps no
+    /// undo: it cannot be undone, so the preview is the check.
+    StartSelectionJob {
+        job_id: String,
+        preview_token: String,
+        selection: SelectionData,
+        mutation: MutationCommand,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_correlation_id: Option<String>,
     },
     ListJobs,
     /// Inspect one daemon-side job by id.
@@ -2261,6 +2305,17 @@ pub enum Request {
         seen: bool,
     },
     // ----- Modes -----
+    /// Mark only the exact To do or Updates row revision that was opened or
+    /// peeked. Does not read the source email or complete/let go of the row.
+    /// Returns `Ack`; dry runs validate without writing.
+    SetModeRowSeen {
+        account_id: AccountId,
+        mode: ModeKindData,
+        row_id: String,
+        revision: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Now, the front page: People, Due soon, one Updates card and an
     /// evening Reading pick, at most three items each, with "and N more"
     /// lines and the clear state. Local reads only. Returns
@@ -3061,6 +3116,8 @@ impl Request {
             | Self::ListRuleHistory { .. }
             | Self::Mutation { .. }
             | Self::StartMutationJob { .. }
+            | Self::PreviewSelection { .. }
+            | Self::StartSelectionJob { .. }
             | Self::GetArchiveWorkspace
             | Self::GetRecoveryStatus
             | Self::ActivateRecovery { .. }
@@ -3178,6 +3235,7 @@ impl Request {
             | Self::SetTodoCatchup { .. }
             | Self::GetModeGuide { .. }
             | Self::SetHintSeen { .. }
+            | Self::SetModeRowSeen { .. }
             | Self::GetNow { .. }
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }
@@ -3343,7 +3401,7 @@ impl Request {
 }
 
 /// Mutation commands for modifying messages.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "mutation")]
 pub enum MutationCommand {
@@ -3486,6 +3544,35 @@ pub struct JobData {
     pub finished_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<MutationResultData>,
+    /// The selection a `StartSelectionJob` ran over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionData>,
+    /// The first messages that failed, with why (at most 50); the exact total
+    /// is in `progress.failed`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<JobFailureData>,
+    /// Unix milliseconds. Set while the job waits out a provider rate limit;
+    /// it resumes by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_until: Option<i64>,
+    /// What a selection job does to its messages, with `message_ids` empty.
+    /// A repeated start under the same job id must name the same action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<MutationCommand>,
+    /// How many undo ids the job holds. `ListJobs` carries none; `GetJob`
+    /// carries them all, since clients undo a job's chunks from that list. A
+    /// selection job (`StartSelectionJob`) has none: it cannot be undone.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub undo_id_count: u32,
+    /// How many failure records the job holds. `ListJobs` leaves `failures`
+    /// (and `undo_ids`) empty and says how many there are here; `GetJob`
+    /// carries them.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub failure_count: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4046,6 +4133,9 @@ pub enum ResponseData {
     },
     Job {
         job: JobData,
+    },
+    SelectionPreview {
+        preview: SelectionPreviewData,
     },
     UnsubscribePurgeResult {
         result: UnsubscribePurgeResultData,
@@ -4881,6 +4971,7 @@ impl ResponseData {
             | Self::JobStarted { .. }
             | Self::Jobs { .. }
             | Self::Job { .. }
+            | Self::SelectionPreview { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::UnsubscribePlan { .. }
             | Self::SendOutcome { .. }
@@ -5688,6 +5779,43 @@ pub struct DoctorReport {
     /// predates the field, and from a report built without a running daemon.
     #[serde(default)]
     pub address_cache_stale: bool,
+    /// Counts for the process that parses mail HTML for this daemon. All zero
+    /// from a daemon that predates it, and from a report built without a
+    /// running daemon.
+    #[serde(default)]
+    pub html_helper: HtmlHelperStats,
+}
+
+/// How the HTML helper process has fared since its supervisor started. Counts
+/// only; no message content.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct HtmlHelperStats {
+    /// Mail HTML is parsed in a helper process. False means in-process, or no
+    /// running daemon to ask.
+    pub installed: bool,
+    pub requests: u64,
+    /// Helpers started to replace one that timed out or died.
+    pub restarts: u64,
+    pub timeouts: u64,
+    pub deaths: u64,
+    pub job_errors: u64,
+    /// Requests answered with the plain-text fallback instead of a parse.
+    pub fallbacks: u64,
+}
+
+impl HtmlHelperStats {
+    /// The one-line summary `mxr doctor` and the diagnostics page show.
+    pub fn summary(&self) -> String {
+        if !self.installed {
+            return "not reporting (parsing in-process, or no daemon)".to_string();
+        }
+        format!(
+            "{} fallbacks since start ({} requests, {} timeouts, {} helper deaths, {} restarts, {} job errors)",
+            self.fallbacks, self.requests, self.timeouts, self.deaths, self.restarts, self.job_errors
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5963,6 +6091,9 @@ pub enum AccountSyncConfigData {
         use_tls: bool,
         #[serde(default = "default_imap_max_connections")]
         max_connections: usize,
+        /// Hex SHA-256 of the server's leaf certificate; see the config reference.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tls_cert_sha256: Option<String>,
     },
     OutlookPersonal {
         client_id: Option<String>,
@@ -5987,6 +6118,11 @@ pub struct AccountOperationStep {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountOperationResult {
     pub ok: bool,
+    /// True when the config change was written to disk even though `ok` is
+    /// false, because a later phase (runtime reload, cached mail) failed. The
+    /// change is saved but not fully applied.
+    #[serde(default)]
+    pub saved: bool,
     pub summary: String,
     pub save: Option<AccountOperationStep>,
     pub auth: Option<AccountOperationStep>,
@@ -5996,6 +6132,11 @@ pub struct AccountOperationResult {
     pub device_code_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_code_user_code: Option<String>,
+    /// SHA-256 of the IMAP server's leaf certificate, reported by an account
+    /// test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+    /// accounts and non-IMAP accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls_cert_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6156,6 +6297,18 @@ pub enum DaemonEvent {
     AccountAddressesChanged {
         account_id: AccountId,
     },
+    /// A rebuild of the contacts table committed (after the debounce that
+    /// follows an address change, a sync pass or a manual refresh). Clients
+    /// showing analytics or contacts refetch them; the counts they hold are
+    /// from before the rebuild. Names no account because the rebuild covers
+    /// every account.
+    ContactsRefreshed,
+    /// Any event this build has no variant for, so a client built from here on
+    /// skips a newer daemon's later events instead of failing to decode the
+    /// frame and dropping the connection. The daemon never sends it. Clients
+    /// ignore it.
+    #[serde(other)]
+    Unknown,
 }
 
 impl DaemonEvent {
@@ -6177,7 +6330,9 @@ impl DaemonEvent {
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
             | Self::ModesChanged { .. }
-            | Self::AccountAddressesChanged { .. } => IpcCategory::CoreMail,
+            | Self::AccountAddressesChanged { .. }
+            | Self::ContactsRefreshed
+            | Self::Unknown => IpcCategory::CoreMail,
             Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }

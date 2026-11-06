@@ -33,10 +33,15 @@ impl App {
                     ));
                 }
             }
+            Action::TodoMightNeedYou => {
+                let page = &mut self.mailbox.todo_page;
+                page.uncertain_open = !page.uncertain_open;
+            }
             Action::TodoRestore => self.set_selected_todo_state(TodoStateActionData::Undo),
             Action::TodoSchedule => self.open_not_now(),
             Action::TodoEdit => self.open_todo_edit_prompt(),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
+            Action::TodoPeek => self.todo_toggle_peek(),
             Action::TodoReviewResolution => self.review_selected_resolution(),
             Action::TodoSendToMicrosoft => self.microsoft_todo_request(false),
             Action::TodoSyncMicrosoft => self.microsoft_todo_request(true),
@@ -189,6 +194,7 @@ impl App {
                 .as_ref()
                 .filter(|resolution| matches!(resolution.status.as_str(), "pending" | "accepted"))
             {
+                self.mark_todo_row_seen(&todo);
                 self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
                     message_id: resolution.message_id.clone(),
                     link: None,
@@ -201,12 +207,13 @@ impl App {
     }
 
     fn review_selected_resolution(&mut self) {
-        let Some(todo) = self.selected_todo() else {
+        let Some(todo) = self.selected_todo().cloned() else {
             return;
         };
         let Some(resolution) = todo.resolution.as_ref().filter(|r| r.status == "pending") else {
             return;
         };
+        self.mark_todo_row_seen(&todo);
         self.mailbox.todo_page.pending_resolution = Some((
             todo.id.clone(),
             resolution.id.clone(),
@@ -288,6 +295,7 @@ impl App {
             .or_else(|| todo.source_message_id.clone());
         match message_id {
             Some(message_id) => {
+                self.mark_todo_row_seen(todo);
                 self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
                     message_id,
                     link: todo.action.as_ref().map(|action| action.url.clone()),
@@ -301,7 +309,52 @@ impl App {
                     },
                 );
             }
-            None => self.status_message = Some("This to-do has no email to open".into()),
+            None => {
+                // Enter is an explicit look at the task even for an own
+                // promise without source mail; merely selecting it is not.
+                self.mark_todo_row_seen(todo);
+                self.status_message = Some("This to-do has no email to open".into());
+            }
+        }
+    }
+
+    /// Space: open the lit to-do's details under it, or close them. One
+    /// peek at a time. Peeking is a look at the row, so it counts as seen,
+    /// as the web's details do; the source email is fetched as the reader
+    /// fetches it, so the peek can show its first lines and `o` finds it
+    /// ready.
+    fn todo_toggle_peek(&mut self) {
+        let Some(todo) = self.selected_todo().cloned() else {
+            return;
+        };
+        let page = &mut self.mailbox.todo_page;
+        if page.peek.as_deref() == Some(todo.id.as_str()) {
+            page.peek = None;
+            return;
+        }
+        page.peek = Some(todo.id.clone());
+        self.mark_todo_row_seen(&todo);
+        if let Some(message_id) = todo.source_message_id {
+            self.queue_priority_body_fetch(message_id);
+        }
+    }
+
+    fn mark_todo_row_seen(&mut self, todo: &TodoData) {
+        if todo.unread != Some(true) {
+            return;
+        }
+        if let Some(revision) = &todo.seen_revision {
+            self.queue_mutation(
+                Request::SetModeRowSeen {
+                    account_id: todo.account_id.clone(),
+                    mode: mxr_protocol::ModeKindData::Todo,
+                    row_id: todo.id.clone(),
+                    revision: revision.clone(),
+                    dry_run: false,
+                },
+                MutationEffect::ModeDone(String::new()),
+                String::new(),
+            );
         }
     }
 
@@ -659,10 +712,6 @@ impl App {
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if plain_or_shift(key.modifiers) {
             let page = &mut self.mailbox.todo_page;
-            if key.code == KeyCode::Char('m') && self.input.pending_prefix().is_none() {
-                page.uncertain_open = !page.uncertain_open;
-                return None;
-            }
             if page.uncertain_open {
                 let items = page
                     .runway
@@ -751,18 +800,6 @@ impl App {
                 self.microsoft_todo_request(true);
                 return None;
             }
-            let installed = page
-                .microsoft_status
-                .as_ref()
-                .is_some_and(|status| status.installed);
-            // Microsoft To Do is in the palette now; M and S say so to the
-            // people who had them.
-            if let KeyCode::Char(c @ ('M' | 'S')) = key.code {
-                if installed {
-                    self.announce_moved("todo-microsoft", &c.to_string());
-                    return None;
-                }
-            }
         }
         let page = &self.mailbox.todo_page;
         if page.catchup_preview.is_some() {
@@ -794,6 +831,13 @@ impl App {
             TodoPanel::Catchup => "catchup",
             TodoPanel::Expired => "expired",
         };
+        // An open peek closes before the hint, as in Updates.
+        if key.code == KeyCode::Esc
+            && context == "todo"
+            && self.mailbox.todo_page.peek.take().is_some()
+        {
+            return None;
+        }
         if key.code == KeyCode::Esc && self.active_hint().is_some() {
             return Some(Action::DismissHint);
         }

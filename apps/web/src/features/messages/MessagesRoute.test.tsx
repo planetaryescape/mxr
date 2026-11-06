@@ -9,11 +9,14 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
 import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
+import { BridgeRequestError } from "@/api/client";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
@@ -70,10 +73,10 @@ vi.mock("@/features/mail-actions/verbFeedback", () => ({
   toneFor: () => "success",
 }));
 vi.mock("./MessagesList", () => ({
-  MessagesList: ({ data }: { data: MessagesData }) => (
+  MessagesList: ({ data, onSelect }: { data: MessagesData; onSelect: (id: string) => void }) => (
     <ul>
       {[...data.your_turn, ...data.recent, ...data.quiet].map((listed) => (
-        <li key={listed.id} data-testid="listed-row">
+        <li key={listed.id} data-testid="listed-row" onClick={() => onSelect(listed.id)}>
           {listed.id}
         </li>
       ))}
@@ -245,7 +248,71 @@ afterEach(() => {
   http.send.mockReset();
   useModeDone.getState().show("messages", [...useModeDone.getState().hidden.messages]);
   useUndo.setState({ lastUndo: null, lastMutationId: null });
+  act(() => useComposeUi.setState({ intent: null, surface: "overlay" }));
   vi.restoreAllMocks();
+});
+
+/** Messages with a person who left a reply unsent on their second topic. */
+function withDraft() {
+  const drafted = {
+    ...row("person:a", [topic("a-first"), topic("a-drafted")]),
+    draft: {
+      draft_id: "draft-a",
+      thread_id: "a-drafted",
+      text: "Friday works for me",
+      reply_all: true,
+      updated_at: "2026-10-19T00:00:00Z",
+    },
+  };
+  const other = row("person:b", [topic("b-live")]);
+  const list = listOf(other, drafted);
+  client.setQueryData(listKey, list);
+  cachePage(drafted, "a-drafted", "a-drafted");
+  cachePage(drafted, null, "a-first");
+  cachePage(other, "b-live", "b-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: list };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  return { drafted, other };
+}
+
+test("opening a person with an unsent reply opens its conversation and resumes the reply inline", async () => {
+  const { drafted } = withDraft();
+  const router = await mountMessages("/messages?turn=mine");
+
+  const listed = await screen.findAllByTestId("listed-row");
+  fireEvent.click(listed.find((item) => item.textContent === drafted.id)!);
+
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: drafted.id, topic: "a-drafted" }),
+  );
+  await waitFor(() =>
+    expect(useComposeUi.getState().intent).toMatchObject({
+      kind: "reply_all",
+      messageId: "m-a-drafted",
+      contextThreadId: "a-drafted",
+    }),
+  );
+  expect(useComposeUi.getState().surface).toBe("inline");
+});
+
+test("moving the lamp onto a person with an unsent reply leaves the keys in the list", async () => {
+  const { drafted, other } = withDraft();
+  const router = await mountMessages(
+    `/messages?turn=mine&person=${encodeURIComponent(other.id)}&topic=b-live`,
+  );
+  await screen.findByText("b-live");
+
+  act(() => {
+    runCommand("messages", "down");
+  });
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: drafted.id, topic: "a-first" }),
+  );
+  await screen.findByText("a-first");
+  expect(useComposeUi.getState().intent).toBeNull();
 });
 
 test("Done advances to the next person's current open topic, not their cached closed default, while its fetch is delayed", async () => {
@@ -450,6 +517,73 @@ test("Undo from the explicit landing restores the original topic after a cached-
   expect(posts).toEqual([["a-live"]]);
 });
 
+test("a person Done took out of the list reopens on their own topic when undo brings them back", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  const b = row("person:b", [topic("b-live")]);
+  let list = listOf(a, b);
+  client.setQueryData(listKey, list);
+  cachePage(a, "a-live", "a-live");
+  cachePage(b, "b-live", "b-live");
+  const asked: (string | null)[] = [];
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (path.endsWith("/messages/done")) {
+      list = listOf(b);
+      return {
+        mutation_id: "synthetic-done",
+        items: [{ thread_id: "a-live", mode: "messages", provider: "fake", copy: "Done." }],
+      };
+    }
+    if (path.includes("/undo")) {
+      list = listOf(a, b);
+      return { result: { succeeded: 1 } };
+    }
+    if (url.pathname.endsWith("/people")) return { messages: list };
+    if (url.pathname.endsWith("/people/page")) {
+      const requested = url.searchParams.get("topic");
+      asked.push(requested);
+      // The bridge refuses a topic that isn't a thread id, as the real one does.
+      if (requested?.startsWith("person:")) {
+        throw new BridgeRequestError(400, "topic: UUID parsing failed");
+      }
+      const person = url.searchParams.get("person") === a.id ? a : b;
+      return { page: personPage(person, requested ?? person.topics[0]?.thread_id ?? "") };
+    }
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: b.id, topic: "b-live" }),
+  );
+  // Done's own refresh lands first: a has left the list.
+  await waitFor(() => expect(screen.queryByText(a.id)).toBeNull());
+  await waitFor(() => expect(useUndo.getState().lastMutationId).toBe("synthetic-done"));
+  // Undo's list refresh brings a back before the undo's own follow-up runs,
+  // so the list watcher reopens a first (the order the e2e run caught).
+  await act(async () => {
+    client.setQueryData(listKey, listOf(a, b));
+  });
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ person: a.id }));
+  expect(router.state.location.search.topic).not.toBe(b.id);
+  const success = vi.spyOn(toast, "success");
+  const info = vi.spyOn(toast, "info");
+  await act(async () => {
+    expect(await useUndo.getState().lastUndo?.()).toBe(true);
+  });
+  // Already looking at a: the same "Undone" as when the undo itself reopens it,
+  // not a "Restored" toast offering to open what's on screen.
+  expect(success).toHaveBeenCalledWith("Undone");
+  expect(info).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({ person: a.id, topic: "a-live" }),
+  );
+  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
+  expect(screen.queryByText("Couldn't find this person")).toBeNull();
+  expect(asked).not.toContain(b.id);
+});
+
 test("rapid Done does not revisit settled topics while query-notification delivery is deferred", async () => {
   const people = [
     row("person:a", [topic("a-live")]),
@@ -547,6 +681,16 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
   expect(router.state.location.search).not.toHaveProperty("pace");
   expect(router.state.location.search).not.toHaveProperty("turn");
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+});
+
+test("the unselected conversation pane keeps its guidance while the people list loads", async () => {
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(() => pending.promise);
+  await mountMessages("/messages");
+  expect(await screen.findByText("Choose a conversation")).toBeInTheDocument();
+  await act(async () => pending.resolve({ messages: listOf(row("person:a", [topic("a")])) }));
+  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
+  expect(screen.getByText("Choose a conversation")).toBeInTheDocument();
 });
 
 test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
@@ -801,7 +945,8 @@ test("p focuses the current topic when open, or its trigger when the topic list 
   });
   await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
 
-  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  // The filter command reveals the list while retaining its selected person.
+  act(() => runCommand("messages", "filter"));
   await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
 
   act(() => expect(runCommand("messages", "personPage")).toBe(true));
@@ -813,6 +958,56 @@ test("p focuses the current topic when open, or its trigger when the topic list 
   const current = screen.getByTestId("topic");
   act(() => expect(runCommand("messages", "personPage")).toBe(true));
   await waitFor(() => expect(current).toHaveFocus());
+});
+
+test.each([
+  "/messages?turn=all&unread=true&pace=true&person=person%3Aa&topic=a-live",
+  "/messages/a-live?turn=all&unread=true&pace=true",
+])("Back clears the conversation URL and keeps the people list after remount: %s", async (initial) => {
+  layout.wide = false;
+  const a = row("person:a", [topic("a-live")]);
+  const data = listOf(a);
+  client.setQueryData(["messages-mode", "list", "all", "all", "unread", "pace"], data);
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people/page")) return { page: personPage(a, "a-live") };
+    if (url.pathname.endsWith("/people")) return { messages: data };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages(initial);
+  await screen.findByTestId("shown-topic");
+  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/messages");
+    expect(router.state.location.search.person).toBeUndefined();
+    expect(router.state.location.search.topic).toBeUndefined();
+  });
+  expect(router.state.location.search).toMatchObject({ turn: "all", unread: true, pace: true });
+  expect(screen.queryByTestId("person-page")).toBeNull();
+  act(() => runCommand("messages", "personPage"));
+  expect(screen.queryByText("Choose a conversation")).toBeNull();
+  const restoredUrl = router.state.location.href;
+  cleanup();
+  await mountMessages(restoredUrl);
+  expect(await screen.findByTestId("listed-row")).toHaveTextContent("person:a");
+  expect(screen.queryByTestId("person-page")).toBeNull();
+});
+
+test("Esc after p brings focus back from the person page to Messages", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  await waitFor(() => expect(screen.getByTestId("topics-trigger")).toHaveFocus());
+
+  act(() => expect(runCommand("messages", "escape")).toBe(true));
+
+  // Enter now opens the lit person instead of pressing the topic picker.
+  expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
 });
 
 test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {

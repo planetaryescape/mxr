@@ -5,7 +5,7 @@ description: Review quoted email evidence before completing a task or changing i
 
 Review the source before accepting a task change. When a later email appears to finish a to-do or change its deadline, mxr shows the exact source and a short quote as an offer. The task stays unchanged until you review and accept it. You can dismiss the offer or undo an accepted change while its saved task snapshot is still current.
 
-Local rules catch clear completion confirmations. A later email that proposes a new date needs the optional Commitments model, which runs only when an LLM is enabled and configured. Neither path completes or retimes a task automatically; each match remains an offer for you to review. Model checks run in small background batches, so offers may appear after sync finishes. Pending checks survive a daemon restart; turning the model off pauses them until it is enabled again.
+Local rules catch clear completion confirmations. A later email that proposes a new date needs the optional Commitments model, which runs only when an LLM is enabled and configured. Commitments carries your mail history, so on a model off this machine it also needs `llm.allow_cloud_relationship_data = true`. Neither path completes or retimes a task automatically; each match remains an offer for you to review. Model checks run in small background batches, so offers may appear after sync finishes. Pending checks survive a daemon restart; turning the model off pauses them until it is enabled again.
 
 ## Review a quoted message
 
@@ -67,7 +67,9 @@ task. A quote must support the proposed completion or replacement date;
 receiving another email is not enough.
 
 Clear completion rules can work without a model. Semantic matches and new
-dates need an enabled, configured Commitments model. Model checks share a
+dates need an enabled, configured Commitments model, plus
+`llm.allow_cloud_relationship_data = true` when that model is off this
+machine. Model checks share a
 background batch limit of four checks and an eight-second deadline, so a
 finished sync does not mean every candidate has been checked. A provider's
 empty-response fallback may retry within a check; the limit is not four HTTP

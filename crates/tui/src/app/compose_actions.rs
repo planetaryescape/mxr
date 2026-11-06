@@ -20,7 +20,20 @@ impl App {
             }
             Action::Reply | Action::ReplyAll if self.messages_list_focused() => {
                 // In Messages, the open topic is the conversation to answer.
+                // A reply left unsent there is continued, not started again.
                 if let Some(topic) = self.selected_messages_topic() {
+                    let drafted = self
+                        .selected_messages_row()
+                        .and_then(|row| row.draft.as_ref())
+                        .is_some_and(|draft| draft.thread_id == topic.thread_id);
+                    if drafted {
+                        self.pending_reply_draft_resume = Some(ReplyDraftResume {
+                            message_id: topic.reply_to,
+                            reply_all: action == Action::ReplyAll,
+                        });
+                        self.status_message = Some("Opening your draft…".into());
+                        return;
+                    }
                     self.dispatch_or_defer_reply(
                         topic.reply_to,
                         topic.account_id,
@@ -28,17 +41,26 @@ impl App {
                     );
                 }
             }
-            Action::Reply => {
+            Action::Reply | Action::ReplyAll if self.now_list_focused() => {
                 // On Now, a person row is the conversation to answer.
-                if let Some(NowRow::Person(person)) = self
-                    .now_list_focused()
-                    .then(|| self.selected_now_row())
-                    .flatten()
-                {
-                    let message_id = person.row.message_id.clone();
-                    let account_id = person.row.account_id.clone();
-                    self.dispatch_or_defer_reply(message_id, account_id, false);
-                } else if let Some(env) = self.context_envelope() {
+                if let Some((message_id, account_id)) = self.now_person_email() {
+                    self.dispatch_or_defer_reply(
+                        message_id,
+                        account_id,
+                        action == Action::ReplyAll,
+                    );
+                }
+            }
+            Action::Forward if self.now_list_focused() => {
+                if let Some((message_id, account_id)) = self.now_person_email() {
+                    self.compose.pending_compose = Some(ComposeAction::Forward {
+                        message_id,
+                        account_id,
+                    });
+                }
+            }
+            Action::Reply => {
+                if let Some(env) = self.context_envelope() {
                     let message_id = env.id.clone();
                     let account_id = env.account_id.clone();
                     self.dispatch_or_defer_reply(message_id, account_id, false);
@@ -60,6 +82,21 @@ impl App {
                 }
             }
             _ => unreachable!("action routed to wrong handler"),
+        }
+    }
+
+    /// The email `r`, `a` and `f` act on in Now: a person row's latest
+    /// message, or a Not-sure question's email. The other rows are a to-do, a
+    /// digest or a reading pick, which `o` opens first.
+    fn now_person_email(&self) -> Option<(mxr_core::MessageId, mxr_core::AccountId)> {
+        match self.selected_now_row()? {
+            NowRow::Person(person) => {
+                Some((person.row.message_id.clone(), person.row.account_id.clone()))
+            }
+            NowRow::NotSure(question) => {
+                Some((question.message_id.clone(), question.account_id.clone()))
+            }
+            _ => None,
         }
     }
 

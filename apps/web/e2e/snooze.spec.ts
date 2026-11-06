@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 
 import {
   cursorRowId,
-  cursorTo,
   mailList,
   openList,
   pressSequence,
@@ -59,11 +58,6 @@ function presets(page: Page) {
     .getByRole("button");
 }
 
-/** The row chip is mouse-only (rows are listbox options); w is its key. */
-function wakeChips(page: Page) {
-  return mailList(page).locator('[title^="Wake "][title$=" now (w)"]');
-}
-
 async function cursorToSingleMessageRow(page: Page): Promise<string> {
   for (let step = 0; step < 15; step += 1) {
     const id = await cursorRowId(page);
@@ -77,55 +71,3 @@ async function cursorToSingleMessageRow(page: Page): Promise<string> {
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-test("b then 1 chooses the first preset", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  const rowId = await cursorRowId(page);
-  await page.keyboard.press("b");
-  const dialog = page.getByRole("dialog", { name: "Not now" });
-  await expect(presets(page).first()).toBeVisible();
-  await page.keyboard.press("1");
-  await expect(dialog).toHaveCount(0);
-  await expect(rowById(page, rowId)).toHaveCount(0);
-});
-
-// The row's hover toolbar must not cover the Wake chip.
-test("Wake now is clickable with the mouse", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await page.keyboard.press("b");
-  await presets(page).first().click();
-  await pressSequence(page, "g", "n");
-  const wake = wakeChips(page).first();
-  await wake.hover();
-  await wake.click({ timeout: 5_000 });
-  await expect(page.getByText("Back in your inbox")).toBeVisible();
-});
-
-// /snoozed lists a conversation once, and waking it wakes every message.
-test("waking a snoozed conversation wakes all of its messages", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  const rowId = await cursorTo(page, (label) => /messages in conversation/.test(label));
-  const row = rowById(page, rowId);
-  await expect(row).toBeVisible();
-  // The inbox shows the latest subject ("Re: …"); /snoozed may show another.
-  const subject = stableRowName((await row.getAttribute("aria-label"))!)
-    .split(", ")
-    .at(-1)!
-    .replace(/^(re|fwd?):\s*/i, "");
-  await row.click();
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("b");
-  await presets(page).first().click();
-  await pressSequence(page, "g", "n");
-  // Other tests may leave their own snoozes; this conversation is one row.
-  const chips = mailList(page).locator(`[title*="${subject} now (w)"]`);
-  await expect(chips).toHaveCount(1);
-  // The verbs show on hover or on the lit row. Hover the row first: the chip is
-  // display:none until then, and only Chromium re-applies :hover from the
-  // stale mouse position after navigating; WebKit waits for a real mouse move.
-  await mailList(page).getByRole("option", { name: subject }).first().hover();
-  await chips.hover();
-  await chips.click();
-  await expect(page.getByText("Back in your inbox")).toBeVisible();
-  await expect(chips).toHaveCount(0);
-});

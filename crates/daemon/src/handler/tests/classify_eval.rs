@@ -19,8 +19,9 @@ use mxr_provider_fake::fixtures::scenarios::{self, SELF_EMAIL};
 use std::sync::Arc;
 
 /// The personal demo account synced from the scenario set, with the
-/// post-sync work the daemon runs after each page and a contacts refresh,
-/// which the daemon's background worker does a few seconds after a sync.
+/// post-sync classification the daemon runs after each page and a contacts
+/// refresh, which the daemon's background worker does a few seconds after a
+/// sync.
 async fn scenario_state() -> (Arc<AppState>, AccountId) {
     scenario_state_at(Utc::now()).await
 }
@@ -64,13 +65,18 @@ async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, Accoun
             .sync_account_with_outcome(provider.as_ref())
             .await
             .unwrap();
-        crate::loops::post_sync_fanout(
-            state.clone(),
-            account_id.clone(),
-            provider.clone(),
-            outcome.upserted_message_ids,
+        // The classification half of the post-sync fanout, as
+        // `classify_eval_full.rs` runs it. The other half (semantic chunking,
+        // relationship and voice profiles) decides nothing graded here, and
+        // in a `semantic-local` build its background chunking was most of
+        // this fixture's time.
+        crate::loops::post_sync_classification(
+            &state,
+            &account_id,
+            provider.as_ref(),
+            &outcome.upserted_message_ids,
             false,
-            false,
+            Utc::now(),
         )
         .await;
         if !outcome.has_more {

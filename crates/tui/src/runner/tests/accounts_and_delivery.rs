@@ -446,6 +446,7 @@ fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -494,6 +495,7 @@ fn send_key_uses_pending_compose_account() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -541,6 +543,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
@@ -611,6 +614,7 @@ fn remind_prompt_sends_draft_with_pending_reminder_time() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
@@ -940,12 +944,6 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
     app.modals.drafts.set_drafts(drafts);
     app.modals.drafts.select_next();
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
-    assert_eq!(action, None, "e retired as an alias of Enter");
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Edit draft is now Enter")
-    );
     let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalEdit));
     app.apply(action.unwrap());
@@ -990,9 +988,6 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
     app.modals.drafts.open_loading();
     app.modals.drafts.set_drafts(drafts);
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-    assert_eq!(action, None);
-    assert_eq!(app.status_message.as_deref(), Some("Delete draft is now #"));
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::StoredDraftsModalPreviewDelete));
     app.apply(action.unwrap());
@@ -1262,6 +1257,7 @@ fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -1307,6 +1303,7 @@ fn save_key_saves_missing_recipient_draft_to_server() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
@@ -1358,6 +1355,7 @@ fn edit_key_reopens_missing_recipient_draft() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
@@ -1402,6 +1400,7 @@ fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: Account
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     }
 }
 
@@ -2013,8 +2012,10 @@ fn command_palette_includes_major_mail_actions() {
 #[test]
 fn local_label_changes_update_open_message() {
     let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
     app.mailbox.envelopes = make_test_envelopes(1);
+    // A label applies on the message's own account.
+    app.mailbox.labels =
+        crate::test_fixtures::test_system_labels(&app.mailbox.envelopes[0].account_id);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
     app.apply(Action::OpenSelected);
 

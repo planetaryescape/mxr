@@ -16,6 +16,52 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
     let mut client = IpcClient::connect().await?;
     let format = resolve_format(format);
     let request = match action {
+        ModesAction::Seen {
+            mode,
+            row_id,
+            account,
+            revision,
+            dry_run,
+        } => {
+            let response = client
+                .request(Request::SetModeRowSeen {
+                    account_id: account.parse()?,
+                    mode: ModeKindData::parse(&mode)
+                        .ok_or_else(|| anyhow::anyhow!("Unknown mode: {mode}"))?,
+                    row_id,
+                    revision: revision.clone(),
+                    dry_run,
+                })
+                .await?;
+            expect_response(response, |response| match response {
+                Response::Ok {
+                    data: ResponseData::Ack,
+                } => Some(()),
+                _ => None,
+            })?;
+            match format {
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &serde_json::json!({"seen": !dry_run, "dry_run": dry_run})
+                    )?
+                ),
+                OutputFormat::Jsonl => println!(
+                    "{}",
+                    serde_json::json!({"seen": !dry_run, "dry_run": dry_run})
+                ),
+                _ => println!(
+                    "{}: {}",
+                    if dry_run {
+                        "Would mark this row revision seen"
+                    } else {
+                        "Row revision seen"
+                    },
+                    terminal_text(&revision)
+                ),
+            }
+            return Ok(());
+        }
         ModesAction::Explain { mode } => Request::GetModeGuide { mode },
         ModesAction::Hint { id, show } => Request::SetHintSeen {
             hint: id,

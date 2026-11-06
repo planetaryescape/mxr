@@ -245,7 +245,7 @@ mxr completions fish > ~/.config/fish/completions/mxr.fish
 - `1`: general error
 - `2`: usage error
 - `3`: daemon unusable. Kind `daemon_unavailable` when it is not running or cannot be reached after any autostart attempt; kind `daemon_incompatible` when it speaks another protocol or is a supervised build this binary cannot use.
-- `4`: auth error. Kind `daemon_auth` when the daemon rejects the token this client presents; kind `auth` when a daemon response has kind `Auth`.
+- `4`: auth error. Kind `daemon_auth` when the daemon rejects the token this client presents; kind `auth` when a daemon response has kind `Auth`. Every daemon auth error exits 4 from any command, and so does a request for an account whose provider rejected its credentials (a revoked Gmail grant, an IMAP or SMTP login refusal).
 
 Only the paths that know their failure class use codes 3 and 4. Everything else exits 1, and compose's existing exit 2 is unchanged.
 

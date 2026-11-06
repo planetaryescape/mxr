@@ -518,10 +518,19 @@ fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec
             section.title.clone(),
             Style::default().fg(theme.accent).bold(),
         )));
+        // The first column fits its longest entry, so a long "How do I…"
+        // question never runs into its answer.
+        let column = section
+            .entries
+            .iter()
+            .map(|(key, _)| key.chars().count() + 1)
+            .max()
+            .unwrap_or(0)
+            .max(20);
         for (key, action) in &section.entries {
             lines.push(Line::from(vec![
                 Span::styled(
-                    format!("{key:<20}"),
+                    format!("{key:<column$}"),
                     Style::default().fg(theme.text_primary).bold(),
                 ),
                 Span::styled(action.clone(), Style::default().fg(theme.text_secondary)),

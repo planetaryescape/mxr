@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Subscriptions: receipts and invoices that come every week, month, quarter or year, with the next charge, the yearly cost, price changes and status (active, overdue, ended), and totals per currency. `--format json` for scripts and agents
+
+Usage: mxr records subscriptions [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

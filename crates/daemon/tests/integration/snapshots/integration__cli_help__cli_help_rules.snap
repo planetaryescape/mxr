@@ -1,0 +1,29 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Manage rules
+
+Usage: mxr rules [OPTIONS] [COMMAND]
+
+Commands:
+  form               Export the complete editable RuleFormData JSON for preview/apply
+  category-preview   Preview the complete category-rule reconciliation, including old contributions
+  category-apply     Save or delete a category rule and apply its unchanged preview
+  treatment-preview  Preview a saved rule or an unsaved JSON form; returns the token Apply requires
+  treatment-apply    Apply exactly a sorting preview, rejecting changed mail or rules
+  list
+  show
+  add
+  edit
+  validate
+  enable
+  disable
+  delete
+  dry-run
+  history
+  help               Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

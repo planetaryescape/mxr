@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Walk the reply-later queue interactively
+
+Usage: mxr replies walk
+
+Options:
+  -h, --help  Print help

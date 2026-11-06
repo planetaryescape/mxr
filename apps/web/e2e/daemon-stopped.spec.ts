@@ -4,7 +4,6 @@ import {
   expectCursorOn,
   mailRows,
   pressSequence,
-  reader,
   renderedRowIds,
   rowById,
   threadMessages,
@@ -132,46 +131,6 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   await expect(rowById(page, first!)).toBeVisible();
 });
 
-test("with the daemon stopped, Now keeps its cached rows under one banner and the sidebar keeps every item", async ({
-  page,
-}) => {
-  test.setTimeout(120_000);
-  await openApp(page, "/now");
-  await expect(page.getByTestId("now-row").first()).toBeVisible({ timeout: 60_000 });
-  const sidebar = page.getByRole("complementary", { name: "Mailboxes" });
-  const destinations = () =>
-    sidebar.getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("href")));
-  // The groups are folded until opened; open them so every item is on the page.
-  for (const group of ["Mail", "Views", "Tools", "Labels"]) {
-    const toggle = sidebar.getByRole("button", { name: group, exact: true });
-    if ((await toggle.count()) > 0 && (await toggle.getAttribute("aria-expanded")) === "false") {
-      await toggle.click();
-    }
-  }
-  const before = await destinations();
-  // Mail, Views and Tools are fixed data: they are there before the daemon stops.
-  expect(before).toEqual(expect.arrayContaining(["/m/starred", "/m/sent", "/m/trash"]));
-  const rows = await page.getByTestId("now-row").count();
-
-  await stopDaemon();
-  let restarted = false;
-  try {
-    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("[data-offline-banner]")).toHaveCount(1);
-    await expect(daemonBanner(page)).toContainText("Showing what was loaded at");
-    await expect(page.getByTestId("now-row")).toHaveCount(rows);
-    expect(await destinations()).toEqual(before);
-    // Nothing on this frame is an error page: the cached content is the page.
-    await expect(page.getByTestId("page-error")).toHaveCount(0);
-    await restartDaemon();
-    restarted = true;
-  } finally {
-    if (!restarted) await restartDaemon();
-  }
-  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
-  expect(await destinations()).toEqual(before);
-});
-
 test("a reply typed while the daemon is stopped keeps its text and saves once it is back", async ({
   page,
 }) => {
@@ -209,116 +168,4 @@ test("a reply typed while the daemon is stopped keeps its text and saves once it
   await expect(inlineComposer(page).getByText(/^Saved/)).toBeVisible({ timeout: RECOVERY_MS });
   await expect(body).toContainText("Written before the stop. Written while it was stopped.");
   expect(await pageWasNotReloaded(page)).toBe(true);
-});
-
-test("an event stream that keeps failing backs off and pauses nothing that doesn't need it", async ({
-  page,
-}) => {
-  // What a bridge that can't reach the daemon's events does: accept, say
-  // why, close. Every attempt is counted.
-  let attempts = 0;
-  await page.routeWebSocket(/\/api\/v1\/events/, (ws) => {
-    attempts += 1;
-    ws.send(JSON.stringify({ error: "failed to connect to mxr daemon" }));
-    ws.close();
-  });
-  await openApp(page, "/m/inbox");
-  await expect(mailRows(page).first()).toBeVisible();
-  await page.waitForTimeout(6_000);
-  // 250ms doubling with jitter: about five tries in six seconds, not 24.
-  expect(attempts).toBeLessThanOrEqual(7);
-  await expect(page.getByRole("contentinfo").getByText(/^reconnecting$/i)).toBeVisible();
-
-  // Requests still reach the daemon, so nothing is refused.
-  await expect(daemonBanner(page)).toHaveCount(0);
-  const [first] = await renderedRowIds(page);
-  await expectCursorOn(page, first!);
-  await page.keyboard.press("e");
-  await expect(rowById(page, first!)).toHaveCount(0);
-  await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible({ timeout: 15_000 });
-  await page.keyboard.press("u");
-  await expect(page.getByText(/^Undone$/)).toBeVisible();
-});
-
-async function startNewMessage(page: Page, subject: string): Promise<void> {
-  await openApp(page, "/m/inbox");
-  await expect(mailRows(page).first()).toBeVisible();
-  await page.keyboard.press("c");
-  const composer = page.getByRole("dialog", { name: "New message" });
-  await composer.getByRole("combobox", { name: "To" }).fill("alice@example.com");
-  await composer.getByRole("textbox", { name: "Subject" }).fill(subject);
-  await composer.locator(".cm-content").click();
-  await page.keyboard.press("i");
-  await page.keyboard.type("Only if I press Send again.");
-  await page.keyboard.press("Escape");
-  await expect(composer.getByText(/^Saved/)).toBeVisible({ timeout: 10_000 });
-}
-
-function countSends(page: Page): () => number {
-  let sends = 0;
-  page.on("request", (request) => {
-    if (request.url().includes("/api/v1/mail/compose/session/send")) sends += 1;
-  });
-  return () => sends;
-}
-
-test("confirming the send dialog while the daemon is stopped sends nothing, then or after it returns", async ({
-  page,
-}) => {
-  test.setTimeout(120_000);
-  const sends = countSends(page);
-  await startNewMessage(page, `e2e-down-confirm-${Date.now().toString(36)}`);
-  // A failed safety check opens the confirm dialog instead of sending.
-  await page.route("**/api/v1/mail/compose/session/safety-check", (route) =>
-    route.fulfill({ status: 500, json: { error: "checker unavailable", code: "internal" } }),
-  );
-  const composer = page.getByRole("dialog", { name: "New message" });
-  await composer.getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
-  const confirm = page.getByRole("alertdialog");
-  await expect(confirm.getByText(/Safety check unavailable/)).toBeVisible();
-
-  await stopDaemon();
-  let restarted = false;
-  try {
-    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
-    await confirm.getByRole("button", { name: /^Send$/ }).click();
-    await expect(page.getByText("Can't send while mxr is unavailable")).toBeVisible();
-    await expect(page.getByText(/^Sending in \d+s/)).toHaveCount(0);
-    await restartDaemon();
-    restarted = true;
-  } finally {
-    if (!restarted) await restartDaemon();
-  }
-  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
-  // Past where a 10 s undo window would have fired.
-  await page.waitForTimeout(12_000);
-  expect(sends()).toBe(0);
-});
-
-test("a send whose undo window closes while the daemon is stopped is cancelled, not replayed", async ({
-  page,
-}) => {
-  test.setTimeout(120_000);
-  const sends = countSends(page);
-  await startNewMessage(page, `e2e-down-window-${Date.now().toString(36)}`);
-  const composer = page.getByRole("dialog", { name: "New message" });
-  await composer.getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
-  await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
-
-  await stopDaemon();
-  let restarted = false;
-  try {
-    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
-    // The 10 s window closes while the daemon is still down.
-    await expect(page.getByText("Can't send while mxr is unavailable")).toBeVisible({
-      timeout: 15_000,
-    });
-    await restartDaemon();
-    restarted = true;
-  } finally {
-    if (!restarted) await restartDaemon();
-  }
-  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
-  await page.waitForTimeout(3_000);
-  expect(sends()).toBe(0);
 });

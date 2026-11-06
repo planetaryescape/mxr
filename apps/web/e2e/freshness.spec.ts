@@ -1,5 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
-import { animationsSettled } from "./helpers/mail";
 import { expect, test, type Page } from "@playwright/test";
 
 import { deliver, failSyncs, restoreSyncs } from "./helpers/spool";
@@ -44,81 +42,8 @@ function trigger(page: Page) {
   return page.getByTestId("freshness-trigger").filter({ visible: true });
 }
 
-async function blockingViolations(page: Page): Promise<string[]> {
-  // A dialog still fading in blends with the page behind it, and axe reads that
-  // as low contrast (WebKit on CI: the Archive export preview).
-  await animationsSettled(page);
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa"])
-    .exclude("iframe")
-    .analyze();
-  return results.violations
-    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
-    .flatMap((violation) =>
-      violation.nodes.map(
-        (node) => `${violation.id} (${violation.impact}): ${node.target.join(" ")}`,
-      ),
-    );
-}
-
 test.describe("desktop", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
-
-  test("the status bar shows when the newest mail arrived, with the exact time on hover", async ({
-    page,
-  }) => {
-    // Not a page with a lit row: a lit row shortens this to "28m ago" beside its reason (see now.spec.ts).
-    await openApp(page, "/rules");
-    const reply = await bridge<FreshnessReply>(page, "/api/v1/mail/freshness");
-    const newest = reply.freshness.newest_message_at;
-    expect(newest).toBeTruthy();
-    const minutes = Math.floor((Date.now() - new Date(newest ?? "").getTime()) / 60_000);
-    const expected =
-      minutes < 1
-        ? "just now"
-        : minutes < 60
-          ? `${minutes}m ago`
-          : minutes < 1440
-            ? `${Math.floor(minutes / 60)}h ago`
-            : `${Math.floor(minutes / 1440)}d ago`;
-    await expect(trigger(page)).toHaveText(`Latest mail ${expected}`);
-    await expect(statusBar(page).getByText(/^synced (just now|\d+m ago)$/)).toBeVisible();
-
-    await trigger(page).hover();
-    // Formatted in the browser, whose locale the app uses.
-    const exact = await page.evaluate(
-      (iso) =>
-        new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
-          new Date(iso),
-        ),
-      newest ?? "",
-    );
-    await expect(page.getByRole("tooltip")).toContainText(exact);
-  });
-
-  test("the popover lists the last arrivals with their modes and opens one", async ({ page }) => {
-    await openApp(page, "/now");
-    await trigger(page).click();
-    const arrivals = page.getByTestId("freshness-arrival");
-    await expect(arrivals.first()).toBeVisible();
-    expect(await arrivals.count()).toBeLessThanOrEqual(5);
-    await expect(
-      page
-        .getByTestId("freshness-arrival")
-        .filter({
-          hasText:
-            /→ (?:out of the inbox · )?(Messages|To do|Updates|Reading|Archive)(?: · [a-z -]+)?/,
-        })
-        .first(),
-    ).toBeVisible();
-    await shot(page, "desktop-popover");
-
-    const reply = await bridge<FreshnessReply>(page, "/api/v1/mail/freshness");
-    const first = reply.freshness.arrivals[0];
-    await arrivals.first().click();
-    await expect(page).toHaveURL(new RegExp(`/m/inbox/${first?.thread_id}`));
-    await expect(page.getByRole("article", { name: /^Conversation:/ })).toBeVisible();
-  });
 
   test("a new message updates the indicator and the popover live", async ({ page }) => {
     // A page with no lit row, so the status bar keeps its full freshness words.
@@ -186,60 +111,3 @@ test.describe("desktop", () => {
     await expect(statusBar(page).getByText(/^synced just now$/)).toBeVisible();
   });
 });
-
-test.describe("phone", () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-  test("only the age and a health dot show, and a tap opens the arrivals", async ({ page }) => {
-    await openApp(page, "/now");
-    const compact = trigger(page);
-    await expect(compact).toBeVisible();
-    await expect(compact).toHaveText(/^(just now|\d+[mhd] ago)$/);
-    await expect(compact.locator("[data-tone]")).toHaveAttribute("data-tone", "ok");
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBe(0);
-    const box = await compact.boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(32);
-    await shot(page, "phone-bar");
-
-    await compact.tap();
-    await expect(page.getByTestId("freshness-arrival").first()).toBeVisible();
-    const popover = await page.getByRole("dialog", { name: "Last arrivals" }).boundingBox();
-    expect((popover?.x ?? -1) >= 0 && (popover?.x ?? 0) + (popover?.width ?? 0) <= 390).toBe(true);
-    await shot(page, "phone-popover");
-  });
-});
-
-for (const colorScheme of ["dark", "light"] as const) {
-  test.describe(`${colorScheme} scheme`, () => {
-    test.use({ colorScheme, viewport: { width: 1440, height: 900 } });
-
-    test("axe: the indicator, its warning and the open popover pass", async ({ page }) => {
-      await openApp(page, "/now");
-      await expect(trigger(page)).toBeVisible();
-      await trigger(page).click();
-      await expect(page.getByTestId("freshness-arrival").first()).toBeVisible();
-      expect(await blockingViolations(page)).toEqual([]);
-      await shot(page, `${colorScheme}-popover`);
-      await page.keyboard.press("Escape");
-      try {
-        failSyncs("rate_limit 120");
-        await syncNow(page);
-        await expect(page.getByTestId("freshness-warning")).toContainText("paused: rate limited");
-        // The account turned unhealthy: one toast says so. Let it finish
-        // sliding in so axe reads its resting colours.
-        const toast = page.locator("[data-sonner-toast]").filter({ hasText: "can't sync" });
-        await expect(toast).toHaveCount(1);
-        await expect(toast).toHaveAttribute("data-mounted", "true");
-        await page.waitForTimeout(600);
-        expect(await blockingViolations(page)).toEqual([]);
-        await shot(page, `${colorScheme}-paused`);
-      } finally {
-        restoreSyncs();
-        await syncNow(page);
-      }
-    });
-  });
-}

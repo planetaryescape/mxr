@@ -8,7 +8,7 @@
 //! talks to in CI — see .github/workflows/openapi-conformance.yml).
 //!
 //! These tests do NOT exercise a real `mxr daemon` process — that's
-//! covered in `crates/daemon/tests/daemon_lifecycle.rs`. The point here
+//! covered in `crates/daemon/tests/integration/daemon_lifecycle.rs`. The point here
 //! is the HTTP↔IPC contract. Real-daemon-against-FakeProvider end-to-end
 //! coverage lives with the daemon and web app smoke tests.
 

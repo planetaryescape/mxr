@@ -1,9 +1,13 @@
 use super::desk::{request, Fixture, ME};
-use super::promise_projection::{replace, settle, source};
+use super::promise_projection::{month_start, replace, settle, source, written};
 use super::*;
 use chrono::Duration;
 use mxr_core::ThreadId;
 use mxr_store::TodoState;
+
+fn currency_deadline() -> chrono::NaiveDate {
+    chrono::Utc::now().date_naive() + Duration::days(7)
+}
 
 #[tokio::test]
 async fn review2_sign_verify_speech_acts_control_stored_task_admission() {
@@ -63,8 +67,9 @@ async fn review2_sign_verify_speech_acts_control_stored_task_admission() {
 async fn review2_currency_balances_keep_distinct_rows_and_unit_links() {
     for separate in [false, true] {
         let fx = Fixture::new().await;
-        let a = "Account #A123 amount due £25 by 1 November 2026.";
-        let b = "Account #A123 amount due €40 by 1 November 2026.";
+        let due = currency_deadline().format("%-d %B %Y").to_string();
+        let a = format!("Account #A123 amount due £25 by {due}.");
+        let b = format!("Account #A123 amount due €40 by {due}.");
         let first = fx
             .message(
                 &ThreadId::new(),
@@ -78,7 +83,7 @@ async fn review2_currency_balances_keep_distinct_rows_and_unit_links() {
             &fx,
             &first,
             &if separate {
-                a.into()
+                a.clone()
             } else {
                 format!("{a}\n\n{b}")
             },
@@ -95,7 +100,7 @@ async fn review2_currency_balances_keep_distinct_rows_and_unit_links() {
                     None,
                 )
                 .await;
-            replace(&fx, &second, b).await;
+            replace(&fx, &second, &b).await;
             settle(&fx, &second).await;
             // A new correspondent message invalidates the earlier thread's context.
             // Exercise the normal account reconciler before asserting current links.
@@ -207,8 +212,10 @@ async fn currency_identity_adopts_previous_rows_and_keeps_completed_decisions() 
                 None,
             )
             .await;
-        let eur = "Account #A123 amount due €40 by 1 November 2026.";
-        replace(&fx, &mail, eur).await;
+        let due = currency_deadline();
+        let date = due.format("%-d %B %Y");
+        let eur = format!("Account #A123 amount due €40 by {date}.");
+        replace(&fx, &mail, &eur).await;
         settle(&fx, &mail).await;
         let original = fx
             .state
@@ -229,14 +236,15 @@ async fn currency_identity_adopts_previous_rows_and_keeps_completed_decisions() 
             .await;
         }
         let legacy_key = format!(
-            "asks|payment|{}|due:2026-11",
-            mxr_store::assessment_fingerprint("billing@example.com|payment|account:a123")
+            "asks|payment|{}|due:{}",
+            mxr_store::assessment_fingerprint("billing@example.com|payment|account:a123"),
+            due.format("%Y-%m")
         );
         sqlx::query("UPDATE todos SET dedup_key=?, field_sources=replace(field_sources, 'asks-r2c-13:', 'asks-r2c-12:') WHERE id=?").bind(&legacy_key).bind(&original.id).execute(fx.state.store.writer()).await.unwrap();
         replace(
             &fx,
             &mail,
-            &format!("Account #A123 amount due £25 by 1 November 2026.\n\n{eur}"),
+            &format!("Account #A123 amount due £25 by {date}.\n\n{eur}"),
         )
         .await;
         settle(&fx, &mail).await;
@@ -316,11 +324,12 @@ async fn currency_identity_adopts_previous_rows_and_keeps_completed_decisions() 
 async fn same_currency_reminders_and_payment_escalation_reuse_one_identity() {
     let fx = Fixture::new().await;
     let mut first_id = None;
+    let due = currency_deadline().format("%-d %B %Y").to_string();
     for text in [
-        "Account #A123 amount due £25 by 1 November 2026.",
-        "Reminder: Account #A123 amount due £25 by 1 November 2026.",
-        "Account #A123 payment of £25 failed. Update your payment method by 1 November 2026.",
-        "Account #A123 amount due £25.",
+        format!("Account #A123 amount due £25 by {due}."),
+        format!("Reminder: Account #A123 amount due £25 by {due}."),
+        format!("Account #A123 payment of £25 failed. Update your payment method by {due}."),
+        "Account #A123 amount due £25.".into(),
     ] {
         let mail = fx
             .message(
@@ -331,7 +340,7 @@ async fn same_currency_reminders_and_payment_escalation_reuse_one_identity() {
                 None,
             )
             .await;
-        replace(&fx, &mail, text).await;
+        replace(&fx, &mail, &text).await;
         settle(&fx, &mail).await;
         super::super::assessments::reconcile_account(&fx.state, &fx.account)
             .await
@@ -363,8 +372,10 @@ async fn currency_upgrade_preserves_the_exact_durable_correction_undo() {
             None,
         )
         .await;
-    let quote = "Account #A123 amount due €40 by 1 November 2026.";
-    replace(&fx, &mail, quote).await;
+    let due = currency_deadline();
+    let date = due.format("%-d %B %Y");
+    let quote = format!("Account #A123 amount due €40 by {date}.");
+    replace(&fx, &mail, &quote).await;
     settle(&fx, &mail).await;
     let original = fx
         .state
@@ -374,8 +385,9 @@ async fn currency_upgrade_preserves_the_exact_durable_correction_undo() {
         .unwrap()
         .remove(0);
     let legacy_key = format!(
-        "asks|payment|{}|due:2026-11",
-        mxr_store::assessment_fingerprint("billing@example.com|payment|account:a123")
+        "asks|payment|{}|due:{}",
+        mxr_store::assessment_fingerprint("billing@example.com|payment|account:a123"),
+        due.format("%Y-%m")
     );
     sqlx::query("UPDATE todos SET dedup_key=?, field_sources=replace(field_sources, 'asks-r2c-13:', 'asks-r2c-12:') WHERE id=?").bind(&legacy_key).bind(&original.id).execute(fx.state.store.writer()).await.unwrap();
     let ResponseData::TodoChange { change } = request(
@@ -403,7 +415,7 @@ async fn currency_upgrade_preserves_the_exact_durable_correction_undo() {
     replace(
         &fx,
         &mail,
-        &format!("{quote}\n\nAccount #A123 amount due £25 by 1 November 2026."),
+        &format!("{quote}\n\nAccount #A123 amount due £25 by {date}."),
     )
     .await;
     settle(&fx, &mail).await;
@@ -547,19 +559,59 @@ async fn review6_payment_documents_retain_the_observed_speaker() {
 #[tokio::test]
 async fn review6_financial_speakers_keep_remediation_and_independent_owner_work() {
     for (text, expected) in [
-        ("I can update your payment details.", 0),
-        ("She will update your payment details.", 0),
-        ("Please update your payment details.", 1),
-        ("Your payment failed. Please update your payment details.", 1),
-        ("We couldn't charge your card. Update your payment details.", 1),
-        ("I can pay invoice #K918 £25 by 1 November 2026.\n\nPlease sign the contract.", 1),
-        ("She will pay invoice #K918 £25 by 1 November 2026.\n\nPlease pay invoice #Q222 €40 by 1 December 2026.", 1),
+        ("I can update your payment details.".to_string(), 0),
+        ("She will update your payment details.".to_string(), 0),
+        ("Please update your payment details.".to_string(), 1),
+        (
+            "Your payment failed. Please update your payment details.".to_string(),
+            1,
+        ),
+        (
+            "We couldn't charge your card. Update your payment details.".to_string(),
+            1,
+        ),
+        (
+            format!(
+                "I can pay invoice #K918 £25 by {}.\n\nPlease sign the contract.",
+                written(month_start(1))
+            ),
+            1,
+        ),
+        (
+            format!(
+                "She will pay invoice #K918 £25 by {}.\n\nPlease pay invoice #Q222 €40 by {}.",
+                written(month_start(1)),
+                written(month_start(2))
+            ),
+            1,
+        ),
     ] {
-        let fx=Fixture::new().await;
-        let mail=fx.message(&ThreadId::new(),"nora@example.com",ME,Duration::minutes(5),None).await;
-        replace(&fx,&mail,text).await; settle(&fx,&mail).await;
-        let rows=fx.state.store.list_todos_in_state(Some(&fx.account),TodoState::Open,100).await.unwrap();
-        assert_eq!(rows.len(),expected,"{text}");
-        for row in rows {assert!(text.contains(&row.reason));assert!(row.reason.starts_with("Please") || row.reason.starts_with("Your payment") || row.reason.starts_with("We couldn't"));}
+        let fx = Fixture::new().await;
+        let mail = fx
+            .message(
+                &ThreadId::new(),
+                "nora@example.com",
+                ME,
+                Duration::minutes(5),
+                None,
+            )
+            .await;
+        replace(&fx, &mail, &text).await;
+        settle(&fx, &mail).await;
+        let rows = fx
+            .state
+            .store
+            .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), expected, "{text}");
+        for row in rows {
+            assert!(text.contains(&row.reason));
+            assert!(
+                row.reason.starts_with("Please")
+                    || row.reason.starts_with("Your payment")
+                    || row.reason.starts_with("We couldn't")
+            );
+        }
     }
 }

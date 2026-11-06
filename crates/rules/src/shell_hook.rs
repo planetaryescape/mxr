@@ -8,6 +8,14 @@ use tokio::time::{timeout, Instant};
 /// Default timeout for shell hooks.
 const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long to keep collecting stderr after a failed shell has exited.
+///
+/// The shell's own output is already buffered in the pipe, so reading it takes
+/// microseconds; 250 ms is only the ceiling for a descendant that keeps the pipe
+/// open. It is long enough to survive a loaded scheduler and short enough that
+/// a failing hook with a lingering background process is not noticeably slow.
+const STDERR_GRACE_AFTER_EXIT: Duration = Duration::from_millis(250);
+
 /// JSON payload piped to shell hook stdin.
 #[derive(Debug, Serialize)]
 pub struct ShellHookPayload {
@@ -66,7 +74,7 @@ pub async fn execute_shell_hook(
         })?;
 
     let stdin = child.stdin.take();
-    let stderr = child.stderr.take();
+    let mut stderr = child.stderr.take();
     // Drain stderr while writing: a hook can fill its stderr pipe before it
     // reads stdin. Keep ownership of the child outside the timed future so a
     // timeout can kill and reap it, rather than merely dropping the wait.
@@ -82,25 +90,52 @@ pub async fn execute_shell_hook(
                 None
             }
         };
-        let read = async {
-            use tokio::io::AsyncReadExt;
-            let mut bytes = Vec::new();
-            if let Some(mut stderr) = stderr {
-                stderr
-                    .read_to_end(&mut bytes)
-                    .await
-                    .map_err(|e| ShellHookError::WaitFailed(e.to_string()))?;
+        tokio::pin!(write);
+        let mut write_error = None;
+        let mut write_done = false;
+        let mut stderr_bytes = Vec::new();
+        let mut stderr_open = stderr.is_some();
+        // Wait on the shell itself, not on pipe EOF: a backgrounded descendant
+        // inherits stderr and keeps it open long after the shell exits.
+        let status = loop {
+            tokio::select! {
+                status = child.wait() => {
+                    break status.map_err(|e| ShellHookError::WaitFailed(e.to_string()))?;
+                }
+                result = &mut write, if !write_done => {
+                    write_error = result;
+                    write_done = true;
+                }
+                read = read_chunk(&mut stderr, &mut stderr_bytes), if stderr_open => {
+                    match read {
+                        Ok(0) => stderr_open = false,
+                        Ok(_) => {}
+                        Err(e) => return Err(ShellHookError::WaitFailed(e.to_string())),
+                    }
+                }
             }
-            Ok::<_, ShellHookError>(bytes)
         };
-        let wait = async {
-            child
-                .wait()
-                .await
-                .map_err(|e| ShellHookError::WaitFailed(e.to_string()))
-        };
-        let (write_error, stderr, status) = tokio::join!(write, read, wait);
-        Ok::<_, ShellHookError>((write_error, stderr?, status?))
+        // An unfinished stdin write is abandoned here (dropping `write` closes
+        // our end): a descendant holding the read end open would otherwise block
+        // a large payload forever, and the shell no longer wants it.
+        //
+        // Stderr is only reported for a failed hook, so a successful one returns
+        // without draining. For a failure, the shell's own output is already in
+        // the pipe buffer, so a short bounded read collects it; whatever a
+        // descendant writes later is not part of the hook's result.
+        if !status.success() && stderr_open {
+            let grace_end = (Instant::now() + STDERR_GRACE_AFTER_EXIT).min(deadline);
+            let _ = tokio::time::timeout_at(grace_end, async {
+                // A read error here only ends collection; the exit status is the result.
+                while let Ok(n) = read_chunk(&mut stderr, &mut stderr_bytes).await {
+                    if n == 0 {
+                        break;
+                    }
+                }
+            })
+            .await;
+        }
+        Ok::<_, ShellHookError>((write_error, stderr_bytes, status))
     };
     let (stdin_write_error, stderr, status) =
         match tokio::time::timeout_at(deadline, execution).await {
@@ -130,6 +165,18 @@ pub async fn execute_shell_hook(
             code: status.code(),
             stderr,
         })
+    }
+}
+
+/// Cancel-safe single read into `bytes`; `Ok(0)` is EOF.
+async fn read_chunk(
+    stderr: &mut Option<tokio::process::ChildStderr>,
+    bytes: &mut Vec<u8>,
+) -> std::io::Result<usize> {
+    use tokio::io::AsyncReadExt;
+    match stderr {
+        Some(pipe) => pipe.read_buf(bytes).await,
+        None => Ok(0),
     }
 }
 
@@ -185,12 +232,19 @@ mod tests {
         let mut payload = sample_payload();
         payload.body_text = Some("x".repeat(2 * 1024 * 1024));
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
-        // The finite sleep bounds the red test even before stdin has a timeout.
+        // The sleep outlives the deadline, so only the timeout can end the child,
+        // and still bounds the red test when stdin has no timeout.
+        let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
+        // The deadline must outlast spawning `sh` and running `echo` on a loaded
+        // machine, or the child dies before recording its pid. 200 ms lost that
+        // race under load.
+        let deadline = Duration::from_secs(2);
         let started = std::time::Instant::now();
-        let result = execute_shell_hook(&command, &payload, Some(Duration::from_millis(200))).await;
+        let result = execute_shell_hook(&command, &payload, Some(deadline)).await;
         let elapsed = started.elapsed();
-        let pid = std::fs::read_to_string(&pid_file).expect("hook recorded its pid");
+        let pid = std::fs::read_to_string(&pid_file).unwrap_or_else(|error| {
+            panic!("hook did not record its pid before the {deadline:?} deadline: {error}")
+        });
         std::fs::remove_file(pid_file).expect("remove owned fixture pid file");
         let alive = std::process::Command::new("kill")
             .args(["-0", pid.trim()])
@@ -203,21 +257,26 @@ mod tests {
             matches!(result, Err(ShellHookError::Timeout { .. })),
             "{result:?}"
         );
+        // Deadline plus the hook's 1 s reap bound, with slack. A stdin write the
+        // deadline missed would block until the 30 s sleep ends.
         assert!(
-            elapsed < Duration::from_secs(1),
-            "stdin exceeded the hook deadline"
+            elapsed < deadline + Duration::from_secs(3),
+            "stdin exceeded the hook deadline: {elapsed:?}"
         );
     }
 
     #[tokio::test]
     async fn cancelling_hook_kills_owned_child() {
         let pid_file = std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()));
-        let command = format!("echo $$ > '{}'; exec sleep 2", pid_file.display());
+        // The sleep outlives the waits below, so only the abort can end the child.
+        let command = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
         let task =
             tokio::spawn(
                 async move { execute_shell_hook(&command, &sample_payload(), None).await },
             );
-        let pid = timeout(Duration::from_secs(1), async {
+        // Generous waits: `sh` can take over a second to start on a loaded
+        // machine, and a passing run returns as soon as the poll succeeds.
+        let pid = timeout(Duration::from_secs(10), async {
             loop {
                 if let Ok(pid) = std::fs::read_to_string(&pid_file) {
                     if !pid.trim().is_empty() {
@@ -231,7 +290,7 @@ mod tests {
         .expect("hook started");
         task.abort();
         let _ = task.await;
-        let gone = timeout(Duration::from_secs(1), async {
+        let gone = timeout(Duration::from_secs(10), async {
             loop {
                 let alive = std::process::Command::new("kill")
                     .args(["-0", pid.trim()])
@@ -315,5 +374,76 @@ mod tests {
         execute_shell_hook("cat | head -c 1 > /dev/null", &sample_payload(), None)
             .await
             .expect("piped shell hook should succeed");
+    }
+
+    fn kill_pid_file(pid_file: &std::path::Path) {
+        if let Ok(pid) = std::fs::read_to_string(pid_file) {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.trim())
+                .stderr(Stdio::null())
+                .status();
+        }
+        let _ = std::fs::remove_file(pid_file);
+    }
+
+    fn pid_file() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("mxr-hook-{}.pid", uuid::Uuid::now_v7()))
+    }
+
+    // The 20 s sleeps outlive every deadline here, so only the fix can make
+    // these return before the hook timeout; the bounds are loose on purpose.
+    #[tokio::test]
+    async fn backgrounded_child_holding_stderr_is_not_a_timeout() {
+        let pid_file = pid_file();
+        let command = format!("sleep 20 & echo $! > '{}'; exit 0", pid_file.display());
+        let result =
+            execute_shell_hook(&command, &sample_payload(), Some(Duration::from_secs(10))).await;
+        kill_pid_file(&pid_file);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn backgrounded_child_holding_stdin_does_not_block_large_payload() {
+        let mut payload = sample_payload();
+        payload.body_text = Some("x".repeat(2 * 1024 * 1024));
+        let pid_file = pid_file();
+        // `<&0` keeps the stdin read end open without ever reading it.
+        let command = format!("sleep 20 <&0 & echo $! > '{}'; exit 0", pid_file.display());
+        let result = execute_shell_hook(&command, &payload, Some(Duration::from_secs(10))).await;
+        kill_pid_file(&pid_file);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn failed_hook_keeps_stderr_written_before_exit_while_descendant_holds_pipe() {
+        let pid_file = pid_file();
+        let command = format!(
+            "echo partial >&2; sleep 20 & echo $! > '{}'; exit 3",
+            pid_file.display()
+        );
+        let result =
+            execute_shell_hook(&command, &sample_payload(), Some(Duration::from_secs(10))).await;
+        kill_pid_file(&pid_file);
+        match result {
+            Err(ShellHookError::NonZeroExit { code, stderr, .. }) => {
+                assert_eq!(code, Some(3));
+                assert!(stderr.contains("partial"), "{stderr:?}");
+            }
+            other => panic!("Expected NonZeroExit, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn large_stderr_is_fully_read_when_shell_exits() {
+        // Well over a pipe buffer, so it only completes if stderr is drained
+        // while the shell runs and the remainder is read after it exits.
+        let command = "yes x | head -c 300000 >&2; exit 2";
+        let result = execute_shell_hook(command, &sample_payload(), None).await;
+        match result {
+            Err(ShellHookError::NonZeroExit { stderr, .. }) => {
+                assert_eq!(stderr.len(), 300_000);
+            }
+            other => panic!("Expected NonZeroExit, got {other:?}"),
+        }
     }
 }

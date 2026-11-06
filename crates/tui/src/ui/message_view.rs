@@ -5,9 +5,9 @@ use crate::app::{
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
 use crate::ui::received_label::received_label;
+use crate::ui::rich_html::{Annotation, RichLine, RichRender, RICH_LINES};
 use crate::ui::sanitize::strip_control_chars;
 use chrono::{DateTime, Utc};
-use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
 use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
 use ratatui::prelude::*;
@@ -302,21 +302,14 @@ pub fn draw(
                     blocks.push(RenderBlock::Text(text_lines));
                     // As the web reader's formatted view: the quoted
                     // conversation stays folded until `Q`.
-                    let parts = (!message.quotes_expanded)
-                        .then(|| mxr_reader::split_html_quote_keeping_signature(raw))
-                        .filter(|parts| parts.has_quote);
-                    blocks.extend(render_html_blocks(
+                    blocks.extend(html_body_blocks(
                         &message.envelope.id,
-                        parts
-                            .as_ref()
-                            .map_or(raw.as_str(), |parts| parts.main.as_str()),
+                        raw,
                         inner.width,
+                        !message.quotes_expanded,
                         theme,
                         metadata.remote_content_enabled,
                     ));
-                    if parts.is_some() {
-                        blocks.push(RenderBlock::Text(vec![folded_quote_line(theme)]));
-                    }
                 } else {
                     let body = process_body_lines(
                         rendered,
@@ -973,6 +966,76 @@ fn max_image_height(viewport_height: u16) -> u16 {
     viewport_height.saturating_sub(4).clamp(6, 18)
 }
 
+/// What an HTML body draws from: its quote split and styled render, both
+/// parsed in the HTML helper off the event loop (see `deferred_html`).
+struct HtmlBody {
+    /// The part shown: the whole body, or what is above a folded quote.
+    main: String,
+    has_folded_quote: bool,
+    rendered: RichRender,
+}
+
+impl HtmlBody {
+    fn parse(html: &str, width: u16, fold_quotes: bool) -> Self {
+        let parts = fold_quotes
+            .then(|| mxr_reader::split_html_quote_keeping_signature(html))
+            .filter(|parts| parts.has_quote);
+        let main = parts
+            .as_ref()
+            .map_or_else(|| html.to_string(), |parts| parts.main.clone());
+        // Over the size cap, on a panic, or with the HTML helper lost (timed
+        // out, crashed), the tag strip stands in.
+        let rendered = RICH_LINES
+            .call(&main, &html_width(width))
+            .unwrap_or(RichRender::Strip);
+        Self {
+            main,
+            has_folded_quote: parts.is_some(),
+            rendered,
+        }
+    }
+}
+
+fn html_width(width: u16) -> usize {
+    usize::from(width.max(20))
+}
+
+/// The blocks for an HTML body; the tag strip while its parse is on its way.
+fn html_body_blocks(
+    message_id: &MessageId,
+    html: &str,
+    width: u16,
+    fold_quotes: bool,
+    theme: &Theme,
+    remote_content_enabled: bool,
+) -> Vec<RenderBlock> {
+    let key = (html, width, fold_quotes);
+    let source = html.to_string();
+    let Some(body) =
+        crate::deferred_html::answer(&key, move || HtmlBody::parse(&source, width, fold_quotes))
+    else {
+        return vec![RenderBlock::Text(process_body_lines(
+            &mxr_reader::strip_html_tags(html),
+            theme,
+            false,
+            false,
+            false,
+        ))];
+    };
+    let mut blocks = rendered_html_blocks(
+        message_id,
+        &body.main,
+        &body.rendered,
+        theme,
+        remote_content_enabled,
+    );
+    if body.has_folded_quote {
+        blocks.push(RenderBlock::Text(vec![folded_quote_line(theme)]));
+    }
+    blocks
+}
+
+#[cfg(test)]
 fn render_html_blocks(
     message_id: &MessageId,
     html: &str,
@@ -980,23 +1043,28 @@ fn render_html_blocks(
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
-    let width = usize::from(width.max(20));
-    let clamped = mxr_reader::clamp_table_spans(html);
-    let rendered = mxr_reader::guard_html2text("tui html body", || {
-        let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
-        html2text::config::rich()
-            .render_to_lines(render_tree, width)
-            .ok()
-    });
+    let rendered = RICH_LINES
+        .call(html, &html_width(width))
+        .unwrap_or(RichRender::Strip);
+    rendered_html_blocks(message_id, html, &rendered, theme, remote_content_enabled)
+}
+
+fn rendered_html_blocks(
+    message_id: &MessageId,
+    html: &str,
+    rendered: &RichRender,
+    theme: &Theme,
+    remote_content_enabled: bool,
+) -> Vec<RenderBlock> {
     let tagged_lines = match rendered {
-        Some(Some(lines)) => lines,
-        Some(None) => {
+        RichRender::Lines(lines) => lines,
+        RichRender::Failed => {
             return vec![RenderBlock::Text(process_body_lines(
                 html, theme, false, false, false,
             ))];
         }
-        // html2text panicked; show the tag-stripped text rather than raw markup.
-        None => {
+        // Show the tag-stripped text rather than raw markup.
+        RichRender::Strip => {
             return vec![RenderBlock::Text(process_body_lines(
                 &mxr_reader::strip_html_tags(html),
                 theme,
@@ -1033,41 +1101,48 @@ fn render_html_blocks(
 
 fn rich_line_to_blocks(
     message_id: &MessageId,
-    line: html2text::render::TaggedLine<Vec<RichAnnotation>>,
+    line: &RichLine,
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
-    let tagged = line.tagged_strings().collect::<Vec<_>>();
-    let image_specs = tagged
+    let image_specs = line
         .iter()
-        .filter_map(|tagged| {
-            tagged.tag.iter().find_map(|annotation| match annotation {
-                RichAnnotation::Image(source) => Some(HtmlImageBlock {
-                    message_id: message_id.clone(),
-                    source: source.clone(),
-                    label: tagged.s.trim().to_string(),
-                }),
-                _ => None,
-            })
+        .filter_map(|piece| {
+            piece
+                .annotations
+                .iter()
+                .find_map(|annotation| match annotation {
+                    Annotation::Image(source) => Some(HtmlImageBlock {
+                        message_id: message_id.clone(),
+                        source: source.clone(),
+                        label: piece.text.trim().to_string(),
+                    }),
+                    _ => None,
+                })
         })
         .collect::<Vec<_>>();
 
-    let has_non_image_text = tagged.iter().any(|tagged| {
-        let text = tagged.s.trim();
+    let has_non_image_text = line.iter().any(|piece| {
+        let text = piece.text.trim();
         !text.is_empty()
-            && !tagged
-                .tag
+            && !piece
+                .annotations
                 .iter()
-                .any(|annotation| matches!(annotation, RichAnnotation::Image(_)))
+                .any(|annotation| matches!(annotation, Annotation::Image(_)))
     });
 
     if !image_specs.is_empty() && !has_non_image_text {
         image_specs.into_iter().map(RenderBlock::Image).collect()
     } else {
-        let spans = tagged
-            .into_iter()
-            .filter_map(|tagged| {
-                let span = rich_span(tagged.s.clone(), &tagged.tag, theme, remote_content_enabled);
+        let spans = line
+            .iter()
+            .filter_map(|piece| {
+                let span = rich_span(
+                    piece.text.clone(),
+                    &piece.annotations,
+                    theme,
+                    remote_content_enabled,
+                );
                 (!span.content.is_empty()).then_some(span)
             })
             .collect::<Vec<_>>();
@@ -1082,7 +1157,7 @@ fn rich_line_to_blocks(
 
 fn rich_span(
     mut text: String,
-    annotations: &[RichAnnotation],
+    annotations: &[Annotation],
     theme: &Theme,
     remote_content_enabled: bool,
 ) -> Span<'static> {
@@ -1090,42 +1165,42 @@ fn rich_span(
 
     for annotation in annotations {
         match annotation {
-            RichAnnotation::Default => {}
-            RichAnnotation::Link(url) => {
+            Annotation::Default => {}
+            Annotation::Link(url) => {
                 style = style.fg(theme.link_fg).add_modifier(Modifier::UNDERLINED);
                 if text.is_empty() {
                     text = url.clone();
                 }
             }
-            RichAnnotation::Image(src) => {
+            Annotation::Image(src) => {
                 style = style
                     .fg(theme.success)
                     .add_modifier(Modifier::ITALIC | Modifier::BOLD);
                 text = image_placeholder(&text, src, remote_content_enabled);
             }
-            RichAnnotation::Emphasis => {
+            Annotation::Emphasis => {
                 style = style.add_modifier(Modifier::ITALIC);
             }
-            RichAnnotation::Strong => {
+            Annotation::Strong => {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            RichAnnotation::Strikeout => {
+            Annotation::Strikeout => {
                 style = style.add_modifier(Modifier::CROSSED_OUT);
             }
-            RichAnnotation::Code => {
+            Annotation::Code => {
                 style = style
                     .bg(theme.selection_bg)
                     .fg(theme.selection_fg)
                     .add_modifier(Modifier::BOLD);
             }
-            RichAnnotation::Preformat(_) => {
+            Annotation::Preformat(_) => {
                 style = style.bg(theme.hint_bar_bg);
             }
-            RichAnnotation::Colour(colour) => {
-                style = style.fg(Color::Rgb(colour.r, colour.g, colour.b));
+            Annotation::Colour(r, g, b) => {
+                style = style.fg(Color::Rgb(*r, *g, *b));
             }
-            RichAnnotation::BgColour(colour) => {
-                style = style.bg(Color::Rgb(colour.r, colour.g, colour.b));
+            Annotation::BgColour(r, g, b) => {
+                style = style.bg(Color::Rgb(*r, *g, *b));
             }
             _ => {}
         }
@@ -1460,6 +1535,109 @@ mod tests {
             .flat_map(|line| line.spans.iter().map(|span| span.content.to_string()))
             .collect();
         assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
+    fn rendered_text(html: &str) -> String {
+        render_html_blocks(
+            &mxr_core::MessageId::new(),
+            html,
+            80,
+            &Theme::default(),
+            false,
+        )
+        .iter()
+        .filter_map(|block| match block {
+            RenderBlock::Text(lines) => Some(lines),
+            _ => None,
+        })
+        .flatten()
+        .flat_map(|line| line.spans.iter().map(|span| span.content.to_string()))
+        .collect()
+    }
+
+    #[test]
+    fn an_adversarial_table_renders_its_text_quickly_without_html2text_blowing_up() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(
+            text.contains("c0") && text.contains("r19999"),
+            "got {}",
+            text.chars().take(200).collect::<String>()
+        );
+    }
+
+    #[test]
+    fn a_table_hidden_by_a_comment_renders_bounded_and_quickly() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr><!-- </table> -->");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(
+            text.len() < 4 * html.len(),
+            "{} out for {} in",
+            text.len(),
+            html.len()
+        );
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn a_100000_deep_div_nest_renders_its_text_quickly() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = std::time::Instant::now();
+        let text = rendered_text(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn a_lost_helper_shows_the_message_text_not_its_markup() {
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let text = mxr_html_worker::with_supervisor(lost, || {
+            rendered_text("<table><tr><td>zzcellword</td></tr></table><script>hidden()</script>")
+        });
+        assert!(text.contains("zzcellword"));
+        assert!(
+            !text.contains("<td>") && !text.contains("hidden"),
+            "got {text:?}"
+        );
+    }
+
+    #[test]
+    fn an_oversized_html_body_shows_its_text_not_its_markup() {
+        let html = format!(
+            "<p>zzoversizedword</p>{}",
+            "<p>filler</p>".repeat(mxr_reader::MAX_HTML_BYTES / 13 + 1)
+        );
+        assert!(mxr_reader::bounded_html(&html).is_none());
+        let text = rendered_text(&html);
+        assert!(text.contains("zzoversizedword"));
+        assert!(!text.contains("<p>"), "markup leaked into the view");
     }
 
     /// The reader names the account a message came to, led by its chip, even

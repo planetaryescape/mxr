@@ -6,8 +6,10 @@
 //! text, so they are removed here, before conversion, and every client
 //! (CLI, TUI, web, MCP) sees the same text.
 
+use mxr_html_worker::Job;
 use once_cell::sync::Lazy;
 use scraper::{ElementRef, Html, Selector};
+use serde::{Deserialize, Serialize};
 
 /// Markers that wrap the quote itself: removing the element removes the
 /// quote, and anything written after it (an inline reply) stays.
@@ -49,7 +51,7 @@ static SIGNATURES: Lazy<Vec<Selector>> = Lazy::new(|| compile(SIGNATURE_SELECTOR
 static IMG: Lazy<Selector> = Lazy::new(|| Selector::parse("img").expect("img selector"));
 
 /// An HTML body split at its client markers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlParts {
     /// The body with the marked quote and signature removed.
     pub main: String,
@@ -72,15 +74,30 @@ pub fn split_html_quote_keeping_signature(html: &str) -> HtmlParts {
 }
 
 fn split(html: &str, keep_signature: bool) -> HtmlParts {
-    let unchanged = || HtmlParts {
+    // Cheap check first: most mail carries none of the markers, and those
+    // documents never need the parser or the helper process.
+    if !may_hold_markers(html) {
+        return unchanged(html);
+    }
+    // A lost helper (timeout, crash) leaves the body whole, as an over-budget
+    // one does: no quote or signature is recognised.
+    SPLIT
+        .call(html, &keep_signature)
+        .unwrap_or_else(|| unchanged(html))
+}
+
+fn unchanged(html: &str) -> HtmlParts {
+    HtmlParts {
         main: html.to_string(),
         has_quote: false,
         has_signature: false,
         has_preserved_quote: false,
-    };
-    // Cheap check first: most mail carries none of the markers.
+    }
+}
+
+fn may_hold_markers(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
-    let maybe = [
+    [
         "gmail_quote",
         "type=\"cite\"",
         "type='cite'",
@@ -96,11 +113,21 @@ fn split(html: &str, keep_signature: bool) -> HtmlParts {
         "moz-signature",
     ]
     .iter()
-    .any(|marker| lower.contains(marker));
-    if !maybe {
-        return unchanged();
-    }
+    .any(|marker| lower.contains(marker))
+}
 
+/// The parse, which is what runs in the HTML helper process.
+pub(crate) static SPLIT: Job<bool, HtmlParts> = Job::new("reader.split_quote", split_in_process);
+
+fn split_in_process(html: &str, keep_signature: &bool) -> HtmlParts {
+    let keep_signature = *keep_signature;
+    let untouched = || unchanged(html);
+
+    // Over budget, no parse: the message keeps its markup-free fallback text and
+    // no quote or signature is recognised.
+    if !crate::html_limits::within_budget(html) {
+        return untouched();
+    }
     let mut doc = Html::parse_document(html);
     let mut has_signature = false;
     let mut has_quote = false;
@@ -144,7 +171,7 @@ fn split(html: &str, keep_signature: bool) -> HtmlParts {
         return HtmlParts {
             has_signature,
             has_preserved_quote,
-            ..unchanged()
+            ..untouched()
         };
     }
     HtmlParts {
@@ -314,5 +341,54 @@ mod tests {
         let parts = split_html_quote(html);
         assert_eq!(parts.main, html);
         assert!(!parts.has_quote && !parts.has_signature);
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn an_over_budget_document_is_not_parsed_for_quotes_or_signatures() {
+        let html = format!(
+            "<div class=\"gmail_quote\">quoted</div>{}",
+            "<br>".repeat(200_000)
+        );
+        let parts = split_html_quote(&html);
+        assert!(!parts.has_quote);
+        assert_eq!(parts.main, html);
+    }
+}
+
+#[cfg(test)]
+mod lost_helper_tests {
+    use super::*;
+    use mxr_html_worker::{with_supervisor, Config, Supervisor};
+    use std::sync::Arc;
+
+    #[test]
+    fn a_lost_helper_leaves_the_body_whole_and_recognises_no_quote() {
+        let html = "<div>reply</div><div class=\"gmail_quote\">older words</div>";
+        let lost = Arc::new(Supervisor::new(Config::new(
+            "/nonexistent/mxr-helper",
+            Vec::new(),
+        )));
+        let parts = with_supervisor(lost, || split_html_quote(html));
+        assert_eq!(parts.main, html);
+        assert!(!parts.has_quote && !parts.has_signature);
+    }
+
+    #[test]
+    fn a_body_with_no_markers_never_reaches_the_helper() {
+        // The marker check runs first, so a plain message costs no round trip
+        // and survives a helper that cannot start.
+        let lost = Arc::new(Supervisor::new(Config::new(
+            "/nonexistent/mxr-helper",
+            Vec::new(),
+        )));
+        let html = "<p>no markers here</p>";
+        let parts = with_supervisor(Arc::clone(&lost), || split_html_quote(html));
+        assert_eq!(parts.main, html);
+        assert_eq!(lost.stats().requests, 0);
     }
 }

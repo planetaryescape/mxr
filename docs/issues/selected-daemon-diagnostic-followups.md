@@ -6,6 +6,4 @@ A command transport connects when its child process starts (`crates/client/src/l
 
 Keep explicit `MXR_DAEMON_ADDR` selections isolated from local lifecycle, even when a Unix path happens to match the local default. S01 uses that boundary deliberately. Broader command targeting belongs in S07.
 
-Also verify daemon-generated doctor suggestions at `crates/daemon/src/status_helpers.rs:342,420,444`: they use `mxr daemon --restart`, while the CLI exposes a separate restart command. Correct the owning suggestions and tests in an appropriate diagnostics slice; remote table output already qualifies which host owns them.
-
 No runtime reproduction was performed for these follow-ups. S01 source and real-daemon smoke show no local fallback; the independent reviewer classified these as nonblocking guidance defects. Exact next action: reproduce the child-exit path while implementing S07, then update its target-aware error and command guidance together.

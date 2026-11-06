@@ -6,9 +6,6 @@ control to be justified by **frequency** (used on most visits) or
 hidden). Everything else lives in a More menu and the command palette
 (⌘K), with its key.
 
-`apps/web/e2e/controls.spec.ts` holds the same list and fails if a surface
-gains or loses a control, so this page and the app can't drift apart.
-
 ## Shell
 
 | Control | Where | Reason |
@@ -63,7 +60,7 @@ beyond the one action it names.
 | Error | A heading in plain words, a line saying what still works, and the raw error under Details. | Try again (a retry can help), Copy start command (mxr isn't running), Copy update command (protocol mismatch), Open token settings (this browser isn't recognised), Go to Inbox (a bad or unknown id). Never Try again for a lookup that can't succeed. |
 | Offline | Cached content stays. One banner under the top bar: "mxr isn't running. Showing what was loaded at 21:04." The rail keeps every item. | Copy start command (`mxr restart`). |
 
-`e2e/daemon-stopped.spec.ts` and `e2e/route-error.spec.ts` hold these.
+`e2e/daemon-stopped.spec.ts` holds the offline state.
 
 ## Assistant panel
 

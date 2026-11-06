@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
+
+Usage: mxr sender [OPTIONS] <EMAIL>
+       mxr sender <COMMAND>
+
+Commands:
+  kind  Move a sender to people, Reading, Paper trail or screened out, for their mail now and later; `auto` hands it back to the automatic rules
+  help  Print this message or the help of the given subcommand(s)
+
+Arguments:
+  <EMAIL>  Email address (must match an existing contact)
+
+Options:
+      --account <ACCOUNT>  Restrict to a specific account; defaults to the only-or-default account if exactly one is configured
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

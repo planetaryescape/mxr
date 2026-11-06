@@ -44,6 +44,37 @@ fn todo_app(hints_seen: bool) -> App {
     app
 }
 
+#[test]
+fn opening_a_todo_acknowledges_its_revision_but_selection_does_not() {
+    let mut app = todo_app(true);
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.unread = Some(true);
+    row.seen_revision = Some("opened-revision".into());
+    let id = row.id.clone();
+    assert!(!queued(&app)
+        .iter()
+        .any(|r| matches!(r, Request::SetModeRowSeen { .. })));
+    app.apply(Action::TodoOpenEmail);
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen {
+            mode: mxr_protocol::ModeKindData::Todo, row_id, revision, dry_run: false, ..
+        } if row_id == &id && revision == "opened-revision")
+    }));
+    assert_eq!(
+        app.selected_todo().unwrap().state,
+        mxr_protocol::TodoStateData::Open
+    );
+    app.pending_mutation_queue.clear();
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.source_message_id = None;
+    row.action = None;
+    row.seen_revision = Some("no-source-revision".into());
+    app.apply(Action::TodoPrimary);
+    assert!(queued(&app).iter().any(|r| {
+        matches!(r, Request::SetModeRowSeen { revision, .. } if revision == "no-source-revision")
+    }));
+}
+
 fn attach_resolution(app: &mut App, status: &str) {
     let mut row = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
     row.resolution = Some(mxr_protocol::TodoResolutionData {
@@ -123,6 +154,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
                     selected_index: app.mailbox.selected_index,
                     active_pane: &crate::app::ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &crate::theme::Theme::default(),
             );
@@ -167,13 +199,6 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
         .as_mut()
         .unwrap()
         .installed = true;
-    // M sent it until K3 (blueprint 35); the palette does now.
-    press_shifted(&mut app, 'M');
-    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Send to Microsoft To Do has no key now; find it in the palette")
-    );
     app.apply(Action::TodoSendToMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
@@ -217,6 +242,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -236,6 +262,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -307,6 +334,7 @@ fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirma
                 selected_index: 0,
                 active_pane: &crate::app::ActivePane::MailList,
                 account_marks: crate::ui::account_mark::AccountMarks::default(),
+                peek_body: None,
             },
             &crate::theme::Theme::default(),
         );
@@ -749,8 +777,12 @@ fn a_failed_dismissal_brings_the_hint_back() {
 #[test]
 fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
     let mut app = todo_app(true);
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'Z');
-    assert_eq!(app.status_message.as_deref(), Some("Schedule is now b"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "Z", "Schedule is now b", before.as_deref())
+    );
     assert!(!app.modals.snooze_panel.visible);
     press(&mut app, KeyCode::Char('b'));
     assert_eq!(
@@ -777,8 +809,9 @@ fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
 fn not_now_schedules_a_typed_time_as_previewed() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char('b'));
-    // The last row types a time.
-    for _ in 0..crate::app::snooze_presets().len() {
+    // The last row types a time. The presets offered depend on the hour:
+    // Tonight leaves once the evening has passed.
+    for _ in 1..crate::ui::snooze_modal::rows_count(&app.modals.snooze_panel) {
         press(&mut app, KeyCode::Char('j'));
     }
     press(&mut app, KeyCode::Enter);
@@ -793,10 +826,45 @@ fn not_now_schedules_a_typed_time_as_previewed() {
     ));
 }
 
+/// Dogfood 2026-10-29: `m` opened "Might need you" without being in the
+/// definition, borrowing the mail verb Mark read and archive. The review is
+/// in the palette now, and `m` says so.
+#[test]
+fn might_need_you_opens_from_the_palette_and_m_says_where_it_went() {
+    let mut app = todo_app(true);
+    let before = app.status_message.clone();
+    press(&mut app, KeyCode::Char('m'));
+    assert!(!app.mailbox.todo_page.uncertain_open, "m runs nothing");
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced(
+            "todo",
+            "m",
+            "Review what might need you has no key now; find it in the palette",
+            before.as_deref()
+        )
+    );
+    app.apply(Action::OpenCommandPalette);
+    let palette = &app.command_palette.palette;
+    let offered = palette
+        .commands
+        .iter()
+        .find(|command| command.label == "Review what might need you")
+        .map(|command| command.action.clone());
+    assert_eq!(
+        offered,
+        Some(Action::TodoMightNeedYou),
+        "the palette offers it in To do"
+    );
+    app.apply(Action::CloseCommandPalette);
+    app.apply(Action::TodoMightNeedYou);
+    assert!(app.mailbox.todo_page.uncertain_open);
+}
+
 #[test]
 fn the_uncertain_picker_does_not_capture_the_messages_key_sequence() {
     let mut app = todo_app(true);
-    press(&mut app, KeyCode::Char('m'));
+    app.apply(Action::TodoMightNeedYou);
     assert!(app.mailbox.todo_page.uncertain_open);
     press(&mut app, KeyCode::Esc);
     assert!(!app.mailbox.todo_page.uncertain_open);
@@ -956,12 +1024,20 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
 #[test]
 fn the_digits_pick_to_dos_tabs_and_the_old_letters_say_so() {
     let mut app = todo_app(true);
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'C');
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
-    assert_eq!(app.status_message.as_deref(), Some("Catch-up is now 2"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "C", "Catch-up is now 2", before.as_deref())
+    );
+    let before = app.status_message.clone();
     press_shifted(&mut app, 'E');
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
-    assert_eq!(app.status_message.as_deref(), Some("Expired is now 3"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("todo", "E", "Expired is now 3", before.as_deref())
+    );
     for (key, panel) in [
         ('3', TodoPanel::Expired),
         ('2', TodoPanel::Catchup),
@@ -1190,6 +1266,7 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
         vec![
             ("e", "Done"),
             ("o", "Email"),
+            ("Space", "Peek"),
             ("b", "Schedule"),
             ("X", "Correct…"),
             (",", "Edit"),
@@ -1315,4 +1392,87 @@ fn correction_stale_failure_keeps_replacement_input_and_pending_owner() {
     let effect = app.with_done_note(second.id, second.effect);
     app.apply_mutation_completion(effect, true);
     assert!(app.mailbox.todo_page.prompt.is_none());
+}
+
+fn todo_screen(app: &mut App) -> String {
+    let backend = ratatui::backend::TestBackend::new(140, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn space_peeks_under_the_lit_to_do_with_its_email_and_esc_closes_it_first() {
+    let mut app = todo_app(true);
+    let row = &mut app.mailbox.todo_page.runway.as_mut().unwrap().now[0];
+    row.unread = Some(true);
+    row.seen_revision = Some("peeked-revision".into());
+    let todo = row.clone();
+    let message_id = todo.source_message_id.clone().expect("a source email");
+    assert!(
+        !todo_screen(&mut app).contains("o opens the email"),
+        "no peek yet"
+    );
+
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(
+        app.mailbox.todo_page.peek.as_deref(),
+        Some(todo.id.as_str())
+    );
+    assert!(
+        app.mailbox.priority_body_fetches.contains(&message_id),
+        "the peek fetches the source email the way the reader does"
+    );
+    assert!(
+        queued(&app).iter().any(|r| matches!(
+            r,
+            Request::SetModeRowSeen { row_id, revision, .. }
+                if *row_id == todo.id && revision == "peeked-revision"
+        )),
+        "a peek is a look at the row, as the web's details are"
+    );
+    let shown = todo_screen(&mut app);
+    assert!(shown.contains("Here because"), "{shown}");
+    assert!(shown.contains("o opens the email"), "{shown}");
+
+    app.mailbox.body_cache.insert(
+        message_id.clone(),
+        mxr_core::MessageBody {
+            message_id,
+            text_plain: Some(
+                "Dear resident,\nYour council tax of £1,234 is due\nUnsubscribe".into(),
+            ),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+    let shown = todo_screen(&mut app);
+    assert!(
+        shown.contains("Your council tax of £1,234 is due"),
+        "{shown}"
+    );
+
+    // Space again closes it; Esc closes an open one before the hint.
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.mailbox.todo_page.peek, None);
+    press(&mut app, KeyCode::Char(' '));
+    assert!(app.mailbox.todo_page.peek.is_some());
+    let before = queued(&app).len();
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.todo_page.peek, None);
+    assert_eq!(
+        queued(&app).len(),
+        before,
+        "closing the peek dismisses no hint"
+    );
 }

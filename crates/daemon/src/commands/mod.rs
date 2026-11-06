@@ -121,7 +121,7 @@ pub(crate) fn degraded_status_reading(degraded: bool, accounts: &[String]) -> bo
 
 /// A daemon `Response::Error` as a CLI failure. Only the `Auth` kind has a
 /// defined exit code today; every other kind keeps exit 1.
-fn daemon_response_error(message: String, kind: IpcErrorKind) -> anyhow::Error {
+pub(crate) fn daemon_response_error(message: String, kind: IpcErrorKind) -> anyhow::Error {
     if kind == IpcErrorKind::Auth {
         CliError::auth(message)
     } else {

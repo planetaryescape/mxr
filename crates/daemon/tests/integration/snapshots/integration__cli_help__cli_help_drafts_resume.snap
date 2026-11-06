@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Compatibility check for an orphaned draft. Refuses unresolved send outcomes; never resets a potentially accepted send
+
+Usage: mxr drafts resume <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to resume
+
+Options:
+  -h, --help  Print help

@@ -6,6 +6,7 @@ import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useUndo } from "@/state/undoStore";
+import { announced } from "@/test/movedKeys";
 
 import { targetFromRows } from "../target";
 import { UnsubscribeDialog } from "./UnsubscribeDialog";
@@ -164,8 +165,9 @@ describe("UnsubscribeDialog", () => {
     expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
   });
 
-  test("a, archive's old letter, says where it went and archives nothing", async () => {
+  test("a, archive's old letter, says where it went while announced and archives nothing", async () => {
     api.unsubscribeAndClearSender.mockResolvedValue(preview());
+    useKeyScope.setState({ moved: null });
     renderDialog();
     await screen.findByText("Unsubscribe and archive 12 messages");
 
@@ -173,10 +175,11 @@ describe("UnsubscribeDialog", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
-    expect(useKeyScope.getState().moved).toEqual({
-      label: "Unsubscribe and archive their mail",
-      key: "e",
-    });
+    expect(useKeyScope.getState().moved).toEqual(
+      announced("unsubscribe.and-archive", "a", "unsubscribe")
+        ? { label: "Unsubscribe and archive their mail", key: "e" }
+        : null,
+    );
   });
 
   test("a sender with no unsubscribe method says archiving is all it does", async () => {

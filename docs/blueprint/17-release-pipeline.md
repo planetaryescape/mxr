@@ -18,9 +18,12 @@ Always-on checks:
 - secret scan over checked-in files and Git history
 - release gate scripts: version gate, bundled Gmail OAuth gate, release workflow policy checks, provider smoke workflow checks, CI workflow checks
 
-Rust-affecting changes run `cargo deny`, `cargo check --workspace --all-targets`,
-architecture-boundary checks, `cargo fmt`, clippy, nextest fast/full semantic
-lanes, SQLx offline checks, and MSRV checks when the expensive lane is enabled.
+Rust-affecting changes run `cargo deny`, architecture-boundary checks,
+`cargo fmt`, clippy (which is also the workspace type check), the whole
+workspace's nextest run with `semantic-local`, a nextest run of `mxr` and
+`mxr-semantic` without it, SQLx offline checks, and MSRV checks when the
+expensive lane is enabled. The full-set classifier eval runs only when the code
+that decides a graded answer changes (`scripts/ci_change_scope.sh`).
 
 Web-affecting changes run npm audit, typecheck, lint, unit tests, and a focused
 Playwright smoke against a real mxr daemon.
@@ -121,6 +124,34 @@ When the scoped diff affects CLI artifacts, the same workflow also builds binari
 
 For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap. They are published without tarballs by design, and with `--latest=false`, so `releases/latest` and Homebrew keep pointing at the newest release that has tarballs. The guarantee is that Latest and the tap never point at a release missing its assets, not that no release is ever visible without them.
 
+### A new crate and a release can race on Cargo.lock
+
+Every package in this repository takes the workspace version, and the release
+PR bumps all of their `Cargo.lock` entries. A branch that adds a crate carries
+its lock entry at the version the branch was cut from. If a release merges
+before the branch does, `main` gets the new crate one version behind the rest
+and every `--locked` build there fails, although the branch's own CI was green:
+it ran before the release (v0.6.208 and #858, 2026-11-04).
+
+Right before merging a PR, check the merge it would make:
+
+```bash
+git fetch origin main
+scripts/check_lockfile_versions.sh --merge-with origin/main
+```
+
+It reads the merge from `git merge-tree`, so nothing is checked out or built,
+and names any in-repo package off the workspace version. The fix is to rebase,
+run `cargo update --workspace --offline` (it rewrites only those versions),
+commit `Cargo.lock` and let CI run again. CI also runs the plain form on every
+PR.
+
+If the race reaches `main` anyway, the next release PR repairs it. Do not
+hand-edit the line on `main` while a release PR is open: that conflicts the
+release PR, and release-please leaves a PR whose notes have not changed as it
+is. If it does conflict, close it and run `gh workflow run release-please.yml
+--ref main`, which opens a fresh one from `main`.
+
 ### What a failed release run leaves behind
 
 A run that fails before publication leaves a draft. A re-run on an already published release is different: it writes nothing and fails on purpose when its rebuilt checksums differ from the published ones (or when the asset or checksum lookup fails), leaving the published release untouched and Homebrew not updated.
@@ -131,6 +162,7 @@ A run that fails before publication leaves a draft. A re-run on an already publi
 | Upload or the asset check in `github-release` fails | Draft with zero or some assets; not visible. | Re-run the failed job. Upload uses `--clobber` and only ever touches a draft, so it converges. |
 | `gh release edit --draft=false` fails | Draft with all assets. | Re-run the failed job. |
 | `homebrew` fails | Release is published with all assets and Latest; tap is stale. | Re-run the failed `homebrew` job. It only reads the artifacts and the published release. |
+| `homebrew-verify` fails or is cancelled | Release is published and the tap is updated; only the macOS install check did not finish. | Re-run the failed `homebrew-verify` job alone (`gh run rerun <id> --failed`). It pushes nothing. |
 | A full workflow re-run after a successful publish | Nothing is written: the script sees a published release, confirms its asset names and sizes, and compares the published `.sha256` contents with this run's rebuilt ones. A mismatch (the rebuilt tarball differs) fails the job so Homebrew is not updated from checksums that do not match the published tarballs. A published release that is missing assets is never modified; ship a new version. | None needed when it passes. |
 
 If no `release.yml` run exists for a tag, dispatch it on the existing tag (`gh workflow run release.yml --ref vX.Y.Z`); the script reuses the draft.
@@ -299,7 +331,10 @@ Each archive contains:
 3. `build-binaries` (Build `<target>`) builds `cargo build --release --locked --target <target> -p mxr -p mxr-mailmerge --features semantic-local,web-ui` with the web SPA embedded. Linux x86_64 builds on `ubuntu-latest`. macOS Apple Silicon builds on the self-hosted `mxr-builder` runner, where `.github/actions/self-hosted-rust-home` gives the job its own `CARGO_HOME`, `RUSTUP_HOME` and sccache port so it never touches the developer's toolchain. The macOS binary is signed and notarized, then archived with its SHA256.
 4. `desktop` calls `desktop-signed.yml` to build the signed desktop app.
 5. `github-release` verifies the archive checksums, uploads the assets to the draft release release-please created, and only then publishes it.
-6. `homebrew` renders and pushes the formula and cask, then installs both to check them.
+6. `homebrew` (Homebrew tap update, Linux) renders the formula and cask, then pushes them to the tap. It runs after `github-release`, because the formula points at download URLs that are only public once the release is published.
+7. `homebrew-verify` (Verify Homebrew install, macOS) runs `brew install` for the formula and the cask. It pushes nothing. A macOS runner that is cancelled before it starts leaves the tap updated and only this check missing.
+
+`github-release` does not wait on either Homebrew job. Publishing comes first, so the tap never points at a draft's assets, and a Homebrew failure never unpublishes a release. The cost is that "published" does not mean "tap updated": a release can be live while Homebrew is still on the previous version until `homebrew` succeeds.
 
 The build job has no Rust cache step: each release runs on a new tag, and a tag cannot restore another tag's cache, so it never restored one.
 
@@ -601,7 +636,7 @@ site.
 
 **Chosen**: Build Linux x86_64 natively on Linux runners and macOS Apple Silicon natively on macOS runners. Keep `cross` available only if future Linux ARM64 or musl targets return.
 
-**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled and never `langfuse`, the developer-only feature that traces model calls (D150); CI's Clippy job fails if `opentelemetry` enters that feature set's dependency tree. The macOS build runs on a self-hosted runner (`mxr-builder`) on a developer's Mac, as that user. It gets a `CARGO_HOME`, `RUSTUP_HOME` and sccache server port of its own under the runner's tool cache, set by the local action `.github/actions/self-hosted-rust-home`, which CI's `Web E2E (WebKit / macOS)` job on the same runner also uses: on the user's own, rust-cache's save step deleted `~/.cargo/bin/rustup` and every unpacked crate after each release, which broke the user's builds mid-compile, and the first run killed the user's sccache server. The build job has no rust-cache step: releases run on new tags and caches are scoped to the ref, so it never restored a cache. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
+**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled and never `langfuse`, the developer-only feature that traces model calls (D150); CI's Clippy job fails if `opentelemetry` enters that feature set's dependency tree. The macOS build runs on a self-hosted runner (`mxr-builder`) on a developer's Mac, as that user. It gets a `CARGO_HOME`, `RUSTUP_HOME` and sccache server port of its own under the runner's tool cache, set by the local action `.github/actions/self-hosted-rust-home`: on the user's own, rust-cache's save step deleted `~/.cargo/bin/rustup` and every unpacked crate after each release, which broke the user's builds mid-compile, and the first run killed the user's sccache server. The build job has no rust-cache step: releases run on new tags and caches are scoped to the ref, so it never restored a cache. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
 
 **D068: Workspace publish via cargo-workspaces**
 

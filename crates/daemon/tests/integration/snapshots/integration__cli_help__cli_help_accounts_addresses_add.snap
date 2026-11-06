@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Add an address as an alias on an account
+
+Usage: mxr accounts addresses add [OPTIONS] <EMAIL>
+
+Arguments:
+  <EMAIL>
+
+Options:
+      --account <ACCOUNT>  Account name or id. Defaults to the configured default account
+      --primary            Mark as primary; demotes the previous primary atomically
+      --dry-run            Show the stored mail this would reclassify, without adding the address
+      --format <FORMAT>    Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

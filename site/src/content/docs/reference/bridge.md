@@ -668,8 +668,8 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/platform/llm/config` | Current `[llm]` config, without secrets |
-| `POST` | `/platform/llm/config` | Update `[llm]` config and reload provider |
+| `GET` | `/platform/llm/config` | The editable part of `[llm]`, without secrets; `fallback`, `gist_concurrency` and `background_request_timeout_secs` are config-file only |
+| `POST` | `/platform/llm/config` | Update the editable part of `[llm]` and reload the provider; keys it doesn't carry are kept |
 | `GET` | `/platform/keymap` | Every key in every client with `keys.toml` applied, the single-key switch and what in the file is ignored (`Keymap`) |
 | `POST` | `/platform/keymap` | Change `keys.toml`: `{change: {kind: "set_action", id, keys} \| {kind: "reset_action", id} \| {kind: "single_keys", on}, dry_run}`; nothing is written on a dry run or a conflict (`KeysUpdate`) |
 | `GET` | `/platform/notifications/chimes` | The shared chime setting (`NotificationChimes`) |
@@ -726,6 +726,8 @@ per daemon event. The TypeScript shapes are in
 - `ScheduledSendFlushed` — a `Send Later` draft just went out
 - `IndexBootstrapped` — Tantivy completed a startup repair
 - `AccountAddressesChanged` — an account's owned addresses changed (an alias was added or removed, or the primary moved); drop anything cached from the old set
+- `ContactsRefreshed` — the contacts table was rebuilt after a debounce; analytics and contacts views refetch
+- `Unknown` — Rust clients from protocol 29 decode unrecognised event names as this local fallback. The daemon never emits it. Web clients ignore unrecognised event names.
 - `AssistantUpdated` — an assistant conversation changed; `progress` says
   what a running turn is doing (`thinking`, `calling`, `writing` with the
   reply so far, `summarizing`)

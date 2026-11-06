@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Check, Info, Mail, RotateCcw } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ModeMarks } from "@/components/ModeMark";
@@ -8,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchThread } from "@/features/mailbox/api";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
+import { useMarkRowSeen } from "@/features/modes/rowSeen";
 import { formatLongDate } from "@/lib/format";
 import { useClockLabel } from "@/lib/minuteClock";
 import { cn } from "@/lib/utils";
 
-import type { Todo } from "./api";
+import type { Todo, TodoField } from "./api";
 import { MicrosoftTodoAction } from "./MicrosoftTodoAction";
 import { resolveSuggestion, useTodoHidden } from "./todoVerbs";
 import {
@@ -25,7 +27,7 @@ import {
   type Band,
 } from "./todoRows";
 
-/** Under a row on `v`: why, when, field sources and evidence, a later email's offer, then the source email. */
+/** Under a row on `Space`: reason and source email first, field evidence and diagnostics on demand. */
 function Details({
   todo,
   onOpenEmail,
@@ -36,6 +38,7 @@ function Details({
   onOpenResolution: (todo: Todo, threadId: string, messageId: string) => void;
 }) {
   const arrived = useReceived(todo.source_date);
+  const filed = useReceived(todo.source_filed_at);
   const thread = useQuery({
     queryKey: ["thread", todo.thread_id ?? ""],
     queryFn: () => fetchThread(todo.thread_id ?? ""),
@@ -46,10 +49,18 @@ function Details({
     thread.data?.messages.find((entry) => entry.id === todo.source_message_id) ??
     thread.data?.messages.at(-1);
   const gate = linkLine(todo);
+  const seenEvidence = new Set([todo.why]);
+  const fields = orderedFields(todo.fields).map((field) => {
+    const evidence = field.evidence && !seenEvidence.has(field.evidence) ? field.evidence : null;
+    if (evidence) seenEvidence.add(evidence);
+    return { field, evidence };
+  });
+  const sources = fields.filter(({ field }) => !field.field.startsWith("asks_"));
+  const diagnostics = fields.filter(({ field }) => field.field.startsWith("asks_"));
   return (
     <div
       data-testid="todo-source"
-      className="type-body mx-5 mb-2 mt-1 grid gap-2 border-l border-rule pl-3 text-text-2"
+      className="type-body mx-5 mb-2 mt-1 grid grid-cols-[minmax(0,1fr)] gap-2 border-l border-rule pl-3 text-text-2 [overflow-wrap:anywhere]"
     >
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
         {todo.source_date ? (
@@ -63,21 +74,25 @@ function Details({
             </time>
           </FieldLine>
         ) : null}
+        {todo.source_filed_at ? (
+          <FieldLine label="Filed">
+            <time
+              dateTime={todo.source_filed_at}
+              title={`Left the inbox ${formatLongDate(todo.source_filed_at)}`}
+              data-testid="todo-filed"
+            >
+              {filed}
+            </time>
+            <span className="text-text-3">
+              {" "}
+              The email left your inbox; this to-do is still open.
+            </span>
+          </FieldLine>
+        ) : null}
         <FieldLine label="Why">
           <span data-testid="todo-why">{todo.why}</span>
         </FieldLine>
         {todo.next ? <FieldLine label="Next">{todo.next}</FieldLine> : null}
-        {orderedFields(todo.fields).map((field) => (
-          <FieldLine key={field.field} label={fieldLabel(field.field)}>
-            <span className="text-text-1">{field.source_label}</span>
-            {field.evidence ? <span>: &ldquo;{field.evidence}&rdquo;</span> : null}
-            {field.checked ? null : (
-              <span data-testid="todo-field-unchecked" className="type-meta ml-2 text-text-3">
-                unchecked
-              </span>
-            )}
-          </FieldLine>
-        ))}
       </dl>
       {gate ? <p>{gate}</p> : null}
       {todo.resolution ? <Resolution todo={todo} onOpenResolution={onOpenResolution} /> : null}
@@ -105,7 +120,37 @@ function Details({
           </Button>
         ) : null}
       </div>
+      <FieldSources label="Field sources" fields={sources} />
+      <FieldSources label="Diagnostics" fields={diagnostics} />
     </div>
+  );
+}
+
+function FieldSources({
+  label,
+  fields,
+}: {
+  label: string;
+  fields: readonly { field: TodoField; evidence: string | null }[];
+}) {
+  if (fields.length === 0) return null;
+  return (
+    <details onClick={(event) => event.stopPropagation()}>
+      <summary className="cursor-pointer text-text-2">{label}</summary>
+      <dl className="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+        {fields.map(({ field, evidence }) => (
+          <FieldLine key={field.field} label={fieldLabel(field.field)}>
+            <span className="text-text-1">{field.source_label}</span>
+            {evidence ? <span>: &ldquo;{evidence}&rdquo;</span> : null}
+            {field.checked ? null : (
+              <span data-testid="todo-field-unchecked" className="type-meta ml-2 text-text-3">
+                unchecked
+              </span>
+            )}
+          </FieldLine>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -244,7 +289,7 @@ export interface TodoRowProps {
   /** The lamp is on this row. */
   lit: boolean;
   via: LampVia;
-  /** The details are open under the row (`v`). */
+  /** The details are open under the row (`Space`). */
   details: boolean;
   /** The other modes holding this row's email, for its marks. */
   modes?: ThreadModes;
@@ -263,7 +308,7 @@ export interface TodoRowProps {
  * (with the amount), who it is from, and the window in words ("act by Fri",
  * in the cue colour once it is today or past). The lit row's trail becomes
  * `Space done` and `o email`. Why it is here is the status bar's; the field
- * sources and a later email's offer are one key (`v`) away.
+ * sources and a later email's offer are one key (`Space`) away.
  */
 export const TodoRow = memo(function TodoRow({
   todo,
@@ -281,6 +326,16 @@ export const TodoRow = memo(function TodoRow({
   onOpenResolution,
   hint,
 }: TodoRowProps) {
+  const markRowSeen = useMarkRowSeen("todo");
+  const openedRow = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!details) {
+      openedRow.current = undefined;
+    } else if (openedRow.current !== todo.id) {
+      openedRow.current = todo.id;
+      markRowSeen(todo);
+    }
+  }, [details, todo, markRowSeen]);
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
   // One subscription to the minute clock: the due-today flag, then the secondary line.
@@ -304,6 +359,8 @@ export const TodoRow = memo(function TodoRow({
       aria-current={lit ? "true" : undefined}
       lit={lit}
       via={via}
+      unread={todo.unread ?? undefined}
+      unreadLabel="Unseen"
       leaving={leaving}
       land={[todo.thread_id, todo.source_message_id]}
       onClick={() => onSelect(todo)}
@@ -322,13 +379,7 @@ export const TodoRow = memo(function TodoRow({
       }
       primary={
         <>
-          <span
-            data-testid="todo-title"
-            className={cn(
-              band === "coming" ? "font-normal" : "font-medium",
-              done && "text-text-3 line-through",
-            )}
-          >
+          <span data-testid="todo-title" className={cn(done && "text-text-3 line-through")}>
             {todo.title}
           </span>
           {todo.amount ? (
@@ -388,22 +439,23 @@ export const TodoRow = memo(function TodoRow({
       verbs={
         done ? (
           <>
-            <RowVerb keys="Enter" label="reopen" onClick={() => onRestore(todo)} />
-            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb keys="Enter" label="reopen" Icon={RotateCcw} onClick={() => onRestore(todo)} />
+            <RowVerb label="details" Icon={Info} onClick={() => onToggleDetails(todo)} />
           </>
         ) : (
           <>
             <RowVerb
               keys="e"
               label="done"
+              Icon={Check}
               testId="todo-tick"
               ariaLabel={`Tick off ${todo.title}`}
               onClick={() => onDone(todo, "pointer")}
             />
             {todo.thread_id ? (
-              <RowVerb keys="o" label="email" onClick={() => onOpenEmail(todo)} />
+              <RowVerb keys="o" label="email" Icon={Mail} onClick={() => onOpenEmail(todo)} />
             ) : null}
-            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb label="details" Icon={Info} onClick={() => onToggleDetails(todo)} />
           </>
         )
       }

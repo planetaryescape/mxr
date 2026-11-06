@@ -69,6 +69,7 @@ impl App {
             );
             return;
         };
+        let presets = crate::app::available_snooze_presets(&self.modals.snooze_config);
         let panel = &mut self.modals.snooze_panel;
         panel.visible = true;
         panel.target = Some(target);
@@ -76,6 +77,7 @@ impl App {
         panel.custom_input = None;
         panel.custom_error = None;
         panel.custom_time.clear();
+        panel.presets = Some(presets);
     }
 
     pub(super) fn close_not_now(&mut self) {
@@ -117,7 +119,7 @@ impl App {
             }
             return;
         }
-        let rows = crate::ui::snooze_modal::NotNowRows::of(&target);
+        let rows = crate::ui::snooze_modal::rows_of(&self.modals.snooze_panel);
         match rows.row(self.modals.snooze_panel.selected_index) {
             crate::ui::snooze_modal::NotNowRow::Later => {
                 self.close_not_now();
@@ -142,9 +144,7 @@ impl App {
         let Some(target) = self.modals.snooze_panel.target.clone() else {
             return;
         };
-        let Some(preset) = nth
-            .checked_sub(1)
-            .and_then(|index| snooze_presets().get(index).copied())
+        let Some(preset) = crate::ui::snooze_modal::rows_of(&self.modals.snooze_panel).preset(nth)
         else {
             return;
         };

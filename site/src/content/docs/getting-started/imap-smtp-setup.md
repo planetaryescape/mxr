@@ -7,7 +7,7 @@ IMAP and SMTP are first-party adapters in mxr, shipped alongside Gmail. Any emai
 
 They sync into the same local runtime and IPC surface as Gmail accounts. The daemon still speaks the internal mxr model; IMAP folder semantics are handled in the adapter.
 
-For Gmail-over-IMAP, mxr detects Gmail's All Mail folder (`\\All`, `[Gmail]/All Mail`, or `[Google Mail]/All Mail`) and uses it as the canonical sync source when available. Archived Gmail messages are just messages without `INBOX`; syncing All Mail prevents archived-only mail from disappearing from local search. Non-Gmail IMAP servers continue to sync normal folders and map archive/move operations to provider folder operations.
+For Gmail-over-IMAP, mxr detects Gmail's All Mail folder (`\\All`, `[Gmail]/All Mail`, or `[Google Mail]/All Mail`) and uses it as the canonical sync source when available. Archived Gmail messages are just messages without `INBOX`; syncing All Mail prevents archived-only mail from disappearing from local search. Non-Gmail IMAP servers sync their normal folders and map archive/move operations to provider folder operations. The first sync fetches the newest INBOX mail first, 500 messages at a time, then the other folders from newest to oldest, so recent mail is searchable while older mail is still arriving.
 
 ## Add an IMAP/SMTP account
 
@@ -102,7 +102,30 @@ The `mxr accounts add` flow above is the supported path; the manual TOML shape i
 | ProtonMail (Bridge) | 127.0.0.1 | 1143 | 127.0.0.1 | 1025 |
 | Self-hosted (Dovecot) | your-server.com | 993 | your-server.com | 587 |
 
-All use TLS. Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS.
+Port 993 is IMAP over TLS. Port 587 is SMTP with STARTTLS. Choose the IMAP TLS mode your local bridge supports, as described below.
+
+## Local bridges and STARTTLS
+
+`use_tls = true` on IMAP port 143 connects in plaintext, issues `STARTTLS` and upgrades with full certificate verification. mxr refuses to continue if the server does not advertise `STARTTLS`.
+
+A bridge that listens on the loopback interface (127.0.0.0/8, `::1` or `localhost`) can be used without TLS with `use_tls = false`. mxr refuses `use_tls = false` for any other host, because it would send your password unencrypted. For a remote server, use port 993 or port 143 with STARTTLS.
+
+A local server with its own self-signed certificate on an implicit-TLS port is trusted by pinning that exact certificate:
+
+```bash
+mxr accounts test work
+# ...
+#   IMAP server certificate SHA-256: e51a57a240fc06f519fd775afd20ae622d7fb8bfa0cc628c612ebf78f5eaae80
+```
+
+The reported fingerprint is unverified. Check it against the bridge's own certificate before adding the value from your output to the account:
+
+```toml
+[accounts.work.sync]
+tls_cert_sha256 = "e51a57a240fc06f519fd775afd20ae622d7fb8bfa0cc628c612ebf78f5eaae80"
+```
+
+Pass `--imap-tls-cert-sha256 <hex>` to `mxr accounts add imap-smtp` to create an account with a certificate pin. For a plaintext loopback bridge, use `--imap-no-tls` without a certificate pin. See the [IMAP reference](/reference/config/#imap-sync-provider) for how each mode verifies the server.
 
 For SMTP, `use_tls = true` selects implicit TLS on port 465 and STARTTLS on
 other ports, including 587. If your provider publishes port 465 instead of 587,

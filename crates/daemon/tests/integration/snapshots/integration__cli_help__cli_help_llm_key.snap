@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Manage the Anthropic, OpenAI and OpenRouter API keys used for hosted models
+
+Usage: mxr llm key [OPTIONS] <COMMAND>
+
+Commands:
+  set     Store a key read from stdin (never from an argument, so it stays out of shell history and process listings)
+  status  Show which providers have a key and where it comes from (never the key)
+  remove  Delete a stored key
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

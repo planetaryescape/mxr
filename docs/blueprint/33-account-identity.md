@@ -6,7 +6,7 @@ People with several accounts read Now, the five modes and search as one stream. 
 
 An account has an identity: a **colour** and a **tag**.
 
-- **Colour** is one of eight named slots: `sky`, `amber`, `green`, `yellow`, `blue`, `vermilion`, `purple`, `slate`. The wire carries the slot name, never a hex value. Each client maps the name to its own theme: web tokens, TUI theme colours. So a colour reads correctly in Midnight, Light, Paper and Eclipse, and in a 16-colour terminal.
+- **Colour** is one of eight named slots: `sky`, `amber`, `green`, `yellow`, `blue`, `vermilion`, `purple`, `slate`. The wire carries the slot name, never a hex value. Each client maps the name to its own theme: web tokens, TUI theme colours. A slot a newer daemon sends that a client does not know decodes as unknown and draws as slate; the account's other fields still load. So a colour reads correctly in Midnight, Light, Paper and Eclipse, and in a 16-colour terminal.
 - **Tag** is one to three characters, uppercase letters and digits, shown on every marked row. It carries identity by itself, so colour is never the only cue (WCAG 1.4.1).
 
 The daemon resolves both and sends them on `AccountSummaryData.identity` (`AccountIdentityData { color, tag }`). Clients join rows to identities by `account_id`, which nearly every row payload already carries. The colour is not copied onto every row. A client that reads an older daemon without `identity` draws no account mark.
@@ -17,7 +17,7 @@ When an account is created, the daemon stores the first free slot, in the order 
 
 ### Tags come from the name, once
 
-An account's default tag is derived from its name when the account is created, and the daemon stores it with the account. The initials of the name's first two words come first, so "Work" is `W` and "Planetary Escape" is `PE`. If that tag is taken, the name's first two letters are tried, then its first three, then the initials with a digit. The derivation avoids every stored tag and every configured tag, so a new account never takes one of those. Once stored, the tag is never derived again. Renaming an account, removing another, or overriding a tag in config cannot change it. A config tag that another account already holds is refused: the daemon logs an error, keeps the stored tag, and the upsert and the `identity` command refuse the same clash.
+An account's default tag is derived from its name when the account is created, and the daemon stores it with the account. The initials of the name's first two words come first, so "Work" is `W` and "Planetary Escape" is `PE`. If that tag is taken, the name's first two letters are tried, then its first three, then the initials with a digit. The derivation avoids every stored tag and every configured tag, so a new account never takes one of those. Once stored, the tag is never derived again. Renaming an account, removing another, or overriding a tag in config cannot change it. A config tag that another account already holds is refused: the daemon logs an error, keeps the stored tag, and the upsert and the `identity` command refuse the same clash. The write paths check for a clash again inside the config write lock, and the store holds each stored tag on one account only (a unique index, migration 108). A database from before that index that holds a duplicate keeps the tag on the oldest account; the others get a newly derived tag on the next open, and a backup of such a database does the same on restore.
 
 ### People can change both
 
@@ -35,7 +35,7 @@ Some places always show the account, whatever the rule:
 
 ## Where the mark sits on each surface
 
-**Web.** `AccountMark` renders the chip, a rounded block in `--account-<slot>` with the tag in `--account-<slot>-ink`. It is part of `Row` (chapter 27), not a mode's slot: it sits in the trail before the time on every row of every list (Now, Messages, To do, Updates, Reading, Archive, search and mailboxes, the desk, drafts, deliveries, invites, the screener) and on the assistant's readout rows. The row's leading edge stays the unread bar's and the lit hairline's. Its accessible name is the account's name, so a screen reader hears "Work" where a sighted reader sees `W`. The status bar's lit-row line starts with the chip and the account name. Themes define the eight `--account-*` pairs in `themes.ts`, generated like every other token. Light themes use deeper fills with light text and dark themes lighter fills with dark text, each pair at 4.5:1 or better.
+**Web.** `AccountMark` renders the chip, a rounded block in `--account-<slot>` with the tag in `--account-<slot>-ink`. It is part of `Row` (chapter 27), not a mode's slot: it sits in the trail before the time on every row of every list (Now, Messages, To do, Updates, Reading, Archive, search and mailboxes, the desk, drafts, deliveries, invites, the screener) and on the assistant's readout rows. The row's leading edge carries no mark: unread is the text's weight and tier, and the lit row is the lamp surface. Its accessible name is the account's name, so a screen reader hears "Work" where a sighted reader sees `W`. The status bar's lit-row line starts with the chip and the account name. Themes define the eight `--account-*` pairs in `themes.ts`, generated like every other token. Light themes use deeper fills with light text and dark themes lighter fills with dark text, each pair at 4.5:1 or better.
 
 **TUI.** The same chip is a four-cell block in the account colour holding the tag, in the row's trailing column before the date, and in the reader header and compose From. The theme maps each slot to truecolor and to a 256-colour nearest pick tested to keep the eight apart. With 16 colours or `NO_COLOR`, the column shows `[W]` in bold: the tag alone separates accounts, so nothing is lost.
 
@@ -50,5 +50,5 @@ Labels keep their own colours and sender avatars keep the chart colours. The acc
 - **27 Web design system:** the row's trail gains the account mark, and the token list gains the account pairs.
 - **12 Config:** `[accounts.<key>] color` and `tag`.
 - **08 TUI and 09 CLI:** the mark's column and its fallbacks.
-- **Protocol:** `AccountSummaryData.identity`. `AssistantReadoutRowData` gains `account_id` so readout rows can be marked.
+- **Protocol:** `AccountSummaryData.identity`. `AssistantReadoutRowData`, `ThreadPreviewData` and `OwedReplyRowData` gain `account_id` so their rows can be marked.
 - **Store:** `accounts.identity_color`.

@@ -94,7 +94,7 @@ function NowRow({
           // SAFETY: Now items only ever target static routes, which the router accepts as a `to` string.
           {...(itemTarget(item) as { to: string })}
           data-testid="now-open"
-          aria-label={mark ? `${label}, ${mark.name}` : label}
+          aria-label={`${unread ? "Unread. " : ""}${label}${mark ? `, ${mark.name}` : ""}`}
           onFocus={() => state.onSelect(item, "key")}
           onClick={() => state.onSelect(item, "pointer")}
           className={cn(className, "focus-visible:ring-2 focus-visible:ring-signal")}
@@ -134,9 +134,7 @@ export const PersonRow = memo(function PersonRow({
       lead={<Avatar name={who} size="lg" />}
       primary={
         <>
-          <span className={cn(row.unread && "font-semibold")} title={row.counterparty_email}>
-            {who}
-          </span>
+          <span title={row.counterparty_email}>{who}</span>
           {newSender ? <NewMark className="ml-2" /> : null}
         </>
       }

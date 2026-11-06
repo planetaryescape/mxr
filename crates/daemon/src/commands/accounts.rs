@@ -1,6 +1,7 @@
 use crate::cli::{AccountsAction, AddressesOp, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format};
+use crate::output::{jsonl, print_json, resolve_format};
 use mxr_core::id::AccountId;
 use mxr_core::types::AccountAddress;
 use mxr_protocol::{
@@ -47,6 +48,8 @@ pub async fn run(
             imap_username,
             imap_password,
             imap_max_connections,
+            imap_no_tls,
+            imap_tls_cert_sha256,
             smtp_host,
             smtp_port,
             smtp_no_auth,
@@ -66,6 +69,8 @@ pub async fn run(
                 imap_username,
                 imap_password,
                 imap_max_connections,
+                imap_no_tls,
+                imap_tls_cert_sha256,
                 smtp_host,
                 smtp_port,
                 smtp_no_auth,
@@ -84,7 +89,7 @@ pub async fn run(
             }
         }
         Some(AccountsAction::Show { name }) => show_account(&name).await?,
-        Some(AccountsAction::Test { name }) => test_account(&name).await?,
+        Some(AccountsAction::Test { name }) => test_account(&name, format).await?,
         Some(AccountsAction::Reauth { name }) => reauth_account(&name).await?,
         Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
         Some(AccountsAction::Disable { name }) => {
@@ -135,7 +140,7 @@ async fn resolve_account_id(name: Option<&str>) -> anyhow::Result<AccountId> {
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     };
 
@@ -167,7 +172,7 @@ async fn list_addresses(
         Response::Ok {
             data: ResponseData::AccountAddresses { addresses },
         } => addresses,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected addresses response: {other:?}"),
     };
     render_addresses(&addresses, format)
@@ -288,7 +293,7 @@ async fn address_change(request: Request) -> anyhow::Result<(u32, u32)> {
                     to_inbound,
                 },
         } => Ok((to_outbound, to_inbound)),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected address response: {other:?}"),
     }
 }
@@ -445,7 +450,7 @@ async fn account_summaries() -> anyhow::Result<Vec<AccountSummaryData>> {
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => Ok(accounts),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
 }
@@ -489,9 +494,21 @@ async fn show_account(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_account(name: &str) -> anyhow::Result<()> {
+async fn test_account(name: &str, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let account = find_account_config(name).await?;
-    run_account_operation(Request::TestAccountConfig { account }).await
+    let mut client = client().await?;
+    let result =
+        request_account_operation(&mut client, Request::TestAccountConfig { account }).await?;
+    let format = resolve_format(format);
+    if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
+        print_json(&result, format)?;
+        if !result.ok {
+            anyhow::bail!(result.summary);
+        }
+        Ok(())
+    } else {
+        render_account_operation(result)
+    }
 }
 
 async fn account_configs() -> anyhow::Result<Vec<AccountConfigData>> {
@@ -500,7 +517,7 @@ async fn account_configs() -> anyhow::Result<Vec<AccountConfigData>> {
         Response::Ok {
             data: ResponseData::AccountsConfig { accounts },
         } => Ok(accounts),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
 }
@@ -527,7 +544,7 @@ async fn request_account_operation(
         Response::Ok {
             data: ResponseData::AccountOperation { result },
         } => Ok(result),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected account operation response: {other:?}"),
     }
 }
@@ -540,11 +557,22 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     {
         println!("  {} {}", if step.ok { "ok" } else { "error" }, step.detail);
     }
-    if result.ok {
-        Ok(())
-    } else {
-        anyhow::bail!(result.summary)
+    if let Some(fingerprint) = &result.tls_cert_sha256 {
+        println!("  IMAP server certificate SHA-256: {fingerprint}");
+        println!(
+            "  For a server with a self-signed certificate (a local bridge), set \
+             tls_cert_sha256 = \"{fingerprint}\" on the account to trust only this certificate. \
+             Leave it unset for a normally signed server: a pin stops working when the \
+             certificate is renewed."
+        );
     }
+    if result.ok {
+        return Ok(());
+    }
+    if result.saved {
+        println!("The change is saved to config but was not fully applied to the running daemon.");
+    }
+    anyhow::bail!(result.summary)
 }
 
 /// Resolve the OAuth grant flow in the *client* process, where the TTY, SSH,
@@ -676,7 +704,7 @@ async fn request_auth_session(
         Response::Ok {
             data: ResponseData::AuthSession { session },
         } => Ok(session),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => anyhow::bail!("Unexpected auth session response: {other:?}"),
     }
 }
@@ -697,6 +725,8 @@ pub(super) struct AddArgs {
     pub imap_username: Option<String>,
     pub imap_password: Option<String>,
     pub imap_max_connections: usize,
+    pub imap_no_tls: bool,
+    pub imap_tls_cert_sha256: Option<String>,
     pub smtp_host: Option<String>,
     pub smtp_port: u16,
     pub smtp_no_auth: bool,
@@ -836,6 +866,11 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     let imap_host = or_prompt(args.imap_host.clone(), "IMAP host: ")?;
     let imap_port_default = args.imap_port.to_string();
     let imap_port = or_prompt_default(None, "IMAP port", &imap_port_default)?.parse::<u16>()?;
+    // Fail here, not on the first sync, for a plaintext remote host or a typo'd pin.
+    mxr_provider_imap::transport::TransportMode::resolve(&imap_host, imap_port, !args.imap_no_tls)?;
+    if let Some(pin) = &args.imap_tls_cert_sha256 {
+        mxr_provider_imap::transport::CertFingerprint::parse(pin)?;
+    }
     let imap_auth_required = if args.imap_no_auth {
         false
     } else if args.imap_username.is_some() || args.imap_password.is_some() {
@@ -907,8 +942,9 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
             password_ref: imap_password_ref,
             password: imap_password,
             auth_required: imap_auth_required,
-            use_tls: true,
+            use_tls: !args.imap_no_tls,
             max_connections: args.imap_max_connections.max(1),
+            tls_cert_sha256: args.imap_tls_cert_sha256.clone(),
         }),
         send,
         is_default: false,

@@ -10,6 +10,7 @@
 //! wiring lives in `app/messages_actions.rs`.
 
 use crate::ui::account_mark::AccountMarks;
+use crate::ui::key_footer::FooterKey;
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
@@ -170,6 +171,20 @@ fn preview_line(
     width: usize,
     theme: &crate::theme::Theme,
 ) -> Option<Line<'static>> {
+    let room = width.saturating_sub(4);
+    // Your unsent reply takes the preview's place, its label in the accent
+    // and in words, so the mark doesn't rest on colour.
+    if let Some(draft) = row.draft.as_ref() {
+        const LABEL: &str = "Draft: ";
+        return Some(Line::from(vec![
+            Span::raw("   "),
+            Span::styled(LABEL, theme.accent_style().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                truncate(&one_line(&draft.text), room.saturating_sub(LABEL.len())),
+                Style::default().fg(theme.text_secondary),
+            ),
+        ]));
+    }
     // No preview (a thread of nothing but quotes has none): the subject.
     let text = match row.preview.as_ref() {
         Some(preview) if preview.kind == MessagesPreviewKindData::Ask => {
@@ -179,7 +194,7 @@ fn preview_line(
         None => one_line(&row.topics.first()?.subject),
     };
     Some(Line::from(Span::styled(
-        format!("   {}", truncate(&text, width.saturating_sub(4))),
+        format!("   {}", truncate(&text, room)),
         Style::default().fg(theme.text_secondary),
     )))
 }
@@ -523,8 +538,9 @@ fn person_body(
     body
 }
 
-/// The footer keys, with their verbs, from the guide.
-fn keys_line(page: &MessagesPageState) -> String {
+/// The footer keys, with their verbs, from the guide, in `width`: help
+/// always shows, and the last keys go first when space runs short.
+fn keys_line(page: &MessagesPageState, width: usize) -> String {
     let wanted = ["f", "r", ".", "e", "t", "b", "c"];
     let verb = |key: &str| -> Option<String> {
         match &page.guide {
@@ -540,13 +556,19 @@ fn keys_line(page: &MessagesPageState) -> String {
                 .map(|(_, v)| (*v).to_string()),
         }
     };
-    let mut parts: Vec<String> = wanted
+    let mut parts: Vec<FooterKey> = wanted
         .iter()
-        .filter_map(|key| verb(key).map(|v| format!("{key} {v}")))
+        .filter_map(|key| verb(key).map(|v| FooterKey::optional(format!("{key} {v}"))))
         .collect();
-    parts.push("[ ] topic".into());
-    parts.push("? help".into());
-    parts.join("  ")
+    // `[` and `]` stepped topics until K3; the definition says which keys do now.
+    let topic = |id: &str| mxr_keymap::guide_key(id).unwrap_or_default();
+    parts.push(FooterKey::optional(format!(
+        "{} {} topic",
+        topic("messages.prev-topic"),
+        topic("messages.next-topic")
+    )));
+    parts.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&parts, "  ", width)
 }
 
 fn render_scrolled(frame: &mut Frame, area: Rect, body: Body) {
@@ -697,10 +719,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, theme: &crat
         Paragraph::new(vec![
             Line::from(Span::styled(truncate(&first, width), first_style)),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

@@ -3,6 +3,7 @@
 //! proposal into a stored draft.
 
 use crate::cli::{ComposeAction, ComposeAssistArgs, OutputFormat};
+use crate::commands::daemon_response_error;
 use crate::commands::resolve_account;
 use crate::commands::selection::parse_message_id;
 use crate::handler::compose_assist::PROGRESS_OPERATION;
@@ -62,7 +63,7 @@ async fn models(format: Option<OutputFormat>) -> anyhow::Result<()> {
             }
         },
         Response::Ok { .. } => anyhow::bail!("Unexpected response to GetComposeModels"),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -122,7 +123,7 @@ async fn assist(
             data: ResponseData::ComposeProposal { proposal },
         } => print_proposal(&proposal, stored.as_ref(), fmt),
         Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -164,7 +165,7 @@ async fn apply(
             Ok(())
         }
         Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 
@@ -253,7 +254,7 @@ async fn stored_text(client: &mut IpcClient, draft_id: &DraftId) -> anyhow::Resu
             }
         },
         Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
     }
 }
 

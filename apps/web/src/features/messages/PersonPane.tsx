@@ -71,6 +71,7 @@ export function PersonPane(props: PersonPaneProps) {
   const row = page.row;
   const conversation = page.conversation ?? null;
   const selected = conversation?.thread_id ?? props.topic;
+  const draft = conversation && row.draft?.thread_id === conversation.thread_id ? row.draft : null;
   const replying = useComposeUi(
     (s) =>
       Boolean(conversation && s.intent?.contextThreadId === conversation.thread_id) &&
@@ -206,7 +207,14 @@ export function PersonPane(props: PersonPaneProps) {
                   className="flex w-full items-center gap-2 rounded-none border border-rule bg-ink-lamp px-4 py-2.5 text-left text-sm text-text-2 hover:border-text-3"
                 >
                   <MessageSquareReply className="size-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>
+                  {draft ? (
+                    // The reply you left here, ready to carry on.
+                    <span className="min-w-0 flex-1 truncate text-text-1">
+                      <span className="font-medium text-signal">Draft:</span> {draft.text}
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>
+                  )}
                   <KeyChip className="shrink-0">r</KeyChip>
                 </button>
               </div>

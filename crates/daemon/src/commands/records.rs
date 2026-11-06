@@ -475,7 +475,7 @@ fn list_text(list: &RecordAnswerListData) -> String {
         let _ = writeln!(out, "{} to {}", long(first), long(last));
     }
     if let Some(issuer) = &list.issuer {
-        let _ = writeln!(out, "Issuer page: mxr records --issuer \"{issuer}\"");
+        let _ = writeln!(out, "Issuer page: mxr records list --issuer \"{issuer}\"");
     }
     let _ = writeln!(out, "Best match: {}", list.top_record_id);
     out.push_str(&month_rows(&list.records, &list.months));
@@ -671,5 +671,28 @@ mod tests {
         assert_eq!(parse_minor("99.50").ok(), Some(9950));
         assert_eq!(parse_minor("£1,200").ok(), Some(120_000));
         assert!(parse_minor("lots").is_err());
+    }
+
+    #[test]
+    fn the_issuer_page_hint_names_a_command_that_takes_the_flag() {
+        let list = RecordAnswerListData {
+            header: "Octopus Energy · 0 records".into(),
+            count: 0,
+            offset: 0,
+            records: Vec::new(),
+            months: Vec::new(),
+            totals: Vec::new(),
+            first: None,
+            last: None,
+            top_record_id: String::new(),
+            issuer: Some("Octopus Energy".into()),
+        };
+
+        let text = list_text(&list);
+
+        assert!(
+            text.contains("Issuer page: mxr records list --issuer \"Octopus Energy\""),
+            "{text}"
+        );
     }
 }

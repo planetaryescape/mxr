@@ -53,6 +53,9 @@ impl From<GmailError> for MxrError {
                 retry_after_secs,
                 detail,
             },
+            error @ (GmailError::AuthExpired | GmailError::Auth(_)) => {
+                Self::ProviderAuth(error.to_string())
+            }
             other => Self::Provider(other.to_string()),
         }
     }
@@ -84,6 +87,29 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn rejected_credentials_are_typed_as_auth_with_the_same_text() {
+        let mxr: MxrError = GmailError::AuthExpired.into();
+        assert_eq!(
+            mxr.to_string(),
+            "Provider error: Authentication expired — re-auth required"
+        );
+        assert!(matches!(mxr, MxrError::ProviderAuth(_)));
+
+        let mxr: MxrError = GmailError::Auth("OAuth2 invalid_grant".into()).into();
+        assert_eq!(
+            mxr.to_string(),
+            "Provider error: Auth error: OAuth2 invalid_grant"
+        );
+        assert!(matches!(mxr, MxrError::ProviderAuth(_)));
+    }
+
+    #[test]
+    fn token_cache_failures_stay_untyped_provider_errors() {
+        let mxr: MxrError = GmailError::AuthTemporary.into();
+        assert!(matches!(mxr, MxrError::Provider(_)));
     }
 
     #[test]

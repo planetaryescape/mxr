@@ -98,15 +98,6 @@ export const DeskRow = memo(function DeskRow({
               : "hover:bg-accent/40",
       )}
     >
-      {state.focused || state.open ? (
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-y-1.5 left-0 w-[2px]",
-            state.focused ? "bg-primary" : "bg-primary/45",
-          )}
-        />
-      ) : null}
       <span
         className={cn(
           "min-w-0 truncate text-sm",

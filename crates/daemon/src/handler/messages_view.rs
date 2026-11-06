@@ -287,6 +287,7 @@ pub(super) fn build_row(
         last_at,
         turn_since: turn.map(|row| row.since),
         preview: None,
+        draft: None,
         usual_reply_seconds: turn.and_then(|row| row.usual_seconds),
         pace_label: turn.and_then(|row| row.usual_seconds).map(pace_label),
         overdue: turn.is_some_and(|row| row.overdue),

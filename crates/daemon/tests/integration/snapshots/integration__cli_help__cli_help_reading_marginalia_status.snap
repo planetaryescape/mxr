@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Whether Marginalia is connected, where, and how many items were sent
+
+Usage: mxr reading marginalia status [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

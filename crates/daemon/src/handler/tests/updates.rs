@@ -74,6 +74,90 @@ async fn digest(fx: &Fixture, now: DateTime<Utc>) -> UpdatesDigestData {
 }
 
 #[tokio::test]
+async fn a_seen_update_stays_in_the_digest_and_new_folded_mail_becomes_unseen() {
+    let fx = Fixture::new().await;
+    let (cut, _) = clock();
+    let sender = "notifications@example.com";
+    known_source(&fx, sender).await;
+    let thread = ThreadId::new();
+    let mail = update(
+        &fx,
+        &thread,
+        sender,
+        "Monthly report: 12 items",
+        cut - Duration::hours(2),
+    )
+    .await;
+    let get = || Request::GetUpdatesDigest {
+        account_id: Some(fx.account.clone()),
+        cut: Some(cut),
+        mark_seen: false,
+        expired: false,
+    };
+    let ResponseData::UpdatesDigest { digest } = request(&fx, get()).await else {
+        panic!()
+    };
+    let line = digest
+        .needs_a_look
+        .iter()
+        .chain(&digest.changed)
+        .chain(&digest.routine)
+        .find(|line| line.message_ids.contains(&mail.id))
+        .unwrap()
+        .clone();
+    assert_eq!(line.unread, Some(true));
+    let mark = |revision: &str| Request::SetModeRowSeen {
+        account_id: fx.account.clone(),
+        mode: mxr_protocol::ModeKindData::Updates,
+        row_id: line.id.clone(),
+        revision: revision.into(),
+        dry_run: false,
+    };
+    request(&fx, mark(line.seen_revision.as_deref().unwrap())).await;
+    let ResponseData::UpdatesDigest { digest: calm } = request(&fx, get()).await else {
+        panic!()
+    };
+    let find = |d: &UpdatesDigestData| {
+        d.needs_a_look
+            .iter()
+            .chain(&d.changed)
+            .chain(&d.routine)
+            .find(|l| l.id == line.id)
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(find(&calm).unread, Some(false));
+    assert_eq!(
+        calm.message_count, digest.message_count,
+        "seen is not let go"
+    );
+    assert!(!fx
+        .state
+        .store
+        .get_envelope(&mail.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .flags
+        .contains(mxr_core::MessageFlags::READ));
+    update(
+        &fx,
+        &thread,
+        sender,
+        "Monthly report: 14 items",
+        cut - Duration::hours(1),
+    )
+    .await;
+    request(&fx, mark(line.seen_revision.as_deref().unwrap())).await;
+    let ResponseData::UpdatesDigest { digest: fresh } = request(&fx, get()).await else {
+        panic!()
+    };
+    let fresh = find(&fresh);
+    assert_eq!(fresh.unread, Some(true));
+    assert_ne!(fresh.seen_revision, line.seen_revision);
+}
+
+#[tokio::test]
 async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();
@@ -124,6 +208,92 @@ async fn digest_reports_the_persisted_pin_of_the_latest_email_only() {
         .clone();
     assert!(!rolled.latest_message_pinned);
     assert_ne!(older.id, latest.id);
+}
+
+#[tokio::test]
+async fn externally_filed_updates_stay_in_the_digest_until_let_go() {
+    use mxr_core::EventSource;
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    let thread = ThreadId::new();
+    let mail = update(
+        &fx,
+        &thread,
+        "notifications@github.com",
+        "Build failed on main",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let before = digest(&fx, now).await;
+    assert!(all_lines(&before)
+        .iter()
+        .any(|line| line.latest_message_id.as_ref() == Some(&mail.id)));
+
+    fx.state
+        .store
+        .remove_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let after = digest(&fx, now).await;
+    let retained = all_lines(&after)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&mail.id))
+        .expect("archived update remains visible");
+    assert!(retained.source_filed_at.is_some());
+
+    fx.state
+        .store
+        .add_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let restored = digest(&fx, now).await;
+    assert!(all_lines(&restored)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&mail.id))
+        .unwrap()
+        .source_filed_at
+        .is_none());
+
+    fx.state
+        .store
+        .remove_message_label(&mail.id, &fx.inbox, EventSource::Sync)
+        .await
+        .unwrap();
+    let final_digest = digest(&fx, now).await;
+    let preview = let_go(&fx, now, Some(&final_digest.selection_token), true)
+        .await
+        .unwrap();
+    let applied = let_go(&fx, now, Some(&final_digest.selection_token), false)
+        .await
+        .unwrap();
+    assert_eq!(preview.message_count, applied.message_count);
+    assert_eq!(applied.message_count, 1);
+    assert!(applied
+        .items
+        .iter()
+        .all(|item| item.error.is_none() && item.archived == 0));
+    assert!(
+        all_lines(&digest(&fx, now).await).is_empty(),
+        "explicit let-go still clears the retained update"
+    );
+
+    let next = update(
+        &fx,
+        &thread,
+        "notifications@github.com",
+        "Build failed on main",
+        cut - Duration::minutes(30),
+    )
+    .await;
+    let next_digest = digest(&fx, now).await;
+    let next_line = all_lines(&next_digest)
+        .into_iter()
+        .find(|line| line.latest_message_id.as_ref() == Some(&next.id))
+        .expect("new mail brings Updates back");
+    assert!(
+        next_line.source_filed_at.is_none(),
+        "an older archive must not label a newer inbox email as filed"
+    );
 }
 
 async fn let_go(
@@ -1134,77 +1304,94 @@ async fn strava_delta(state: &AppState, now: DateTime<Utc>) -> Option<String> {
 /// The web e2e daemon runs about 25 minutes on one seed. A fixture dated
 /// against cuts the digest doesn't use (or a cut that falls mid-run) left
 /// the seeded mail outside the digest it was read in.
-#[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_whatever_cuts_the_daemon_uses() {
-    // The CI failure's three-minute window, midnight, and US DST dates.
-    // Running under TZ=America/New_York also exercises missing/repeated cuts.
-    for (month, day, hour, minute) in [
-        (10, 19, 4, 44),
-        (10, 20, 0, 2),
-        (3, 8, 4, 44),
-        (11, 1, 4, 44),
-    ] {
-        let seed = chrono::Local
-            .with_ymd_and_hms(2026, month, day, hour, minute, 0)
-            .unwrap()
-            .with_timezone(&Utc);
-        let local = |minutes: i64| {
-            (seed + Duration::minutes(minutes))
-                .with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
+///
+/// One test per seed date: each syncs the demo once per cut list, and as one
+/// test they were among the slowest in the suite. Running under
+/// TZ=America/New_York also exercises missing and repeated cuts.
+async fn assert_the_seeded_digest_holds_at((month, day, hour, minute): (u32, u32, u32, u32)) {
+    let seed = chrono::Local
+        .with_ymd_and_hms(2026, month, day, hour, minute, 0)
+        .unwrap()
+        .with_timezone(&Utc);
+    let local = |minutes: i64| {
+        (seed + Duration::minutes(minutes))
+            .with_timezone(&chrono::Local)
+            .format("%H:%M")
+            .to_string()
+    };
+    let cases: Vec<Vec<String>> = vec![
+        vec!["08:00".into(), "16:30".into()],
+        vec![local(-1)],
+        vec![local(1)],
+        vec![local(0)],
+        vec![local(-90), local(40), "03:17".into()],
+        vec!["23:59".into(), "00:01".into(), "08:00".into()],
+        vec!["02:14".into(), "05:24".into(), "03:17".into()],
+        vec!["01:14".into(), "01:17".into(), "05:24".into()],
+    ];
+    for cuts in cases {
+        let state = demo_state(seed, &cuts).await;
+        let digest = updates::digest_at(&state, None, None, false, false, seed, &chrono::Local)
+            .await
+            .unwrap();
+        let line = |source: &str| {
+            all_lines(&digest)
+                .into_iter()
+                .find(|line| line.source_key == source)
+                .unwrap_or_else(|| panic!("missing {source} at {seed}, cuts {cuts:?}"))
         };
-        let cases: Vec<Vec<String>> = vec![
-            vec!["08:00".into(), "16:30".into()],
-            vec![local(-1)],
-            vec![local(1)],
-            vec![local(0)],
-            vec![local(-90), local(40), "03:17".into()],
-            vec!["23:59".into(), "00:01".into(), "08:00".into()],
-            vec!["02:14".into(), "05:24".into(), "03:17".into()],
-            vec!["01:14".into(), "01:17".into(), "05:24".into()],
-        ];
-        for cuts in cases {
-            let state = demo_state(seed, &cuts).await;
-            let digest = updates::digest_at(&state, None, None, false, false, seed, &chrono::Local)
-                .await
-                .unwrap();
-            let line = |source: &str| {
-                all_lines(&digest)
-                    .into_iter()
-                    .find(|line| line.source_key == source)
-                    .unwrap_or_else(|| panic!("missing {source} at {seed}, cuts {cuts:?}"))
-            };
-            assert_eq!(
-                line("strava.com").delta.as_ref().map(|d| d.text.as_str()),
-                Some("up 12% on last week"),
-                "seeded and read at {seed}, cuts {cuts:?}"
-            );
-            for source in ["github.com/acme/api", "google.com", "stripe.com"] {
-                assert_eq!(line(source).section, UpdateSectionData::NeedsALook);
-            }
-            assert_eq!(
-                line("github.com/acme/api").count,
-                2,
-                "two fresh failing runs"
-            );
-            assert_eq!(line("vercel.com").section, UpdateSectionData::Routine);
-            assert_eq!(line("vercel.com").count, 4, "four fresh deploys");
-            for source in ["linearstatus.example", "plausible.io"] {
-                assert_eq!(line(source).section, UpdateSectionData::Changed);
-            }
-            assert!(all_lines(&digest)
+        assert_eq!(
+            line("strava.com").delta.as_ref().map(|d| d.text.as_str()),
+            Some("up 12% on last week"),
+            "seeded and read at {seed}, cuts {cuts:?}"
+        );
+        for source in ["github.com/acme/api", "google.com", "stripe.com"] {
+            assert_eq!(line(source).section, UpdateSectionData::NeedsALook);
+        }
+        assert_eq!(
+            line("github.com/acme/api").count,
+            2,
+            "two fresh failing runs"
+        );
+        assert_eq!(line("vercel.com").section, UpdateSectionData::Routine);
+        assert_eq!(line("vercel.com").count, 4, "four fresh deploys");
+        for source in ["linearstatus.example", "plausible.io"] {
+            assert_eq!(line(source).section, UpdateSectionData::Changed);
+        }
+        assert!(all_lines(&digest)
+            .iter()
+            .all(|line| line.source_key != "acme-login.example"));
+        if seed > digest.cut.at {
+            assert!(digest
+                .since
+                .lines
                 .iter()
-                .all(|line| line.source_key != "acme-login.example"));
-            if seed > digest.cut.at {
-                assert!(digest
-                    .since
-                    .lines
-                    .iter()
-                    .any(|line| line.source_key == "linear.app"));
-            }
+                .any(|line| line.source_key == "linear.app"));
         }
     }
+}
+
+/// The CI failure's three-minute window.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_in_the_ci_failure_window() {
+    assert_the_seeded_digest_holds_at((10, 19, 4, 44)).await;
+}
+
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_just_after_midnight() {
+    assert_the_seeded_digest_holds_at((10, 20, 0, 2)).await;
+}
+
+/// US clocks go forward on 8 March 2026.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_forward() {
+    assert_the_seeded_digest_holds_at((3, 8, 4, 44)).await;
+}
+
+/// US clocks go back on 1 November 2026.
+#[tokio::test]
+async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_back() {
+    assert_the_seeded_digest_holds_at((11, 1, 4, 44)).await;
 }
 
 /// The e2e config pins one daily cut a minute before the seed, so a run

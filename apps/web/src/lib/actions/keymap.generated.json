@@ -1875,15 +1875,6 @@
             "search-preview"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "desk"
-          ],
-          "until": "0.6.206"
-        }
       ]
     },
     {
@@ -2135,17 +2126,6 @@
             "now"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -2247,18 +2227,6 @@
             "reader",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "T",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
         }
       ]
     },
@@ -2362,17 +2330,6 @@
             "reader"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "E",
-          "contexts": [
-            "list",
-            "reader",
-            "sidebar"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -2422,18 +2379,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "W",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.197",
-          "to": "mail.sender-profile"
-        }
       ]
     },
     {
@@ -2456,6 +2401,7 @@
           "contexts": [
             "list",
             "reader",
+            "place",
             "search",
             "search-preview"
           ]
@@ -2510,7 +2456,8 @@
           "contexts": [
             "list",
             "reader",
-            "sidebar"
+            "sidebar",
+            "place"
           ]
         }
       ]
@@ -2540,15 +2487,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "a",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -2575,22 +2513,6 @@
             "sidebar",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "t",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
-        },
-        {
-          "key": "m",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -2619,15 +2541,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "d",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -2654,15 +2567,6 @@
             "sidebar",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -2691,22 +2595,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "T",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
-        },
-        {
-          "key": "M",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -2733,15 +2621,6 @@
             "sidebar",
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "D",
-          "contexts": [
-            "invites"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -2991,17 +2870,7 @@
         "sidebar"
       ],
       "palette_only": true,
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "[",
-          "contexts": [
-            "sidebar"
-          ],
-          "until": "0.6.185",
-          "to": "sidebar.open"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "sidebar.expand",
@@ -3011,17 +2880,7 @@
         "sidebar"
       ],
       "palette_only": true,
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "]",
-          "contexts": [
-            "sidebar"
-          ],
-          "until": "0.6.185",
-          "to": "sidebar.open"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "sidebar.prev-section",
@@ -4252,6 +4111,7 @@
           "contexts": [
             "list",
             "reader",
+            "place",
             "search",
             "search-preview"
           ]
@@ -4386,15 +4246,6 @@
             "screener"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
-        }
       ]
     },
     {
@@ -4416,15 +4267,6 @@
           "contexts": [
             "screener"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
         }
       ]
     },
@@ -4448,15 +4290,6 @@
             "screener"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
-        }
       ]
     },
     {
@@ -4478,15 +4311,6 @@
           "contexts": [
             "screener"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "screener"
-          ],
-          "until": "0.6.200"
         }
       ]
     },
@@ -4610,15 +4434,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "s",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -4664,15 +4479,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -4691,15 +4497,6 @@
           "contexts": [
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "w",
-          "contexts": [
-            "focus"
-          ],
-          "until": "0.6.206"
         }
       ]
     },
@@ -4879,15 +4676,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "p",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -4906,15 +4694,6 @@
           "contexts": [
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "S",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -4936,15 +4715,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -4964,15 +4734,6 @@
           "contexts": [
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "K",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -5159,15 +4920,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Z",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -5217,6 +4969,34 @@
       ]
     },
     {
+      "id": "todo.might-need-you",
+      "label": "Review what might need you",
+      "group": "Triage",
+      "palette_only": true,
+      "note": "The web app lists these under the runway, with no key",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "TodoMightNeedYou",
+          "keys": [],
+          "contexts": [
+            "todo"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "m",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.225"
+        }
+      ]
+    },
+    {
       "id": "todo.open-email",
       "label": "Open the email it came from",
       "short_label": "Email",
@@ -5243,21 +5023,24 @@
     },
     {
       "id": "todo.details",
-      "label": "Why it is here and where each field came from",
-      "short_label": "Details",
+      "label": "Peek: why it is here, its email and where each field came from",
+      "short_label": "Peek",
       "group": "Triage",
       "scopes": [
         "todo"
       ],
-      "palette_only": true,
-      "moved": [
+      "keys": [
+        "Space"
+      ],
+      "tui": [
         {
-          "key": "v",
+          "name": "TodoPeek",
+          "keys": [
+            "Space"
+          ],
           "contexts": [
             "todo"
-          ],
-          "until": "0.6.185",
-          "to": "todo.edit"
+          ]
         }
       ]
     },
@@ -5313,15 +5096,6 @@
             "expired"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "E",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -5348,15 +5122,6 @@
             "catchup",
             "expired"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "C",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.197"
         }
       ]
     },
@@ -5899,16 +5664,6 @@
             "archive"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "v",
-          "contexts": [
-            "archive"
-          ],
-          "until": "0.6.185",
-          "to": "archive.edit"
-        }
       ]
     },
     {
@@ -5952,15 +5707,6 @@
             "archive"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "E",
-          "contexts": [
-            "archive"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -5988,8 +5734,8 @@
     },
     {
       "id": "archive.filter",
-      "label": "Filters…",
-      "short_label": "Filters",
+      "label": "Filter by kind",
+      "short_label": "Filter",
       "group": "Triage",
       "scopes": [
         "archive"
@@ -5997,6 +5743,7 @@
       "keys": [
         "g f"
       ],
+      "note": "The TUI steps to the next kind; the web's filters also take issuer, year, amount, PDF and checked",
       "tui": [
         {
           "name": "RecordsNextKind",
@@ -6350,16 +6097,6 @@
             "reading-reader"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "B",
-          "contexts": [
-            "reading",
-            "reading-reader"
-          ],
-          "until": "0.6.197"
-        }
       ]
     },
     {
@@ -6385,15 +6122,6 @@
             "reading",
             "reading-reader"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "H",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.197"
         }
       ]
     },
@@ -6491,17 +6219,7 @@
       "scopes": [
         "reading-reader"
       ],
-      "palette_only": true,
-      "moved": [
-        {
-          "key": "I",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.197",
-          "to": "reading.reader-article"
-        }
-      ]
+      "palette_only": true
     },
     {
       "id": "reading.reader-later",
@@ -6553,8 +6271,9 @@
     },
     {
       "id": "reading.reader-highlight",
-      "label": "Highlight the selection",
+      "label": "Highlight the paragraph at the top, or the selection",
       "short_label": "Highlight",
+      "description": "A selection, on the web, wins over the paragraph at the top of the reader",
       "group": "Read",
       "scopes": [
         "reading-reader"
@@ -6756,6 +6475,52 @@
       ]
     },
     {
+      "id": "now.reply-all",
+      "label": "Reply all",
+      "short_label": "Reply all",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "a"
+      ],
+      "tui": [
+        {
+          "name": "ReplyAll",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "now.forward",
+      "label": "Forward",
+      "short_label": "Forward",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "f"
+      ],
+      "tui": [
+        {
+          "name": "Forward",
+          "keys": [
+            "f"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
       "id": "now.to-do",
       "label": "Make it a to-do",
       "short_label": "To-do",
@@ -6856,17 +6621,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-2",
@@ -6876,17 +6631,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-3",
@@ -6896,17 +6641,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "now.sender-4",
@@ -6916,17 +6651,7 @@
       "scopes": [
         "now"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.down",
@@ -7392,17 +7117,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-2",
@@ -7412,17 +7127,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-3",
@@ -7432,17 +7137,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "messages.sender-4",
@@ -7452,17 +7147,7 @@
       "scopes": [
         "messages"
       ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.197",
-          "to": "modes.move"
-        }
-      ]
+      "hide_in_palette": true
     },
     {
       "id": "updates.down",
@@ -7765,15 +7450,6 @@
             "updates"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "S",
-          "contexts": [
-            "updates"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -7834,36 +7510,6 @@
             "updates",
             "arrivals-list"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "m",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "x",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "r",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
-        },
-        {
-          "key": "e",
-          "contexts": [
-            "not-sure"
-          ],
-          "until": "0.6.197"
         }
       ]
     },
@@ -8056,16 +7702,6 @@
           "keys": [],
           "contexts": "all"
         }
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "rules"
-          ],
-          "until": "0.6.185",
-          "to_key": "c"
-        }
       ]
     },
     {
@@ -8082,16 +7718,6 @@
           "name": "OpenAccountFormNew",
           "keys": [],
           "contexts": "all"
-        }
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "accounts"
-          ],
-          "until": "0.6.185",
-          "to_key": "c"
         }
       ]
     },
@@ -8220,27 +7846,6 @@
       ]
     },
     {
-      "id": "tui.prev-search-result",
-      "label": "Prev search result",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "N",
-          "contexts": [
-            "list",
-            "sidebar",
-            "place",
-            "invites"
-          ],
-          "until": "0.6.200",
-          "to": "list.up"
-        }
-      ]
-    },
-    {
       "id": "tui.switch-pane",
       "label": "Switch pane",
       "group": "TUI",
@@ -8260,26 +7865,6 @@
             "sidebar",
             "place"
           ]
-        }
-      ]
-    },
-    {
-      "id": "tui.next-search-result",
-      "label": "Next search result",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "list",
-            "place",
-            "invites"
-          ],
-          "until": "0.6.200",
-          "to": "list.down"
         }
       ]
     },
@@ -8365,15 +7950,6 @@
             "sidebar"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "sidebar"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -8392,15 +7968,6 @@
             "place"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "+",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -8418,15 +7985,6 @@
           "contexts": [
             "place"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": ">",
-          "contexts": [
-            "place"
-          ],
-          "until": "0.6.185"
         }
       ]
     },
@@ -8487,15 +8045,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "M",
-          "contexts": [
-            "todo-microsoft"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -8514,105 +8063,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "S",
-          "contexts": [
-            "todo-microsoft"
-          ],
-          "until": "0.6.185"
-        }
-      ]
-    },
-    {
-      "id": "tui.drafts-delete",
-      "label": "Delete draft",
-      "group": "Compose",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "d",
-          "contexts": [
-            "drafts"
-          ],
-          "until": "0.6.185",
-          "to_key": "#"
-        }
-      ]
-    },
-    {
-      "id": "tui.drafts-edit",
-      "label": "Edit draft",
-      "group": "Compose",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "e",
-          "contexts": [
-            "drafts"
-          ],
-          "until": "0.6.185",
-          "to_key": "Enter"
-        }
-      ]
-    },
-    {
-      "id": "tui.delete-saved-search",
-      "label": "Delete saved search",
-      "group": "Search",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "d",
-          "contexts": [
-            "saved-searches"
-          ],
-          "until": "0.6.185",
-          "to_key": "#"
-        }
-      ]
-    },
-    {
-      "id": "tui.new-category",
-      "label": "New category",
-      "group": "Mail",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "n",
-          "contexts": [
-            "categories"
-          ],
-          "until": "0.6.185",
-          "to_key": "c"
-        }
-      ]
-    },
-    {
-      "id": "tui.delete-category",
-      "label": "Delete category",
-      "group": "Mail",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "d",
-          "contexts": [
-            "categories"
-          ],
-          "until": "0.6.185",
-          "to_key": "#"
-        }
       ]
     },
     {
@@ -8628,16 +8078,6 @@
           "name": "DeleteAssistantConversation",
           "keys": [],
           "contexts": "all"
-        }
-      ],
-      "moved": [
-        {
-          "key": "D",
-          "contexts": [
-            "assistant"
-          ],
-          "until": "0.6.185",
-          "to_key": "#"
         }
       ]
     },
@@ -12282,22 +11722,6 @@
             "assistant-history"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "D",
-          "contexts": [
-            "assistant-history"
-          ],
-          "until": "0.6.185"
-        },
-        {
-          "key": "d",
-          "contexts": [
-            "assistant-history"
-          ],
-          "until": "0.6.185"
-        }
       ]
     },
     {
@@ -13428,22 +12852,6 @@
             "unsubscribe"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "a",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        },
-        {
-          "key": "A",
-          "contexts": [
-            "unsubscribe"
-          ],
-          "until": "0.6.204"
-        }
       ]
     },
     {
@@ -14342,11 +13750,20 @@
         {
           "name": "inline:add_cc",
           "keys": [
-            "Ctrl+a"
+            "c"
           ],
           "contexts": [
             "send-review"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "Ctrl+a",
+          "contexts": [
+            "send-review"
+          ],
+          "until": "0.6.225"
         }
       ]
     },
@@ -15439,6 +14856,7 @@
       "actions": [
         "todo.done",
         "todo.open-email",
+        "todo.details",
         "todo.schedule",
         "todo.dismiss",
         "todo.edit"

@@ -70,9 +70,43 @@ const SCOPES: Record<ActionScope, true> = {
   arrivals: true,
 };
 
+/** The mxr release this build ships in, from the workspace `Cargo.toml`. */
+export const MXR_VERSION: string = MXR_BUILD_VERSION;
+
+/** A version's numbers; a part that isn't one counts as 0, as in `crates/keymap`. */
+function versionParts(version: string): number[] {
+  return version.split(".").map((part) => (/^\d+$/.test(part) ? Number(part) : 0));
+}
+
+/** True when version `a` comes before `b` (`0.6.149` < `0.6.152`), as `crates/keymap` compares them. */
+export function olderThan(a: string, b: string): boolean {
+  const [left, right] = [versionParts(a), versionParts(b)];
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (left[i] !== right[i]) return left[i]! < right[i]!;
+  }
+  return left.length < right.length;
+}
+
+/**
+ * The definition as a build at `version` uses it: from a moved key's `until`
+ * on, its notice is gone and the old key does nothing (D171). The generated
+ * JSON keeps every entry, so a release that crosses an `until` leaves it
+ * fresh; the TUI drops the same entries at the same version.
+ */
+export function withoutExpiredMoves(
+  actions: readonly DefinedAction[],
+  version: string,
+): DefinedAction[] {
+  return actions.map((action) => {
+    if (!action.moved?.length) return action;
+    const moved = action.moved.filter((move) => olderThan(version, move.until));
+    return moved.length === action.moved.length ? action : { ...action, moved };
+  });
+}
+
 /** The definition's web actions by id. Actions without "web" in `clients` are the TUI's alone. */
 const definedActions = new Map(
-  (keymap.action as DefinedAction[])
+  withoutExpiredMoves(keymap.action as DefinedAction[], MXR_VERSION)
     .filter((action) => !action.clients || action.clients.includes("web"))
     .map((action) => [action.id, action]),
 );

@@ -1245,7 +1245,7 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
         }) => match feature_health.search {
             FeatureHealth::Degraded { reason } => {
                 assert!(
-                    reason.contains("mxr daemon --restart"),
+                    reason.contains("mxr restart"),
                     "a dead search worker must carry the restart hint; got {reason:?}"
                 );
             }
@@ -1269,10 +1269,7 @@ async fn status_and_doctor_report_a_stopped_search_worker() {
                 .iter()
                 .find(|finding| finding.message.contains("Search index worker stopped"))
                 .expect("doctor must surface a stopped search worker");
-            assert_eq!(
-                finding.remediation,
-                vec!["mxr daemon --restart".to_string()]
-            );
+            assert_eq!(finding.remediation, vec!["mxr restart".to_string()]);
             // `mxr doctor --check` exits non-zero on exactly this flag, and
             // that exit code is what agents and CI read. A pretty-printed
             // error nobody can act on is not surfacing the failure.
@@ -2147,4 +2144,16 @@ fn search_page_size_from_config_clamps_to_u32_and_never_returns_zero() {
     assert_eq!(search_page_size_from_config(0), 1);
     assert_eq!(search_page_size_from_config(200), 200);
     assert_eq!(search_page_size_from_config(usize::MAX), u32::MAX);
+}
+
+#[test]
+fn only_pure_reads_are_cancelled_when_their_client_leaves() {
+    assert!(request_is_abandonable(&Request::GetKeymap));
+    // Read-class, but a turn drives tools that mutate once approved.
+    assert!(!request_is_abandonable(&Request::AssistantDecide {
+        conversation_id: "c".into(),
+        decisions: Vec::new(),
+    }));
+    assert!(!request_is_abandonable(&Request::RebuildAnalytics));
+    assert!(!request_is_abandonable(&Request::SyncAll));
 }

@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Decline a change or question; nothing runs
+
+Usage: mxr assistant reject [OPTIONS] <CONVERSATION> <CALL_ID>
+
+Arguments:
+  <CONVERSATION>
+  <CALL_ID>
+
+Options:
+      --reason <REASON>  Tell the assistant why, or what to do instead
+      --no-wait
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

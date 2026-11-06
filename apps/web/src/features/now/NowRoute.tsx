@@ -9,7 +9,8 @@ import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { NowSkeleton } from "@/features/modes/ModeSkeletons";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -102,14 +103,14 @@ export function NowRoute() {
       tabIndex={-1}
       className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
     >
-      <NowHeader now={now.data} guide={guide.data} />
-      {now.data ? (
+      <NowHeader now={phase === "ready" ? now.data : undefined} guide={guide.data} />
+      {phase === "ready" && now.data ? (
         <ModeFrame width="wide">
           <ArrivalsSection nowWaiting={now.data.item_count > 0} />
         </ModeFrame>
       ) : null}
       {phase !== "ready" ? (
-        <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} />
+        <NowSkeleton shown={phase === "skeleton"} />
       ) : now.isError ? (
         <PageError
           framed
@@ -237,11 +238,11 @@ function NowBody({ now }: { now: Now }) {
     },
     [dismissFromMode, dismissLetGo, fold],
   );
-  const reply = useCallback((item: NowItem) => {
+  // `r`, `a` and `f` answer or forward a person's conversation; the other
+  // rows are a to-do, a digest or a reading pick, which `o` opens first.
+  const reply = useCallback((item: NowItem, mode: "single" | "all" | "forward" = "single") => {
     if (item.kind !== "person") return;
-    useComposeUi
-      .getState()
-      .openCompose(replyIntent(item.person.row.message_id, "single"), "overlay");
+    useComposeUi.getState().openCompose(replyIntent(item.person.row.message_id, mode), "overlay");
   }, []);
   // `t` on a person or the reading pick, as in the TUI: a to-do and an
   // email are already one each on the other rows.
@@ -321,6 +322,8 @@ function NowBody({ now }: { now: Now }) {
     openEmail: () => current && current.kind !== "updates" && open(current, { email: true }),
     done: () => current && done(current, "key"),
     reply: () => current && reply(current),
+    replyAll: () => current && reply(current, "all"),
+    forward: () => current && reply(current, "forward"),
     makeTodo: () => current && makeTodo(current),
     snooze: () => current && notNow(current),
     letGoDigest: now.updates ? letGoDigest : undefined,

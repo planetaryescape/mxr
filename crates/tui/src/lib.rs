@@ -17,6 +17,7 @@ pub mod client;
 mod compose_flow;
 mod compose_persistence;
 mod daemon_events;
+mod deferred_html;
 mod editor;
 mod export_output;
 pub use export_output::copy_to_clipboard;
@@ -41,6 +42,12 @@ pub mod ui;
 
 pub(crate) use async_result::AsyncResult;
 pub use runner::run;
+
+/// Every parse the TUI runs in the HTML helper process. The `mxr` binary
+/// registers them in its helper mode.
+pub fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    ui::rich_html::html_jobs()
+}
 
 #[cfg(test)]
 mod selected_daemon_tests;

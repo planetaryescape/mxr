@@ -341,6 +341,9 @@ async fn stored_asks_drive_owner_actions_quotes_and_four_corrections_with_undo()
 #[tokio::test]
 async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
     let fx = Fixture::new().await;
+    let due = (chrono::Utc::now() + Duration::days(7))
+        .format("%-d %B %Y")
+        .to_string();
     let first = fx
         .message(
             &ThreadId::new(),
@@ -353,7 +356,7 @@ async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
     body(
         &fx,
         &first,
-        "Invoice #A123 amount due £25 by 1 November 2026.",
+        &format!("Invoice #A123 amount due £25 by {due}."),
     )
     .await;
     let second = fx
@@ -368,7 +371,7 @@ async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
     body(
         &fx,
         &second,
-        "Invoice #B456 amount due £40 by 1 November 2026.",
+        &format!("Invoice #B456 amount due £40 by {due}."),
     )
     .await;
     let reminder = fx
@@ -383,7 +386,7 @@ async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
     body(
         &fx,
         &reminder,
-        "Reminder: Invoice #A123 amount due £25 by 1 November 2026.",
+        &format!("Reminder: Invoice #A123 amount due £25 by {due}."),
     )
     .await;
     for mail in [&first, &second, &reminder] {
@@ -414,7 +417,7 @@ async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
     body(
         &fx,
         &multi,
-        "Please sign the contract and pay invoice #C789 amount due £30 by 1 November 2026.",
+        &format!("Please sign the contract and pay invoice #C789 amount due £30 by {due}."),
     )
     .await;
     crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&multi.id)).await;
@@ -621,7 +624,10 @@ async fn already_done_bill_files_archive_and_undo_removes_only_its_filing() {
     body(
         &fx,
         &mail,
-        "Invoice #B123 amount due £25 by 1 November 2026.",
+        &format!(
+            "Invoice #B123 amount due £25 by {}.",
+            (mail.date + Duration::days(7)).format("%-d %B %Y")
+        ),
     )
     .await;
     crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
@@ -702,7 +708,11 @@ async fn legacy_ics_upgrade_keeps_one_row_and_user_history_then_partstat_complet
                 method: Some("REQUEST".into()),
                 uid: Some("invite-uid".into()),
                 summary: Some("Planning".into()),
-                starts_at: Some("20261101T090000Z".into()),
+                starts_at: Some(
+                    (mail.date + Duration::days(7))
+                        .format("%Y%m%dT090000Z")
+                        .to_string(),
+                ),
                 rsvp_requested: true,
                 attendees: vec![mxr_core::CalendarAttendee {
                     email: ME.into(),
@@ -805,6 +815,9 @@ async fn legacy_ics_upgrade_keeps_one_row_and_user_history_then_partstat_complet
 #[tokio::test]
 async fn equal_bills_from_one_sender_keep_unmarked_account_headers_as_distinct_obligations() {
     let fx = Fixture::new().await;
+    let due = (chrono::Utc::now() + Duration::days(7))
+        .format("%-d %B %Y")
+        .to_string();
     for account in ["AC-1001", "AC-1002"] {
         let mail = fx
             .message(
@@ -818,9 +831,7 @@ async fn equal_bills_from_one_sender_keep_unmarked_account_headers_as_distinct_o
         body(
             &fx,
             &mail,
-            &format!(
-                "Service charge, account {account}\nAmount due £250\nDue date: 2 November 2026"
-            ),
+            &format!("Service charge, account {account}\nAmount due £250\nDue date: {due}"),
         )
         .await;
         crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
@@ -1110,10 +1121,13 @@ async fn kind_correction_previews_retimes_and_restores_the_exact_row() {
             None,
         )
         .await;
+    // Keep the deadline far enough ahead that the two kinds have distinct
+    // lead times; a fixed imminent date clamps both to the source date.
+    let due = (mail.date + Duration::days(30)).format("%-d %B %Y");
     body(
         &fx,
         &mail,
-        "Please pay invoice #A123 £25 by 1 November 2026.",
+        &format!("Please pay invoice #A123 £25 by {due}."),
     )
     .await;
     crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;

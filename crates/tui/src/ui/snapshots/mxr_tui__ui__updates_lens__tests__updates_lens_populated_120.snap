@@ -1,14 +1,13 @@
 ---
 source: crates/tui/src/ui/updates_lens.rs
-assertion_line: 714
 expression: rendered
 ---
 "╭ Updates ─ Notifications gathered twice a day. Read the digest, then let go. ─────────────────────────────────────────╮"
-"│  This morning's digest · 08:00 · 26 updates from 10 sources                                             A let go all │"
+"│  This morning's digest · 08:00 · 26 updates from 10 sources                                             E let go all │"
 "│  2 need a look, 2 changed. 22 routine from 6 sources.                                                                │"
 "│                                                                                                                      │"
 "│ ── Needs a look ──────────────────────────────────────────────────────────────────────────────────────────────────── │"
-"│▌ ! Google              Security alert: New sign-in from Chrome on Windows · 06:12 · (already in To do)          Oct 7│"
+"│  ! Google              Security alert: New sign-in from Chrome on Windows · 06:12 · (already in To do)          Oct 7│"
 "│  ! Stripe (stripe.co…  Payout of R 4,210.00 failed: bank declined                                               Oct 7│"
 "│      Suggested to-do: failed payment from Stripe (stripe.com) (rule). t adds it.                                     │"
 "│                                                                                                                      │"
@@ -31,5 +30,5 @@ expression: rendered
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│ Here because: automated sender (rule). In the 08:00 digest.                                                          │"
-"│ E let go of digest  e let go of this source  s pin latest email  t this needs me  P tune a source  L open the link … │"
+"│ E let go of digest  e let go of this source  s pin latest email  t this needs me  P tune a source  u undo  ? keys    │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

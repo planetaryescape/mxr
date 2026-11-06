@@ -7,6 +7,7 @@
 )]
 
 use crate::error::ImapProviderError;
+use crate::transport::CertFingerprint;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -28,6 +29,10 @@ pub struct ImapConfig {
     pub use_tls: bool,
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
+    /// Hex SHA-256 of the server's leaf certificate. When set, exactly that
+    /// certificate is accepted (even self-signed) and nothing else.
+    #[serde(default)]
+    pub tls_cert_sha256: Option<String>,
     #[serde(skip, default = "default_password_cache")]
     password_cache: Arc<OnceCell<String>>,
     #[serde(skip, default = "default_password_reader")]
@@ -71,9 +76,31 @@ impl ImapConfig {
             auth_required,
             use_tls,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            tls_cert_sha256: None,
             password_cache: default_password_cache(),
             password_reader: default_password_reader(),
         }
+    }
+
+    /// Pin the server certificate. Rejects a malformed fingerprint now so a typo
+    /// fails at config load, not on the first sync.
+    pub fn with_tls_cert_sha256(
+        mut self,
+        tls_cert_sha256: Option<String>,
+    ) -> Result<Self, ImapProviderError> {
+        if let Some(value) = tls_cert_sha256.as_deref() {
+            CertFingerprint::parse(value)?;
+        }
+        self.tls_cert_sha256 = tls_cert_sha256;
+        Ok(self)
+    }
+
+    /// The parsed pin, if one is configured.
+    pub(crate) fn pinned_fingerprint(&self) -> Result<Option<CertFingerprint>, ImapProviderError> {
+        self.tls_cert_sha256
+            .as_deref()
+            .map(CertFingerprint::parse)
+            .transpose()
     }
 
     pub fn with_password(mut self, password: String) -> Self {
@@ -109,6 +136,7 @@ impl std::fmt::Debug for ImapConfig {
             .field("auth_required", &self.auth_required)
             .field("use_tls", &self.use_tls)
             .field("max_connections", &self.max_connections)
+            .field("tls_cert_sha256", &self.tls_cert_sha256)
             .finish_non_exhaustive()
     }
 }
@@ -134,6 +162,21 @@ mod tests {
         assert!(config.auth_required);
         assert!(config.use_tls);
         assert_eq!(config.max_connections, DEFAULT_MAX_CONNECTIONS);
+    }
+
+    #[test]
+    fn rejects_empty_deserialized_certificate_pins() {
+        for value in ["", "  "] {
+            let config: ImapConfig = serde_json::from_value(serde_json::json!({
+                "host": "imap.example.com", "port": 993,
+                "username": "test", "password_ref": "test", "tls_cert_sha256": value
+            }))
+            .unwrap();
+            assert!(
+                config.pinned_fingerprint().is_err(),
+                "an explicit malformed pin must not become system trust"
+            );
+        }
     }
 
     #[test]

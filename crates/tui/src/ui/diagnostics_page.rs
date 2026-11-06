@@ -618,6 +618,10 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 data_stats.relationship_drifts,
             ),
             format!(
+                "HTML helper: {}",
+                doctor.map_or_else(|| "-".into(), |report| report.html_helper.summary()),
+            ),
+            format!(
                 "Semantic indexed at: {}",
                 doctor.map_or_else(
                     || if loading {
@@ -773,7 +777,12 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                             job.progress.succeeded,
                             job.progress.skipped,
                             job.progress.failed,
-                            job.undo_ids.join(","),
+                            if job.undo_ids.is_empty() && job.undo_id_count > 0 {
+                                // A listing carries the count, not the ids.
+                                job.undo_id_count.to_string()
+                            } else {
+                                job.undo_ids.join(",")
+                            },
                             job.error
                                 .as_ref()
                                 .map(|error| format!(" error={error}"))
@@ -990,6 +999,7 @@ mod tests {
             log_total_bytes: 0,
             history_retention_days: None,
             address_cache_stale: false,
+            html_helper: mxr_protocol::HtmlHelperStats::default(),
         }
     }
 

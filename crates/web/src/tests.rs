@@ -1791,6 +1791,7 @@ async fn mailbox_endpoint_lists_envelopes() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -1903,6 +1904,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -2127,6 +2129,7 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -2338,6 +2341,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
             Request::ListSubscriptions {
                 account_id: None,
                 limit: 8,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Subscriptions {
                     subscriptions: vec![subscription.clone()],
@@ -5903,6 +5907,12 @@ async fn parity_routes_dispatch_daemon_requests() {
                         started_at: 0,
                         finished_at: None,
                         result: None,
+                        selection: None,
+                        failures: Vec::new(),
+                        paused_until: None,
+                        action: None,
+                        undo_id_count: 0,
+                        failure_count: 0,
                     },
                 },
                 // Whois, send-time, archive-ask and (un)watch payloads are
@@ -7262,6 +7272,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                 data: ResponseData::AccountOperation {
                     result: mxr_protocol::AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: format!("{key} {color:?} {tag:?} dry_run={dry_run}"),
                         save: None,
                         auth: None,
@@ -7269,6 +7280,7 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
                         send: None,
                         device_code_url: None,
                         device_code_user_code: None,
+                        tls_cert_sha256: None,
                     },
                 },
             }),
@@ -7313,4 +7325,20 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[test]
+fn an_account_step_keeps_saved_state_and_certificate_fingerprint() {
+    let mut combined = empty_account_operation_result();
+    let mut saved_then_failed = empty_account_operation_result();
+    saved_then_failed.ok = false;
+    saved_then_failed.saved = true;
+    saved_then_failed.tls_cert_sha256 = Some("ab".repeat(32));
+
+    merge_account_operation_result(&mut combined, saved_then_failed);
+    merge_account_operation_result(&mut combined, empty_account_operation_result());
+
+    assert!(!combined.ok);
+    assert!(combined.saved);
+    assert_eq!(combined.tls_cert_sha256, Some("ab".repeat(32)));
 }

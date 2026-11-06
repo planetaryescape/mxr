@@ -163,7 +163,7 @@ exact filenames, restart, follow and failure semantics.
 
 `default_mode` controls the search mode used when a request does not specify one explicitly.
 
-`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen, the web `/search` API and the MCP `mxr_search` tool. The bundled web app still sends its own sort and page size (see `docs/issues/web-search-ignores-config-defaults.md`). The TUI mailbox filter (`Ctrl-f`) follows `default_sort` but keeps its own result limit, because it does not page. `default_sort` is the sort order (`date_desc`, `date_asc` or `relevance`). `max_results` is the default page size, not a cap: an explicit `--limit` above it is honoured. An explicit `--sort` or `--limit` always wins. The daemon owns both values, so a client attached to a remote daemon gets that daemon's defaults. A `max_results` of `0` is read as `1`. Both values are read when the daemon starts, so restart it (`mxr restart`) after `mxr config set search.*`.
+`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen, the web `/search` API and the MCP `mxr_search` tool. The bundled web app leaves both out until the user picks a sort; its Sort control reads Default. Triage keeps its own page of 100. The TUI mailbox filter (`Ctrl-f`) follows `default_sort` but keeps its own result limit, because it does not page. `default_sort` is the sort order (`date_desc`, `date_asc` or `relevance`). `max_results` is the default page size, not a cap: an explicit `--limit` above it is honoured. An explicit `--sort` or `--limit` always wins. The daemon owns both values, so a client attached to a remote daemon gets that daemon's defaults. A `max_results` of `0` is read as `1`. Both values are read when the daemon starts, so restart it (`mxr restart`) after `mxr config set search.*`.
 
 ## `[search.semantic]`
 
@@ -363,6 +363,8 @@ Later wins:
 2. active `config.toml`
 3. environment overrides such as `MXR_EDITOR`, `MXR_SYNC_INTERVAL`, `MXR_DEFAULT_ACCOUNT`, `MXR_ATTACHMENT_DIR`, `MXR_DOWNLOAD_DIR`, and `MXR_SAFETY_POLICY`
 
+Environment overrides apply to the process that reads them and are never saved into the file. Every write to `config.toml` (settings changes, account forms, `mxr accounts identity`, `mxr config set`) reads the file as written, changes only what was asked, and keeps the comments and layout of the keys it leaves alone. A save adds a key the file doesn't have only when its value differs from the default, so a default left out keeps following mxr's default (and any path it derives from `MXR_DATA_DIR`) instead of being pinned; a key the file already writes stays, even at its default value. When there is no file yet, the first save writes every setting, so `mxr config edit` opens a full template. Keys mxr doesn't recognise are dropped on save. The new file is written to a temporary file in the same directory, synced and renamed over the old one, so an interrupted save leaves the old file.
+
 Path roots are resolved outside the TOML model:
 
 - `MXR_INSTANCE` picks the runtime identity (`mxr`, `mxr-dev`, `mxr-demo`, or custom)
@@ -371,6 +373,7 @@ Path roots are resolved outside the TOML model:
 - `MXR_DAEMON_ADDR` selects the client transport for the CLI: `unix://<path>` (default), `tcp://<host:port>` (loopback + token), or `cmd://<command>` (spawn-and-pipe, e.g. `cmd://ssh -T host mxr daemon dial-stdio`). TUI/web/MCP honor `unix://` only. Precedence over `MXR_SOCKET_PATH` and the per-instance default.
 - `MXR_DAEMON_TOKEN` supplies the daemon bearer token directly, overriding the token file. Shared by the HTTP bridge and the TCP transport.
 - `MXR_DAEMON_AUTOSTART=off` disables client daemon creation and automatic replacement. Use it for a supervised foreground daemon; clients can still connect to a reachable compatible owner.
+- `MXR_IDLE_EXIT_SECS` sets how long a daemon with no enabled real account (none, or fake only) waits with no client connected before it exits; default 1800, `0` disables. Daemons with a real account never idle-exit.
 
 `mxr config` shows resolved values.
 

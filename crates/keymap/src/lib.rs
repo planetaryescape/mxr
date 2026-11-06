@@ -9,11 +9,13 @@
 //! generated `apps/web/src/lib/actions/keymap.generated.json`.
 
 mod docs;
+mod expiry;
 mod keys_file;
 mod parity;
 mod places;
 mod remaps;
 
+pub use expiry::{prune_expired_moves, VERSION};
 pub use keys_file::{
     action_keys_problems, edit_keys_toml, is_character_key, new_clashes, tui_key, KeysEdit,
     KeysFile, Remapped, ACTIONS_SECTION, SINGLE_KEYS_SETTING, TUI_REMAP_CONTEXTS,
@@ -193,9 +195,21 @@ pub fn guide_key(id: &str) -> Option<String> {
         .cloned()
 }
 
-/// The shipped definition, parsed once. The file is compiled in and
-/// checked by this crate's tests, so a parse failure is a build defect.
+/// The shipped definition as this build uses it: [`definition`] without
+/// the moved keys whose `until` [`VERSION`] has reached (D171), so the
+/// clients, `GetKeymap` and `mxr keys` ignore an expired move with no
+/// release having to delete it first.
 pub fn defaults() -> &'static Keymap {
+    static KEYMAP: OnceLock<Keymap> = OnceLock::new();
+    KEYMAP.get_or_init(|| definition().live_at(VERSION))
+}
+
+/// The shipped file as written, expired moves included. The generated
+/// files come from this, so a release crossing an `until` leaves them
+/// fresh; the web app drops expired moves itself, against its own version.
+/// The file is compiled in and checked by this crate's tests, so a parse
+/// failure is a build defect.
+pub fn definition() -> &'static Keymap {
     static KEYMAP: OnceLock<Keymap> = OnceLock::new();
     KEYMAP.get_or_init(|| {
         Keymap::parse(DEFAULT_KEYMAP).expect("crates/keymap/keymap.toml must parse")
@@ -380,8 +394,8 @@ pub struct MovedKey {
     pub key: String,
     /// Web scopes and TUI contexts (the names are shared) where it moved.
     pub contexts: Vec<String>,
-    /// The first release that no longer shows the notice; the entry is
-    /// deleted then (`problems` fails once mxr reaches this version).
+    /// The first release that no longer shows the notice. From it on the
+    /// entry is ignored ([`defaults`]) until the scheduled prune deletes it.
     pub until: String,
     /// The action whose key the notice names, when the old action has no
     /// key of its own left (digit `1` points at `g i`). The notice keeps
@@ -601,7 +615,9 @@ impl Keymap {
     }
 
     /// Everything wrong with the definition, as sentences. Empty when it
-    /// is sound.
+    /// is sound. An expired move is no problem, since the clients ignore
+    /// it: check [`Keymap::live_at`] the running version, and list expired
+    /// moves with [`Keymap::expired_moves`].
     pub fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut ids = BTreeSet::new();
@@ -693,12 +709,6 @@ impl Keymap {
                         ));
                     }
                 }
-                if !older_than(env!("CARGO_PKG_VERSION"), &moved.until) {
-                    problems.push(format!(
-                        "{}: the move of `{}` was announced until {}; delete the entry",
-                        action.id, moved.key, moved.until
-                    ));
-                }
                 if let Some(key) = moved.to_key.as_deref().filter(|key| !is_well_formed(key)) {
                     problems.push(format!(
                         "{}: the move of `{}` names malformed key `{key}`",
@@ -784,12 +794,6 @@ impl Keymap {
         ));
         problems
     }
-}
-
-/// True when version `a` comes before `b` (`0.6.149` < `0.6.152`).
-fn older_than(a: &str, b: &str) -> bool {
-    let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
-    parts(a) < parts(b)
 }
 
 /// Two actions on one key in one place, or a key that is also the start of

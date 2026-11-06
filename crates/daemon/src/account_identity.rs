@@ -248,6 +248,7 @@ pub fn plan_identity_change(
     configured: &[(String, String)],
     reveal_holder: bool,
 ) -> Result<(AccountIdentityData, AccountIdentityData), String> {
+    refuse_unknown_colour(color)?;
     if let Some(tag) = tag {
         if let Some(holder) = tag_holder(tag, others, configured) {
             return Err(clash_message(tag, holder, reveal_holder));
@@ -258,6 +259,19 @@ pub fn plan_identity_change(
         tag: tag.map_or_else(|| current.identity.tag.clone(), str::to_string),
     };
     Ok((current.identity.clone(), after))
+}
+
+/// A colour a newer daemon sent that this build does not know decodes as
+/// `Unknown`. It may be shown, never written.
+pub fn refuse_unknown_colour(color: Option<AccountColor>) -> Result<(), String> {
+    if color != Some(AccountColor::Unknown) {
+        return Ok(());
+    }
+    let allowed: Vec<&str> = AccountColor::ALL.iter().map(|slot| slot.as_str()).collect();
+    Err(format!(
+        "unknown account colour; use one of {}",
+        allowed.join(", ")
+    ))
 }
 
 /// Writes a colour and tag override into `config` for one account. It touches
@@ -388,6 +402,14 @@ mod tests {
             },
             stored_tag: stored_tag.into(),
         }
+    }
+
+    #[test]
+    fn a_colour_this_daemon_cannot_name_is_refused_before_it_is_written() {
+        assert!(refuse_unknown_colour(None).is_ok());
+        assert!(refuse_unknown_colour(Some(AccountColor::Green)).is_ok());
+        let error = refuse_unknown_colour(Some(AccountColor::Unknown)).unwrap_err();
+        assert!(error.contains("sky, amber"), "{error}");
     }
 
     #[test]

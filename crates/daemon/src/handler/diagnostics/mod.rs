@@ -2,6 +2,7 @@ mod label_resolve;
 mod search_execute;
 mod search_fallback;
 mod search_filter;
+pub(crate) mod search_resolve;
 
 use search_execute::{execute_search, execute_search_or_fallback};
 
@@ -432,11 +433,15 @@ pub(crate) async fn list_subscriptions(
     state: &AppState,
     account_id: Option<&AccountId>,
     limit: u32,
+    all_accounts: bool,
 ) -> HandlerResult {
-    // Resolve to default account if not specified
-    let resolved = account_id
-        .cloned()
-        .or_else(|| state.default_account_id_opt());
+    // Every enabled account's senders when asked for; otherwise the default
+    // account's when no account is named.
+    let resolved = match account_id {
+        Some(account_id) => Some(account_id.clone()),
+        None if all_accounts => None,
+        None => state.default_account_id_opt(),
+    };
     let subscriptions = state
         .store
         .list_subscriptions(resolved.as_ref(), limit)
@@ -991,6 +996,11 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
             .and_then(|name| std::env::var(name).ok())
             .is_some_and(|value| !value.is_empty())
     };
+    let fallback_model = config
+        .fallback
+        .as_ref()
+        .map(|fallback| fallback.model.trim().to_string());
+    let fallback_error = crate::state::llm_fallback(&config).err();
     let snapshot = mxr_protocol::LlmStatusSnapshot {
         enabled: config.enabled,
         provider: if !config.enabled {
@@ -1043,6 +1053,12 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
             .collect(),
         features,
         keys,
+        fallback_model,
+        fallback_error,
+        background_paused_until: state
+            .llm
+            .background_paused_until()
+            .map(chrono::DateTime::<chrono::Utc>::from),
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }
@@ -1095,13 +1111,11 @@ fn llm_overrides_data(overrides: mxr_config::LlmOverrides) -> LlmOverridesData {
         draft_assist: overrides.draft_assist.map(llm_override_data),
         draft_new: overrides.draft_new.map(llm_override_data),
         draft_refine: overrides.draft_refine.map(llm_override_data),
-        voice_match: overrides.voice_match.map(llm_override_data),
         humanize_rewrite: overrides.humanize_rewrite.map(llm_override_data),
         answer_coverage: overrides.answer_coverage.map(llm_override_data),
         archive_ask: overrides.archive_ask.map(llm_override_data),
         decision_log: overrides.decision_log.map(llm_override_data),
         briefing: overrides.briefing.map(llm_override_data),
-        expert: overrides.expert.map(llm_override_data),
         delivery_extraction: overrides.delivery_extraction.map(llm_override_data),
         assistant: overrides.assistant.map(llm_override_data),
     }
@@ -1180,6 +1194,7 @@ fn normalize_llm_config(
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
         // Config-file only, like the background timeout.
         gist_concurrency: current.gist_concurrency,
+        fallback: current.fallback.clone(),
         models,
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,
@@ -1196,13 +1211,11 @@ fn normalize_llm_overrides(config: LlmOverridesData) -> Result<mxr_config::LlmOv
         draft_assist: normalize_llm_override(config.draft_assist)?,
         draft_new: normalize_llm_override(config.draft_new)?,
         draft_refine: normalize_llm_override(config.draft_refine)?,
-        voice_match: normalize_llm_override(config.voice_match)?,
         humanize_rewrite: normalize_llm_override(config.humanize_rewrite)?,
         answer_coverage: normalize_llm_override(config.answer_coverage)?,
         archive_ask: normalize_llm_override(config.archive_ask)?,
         decision_log: normalize_llm_override(config.decision_log)?,
         briefing: normalize_llm_override(config.briefing)?,
-        expert: normalize_llm_override(config.expert)?,
         delivery_extraction: normalize_llm_override(config.delivery_extraction)?,
         assistant: normalize_llm_override(config.assistant)?,
     })

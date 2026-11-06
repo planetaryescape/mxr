@@ -17,6 +17,7 @@ mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
+mxr-html-worker = { workspace = true }
 mxr-mail-parse = { workspace = true }
 mxr-keymap = { workspace = true }
 mxr-protocol = { workspace = true }

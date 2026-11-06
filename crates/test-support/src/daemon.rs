@@ -1,6 +1,6 @@
 //! Daemon-spawning helpers shared between integration tests.
 //!
-//! Promoted from `crates/daemon/tests/cli_journey.rs` so any test
+//! Promoted from `crates/daemon/tests/integration/cli_journey.rs` so any test
 //! crate can spawn `mxr` against a fake-provider config without
 //! re-implementing the same boilerplate.
 

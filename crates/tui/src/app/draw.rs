@@ -322,6 +322,7 @@ impl App {
                                     place,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -396,6 +397,10 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self
+                                        .mailbox
+                                        .todo_page
+                                        .peek_body(&self.mailbox.body_cache),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,
@@ -409,6 +414,7 @@ impl App {
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
                                 self.mailbox.owed_page.people,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
@@ -505,6 +511,7 @@ impl App {
                                     place,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -579,6 +586,10 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self
+                                        .mailbox
+                                        .todo_page
+                                        .peek_body(&self.mailbox.body_cache),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,
@@ -592,6 +603,7 @@ impl App {
                                 chunks[1],
                                 &self.mailbox.owed_page.entries,
                                 self.mailbox.owed_page.people,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
@@ -780,6 +792,7 @@ impl App {
                 pane,
                 &self.assistant,
                 std::time::Instant::now(),
+                &account_marks,
                 theme,
             );
         }
@@ -1031,7 +1044,7 @@ impl App {
         });
         // The prefix guide sits where toasts stack; a toast that arrives
         // while it is open draws over it.
-        if let Some((prefix, choices)) = self.prefix_guide(now) {
+        if let Some((prefix, choices)) = self.prefix_guide() {
             ui::prefix_guide::draw(frame, toast_area, prefix, &choices, theme);
         }
         ui::toasts::draw(frame, toast_area, &visible_toasts, now, theme);

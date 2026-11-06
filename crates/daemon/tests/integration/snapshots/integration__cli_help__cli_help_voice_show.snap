@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Show the profile (default if omitted)
+
+Usage: mxr voice show
+
+Options:
+  -h, --help  Print help

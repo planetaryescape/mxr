@@ -118,6 +118,7 @@ impl Histories {
 }
 
 pub(super) struct DigestInputs<'a, Tz: TimeZone> {
+    pub filed: &'a HashMap<MessageId, DateTime<Utc>>,
     pub items: &'a [Item],
     pub histories: &'a Histories,
     pub sources: &'a HashMap<(AccountId, String), UpdateSourceRow>,
@@ -477,6 +478,10 @@ where
         count: super::now::count(members.len()),
         latest_message_id: Some(message.id.clone()),
         latest_message_pinned: message.pinned,
+        // Filled from the exact row ledger at the IPC response seam.
+        unread: None,
+        seen_revision: None,
+        source_filed_at: ctx.inputs.filed.get(&message.id).copied(),
         fact_message_id: Some(lead.item.message.id.clone()),
         latest_thread_id: Some(message.thread_id.clone()),
         latest_at: message.date,
@@ -895,6 +900,9 @@ where
         thread_ids: delivery.thread_id.iter().cloned().collect(),
         latest_message_id: None,
         latest_message_pinned: false,
+        unread: None,
+        seen_revision: None,
+        source_filed_at: None,
         fact_message_id: None,
         latest_thread_id: delivery.thread_id.clone(),
         latest_at: delivery.last_event_at,

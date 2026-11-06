@@ -214,7 +214,7 @@ This matters when reading the auto-generated pages: most flags fall cleanly with
 
 Exit `3` means no request reached a usable daemon. The daemon is not running, could not be reached after an autostart attempt, or speaks a protocol this build cannot use. With `MXR_DAEMON_AUTOSTART=off`, the daemon is never started for you, so a missing daemon always exits `3`.
 
-Exit `4` means the daemon rejected the token the client presented (`daemon_auth`), or answered a request with an auth error (`auth`).
+Exit `4` means the daemon rejected the token the client presented (`daemon_auth`), or answered a request with an auth error (`auth`). Any auth error from the daemon exits `4`, whichever command asked. So does an account whose provider rejected its credentials, such as a revoked Gmail grant or an IMAP or SMTP login refusal; the message says what to do, usually to sign the account in again.
 
 Other failures exit `1`.
 

@@ -15,7 +15,8 @@ const router = vi.hoisted(() => ({
   search: { q: "invoice", mode: "lexical", sort: "relevance" } as {
     q?: string;
     mode?: "lexical" | "semantic" | "hybrid";
-    sort?: "relevance" | "newest" | "oldest";
+    sort?: "relevance" | "newest" | "oldest" | "verdict";
+    scope?: "threads" | "messages" | "attachments" | "triage";
     groupBy?: "from" | "list" | "category";
     account?: string;
   },
@@ -127,6 +128,15 @@ function renderWithQueryClient(children: ReactNode) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
+}
+
+function lastSearchParams(): { sort?: string; limit?: number } {
+  return (searchApi.fetchSearch.mock.lastCall?.[0] ?? {}) as { sort?: string; limit?: number };
+}
+
+function navigatedSearch(): { sort?: string } {
+  const call = router.navigate.mock.lastCall?.[0] as { search: { sort?: string } };
+  return call.search;
 }
 
 const facet = (label: string) => ({
@@ -319,9 +329,55 @@ describe("SearchResultsRoute", () => {
 
     expect(await screen.findByText("Subject 3")).toBeVisible();
     expect(searchApi.fetchSearch).toHaveBeenLastCalledWith(
-      expect.objectContaining({ offset: 100, limit: 100 }),
+      expect.objectContaining({ offset: 100 }),
       expect.anything(),
     );
+    // Page size is the daemon's [search] max_results, so the page sends none.
+    expect(lastSearchParams().limit).toBeUndefined();
+  });
+
+  test("sends no sort or page size until the user picks a sort, so the daemon applies its [search] defaults", async () => {
+    router.search = { q: "invoice", mode: "lexical" };
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    await screen.findByTestId("mailbox-list");
+    expect(lastSearchParams().sort).toBeUndefined();
+    expect(lastSearchParams().limit).toBeUndefined();
+  });
+
+  test("the sort control reads Default while the sort is left to the daemon", async () => {
+    router.search = { q: "invoice", mode: "lexical" };
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
+    expect(await screen.findByRole("combobox", { name: "Sort" })).toHaveTextContent("Default");
+  });
+
+  test("an explicit sort is sent as chosen", async () => {
+    router.search = { q: "invoice", mode: "lexical", sort: "newest" };
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    await screen.findByTestId("mailbox-list");
+    expect(lastSearchParams().sort).toBe("newest");
+  });
+
+  test("choosing Default in the sort control clears the sort from the URL", async () => {
+    router.search = { q: "invoice", mode: "lexical", sort: "oldest" };
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "Sort" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Default" }));
+
+    expect(navigatedSearch().sort).toBeUndefined();
+  });
+
+  test("triage keeps its own page of 100", async () => {
+    router.search = { q: "invoice", mode: "lexical", scope: "triage", sort: "verdict" };
+    renderWithQueryClient(<SearchResultsRoute />);
+
+    await screen.findByTestId("mailbox-list");
+    expect(lastSearchParams().limit).toBe(100);
   });
 
   test("submitting the query blurs the input and navigates", async () => {

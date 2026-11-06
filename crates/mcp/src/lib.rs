@@ -144,6 +144,15 @@ pub struct MxrMcpServer {
     tool_router: ToolRouter<Self>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RowSeenInput {
+    pub account_id: String,
+    pub mode: String,
+    pub row_id: String,
+    pub revision: String,
+    pub confirm: Option<bool>,
+}
+
 impl MxrMcpServer {
     pub fn new<R: DaemonRequester>(requester: R) -> Self {
         Self::from_requester(Arc::new(requester))
@@ -1406,6 +1415,27 @@ impl MxrMcpServer {
         self.daemon_json(Request::SetTodoState {
             todo_ids: input.todo_ids,
             action: input.action.into(),
+            dry_run: !input.confirm.unwrap_or(false),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_mode_row_seen",
+        description = "Mark an exact To do or Updates row revision seen after opening it. Copy account_id from the row, row_id from its id, and revision from its seen_revision. Does not mark email read, complete a task, or let go of updates. Defaults to preview; confirm=true writes."
+    )]
+    pub async fn mode_row_seen(
+        &self,
+        Parameters(input): Parameters<RowSeenInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let mode = ModeKindData::parse(&input.mode)
+            .filter(|m| matches!(m, ModeKindData::Todo | ModeKindData::Updates))
+            .ok_or_else(|| ErrorData::invalid_params("mode must be todo or updates", None))?;
+        self.daemon_json(Request::SetModeRowSeen {
+            account_id: parse_id(&input.account_id)?,
+            mode,
+            row_id: input.row_id,
+            revision: input.revision,
             dry_run: !input.confirm.unwrap_or(false),
         })
         .await
@@ -3001,6 +3031,34 @@ mod tests {
         requests: Mutex<Vec<Request>>,
     }
 
+    #[tokio::test]
+    async fn row_seen_tool_previews_unless_explicitly_confirmed() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let account = AccountId::new();
+        for confirm in [None, Some(true)] {
+            server
+                .mode_row_seen(Parameters(RowSeenInput {
+                    account_id: account.as_str(),
+                    mode: "updates".into(),
+                    row_id: "line".into(),
+                    revision: "exact-revision".into(),
+                    confirm,
+                }))
+                .await
+                .expect("row acknowledgement");
+        }
+        let calls = requester.requests.lock().expect("requests");
+        assert!(
+            matches!(&calls[0], Request::SetModeRowSeen { account_id, mode: ModeKindData::Updates,
+            row_id, revision, dry_run: true } if account_id == &account && row_id == "line" && revision == "exact-revision")
+        );
+        assert!(matches!(
+            &calls[1],
+            Request::SetModeRowSeen { dry_run: false, .. }
+        ));
+    }
+
     #[derive(Debug)]
     struct VersionedSyncRequester {
         version: u32,
@@ -3596,6 +3654,7 @@ mod tests {
                         unread_count: 1,
                         snippet: "Please confirm".into(),
                         has_attachments: false,
+                        account_id: None,
                     }],
                 },
             })

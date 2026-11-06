@@ -226,28 +226,37 @@ impl App {
             }
             // Search
             Action::GoToInbox => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "INBOX") {
+                if let Some(label) = self.system_label("INBOX") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("INBOX".into());
                 }
             }
             Action::GoToStarred => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "STARRED") {
+                if let Some(label) = self.system_label("STARRED") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    self.mailbox.desired_system_mailbox = Some("STARRED".into());
+                    // No Starred label on any account: list by the starred flag.
+                    self.mailbox.mailbox_view = MailboxView::Messages;
+                    self.mailbox.active_label = None;
+                    self.mailbox.pending_active_label = None;
+                    self.mailbox.pending_label_fetch = None;
+                    self.mailbox.desired_system_mailbox = None;
+                    self.mailbox.active_role = Some(mxr_core::Role::Starred);
+                    self.mailbox.pending_role_fetch = Some(mxr_core::Role::Starred);
+                    self.mailbox.active_pane = ActivePane::MailList;
+                    self.screen = Screen::Mailbox;
                 }
             }
             Action::GoToSent => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "SENT") {
+                if let Some(label) = self.system_label("SENT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("SENT".into());
                 }
             }
             Action::GoToDrafts => {
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "DRAFT") {
+                if let Some(label) = self.system_label("DRAFT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some("DRAFT".into());
@@ -259,7 +268,7 @@ impl App {
                 } else {
                     "SPAM"
                 };
-                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == name) {
+                if let Some(label) = self.system_label(name) {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
                     self.mailbox.desired_system_mailbox = Some(name.into());
@@ -267,6 +276,8 @@ impl App {
             }
             Action::GoToAllMail => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
+                self.mailbox.active_role = None;
+                self.mailbox.pending_role_fetch = None;
                 self.apply(Action::ClearFilter);
             }
             Action::OpenSubscriptions => {
@@ -421,6 +432,8 @@ impl App {
             }
             Action::SelectLabel(label_id) => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
+                self.mailbox.active_role = None;
+                self.mailbox.pending_role_fetch = None;
                 self.mailbox.pending_label_fetch = Some(label_id);
                 self.mailbox.pending_active_label = self.mailbox.pending_label_fetch.clone();
                 self.mailbox.desired_system_mailbox = None;

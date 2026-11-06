@@ -312,6 +312,7 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
     let mutations_before = app.pending_mutation_queue.len();
 
@@ -372,6 +373,7 @@ fn app_with_send_confirm(verdict_blocked: bool) -> App {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     });
 
     app
@@ -725,11 +727,11 @@ fn dormant_hint_fires_at_30d_3msgs_and_nothing_below() {
     );
 }
 
-/// Slice 5.3 (C2.7 cont): Ctrl-A on the compose-confirm modal
+/// Slice 5.3 (C2.7 cont): `c` on the compose-confirm modal
 /// adds the top "maybe include" suggestion to the draft's Cc
 /// and removes it from the list.
 #[test]
-fn ctrl_a_adds_top_suggestion_to_cc() {
+fn c_adds_top_suggestion_to_cc() {
     let mut app = App::new();
     app.compose.pending_send_confirm = Some(PendingSend {
         draft_revision: None,
@@ -757,6 +759,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         override_token: None,
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
         suggested_collaborators: vec![mxr_protocol::SuggestedRecipientData {
             email: "bob@example.com".into(),
             display_name: None,
@@ -766,7 +769,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
         }],
     });
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
 
     let pending = app.compose.pending_send_confirm.as_ref().unwrap();
     assert_eq!(pending.fm.cc, "bob@example.com");
@@ -2084,6 +2087,7 @@ fn recovery_pending(path: std::path::PathBuf) -> PendingSend {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
+        stored_draft: None,
     }
 }
 
@@ -2768,4 +2772,150 @@ fn ctrl_z_asks_the_runner_to_suspend_even_from_a_text_field() {
     assert_eq!(app.handle_key(ctrl_z), None);
     assert!(app.pending_suspend);
     assert_eq!(app.search.bar.query, "");
+}
+
+/// The review a resumed reply (or a draft edited from Drafts) opens on:
+/// the edits were saved as revision 4 of a stored draft.
+fn stored_review() -> (PendingSend, mxr_core::Draft) {
+    let stored = mxr_core::Draft {
+        revision: Some(4),
+        id: mxr_core::DraftId::new(),
+        account_id: AccountId::new(),
+        from: None,
+        reply_headers: Some(mxr_core::types::ReplyHeaders {
+            in_reply_to: "<source@example.com>".into(),
+            references: vec![],
+            thread_id: None,
+        }),
+        intent: mxr_core::DraftIntent::Reply,
+        to: vec![mxr_core::types::Address {
+            name: None,
+            email: "pat@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Re: Renewal".into(),
+        content: mxr_core::DraftContent::markdown("Thursday at ten works."),
+        managed_attachments: Some(vec![]),
+        attachments: vec![],
+        inline_assets: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+    let mut pending = recovery_pending(std::path::PathBuf::from("/tmp/mxr-stored-review.md"));
+    pending.account_id = stored.account_id.clone();
+    pending.draft_revision = stored.revision;
+    pending.intent = stored.intent;
+    pending.body = "Thursday at ten works.".into();
+    pending.stored_draft = Some(Box::new(stored.clone()));
+    (pending, stored)
+}
+
+#[test]
+fn sending_a_resumed_draft_sends_that_stored_draft_as_saved() {
+    let mut app = App::new();
+    let (pending, stored) = stored_review();
+    app.compose.pending_send_confirm = Some(pending);
+    app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().expect("a send is queued");
+    match &queued.request {
+        Request::SendDraft {
+            draft,
+            send_identity: Some(identity),
+            ..
+        } => {
+            // Exactly the saved, reviewed draft: the daemon refuses anything else.
+            assert_eq!(draft.id, stored.id);
+            assert_eq!(draft.revision, Some(4));
+            assert_eq!(draft.managed_attachments, Some(vec![]));
+            assert_eq!(draft.content.analysis_text(), "Thursday at ten works.");
+            assert_eq!(identity.expected_revision, 4);
+        }
+        other => panic!("expected SendDraft, got {other:?}"),
+    }
+}
+
+#[test]
+fn saving_a_resumed_draft_keeps_it_as_that_draft() {
+    let mut app = App::new();
+    let (pending, stored) = stored_review();
+    app.compose.pending_send_confirm = Some(pending);
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().expect("a save is queued");
+    assert!(matches!(
+        &queued.request,
+        Request::SaveDraftToServer { draft } if draft.id == stored.id && draft.revision == Some(4)
+    ));
+    assert!(app.compose.pending_send_confirm.is_none());
+}
+
+#[test]
+fn a_resumed_drafts_review_edits_it_again_and_never_discards_it() {
+    let mut app = App::new();
+    let (pending, stored) = stored_review();
+    app.compose.pending_send_confirm = Some(pending);
+    app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::NONE));
+    assert!(
+        app.compose.pending_send_confirm.is_some(),
+        "# leaves a saved draft alone"
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    assert_eq!(
+        app.pending_draft_edit_request.map(|draft| draft.id),
+        Some(stored.id)
+    );
+    assert!(app.compose.pending_compose.is_none());
+}
+
+/// Dogfood 2026-10-29: `r` in Messages, then `d` in the send review, then
+/// `r` again started a second draft, because the row didn't know about the
+/// first. Saving (or sending) a reply refetches Messages, so the row names
+/// the draft and `r` continues it.
+#[test]
+fn a_reply_saved_from_messages_refreshes_the_rows() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut app = App::new();
+    app.mailbox.mailbox_view = MailboxView::People;
+    app.compose.pending_send_confirm = Some(recovery_pending(directory.path().join("reply.md")));
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let queued = app.pending_mutation_queue.pop().unwrap();
+    assert!(matches!(queued.request, Request::SaveDraftToServer { .. }));
+    app.mailbox.messages_page.pending_refresh = false;
+    app.finish_compose_mutation(queued.id);
+    assert!(app.mailbox.messages_page.pending_refresh);
+}
+
+/// Dogfood 2026-10-29: the send review added a suggested person to Cc on
+/// `Ctrl-a`, GNU screen's prefix, which a TUI default never takes
+/// (blueprint 35). It is `c` now, printed on the review; `Ctrl-a` says so.
+#[test]
+fn c_adds_the_suggested_person_to_cc_and_ctrl_a_says_where_it_went() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut app = App::new();
+    let mut pending = recovery_pending(directory.path().join("reply.md"));
+    pending.suggested_collaborators = vec![mxr_protocol::SuggestedRecipientData {
+        email: "ana@example.com".into(),
+        display_name: None,
+        reason: "often copied".into(),
+        confidence: "high".into(),
+        evidence_msg_ids: Vec::new(),
+    }];
+    app.compose.pending_send_confirm = Some(pending);
+    let before = app.status_message.clone();
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced(
+            "send-review",
+            "Ctrl+a",
+            "Add the suggested person to Cc is now c",
+            before.as_deref()
+        )
+    );
+    assert_eq!(app.compose.pending_send_confirm.as_ref().unwrap().fm.cc, "");
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    let pending = app.compose.pending_send_confirm.as_ref().unwrap();
+    assert_eq!(pending.fm.cc, "ana@example.com");
+    assert!(pending.suggested_collaborators.is_empty());
 }

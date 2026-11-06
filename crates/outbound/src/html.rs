@@ -26,7 +26,9 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use base64::Engine as _;
+use mxr_html_worker::{AnyJob, FallbackReason, Job};
 use scraper::{Html, Node};
+use serde::{Deserialize, Serialize};
 
 /// Schemes a URL-bearing attribute may use.
 ///
@@ -141,7 +143,7 @@ const URL_ATTRIBUTES: &[&str] = &[
 ];
 
 /// One reason a document was refused.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlIssue {
     pub kind: HtmlIssueKind,
     /// 1-based line in the supplied document, when it could be located.
@@ -162,7 +164,7 @@ pub struct HtmlIssue {
 /// orphan reparse is one problem and must not be. Without this, the
 /// duplicate-suppression in `orphan_table_element_issues` cannot tell the two
 /// cases apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum IssueOrigin {
     /// The document itself.
     Document,
@@ -170,7 +172,7 @@ enum IssueOrigin {
     Comment(usize),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HtmlIssueKind {
     /// An element that executes or submits, e.g. `<script>`, `<form>`.
     ForbiddenElement { tag: String },
@@ -193,6 +195,14 @@ pub enum HtmlIssueKind {
     /// comments are real markup to Outlook, so a `<script>` in one is a live
     /// script, not inert text.
     ForbiddenElementInComment { tag: String },
+    /// The document is over the parser budget (size, tag count, attribute count
+    /// or table shape), so it cannot be checked safely. It is refused, and the
+    /// fix is to simplify the HTML.
+    TooComplexToCheck,
+    /// The HTML helper process could not be started, so nothing was checked.
+    /// It is refused like a document that is too complex, but the fix is to
+    /// wait and try again, not to change the HTML.
+    CheckerUnavailable,
 }
 
 impl fmt::Display for HtmlIssue {
@@ -202,6 +212,16 @@ impl fmt::Display for HtmlIssue {
             None => String::new(),
         };
         match &self.kind {
+            HtmlIssueKind::TooComplexToCheck => write!(
+                f,
+                "HTML is too complex to check safely, so it cannot be sent{where_}: \
+                 simplify it (fewer tags, attributes or table cells) and try again"
+            ),
+            HtmlIssueKind::CheckerUnavailable => write!(
+                f,
+                "HTML could not be checked because mxr's HTML helper process did not \
+                 start, so it cannot be sent yet: try again in a few seconds"
+            ),
             HtmlIssueKind::ForbiddenElement { tag } => {
                 write!(
                     f,
@@ -262,7 +282,7 @@ impl fmt::Display for HtmlIssue {
 }
 
 /// Every reason a document was refused, in document order where possible.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlValidationError {
     pub issues: Vec<HtmlIssue>,
 }
@@ -303,6 +323,53 @@ impl std::error::Error for HtmlValidationError {}
 /// throw-away copy covers the difference; see
 /// `orphan_table_element_issues`.
 pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
+    // The parses run in the HTML helper process. A document the helper timed
+    // out or died on is refused like one over the budget; one it never saw,
+    // because no helper would start, is refused with a retry.
+    VALIDATE
+        .try_call(html, &())
+        .unwrap_or_else(|reason| Err(unchecked(unchecked_kind(reason))))
+}
+
+fn unchecked_kind(reason: FallbackReason) -> HtmlIssueKind {
+    match reason {
+        FallbackReason::Unavailable => HtmlIssueKind::CheckerUnavailable,
+        FallbackReason::Oversize
+        | FallbackReason::KnownBad
+        | FallbackReason::Timeout
+        | FallbackReason::HelperDied
+        | FallbackReason::JobFailed => HtmlIssueKind::TooComplexToCheck,
+    }
+}
+
+fn too_complex_to_check() -> HtmlValidationError {
+    unchecked(HtmlIssueKind::TooComplexToCheck)
+}
+
+fn unchecked(kind: HtmlIssueKind) -> HtmlValidationError {
+    HtmlValidationError {
+        issues: vec![HtmlIssue {
+            kind,
+            line: None,
+            detail: String::new(),
+            origin: IssueOrigin::Document,
+        }],
+    }
+}
+
+static VALIDATE: Job<(), Result<(), HtmlValidationError>> =
+    Job::new("outbound.validate_html", |html, ()| {
+        validate_html_in_process(html)
+    });
+
+fn validate_html_in_process(html: &str) -> Result<(), HtmlValidationError> {
+    // Over the parser budget the document is refused, not checked by a weaker
+    // pass: a linear scan cannot see through attribute counts or entities, so
+    // every check is missed for such a document. The nested parses below run on
+    // parts of this same document, so they are within budget too.
+    if !crate::html_limits::within_budget(html) {
+        return Err(too_complex_to_check());
+    }
     let document = Html::parse_document(html);
     let mut issues = Vec::new();
     let mut comments_seen = 0;
@@ -400,37 +467,35 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// (`crates/reader/src/html.rs`), so the text a recipient gets matches what
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
-    // Guarded like the reader's call (html2text panics on some malformed
-    // tables). mxr-outbound cannot depend on mxr-reader, so the span clamp and
-    // the fallback are local copies; keep them in step with
-    // `mxr_reader::clamp_table_spans`. A sent message always gets its text,
-    // even if it is rougher.
-    let clamped = clamp_table_spans(html);
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
-    }))
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or_else(|| strip_tags_fallback(html))
+    // A sent message always gets its text, even if it is rougher: over the
+    // budget, on a panic, or with the HTML helper lost, the tag strip stands in.
+    TEXT_ALTERNATIVE
+        .call(html, &())
+        .flatten()
+        .unwrap_or_else(|| strip_tags_fallback(html))
 }
 
-/// Largest colspan/rowspan html2text is given. Matches
-/// `mxr_reader::MAX_TABLE_SPAN`.
-const MAX_TABLE_SPAN: u64 = 1000;
+/// The render, which runs in the HTML helper process. `None` is the tag-strip
+/// fallback.
+//
+// Guarded like the reader's call (html2text panics on some malformed tables).
+// mxr-outbound cannot depend on mxr-reader, so the bounds, the span clamp and
+// the fallback are local copies (`html_limits`). Bounded input first: an
+// adversarial table costs html2text gigabytes, and an allocation failure
+// aborts, so `catch_unwind` cannot protect against it.
+static TEXT_ALTERNATIVE: Job<(), Option<String>> =
+    Job::new("outbound.text_alternative", |html, ()| {
+        let bounded = crate::html_limits::bounded_html(html)?;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            html2text::config::plain_no_decorate().string_from_read(bounded.as_bytes(), 80)
+        }))
+        .ok()
+        .and_then(Result::ok)
+    });
 
-static TABLE_SPAN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
-        .expect("table span regex should compile")
-});
-
-/// Copy of `mxr_reader::clamp_table_spans`; see `generate_text_alternative`.
-fn clamp_table_spans(html: &str) -> std::borrow::Cow<'_, str> {
-    TABLE_SPAN_RE.replace_all(html, |caps: &regex::Captures<'_>| {
-        let value = caps[3]
-            .parse::<u64>()
-            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
-        format!("{}{}{value}", &caps[1], &caps[2])
-    })
+/// Every parse this crate runs in the HTML helper process.
+pub fn html_jobs() -> Vec<&'static dyn AnyJob> {
+    vec![&VALIDATE, &TEXT_ALTERNATIVE]
 }
 
 /// Tag-stripping fallback for `generate_text_alternative` when html2text
@@ -932,6 +997,68 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::html_limits::clamp_table_spans;
+    #[test]
+    fn text_alternative_bounds_an_adversarial_table_before_html2text() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(text.contains("c0") && text.contains("r19999"));
+        assert!(text.len() < 4 * html.len());
+    }
+
+    #[test]
+    fn text_alternative_of_a_table_hidden_by_a_comment_is_bounded() {
+        let mut html = String::from("<table><tr>");
+        for n in 0..20_000 {
+            html.push_str(&format!("<td>c{n}</td>"));
+        }
+        html.push_str("</tr><!-- </table> -->");
+        for n in 0..20_000 {
+            html.push_str(&format!("<tr><td>r{n}</td></tr>"));
+        }
+        html.push_str("</table>");
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("c0") && text.contains("r19999"));
+    }
+
+    #[test]
+    fn text_alternative_of_a_100000_deep_div_nest_is_bounded() {
+        let html = format!(
+            "{}deepword{}",
+            "<div>".repeat(100_000),
+            "</div>".repeat(100_000)
+        );
+        let started = std::time::Instant::now();
+        let text = generate_text_alternative(&html);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(text.len() < 4 * html.len());
+        assert!(text.contains("deepword"));
+    }
+
+    #[test]
+    fn text_alternative_of_an_oversized_body_is_the_tag_strip() {
+        let html = format!(
+            "<p>zzoversizedword</p>{}",
+            "<p>filler</p>".repeat(crate::html_limits::MAX_HTML_BYTES / 13 + 1)
+        );
+        let text = generate_text_alternative(&html);
+        assert!(text.contains("zzoversizedword"));
+        assert!(!text.contains('<'));
+    }
+
     #[test]
     fn text_alternative_renders_a_huge_span_without_the_fallback() {
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
@@ -1847,5 +1974,127 @@ mod tests {
             assert!(validate_html(&source).is_err(), "{source}");
             assert_eq!(source, before);
         }
+    }
+}
+
+#[cfg(test)]
+mod budget_validation_tests {
+    use super::*;
+
+    fn refused_as_too_complex(html: &str) -> bool {
+        validate_html(html).is_err_and(|error| {
+            error
+                .issues
+                .iter()
+                .any(|issue| issue.kind == HtmlIssueKind::TooComplexToCheck)
+        })
+    }
+
+    fn sixty_five_inert_attributes() -> String {
+        (0..65).map(|n| format!(" a{n}")).collect()
+    }
+
+    #[test]
+    fn an_over_budget_html_send_is_refused_as_too_complex() {
+        let over = format!("<table>{}</table>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
+    }
+
+    #[test]
+    fn an_image_with_an_onerror_hidden_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<img{} src=x onerror="alert(1)">"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_link_with_an_entity_encoded_javascript_url_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<a{} href="jav&#x61;script:alert(1)">x</a>"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_script_in_an_over_budget_document_is_refused() {
+        let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
+    }
+
+    #[test]
+    fn an_over_budget_text_alternative_is_the_tag_strip() {
+        let over = format!("<p>zzalt</p>{}", "<br>".repeat(200_000));
+        let text = generate_text_alternative(&over);
+        assert!(text.contains("zzalt"));
+        assert!(!text.contains('<'));
+    }
+}
+
+#[cfg(test)]
+mod lost_helper_tests {
+    use super::*;
+    use mxr_html_worker::{with_supervisor, Config, Supervisor};
+    use std::sync::Arc;
+
+    fn lost_helper() -> Arc<Supervisor> {
+        Arc::new(Supervisor::new(Config::new(
+            "/nonexistent/mxr-helper",
+            Vec::new(),
+        )))
+    }
+
+    #[test]
+    fn html_no_helper_could_check_is_refused_with_a_retry_not_a_rewrite() {
+        let error = with_supervisor(lost_helper(), || validate_html("<p>fine</p>"))
+            .expect_err("an unchecked document must not be sent");
+        assert_eq!(
+            error
+                .issues
+                .iter()
+                .map(|issue| &issue.kind)
+                .collect::<Vec<_>>(),
+            vec![&HtmlIssueKind::CheckerUnavailable]
+        );
+        let message = error.to_string();
+        assert!(message.contains("try again"), "{message}");
+        assert!(!message.contains("simplify"), "{message}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_refused_as_too_complex() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert_eq!(
+                unchecked_kind(reason),
+                HtmlIssueKind::TooComplexToCheck,
+                "{reason:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_sent_message_still_gets_its_text_part_when_the_helper_is_lost() {
+        let text = with_supervisor(lost_helper(), || {
+            generate_text_alternative("<p>Hello&nbsp;<b>world</b></p>")
+        });
+        assert_eq!(text, "Hello world");
+    }
+
+    #[test]
+    fn a_validation_error_survives_the_trip_through_the_helper_wire_format() {
+        let error = validate_html_in_process("<script>x</script><p onclick=\"y\">z</p>")
+            .expect_err("refused");
+        let wire = serde_json::to_vec(&error).expect("encodes");
+        let back: HtmlValidationError = serde_json::from_slice(&wire).expect("decodes");
+        assert_eq!(back, error);
+        assert!(back.issues.len() >= 2);
     }
 }

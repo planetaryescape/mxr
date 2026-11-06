@@ -6,7 +6,7 @@
 git clone https://github.com/planetaryescape/mxr
 cd mxr
 cargo build -p mxr
-scripts/cargo-test -p mxr --test cli_help
+scripts/cargo-test -p mxr --test integration cli_help::
 ```
 
 If you need the docs site too:
@@ -274,7 +274,7 @@ reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
 
-The shipped asks facet uses a separate `asks-r2c-16` policy in the
+The asks facet uses a separate `asks-r2c-17` policy in the
 assessment table. Its records include sent mail; home assessments remain
 inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
 in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored
@@ -362,8 +362,12 @@ numbers can differ slightly from the snapshot.
 
 The whole 50,000-message demo is one more test, marked `#[ignore]` so the
 workspace test jobs skip it. CI runs it in the "Classifier Eval (full set)"
-job, on pull requests that touch the generator, the classifier or the eval and
-on every push to `main`, and snapshots the summary: per-question accuracy,
+job when a pull request or a push to `main` changes the code that decides a
+graded answer (the demo generator, the detectors, the daemon's post-sync
+classification or the eval; the list is in `scripts/ci_change_scope.sh`), and
+on a manual CI run. Other changes skip it, including store, sync and
+dependency changes that could still move an answer; run it locally after one
+of those. It snapshots the summary: per-question accuracy,
 held-out accuracy, counts and the mismatch clusters (never one line per
 email). Run it locally only when you need to, because it takes a few minutes
 and a lot of CPU:

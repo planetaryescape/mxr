@@ -2,6 +2,7 @@
 //! every CLI flag that takes a time (`--until`, `--at`, `--when`,
 //! `--remind-after`).
 
+use crate::commands::daemon_response_error;
 use chrono::{DateTime, Local, Utc};
 use mxr_core::natural_time::{resolve_time, TimeResolution, TimeResolveError};
 use mxr_protocol::{Request, Response, ResponseData};
@@ -52,7 +53,7 @@ pub async fn run(
                     error,
                 },
         } => (input, resolution, error),
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     match resolve_format(format) {

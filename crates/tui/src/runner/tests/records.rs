@@ -156,13 +156,6 @@ fn x_takes_a_record_out_at_once_and_u_brings_it_back() {
 #[test]
 fn the_export_previews_and_enter_writes_it() {
     let mut app = archive_app();
-    // `E` exported until K3 (blueprint 35); export is in the palette now.
-    press_shifted(&mut app, 'E');
-    assert_eq!(app.mailbox.records_page.pending_export, None);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Export has no key now; find it in the palette")
-    );
     app.apply(Action::RecordsExport);
     assert_eq!(app.mailbox.records_page.pending_export, Some(false));
     app.mailbox.records_page.pending_export = None;
@@ -190,9 +183,7 @@ fn the_export_previews_and_enter_writes_it() {
 fn the_verbs_name_their_requests() {
     let mut app = archive_app();
     // Dell is checked already; Apple's amount isn't. `,` then Enter with
-    // nothing typed marks a record checked (`v` until K3).
-    press(&mut app, KeyCode::Char('v'));
-    assert_eq!(app.status_message.as_deref(), Some("Checked is now ,"));
+    // nothing typed marks a record checked.
     press(&mut app, KeyCode::Char(','));
     press(&mut app, KeyCode::Enter);
     assert!(queued(&app).is_empty());

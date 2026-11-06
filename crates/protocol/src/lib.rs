@@ -22,25 +22,30 @@
 //! endpoint) so clients can detect a mismatched daemon. Field additions use
 //! `#[serde(default)]` / `skip_serializing_if` so older peers keep decoding.
 //! Adding enum variants requires a bump because older peers reject unknown
-//! variants.
+//! variants. The exception is [`DaemonEvent`]: from protocol 29 it has an
+//! `Unknown` catch-all, so a client at 29 or later skips events added after it
+//! was built. Clients older than 29 still fail to decode an event they have no
+//! variant for, which is why 29 itself is a bump.
 
 mod archive;
 mod codec;
 mod remote;
 mod search_degraded;
+mod selection;
 mod types;
 
 pub use archive::*;
 pub use codec::IpcCodec;
 pub use remote::*;
 pub use search_degraded::*;
+pub use selection::*;
 pub use types::*;
 
 /// Wire revision of the IPC protocol. Bumped when a client needs a daemon
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 27;
+pub const IPC_PROTOCOL_VERSION: u32 = 29;
 
 #[cfg(test)]
 mod tests {
@@ -137,6 +142,124 @@ mod tests {
                 assert!(!explain);
             }
         }
+    }
+
+    /// The requests and job shape before selection jobs (protocol 27).
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "cmd")]
+    #[allow(dead_code, reason = "fields are read through the decode only")]
+    enum PreSelectionRequest {
+        GetJob { job_id: String },
+    }
+
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code, reason = "fields are read through the decode only")]
+    struct PreSelectionJob {
+        job_id: String,
+        kind: String,
+        status: JobStatusData,
+        progress: JobProgressData,
+        #[serde(default)]
+        undo_ids: Vec<String>,
+        error: Option<String>,
+        started_at: i64,
+        finished_at: Option<i64>,
+        result: Option<MutationResultData>,
+    }
+
+    fn selection_job() -> JobData {
+        JobData {
+            job_id: "job-1".into(),
+            kind: "mutation.archive".into(),
+            status: JobStatusData::Failed,
+            progress: JobProgressData {
+                total: 10,
+                completed: 4,
+                succeeded: 3,
+                skipped: 0,
+                failed: 1,
+            },
+            undo_ids: Vec::new(),
+            error: Some("stopped".into()),
+            started_at: 1,
+            finished_at: Some(2),
+            result: None,
+            selection: Some(SelectionData::Search {
+                query: "from:x".into(),
+                account_id: None,
+            }),
+            failures: vec![JobFailureData {
+                message_id: MessageId::new(),
+                error: "provider said no".into(),
+            }],
+            paused_until: Some(3),
+            action: None,
+            undo_id_count: 0,
+            failure_count: 0,
+        }
+    }
+
+    #[test]
+    fn an_older_daemon_rejects_the_selection_requests() {
+        let mutation = MutationCommand::Archive {
+            message_ids: Vec::new(),
+        };
+        let selection = SelectionData::Search {
+            query: "from:x".into(),
+            account_id: None,
+        };
+        let requests = [
+            Request::PreviewSelection {
+                selection: selection.clone(),
+                mutation: mutation.clone(),
+                sample_size: None,
+            },
+            Request::StartSelectionJob {
+                job_id: "j".into(),
+                preview_token: "t".into(),
+                selection,
+                mutation,
+                client_correlation_id: None,
+            },
+        ];
+        for request in requests {
+            let wire = serde_json::to_value(&request).unwrap();
+            // Round-trips on this version.
+            serde_json::from_value::<Request>(wire.clone()).unwrap();
+            // A protocol 27 daemon has no such variant and refuses it.
+            assert!(
+                serde_json::from_value::<PreSelectionRequest>(wire).is_err(),
+                "{request:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn job_fields_added_for_selection_jobs_are_optional_both_ways() {
+        let job = selection_job();
+        let wire = serde_json::to_value(&job).unwrap();
+        // A protocol 27 client ignores the added fields.
+        let old: PreSelectionJob = serde_json::from_value(wire).unwrap();
+        assert_eq!(old.progress.failed, 1);
+
+        // A job written before them decodes with the fields empty, and a plain
+        // job does not put them on the wire.
+        let mut plain = selection_job();
+        plain.selection = None;
+        plain.failures.clear();
+        plain.paused_until = None;
+        let plain_wire = serde_json::to_value(&plain).unwrap();
+        for key in [
+            "selection",
+            "failures",
+            "paused_until",
+            "action",
+            "undo_id_count",
+        ] {
+            assert!(plain_wire.get(key).is_none(), "{key} should be omitted");
+        }
+        let decoded: JobData = serde_json::from_value(plain_wire).unwrap();
+        assert_eq!(decoded, plain);
     }
 
     /// The request shapes before `label_role` / `all_accounts` existed.
@@ -749,6 +872,7 @@ mod tests {
                 Request::ListSubscriptions {
                     account_id: None,
                     limit: 10,
+                    all_accounts: false,
                 },
                 IpcCategory::MxrPlatform,
             ),
@@ -1243,6 +1367,9 @@ mod tests {
                         observations: Vec::new(),
                         features: Vec::new(),
                         keys: Vec::new(),
+                        fallback_model: None,
+                        fallback_error: None,
+                        background_paused_until: None,
                     },
                 },
                 IpcCategory::MxrPlatform,
@@ -1348,6 +1475,12 @@ mod tests {
                         started_at: 1,
                         finished_at: None,
                         result: None,
+                        selection: None,
+                        failures: Vec::new(),
+                        paused_until: None,
+                        action: None,
+                        undo_id_count: 0,
+                        failure_count: 0,
                     },
                 },
                 IpcCategory::CoreMail,
@@ -1388,6 +1521,7 @@ mod tests {
                 ResponseData::AccountOperation {
                     result: AccountOperationResult {
                         ok: true,
+                        saved: false,
                         summary: "ok".into(),
                         save: None,
                         auth: None,
@@ -1395,6 +1529,7 @@ mod tests {
                         send: None,
                         device_code_url: None,
                         device_code_user_code: None,
+                        tls_cert_sha256: None,
                     },
                 },
                 IpcCategory::MxrPlatform,
@@ -1463,6 +1598,7 @@ mod tests {
                         log_total_bytes: 0,
                         history_retention_days: None,
                         address_cache_stale: false,
+                        html_helper: HtmlHelperStats::default(),
                     },
                 },
                 IpcCategory::AdminMaintenance,
@@ -1688,6 +1824,47 @@ mod tests {
             let json = serde_json::to_string(&msg).unwrap();
             let _parsed: IpcMessage = serde_json::from_str(&json).unwrap();
         }
+    }
+
+    /// A daemon newer than this build can push an event this build has no
+    /// variant for. It must decode as `Unknown` (to be skipped), not fail the
+    /// frame, or the client drops its connection.
+    #[test]
+    fn event_this_build_does_not_know_decodes_as_unknown() {
+        let frame = serde_json::json!({
+            "id": 0,
+            "payload": {
+                "type": "Event",
+                "event": "SomeEventAddedLater",
+                "account_id": "a",
+                "extra": [1, 2]
+            }
+        });
+
+        let parsed: IpcMessage = serde_json::from_value(frame).unwrap();
+
+        assert!(matches!(
+            parsed.payload,
+            IpcPayload::Event(DaemonEvent::Unknown)
+        ));
+    }
+
+    #[test]
+    fn contacts_refreshed_event_roundtrips_without_fields() {
+        let json = serde_json::to_value(IpcMessage {
+            expected_workspace: None,
+            id: 0,
+            source: crate::ClientKind::default(),
+            payload: IpcPayload::Event(DaemonEvent::ContactsRefreshed),
+        })
+        .unwrap();
+
+        assert_eq!(json["payload"]["event"], "ContactsRefreshed");
+        let parsed: IpcMessage = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            parsed.payload,
+            IpcPayload::Event(DaemonEvent::ContactsRefreshed)
+        ));
     }
 
     #[test]
@@ -2575,6 +2752,32 @@ mod tests {
         );
         let back: AccountIdentityData = serde_json::from_value(json).unwrap();
         assert_eq!(back, identity);
+    }
+
+    #[test]
+    fn an_account_with_a_colour_from_a_newer_daemon_still_parses() {
+        // A daemon that knows a slot this build does not must not fail the
+        // whole accounts list, only that account's colour.
+        let newer = serde_json::json!({
+            "account_id": AccountId::new(),
+            "key": "work",
+            "name": "Work",
+            "email": "bk@work.example",
+            "provider_kind": "fake",
+            "sync_kind": null,
+            "send_kind": null,
+            "enabled": true,
+            "is_default": false,
+            "source": "config",
+            "editable": "full",
+            "sync": null,
+            "send": null,
+            "identity": { "color": "teal", "tag": "W" },
+        });
+        let decoded: AccountSummaryData = serde_json::from_value(newer).unwrap();
+        let identity = decoded.identity.expect("identity");
+        assert_eq!(identity.color, mxr_core::AccountColor::Unknown);
+        assert_eq!(identity.tag, "W");
     }
 
     /// New clients name the replay policy explicitly; old clients still decode.

@@ -18,6 +18,7 @@ use ratatui::widgets::*;
 use crate::app::{
     ActivePane, ReadingConfirm, ReadingPageState, ReadingRow, ReadingView, READING_LINKS_SHOWN,
 };
+use crate::ui::key_footer::FooterKey;
 use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -54,7 +55,7 @@ const LIST_KEYS: &[(&str, &str)] = &[
     ("reading.later-shelf", "Later"),
     ("reading.highlights", "highlights"),
     ("reading.marginalia", "Marginalia"),
-    ("shell.help", "help"),
+    ("shell.help", "keys"),
 ];
 const READER_KEYS: &[(&str, &str)] = &[
     ("reading.reader-back", "back"),
@@ -67,38 +68,29 @@ const READER_KEYS: &[(&str, &str)] = &[
     ("reading.original", "original"),
     ("reading.marginalia", "Marginalia"),
     ("reading.open-email", "email"),
+    ("shell.help", "keys"),
 ];
 
-fn footer_keys(keys: &[(&str, &str)]) -> String {
+/// "key verb" entries for the footer. The first (the place's primary verb)
+/// and help always show; the rest go last-first when space runs short.
+fn footer_keys(keys: &[(&str, &str)]) -> Vec<FooterKey> {
     keys.iter()
-        .filter_map(|(id, word)| {
+        .enumerate()
+        .filter_map(|(at, (id, word))| {
             let key = mxr_keymap::guide_key(id)?;
             let key = if key == "Escape" {
                 "Esc".to_string()
             } else {
                 key
             };
-            Some(format!("{key} {word}"))
+            let text = format!("{key} {word}");
+            Some(if at == 0 || *id == "shell.help" {
+                FooterKey::keep(text)
+            } else {
+                FooterKey::optional(text)
+            })
         })
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ")
-}
-
-/// As many whole "key verb" items as fit in `width`.
-fn fit_keys(keys: &str, width: usize) -> String {
-    let mut out = String::new();
-    for item in keys.split(" \u{b7} ") {
-        let next = if out.is_empty() {
-            item.to_string()
-        } else {
-            format!("{out} \u{b7} {item}")
-        };
-        if next.chars().count() > width {
-            break;
-        }
-        out = next;
-    }
-    out
+        .collect()
 }
 
 fn dot() -> &'static str {
@@ -134,6 +126,24 @@ struct Body {
 }
 
 impl Body {
+    fn filed(
+        &mut self,
+        item: &ReadingItemData,
+        view: &ReadingLensView<'_>,
+        width: usize,
+        style: Style,
+    ) {
+        if let Some(filed) = item.source_filed_at {
+            let label = format!(
+                "left the inbox · observed {}",
+                view.zone.at(filed).format("%-d %b %Y")
+            );
+            for line in wrap(&label, width) {
+                self.text(line, style);
+            }
+        }
+    }
+
     fn text(&mut self, text: impl Into<String>, style: Style) {
         self.lines.push(Line::from(Span::styled(
             format!("  {}", text.into()),
@@ -213,6 +223,7 @@ fn edition_body(view: &ReadingLensView<'_>, width: usize, theme: &crate::theme::
                 selected,
             ));
             body.text(truncate(&meta_line(item), text_width), secondary);
+            body.filed(item, view, text_width, secondary);
             if let Some(offer) = &item.unsubscribe_offer {
                 body.text(
                     truncate(
@@ -322,6 +333,7 @@ fn later_body(
             meta.push("saved to read offline".into());
         }
         body.text(truncate(&meta.join(dot()), text_width), secondary);
+        body.filed(item, view, text_width, secondary);
         body.text(truncate(&one_line(&item.why), text_width), muted);
         if item.still_want_it {
             body.text(
@@ -547,12 +559,13 @@ pub(crate) fn reader_lines(
     (lines, owners)
 }
 
-/// The paragraph at the top of the reader, for `h`.
+/// The paragraph at the top of the reader, for `"`: its index in the
+/// reader's paragraph list and its text.
 pub(crate) fn paragraph_at_top(
     page: &ReadingPageState,
     now: DateTime<Utc>,
     zone: crate::ui::received_label::DisplayZone,
-) -> Option<String> {
+) -> Option<(usize, String)> {
     let (_, owners) = reader_lines(
         page,
         READER_WIDTH,
@@ -565,8 +578,7 @@ pub(crate) fn paragraph_at_top(
         .iter()
         .skip(usize::from(page.scroll))
         .find_map(|owner| *owner)
-        .and_then(|index| paragraphs.get(index))
-        .map(|paragraph| paragraph.text.clone())
+        .and_then(|index| Some((index, paragraphs.get(index)?.text.clone())))
 }
 
 /// How many lines the reader holds, for progress.
@@ -693,11 +705,14 @@ pub fn draw(
     let keys = if reading {
         // j and k scroll in place, so no action carries them.
         let (back, rest) = READER_KEYS.split_at(1);
-        format!(
-            "{} \u{b7} j/k scroll \u{b7} {}",
-            footer_keys(back),
-            footer_keys(rest)
-        )
+        let mut keys = footer_keys(back);
+        keys.push(FooterKey::keep("j/k scroll"));
+        keys.extend(footer_keys(rest).into_iter().map(|mut key| {
+            // `rest` starts mid-list: only help is kept there.
+            key.keep = key.text.starts_with("? ");
+            key
+        }));
+        keys
     } else {
         footer_keys(LIST_KEYS)
     };
@@ -708,7 +723,10 @@ pub fn draw(
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(" {}", fit_keys(&keys, width.saturating_sub(2))),
+                format!(
+                    " {}",
+                    crate::ui::key_footer::fit(&keys, " \u{b7} ", width.saturating_sub(2))
+                ),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

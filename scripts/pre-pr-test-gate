@@ -34,5 +34,5 @@ pre-PR test gate passed
 
 For browser-backed web changes, also run:
   cargo build -p mxr
-  cd apps/web && npm run e2e -- e2e/smoke.spec.ts
+  cd apps/web && npm run e2e
 EOF

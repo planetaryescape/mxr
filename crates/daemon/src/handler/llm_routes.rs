@@ -6,11 +6,13 @@
 
 use super::HandlerResult;
 use crate::llm_keys::{clean_key, provider_data, provider_from_data, status_of, LlmKeys};
-use crate::state::{effective_llm_config, llm_model_routes, AppState};
-use mxr_llm::{LlmFeature, RouteProvider, RouteState};
+use crate::state::{
+    effective_llm_config, llm_fallback, llm_fallback_chain, llm_model_routes, AppState,
+};
+use mxr_llm::{LlmFeature, RouteProvider, RouteState, RouteView};
 use mxr_protocol::{
-    LlmFeatureStatusData, LlmKeyChangeData, LlmKeySecret, LlmKeySourceData, LlmKeyStatusData,
-    LlmProviderData, LlmRouteStateData, LlmRouteStatusData, ResponseData,
+    LlmEndpointStatusData, LlmFeatureStatusData, LlmKeyChangeData, LlmKeySecret, LlmKeySourceData,
+    LlmKeyStatusData, LlmProviderData, LlmRouteStateData, LlmRouteStatusData, ResponseData,
 };
 
 pub(super) async fn reload_llm_config(state: &AppState) -> HandlerResult {
@@ -108,12 +110,14 @@ pub(crate) fn key_statuses() -> Vec<LlmKeyStatusData> {
 }
 
 /// One row per feature: its model and, for a routed model, each route's
-/// standing, in the order requests try them.
+/// standing, in the order requests try them. With `[llm.fallback]`, a model
+/// `base_url` serves shows the endpoint's standing and the fallback's routes.
 pub(crate) fn feature_statuses(state: &AppState) -> Vec<LlmFeatureStatusData> {
     let config = state.config_snapshot().llm;
     let keys = LlmKeys::at_default_path();
     let demo = mxr_config::is_demo_instance();
     let now = chrono::Utc::now();
+    let fallback = llm_fallback(&config).ok().flatten();
     LlmFeature::ALL
         .into_iter()
         .map(|feature| {
@@ -122,15 +126,50 @@ pub(crate) fn feature_statuses(state: &AppState) -> Vec<LlmFeatureStatusData> {
                 .then(|| llm_model_routes(&effective))
                 .flatten();
             let routed = routes.is_some();
+            let blocked = state.llm.feature_block_reason(feature);
+            let chain = (!demo && blocked.is_none())
+                .then(|| llm_fallback_chain(&config, fallback.as_ref(), Some(feature), &effective))
+                .flatten();
             let cloud = effective.enabled
                 && !demo
-                && (routed || !mxr_llm::is_loopback_endpoint(&effective.base_url));
+                && (routed
+                    || !mxr_llm::is_loopback_endpoint(&effective.base_url)
+                    || chain.as_ref().is_some_and(|chain| !chain.routes.is_empty()));
             let statuses = routes.map_or_else(Vec::new, |routes| {
                 mxr_llm::route_statuses(&routes, &keys, state.llm.route_health())
                     .into_iter()
                     .map(|status| route_status_data(&status, now))
                     .collect()
             });
+            let (endpoint, fallback_routes) = chain.as_ref().map_or((None, Vec::new()), |chain| {
+                let endpoint = mxr_llm::EndpointRoute::new(
+                    &effective.base_url,
+                    &effective.model,
+                    &effective.api_key_env,
+                );
+                let (endpoint, routes) = mxr_llm::chain_statuses(
+                    &endpoint,
+                    &chain.routes,
+                    &keys,
+                    state.llm.route_health(),
+                );
+                (
+                    Some(endpoint_status_data(&endpoint, now)),
+                    routes
+                        .iter()
+                        .map(|status| route_status_data(status, now))
+                        .collect(),
+                )
+            });
+            let fallback_withheld =
+                chain
+                    .as_ref()
+                    .filter(|chain| chain.routes.is_empty())
+                    .map(|_| {
+                        "relationship data stays off the cloud fallback; set \
+                 llm.allow_cloud_relationship_data=true to permit it"
+                            .to_string()
+                    });
             LlmFeatureStatusData {
                 feature: feature.key().to_string(),
                 enabled: effective.enabled,
@@ -139,10 +178,46 @@ pub(crate) fn feature_statuses(state: &AppState) -> Vec<LlmFeatureStatusData> {
                 cloud,
                 base_url: (effective.enabled && !routed && !demo).then_some(effective.base_url),
                 routes: statuses,
-                blocked: state.llm.feature_block_reason(feature),
+                blocked,
+                endpoint,
+                fallback: fallback_routes,
+                fallback_withheld,
             }
         })
         .collect()
+}
+
+fn endpoint_status_data(
+    status: &mxr_llm::EndpointStatus,
+    now: chrono::DateTime<chrono::Utc>,
+) -> LlmEndpointStatusData {
+    LlmEndpointStatusData {
+        base_url: status.route.base_url.clone(),
+        model: status.route.model.clone(),
+        state: route_state_data(status.view.state),
+        retry_at: retry_at(&status.view, now),
+        reason: status.view.reason.map(|reason| reason.to_string()),
+        next: status.next,
+    }
+}
+
+fn route_state_data(state: RouteState) -> LlmRouteStateData {
+    match state {
+        RouteState::Ok => LlmRouteStateData::Ok,
+        RouteState::Cooling => LlmRouteStateData::Cooling,
+        RouteState::Broken => LlmRouteStateData::Broken,
+        RouteState::Recovering => LlmRouteStateData::Recovering,
+        RouteState::Probing => LlmRouteStateData::Probing,
+    }
+}
+
+/// When a cooling or broken route may be tried again.
+fn retry_at(
+    view: &RouteView,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    matches!(view.state, RouteState::Cooling | RouteState::Broken)
+        .then(|| now + chrono::Duration::from_std(view.retry_in).unwrap_or_default())
 }
 
 fn route_status_data(
@@ -152,21 +227,16 @@ fn route_status_data(
     let state = if !status.key_present {
         LlmRouteStateData::NoKey
     } else {
-        match status.view.state {
-            RouteState::Ok => LlmRouteStateData::Ok,
-            RouteState::Cooling => LlmRouteStateData::Cooling,
-            RouteState::Broken => LlmRouteStateData::Broken,
-            RouteState::Recovering => LlmRouteStateData::Recovering,
-            RouteState::Probing => LlmRouteStateData::Probing,
-        }
+        route_state_data(status.view.state)
     };
-    let waiting = matches!(status.view.state, RouteState::Cooling | RouteState::Broken);
     LlmRouteStatusData {
         provider: provider_data(status.route.provider),
         model: status.route.model.clone(),
         state,
-        retry_at: (status.key_present && waiting)
-            .then(|| now + chrono::Duration::from_std(status.view.retry_in).unwrap_or_default()),
+        retry_at: status
+            .key_present
+            .then(|| retry_at(&status.view, now))
+            .flatten(),
         reason: status
             .key_present
             .then(|| status.view.reason.map(|reason| reason.to_string()))

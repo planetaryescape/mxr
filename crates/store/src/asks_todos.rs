@@ -34,7 +34,7 @@ impl Store {
         if !current {
             return Ok(());
         }
-        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND (currency IS ? OR (currency IS NULL AND ?)) AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND (currency IS ? OR (currency IS NULL AND ?)) AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::SELECT_COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(record.account_id.as_str())
             .bind(crate::encode_json(&legacy_keys)?)
@@ -78,6 +78,69 @@ impl Store {
                     .await?;
             }
         }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Same email, same to-do. A key ends in its due period (`due:%Y-%m` or
+    /// `sent:%Y-%m`), so a rescan that moves an item's date into another
+    /// month asks for a key no row holds. When this email already made a row
+    /// for the same item under another period, that row takes the new key,
+    /// keeping its id, state, snooze and edits; the upsert then gives it the
+    /// new date. `siblings` are the keys the email's other items hold now, so
+    /// one email with two bills a month apart keeps both rows.
+    pub async fn adopt_asks_same_source(
+        &self,
+        record: &TodoRecord,
+        answer: &mxr_core::asks::AskAssessment,
+        siblings: &[String],
+    ) -> Result<(), sqlx::Error> {
+        let Some((identity, period)) = record.dedup_key.rsplit_once('|') else {
+            return Ok(());
+        };
+        if !record.dedup_key.starts_with("asks|")
+            || !(period.starts_with("due:") || period.starts_with("sent:"))
+            || record.account_id != answer.account_id
+            || record.source_message_id.as_ref() != Some(&answer.message_id)
+        {
+            return Ok(());
+        }
+        let prefix = format!("{identity}|");
+        // Exact prefix match: LIKE would read `_` and `%` in the key as
+        // wildcards. A read first, so the common scan (row already keyed, or
+        // a new item) takes no write lock.
+        let candidates: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, dedup_key FROM todos WHERE account_id=?1 AND source_message_id=?2 AND substr(dedup_key, 1, length(?3))=?3 AND instr(substr(dedup_key, length(?3)+1), '|')=0 AND (substr(dedup_key, length(?3)+1, 4)='due:' OR substr(dedup_key, length(?3)+1, 5)='sent:') AND dedup_key NOT IN (SELECT value FROM json_each(?4)) AND NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id=?1 AND t.dedup_key=?5) ORDER BY created_at, id LIMIT 2",
+        )
+        .bind(record.account_id.as_str())
+        .bind(answer.message_id.as_str())
+        .bind(&prefix)
+        .bind(crate::encode_json(&siblings)?)
+        .bind(&record.dedup_key)
+        .fetch_all(self.reader())
+        .await?;
+        // Two rows from one email for one item are already ambiguous; leave them.
+        let [(id, old_key)] = candidates.as_slice() else {
+            return Ok(());
+        };
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        // Only the answer the upsert will write may move a row.
+        let current: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?1 AND a.account_id=?2 AND a.policy_version=?3 AND a.input_fingerprint=?4 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?5)")
+            .bind(answer.message_id.as_str()).bind(record.account_id.as_str()).bind(&answer.policy_version).bind(&answer.input_fingerprint)
+            .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?).fetch_one(&mut *tx).await?;
+        if !current {
+            return Ok(());
+        }
+        // The read above ran outside this transaction; the row moves only if
+        // it still holds its old key and nothing took the new one meanwhile.
+        sqlx::query("UPDATE todos SET dedup_key=?1 WHERE id=?2 AND account_id=?3 AND source_message_id=?4 AND dedup_key=?5 AND NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id=?3 AND t.dedup_key=?1)")
+            .bind(&record.dedup_key)
+            .bind(id)
+            .bind(record.account_id.as_str())
+            .bind(answer.message_id.as_str())
+            .bind(old_key)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -151,7 +214,7 @@ impl Store {
         &self,
         account: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND NOT (kind = 'renewal' AND dedup_key LIKE 'record-renewal|%') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND NOT (kind = 'renewal' AND dedup_key LIKE 'record-renewal|%') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::SELECT_COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())
             .fetch_all(self.reader())
@@ -185,7 +248,10 @@ impl Store {
             tx.rollback().await?;
             return Ok(false);
         }
-        let sql = format!("SELECT {} FROM todos WHERE id = ?", crate::todos::COLUMNS);
+        let sql = format!(
+            "SELECT {} FROM todos WHERE id = ?",
+            crate::todos::SELECT_COLUMNS
+        );
         let row = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(&before.id)
             .fetch_one(&mut *tx)
@@ -215,7 +281,7 @@ impl Store {
             // before inserting new automatic rows for the account.
             let sql = format!(
                 "SELECT {} FROM todos WHERE account_id = ? AND dedup_key = ? AND id != ?",
-                crate::todos::COLUMNS
+                crate::todos::SELECT_COLUMNS
             );
             if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(sql))
                 .bind(before.account_id.as_str())

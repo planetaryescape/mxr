@@ -200,6 +200,7 @@ mod tests {
         app.accounts.pending_identity = None;
         app.finish_identity_write(Some(&mxr_protocol::AccountOperationResult {
             ok: true,
+            saved: false,
             summary: "Would set identity".into(),
             save: Some(mxr_protocol::AccountOperationStep {
                 ok: true,
@@ -210,6 +211,7 @@ mod tests {
             send: None,
             device_code_url: None,
             device_code_user_code: None,
+            tls_cert_sha256: None,
         }));
         let open = app
             .accounts
@@ -265,6 +267,7 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         app.finish_identity_write(Some(&mxr_protocol::AccountOperationResult {
             ok: false,
+            saved: false,
             summary: "Failed to set identity".into(),
             save: Some(mxr_protocol::AccountOperationStep {
                 ok: false,
@@ -275,6 +278,7 @@ mod tests {
             send: None,
             device_code_url: None,
             device_code_user_code: None,
+            tls_cert_sha256: None,
         }));
         let open = app
             .accounts

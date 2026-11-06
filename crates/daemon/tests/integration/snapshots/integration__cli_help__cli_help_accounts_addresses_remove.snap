@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Remove an alias from an account
+
+Usage: mxr accounts addresses remove [OPTIONS] <EMAIL>
+
+Arguments:
+  <EMAIL>
+
+Options:
+      --account <ACCOUNT>
+      --dry-run            Show the stored mail this would reclassify, without removing the address
+      --format <FORMAT>    Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

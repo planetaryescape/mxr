@@ -8,6 +8,7 @@
 //! `cargo test -p mxr-keymap` fails until the two agree.
 
 use super::*;
+use crate::app::AccountFormMode;
 use crate::keybindings::{action_from_name, default_keybindings, KeyBinding};
 use mxr_protocol::MailPlaceData;
 use std::collections::BTreeMap;
@@ -1230,14 +1231,19 @@ fn mail_list_remaps_stay_out_of_the_modes() {
 /// starts with a prefix.
 #[test]
 fn a_moved_key_names_its_new_key_and_runs_nothing() {
-    let mut app = app_in("todo");
+    let todo = |until| {
+        let mut app = app_in("todo");
+        with_move(&mut app, "todo.catchup", "C", &["todo"], until);
+        app
+    };
+    let mut app = todo("999.0.0");
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
     assert_eq!(app.handle_key(shifted('C')), None);
     let notice = app.status_message.clone().unwrap_or_default();
     assert!(notice.ends_with("is now 2"), "{notice}");
     assert_eq!(press_char(&mut app, '2'), Some(Action::TodoOpenCatchup));
 
-    let mut app = app_in("todo");
+    let mut app = todo("999.0.0");
     assert_eq!(press_char(&mut app, 'g'), None);
     assert_eq!(
         app.handle_key(shifted('C')),
@@ -1246,10 +1252,47 @@ fn a_moved_key_names_its_new_key_and_runs_nothing() {
     );
 
     let mut app = app_in("list");
+    with_move(
+        &mut app,
+        "mail.snooze",
+        "Z",
+        &["list", "reader", "place"],
+        "999.0.0",
+    );
     assert_eq!(app.handle_key(shifted('Z')), None);
     let notice = app.status_message.clone().unwrap_or_default();
     assert!(notice.ends_with("is now b"), "{notice}");
     assert_eq!(press_char(&mut app, 'b'), Some(Action::Snooze));
+}
+
+/// From its `until` release on, a move is ignored: the old key shows
+/// nothing and still runs nothing (D171).
+#[test]
+fn an_expired_moved_key_does_nothing() {
+    // `Q` is free in To do and no shipped move names it.
+    let mut app = app_in("todo");
+    with_move(
+        &mut app,
+        "todo.catchup",
+        "Q",
+        &["todo"],
+        mxr_keymap::VERSION,
+    );
+    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    let before = app.status_message.clone();
+    assert_eq!(app.handle_key(shifted('Q')), None);
+    assert_eq!(app.status_message, before, "no notice");
+    assert!(!app.input_pending());
+
+    // A moved sequence holds its first key only while it is announced.
+    for (until, waits) in [("999.0.0", true), ("0.0.1", false)] {
+        let mut app = app_in("todo");
+        with_move(&mut app, "todo.catchup", "y y", &["todo"], until);
+        assert_eq!(press_char(&mut app, 'y'), None);
+        assert_eq!(app.input_pending(), waits, "until {until}");
+    }
+    // And the clients start from the definition as this release uses it.
+    assert_eq!(app_in("list").keybindings.keymap(), mxr_keymap::defaults());
 }
 
 /// Blueprint 35's `g` table: tools take `g` and a capital, in the mailbox
@@ -1312,66 +1355,11 @@ fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
 }
 
-/// The third wave of moves (blueprint 35's verb table): every old key says
-/// where its action went and runs nothing.
+/// The third wave of moves (blueprint 35's verb table): each action runs
+/// on its new key.
 #[test]
-fn third_wave_keys_name_their_new_keys() {
+fn third_wave_keys_run_their_actions() {
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    let palette = "has no key now; find it in the palette";
-    for (context, key, notice) in [
-        (
-            "list",
-            shifted('E'),
-            format!("Export as Markdown {palette}"),
-        ),
-        (
-            "reader",
-            shifted('E'),
-            format!("Export as Markdown {palette}"),
-        ),
-        (
-            "sidebar",
-            press_of('['),
-            "Collapse section is now Enter".into(),
-        ),
-        (
-            "sidebar",
-            press_of(']'),
-            "Expand section is now Enter".into(),
-        ),
-        ("sidebar", press_of('n'), "New saved search is now c".into()),
-        ("place", press_of('p'), "Pin is now s".into()),
-        ("place", shifted('K'), "Move sender to is now P".into()),
-        ("place", shifted('S'), format!("Sweep sender {palette}")),
-        ("place", shifted('A'), "Sweep all is now E".into()),
-        (
-            "place",
-            press_of('>'),
-            format!("More senders in this place {palette}"),
-        ),
-        (
-            "place",
-            press_of('+'),
-            format!("More from this sender {palette}"),
-        ),
-        ("archive", shifted('E'), format!("Export {palette}")),
-        ("archive", press_of('v'), "Checked is now ,".into()),
-        ("todo", press_of('v'), "Details is now ,".into()),
-        ("updates", shifted('S'), format!("Sweep sender {palette}")),
-    ] {
-        let mut app = app_in(context);
-        assert_eq!(
-            app.handle_key(key),
-            None,
-            "{key:?} in {context} ran something"
-        );
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some(notice.as_str()),
-            "{context}"
-        );
-    }
-
     for (context, keys, expected) in [
         ("place", vec![press_of('s')], Action::TogglePin),
         ("place", vec![shifted('P')], Action::OpenSenderKindMenu),
@@ -1418,37 +1406,15 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     );
 }
 
-/// Screens and overlays that still read their own keys say where a moved
-/// key went too.
+/// `c` creates what a tool screen holds (blueprint 35).
 #[test]
-fn tool_screen_keys_that_moved_say_so() {
-    for (screen, notice) in [
-        (Screen::Rules, "New rule is now c"),
-        (Screen::Accounts, "Add account is now c"),
-    ] {
-        let mut app = App::new();
-        app.screen = screen;
-        app.accounts.page.onboarding_required = false;
-        assert_eq!(press_char(&mut app, 'n'), None, "{screen:?}");
-        assert_eq!(app.status_message.as_deref(), Some(notice), "{screen:?}");
-    }
+fn tool_screens_create_with_c() {
     let mut app = App::new();
     app.screen = Screen::Rules;
     assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenRuleFormNew));
     let mut app = App::new();
     app.screen = Screen::Accounts;
     assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenAccountFormNew));
-
-    let mut app = app_in("list");
-    app.mailbox.mailbox_view = MailboxView::CalendarInvites;
-    for (key, notice) in [
-        ('a', "Accept invite is now i a"),
-        ('t', "Maybe (invite) is now i m"),
-        ('d', "Decline invite is now i d"),
-    ] {
-        assert_eq!(press_char(&mut app, key), None);
-        assert_eq!(app.status_message.as_deref(), Some(notice));
-    }
 }
 
 /// D171: an action with a key run from the palette names its key, once per
@@ -1536,16 +1502,38 @@ fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
     assert_eq!(app.mailbox.selected_index, 0);
 }
 
+/// `n` and `N` step through search results in the reader only. In the
+/// list, sidebar and place they run nothing, and while a move announces
+/// them they say where it went (D171). The move here is made up, so the
+/// test holds whichever moves this release still ships.
 #[test]
 fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
-    let mut app = app_in("list");
-    app.mailbox.envelopes = make_test_envelopes(3);
-    assert_eq!(press_char(&mut app, 'n'), None);
-    assert_eq!(app.mailbox.selected_index, 0);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Next search result is now j")
-    );
+    for context in ["list", "sidebar", "place"] {
+        for (key, id, notice) in [
+            ('n', "list.down", "Next is now j"),
+            ('N', "list.up", "Previous is now k"),
+        ] {
+            for (until, announced) in [("999.0.0", true), ("0.0.1", false)] {
+                let mut app = app_in(context);
+                with_move(&mut app, id, &key.to_string(), &[context], until);
+                app.mailbox.envelopes = make_test_envelopes(3);
+                let before = app.status_message.clone();
+                assert_eq!(press_char(&mut app, key), None, "{context}: {key}");
+                assert_eq!(app.mailbox.selected_index, 0);
+                assert_eq!(
+                    app.status_message.as_deref(),
+                    if announced {
+                        Some(notice)
+                    } else {
+                        before.as_deref()
+                    },
+                    "{context}: {key}, until {until}"
+                );
+            }
+        }
+    }
+    let mut remapped = remapped_app("list", "[mail_list]\n\"n\" = \"move_down\"\n");
+    assert_eq!(press_char(&mut remapped, 'n'), Some(Action::MoveDown));
 }
 
 #[test]
@@ -1636,32 +1624,28 @@ fn with_single_keys_off_e_does_nothing_and_the_palette_still_archives() {
 
 #[test]
 fn a_moved_key_names_the_key_the_person_gave_its_action() {
-    let keymap = mxr_keymap::defaults();
-    let (place, key, target) = keymap
-        .actions
-        .iter()
-        .filter(|action| {
-            action
-                .tui
-                .iter()
-                .any(|binding| binding.contexts.includes("todo") && !binding.keys.is_empty())
-        })
-        .find_map(|action| {
-            let moved = action.moved.iter().find(|moved| {
-                moved.to.is_none()
-                    && moved.to_key.is_none()
-                    && moved.contexts.iter().any(|c| c == "todo")
-            })?;
-            Some(("todo", moved.key.clone(), action.id.clone()))
-        })
-        .expect("a key moved within To do");
-    let mut app = remapped_app(place, &format!("[actions]\n\"{target}\" = \"%\"\n"));
-    press_char(&mut app, key.chars().next().unwrap());
-    if let Some(second) = key.split(' ').nth(1).and_then(|k| k.chars().next()) {
-        press_char(&mut app, second);
-    }
+    let mut app = remapped_app("todo", "[actions]\n\"todo.catchup\" = \"%\"\n");
+    with_move(&mut app, "todo.catchup", "C", &["todo"], "999.0.0");
+    app.handle_key(KeyEvent::new(KeyCode::Char('C'), KeyModifiers::SHIFT));
     let status = app.status_message.clone().unwrap_or_default();
-    assert!(status.ends_with("is now %"), "{key} in {place}: {status}");
+    assert!(status.ends_with("is now %"), "C in todo: {status}");
+}
+
+#[test]
+fn with_single_keys_off_the_account_form_types_letters_into_its_text_fields() {
+    let mut app = remapped_app("list", "single_keys = false\n");
+    app.screen = Screen::Accounts;
+    app.accounts.page.form.visible = true;
+    app.accounts.page.form.mode = AccountFormMode::ImapSmtp;
+    // The name field, which is text. `s` saves and `r` reauthorises when
+    // single keys are on, so the word below also proves they stay text here.
+    app.accounts.page.form.active_field = 2;
+    for c in "shark".chars() {
+        assert_eq!(press_char(&mut app, c), None, "{c} is text, not a command");
+    }
+    assert_eq!(app.accounts.page.form.name, "shark");
+    assert!(app.accounts.page.form.editing_field);
+    assert!(app.status_message.is_none(), "no single-key notice");
 }
 
 #[test]
@@ -1674,4 +1658,25 @@ fn with_single_keys_off_a_tool_screen_ignores_its_letters() {
         app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
         Some(Action::OpenCommandPalette)
     );
+}
+
+/// Dogfood 2026-10-29: help's "How do I…" questions ran into their
+/// answers ("Repair an unhealthy accountgC → …") because the first column
+/// was 20 characters whatever it held.
+#[test]
+fn help_questions_never_run_into_their_answers() {
+    let mut app = App::new();
+    let lines = rendered_help_lines(&mut app, "");
+    for question in [
+        "Search and save a search",
+        "Repair an unhealthy account",
+        "Undo a destructive action",
+    ] {
+        let line = lines
+            .iter()
+            .find(|line| line.starts_with(question))
+            .unwrap_or_else(|| panic!("{question} in help:\n{}", lines.join("\n")));
+        let rest = &line[question.len()..];
+        assert!(rest.starts_with(' '), "{line}");
+    }
 }

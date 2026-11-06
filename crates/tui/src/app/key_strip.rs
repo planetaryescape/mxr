@@ -189,9 +189,9 @@ impl App {
     /// [`PREFIX_GUIDE_DELAY`]: crate::input::PREFIX_GUIDE_DELAY
     pub(crate) fn prefix_guide(
         &self,
-        now: std::time::Instant,
     ) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
-        if self.input.prefix_waited(now)? < crate::input::PREFIX_GUIDE_DELAY {
+        // The handler's own clock, which set the prefix's deadline.
+        if self.input.prefix_waited(self.input.now())? < crate::input::PREFIX_GUIDE_DELAY {
             return None;
         }
         self.prefix_choices()
@@ -209,15 +209,40 @@ impl App {
             config: &self.keybindings,
             view: self.keybinding_context(),
         };
-        Some((
-            prefix,
-            crate::ui::prefix_guide::continuations(&keys, &places, prefix),
-        ))
+        let mut choices = crate::ui::prefix_guide::continuations(&keys, &places, prefix);
+        // `g 1`…`g 9` open the saved searches in sidebar order: name each
+        // one, and leave out the digits with no saved search behind them.
+        let saved = &self.mailbox.saved_searches;
+        choices.retain_mut(|choice| {
+            let Some(slot) = choice.id.strip_prefix("nav.saved-search-") else {
+                return true;
+            };
+            let search = slot
+                .parse::<usize>()
+                .ok()
+                .and_then(|slot| slot.checked_sub(1))
+                .and_then(|index| saved.get(index));
+            match search {
+                Some(search) => {
+                    choice.label = search.name.clone();
+                    true
+                }
+                None => false,
+            }
+        });
+        Some((prefix, choices))
     }
 
-    /// Test-only: as if the waiting prefix was pressed `by` earlier.
+    /// Test-only: stop the key handler's clock, so prefix timing moves
+    /// only by [`Self::advance_input_clock_for_tests`].
     #[cfg(test)]
-    pub(crate) fn age_prefix_for_tests(&mut self, by: std::time::Duration) {
-        self.input.age_prefix_for_tests(by);
+    pub(crate) fn freeze_input_clock_for_tests(&mut self) {
+        self.input.freeze_clock_for_tests();
+    }
+
+    /// Test-only: move the key handler's frozen clock forward by `by`.
+    #[cfg(test)]
+    pub(crate) fn advance_input_clock_for_tests(&mut self, by: std::time::Duration) {
+        self.input.advance_clock_for_tests(by);
     }
 }

@@ -3,6 +3,7 @@ use crate::state::AppState;
 use mxr_core::{
     DraftAttachment, DraftAttachmentId, DraftContent, DraftId, Envelope, ForwardSource, MessageBody,
 };
+use mxr_html_worker::{FallbackReason, Job};
 use sha2::{Digest, Sha256};
 
 pub(super) async fn prepare_source(
@@ -51,18 +52,16 @@ pub(super) async fn prepare_source(
         .filter(|html| !html.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| format!("<pre>{}</pre>", htmlescape::encode_minimal(&original_text)));
-    mxr_outbound::html::validate_html(&original_html)
-        .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
-    {
-        let document = scraper::Html::parse_document(&original_html);
-        for node in document.tree.nodes() {
-            let Some(element) = node.value().as_element() else {
-                continue;
-            };
-            for (_, value) in element.attrs() {
-                validate_cid_reference(body, value)?;
-            }
-        }
+    // A forward with no HTML part sends generated, escaped markup: nothing to
+    // check. With an HTML part, the document is checked whole or refused.
+    let has_html_part = body
+        .text_html
+        .as_deref()
+        .is_some_and(|html| !html.trim().is_empty());
+    if has_html_part {
+        mxr_outbound::html::validate_html(&original_html)
+            .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
+        validate_html_cid_references(body, &original_html)?;
     }
     // CSS background images may reference related parts without an img/src.
     static CSS_URL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -168,6 +167,57 @@ pub(super) async fn prepare_source(
     })
 }
 
+/// Every `cid:` attribute in the original HTML must name a related part. Over
+/// the parser budget, or with the HTML helper unable to read it, the HTML cannot
+/// be checked, so the forward is refused rather than sent with its references
+/// unchecked.
+fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
+    let values = CID_REFERENCES
+        .try_call(html, &())
+        .and_then(|values| values.ok_or(FallbackReason::Oversize))
+        .map_err(|reason| HandlerError::Message(unchecked_forward_message(reason).to_string()))?;
+    for value in &values {
+        validate_cid_reference(body, value)?;
+    }
+    Ok(())
+}
+
+/// No helper would start: the original may be fine, so the fix is a retry.
+fn unchecked_forward_message(reason: FallbackReason) -> &'static str {
+    if reason == FallbackReason::Unavailable {
+        "Cannot forward original HTML yet: mxr's HTML helper process did not start, so \
+         the HTML could not be checked: try again in a few seconds"
+    } else {
+        "Cannot forward original HTML: the HTML is too complex to check safely, so it \
+         cannot be forwarded: simplify it (fewer tags, attributes or table cells) and \
+         try again"
+    }
+}
+
+/// The attribute values that start `cid:`, from a parse in the HTML helper
+/// process. `None` is a document over the parser budget.
+pub(crate) static CID_REFERENCES: Job<(), Option<Vec<String>>> =
+    Job::new("daemon.cid_references", |html, ()| {
+        if !mxr_reader::within_budget(html) {
+            return None;
+        }
+        let document = scraper::Html::parse_document(html);
+        Some(
+            document
+                .tree
+                .nodes()
+                .filter_map(|node| node.value().as_element())
+                .flat_map(|element| element.attrs().map(|(_, value)| value))
+                .filter(|value| {
+                    value
+                        .split_once(':')
+                        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("cid"))
+                })
+                .map(str::to_string)
+                .collect(),
+        )
+    });
+
 fn validate_cid_reference(body: &MessageBody, value: &str) -> Result<(), HandlerError> {
     let Some((_, cid)) = value
         .split_once(':')
@@ -271,4 +321,104 @@ pub(super) async fn sent_attachments(
         });
     }
     Ok(attachments)
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    fn body_with_inline_part(cid: &str) -> MessageBody {
+        let mut body = crate::test_fixtures::make_empty_body(&mxr_core::MessageId::new());
+        body.attachments.push(mxr_core::AttachmentMeta {
+            id: mxr_core::AttachmentId::new(),
+            message_id: body.message_id.clone(),
+            filename: "logo.png".to_string(),
+            mime_type: "image/png".to_string(),
+            disposition: mxr_core::AttachmentDisposition::Inline,
+            content_id: Some(cid.to_string()),
+            content_location: None,
+            size_bytes: 4,
+            local_path: None,
+            provider_id: String::new(),
+        });
+        body
+    }
+
+    fn over_budget_with(reference: &str) -> String {
+        format!(r#"<img src="{reference}">{}"#, "<br>".repeat(200_000))
+    }
+
+    #[test]
+    fn an_over_budget_forward_is_refused_even_with_a_resolving_cid() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = over_budget_with("cid:logo@example.test");
+        let error =
+            validate_html_cid_references(&body, &html).expect_err("over-budget HTML is refused");
+        assert!(
+            error.to_string().contains("too complex to check safely"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_forward_with_a_resolving_cid_is_unchanged() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = r#"<img src="cid:logo@example.test">"#;
+        assert!(validate_html_cid_references(&body, html).is_ok());
+    }
+
+    #[test]
+    fn an_ordinary_forward_with_a_dangling_cid_is_still_refused() {
+        let body = body_with_inline_part("logo@example.test");
+        let html = r#"<img src="cid:missing@example.test">"#;
+        let error = validate_html_cid_references(&body, html).expect_err("dangling cid");
+        assert!(
+            error.to_string().contains("missing inline attachment"),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn a_forward_is_refused_when_the_helper_could_not_check_its_html() {
+        let body = body_with_inline_part("logo@example.test");
+        let lost = std::sync::Arc::new(mxr_html_worker::Supervisor::new(
+            mxr_html_worker::Config::new("/nonexistent/mxr-helper", Vec::new()),
+        ));
+        let html = r#"<img src="cid:logo@example.test">"#;
+        let error =
+            mxr_html_worker::with_supervisor(lost, || validate_html_cid_references(&body, html))
+                .expect_err("an unchecked forward is not sent");
+        // The original may be fine; the helper never saw it.
+        assert!(
+            error.to_string().contains("try again in a few seconds"),
+            "got {error}"
+        );
+        assert!(!error.to_string().contains("simplify"), "got {error}");
+    }
+
+    #[test]
+    fn html_the_helper_gave_up_on_is_refused_as_too_complex_to_forward() {
+        for reason in [
+            FallbackReason::Oversize,
+            FallbackReason::KnownBad,
+            FallbackReason::Timeout,
+            FallbackReason::HelperDied,
+            FallbackReason::JobFailed,
+        ] {
+            assert!(
+                unchecked_forward_message(reason).contains("too complex to check safely"),
+                "{reason:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_cid_attributes_come_back_from_the_parse() {
+        let html = r#"<img src="CID:a@x"><a href="https://example.test/cid:b">l</a><table background="cid:c@x"></table>"#;
+        let found = CID_REFERENCES.run_here(html, &());
+        assert_eq!(
+            found,
+            Some(vec!["CID:a@x".to_string(), "cid:c@x".to_string()])
+        );
+    }
 }

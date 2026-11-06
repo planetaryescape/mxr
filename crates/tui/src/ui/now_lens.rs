@@ -12,6 +12,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, NowPageState, NowRow};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -74,6 +75,14 @@ pub(crate) struct Body {
 }
 
 impl Body {
+    /// Track the cursor for scrolling when the row already owns its styling.
+    pub(crate) fn select_styled(&mut self, line: Line<'static>, selected: bool) {
+        if selected {
+            self.selected_line = self.lines.len();
+        }
+        self.lines.push(line);
+    }
+
     pub(crate) fn text(&mut self, text: impl Into<String>, style: Style) {
         self.lines.push(Line::from(Span::styled(
             format!("  {}", text.into()),
@@ -333,7 +342,13 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
                 line, false, row_width, theme, view.now, chip,
             ));
         }
-        body.text("  \u{21b5} open  A let go of this digest", muted);
+        body.text(
+            format!(
+                "  \u{21b5} open  {} let go of this digest",
+                mxr_keymap::guide_key("now.let-go-digest").unwrap_or_default()
+            ),
+            muted,
+        );
         index += 1;
     }
     if let Some(pick) = &now.reading {
@@ -459,22 +474,38 @@ fn arrivals_lines(
     }
 }
 
-fn keys_line(page: &NowPageState) -> String {
-    let rest: Vec<String> = match &page.guide {
+/// The footer's keys in `width`: Enter, undo and help always; the rest in
+/// the guide's order, the last ones dropped first when space runs short.
+fn keys_line(page: &NowPageState, width: usize) -> String {
+    let rest: Vec<(String, String)> = match &page.guide {
         Some(guide) => guide
             .keys
             .iter()
-            .filter(|key| !matches!(key.key.as_str(), "Enter" | "?"))
-            .map(|key| format!("{} {}", key.key, key.verb))
+            .map(|key| (key.key.clone(), key.verb.clone()))
             .collect(),
+        // Before the daemon's guide arrives, the compiled-in copy names
+        // actions by id; show their keys, as the guide would.
         None => mxr_protocol::NOW_GUIDE
             .keys
             .iter()
-            .filter(|(key, _)| !matches!(*key, "Enter" | "?"))
-            .map(|(key, verb)| format!("{key} {verb}"))
+            .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, (*verb).to_string())))
             .collect(),
     };
-    format!("\u{21b5} open in its mode  {}  ? keys", rest.join("  "))
+    let mut entries = vec![FooterKey::keep("\u{21b5} open in its mode")];
+    entries.extend(
+        rest.into_iter()
+            .filter(|(key, _)| !matches!(key.as_str(), "Enter" | "?"))
+            .map(|(key, verb)| {
+                let text = format!("{key} {verb}");
+                if key == "u" {
+                    FooterKey::keep(text)
+                } else {
+                    FooterKey::optional(text)
+                }
+            }),
+    );
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::theme::Theme) {
@@ -542,10 +573,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),
@@ -553,7 +581,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
     );
 
     if let Some(preview) = &view.page.digest_preview {
-        super::updates_lens::draw_let_go_preview(frame, area, preview, theme);
+        super::updates_lens::draw_let_go_preview(
+            frame,
+            area,
+            preview,
+            " Let go of this digest ",
+            theme,
+        );
     }
 }
 
@@ -567,6 +601,14 @@ pub(crate) mod tests {
         ScreenerChoiceData, ScreenerQuestionData, SenderKindData, TodoFirstRunData, NOW_GUIDE,
     };
     use mxr_test_support::render_to_string;
+
+    /// The clock the views render against. The fixtures' mail is from
+    /// October 2026, and the snapshots show it as earlier this year; on the
+    /// wall clock they change on 1 January.
+    fn fixture_now() -> chrono::DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap()
+    }
 
     fn person(name: &str, subject: &str, hours: i64) -> NowPersonData {
         let thread_id = ThreadId::new();
@@ -584,7 +626,7 @@ pub(crate) mod tests {
                 counterparty_name: Some(name.into()),
                 subject: subject.into(),
                 reason: "replied to your message".into(),
-                since: Utc::now(),
+                since: fixture_now(),
                 age_seconds: hours * 3600,
                 usual_seconds: None,
                 usual_samples: 0,
@@ -625,7 +667,7 @@ pub(crate) mod tests {
         lease.when_label = "act by Mon 13 Oct \u{b7} due Wed 15 Oct".into();
         lease.person_label = Some("Sam".into());
         NowData {
-            generated_at: Utc::now(),
+            generated_at: fixture_now(),
             header: NOW_GUIDE.header.into(),
             headline: "Friday afternoon. 3 people, 2 things to act on.".into(),
             people: NowPeopleData {
@@ -661,7 +703,7 @@ pub(crate) mod tests {
                 source_count: 9,
                 top_sources: Vec::new(),
                 line: "23 updates from 9 sources. Most from GitHub, Vercel and Stripe.".into(),
-                since: Utc::now(),
+                since: fixture_now(),
                 thread_ids: vec![ThreadId::new()],
                 early: false,
                 title: "This morning's digest".into(),
@@ -716,7 +758,9 @@ pub(crate) mod tests {
     pub(crate) fn page(now: NowData, hints_seen: bool) -> NowPageState {
         NowPageState {
             now: Some(now),
-            guide: Some(NOW_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
+            guide: Some(
+                NOW_GUIDE.to_data(|_| hints_seen.then(fixture_now), &mxr_keymap::guide_key),
+            ),
             ..NowPageState::default()
         }
     }
@@ -727,7 +771,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 34),
                 &NowView {
-                    now: chrono::Utc::now(),
+                    now: fixture_now(),
                     page,
                     selected_index,
                     active_pane: &ActivePane::MailList,
@@ -813,7 +857,7 @@ pub(crate) mod tests {
 
     fn arrivals(questions: usize) -> mxr_protocol::ArrivalsData {
         use mxr_protocol::{ArrivalBucketData, ArrivalCountData, ModeKindData, MoveChoiceData};
-        let now = Utc::now();
+        let now = fixture_now();
         let count = |bucket, count: u32, label: &str| ArrivalCountData {
             bucket,
             count,
@@ -917,5 +961,16 @@ pub(crate) mod tests {
         assert_eq!(age_label(30), "1m");
         assert_eq!(age_label(22 * 3600), "22h");
         assert_eq!(age_label(3 * 86_400), "3d");
+    }
+
+    #[test]
+    fn the_footer_keeps_undo_and_help_at_every_width() {
+        let page = page(populated(), true);
+        for width in [80, 100, 120] {
+            let rendered = render_at(&page, width, 0);
+            assert!(rendered.contains("u undo  ? keys"), "{width}:\n{rendered}");
+        }
+        // The last verbs in the guide's order give way first.
+        assert!(!render_at(&page, 80, 0).contains("f forward"));
     }
 }

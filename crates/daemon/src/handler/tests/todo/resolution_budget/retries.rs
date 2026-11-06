@@ -97,23 +97,34 @@ async fn invalid_model_outputs_retry_each_pair_five_times_independently() {
     );
 }
 
+/// An unreachable endpoint is not the pair's fault: the batch pauses and
+/// hands the attempt back, and once the breaker opens later batches make no
+/// call at all. No pair loses an attempt to the outage.
 #[tokio::test]
-async fn breaker_skips_preserve_attempt_count_and_return_idle_cadence() {
+async fn endpoint_failures_and_breaker_skips_preserve_attempt_count_and_return_idle_cadence() {
     let (fx, model, ids) = ambiguous_pairs(6, 1).await;
     model.fail.store(true, Ordering::SeqCst);
     todos::scan_messages(&fx.state, &ids).await;
-    let now = Utc::now();
-    assert!(drain(&fx, now).await);
-    assert!(!drain(&fx, now).await);
-    assert_eq!(model.calls.load(Ordering::SeqCst), 5);
-    let deferred = fx
+    let mut now = Utc::now();
+    for batch in 1..=8 {
+        assert!(!drain(&fx, now).await, "batch {batch} pauses");
+        now += Duration::minutes(5);
+    }
+    assert_eq!(
+        model.calls.load(Ordering::SeqCst),
+        5,
+        "one call per batch until the breaker opened"
+    );
+    let pending = fx
         .state
         .store
-        .list_due_todo_resolutions(now + Duration::minutes(5), 10)
+        .list_due_todo_resolutions(now + Duration::days(1), 10)
         .await
         .unwrap();
-    assert_eq!(deferred.len(), 1);
-    assert_eq!(deferred[0].attempts, 0);
-    assert!(!drain(&fx, now + Duration::minutes(5)).await);
-    assert_eq!(model.calls.load(Ordering::SeqCst), 5);
+    assert_eq!(pending.len(), 6);
+    assert!(
+        pending.iter().all(|work| work.attempts == 0),
+        "{:?}",
+        pending.iter().map(|work| work.attempts).collect::<Vec<_>>()
+    );
 }

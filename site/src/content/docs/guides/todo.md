@@ -12,31 +12,64 @@ mxr todo
 mxr todo --format json
 ```
 
+The open web runway refreshes when a sync finishes, including when it was empty.
+Reopening a completed task also refreshes Now and the navigation counts.
+
 In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
 `Coming up`, `Later`, `Whenever` and `Done this week`. A web row is a
-checkbox, the task, who it is from ("Frank Billing · from Mon", or "from you"
-for a promise you made) and its window in words ("act by Fri"). The window
-turns amber on the day and after. The lit row's keys, `e` done and `o`
-email, take the window's place on the same line, and the same keys show in
-the status bar with the reason the task is here. The act-by date is the
-last date to act and still meet the due date; mxr can surface the task earlier
+checkbox, the task, who it is from ("Frank Billing · arrived Mon", or "from you"
+for a promise you made) and its window in words ("act by Fri"). The verb names
+the date: "arrived" is when the email reached you, while "act by" and "due" are
+deadlines. The window turns amber on the day and after. A later email that may
+change the row says so after the arrival, never in its place. If the email is
+archived outside mxr (in Gmail, say, or another client), the row still shows
+when it arrived and adds "left the inbox 30 Oct". That date is when mxr observed
+the inbox removal, not necessarily when it happened at the provider. Filing
+does not tick off the task; its normal completion and expiry rules still apply.
+The lit row's keys, `e` done and `o` email, take the window's place on the same line, and the
+same keys show in the status bar with the reason the task is here. The act-by
+date is the last date to act and still meet the due date; mxr can surface the
+task earlier
 to give you time. For a bank-transfer bill, act-by is three working days before
 the due date. Use a row's ID from the JSON output for the CLI commands below.
 
 ## Check the source and act
 
+Open a task's email with `o`, or peek at it with `Space`, to mark that row seen.
+Unseen tasks are bold and bright; seen tasks use normal-weight grey text,
+even while unfinished. Moving the selection alone does not mark a task seen.
+This state is local to mxr and shared by its clients, not the email's read
+flag. Changed task details or new source evidence make the row unseen again.
+
+For scripts, copy `id`, `account_id` and `seen_revision` from the task's JSON:
+
+```bash
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --dry-run --format json
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --format json
+```
+
+The preview changes nothing; the second command records only that revision
+as seen. Neither command ticks the task off or marks its email read.
+
 ```bash
 mxr todo why TODO_ID --format json
 ```
 
-Inspect where the title, amount, payment method and dates came from. In the web app, press
-`o` to open the source email beside the list, **details** on the row (or
-in the palette) for why the row is here and where each field came from (a
-field mxr wasn't sure of reads "unchecked"), `,` to fix a field,
-or `Enter` for the selected row's primary action (the email with its link
-marked, or a reply to a promise). Check extracted details against that source
-before relying on them. Use the
-row's edit control, or `,` on the web, to correct what mxr read.
+Inspect where the title, amount, payment method and dates came from. Press
+`Space` to peek under the lit row: its dates in full, when the email arrived,
+why the row is here and what happens next, where its link goes, the email's
+first lines and where each field came from (a field mxr wasn't sure of reads
+"unchecked"). `Space` again or `Esc` closes it. The web app also opens it
+from **details** on the row. Press `o` to open the source email, `,` to fix a
+field, or `Enter` for the selected row's primary action (the email with its
+link marked, or a reply to a promise). Check extracted details against that
+source before relying on them.
+
+On the web, the peek shows the reason and next step above the field sources.
+Expand **Field sources** to check each field's source and any unchecked
+values. Repeated evidence appears once. Raw assessment fingerprints and
+policy/unit identifiers are under **Diagnostics**; the TUI's peek leaves them
+out, and they remain available in `mxr todo why TODO_ID --format json`.
 
 Bills, failed payments, sign or verification requests, promises and annual
 renewal reviews can become tasks automatically. An alert in Updates offers
@@ -66,8 +99,8 @@ Use the `correction_undo` token from the correction response. Automatic
 rows name who asked, or say you promised, and quote the authored request.
 Reply-only requests stay in Messages' Your turn. Requests you sent and
 promises someone made to you feed Waiting on. Uncertain requests appear in
-the collapsed `Might need you` section; in the TUI, press `m` to review
-those source emails. They do not enter Now's urgent tasks.
+the collapsed `Might need you` section; in the TUI, run **Review what might
+need you** from the palette (`:`) to review those source emails. They do not enter Now's urgent tasks.
 
 ## Add or correct a task yourself
 

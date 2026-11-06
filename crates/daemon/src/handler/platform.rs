@@ -54,8 +54,9 @@ pub(super) async fn list_subscriptions(
     state: &AppState,
     account_id: Option<&AccountId>,
     limit: u32,
+    all_accounts: bool,
 ) -> HandlerResult {
-    diagnostics_impl::list_subscriptions(state, account_id, limit).await
+    diagnostics_impl::list_subscriptions(state, account_id, limit, all_accounts).await
 }
 
 pub(super) async fn list_senders(

@@ -69,6 +69,383 @@ fn conflict(response: Response, revision: i64) {
     }
 }
 
+async fn gmail_linked_draft(
+    server: &wiremock::MockServer,
+    revision: Option<&str>,
+) -> (Arc<AppState>, mxr_core::Draft) {
+    let account_id = mxr_core::AccountId::new();
+    let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+    let sync = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+    let client = mxr_provider_gmail::client::GmailClient::new(
+        mxr_provider_gmail::auth::GmailAuth::for_test_token("synthetic-token"),
+    )
+    .with_base_url(server.uri());
+    let sender = Arc::new(mxr_provider_gmail::GmailProvider::new(account_id, client));
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(account, sync, Some(sender))
+            .await
+            .unwrap(),
+    );
+    let stored = saved(
+        call(
+            &state,
+            Request::SaveDraft {
+                draft: draft(&state),
+            },
+        )
+        .await,
+    );
+    state
+        .store
+        .set_provider_draft_link(&stored.id, "linked-draft", revision)
+        .await
+        .unwrap();
+    (state, stored)
+}
+
+async fn sync_linked_draft(state: &Arc<AppState>, draft: &mxr_core::Draft) {
+    let response = call(
+        state,
+        Request::SyncNow {
+            account_id: Some(draft.account_id.clone()),
+            background: false,
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            response,
+            Response::Ok {
+                data: ResponseData::Ack
+            }
+        ),
+        "{response:?}"
+    );
+}
+
+fn gmail_raw_draft(revision: &str, subject: &str, body: &str) -> wiremock::ResponseTemplate {
+    use base64::Engine;
+    let mime = format!(
+        "From: sender@example.com\r\nTo: alice@example.com\r\nSubject: {subject}\r\nContent-Type: text/plain\r\n\r\n{body}"
+    );
+    wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+        "message": {
+            "id": revision,
+            "raw": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mime)
+        }
+    }))
+}
+
+#[tokio::test]
+async fn gmail_draft_sync_does_not_download_unchanged_contents() {
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "minimal"))
+        .and(query_param("fields", "message/id"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "message": { "id": "revision-1" }
+        })))
+        .expect(3)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "raw"))
+        .respond_with(gmail_raw_draft("revision-1", "Revision test", "original"))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let (state, stored) = gmail_linked_draft(&server, Some("revision-1")).await;
+    for _ in 0..3 {
+        sync_linked_draft(&state, &stored).await;
+    }
+    let current = saved(
+        call(
+            &state,
+            Request::GetDraft {
+                draft_id: stored.id.clone(),
+            },
+        )
+        .await,
+    );
+    assert_eq!(current.revision, stored.revision);
+    assert_eq!(current.content.analysis_text(), "original");
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn gmail_draft_sync_downloads_an_edit_once_and_tracks_the_downloaded_revision() {
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "minimal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "message": { "id": "revision-2" }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "minimal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "message": { "id": "revision-3" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // A second Gmail edit lands between the metadata and raw requests.
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "raw"))
+        .respond_with(gmail_raw_draft(
+            "revision-3",
+            "Edited in Gmail",
+            "provider edit",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (state, stored) = gmail_linked_draft(&server, Some("revision-1")).await;
+    for _ in 0..2 {
+        sync_linked_draft(&state, &stored).await;
+        let current = saved(
+            call(
+                &state,
+                Request::GetDraft {
+                    draft_id: stored.id.clone(),
+                },
+            )
+            .await,
+        );
+        assert_eq!(current.id, stored.id);
+        assert_eq!(current.subject, "Edited in Gmail");
+        assert_eq!(current.content.analysis_text(), "provider edit");
+        assert_eq!(current.revision, Some(2));
+    }
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn gmail_draft_sync_establishes_a_legacy_baseline_without_downloading_contents() {
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "minimal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "message": { "id": "revision-1" }
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(query_param("format", "raw"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let (state, stored) = gmail_linked_draft(&server, None).await;
+    for _ in 0..2 {
+        sync_linked_draft(&state, &stored).await;
+    }
+    let current = saved(
+        call(
+            &state,
+            Request::GetDraft {
+                draft_id: stored.id.clone(),
+            },
+        )
+        .await,
+    );
+    assert_eq!(current.revision, Some(1));
+    assert_eq!(current.content.analysis_text(), "original");
+    server.verify().await;
+
+    // The baseline must be remembered, so a later remote edit is pulled
+    // instead of silently treated as another first sync.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/drafts/linked-draft"))
+        .and(query_param("format", "minimal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "message": { "id": "revision-2" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(query_param("format", "raw"))
+        .respond_with(gmail_raw_draft(
+            "revision-2",
+            "Edited in Gmail",
+            "provider edit",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    sync_linked_draft(&state, &stored).await;
+    let current = saved(
+        call(
+            &state,
+            Request::GetDraft {
+                draft_id: stored.id.clone(),
+            },
+        )
+        .await,
+    );
+    assert_eq!(current.revision, Some(2));
+    assert_eq!(current.content.analysis_text(), "provider edit");
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn gmail_draft_sync_preserves_local_contents_on_lookup_or_download_failure() {
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    for (metadata, raw_requests) in [
+        (ResponseTemplate::new(403), 0),
+        (
+            ResponseTemplate::new(429).insert_header("retry-after", "900"),
+            0,
+        ),
+        (ResponseTemplate::new(500), 0),
+        (
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({})),
+            0,
+        ),
+        (
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"message": {"id": "revision-2"}})),
+            1,
+        ),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/drafts/linked-draft"))
+            .and(query_param("format", "minimal"))
+            .respond_with(metadata)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(query_param("format", "raw"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(raw_requests)
+            .mount(&server)
+            .await;
+        let (state, stored) = gmail_linked_draft(&server, Some("revision-1")).await;
+        sync_linked_draft(&state, &stored).await;
+        let current = saved(
+            call(
+                &state,
+                Request::GetDraft {
+                    draft_id: stored.id.clone(),
+                },
+            )
+            .await,
+        );
+        assert_eq!(current.revision, Some(1));
+        assert_eq!(current.content.analysis_text(), "original");
+        server.verify().await;
+
+        // A failed content download must not advance the saved provider
+        // revision and make the next successful response look unchanged.
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/drafts/linked-draft"))
+            .and(query_param("format", "minimal"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "message": { "id": "revision-2" }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(query_param("format", "raw"))
+            .respond_with(gmail_raw_draft(
+                "revision-2",
+                "Edited in Gmail",
+                "provider edit",
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        tokio::time::pause();
+        tokio::time::advance(std::time::Duration::from_secs(910)).await;
+        tokio::time::resume();
+        sync_linked_draft(&state, &stored).await;
+        let current = saved(
+            call(
+                &state,
+                Request::GetDraft {
+                    draft_id: stored.id.clone(),
+                },
+            )
+            .await,
+        );
+        assert_eq!(current.revision, Some(2));
+        assert_eq!(current.content.analysis_text(), "provider edit");
+        server.verify().await;
+    }
+}
+
+#[tokio::test]
+async fn gmail_draft_sync_removes_local_drafts_only_after_explicit_remote_deletion() {
+    use wiremock::{
+        matchers::{method, path, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    for deleted_after_metadata in [false, true] {
+        let server = MockServer::start().await;
+        let metadata = if deleted_after_metadata {
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"message": {"id": "revision-2"}}))
+        } else {
+            ResponseTemplate::new(404)
+        };
+        Mock::given(method("GET"))
+            .and(path("/drafts/linked-draft"))
+            .and(query_param("format", "minimal"))
+            .respond_with(metadata)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(query_param("format", "raw"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(u64::from(deleted_after_metadata))
+            .mount(&server)
+            .await;
+        let (state, stored) = gmail_linked_draft(&server, Some("revision-1")).await;
+        sync_linked_draft(&state, &stored).await;
+        assert!(matches!(call(&state, Request::ListDrafts).await,
+            Response::Ok { data: ResponseData::Drafts { drafts } } if drafts.is_empty()));
+        server.verify().await;
+    }
+}
+
 #[tokio::test]
 async fn draft_revisions_repeated_create_and_concurrent_edits_preserve_both_versions() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

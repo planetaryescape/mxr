@@ -87,7 +87,9 @@ impl App {
 
     /// Show "<action> is now <key>" when `keys` moved away from `place`.
     /// A screen that still reads its own keys (Rules, the drafts list)
-    /// calls this with its own place name.
+    /// calls this with its own place name. Once the move's `until` release
+    /// is reached the definition no longer has it (D171), so such a call
+    /// shows nothing and returns false.
     pub(crate) fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
         // The person's keys: a remap onto the old key drops its notice, and
         // the notice names the key they gave the action.
@@ -151,9 +153,12 @@ impl App {
         if let (Some(first), None) = (chars.next(), chars.next()) {
             let keymap = mxr_keymap::defaults();
             // A retired sequence still waits for its second key while its
-            // move is announced.
+            // move is announced, as `announce_moved` sees the moves.
             if keymap.tui_starts_sequence(context, &chord)
-                || keymap.moved_starts_sequence(context, &chord)
+                || self
+                    .keybindings
+                    .keymap()
+                    .moved_starts_sequence(context, &chord)
                 || self.keybindings.modes.starts_sequence(context, &chord)
             {
                 self.input.wait_for_second(first);

@@ -265,7 +265,10 @@ async fn draft_with(
     let inferred_length = context.style_used.then_some(context.inferred_length);
     let target_words = target_words(request.length_hint.or(inferred_length), &material);
     let max_tokens = max_tokens_for_words(target_words);
-    let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
+    let budget_chars = prompt_budget_chars(
+        policy.llm.context_window(),
+        policy.llm.answer_tokens(max_tokens),
+    );
     let today = draft_voice::today();
     let mut prompt_habits = material.habits.clone();
     if let Some(words) = material

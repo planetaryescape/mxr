@@ -1281,3 +1281,59 @@ async fn bulk_infrastructure_alone_does_not_discard_a_possible_person() {
         [ModeKindData::Messages]
     );
 }
+
+#[tokio::test]
+async fn an_archive_made_elsewhere_keeps_the_thread_in_its_modes() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let notification = mail(
+        &fx,
+        &thread,
+        "notifications@github.com",
+        "Build failed on main again",
+        Duration::hours(1),
+    )
+    .await;
+    assert_eq!(
+        modes(&membership(&fx, &thread).await),
+        [ModeKindData::Updates]
+    );
+
+    // Another client archives it: the provider delta removes INBOX locally.
+    fx.state
+        .store
+        .remove_message_label(
+            &notification.id,
+            &fx.inbox,
+            mxr_core::types::EventSource::Sync,
+        )
+        .await
+        .unwrap();
+    let after = membership(&fx, &thread).await;
+    assert_eq!(
+        modes(&after),
+        [ModeKindData::Updates],
+        "an outside archive must not silently move the email out of Updates"
+    );
+    assert!(!after.in_inbox);
+
+    // mxr's own archive is a mode decision, not an outside one.
+    let own = ThreadId::new();
+    let own_mail = mail(
+        &fx,
+        &own,
+        "notifications@github.com",
+        "Build passed on main",
+        Duration::hours(1),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_labels(&own_mail.id, &[], mxr_core::types::EventSource::User)
+        .await
+        .unwrap();
+    assert!(
+        modes(&membership(&fx, &own).await).is_empty(),
+        "mxr's own archive still lets go in its mode"
+    );
+}

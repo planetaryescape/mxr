@@ -415,9 +415,6 @@ impl App {
                 _ => {}
             }
         }
-        // A key that moved (blueprint 35) says where it went once `state` is
-        // released.
-        let mut moved: Option<char> = None;
         match (key.code, key.modifiers) {
             (KeyCode::Char('w'), _) => {
                 let message_id = if state.surface == Some(CategorySurface::View) {
@@ -499,19 +496,6 @@ impl App {
             {
                 state.input.clear();
                 state.filtering = true;
-            }
-            (KeyCode::Char('n'), KeyModifiers::NONE)
-                if matches!(
-                    state.surface,
-                    Some(CategorySurface::Catalog | CategorySurface::Assign)
-                ) =>
-            {
-                moved = Some('n');
-            }
-            (KeyCode::Char('d'), KeyModifiers::NONE)
-                if state.surface == Some(CategorySurface::Catalog) =>
-            {
-                moved = Some('d');
             }
             // c creates what this place holds: a category.
             (KeyCode::Char('c'), KeyModifiers::NONE)
@@ -645,9 +629,6 @@ impl App {
                 state.selected = 0;
             }
             _ => {}
-        }
-        if let Some(key) = moved {
-            self.announce_moved("categories", &key.to_string());
         }
         true
     }

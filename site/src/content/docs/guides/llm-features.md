@@ -1,6 +1,6 @@
 ---
 title: LLM features (summarize, draft assist)
-description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
+description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint, with an optional cloud fallback, for thread summarisation and draft assist in mxr.
 ---
 
 ## Configure mxr-native model features
@@ -23,7 +23,7 @@ override values inherit from the base config. Each feature has its own guide:
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
 | row and reader gists | [Clear the desk](/guides/now/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
-| `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine, reusing the cached summary verdict |
+| `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine with the summarize model, caching a verdict per message |
 
 Each feature has an explicit disabled path when its effective `enabled`
 setting is false. A per-feature override can enable that feature even when
@@ -40,11 +40,13 @@ to it leave the machine through that agent's model service. The built-in
 [assistant](/guides/assistant/) is a separate client experience; its model
 picker is configured through the native `assistant` feature override.
 
-Recognized `claude-*` and `gpt-*` model IDs route to Anthropic or OpenAI,
-with OpenRouter as fallback. Other model IDs use the configured compatible
-endpoint. Check `mxr llm status --format json` to see the effective native
-configuration. Recognized hosted model IDs select their provider regardless
-of `base_url`.
+Some model names go to a hosted provider instead of `base_url`: `claude-*`
+to Anthropic, then OpenRouter; `gpt-<number>` to OpenAI, then OpenRouter,
+unless `base_url` is a server of your own off this machine; and, with the
+default `base_url`, OpenRouter-style `vendor/model` ids from known vendors to
+OpenRouter. The [routing table](/reference/config/#llm) lists them all. Every
+other model name goes to `base_url`. Check `mxr llm status --format json` to
+see where each feature goes.
 
 ## Backends supported
 
@@ -61,7 +63,7 @@ every major option:
 | **Together AI** | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | |
 | **Mistral La Plateforme** | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | |
 | **Claude** (`claude-*` models) | _not used_ | _not used_ | Anthropic's own API, with OpenRouter as fallback. See [Use Claude](#use-claude-through-anthropic-with-openrouter-as-fallback). |
-| **GPT** (`gpt-6-luna`, `gpt-5.6-terra` and other `gpt-<number>` models) | _not used_ | _not used_ | OpenAI's own API with a stored key, with OpenRouter as fallback. See [Use GPT models](#use-gpt-models-through-openai-with-openrouter-as-fallback). |
+| **GPT** (`gpt-6-luna`, `gpt-5.6-terra` and other `gpt-<number>` models) | _not used_ while `base_url` is on this machine | _not used_ while `base_url` is on this machine | OpenAI's own API with a stored key, with OpenRouter as fallback. See [Use GPT models](#use-gpt-models-through-openai-with-openrouter-as-fallback). |
 
 mxr's local-first stance: model features are off until you set
 `[llm] enabled = true`, and the default endpoint is Ollama on
@@ -99,13 +101,16 @@ mxr llm key remove anthropic --dry-run
 mxr llm key remove anthropic
 ```
 
-`mxr config set llm.*` applies to a running daemon straight away. If the
+`mxr config set llm.<key>` applies to a running daemon straight away, for
+the keys listed in the [config reference](/reference/config/#llm). If the
 daemon can't apply it, the command prints `Restart the daemon to apply: mxr
-restart`. A hand edit of `config.toml` needs that restart.
+restart`. A hand edit of `config.toml` applies on `mxr restart`, or with the
+next `mxr config set llm.<key>`, which reloads all of `[llm]` from the file.
 
 OpenRouter's name for the model is derived from the id: `claude-haiku-5-5`
 becomes `anthropic/claude-haiku-5.5`. A model written as `anthropic/...` goes
-to OpenRouter only. Other OpenRouter-style names (`openai/...`, `google/...`)
+to OpenRouter only. OpenRouter-style names from known vendors (`openai/...`,
+`google/...`, `qwen/...` and the others in the [routing table](/reference/config/#llm))
 go to OpenRouter too, but only while `llm.base_url` is still the default;
 once you point it at a server of your own, those names are your server's.
 Per-feature overrides route the same way.
@@ -119,8 +124,8 @@ attempt, not one per row:
 | Failure | What mxr does |
 |---|---|
 | 401, 402 or 403 (bad key, billing) | Skips the provider for an hour, or until you store a new key |
-| 404, or a 400 naming an unknown model | Skips it for an hour, or until `[llm]` changes |
-| 429, 529, 5xx, timeout, no connection | Skips it for 1 minute, doubling to 30 minutes on each further failure. A `retry-after` from the provider replaces the wait |
+| 404, or a 400 naming an unknown model | Skips it for an hour, or until the daemon applies a config change |
+| 408, 429, 529, 5xx, timeout, no connection | Skips it for 1 minute, doubling to 30 minutes on each further failure. A `retry-after` in seconds from the provider replaces the wait, up to an hour |
 | A refusal, or an answer that ran out of tokens | Nothing: that request fails, the provider stays in use |
 
 When the wait is over, one request tries the provider again while everything
@@ -128,13 +133,17 @@ else keeps using the fallback; if it works, traffic returns. If every
 provider is out, background work stops without sending anything, and a
 command you run still makes one attempt on whichever recovers soonest and
 names each provider's state in its error. This memory is in the daemon only;
-a restart forgets it.
+a restart forgets it, and so does any config change the daemon applies.
 
 `mxr llm status` shows each feature's model, the providers in order with
 their state (`ok`, `cooling until 14:32 (429 rate limited)`,
-`broken: 401 invalid key`, `no key`), and `[now: ...]` for where a request
-would go. `--format json` carries the same under `features`, and the web
-app's **Settings > LLM** shows it read-only. The web app cannot take a key;
+`broken: 401 invalid key (rechecked 15:32)`, `retry due`, `being retried`,
+`no key`), and `[now: ...]` for where a request would go. When every route
+is out it says `(no route available; a command you run tries openrouter
+once)`: background work waits, and a command makes one attempt on the route
+that comes back soonest. A feature privacy settings keep from its model shows
+`[blocked: <reason>]`. `--format json` carries the same under `features`, and
+the web app's **Settings > Language model** shows the chain read-only. The web app cannot take a key;
 keys go in only through the CLI.
 
 Claude 5 models reject temperature and similar settings, so mxr sends none.
@@ -164,15 +173,110 @@ status` and `mxr llm key status` shows its state like the others.
 default Ollama or a server on this machine, because those servers don't serve
 OpenAI's models. If you point `base_url` at a remote server of your own, such
 as `https://api.openai.com/v1` with `api_key_env = "OPENAI_API_KEY"`, a `gpt-*`
-model keeps going there and mxr does nothing different. Local model names such
+model keeps going there, with OpenAI's request rules below. Local model names such
 as `gpt-oss:20b` never match, since they have no number straight after `gpt-`.
 
 OpenAI's current models reject `max_tokens` and any temperature but the
 default, so mxr sends the token cap as `max_completion_tokens`, leaves room in
 it for reasoning, and sends no temperature. GPT-6 Luna and the GPT-5.6 models
 take tool calls on Chat Completions only with reasoning off, so requests with
-tools to those ids carry `reasoning_effort: "none"`; no other id gets the
-field.
+tools to those ids carry `reasoning_effort: "none"` through OpenAI and
+`reasoning: {"effort": "none"}` through OpenRouter; no other id gets either.
+
+## Fall back to a cloud model when your endpoint is out
+
+A model on a server of your own (Ollama on a laptop that sleeps, a machine
+reached over Tailscale) has no second route. Add `[llm.fallback]` and mxr
+sends requests to a hosted model while that server is out, then moves back
+when it answers:
+
+```toml
+[llm]
+enabled = true
+base_url = "https://ollama.example.net/v1"
+model = "gemma4:latest"
+context_window = 32768
+
+[llm.fallback]
+model = "gpt-6-luna"        # the default when the table is present
+# context_window = 128000   # defaults to llm.context_window
+```
+
+The fallback goes through the same providers as that model on its own:
+`gpt-6-luna` to OpenAI, then to OpenRouter as `openai/gpt-6-luna`, each only
+with a key. An OpenRouter key alone is enough:
+
+```bash
+op read "op://<vault>/<item>/credential" | mxr llm key set openrouter
+mxr config set llm.fallback.model gpt-6-luna
+```
+
+`mxr config set llm.fallback.model ''` turns it off. The fallback is off
+unless the table is there.
+
+`base_url` is the first route, and mxr remembers its health the way it does
+a provider's ([what mxr remembers](#what-mxr-remembers-about-each-provider)):
+
+- The first failure (no connection, a timeout, a 5xx, a rate limit) sends
+  that request on to the fallback in the same call, and every request after
+  it skips `base_url` for 1 minute, doubling to 30 minutes. A rejected key or
+  an unknown model (401, 402, 403, 404) also falls back, and skips `base_url`
+  for an hour. Any other error, such as an empty reply or another 400, comes
+  back to the caller without trying the fallback. A batch of
+  background work makes one failed attempt on `base_url`, not one per item.
+- When the wait is over, the next request checks `GET <base_url>/models`
+  before sending any mail. If the server answers, the request and the ones
+  after it go to `base_url` again; if not, that request goes to the fallback
+  and the wait doubles. Other requests keep using the fallback while the one
+  check runs.
+- Commands you run and background work both fall back. Background work
+  shares its `background_request_timeout_secs` among the routes it may still
+  try, so with one fallback provider `base_url` gets about 20 seconds of the
+  default 45 before it counts as out. If your model is slow to answer
+  background work, raise `background_request_timeout_secs` in `config.toml`
+  and run `mxr restart`; `mxr config set` doesn't take this key.
+
+It applies to every feature whose model `base_url` serves, including a
+per-feature override with its own `base_url`. A `claude-*` model, a `gpt-*`
+model on the default or a local endpoint, and a `vendor/model` id that goes to
+OpenRouter don't use `base_url` and ignore `[llm.fallback]`; a `gpt-*` model
+on a remote server of your own uses it. Answers from
+the fallback are labelled with the provider (`gpt-6-luna via OpenAI`,
+`openai/gpt-6-luna via OpenRouter`); answers from `base_url` keep the model's
+name. Prompts are built to fit the smaller context window of the two.
+
+The fallback is a cloud service, so a configured fallback counts as cloud
+for what each request may carry, even while `base_url` answers: drafts carry
+your other emails only with `llm.allow_cloud_relationship_data = true`.
+Relationship summaries, commitments, answer coverage, briefings, decisions,
+`mxr ask` and the assistant use the fallback
+only with that setting. Without it they stay on `base_url`, and their
+background work [waits for it](#background-work-waits-out-an-endpoint-outage)
+and runs when it answers again. With a `base_url` off this machine they are
+refused without the setting, as before.
+
+`mxr llm status` shows the chain for each feature:
+
+```text
+fallback=gpt-6-luna
+
+features:
+  summarize             gemma4:latest  https://ollama.example.net/v1: cooling until 14:32 (unreachable) → openai: no key → openrouter: ok  [now: openrouter]
+```
+
+With `base_url` on this machine, a relationship feature shows where it
+stays:
+
+```text
+  relationship_summary  gemma4:latest  http://localhost:11434/v1: ok  [now: base_url]  [no fallback: relationship data stays off the cloud fallback; set llm.allow_cloud_relationship_data=true to permit it]
+```
+
+`--format json` adds `fallback_model` and, under each feature, `endpoint`
+(`base_url`'s `state`, `reason`, `retry_at` and `next`), `fallback` (the
+providers, shaped like `routes`) and `fallback_withheld`. A fallback model mxr
+can't route, such as a local model name, is refused by `mxr config set`. A
+daemon that loads one from a hand edit runs without the fallback, and status
+prints `fallback not used:` with the reason (`fallback_error` in JSON).
 
 ## Pick the assistant's model
 
@@ -187,8 +291,9 @@ models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "c
 ```
 
 Each entry is a model id, and where it runs follows from the id as above.
-Leave the setting out, or empty, for the five. After editing it, run
-`mxr restart`. A pick is stored as
+Leave the setting out, or empty, for the five. Change it with
+`mxr config set llm.models '["gemma4:latest", "gpt-6-luna"]'`, which applies
+straight away; a hand edit applies on `mxr restart`. A pick is stored as
 `[llm.overrides.assistant] model`, so it changes only the assistant.
 
 ## Configuration
@@ -213,10 +318,11 @@ context_window = 8192
 request_timeout_secs = 120
 ```
 
-The API key is read from the env var named in `api_key_env` at runtime
-(empty = no `Authorization` header sent). Keeping the secret out of
-the config file is intentional: the config is checked into dotfiles;
-the env var lives in your shell init.
+The daemon reads the env var named in `api_key_env` from its own environment
+when it starts or reloads `[llm]` (empty = no `Authorization` header sent).
+Start the daemon from a shell that has the variable set; changing it in
+another shell does nothing until `mxr restart`. Keeping the secret out of the
+config file is intentional: the config is checked into dotfiles.
 
 Check what the running daemon is using:
 
@@ -225,10 +331,50 @@ mxr llm status
 mxr llm status --format json
 ```
 
-Config reloads rebuild the runtime provider, so changing `[llm]` switches
-the model without restarting the process. `mxr config set llm.<key> <value>`
-tells a running daemon to reload; a hand edit of `config.toml` reaches it on
-the next account reload or restart.
+`mxr config set llm.<key> <value>` reloads `[llm]` in the running daemon, so
+the model switches without a restart. Nothing watches `config.toml`: a hand
+edit applies on `mxr restart`, or with the next `mxr config set llm.<key>`.
+
+## Background work waits out an endpoint outage
+
+Relationship summaries, commitments, delivery confirmation, row gists and
+to-do resolution checks run in the background. When the model's endpoint is out (no connection, a
+timeout, a rate limit, a 5xx, a bad key or an unknown model), the email or
+contact being processed is not blamed for it:
+
+- After five endpoint failures in a row, background model calls pause for 5
+  minutes, doubling to 10 minutes while the endpoint stays out. Commands you run
+  are not paused. `mxr llm status` prints `background calls paused after
+  repeated endpoint failures until 14:37`, and `--format json` carries the
+  time as `background_paused_until`.
+- When a pause ends, mxr checks a `base_url` endpoint with `GET
+  <base_url>/models`, which sends no mail. One check runs at a time, and a
+  failed check starts the next, longer pause.
+- Relationship summaries and delivery confirmations skipped while the
+  endpoint was out are processed once each soon after a check succeeds,
+  without waiting for new mail. Gists are written again the next time a
+  client asks for them, and to-do checks wait in their own queue. A parcel
+  email seen during the outage keeps its heuristic result until then.
+
+With Claude or GPT through mxr's own routes, or with a
+[fallback](#fall-back-to-a-cloud-model-when-your-endpoint-is-out) configured,
+there is no separate pause: work skipped while every route was out runs once
+one of them is back (see
+[what mxr remembers about each provider](#what-mxr-remembers-about-each-provider)).
+
+For relationship summaries, commitments and delivery confirmation, a reply
+mxr can't use, such as an empty one, or a 400 about the request, does count
+against that input: it is retried after 1 h, 4 h, 16 h and 24 h, and after the
+fifth failed try it waits until new mail changes it. `mxr deliveries scan` retries skipped
+messages straight away.
+
+The pause, the retry times and the skipped work are saved to
+`llm-background.json` next to `mxr.db` in mxr's data directory, readable only
+by you, so a restart keeps them. The file holds contact addresses, message
+ids and content hashes, never mail text. If it can't be read, mxr logs a
+warning and starts fresh. Any config change the daemon applies clears the
+pause, the retry times and each input's given-up mark, but keeps the skipped
+work.
 
 ## Know what each request sends, and where
 
@@ -241,10 +387,11 @@ subscription.
 
 | Work | When it runs | What a cloud endpoint receives |
 |---|---|---|
-| `mxr summarize`, `mxr triage`, `mxr draft-assist`, `mxr draft` and `mxr draft refine` | When you run them | The thread the command works on |
-| Row gists | In the background, for conversations from people that a client shows, and for automated mail while the web app's Updates page or `mxr briefing gists --automated` asks | That conversation's messages. Newsletters and mailing lists are never sent |
+| `mxr summarize`, `mxr draft-assist`, `mxr draft` and `mxr draft refine` | When you run them | The thread the command works on. Stored relationship summaries of the people in it only with `llm.allow_cloud_relationship_data = true` |
+| `mxr triage` | When you run it | Each message it sorts |
+| Row gists | In the background, for conversations from people that a client shows, and for automated mail while the web app's Updates page or `mxr briefing gists THREAD_ID... --generate --automated` asks | That conversation's messages. Newsletters and mailing lists are never sent. With `llm.allow_cloud_relationship_data = true`, also a line counting your history with the sender (messages, usual reply time, last contact) |
 | Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
-| Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
+| Relationship summaries, commitments, answer coverage, briefings, decisions, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
 | The [assistant](/guides/assistant/) | When you send it a message | Your message, what you have open, and the mail it reads while answering (search results, threads, drafts). Refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true`, since it reads across your mailbox |
 | Archive's records and answer box | After sync and on demand | Nothing: records are read by rules and schema.org markup on your machine. Only when no record matches does the answer box fall back to `mxr ask`, under that row's rule |
@@ -262,7 +409,12 @@ mxr llm status --format json
 
 `base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
 local; anything else is cloud. A `claude-*` model, and a `gpt-*` model
-routed to OpenAI, have no `base_url` and are always cloud.
+routed to OpenAI, have no `base_url` and are always cloud. With
+`[llm.fallback]`, mail goes to the fallback model's providers while `base_url`
+is out (OpenAI then OpenRouter for `gpt-*`, Anthropic then OpenRouter for
+`claude-*`, OpenRouter alone for a `vendor/model` id),
+so each feature that may fall back shows `cloud: true`; use a provider whose
+API data terms cover other people's mail.
 
 ## Send one feature to a different model
 
@@ -272,18 +424,23 @@ thread summaries, which go to a cloud model:
 
 ```toml
 [llm.overrides.summarize]
-base_url = "https://api.openai.com/v1"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
+model = "gpt-6-luna"        # key from `mxr llm key set openai`
 ```
+
+An override takes `enabled`, `base_url`, `model`, `api_key_env`,
+`context_window` and `request_timeout_secs`. Other keys in the table, and
+feature names mxr doesn't know, are ignored and named once in the daemon log.
 
 The keys are `summarize` (which also covers gists and `mxr triage`),
 `relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
-`archive_ask`, `decision_log`, `briefing`, `expert`,
-`delivery_extraction` and `assistant` (which needs a model that can call
-tools). The relationship rule above still applies to an override that
-points at a cloud endpoint.
+`draft_refine`, `humanize_rewrite`, `answer_coverage`, `archive_ask`,
+`decision_log`, `briefing`, `delivery_extraction` and `assistant` (which needs
+a model that can call tools). Voice matching and expert lookup run locally, so
+the old `voice_match` and `expert` keys are retired and ignored. With `[llm.compose] model` set, every draft uses that
+model and the `draft_assist`, `draft_new`, `draft_refine` and
+`humanize_rewrite` overrides are ignored; `mxr llm status` shows the compose
+model on those rows. The relationship rule above still applies to an
+override that points at a cloud endpoint.
 
 ## Model tiers for email modes are planned
 
@@ -340,10 +497,11 @@ count, and `provenance` (see [See where a draft came from](#see-where-a-draft-ca
 
 In the TUI, open the palette (`:`) → **Summarize thread**. The summary runs in
 the background and renders above the message body; opening a long uncached
-thread can also start a debounced background summary. In the web reader, the
-**Summary** button or **Summarize thread** in the palette calls the same daemon
-request and renders the result in the **AI overview** collapsible above the
-thread. Summarize lost its `y` key to the thread briefing, `B`.
+thread can also start a debounced background summary. In the web reader,
+**Summarize** in the thread's More menu, or **Summarize thread** in the palette,
+calls the same daemon request and renders the result in the **AI overview**
+collapsible above the thread. Summarize has no key; `B` opens the thread
+briefing.
 
 ## Draft for me builds on what you typed
 
@@ -394,15 +552,16 @@ cloud model can draft with the current conversation while relationship
 sharing is off; it does not receive past-mail context, and mxr never enables
 that sharing setting for you.
 
-The readable output shows your words plain, what was added in `{+…+}` and
-what was removed in `[-…-]`, then the gaps still to fill and which of your
-sentences changed or were dropped, counted from 1 (sentences split at `.`,
-`!`, `?` and line breaks). `--format json` prints the whole proposal:
+The readable output starts with `Proposal <id> · <action> · <model>`, then
+shows your words plain, what was added in `{+…+}` and what was removed in
+`[-…-]`. After the text come which of your sentences changed or were dropped,
+counted from 1 (sentences split at `.`, `!`, `?` and line breaks), the gaps
+still to fill, and the `Accept: mxr compose apply …` command. `--format json` prints the whole proposal:
 `proposal_id`, `action`, `base` (SHA-256 of the text it was made from, ignoring
 blank space at both ends and normalizing CRLF to LF), `text`, `changes`,
 `gaps` (each with its byte range in `text`), `provenance`, `yours_changed`
-(positions counted from 0) and
-`composer_version`.
+(positions counted from 0), `composer_version`, and the style check's
+`style_score`, `style_marks` and `style_version`.
 
 The daemon checks the model's answer before you see it:
 
@@ -500,8 +659,8 @@ facts nobody has given must be left as `[[?: …]]` gaps, no number may appear
 that no input carries, the length must fall in the case's band, and there
 must be no subject line, preamble, repeated sign-off or run of the thread
 copied back. The output counts how many drafts passed each check. Each draft
-also records a style score and catalogue marks for review; style is not a
-pass/fail check.
+also records a style score, reported as a mean; style is not a pass/fail
+check.
 
 Both sets save nothing. Each case starts with one LLM call. A draft that hits
 the token limit is retried with more room, so a case can make more than one
@@ -542,7 +701,8 @@ output:
 mxr draft-assist THREAD_ID "say Friday works" --format table
 ```
 
-The notes after the body name each source with the command that opens it:
+The notes after the body go to stderr and name each source with the command
+that opens it:
 
 ```text
 Friday works for me. I'll bring the notes.
@@ -554,14 +714,20 @@ Your emails it matched the voice of:
 Messages it read from this conversation:
   2026-09-30 · Theo  mxr cat 81fe7849-7927-5257-918d-5dc693765c9b
   2026-09-30 · Nora  mxr cat e0c0e763-0faf-5773-98b9-049d0d90d765
+humanizer=92/100
 ```
+
+`humanizer=` is the draft's style score. `voice_match=` is added when mxr
+has a baseline of how you write to that person, and `rewritten Nx` when the
+humanizer rewrote the draft.
 
 Run `mxr cat <message-id>` on any line to read that message. The line is
 read from what the request actually did, not from your config:
 
 - **Local model** or **Cloud model** comes from the endpoint that answered.
-  If a config reload lands mid-request, the draft still describes the model
-  that wrote it.
+  With `[llm.fallback]`, a draft your local endpoint wrote says local, and one
+  the fallback wrote says cloud. If a config reload lands mid-request, the
+  draft still describes the model that wrote it.
 - The web app shows the model as a mark beside the text, `gemma4 · local` or
   `gemma4 · cloud`, with where it ran in its tooltip. Gists, the AI overview
   and drafts all wear it. The overview knows the model but not where it ran,
@@ -648,18 +814,22 @@ and the GPT-5 family all do this reliably.
 
 ## Limits and what's deferred
 
-- **Single-shot completions**: no streaming yet. The features are
-  short-form (≤2KB outputs); a single round-trip beats streaming for
-  this use case.
-- **24KB prompt budget**: long threads truncate oldest-first.
-- **Semantic grounding is opportunistic**: prior sent examples are included
-  only when semantic search is ready and has indexed matching sent messages.
+- **One response per request**: summaries, drafts and gists arrive whole;
+  only the assistant streams its replies.
+- **Prompt size**: drafts fit the prompt to `context_window`, between 6,000
+  and 28,000 characters, keeping the newest messages. Summaries send the
+  whole thread, so a very long thread can overflow a small window.
+- **Thinking models**: a model that spends its whole token budget on hidden
+  reasoning and returns nothing is asked once more with
+  `reasoning_effort: "none"`. If that works, mxr keeps sending the field to
+  that endpoint until the daemon restarts or reloads `[llm]`.
 - **Summary cache**: unchanged threads reuse the cached summary. The cache
   hash includes weak relationship context, so changed relationship summaries
   or style data invalidate stale summaries. Opening a thread returns a valid
   cached summary with the thread payload when one exists.
-- **Humanizer auto-rewrite is not the core contract**: deterministic scoring
-  is available locally; automatic rewrite loops are a separate pipeline layer.
+- **Humanizer rewrites**: with `humanizer.auto_fix` on (the default), a draft
+  scoring below `humanizer.score_threshold` (70) gets up to
+  `humanizer.max_rewrite_iterations` (2) rewrite passes on the same model.
 
 ## Disabling
 
@@ -684,9 +854,9 @@ configured backend.
 
 ## In real life
 
-- **Catching up after vacation:** `mxr search 'is:unread newer_than:7d'
-  --format ids | xargs -n1 mxr summarize | less` turns 200 unread
-  threads into 200 short summaries.
+- **Catching up after vacation:** `mxr summarize --search
+  'is:unread newer_than:7d' --limit 200 | less` turns 200 unread threads
+  into 200 short summaries.
 - **Replying to legalese:** `mxr summarize THREAD_ID` first, then
   `mxr draft-assist THREAD_ID "ack the request, ask for a 2-week
   extension"` to generate a draft you can polish.
@@ -698,15 +868,14 @@ configured backend.
 
 ```text
 "Summarise every thread in my reply-later queue with more than 3
-messages. Use `mxr replies --format jsonl | jq -r .id | xargs -I{}
-mxr summarize {}`. Group by sender so I can batch responses."
+messages. Use `mxr replies --format jsonl | jq -r .thread_id | sort -u |
+xargs -n1 mxr summarize`. Group by sender so I can batch responses."
 ```
 
 ```text
 "Draft a polite decline to the latest message from acme@example.com.
-Use `mxr search 'from:acme@example.com' --format ids | head -1` to
-get the thread id, then `mxr draft-assist`. Show me the draft;
-don't send."
+Use `mxr draft-assist --search 'from:acme@example.com' --first
+--instruct "decline politely"`. Show me the draft; don't send."
 ```
 
 ## See also

@@ -232,8 +232,15 @@ impl RuntimeTasks {
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
+///
+/// With a `chain` (from `[llm.fallback]`, see [`llm_fallback_chain`]) a
+/// model `base_url` serves becomes the first route of a `RoutedProvider`,
+/// the hosted fallback's routes behind it; an empty chain keeps the
+/// endpoint alone but under route health (a feature whose data must not
+/// reach the fallback). `chain` is ignored for a model mxr routes itself.
 pub(crate) fn build_llm_provider(
     config: &mxr_config::EffectiveLlmConfig,
+    chain: Option<&LlmFallbackChain>,
     health: &mxr_llm::RouteHealth,
 ) -> Arc<dyn mxr_llm::LlmProvider> {
     if mxr_config::is_demo_instance() {
@@ -242,34 +249,140 @@ pub(crate) fn build_llm_provider(
     if !config.enabled {
         return Arc::new(mxr_llm::NoopProvider);
     }
+    let timeout = std::time::Duration::from_secs(config.request_timeout_secs);
     if let Some(routes) = llm_model_routes(config) {
         return Arc::new(mxr_llm::RoutedProvider::new(
             mxr_llm::RoutedProviderConfig::new(
                 config.model.trim().to_string(),
                 routes,
                 config.context_window,
-                std::time::Duration::from_secs(config.request_timeout_secs),
+                timeout,
                 Arc::new(crate::llm_keys::LlmKeys::at_default_path()),
                 health.clone(),
             ),
         ));
     }
-    let api_key = if config.api_key_env.is_empty() {
+    // Trimmed as the endpoint's route health keys it, so the key read and
+    // the health kept belong to the same variable.
+    let api_key_env = config.api_key_env.trim();
+    let api_key = if api_key_env.is_empty() {
         None
     } else {
-        std::env::var(&config.api_key_env)
-            .ok()
-            .filter(|s| !s.is_empty())
+        std::env::var(api_key_env).ok().filter(|s| !s.is_empty())
     };
-    Arc::new(mxr_llm::OpenAiCompatibleProvider::new(
-        mxr_llm::OpenAiCompatibleConfig {
-            base_url: config.base_url.clone(),
-            api_key,
-            model: config.model.clone(),
-            context_window: config.context_window,
-            request_timeout: std::time::Duration::from_secs(config.request_timeout_secs),
-        },
-    ))
+    let endpoint = mxr_llm::OpenAiCompatibleConfig {
+        base_url: config.base_url.clone(),
+        api_key,
+        model: config.model.clone(),
+        context_window: config.context_window,
+        request_timeout: timeout,
+    };
+    let Some(chain) = chain else {
+        return Arc::new(mxr_llm::OpenAiCompatibleProvider::new(endpoint));
+    };
+    let mut routed = mxr_llm::RoutedProviderConfig::new(
+        chain.model.clone(),
+        chain.routes.clone(),
+        chain.context_window.unwrap_or(config.context_window),
+        timeout,
+        Arc::new(crate::llm_keys::LlmKeys::at_default_path()),
+        health.clone(),
+    );
+    routed.endpoint = Some(endpoint);
+    routed.endpoint_api_key_env = config.api_key_env.clone();
+    Arc::new(mxr_llm::RoutedProvider::new(routed))
+}
+
+/// The hosted model `[llm.fallback]` names and the routes it goes through,
+/// in order. `routes` is empty for a feature withheld from the fallback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LlmFallbackChain {
+    pub model: String,
+    pub routes: Vec<mxr_llm::Route>,
+    pub context_window: Option<u32>,
+}
+
+impl LlmFallbackChain {
+    /// The same chain with nothing behind the endpoint.
+    fn withheld(&self) -> Self {
+        Self {
+            routes: Vec::new(),
+            ..self.clone()
+        }
+    }
+}
+
+/// `[llm.fallback]` resolved to routes, `Ok(None)` when it is absent, or why
+/// it can't be used. The model must be one mxr routes to a hosted provider
+/// itself; anything else would go to `base_url`, the endpoint it stands in
+/// for.
+pub(crate) fn llm_fallback(
+    config: &mxr_config::LlmConfig,
+) -> std::result::Result<Option<LlmFallbackChain>, String> {
+    let Some(fallback) = &config.fallback else {
+        return Ok(None);
+    };
+    let model = fallback.model.trim();
+    if model.is_empty() {
+        return Err(format!(
+            "llm.fallback.model is empty; name a hosted model such as {} or remove [llm.fallback]",
+            mxr_config::DEFAULT_LLM_FALLBACK_MODEL
+        ));
+    }
+    let Some(routes) = mxr_llm::routes_for_model(model, mxr_llm::Endpoint::Default) else {
+        return Err(format!(
+            "llm.fallback.model `{model}` is not a hosted model mxr can route: use an OpenAI id \
+             (gpt-6-luna), an Anthropic id (claude-haiku-5-5) or an OpenRouter vendor/model id, \
+             or remove [llm.fallback]"
+        ));
+    };
+    if fallback.context_window == Some(0) {
+        // The chain advertises the smallest window, so a zero would shrink
+        // every prompt to the minimum budget even while the endpoint works.
+        return Err(
+            "llm.fallback.context_window is 0; set the fallback model's window or remove the key"
+                .to_string(),
+        );
+    }
+    Ok(Some(LlmFallbackChain {
+        model: model.to_string(),
+        routes,
+        context_window: fallback.context_window,
+    }))
+}
+
+/// The chain `feature` runs with under `effective`: none when there is no
+/// usable fallback or the model is one mxr routes itself (it has its own
+/// fallback); the endpoint alone when the feature's data may not reach the
+/// fallback. A step from the user's endpoint to the cloud passes the same
+/// gate a cloud model does: relationship data needs
+/// `llm.allow_cloud_relationship_data`.
+pub(crate) fn llm_fallback_chain(
+    config: &mxr_config::LlmConfig,
+    fallback: Option<&LlmFallbackChain>,
+    feature: Option<mxr_llm::LlmFeature>,
+    effective: &mxr_config::EffectiveLlmConfig,
+) -> Option<LlmFallbackChain> {
+    let fallback = fallback?;
+    if !effective.enabled || llm_model_routes(effective).is_some() {
+        return None;
+    }
+    let withheld =
+        feature.is_some_and(relationship_data_feature) && !config.allow_cloud_relationship_data;
+    Some(if withheld {
+        fallback.withheld()
+    } else {
+        fallback.clone()
+    })
+}
+
+/// [`llm_fallback`], with an unusable fallback logged and left out: the
+/// daemon still runs every feature on its own model.
+fn usable_llm_fallback(config: &mxr_config::LlmConfig) -> Option<LlmFallbackChain> {
+    llm_fallback(config).unwrap_or_else(|error| {
+        tracing::warn!(%error, "LLM fallback not used");
+        None
+    })
 }
 
 /// Why a locked config update did not happen.
@@ -318,7 +431,7 @@ pub(crate) fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::Eff
 fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime> {
     let health = mxr_llm::RouteHealth::default();
     let runtime = Arc::new(mxr_llm::LlmRuntime::with_route_health(
-        build_llm_provider(&base_llm_config(config), &health),
+        Arc::new(mxr_llm::NoopProvider),
         health,
     ));
     apply_llm_config_to_runtime(&runtime, config);
@@ -327,7 +440,10 @@ fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime>
 
 fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_config::LlmConfig) {
     let health = runtime.route_health().clone();
-    runtime.replace(build_llm_provider(&base_llm_config(config), &health));
+    let fallback = usable_llm_fallback(config);
+    let base = base_llm_config(config);
+    let base_chain = llm_fallback_chain(config, fallback.as_ref(), None, &base);
+    let base_provider = build_llm_provider(&base, base_chain.as_ref(), &health);
     runtime.set_background_timeout(std::time::Duration::from_secs(
         config.background_request_timeout_secs,
     ));
@@ -339,26 +455,64 @@ fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_
             blocked.insert(feature, reason);
             continue;
         }
-        providers.insert(feature, build_llm_provider(&effective, &health));
+        let chain = llm_fallback_chain(config, fallback.as_ref(), Some(feature), &effective);
+        providers.insert(
+            feature,
+            build_llm_provider(&effective, chain.as_ref(), &health),
+        );
     }
     for feature in relationship_data_features() {
         if providers.contains_key(&feature) || blocked.contains_key(&feature) {
             continue;
         }
-        let effective = base_llm_config(config);
-        if let Some(reason) = relationship_data_block_reason(feature, config, &effective) {
+        if let Some(reason) = relationship_data_block_reason(feature, config, &base) {
             blocked.insert(feature, reason);
+            continue;
+        }
+        // The base provider may fall back to the cloud; this feature keeps
+        // the endpoint alone unless its data is allowed there.
+        let chain = llm_fallback_chain(config, fallback.as_ref(), Some(feature), &base);
+        if chain != base_chain {
+            providers.insert(feature, build_llm_provider(&base, chain.as_ref(), &health));
         }
     }
-    runtime.replace_feature_providers(providers, blocked);
+    runtime.install(base_provider, providers, blocked);
 }
 
-/// The settings a feature runs with: its `[llm.overrides.<feature>]` section
-/// over the base `[llm]`.
+/// The features `[llm.compose] model` serves when it is set, in place of
+/// their per-feature overrides.
+pub(crate) const DRAFTING_FEATURES: [mxr_llm::LlmFeature; 4] = [
+    mxr_llm::LlmFeature::DraftAssist,
+    mxr_llm::LlmFeature::DraftNew,
+    mxr_llm::LlmFeature::DraftRefine,
+    mxr_llm::LlmFeature::HumanizeRewrite,
+];
+
+/// `[llm.compose] model`, when it is set and `feature` drafts.
+pub(crate) fn compose_model_for(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> Option<&str> {
+    DRAFTING_FEATURES
+        .contains(&feature)
+        .then(|| config.compose.as_ref()?.model.as_deref())
+        .flatten()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+}
+
+/// The settings a feature runs with: `[llm.compose] model` on the base `[llm]`
+/// for a drafting feature when it is set, otherwise the feature's
+/// `[llm.overrides.<feature>]` section over the base `[llm]`.
 pub(crate) fn effective_llm_config(
     config: &mxr_config::LlmConfig,
     feature: mxr_llm::LlmFeature,
 ) -> mxr_config::EffectiveLlmConfig {
+    if let Some(model) = compose_model_for(config, feature) {
+        let mut effective = base_llm_config(config);
+        effective.model = model.to_string();
+        return effective;
+    }
     llm_override_entries(&config.overrides)
         .into_iter()
         .find(|(overridden, _)| *overridden == feature)
@@ -382,7 +536,6 @@ fn llm_override_entries(
         (LlmFeature::DraftAssist, overrides.draft_assist.as_ref()),
         (LlmFeature::DraftNew, overrides.draft_new.as_ref()),
         (LlmFeature::DraftRefine, overrides.draft_refine.as_ref()),
-        (LlmFeature::VoiceMatch, overrides.voice_match.as_ref()),
         (
             LlmFeature::HumanizeRewrite,
             overrides.humanize_rewrite.as_ref(),
@@ -394,7 +547,6 @@ fn llm_override_entries(
         (LlmFeature::ArchiveAsk, overrides.archive_ask.as_ref()),
         (LlmFeature::DecisionLog, overrides.decision_log.as_ref()),
         (LlmFeature::Briefing, overrides.briefing.as_ref()),
-        (LlmFeature::Expert, overrides.expert.as_ref()),
         (
             LlmFeature::DeliveryExtraction,
             overrides.delivery_extraction.as_ref(),
@@ -411,27 +563,23 @@ fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
         feature,
         mxr_llm::LlmFeature::RelationshipSummary
             | mxr_llm::LlmFeature::Commitments
-            | mxr_llm::LlmFeature::VoiceMatch
             | mxr_llm::LlmFeature::AnswerCoverage
             | mxr_llm::LlmFeature::ArchiveAsk
             | mxr_llm::LlmFeature::DecisionLog
             | mxr_llm::LlmFeature::Briefing
-            | mxr_llm::LlmFeature::Expert
             // Searches and reads across the whole mailbox.
             | mxr_llm::LlmFeature::Assistant
     )
 }
 
-fn relationship_data_features() -> [mxr_llm::LlmFeature; 9] {
+fn relationship_data_features() -> [mxr_llm::LlmFeature; 7] {
     [
         mxr_llm::LlmFeature::RelationshipSummary,
         mxr_llm::LlmFeature::Commitments,
-        mxr_llm::LlmFeature::VoiceMatch,
         mxr_llm::LlmFeature::AnswerCoverage,
         mxr_llm::LlmFeature::ArchiveAsk,
         mxr_llm::LlmFeature::DecisionLog,
         mxr_llm::LlmFeature::Briefing,
-        mxr_llm::LlmFeature::Expert,
         mxr_llm::LlmFeature::Assistant,
     ]
 }
@@ -482,6 +630,21 @@ pub(crate) fn llm_endpoint_is_local(llm: &mxr_llm::PinnedLlm) -> bool {
     mxr_config::is_demo_instance() || !llm.leaves_machine()
 }
 
+/// Where the answer labelled `answered_model` was written, for the label a
+/// client shows. Unlike [`llm_endpoint_is_local`], which decides what may be
+/// sent, this follows the route that answered: a local endpoint with a hosted
+/// fallback behind it is local when the endpoint answered.
+pub(crate) fn llm_answer_locality(
+    llm: &mxr_llm::PinnedLlm,
+    answered_model: &str,
+) -> mxr_protocol::AiLocalityData {
+    if mxr_config::is_demo_instance() || llm.answered_on_this_machine(answered_model) {
+        mxr_protocol::AiLocalityData::Local
+    } else {
+        mxr_protocol::AiLocalityData::Cloud
+    }
+}
+
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
 /// account scope (`None` = "all accounts") and the human label.
 ///
@@ -512,6 +675,10 @@ pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 pub struct AppState {
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
+    /// An in-memory test state's attachment folder, deleted with the state so
+    /// test runs don't fill the temp directory.
+    #[cfg(test)]
+    _test_attachment_dir: Option<tempfile::TempDir>,
     pub store: Arc<Store>,
     /// Static locale resolved once at daemon startup from `MXR_LOCALE` env
     /// var or config `locale` key. Handlers reference this for subject and
@@ -529,6 +696,9 @@ pub struct AppState {
     /// config so callers can return `LlmDisabled` without `Option`
     /// gymnastics.
     pub llm: Arc<mxr_llm::LlmRuntime>,
+    /// Where the LLM background breaker and attempt ledger are saved across
+    /// restarts. `None` for test states and the demo, which never write it.
+    pub(crate) llm_state_path: Option<std::path::PathBuf>,
     pub sync_engine: Arc<SyncEngine>,
     /// Account-owned address cache. SyncEngine consults this for direction
     /// classification; handlers refresh it after every mutation through
@@ -539,6 +709,7 @@ pub struct AppState {
     pub(crate) treatment_previews: crate::handler::rule_treatment::TreatmentPreviews,
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
+    pub(crate) selection_previews: crate::handler::selection_jobs::SelectionPreviews,
     pub(crate) category_rule_previews: crate::handler::category_rules::CategoryRulePreviews,
     pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
     /// Writing-help proposals waiting to be accepted (`ComposeAssist`).
@@ -550,6 +721,9 @@ pub struct AppState {
     pub(crate) assistant: crate::assistant::AssistantRuntime,
     runtime: RwLock<ProviderRuntime>,
     draft_operation_locks: ParkingMutex<HashMap<mxr_core::DraftId, Arc<TokioMutex<()>>>>,
+    /// Held across a move to To do's open-to-do check and insert, so two
+    /// overlapping moves of one email cannot both pass the check.
+    todo_move_locks: ParkingMutex<HashMap<mxr_core::MessageId, Arc<TokioMutex<()>>>>,
     attachment_materialization_locks:
         ParkingMutex<HashMap<AttachmentMaterializationKey, AttachmentMaterializationLock>>,
     pub(crate) archive_runners: ParkingMutex<HashSet<String>>,
@@ -621,7 +795,7 @@ pub struct AppState {
     /// Held from snapshot to install by everything that rewrites the
     /// in-memory config, so one writer's stale snapshot can never replace
     /// another's change (a revoked cloud-data setting above all).
-    config_write: tokio::sync::Mutex<()>,
+    pub(crate) config_write: tokio::sync::Mutex<()>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
     /// Live progress of the sync pass running for each account, plus the
     /// contacts a mid-backfill account still owes the relationship worker.
@@ -854,11 +1028,17 @@ impl AppState {
         }
         let (search, search_worker) = SearchServiceHandle::start(search_index.index);
         runtime_tasks.set_search_worker(search_worker);
-        // A stale index is incomplete until the startup rebuild finishes. A
-        // short index is not marked: startup maintenance rebuilds it, and clears
-        // the flag if sync has already filled the gap.
-        if lexical_content_stale.get().is_some() {
-            search.mark_incomplete();
+        // Searches must not read a stale or short index between here and the
+        // startup rebuild. Startup maintenance ends this hold once the rebuild
+        // is done, or once it finds nothing to rebuild.
+        let total_messages = store.count_all_messages().await.unwrap_or_default();
+        let indexed_messages = search.num_docs().await.unwrap_or_default();
+        if crate::reindex::startup_rebuild_needed(
+            lexical_content_stale.get().is_some(),
+            total_messages,
+            indexed_messages,
+        ) {
+            search.hold_startup_rebuild();
         }
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(store.clone(), &data_dir, config.search.semantic.clone()),
@@ -866,6 +1046,15 @@ impl AppState {
         );
         runtime_tasks.set_semantic_worker(semantic_worker);
         let llm = build_llm_runtime(&config.llm);
+        // After the providers are built: building them resets this state.
+        let llm_state_path = (!mxr_config::is_demo_instance())
+            .then(|| data_dir.join(crate::llm_background::STATE_FILE));
+        if let Some(saved) = llm_state_path
+            .as_deref()
+            .and_then(crate::llm_background::load)
+        {
+            llm.restore_background_state(&saved);
+        }
         let (relationship, relationship_worker) =
             RelationshipServiceHandle::start(store.clone(), llm.clone(), background_db.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
@@ -911,6 +1100,8 @@ impl AppState {
 
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(pending),
+            #[cfg(test)]
+            _test_attachment_dir: None,
             store,
             locale,
             activity,
@@ -919,12 +1110,14 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path,
             sync_engine,
             account_addresses,
             rule_mutation_gate: Default::default(),
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -938,6 +1131,7 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -1175,6 +1369,7 @@ impl AppState {
                     auth_required,
                     use_tls,
                     max_connections,
+                    tls_cert_sha256,
                 }) => {
                     // Degrade, never crash: a bad IMAP config skips just this
                     // account (mirroring Gmail above). Credentials resolve
@@ -1188,7 +1383,9 @@ impl AppState {
                         *auth_required,
                         *use_tls,
                         *max_connections,
-                    ) {
+                    )
+                    .and_then(|config| Ok(config.with_tls_cert_sha256(tls_cert_sha256.clone())?))
+                    {
                         Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
                             account_id.clone(),
                             config,
@@ -1498,6 +1695,20 @@ impl AppState {
             let mut locks = self.draft_operation_locks.lock();
             locks
                 .entry(draft_id.clone())
+                .or_insert_with(|| Arc::new(TokioMutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
+    }
+
+    /// Serialises moves of one email to To do. Entries nobody holds or waits on
+    /// are dropped on the way in, so the map does not grow with every email.
+    pub async fn acquire_todo_move(&self, message_id: &mxr_core::MessageId) -> OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.todo_move_locks.lock();
+            locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+            locks
+                .entry(message_id.clone())
                 .or_insert_with(|| Arc::new(TokioMutex::new(())))
                 .clone()
         };
@@ -1966,6 +2177,9 @@ impl AppState {
             tracing::trace!(session_id = %session_id.0, "auth session task aborted");
         }
 
+        // After the workers stopped, so their last outcomes are in it.
+        crate::llm_background::save_if_changed(self).await;
+
         tracing::info!(
             elapsed_ms = drain_started.elapsed().as_secs_f64() * 1000.0,
             "daemon shutdown drain completed"
@@ -1994,6 +2208,9 @@ impl AppState {
     /// holds `config_write`.
     fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        // A fallback mxr can't use doesn't hold back the rest of `[llm]`
+        // (turning AI off must still apply): the daemon runs without it, as
+        // at startup, and `mxr llm status` and `mxr config set` say why.
         self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;
@@ -2048,12 +2265,18 @@ impl AppState {
             mutator(config).map_err(ConfigChangeError::Refused)?;
             Ok::<_, ConfigChangeError>(config.clone())
         });
+        // The file is read and saved as written. The daemon runs with the
+        // environment overrides on top, the way a reload loads it.
         match result {
-            Ok(saved) => self.install_config(saved).await,
+            Ok(mut saved) => {
+                mxr_config::apply_env_overrides(&mut saved);
+                self.install_config(saved).await
+            }
             Err(ConfigChangeError::Refused(reason)) => {
                 // Looking at the file taught the daemon what it has now, even
                 // though nothing was changed: keep its copy in step.
-                if let Some(on_disk) = seen {
+                if let Some(mut on_disk) = seen {
+                    mxr_config::apply_env_overrides(&mut on_disk);
                     if let Err(error) = self.install_config(on_disk).await {
                         tracing::warn!(%error, "couldn't apply the config found on disk");
                     }
@@ -2348,7 +2571,8 @@ impl AppState {
         debug_assert_eq!(provider.account_id(), &account.id);
 
         let mut config = mxr_config::MxrConfig::default();
-        config.general.attachment_dir = test_attachment_dir();
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -2391,6 +2615,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
+            _test_attachment_dir: Some(attachment_dir),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2399,12 +2624,14 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path: None,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             rule_mutation_gate: Default::default(),
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2418,6 +2645,7 @@ impl AppState {
                 default_send_provider: send_provider,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -2459,7 +2687,8 @@ impl AppState {
     pub async fn in_memory_without_accounts_with_config(
         mut config: mxr_config::MxrConfig,
     ) -> anyhow::Result<Self> {
-        config.general.attachment_dir = test_attachment_dir();
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
@@ -2490,6 +2719,7 @@ impl AppState {
         let activity = crate::activity::Recorder::spawn(store.clone(), &config.activity);
         Ok(Self {
             restore_pending: std::sync::atomic::AtomicBool::new(false),
+            _test_attachment_dir: Some(attachment_dir),
             store,
             locale: mxr_core::i18n::DEFAULT_LOCALE,
             activity,
@@ -2498,12 +2728,14 @@ impl AppState {
             relationship,
             contacts_refresh,
             llm,
+            llm_state_path: None,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             rule_mutation_gate: Default::default(),
             treatment_previews: Default::default(),
             sweep_previews: Default::default(),
             purge_previews: Default::default(),
+            selection_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
             compose_proposals: Default::default(),
@@ -2517,6 +2749,7 @@ impl AppState {
                 default_send_provider: None,
             }),
             draft_operation_locks: ParkingMutex::new(HashMap::new()),
+            todo_move_locks: ParkingMutex::new(HashMap::new()),
             attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
             archive_runners: ParkingMutex::new(HashSet::new()),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -2557,13 +2790,36 @@ impl AppState {
 
     #[cfg(test)]
     pub async fn in_memory_with_fake_config(
-        mut config: mxr_config::MxrConfig,
+        config: mxr_config::MxrConfig,
     ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
-        config.general.attachment_dir = test_attachment_dir();
+        Self::in_memory_with_fake_index(config, SearchIndex::in_memory()?).await
+    }
+
+    /// [`Self::in_memory_with_fake_config`] over a search index the test
+    /// opened (for example in a temp directory), not a RAM one.
+    #[cfg(test)]
+    pub async fn in_memory_with_fake_index(
+        config: mxr_config::MxrConfig,
+        index: SearchIndex,
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+        Self::in_memory_with_fake_provider(config, index, mxr_provider_fake::FakeProvider::new)
+            .await
+    }
+
+    /// [`Self::in_memory_with_fake_index`] with the fake provider built by
+    /// the test (for example over a large demo dataset) from the account id.
+    #[cfg(test)]
+    pub async fn in_memory_with_fake_provider(
+        mut config: mxr_config::MxrConfig,
+        index: SearchIndex,
+        make_provider: impl FnOnce(AccountId) -> mxr_provider_fake::FakeProvider,
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+        let attachment_dir = test_attachment_dir()?;
+        config.general.attachment_dir = attachment_dir.path().to_path_buf();
         let store = Arc::new(Store::in_memory().await?);
         let runtime_tasks = RuntimeTasks::default();
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
-        let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
+        let (search, search_worker) = SearchServiceHandle::start(index);
         runtime_tasks.set_search_worker(search_worker);
         let (semantic, semantic_worker) = SemanticServiceHandle::start(
             SemanticEngine::new(
@@ -2597,7 +2853,7 @@ impl AppState {
         };
         store.insert_account(&account).await?;
 
-        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let fake = Arc::new(make_provider(account_id.clone()));
         let provider: Arc<dyn MailSyncProvider> = fake.clone();
         let send_provider: Option<Arc<dyn MailSendProvider>> = Some(fake.clone());
 
@@ -2615,6 +2871,7 @@ impl AppState {
         Ok((
             Self {
                 restore_pending: std::sync::atomic::AtomicBool::new(false),
+                _test_attachment_dir: Some(attachment_dir),
                 store,
                 locale: mxr_core::i18n::DEFAULT_LOCALE,
                 activity,
@@ -2623,12 +2880,14 @@ impl AppState {
                 relationship,
                 contacts_refresh,
                 llm,
+                llm_state_path: None,
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 rule_mutation_gate: Default::default(),
                 treatment_previews: Default::default(),
                 sweep_previews: Default::default(),
                 purge_previews: Default::default(),
+                selection_previews: Default::default(),
                 category_rule_previews: Default::default(),
                 category_previews: Default::default(),
                 compose_proposals: Default::default(),
@@ -2642,6 +2901,7 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 draft_operation_locks: ParkingMutex::new(HashMap::new()),
+                todo_move_locks: ParkingMutex::new(HashMap::new()),
                 attachment_materialization_locks: ParkingMutex::new(HashMap::new()),
                 archive_runners: ParkingMutex::new(HashSet::new()),
                 provider_operation_locks: ParkingMutex::new(HashMap::new()),
@@ -2687,8 +2947,10 @@ impl AppState {
 }
 
 #[cfg(test)]
-fn test_attachment_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4()))
+fn test_attachment_dir() -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix("mxr-attachments-test-")
+        .tempdir()
 }
 
 /// A lexical index opened at startup, plus the path to mark once it is rebuilt
@@ -3033,6 +3295,49 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_config_change_saves_the_file_as_written_and_keeps_env_overrides_running() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp_dir.path().join("config");
+        let data_dir = temp_dir.path().join("data");
+        let socket_path = temp_dir.path().join("mxr.sock");
+        std::fs::create_dir_all(&config_dir).expect("config dir");
+        let config_path = config_dir.join("config.toml");
+        std::fs::write(&config_path, "[general]\neditor = \"file-editor\"\n").expect("config");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir.as_os_str())),
+                ("MXR_DATA_DIR", Some(data_dir.as_os_str())),
+                ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
+                ("MXR_EDITOR", Some(std::ffi::OsStr::new("env-editor"))),
+            ],
+            || {
+                runtime.block_on(async {
+                    let state = AppState::in_memory_without_accounts().await.expect("state");
+                    let installed = state
+                        .mutate_config(|config| config.general.sync_interval = 120)
+                        .await
+                        .expect("config change");
+
+                    assert_eq!(installed.general.editor.as_deref(), Some("env-editor"));
+                    assert_eq!(
+                        state.config.read().general.editor.as_deref(),
+                        Some("env-editor")
+                    );
+                    let written =
+                        mxr_config::load_config_file_as_written(&config_path).expect("config");
+                    assert_eq!(written.general.editor.as_deref(), Some("file-editor"));
+                    assert_eq!(written.general.sync_interval, 120);
+                });
+            },
+        );
+    }
 
     #[test]
     fn owned_addresses_revision_ignores_case_and_order_and_follows_the_set() {
@@ -3728,10 +4033,10 @@ use_tls = true
             .feature_block_reason(mxr_llm::LlmFeature::Commitments)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::VoiceMatch)
+            .feature_block_reason(mxr_llm::LlmFeature::Briefing)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .feature_block_reason(mxr_llm::LlmFeature::ArchiveAsk)
             .is_some());
         assert!(runtime
             .feature_block_reason(mxr_llm::LlmFeature::DraftAssist)
@@ -3755,7 +4060,7 @@ use_tls = true
                     base_url: Some("http://localhost:11434/v1".to_string()),
                     ..mxr_config::LlmOverrideConfig::default()
                 }),
-                expert: Some(mxr_config::LlmOverrideConfig {
+                archive_ask: Some(mxr_config::LlmOverrideConfig {
                     base_url: Some("http://localhost:11434/v1".to_string()),
                     ..mxr_config::LlmOverrideConfig::default()
                 }),
@@ -3773,7 +4078,7 @@ use_tls = true
             .feature_block_reason(mxr_llm::LlmFeature::Commitments)
             .is_some());
         assert!(runtime
-            .feature_block_reason(mxr_llm::LlmFeature::Expert)
+            .feature_block_reason(mxr_llm::LlmFeature::ArchiveAsk)
             .is_none());
     }
 

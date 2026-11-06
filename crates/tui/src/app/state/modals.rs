@@ -105,6 +105,9 @@ pub struct SnoozePanelState {
     pub custom_error: Option<String>,
     /// The custom time's previewed resolution and selected reading.
     pub custom_time: crate::ui::time_preview::TimePreview,
+    /// The presets offered when the picker opened, numbered from 1.
+    /// `None` offers every preset.
+    pub presets: Option<Vec<crate::app::SnoozePreset>>,
 }
 
 /// `b`: reply later at a typed time, previewed live. On a Waiting on row

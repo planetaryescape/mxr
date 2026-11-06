@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Create or update a signature inline
+
+Usage: mxr signatures set <NAME> <BODY>
+
+Arguments:
+  <NAME>  Human-readable signature name
+  <BODY>  Signature body. The RFC 3676 `-- ` delimiter is inserted at compose time if absent
+
+Options:
+  -h, --help  Print help

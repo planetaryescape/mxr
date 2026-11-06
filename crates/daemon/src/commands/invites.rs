@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::commands::selection::parse_message_id;
 use crate::commands::{ensure_message_account, expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -160,7 +161,7 @@ pub async fn reply(
                 Ok(())
             }
         },
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("unexpected response from daemon"),
     }
 }

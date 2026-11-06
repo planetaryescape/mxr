@@ -24,7 +24,7 @@ pub mod todo_copy {
     /// Oct."
     pub const CLEAR_FOR_NOW: &str = "Nothing needs you.";
     /// The full explanation `?` leads with. Nothing shows it unasked.
-    pub const ABOUT: &str = "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; Space ticks it off and o opens the email it came from.";
+    pub const ABOUT: &str = "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; e ticks it off, Space peeks at why it is here and o opens the email it came from.";
     /// The first run's summary card title.
     pub const FIRST_RUN_TITLE: &str = "Your last two weeks, sorted";
     /// The first run's summary line for To do, after the counts.
@@ -215,6 +215,18 @@ pub struct TodoData {
     pub source_message_id: Option<MessageId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_date: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the source email left the inbox through a provider sync and is
+    /// still out: "filed in Gmail". Never set for an archive mxr made, and
+    /// cleared when the mail comes back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_filed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// This row revision has not been opened or peeked. Independent of the
+    /// source email's READ flag. Omitted by older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unread: Option<bool>,
+    /// Opaque version to acknowledge with `SetModeRowSeen`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_revision: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surfaced_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

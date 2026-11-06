@@ -12,6 +12,7 @@
 //! `--limit` are presentation modifiers applied after the daemon
 //! returns its sorted (date-desc) results.
 
+use crate::commands::daemon_response_error;
 use crate::commands::progress::format_thousands;
 use crate::ipc_client::IpcClient;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -36,6 +37,8 @@ pub const SEARCH_HARD_CAP: u32 = 1000;
 pub struct CappedSelection {
     /// How many of the newest matches the selection holds.
     pub selected: usize,
+    /// The command has `--all`, so the notice says how to reach the rest.
+    offers_all: bool,
 }
 
 /// The field a capped selection adds to JSON and JSONL output. It appears only
@@ -46,12 +49,31 @@ pub struct CappedFields {
 }
 
 impl CappedSelection {
+    pub fn new(selected: usize) -> Self {
+        Self {
+            selected,
+            offers_all: false,
+        }
+    }
+
+    /// For a command that takes `--all`: the notice then points at it.
+    #[must_use]
+    pub fn offering_all(mut self) -> Self {
+        self.offers_all = true;
+        self
+    }
+
     /// The one sentence every surface uses: dry-run preview, confirmation
     /// prompt, `--yes` stderr notice and read-only commands. It states no total
     /// because the daemon has no exact one.
     pub fn notice(&self) -> String {
+        let way_on = if self.offers_all {
+            "Pass --all to act on every match, or narrow the search."
+        } else {
+            "Narrow the search to reach the rest."
+        };
         format!(
-            "More than {} messages match; only the newest {} are selected. Narrow the search to reach the rest.",
+            "More than {} messages match; only the newest {} are selected. {way_on}",
             format_thousands(SEARCH_HARD_CAP),
             format_thousands(self.selected),
         )
@@ -213,7 +235,7 @@ impl SelectionLimit {
     /// `Some` when the hard cap cut the page: the daemon found at least one
     /// more visible match than it returned. `fetched` is how many came back.
     fn capped(self, has_more: bool, fetched: usize) -> Option<CappedSelection> {
-        (self.bound_by_hard_cap() && has_more).then_some(CappedSelection { selected: fetched })
+        (self.bound_by_hard_cap() && has_more).then_some(CappedSelection::new(fetched))
     }
 }
 
@@ -242,7 +264,7 @@ async fn run_selection_search(
             require_indexed_selection(degraded.as_ref())?;
             Ok((results, has_more))
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response from search"),
     }
 }
@@ -477,7 +499,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(selection.ids, daemon.message_ids[..1_000]);
-        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+        assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
     }
 
     #[tokio::test]
@@ -541,7 +563,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+        assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
     }
 
     #[tokio::test]
@@ -591,7 +613,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+        assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
     }
 
     #[tokio::test]
@@ -615,7 +637,7 @@ mod tests {
 
     #[test]
     fn the_notice_says_more_than_the_cap_match_and_how_many_were_selected() {
-        let capped = CappedSelection { selected: 1_000 };
+        let capped = CappedSelection::new(1_000);
 
         assert_eq!(
             capped.notice(),
@@ -631,7 +653,7 @@ mod tests {
 
     #[test]
     fn the_capped_field_is_added_to_an_existing_object() {
-        let capped = CappedSelection { selected: 1_000 };
+        let capped = CappedSelection::new(1_000);
         let mut value = serde_json::json!({ "identity": "kept" });
 
         capped.merge_into(&mut value);

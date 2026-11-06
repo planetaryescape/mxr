@@ -3,8 +3,7 @@
  * time, and a mark for one waiting on you. Its keys are the definition's
  * `assistant-history` overlay, as in the TUI: j and k move, Enter opens,
  * Esc or q goes back, and # asks the daemon what would go (a dry run), then
- * y deletes and n, Esc or a bare Enter keeps it. d and D say where delete
- * went.
+ * y deletes and n, Esc or a bare Enter keeps it.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,7 +24,7 @@ import { Row, RowVerb } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { formatRelative, plural } from "@/lib/format";
 import { definedKeys } from "@/lib/actions/definition";
-import { announceMovedOverlayKey, pressedOverlayKey } from "@/lib/keys/overlayKeys";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 function standing(summary: AssistantSummary): string {
   if (summary.pending_count > 0) return "Waiting for you";
@@ -104,7 +103,7 @@ export function History({
             open(current.id);
           else if (pressedOverlayKey(keyEvent, "assistant-history.delete") && current) {
             void askToRemove(current.id);
-          } else if (!announceMovedOverlayKey(keyEvent, "assistant-history")) return false;
+          } else return false;
           return true;
         })(event);
       }}

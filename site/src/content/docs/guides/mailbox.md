@@ -131,6 +131,13 @@ Common bulk actions:
 - Apply label
 - Move to label
 
+A label is applied, moved to or routed to by name, on each message's own
+account. The picker lists the labels of the accounts the selection comes from,
+one entry per name. When a selection spans two accounts that both have a
+"Work" label, each message gets its own account's "Work". When one of the
+accounts has no label of that name, nothing changes and the status line names
+that account.
+
 ## Mutation feedback
 
 The TUI applies mailbox mutations optimistically: rows move, flags flip,
@@ -145,6 +152,11 @@ mxr archive --search 'from:noreply@example.com older:30d' --yes
 What you get: a dry-run count first, then an explicit mutation that can
 retry transient failures and still reports a real failure if retries are
 exhausted.
+
+A `--search` batch stops at the newest 1,000 matches. Add `--all` to
+`archive`, `read-archive`, `label` or `unlabel` to act on every match as one
+job. An `--all` job cannot be undone, so check its dry run first (see
+[Recipes](/guides/recipes/#act-on-every-match-of-a-search)).
 
 Preview auto-mark-read is quieter because it is background behavior. It
 retries transient failures too, but if it cannot land, the mailbox
@@ -172,9 +184,9 @@ browser's Downloads list.
 
 ## Snooze
 
-`b` opens Not now: **Later** with no time first, then presets such as tomorrow morning, tonight, weekend and next Monday, and a custom time. A time snoozes the conversation.
+`b` opens Not now: **Later** with no time first, then presets such as tomorrow morning, tonight, weekend and next Monday, and a custom time. Tonight leaves the list once your evening hour has passed. A time snoozes the conversation.
 
-`g n` opens **Snoozed** in both the TUI and the web app: what is snoozed, waking soonest first. `w` wakes the conversation under the cursor now, and `b` snoozes it again. From the CLI, `mxr snoozed` lists them and `mxr unsnooze <id>` wakes one.
+`g n` opens **Snoozed** in both the TUI and the web app: what is snoozed, waking soonest first. `w` wakes the conversation under the cursor now, and `b` snoozes it again with a new time. From the CLI, `mxr snoozed` lists them and `mxr unsnooze <id>` wakes one.
 
 Snoozing is local-first but also updates provider state where supported. For Gmail that means removing `INBOX` when snoozed and restoring it when the snooze wakes.
 

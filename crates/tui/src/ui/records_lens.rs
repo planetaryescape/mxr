@@ -14,6 +14,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, RecordsPageState, RECORD_KIND_CHIPS};
+use crate::ui::key_footer::FooterKey;
 use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -599,29 +600,48 @@ fn month_rows(
     }
 }
 
-fn keys_line(page: &RecordsPageState) -> String {
+/// The footer's keys in `width`. Help always shows (except while typing,
+/// when `?` types); the other keys go last-first when space runs short.
+fn keys_line(page: &RecordsPageState, width: usize) -> String {
     if page.asking {
-        return "Type what you remember  \u{21b5} ask  Esc stop typing".to_string();
+        return truncate(
+            "Type what you remember  \u{21b5} ask  Esc stop typing",
+            width,
+        );
     }
-    if page.showing_subscriptions() {
-        return "\u{21b5} card  o email  p issuer  Y copy amount  g f kind  Esc all records"
-            .to_string();
-    }
-    let keys: Vec<String> = match &page.guide {
-        Some(guide) => guide
-            .keys
-            .iter()
-            .filter(|key| !matches!(key.key.as_str(), "e" | "u" | "?" | "t"))
-            .map(|key| format!("{} {}", key.key, key.verb))
-            .collect(),
-        None => mxr_protocol::ARCHIVE_GUIDE
-            .keys
-            .iter()
-            .filter(|(key, _)| !matches!(*key, "e" | "u" | "?" | "t"))
-            .map(|(key, verb)| format!("{key} {verb}"))
-            .collect(),
+    let mut entries: Vec<FooterKey> = if page.showing_subscriptions() {
+        vec![
+            FooterKey::keep("\u{21b5} card"),
+            FooterKey::optional("o email"),
+            FooterKey::optional("p issuer"),
+            FooterKey::optional("Y copy amount"),
+            FooterKey::optional("g f kind"),
+            FooterKey::keep("Esc all records"),
+        ]
+    } else {
+        let keys: Vec<String> = match &page.guide {
+            Some(guide) => guide
+                .keys
+                .iter()
+                .filter(|key| !matches!(key.key.as_str(), "e" | "u" | "?" | "t"))
+                .map(|key| format!("{} {}", key.key, key.verb))
+                .collect(),
+            // Before the daemon's guide arrives, the compiled-in copy names
+            // actions by id; show their keys, as the guide would.
+            None => mxr_protocol::ARCHIVE_GUIDE
+                .keys
+                .iter()
+                .filter_map(|(id, verb)| Some((mxr_keymap::guide_key(id)?, *verb)))
+                .filter(|(key, _)| !matches!(key.as_str(), "e" | "u" | "?" | "t"))
+                .map(|(key, verb)| format!("{key} {verb}"))
+                .collect(),
+        };
+        let mut entries: Vec<FooterKey> = keys.into_iter().map(FooterKey::optional).collect();
+        entries.push(FooterKey::optional("g f kind"));
+        entries
     };
-    format!("{}  g f kind  ? keys", keys.join("  "))
+    entries.push(FooterKey::keep("? keys"));
+    crate::ui::key_footer::fit(&entries, "  ", width)
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate::theme::Theme) {
@@ -673,10 +693,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(
-                    " {}",
-                    truncate(&keys_line(view.page), width.saturating_sub(2))
-                ),
+                format!(" {}", keys_line(view.page, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

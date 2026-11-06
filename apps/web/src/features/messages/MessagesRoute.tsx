@@ -13,7 +13,8 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { describeTarget } from "@/features/mail-actions/mailVerbs";
 import { conversationNotNow } from "@/features/mail-actions/notNow";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
-import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { PageEmpty, PageError } from "@/components/PageParts";
+import { MessagesSkeleton } from "@/features/modes/ModeSkeletons";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
@@ -38,6 +39,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useScopeController } from "@/lib/keys/controllers";
+import { focusActivePane } from "@/lib/keys/focusPane";
 
 import {
   refreshMessages,
@@ -490,6 +492,42 @@ function MessagesBody({
     [conversation],
   );
 
+  // Opening a row with an unsent reply opens the conversation it answers and
+  // brings the reply back inline, focused, as a chat app does. Only an
+  // explicit open does: moving the lamp with j and k never takes the keys.
+  const [resume, setResume] = useState<{
+    person: string;
+    thread: string;
+    replyAll: boolean;
+  } | null>(null);
+  const openRow = useCallback(
+    (id: string) => {
+      const draft = allRows.find((row) => row.id === id)?.draft;
+      setResume(draft ? { person: id, thread: draft.thread_id, replyAll: draft.reply_all } : null);
+      select(id, { open: true, topic: draft?.thread_id });
+    },
+    [allRows, select],
+  );
+  const pageReady = Boolean(page && page.row.id === selectedId && !person.isPlaceholderData);
+  // The URL reaches the person a render after the open; leaving them after
+  // that drops the resume, so a later return by j or k never fires it.
+  const resumeReached = useRef(false);
+  useEffect(() => {
+    if (!resume) {
+      resumeReached.current = false;
+      return;
+    }
+    if (selectedId !== resume.person) {
+      if (resumeReached.current) setResume(null);
+      return;
+    }
+    resumeReached.current = true;
+    if (!pageReady || conversation?.thread_id !== resume.thread) return;
+    setResume(null);
+    if (useComposeUi.getState().intent?.contextThreadId === resume.thread) return;
+    openReply(resume.replyAll);
+  }, [conversation?.thread_id, openReply, pageReady, resume, selectedId]);
+
   // Where the page is now, read when an undo lands (after any later move).
   const here = useRef({
     mounted: true,
@@ -559,11 +597,13 @@ function MessagesBody({
             return nextSet;
           });
           const now = here.current;
+          // Back on the person already counts as staying: the list's own
+          // undo watcher can reopen them before this runs, depending on
+          // which list refresh lands first.
           const stayed =
             now.mounted &&
             useUiPrefs.getState().accountScope === account &&
-            now.person === landed.person &&
-            now.topic === landed.topic;
+            (now.person === from || (now.person === landed.person && now.topic === landed.topic));
           if (stayed) {
             advanceTo(from, thread);
             return;
@@ -710,8 +750,9 @@ function MessagesBody({
       setPageOpen(false);
       setFilterFocusRequest((request) => request + 1);
     },
-    open: () => selectedId && select(selectedId, { open: true }),
+    open: () => selectedId && openRow(selectedId),
     personPage: () => {
+      if (!selectedId) return;
       setPageOpen(true);
       requestAnimationFrame(() => {
         const personPage = document.querySelector<HTMLElement>('[data-testid="person-page"]');
@@ -743,8 +784,14 @@ function MessagesBody({
       if (commands && replyKeys.current.has(commands.intentKey)) commands.send();
     },
     escape: () => {
-      if (closeHint) closeHint();
-      else setPageOpen(false);
+      if (closeHint) {
+        closeHint();
+        return;
+      }
+      setPageOpen(false);
+      // Back from the person page `p` went into: on a wide screen it stays
+      // in view, so the keys' focus has to come back to Messages by itself.
+      if (document.activeElement?.closest('[data-testid="person-page"]')) focusActivePane();
     },
     // X and P act on the newest email the other side sent; on a new
     // sender's row their capitals answer its question.
@@ -758,17 +805,18 @@ function MessagesBody({
             newSender: newSender
               ? { question: newSender, label: selected?.title ?? "" }
               : undefined,
+            here: "messages" as const,
           }
         : null;
     }),
   });
 
   // Stable for the memoised rows: the handlers read the latest closure through a ref.
-  const latest = useRef({ select, openReply, done, replyAll });
-  latest.current = { select, openReply, done, replyAll };
+  const latest = useRef({ openRow, openReply, done, replyAll });
+  latest.current = { openRow, openReply, done, replyAll };
   const onSelectRow = useCallback((id: string) => {
     via.current = "pointer";
-    latest.current.select(id, { open: true });
+    latest.current.openRow(id);
   }, []);
   const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
   const onDoneRow = useCallback(() => latest.current.done("pointer"), []);
@@ -848,10 +896,7 @@ function MessagesBody({
               </div>
             ) : null}
             {loading ? (
-              <div className="pt-2">
-                <div aria-hidden className="mx-5 mb-1 mt-3 h-4" />
-                <PageSkeleton framed lead="avatar" shown={skeleton} />
-              </div>
+              <MessagesSkeleton shown={skeleton} />
             ) : (
               <MessagesList
                 data={data}
@@ -890,7 +935,7 @@ function MessagesBody({
                   loading={person.isPlaceholderData}
                   pending={gotIt.pending}
                   ackLoading={gotIt.loading}
-                  onBack={() => setPageOpen(false)}
+                  onBack={clearSelection}
                   onTopic={(thread) => {
                     topicsHint.dismiss();
                     if (selectedId) select(selectedId, { topic: thread });
@@ -925,7 +970,7 @@ function MessagesBody({
               />
             ) : selectedId ? (
               <div className="flex-1" aria-busy="true" />
-            ) : allRows.length > 0 ? (
+            ) : allRows.length > 0 || loading ? (
               <PageEmpty
                 framed
                 title="Choose a conversation"
@@ -962,7 +1007,10 @@ function SelectionAdvance({
     selectedId,
     isPresent: (id) => present.has(id),
     presenceSource: present,
-    onAdvance,
+    // The hook's second argument is the row it moved off, not a topic.
+    // Passed on, `advanceTo` opened that row id as the topic, which the
+    // bridge refuses, and the page said it couldn't find the person.
+    onAdvance: (id) => onAdvance(id),
     onEmpty,
   });
   return null;

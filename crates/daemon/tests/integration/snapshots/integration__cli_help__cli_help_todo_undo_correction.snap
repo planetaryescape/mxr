@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Undo a correction using its returned token, preserving newer edits
+
+Usage: mxr todo undo-correction [OPTIONS] <TODO_ID> <CORRECTION_ID>
+
+Arguments:
+  <TODO_ID>
+  <CORRECTION_ID>
+
+Options:
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

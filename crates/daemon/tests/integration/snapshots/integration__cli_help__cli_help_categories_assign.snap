@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Preview selected message assignments, or apply them with a preview token
+
+Usage: mxr categories assign [OPTIONS]
+
+Options:
+      --message-ids <MESSAGE_IDS>
+      --add <ADD>
+      --remove <REMOVE>
+      --preview-token <PREVIEW_TOKEN>
+  -h, --help                           Print help

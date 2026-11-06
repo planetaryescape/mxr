@@ -140,6 +140,23 @@ Gmail". This is the Superhuman and Shortwave "done is archive" model
 applied per mode; Gmail categories never archive, and HEY doesn't need to
 because it owns the mailbox (now-and-handoff.md §F).
 
+The reverse is not symmetric. An archive observed from the provider — you
+filed the mail in Gmail or another client — never writes a done mark in any
+mode. Updates and Reading retain eligible sources, and a to-do whose source
+was filed says "left the inbox 30 Oct" without completing the task.
+Archive is provider-location evidence, not proof that the work is finished.
+
+The shipped retention rule is narrower than "all archived mail": Updates and
+Reading add eligible sources whose latest relevant inbox transition is a
+sync-observed removal and that remain outside the inbox. Existing done, snooze,
+source and expiry rules still apply. Mail first discovered already archived has
+no such transition. Returning it to the inbox clears the marker; a later local
+archive supersedes an earlier sync removal. The timestamp is the observation
+time, not an upstream archive timestamp. Updates attaches it to the newest email
+in a folded line, not necessarily the email supplying its fact; delivery trackers
+have no single-email marker. See [mode filing reference](../reference/mode-filing.md)
+for the write paths, predicate and regression checks.
+
 ## Classification is rules first, then the user's model, and every item says why
 
 1. **Sender rules (exist today).** `mail_kind::classify`
@@ -669,8 +686,9 @@ shape, not the medium: three lines or fewer render compactly like chat, longer
 ones as a letter block with "Read all N paragraphs". Removed text is marked
 ("trimmed: quote, sig") with the original on `o`. Reply and Reply all are
 explicit mode choices. The active draft shows its exact To, Cc, Bcc, From and
-account; editing opens the compose fields. An inline reply stays bound to its
-source topic, names that subject while docked, and returns when you come back.
+account; editing opens the compose fields. Leaving the conversation saves an
+inline reply and closes it; the person's row shows `Draft:` with the start of
+the reply, and opening them resumes it (D187).
 Got it (`.`) shows the exact To and From
 from its preview plan before the countdown sends. Archive, label and move are
 not on the surface.
@@ -717,7 +735,8 @@ for the last two.
 **Unread is a filter, not the row's state.** The row still shows the turn
 ("the state is the turn, not read or unread", above), and no count of
 unread appears anywhere, because D095 removed unread counts on purpose.
-The filter answers "what haven't I looked at" without turning unread back
+Read state is only the text's tone: unread is bright and semibold, read calms
+to `--text-2` (D188). The filter answers "what haven't I looked at" without turning unread back
 into a to-do flag.
 
 **One contract.** `ListMessages` already accepts `MessagesFilterData { turn,
@@ -821,6 +840,14 @@ undo; the rest only offer.
 act; a bill, its reminder and its receipt are one row that updates and then
 completes; each row has one button labelled with its verb and destination.
 
+A source email filed in another client is evidence, not completion. The
+row keeps its arrival, adds "left the inbox 30 Oct", and stays open: one
+tick from done, never silently closed. Archive alone never completes a row;
+only a second, independent signal (a receipt from the same domain with the
+same amount, or the user's tick) does. The marker is derived from the sync
+event that removed INBOX, clears if the mail returns, and is never written
+for an archive mxr made itself.
+
 ## Updates is a briefing by source, read twice a day and let go in one key
 
 **Unit.** A source line: everything one source sent since the last cut,
@@ -858,8 +885,11 @@ this), `signal` (`routine`, `changed`, `new_source`, `anomaly`,
 ```
 
 **View and actions.** Three sections by signal, not date: Needs a look,
-Changed, Routine. No timestamps unless the time is the fact, no unread
-state, badge or sound. Google's SRE book is the model: only actionable
+Changed, Routine. No timestamps unless the time is the fact, no badge or
+sound. The line's text follows its own seen revision (D190): unseen
+reads bright and semibold; opening or peeking calms it to `--text-2` without
+letting it go. New content makes it unseen again. Google's SRE book is the
+model: only actionable
 alerts may interrupt, the rest belongs on a dashboard that shows state. `A`
 lets go of the cut with a dry-run preview ("Let go of 31 updates from 12
 sources; 2 also in To do stay there"), `e` lets go of one source, `t` hands
@@ -1202,8 +1232,8 @@ and its key line is no longer shown on its own.
 - Clear for now: "Nothing needs you. Next: renew car insurance shows up Mon
   19 Oct."
 - Card: "Each row is one thing to do, written as what to do, not the
-  email's subject. Act by the first date; Space ticks it off and o opens
-  the email it came from."
+  email's subject. Act by the first date; e ticks it off, Space peeks at
+  why it is here and o opens the email it came from."
   Keys: `Enter` do it · `e` tick off · `Z` schedule · `X` not a to-do
 - Why line: "Here because: \"payment due 9 October\" (rule). Once you pay,
   the receipt files itself in Archive."
@@ -1560,11 +1590,13 @@ same set in JSON.
 ### The first run classifies newest first and lets windows clear history
 
 1. **Newest first.** Classification reads a queue ordered by message date,
-   not by sync order: IMAP's initial sync fetches ascending UIDs, oldest
-   first, and returns the folder in one batch
-   (`crates/provider-imap/src/lib.rs`), and Gmail's list order is
-   undocumented. The IMAP adapter pages newest first so a first IMAP sync
-   shows something before the whole folder lands. The first slice, the
+   not by sync order: Gmail's list order is undocumented, and Gmail over
+   IMAP still pages All Mail oldest first. A generic IMAP account pages
+   newest first (`crates/provider-imap/src/generic_backfill.rs`): batches of
+   at most 500 messages, INBOX first, then the other folders in LIST order,
+   each folder from its highest UID downward, so a first IMAP sync shows
+   the newest INBOX mail in its first batch instead of nothing until every
+   folder has landed. The first slice, the
    last 14 days (917 messages on BK's store), runs through rules and the
    fast tier before anything else, so Now has People, Due soon and the
    Updates card within minutes.

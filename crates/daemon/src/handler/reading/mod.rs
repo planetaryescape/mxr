@@ -279,6 +279,7 @@ fn fades_line(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
 
 /// Everything item data is built from, read once per request.
 pub(super) struct Context {
+    pub filed: HashMap<MessageId, DateTime<Utc>>,
     pub states: HashMap<(MessageId, i64), ReadingStateRow>,
     pub articles: HashSet<(MessageId, i64)>,
     pub wpm: u32,
@@ -308,6 +309,10 @@ impl Context {
         let samples = state.store.reading_finished_samples(PACE_SAMPLES).await?;
         let measured = pace::reader_wpm(&samples);
         Ok(Self {
+            filed: state
+                .store
+                .externally_filed_messages(None, message_ids)
+                .await?,
             states,
             articles,
             wpm: measured.unwrap_or(pace::DEFAULT_WPM),
@@ -394,6 +399,7 @@ pub(super) fn item_data(
         domain: row.domain.clone(),
         tracked: row.tracked,
         arrived_at: issue.date,
+        source_filed_at: ctx.filed.get(&issue.id).copied(),
         expires_at: (!on_later).then_some(expires_at).flatten(),
         why,
         fades,
@@ -834,13 +840,13 @@ async fn accounts(
     }
 }
 
-/// After a sync: extract the new Reading mail and expire what faded, so
-/// Now and the rail agree with the edition without it being opened.
-pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId) {
+/// After a sync: extract the new Reading mail and expire what faded as of
+/// `now`, so Now and the rail agree with the edition without it being opened.
+pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId, now: DateTime<Utc>) {
     let accounts = [account_id.clone()];
     let result = async {
         let visits = load_visits(state, &accounts).await?;
-        let planned = plan(state, &accounts, &visits, Utc::now()).await?;
+        let planned = plan(state, &accounts, &visits, now).await?;
         expire(state, &planned.expired).await
     }
     .await;

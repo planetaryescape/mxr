@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Deletes the moved-key notices this version ignores (blueprint 35, D171):
+# every [[action.moved]] entry in crates/keymap/keymap.toml whose `until`
+# the workspace version has reached, and a TUI action left with no binding
+# once they go. Then regenerates the files written from the definition and
+# checks the result.
+#
+# The clients already ignore these entries, so this changes no behaviour.
+# Hand-written TUI code that announced an expired key (`announce_moved`
+# call sites) goes quiet on its own; deleting it is a human's cleanup.
+#
+# .github/workflows/prune-key-moves.yml runs this weekly and opens a PR.
+
+set -euo pipefail
+
+cd "$(cd "$(dirname "$0")/.." && pwd)"
+
+cargo run --quiet -p mxr-keymap --example expired_key_moves -- --prune
+UPDATE_KEYMAP=1 cargo test --quiet -p mxr-keymap
+cargo test --quiet -p mxr-keymap

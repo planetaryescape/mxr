@@ -121,6 +121,19 @@ mxr count "your query"
 
 If the search is limited to the wrong account, check [account selection](/guides/accounts/#selecting-an-account) and the [CLI account-scope rules](/reference/cli/concepts/#account-selection).
 
+## A message shows as flat text, or `mxr doctor` reports HTML helper fallbacks
+
+mxr parses mail HTML in a separate helper process (`mxr __html-worker`) with a memory ceiling and a 5 second limit, so a hostile or enormous message cannot take the daemon down. When a message is over the HTML limits, makes the helper run out of time or memory, or the helper cannot start, mxr shows the message's tag-stripped text instead. Tables and lists lose their layout; the words stay, and search still finds them. Links and images are not listed for that message.
+
+`mxr doctor` shows the count in one line:
+
+```bash
+mxr doctor --format table | grep '^HTML helper:'
+# HTML helper:  2 fallbacks since start (4012 requests, 1 timeouts, 1 helper deaths, 2 restarts, 0 job errors)
+```
+
+Each fallback is one request that got flat text. A count that climbs with ordinary mail suggests the helper cannot start: check that the `mxr` binary the daemon runs still exists, then restart the daemon. After an upgrade on macOS, a TUI or daemon that was already running keeps showing flat text until it is restarted, because it will not use a helper from the new release. While the helper cannot start, sending or forwarding an HTML message is refused with "try again in a few seconds"; a refusal that says the HTML is too complex means the helper gave up on that HTML, and simplifying it is the fix. `HTML helper: not reporting` means the daemon is not running or predates the helper. Open the message in your browser (`O` in the TUI) to see the original.
+
 ## Agent access or model feature is refused
 
 For an agent tool refusal, check [agent and MCP profile scope](/guides/for-agents/#safety-primitives-all-the-time) and [paired-client authority](/guides/pairing-authority/). For a native mxr model feature that is disabled or uses a different endpoint, use [LLM feature setup and routing](/guides/llm-features/).

@@ -226,6 +226,8 @@ where
     let started = std::time::Instant::now();
     let placed = without_let_go(state, accounts, placed).await?;
     let items = items_for(state, placed, tz).await?;
+    let ids: Vec<_> = items.iter().map(|item| item.message.id.clone()).collect();
+    let filed = state.store.externally_filed_messages(None, &ids).await?;
     let histories = histories(state, &items, tz).await?;
     let mut sources = HashMap::new();
     let mut todos: Vec<TodoRecord> = Vec::new();
@@ -279,6 +281,7 @@ where
     let seen_key = seen_key(scope.account_id.as_ref());
     let last_seen = state.store.mode_last_viewed(&seen_key).await?;
     let (digest, selection) = updates_digest::compose(&DigestInputs {
+        filed: &filed,
         items: &items,
         histories: &histories,
         sources: &sources,

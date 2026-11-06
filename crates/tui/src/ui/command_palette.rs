@@ -61,7 +61,7 @@ impl CommandPalette {
         let recent_actions: Vec<Action> = Vec::new();
         let filtered = filtered_indices(&commands, context, "", &recent_actions);
         Self {
-            keybindings: crate::keybindings::default_keybindings(),
+            keybindings: crate::keybindings::shown_keybindings().clone(),
             binding_context: None,
             key_place: None,
             visible: false,
@@ -251,13 +251,18 @@ pub(crate) fn commands_with_keybindings(
 /// default keys: what recents are restored against before the palette
 /// first opens.
 pub fn default_commands() -> Vec<PaletteCommand> {
-    let mut commands = defined_commands(
-        None,
-        crate::keybindings::shown_keybindings(),
-        ViewContext::MailList,
-    );
-    add_archive_recovery_commands(&mut commands, &[]);
-    commands
+    // Built once: every `App` starts with this palette, and walking the
+    // whole key definition for it was half the cost of `App::new`.
+    static DEFAULT: std::sync::LazyLock<Vec<PaletteCommand>> = std::sync::LazyLock::new(|| {
+        let mut commands = defined_commands(
+            None,
+            crate::keybindings::shown_keybindings(),
+            ViewContext::MailList,
+        );
+        add_archive_recovery_commands(&mut commands, &[]);
+        commands
+    });
+    DEFAULT.clone()
 }
 
 /// The definition's context for a mailbox pane, when the app didn't say.
@@ -709,7 +714,8 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
         "Diagnostics" => ("!", theme.warning),
         "Accounts" => ("=", theme.accent_dim),
         "Sync" => ("*", theme.success),
-        _ => ("?", theme.text_muted),
+        // Not `?`: in a list of keys it reads as the help key.
+        _ => ("\u{b7}", theme.text_muted),
     }
 }
 

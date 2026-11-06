@@ -746,7 +746,7 @@ use_tls = true
 
 8. **Label CRUD is dry-runnable and confirmation-gated.** `mxr labels create|delete|rename` accept `--dry-run`; delete and rename require `--yes` (or an interactive `y/N` prompt) so that scripts cannot accidentally erase user labels. (D087)
 
-9. **Provider-fake is selectable from config.** `[accounts.foo.sync] type = "fake"` and `[accounts.foo.send] type = "fake"` route the daemon to `mxr-provider-fake`. This is the seam used by the binary-level CLI smoke test (`crates/daemon/tests/cli_journey.rs`). (D088)
+9. **Provider-fake is selectable from config.** `[accounts.foo.sync] type = "fake"` and `[accounts.foo.send] type = "fake"` route the daemon to `mxr-provider-fake`. This is the seam used by the binary-level CLI smoke test (`crates/daemon/tests/integration/cli_journey.rs`). (D088)
 
 10. **Default Cargo features exclude semantic-local; release artifacts opt in.** The root `mxr` crate's default feature set is empty so local `cargo build`/`cargo test` stay fast (~1 min vs ~6 min). CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). Release builds in `.github/workflows/release.yml` pass `--features semantic-local` for `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the embedding model is still fetched lazily at runtime by `mxr semantic enable`. Intel mac (`x86_64-apple-darwin`) release artifacts are not built. (D089)
 

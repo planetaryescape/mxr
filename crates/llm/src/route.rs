@@ -67,6 +67,69 @@ pub struct Route {
     pub model: String,
 }
 
+/// The user's own OpenAI-compatible server (`llm.base_url`) and the model
+/// it serves, when a cloud fallback stands behind it. It needs no stored key
+/// (it reads `api_key_env` as before), so it never appears among the
+/// keyable providers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EndpointRoute {
+    pub base_url: String,
+    pub model: String,
+    /// The name of the variable its key is read from, never the key. Two
+    /// overrides on one server with different keys are separate routes: one
+    /// key failing says nothing about the other.
+    pub api_key_env: String,
+}
+
+impl EndpointRoute {
+    /// Normalised the way the HTTP client normalises its URL, so the
+    /// provider and `mxr llm status` name the same route.
+    pub fn new(base_url: &str, model: &str, api_key_env: &str) -> Self {
+        Self {
+            base_url: base_url.trim().trim_end_matches('/').to_string(),
+            model: model.trim().to_string(),
+            api_key_env: api_key_env.trim().to_string(),
+        }
+    }
+}
+
+/// What route health is kept for: a hosted provider's route or the user's
+/// own endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RouteKey {
+    Hosted(Route),
+    Endpoint(EndpointRoute),
+}
+
+impl RouteKey {
+    /// For logs: the provider's key, or `base_url` for the user's endpoint.
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            Self::Hosted(route) => route.provider.key(),
+            Self::Endpoint(_) => "base_url",
+        }
+    }
+
+    pub fn model(&self) -> &str {
+        match self {
+            Self::Hosted(route) => &route.model,
+            Self::Endpoint(endpoint) => &endpoint.model,
+        }
+    }
+}
+
+impl From<&Route> for RouteKey {
+    fn from(route: &Route) -> Self {
+        Self::Hosted(route.clone())
+    }
+}
+
+impl From<&EndpointRoute> for RouteKey {
+    fn from(endpoint: &EndpointRoute) -> Self {
+        Self::Endpoint(endpoint.clone())
+    }
+}
+
 /// An API key. `Debug` never shows it, so it can sit in a struct that gets
 /// logged.
 #[derive(Clone)]
@@ -201,6 +264,12 @@ pub fn openai_tools_need_no_reasoning(model: &str) -> bool {
     let model = model.trim();
     let model = model.strip_prefix("openai/").unwrap_or(model);
     model == "gpt-6-luna" || ["gpt-5.6-terra", "gpt-5.6-luna"].contains(&model)
+}
+
+/// An OpenAI model under OpenAI's own naming (`gpt-6-luna`), not the
+/// OpenRouter slug (`openai/gpt-6-luna`).
+pub(crate) fn is_openai_own_id(model: &str) -> bool {
+    is_openai_id(model.trim())
 }
 
 /// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.

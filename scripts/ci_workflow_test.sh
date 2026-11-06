@@ -82,8 +82,8 @@ if grep -Fq 'continue-on-error:' <<<"$web_tests_block"; then
 fi
 
 classifier_block="$(sed -n '/^  classifier-eval:/,/^  test-quality-audit:/p' "$workflow")"
-if ! grep -Fq "needs.changes.outputs.classifier == 'true' || github.event_name == 'push'" <<<"$classifier_block"; then
-  echo "Classifier Eval must run for classifier changes and on every push to main." >&2
+if ! grep -Fq "if: needs.changes.outputs.classifier == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)" <<<"$classifier_block"; then
+  echo "Classifier Eval must run only for classifier changes (and manual runs), never on every push to main." >&2
   exit 1
 fi
 if ! grep -Fq 'handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo' <<<"$classifier_block"; then
@@ -97,7 +97,85 @@ fi
 
 keymap_block="$(sed -n '/^  keymap:/,/^  classifier-eval:/p' "$workflow")"
 if ! grep -Fq "needs.changes.outputs.rust != 'true'" <<<"$keymap_block" || ! grep -Fq 'cargo test -p mxr-keymap' <<<"$keymap_block"; then
-  echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump past a moved key's until fails." >&2
+  echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump is checked against the moves it expires." >&2
+  exit 1
+fi
+if ! grep -Fq 'cargo run --quiet -p mxr-keymap --example expired_key_moves' <<<"$keymap_block" || grep -Fq -- '--prune' <<<"$keymap_block"; then
+  echo "Key definition must list expired key moves as warnings, and never prune or fail on them." >&2
+  exit 1
+fi
+
+prune_workflow=".github/workflows/prune-key-moves.yml"
+if ! grep -Fq 'workflow_dispatch:' "$prune_workflow" || ! grep -Eq 'cron: "[1-9][0-9]? ' "$prune_workflow"; then
+  echo "The key-move prune must run on an off-minute schedule and on demand." >&2
+  exit 1
+fi
+if ! grep -Fq 'token: ${{ secrets.RELEASE_PLEASE_TOKEN }}' "$prune_workflow" || ! grep -Fq 'GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}' "$prune_workflow"; then
+  echo "The key-move prune must push and open its PR with RELEASE_PLEASE_TOKEN; a GITHUB_TOKEN PR runs no CI." >&2
+  exit 1
+fi
+if ! grep -Fq 'run: scripts/prune_expired_key_moves' "$prune_workflow"; then
+  echo "The key-move prune must run scripts/prune_expired_key_moves." >&2
+  exit 1
+fi
+# A prune that breaks a test tied to a real move must fail the run, not
+# open a red PR: the TUI and web tests run between the prune and the PR.
+prune_line="$(grep -n 'run: scripts/prune_expired_key_moves' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+tui_line="$(grep -n 'cargo test --quiet -p mxr-tui --lib' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+web_line="$(grep -n 'npx vitest run' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+pr_line="$(grep -n 'gh pr create' "$prune_workflow" | head -1 | cut -d: -f1 || true)"
+if [[ -z "$tui_line" || -z "$web_line" || -z "$pr_line" ]] \
+  || (( tui_line < prune_line || web_line < prune_line || tui_line > pr_line || web_line > pr_line )); then
+  echo "The key-move prune must run the TUI and web tests after pruning and before it opens the PR." >&2
+  exit 1
+fi
+
+# The workspace runs once in full, with the feature release.yml ships; the
+# no-feature job tests only the crates the feature changes.
+test_block="$(sed -n '/^  test:/,/^  test-semantic:/p' "$workflow")"
+semantic_block="$(sed -n '/^  test-semantic:/,/^  keymap:/p' "$workflow")"
+if ! grep -Fq 'name: Test (fast / no semantic)' <<<"$test_block" || ! grep -Fq 'run: cargo nextest run -p mxr -p mxr-semantic' <<<"$test_block"; then
+  echo "Test (fast / no semantic) must keep its required-check name and test only mxr and mxr-semantic without the feature." >&2
+  exit 1
+fi
+if ! grep -Fq 'run: cargo nextest run --workspace --features semantic-local' <<<"$semantic_block"; then
+  echo "Test (semantic-local) must run the whole workspace with semantic-local." >&2
+  exit 1
+fi
+for block in "$test_block" "$semantic_block"; do
+  if ! grep -Fq "github.event.pull_request.draft == false" <<<"$block"; then
+    echo "Both test jobs must skip draft PRs." >&2
+    exit 1
+  fi
+done
+
+# Clippy type-checks every target, so there is no separate check job to need.
+if grep -Eq '^  check:|needs:.*\bcheck\b' "$workflow"; then
+  echo "CI must not bring back the cargo check job or a dependency on it; Clippy covers it." >&2
+  exit 1
+fi
+
+# One browser engine in CI: Chromium. WebKit runs by hand (npm run e2e:webkit).
+if grep -Fq 'e2e:webkit' "$workflow" || grep -Fq 'mxr-builder' "$workflow"; then
+  echo "CI runs Web E2E on Chromium only; WebKit is a manual run." >&2
+  exit 1
+fi
+
+# Every workflow must parse. An unquoted ": " in a `run:` line (a test filter
+# such as `cli_journey:: daemon_lifecycle::`) makes the whole file invalid, and
+# GitHub then runs nothing from it: release.yml stopped building tagged
+# releases this way for 0.6.190-0.6.192.
+for file in .github/workflows/*.yml .github/workflows/*.yaml; do
+  [ -e "$file" ] || continue
+  if ! ruby -ryaml -e 'YAML.load_file(ARGV[0])' "$file" 2>/dev/null \
+    && ! python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "$file" 2>/dev/null; then
+    echo "$file is not valid YAML; GitHub would run none of its jobs." >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fq 'gitleaks git . --redact=20 --verbose --log-opts="HEAD"' .github/workflows/ci.yml; then
+  echo "Secret Scan's history step must scan only HEAD's history, not every fetched branch." >&2
   exit 1
 fi
 

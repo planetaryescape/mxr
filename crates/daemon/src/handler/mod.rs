@@ -63,12 +63,15 @@ mod gist_numbers;
 mod helpers;
 mod home_projection;
 mod humanizer;
+mod job_records;
+pub(crate) mod job_recovery;
 mod keymap;
 mod llm_routes;
 mod mail_kind;
 mod mailbox;
 pub(crate) mod messages;
 mod messages_ack;
+mod messages_drafts;
 mod messages_text;
 mod messages_view;
 pub(crate) mod microsoft_todo;
@@ -95,12 +98,14 @@ mod remote;
 mod remote_tests;
 pub(crate) mod reply_later;
 mod reply_recipients;
+mod row_seen;
 pub(crate) mod rule_treatment;
 mod rules;
 mod runtime;
 mod safety_llm;
 mod safety_timing;
 mod screener;
+pub(crate) mod selection_jobs;
 pub(crate) mod send_recovery;
 mod sender_view;
 mod signatures;
@@ -490,6 +495,9 @@ pub fn request_lane(req: &Request) -> IpcLane {
         // Diagnostics that scan large tables.
         Request::GenerateBugReport { .. } => IpcLane::Bulk,
 
+        // Reads every match of a search, which can be hundreds of thousands.
+        Request::PreviewSelection { .. } => IpcLane::Bulk,
+
         _ => IpcLane::Hot,
     }
 }
@@ -622,6 +630,7 @@ async fn dispatch(
         .flatten()
     {
         let result = Box::pin(state.mode_cache.read(state, view)).await;
+        let result = row_seen::decorate(state, result).await;
         return respond(result, request, &account_id, account_key, started_at);
     }
     let result = match req {
@@ -984,9 +993,11 @@ async fn dispatch(
         Request::ListSavedSearchUnreadCounts => {
             platform::list_saved_search_unread_counts(state).await
         }
-        Request::ListSubscriptions { account_id, limit } => {
-            platform::list_subscriptions(state, account_id.as_ref(), *limit).await
-        }
+        Request::ListSubscriptions {
+            account_id,
+            limit,
+            all_accounts,
+        } => platform::list_subscriptions(state, account_id.as_ref(), *limit, *all_accounts).await,
         Request::ListStorageBreakdown {
             account_id,
             group_by,
@@ -1368,6 +1379,29 @@ async fn dispatch(
                 cmd.clone(),
                 client_correlation_id.clone(),
                 mutations::ChunkGuard::None,
+            )
+            .await
+        }
+        Request::PreviewSelection {
+            selection,
+            mutation,
+            sample_size,
+        } => selection_jobs::preview_selection(state, selection, mutation, *sample_size).await,
+        Request::StartSelectionJob {
+            job_id,
+            preview_token,
+            selection,
+            mutation,
+            client_correlation_id,
+        } => {
+            selection_jobs::start_selection_job(
+                state,
+                source,
+                job_id,
+                preview_token,
+                selection,
+                mutation,
+                client_correlation_id.as_deref(),
             )
             .await
         }
@@ -1848,6 +1882,13 @@ async fn dispatch(
         Request::UpdateKeys { change, dry_run } => keymap::update(change, *dry_run),
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
+        Request::SetModeRowSeen {
+            account_id,
+            mode,
+            row_id,
+            revision,
+            dry_run,
+        } => row_seen::mark(state, account_id, *mode, row_id, revision, *dry_run).await,
         // Boxed with the other mode requests below: their futures build the
         // Updates digest, and inline they overflowed a debug worker's stack.
         Request::GetNow { account_id } => Box::pin(now::get_now(state, account_id.as_ref())).await,
@@ -2349,6 +2390,7 @@ async fn dispatch(
             .map_err(HandlerError::from),
         (result, _) => result,
     };
+    let result = row_seen::decorate(state, result).await;
     respond(result, request, &account_id, account_key, started_at)
 }
 
@@ -2487,6 +2529,7 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
     match req {
         Request::Mutation { mutation, .. }
         | Request::StartMutationJob { mutation, .. }
+        | Request::StartSelectionJob { mutation, .. }
         | Request::SubmitArchive { mutation, .. } => mutation_destructive_action(mutation),
         Request::DeleteLabel { .. } => Some(DestructiveAction::DeleteLabel),
         Request::RemoveAccountConfig { .. } => Some(DestructiveAction::RemoveAccount),
@@ -2725,6 +2768,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListPlace { .. }
         | Request::GetMessageKind { .. }
         | Request::SweepPlace { dry_run: true, .. }
+        // Holds an in-memory token and changes nothing, like a dry run.
+        | Request::PreviewSelection { .. }
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
         | Request::SendTimeRecommendation { .. }
@@ -2759,7 +2804,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ActivityStats { .. }
         | Request::ExportActivity { .. }
         | Request::ListSavedActivityFilters
-        | Request::GetSavedActivityFilter { .. } => Read,
+        | Request::GetSavedActivityFilter { .. }
+        | Request::SetModeRowSeen { dry_run: true, .. } => Read,
 
         // --- DraftOnly: logical draft create/update/delete (local plus an
         // optional linked provider resource) ---
@@ -2794,6 +2840,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::Mutation { .. }
         | Request::SubmitArchive { .. }
         | Request::StartMutationJob { .. }
+        | Request::StartSelectionJob { .. }
         | Request::DeleteLabel { .. }
         | Request::DeleteCategory { .. }
         | Request::RemoveAccountConfig { .. }
@@ -2914,6 +2961,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
         | Request::SetHintSeen { .. }
+        | Request::SetModeRowSeen { dry_run: false, .. }
         | Request::SetRecordField { .. }
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
@@ -2977,12 +3025,13 @@ fn request_is_draft_only(req: &Request) -> bool {
 
 /// Whether a response counts as success for the activity log. An account
 /// operation the daemon refused comes back as `Ok` with `ok: false`, and that
-/// is not a success.
+/// is not a success. One that saved its config and then failed a later phase
+/// still changed the config, so it is recorded.
 fn response_succeeded(response: &Response) -> bool {
     match response {
         Response::Ok {
             data: ResponseData::AccountOperation { result },
-        } => result.ok,
+        } => result.ok || result.saved,
         Response::Ok { .. } => true,
         _ => false,
     }
@@ -2990,6 +3039,27 @@ fn response_succeeded(response: &Response) -> bool {
 
 fn request_is_read_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::Read)
+}
+
+/// Whether the daemon may cancel this request's task when its client goes
+/// away. Reads only: a mutation, send or draft write must run to completion
+/// whether or not anyone is waiting for the answer.
+///
+/// `RequestClass::Read` means "no user-visible state change", which is not
+/// the same as "safe to drop mid-flight". The assistant requests are classed
+/// `Read` because the tools a conversation calls are classified one by one
+/// when they run, but a turn drives those tools, so cancelling it would cut
+/// off the mutation an approved step is making. `ExportRecords` copies files
+/// to disk between awaits and would leave a partial export.
+pub(crate) fn request_is_abandonable(req: &Request) -> bool {
+    request_is_read_only(req)
+        && !matches!(
+            req,
+            Request::AssistantSend { .. }
+                | Request::AssistantDecide { .. }
+                | Request::AssistantCancel { .. }
+                | Request::ExportRecords { .. }
+        )
 }
 
 fn request_kind(req: &Request) -> &'static str {
@@ -3111,6 +3181,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation { mutation: cmd, .. } => mutation_kind(cmd),
         Request::StartMutationJob { mutation: cmd, .. } => mutation_kind(cmd),
+        Request::PreviewSelection { .. } => "preview_selection",
+        Request::StartSelectionJob { .. } => "start_selection_job",
         Request::GetRecoveryStatus => "recovery_status",
         Request::ActivateRecovery { .. } => "recovery_activate",
         Request::PrepareRecoveredDraft { .. } => "recovery_prepare_draft",
@@ -3273,6 +3345,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::UpdateKeys { .. } => "update_keys",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetHintSeen { .. } => "set_hint_seen",
+        Request::SetModeRowSeen { .. } => "set_mode_row_seen",
         Request::ListRecords { .. } => "list_records",
         Request::ListRecordSubscriptions { .. } => "list_record_subscriptions",
         Request::GetRecord { .. } => "get_record",
@@ -3414,6 +3487,15 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::MergePeople { account_id, .. }
         | Request::SplitPerson { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
+        Request::SetModeRowSeen { account_id, .. } => Some(account_id),
+        Request::PreviewSelection {
+            selection: mxr_protocol::SelectionData::Search { account_id, .. },
+            ..
+        }
+        | Request::StartSelectionJob {
+            selection: mxr_protocol::SelectionData::Search { account_id, .. },
+            ..
+        } => account_id.as_ref(),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::ComposeAssist {
             draft: mxr_protocol::DraftTargetData::New { account_id, .. },
@@ -3545,6 +3627,11 @@ async fn find_label_by_name(
         .ok_or_else(|| format!("Label not found: {name}"))
 }
 
+/// The parses the daemon's own handlers run in the HTML helper process.
+pub(crate) fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
+    vec![&forward::CID_REFERENCES, &mailbox::IMAGE_SOURCES]
+}
+
 /// Fast path used for reply/forward quoted text. The user is composing a
 /// reply; they want the original content quoted, *not* the aggressive
 /// reader-view cleaning (which strips signatures, boilerplate, tracking,
@@ -3638,6 +3725,49 @@ async fn persist_local_label_changes(
     add: &[String],
     remove: &[String],
 ) -> Result<(), sqlx::Error> {
+    let account_id = persist_local_label_changes_deferred(state, message_id, add, remove).await?;
+    state.store.recalculate_label_counts(&account_id).await
+}
+
+/// [`persist_local_label_changes`] without refreshing the account's label
+/// counts, and the account whose counts are now stale. The refresh scans every
+/// label's rows, so a batch that does it per message costs the size of the
+/// mailbox times the size of the batch; the batch refreshes once instead.
+async fn persist_local_label_changes_deferred(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<mxr_core::AccountId, sqlx::Error> {
+    persist_label_changes_matching(state, message_id, add, remove, LabelRefs::IdsOrNames).await
+}
+
+/// How a label edit names its labels when the local copy is brought in line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelRefs {
+    /// A provider id or a display name, whichever label matches first.
+    IdsOrNames,
+    /// Exactly the account's provider ids, never a name: a label *named*
+    /// like another label's provider id must not be picked instead.
+    ProviderIds,
+}
+
+impl LabelRefs {
+    fn matches(self, label: &mxr_core::types::Label, reference: &str) -> bool {
+        match self {
+            Self::IdsOrNames => label.provider_id == reference || label.name == reference,
+            Self::ProviderIds => label.provider_id == reference,
+        }
+    }
+}
+
+async fn persist_label_changes_matching(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+    refs: LabelRefs,
+) -> Result<mxr_core::AccountId, sqlx::Error> {
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3652,7 +3782,7 @@ async fn persist_local_label_changes(
     for label_ref in remove {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             label_ids.retain(|id| id != &label.id);
         }
@@ -3661,7 +3791,7 @@ async fn persist_local_label_changes(
     for label_ref in add {
         if let Some(label) = labels
             .iter()
-            .find(|candidate| candidate.provider_id == *label_ref || candidate.name == *label_ref)
+            .find(|candidate| refs.matches(candidate, label_ref))
         {
             if !label_ids.iter().any(|id| id == &label.id) {
                 label_ids.push(label.id.clone());
@@ -3673,11 +3803,57 @@ async fn persist_local_label_changes(
         .store
         .set_message_labels(message_id, &label_ids, mxr_core::EventSource::User)
         .await?;
-    state
-        .store
-        .recalculate_label_counts(&envelope.account_id)
-        .await?;
-    Ok(())
+    Ok(envelope.account_id)
+}
+
+/// [`reconcile_label_mutation`] for a batch that refreshes the account's label
+/// counts itself, once, when it is done. A provider without label mutation
+/// still re-syncs here, which refreshes them.
+pub(crate) async fn reconcile_label_mutation_deferred(
+    state: &AppState,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().mutate.labels {
+        persist_local_label_changes_deferred(state, message_id, add, remove)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+/// [`reconcile_label_mutation_deferred`] for edits that name labels by
+/// provider id only: a selection's frozen labels and an undo's snapshot. The
+/// local copy then gets exactly the labels the provider got.
+pub(crate) async fn reconcile_label_ids_deferred(
+    state: &AppState,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().mutate.labels {
+        persist_label_changes_matching(state, message_id, add, remove, LabelRefs::ProviderIds)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 pub(crate) async fn reconcile_label_mutation(
@@ -3755,6 +3931,29 @@ pub(crate) async fn apply_snooze(
     message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<(), String> {
+    // Snoozed again (Not now from Snoozed): the email is already out of the
+    // inbox, so only the wake time moves. Its labels from before the first
+    // snooze are the ones waking restores; reading them now would lose INBOX.
+    if let Some(existing) = state
+        .store
+        .get_snooze(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        state
+            .store
+            .remove_snooze(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        return state
+            .store
+            .insert_snooze(&Snoozed {
+                wake_at: *wake_at,
+                ..existing
+            })
+            .await
+            .map_err(|e| e.to_string());
+    }
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -4903,6 +5102,7 @@ mod identity_activity_tests {
             data: ResponseData::AccountOperation {
                 result: AccountOperationResult {
                     ok,
+                    saved: false,
                     summary: String::new(),
                     save: None,
                     auth: None,
@@ -4910,6 +5110,7 @@ mod identity_activity_tests {
                     send: None,
                     device_code_url: None,
                     device_code_user_code: None,
+                    tls_cert_sha256: None,
                 },
             },
         }
@@ -4919,6 +5120,27 @@ mod identity_activity_tests {
     fn a_refused_account_operation_is_not_a_success() {
         assert!(!response_succeeded(&operation(false)));
         assert!(response_succeeded(&operation(true)));
+    }
+
+    #[test]
+    fn an_operation_that_saved_before_a_later_phase_failed_is_recorded() {
+        let saved_then_failed = Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: AccountOperationResult {
+                    ok: false,
+                    saved: true,
+                    summary: String::new(),
+                    save: None,
+                    auth: None,
+                    sync: None,
+                    send: None,
+                    device_code_url: None,
+                    device_code_user_code: None,
+                    tls_cert_sha256: None,
+                },
+            },
+        };
+        assert!(response_succeeded(&saved_then_failed));
     }
 
     #[test]

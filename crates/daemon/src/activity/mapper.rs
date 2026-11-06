@@ -895,6 +895,15 @@ pub fn map_request(
                 "mutation job enqueue is currently outside request-mapper capture"
             );
         }
+        Request::StartSelectionJob { .. } => {
+            skip_activity!(
+                "selection_job_handler_records",
+                "the handler records these once the daemon has accepted the job, with counts and no ids"
+            );
+        }
+        Request::PreviewSelection { .. } => {
+            skip_activity!("selection_preview", "a selection preview changes nothing");
+        }
         Request::GetArchiveWorkspace
         | Request::PreviewArchive { .. }
         | Request::GetArchiveOperation { .. }
@@ -1118,6 +1127,12 @@ pub fn map_request(
             skip_activity!(
                 "mode_guide",
                 "teaching copy and its seen state are not activity"
+            );
+        }
+        Request::SetModeRowSeen { .. } => {
+            skip_activity!(
+                "row_seen",
+                "local row attention is UI state, not mail activity"
             );
         }
         Request::GetKeymap | Request::UpdateKeys { .. } => {

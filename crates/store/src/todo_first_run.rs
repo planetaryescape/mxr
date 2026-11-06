@@ -3,7 +3,7 @@
 //! invites waiting for an answer. Rows themselves live in `todos.rs`.
 
 use crate::commitment_date_source::ACTIONABLE_BY_WHEN_SQL;
-use crate::todos::{row_to_todo, TodoRecord, COLUMNS};
+use crate::todos::{row_to_todo, TodoRecord, SELECT_COLUMNS};
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, in_list};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -298,7 +298,7 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos WHERE account_id = ? AND commitment_id IS NOT NULL"
+            "SELECT {SELECT_COLUMNS} FROM todos WHERE account_id = ? AND commitment_id IS NOT NULL"
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
@@ -357,7 +357,7 @@ impl super::Store {
         thread_id: &ThreadId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let sql = format!(
-            "SELECT {COLUMNS} FROM todos
+            "SELECT {SELECT_COLUMNS} FROM todos
              WHERE account_id = ? AND thread_id = ? AND kind = 'promise' AND state = 'open'"
         );
         sqlx::query(sqlx::AssertSqlSafe(sql))

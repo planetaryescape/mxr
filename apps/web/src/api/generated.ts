@@ -2763,6 +2763,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/rows/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark the opened To do or Updates row revision seen, without completing it */
+        post: operations["mail_row_seen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/scheduled-sends": {
         parameters: {
             query?: never;
@@ -4666,7 +4683,8 @@ export interface components {
             | "blue"
             | "vermilion"
             | "purple"
-            | "slate";
+            | "slate"
+            | "unknown";
         AccountConfigData: {
             color?: components["schemas"]["AccountColor"] | null;
             email: string;
@@ -4734,9 +4752,21 @@ export interface components {
             device_code_user_code?: string | null;
             ok: boolean;
             save?: components["schemas"]["AccountOperationStep"] | null;
+            /**
+             * @description True when the config change was written to disk even though `ok` is
+             *     false, because a later phase (runtime reload, cached mail) failed. The
+             *     change is saved but not fully applied.
+             */
+            saved?: boolean;
             send?: components["schemas"]["AccountOperationStep"] | null;
             summary: string;
             sync?: components["schemas"]["AccountOperationStep"] | null;
+            /**
+             * @description SHA-256 of the IMAP server's leaf certificate, reported by an account
+             *     test so it can be copied into `tls_cert_sha256`. Absent for plaintext
+             *     accounts and non-IMAP accounts.
+             */
+            tls_cert_sha256?: string | null;
         };
         AccountOperationStep: {
             detail: string;
@@ -4811,6 +4841,8 @@ export interface components {
                   password_ref: string;
                   /** Format: int32 */
                   port: number;
+                  /** @description Hex SHA-256 of the server's leaf certificate; see the config reference. */
+                  tls_cert_sha256?: string | null;
                   /** @enum {string} */
                   type: "imap";
                   use_tls: boolean;
@@ -6958,6 +6990,14 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   event: "AccountAddressesChanged";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "ContactsRefreshed";
+              }
+            | {
+                  /** @enum {string} */
+                  event: "Unknown";
               };
         /** @enum {string} */
         DaemonHealthClass:
@@ -7380,6 +7420,12 @@ export interface components {
              *     read or parsed.
              */
             history_retention_days?: number | null;
+            /**
+             * @description Counts for the process that parses mail HTML for this daemon. All zero
+             *     from a daemon that predates it, and from a report built without a
+             *     running daemon.
+             */
+            html_helper?: components["schemas"]["HtmlHelperStats"];
             index_exists: boolean;
             index_lock_error?: string | null;
             index_lock_held: boolean;
@@ -7981,6 +8027,50 @@ export interface components {
             recovery_generation?: string | null;
             workspace_id?: string | null;
         };
+        /**
+         * @description How the HTML helper process has fared since its supervisor started. Counts
+         *     only; no message content.
+         */
+        HtmlHelperStats: {
+            /**
+             * Format: int64
+             * @default 0
+             */
+            deaths: number;
+            /**
+             * Format: int64
+             * @description Requests answered with the plain-text fallback instead of a parse.
+             * @default 0
+             */
+            fallbacks: number;
+            /**
+             * @description Mail HTML is parsed in a helper process. False means in-process, or no
+             *     running daemon to ask.
+             * @default false
+             */
+            installed: boolean;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            job_errors: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            requests: number;
+            /**
+             * Format: int64
+             * @description Helpers started to replace one that timed out or died.
+             * @default 0
+             */
+            restarts: number;
+            /**
+             * Format: int64
+             * @default 0
+             */
+            timeouts: number;
+        };
         HtmlImageAsset: {
             detail?: string | null;
             kind: components["schemas"]["HtmlImageSourceKind"];
@@ -8049,17 +8139,49 @@ export interface components {
             | "unsupported"
             | "internal";
         JobData: {
+            action?: components["schemas"]["MutationCommand"] | null;
             error?: string | null;
+            /**
+             * Format: int32
+             * @description How many failure records the job holds. `ListJobs` leaves `failures`
+             *     (and `undo_ids`) empty and says how many there are here; `GetJob`
+             *     carries them.
+             */
+            failure_count?: number;
+            /**
+             * @description The first messages that failed, with why (at most 50); the exact total
+             *     is in `progress.failed`.
+             */
+            failures?: components["schemas"]["JobFailureData"][];
             /** Format: int64 */
             finished_at?: number | null;
             job_id: string;
             kind: string;
+            /**
+             * Format: int64
+             * @description Unix milliseconds. Set while the job waits out a provider rate limit;
+             *     it resumes by itself.
+             */
+            paused_until?: number | null;
             progress: components["schemas"]["JobProgressData"];
             result?: components["schemas"]["MutationResultData"] | null;
+            selection?: components["schemas"]["SelectionData"] | null;
             /** Format: int64 */
             started_at: number;
             status: components["schemas"]["JobStatusData"];
+            /**
+             * Format: int32
+             * @description How many undo ids the job holds. `ListJobs` carries none; `GetJob`
+             *     carries them all, since clients undo a job's chunks from that list. A
+             *     selection job (`StartSelectionJob`) has none: it cannot be undone.
+             */
+            undo_id_count?: number;
             undo_ids?: string[];
+        };
+        /** @description A message a job could not change, with why. */
+        JobFailureData: {
+            error: string;
+            message_id: components["schemas"]["MessageId"];
         };
         JobProgressData: {
             /** Format: int32 */
@@ -8223,6 +8345,25 @@ export interface components {
             /** Format: int64 */
             request_timeout_secs: number;
         };
+        /**
+         * @description The user's own endpoint (`base_url`) as the first route of a fallback
+         *     chain. It needs no stored key, so it has no provider.
+         */
+        LlmEndpointStatusData: {
+            base_url: string;
+            model: string;
+            /** @description A request would go here now. */
+            next: boolean;
+            /** @description Why it is out, e.g. `unreachable`. Fixed phrases only. */
+            reason?: string | null;
+            /**
+             * Format: date-time
+             * @description When a cooling or broken endpoint may be tried again.
+             */
+            retry_at?: string | null;
+            /** @description Never `no_key`. */
+            state: components["schemas"]["LlmRouteStateData"];
+        };
         /** @enum {string} */
         LlmFailureKindData:
             | "unreachable"
@@ -8240,6 +8381,17 @@ export interface components {
             /** @description Requests can leave this machine. */
             cloud: boolean;
             enabled: boolean;
+            endpoint?: components["schemas"]["LlmEndpointStatusData"] | null;
+            /**
+             * @description The fallback model's routes, tried in order while `base_url` is out.
+             *     Empty without a fallback or when `fallback_withheld` says why.
+             */
+            fallback?: components["schemas"]["LlmRouteStatusData"][];
+            /**
+             * @description Why this feature keeps to `base_url` although a fallback is
+             *     configured: its data may not go to a cloud model.
+             */
+            fallback_withheld?: string | null;
             /** @description The feature's name, e.g. `summarize`. */
             feature: string;
             model: string;
@@ -8329,16 +8481,12 @@ export interface components {
             /** @default null */
             draft_refine: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
-            expert: components["schemas"]["LlmOverrideData"] | null;
-            /** @default null */
             humanize_rewrite: components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             relationship_summary:
                 components["schemas"]["LlmOverrideData"] | null;
             /** @default null */
             summarize: components["schemas"]["LlmOverrideData"] | null;
-            /** @default null */
-            voice_match: components["schemas"]["LlmOverrideData"] | null;
         };
         /**
          * @description A hosted provider mxr can hold a key for.
@@ -8374,11 +8522,27 @@ export interface components {
             allow_cloud_relationship_data?: boolean;
             api_key_env?: string | null;
             api_key_present: boolean;
+            /**
+             * Format: date-time
+             * @description When the pause on background model calls after repeated endpoint
+             *     failures ends; the first background call after it checks the endpoint
+             *     before sending mail. Absent while they run. Features on a routed model
+             *     or with `[llm.fallback]` are never paused; their routes show their
+             *     own health.
+             */
+            background_paused_until?: string | null;
             base_url?: string | null;
             configured_model: string;
             /** Format: int32 */
             context_window: number;
             enabled: boolean;
+            /** @description Why the configured fallback isn't used, e.g. a model mxr can't route. */
+            fallback_error?: string | null;
+            /**
+             * @description The hosted model `[llm.fallback]` names, used while `base_url` is
+             *     out. Absent when no fallback is configured.
+             */
+            fallback_model?: string | null;
             /** @description Each AI feature's model, providers and their health. */
             features?: components["schemas"]["LlmFeatureStatusData"][];
             /** @description Which providers have a key. Presence only, never the key. */
@@ -8660,6 +8824,7 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             band: components["schemas"]["MessagesBandData"];
             closeness: components["schemas"]["ClosenessData"];
+            draft?: components["schemas"]["MessagesRowDraftData"] | null;
             /** @description `person:<email>` or `group:<thread_id>`: what `GetPerson` takes. */
             id: string;
             kind: components["schemas"]["MessagesRowKindData"];
@@ -8699,6 +8864,21 @@ export interface components {
             why: string;
             /** @description A topic needs attention: an unanswered request or due explicit return. */
             your_turn: boolean;
+        };
+        /**
+         * @description Your unsent reply in one of a row's conversations: the line clients show
+         *     as "Draft: ..." in place of the preview, and what opening the row resumes.
+         */
+        MessagesRowDraftData: {
+            draft_id: components["schemas"]["DraftId"];
+            /** @description The reply goes to everyone on the conversation. */
+            reply_all: boolean;
+            /** @description The start of the reply's text, on one line. */
+            text: string;
+            /** @description The conversation the reply answers: one of the row's topics. */
+            thread_id: components["schemas"]["ThreadId"];
+            /** Format: date-time */
+            updated_at: string;
         };
         /** @enum {string} */
         MessagesRowKindData: "person" | "group";
@@ -9333,6 +9513,7 @@ export interface components {
             since: string;
         };
         OwedReplyRowData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /**
              * Format: double
              * @description The pace `overdue_score` is measured against, in days.
@@ -9776,6 +9957,11 @@ export interface components {
             /** @description The issue's shape (a link carries its issue's). */
             shape: components["schemas"]["ReadingShapeData"];
             source: string;
+            /**
+             * Format: date-time
+             * @description The source email left the inbox outside mxr; this item stays in Reading.
+             */
+            source_filed_at?: string | null;
             /** @description The issue's first real paragraph, or the link's blurb. */
             standfirst?: string | null;
             /** @description On Later for over 30 days and not yet asked: "Still want it?" */
@@ -10829,6 +11015,14 @@ export interface components {
                   /** @enum {string} */
                   cmd: "ListEnvelopes";
                   label_id?: components["schemas"]["LabelId"] | null;
+                  /**
+                   * @description A system mailbox (`inbox`, `starred`, `sent`, `drafts`, `spam`,
+                   *     `trash`, `all_mail`). With no `account_id` it lists that mailbox
+                   *     across every enabled account; with one, that account's. A daemon
+                   *     that knows it prefers it to `label_id`; an older one ignores it
+                   *     and lists `label_id`, so callers keep sending both.
+                   */
+                  label_role?: string | null;
                   /** Format: int32 */
                   limit: number;
                   /** Format: int32 */
@@ -10970,6 +11164,8 @@ export interface components {
                   /** @enum {string} */
                   cmd: "ListThreads";
                   label_id?: components["schemas"]["LabelId"] | null;
+                  /** @description Same meaning as on `ListEnvelopes`. */
+                  label_role?: string | null;
                   /** Format: int32 */
                   limit: number;
                   /** Format: int32 */
@@ -10978,8 +11174,19 @@ export interface components {
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
+                  /**
+                   * @description With no `account_id`, return every enabled account's labels
+                   *     instead of only the default account's. Ignored when
+                   *     `account_id` is set.
+                   */
+                  all_accounts?: boolean;
                   /** @enum {string} */
                   cmd: "ListLabels";
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "SystemMailboxCounts";
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
@@ -11217,6 +11424,11 @@ export interface components {
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
+                  /**
+                   * @description With no `account_id`, list every enabled account's senders instead
+                   *     of only the default account's. Ignored when `account_id` is set.
+                   */
+                  all_accounts?: boolean;
                   /** @enum {string} */
                   cmd: "ListSubscriptions";
                   /** Format: int32 */
@@ -11658,6 +11870,26 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetArchiveOperation";
                   identity: components["schemas"]["ArchiveIdentityData"];
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "PreviewSelection";
+                  mutation: components["schemas"]["MutationCommand"];
+                  /**
+                   * Format: int32
+                   * @description Sample size; the daemon defaults to 20 and caps at 100.
+                   */
+                  sample_size?: number | null;
+                  selection: components["schemas"]["SelectionData"];
+              }
+            | {
+                  client_correlation_id?: string | null;
+                  /** @enum {string} */
+                  cmd: "StartSelectionJob";
+                  job_id: string;
+                  mutation: components["schemas"]["MutationCommand"];
+                  preview_token: string;
+                  selection: components["schemas"]["SelectionData"];
               }
             | {
                   /** @enum {string} */
@@ -12592,6 +12824,15 @@ export interface components {
                   seen?: boolean;
               }
             | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  cmd: "SetModeRowSeen";
+                  dry_run?: boolean;
+                  mode: components["schemas"]["ModeKindData"];
+                  revision: string;
+                  row_id: string;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetNow";
@@ -13234,6 +13475,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  kind: "SystemMailboxCounts";
+                  mailboxes: components["schemas"]["SystemMailboxCount"][];
+              }
+            | {
+                  /** @enum {string} */
                   kind: "Label";
                   label: components["schemas"]["Label"];
               }
@@ -13613,6 +13859,11 @@ export interface components {
                   job: components["schemas"]["JobData"];
                   /** @enum {string} */
                   kind: "Job";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "SelectionPreview";
+                  preview: components["schemas"]["SelectionPreviewData"];
               }
             | {
                   /** @enum {string} */
@@ -14558,6 +14809,14 @@ export interface components {
             | "all_mail"
             | "important"
             | "starred";
+        /** @description The exact row revision the client opened; never a source-email read flag. */
+        RowSeenBody: {
+            account_id: components["schemas"]["AccountId"];
+            dry_run?: boolean;
+            mode: components["schemas"]["ModeKindData"];
+            revision: string;
+            row_id: string;
+        };
         RuleCategoriesPreviewData: {
             accounts: components["schemas"]["AccountId"][];
             applied: boolean;
@@ -14753,7 +15012,11 @@ export interface components {
          *     lexical index. Absent on a reply from the index.
          */
         SearchDegraded: {
-            /** @description A notice the daemon wrote for this reply, shown in place of the one built from `reason`. Clients older than this field ignore it and show the generic notice for `reason`. */
+            /**
+             * @description A notice the daemon wrote for this reply, shown in place of the one
+             *     built from `reason`. Clients older than this field ignore it and show
+             *     the generic notice for `reason`.
+             */
             notice_override?: string | null;
             reason: components["schemas"]["SearchDegradedReason"];
             /** @description The parts of a message the limited search looked at. */
@@ -14803,6 +15066,67 @@ export interface components {
             mode: components["schemas"]["SearchMode"];
             /** Format: float */
             score: number;
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @description How many messages of a selection one account holds. */
+        SelectionAccountData: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /** Format: int32 */
+            count: number;
+        };
+        /**
+         * @description What a bulk action covers. The daemon resolves it lexically, newest first,
+         *     with the same visibility and trash/spam rules as `Request::Search`.
+         */
+        SelectionData: {
+            account_id?: components["schemas"]["AccountId"] | null;
+            /** @enum {string} */
+            kind: "search";
+            query: string;
+        };
+        /**
+         * @description What a selection covers right now, and the token that starts a job over
+         *     exactly that set.
+         */
+        SelectionPreviewData: {
+            accounts: components["schemas"]["SelectionAccountData"][];
+            /**
+             * @description Always false: a selection is never cut to a cap. Present so one parser
+             *     reads both this shape and the capped one.
+             */
+            capped: boolean;
+            /**
+             * Format: int32
+             * @description Exact: messages the user can see, still in the store, after the same
+             *     filters `Request::Search` applies.
+             */
+            count: number;
+            /**
+             * Format: int64
+             * @description Unix milliseconds; the token stops working at this time.
+             */
+            expires_at: number;
+            /**
+             * @description Single use. `StartSelectionJob` acts on exactly the messages counted
+             *     here: mail that arrives later is left alone.
+             */
+            preview_token: string;
+            /** @description The newest messages, newest first. */
+            sample: components["schemas"]["SelectionSampleData"][];
+            /** Format: int32 */
+            sample_size: number;
+            /** Format: int32 */
+            threads: number;
+        };
+        /** @description One of the newest messages in a selection, for the confirmation table. */
+        SelectionSampleData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            date: string;
+            from: string;
+            message_id: components["schemas"]["MessageId"];
+            subject: string;
             thread_id: components["schemas"]["ThreadId"];
         };
         /** @enum {string} */
@@ -15263,6 +15587,17 @@ export interface components {
              */
             provider_available: boolean;
         };
+        /**
+         * @description One system mailbox's counts across a set of accounts. `role` is the wire
+         *     name `label_role` uses (`inbox`, `starred`, ..., `all_mail`).
+         */
+        SystemMailboxCount: {
+            role: string;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            unread: number;
+        };
         /** @description One run of a word-level diff from the user's text to the proposal. */
         TextChangeData: {
             kind: components["schemas"]["TextChangeKindData"];
@@ -15471,6 +15806,7 @@ export interface components {
          *     message; counts and the attachment flag cover the whole thread.
          */
         ThreadPreviewData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /** @description Any message in the thread carries an attachment. */
             has_attachments?: boolean;
             /**
@@ -15774,8 +16110,17 @@ export interface components {
              * @description Your own date; wins over `surface_at`.
              */
             scheduled_for?: string | null;
+            /** @description Opaque version to acknowledge with `SetModeRowSeen`. */
+            seen_revision?: string | null;
             /** Format: date-time */
             source_date?: string | null;
+            /**
+             * Format: date-time
+             * @description When the source email left the inbox through a provider sync and is
+             *     still out: "filed in Gmail". Never set for an archive mxr made, and
+             *     cleared when the mail comes back.
+             */
+            source_filed_at?: string | null;
             source_message_id?: components["schemas"]["MessageId"] | null;
             state: components["schemas"]["TodoStateData"];
             /**
@@ -15788,6 +16133,11 @@ export interface components {
             thread_id?: components["schemas"]["ThreadId"] | null;
             /** @description "Pay council tax". */
             title: string;
+            /**
+             * @description This row revision has not been opened or peeked. Independent of the
+             *     source email's READ flag. Omitted by older daemons.
+             */
+            unread?: boolean | null;
             /** Format: date-time */
             updated_at: string;
             /** @description You made or changed it: it never expires and re-runs leave it be. */
@@ -16153,9 +16503,17 @@ export interface components {
             numbers?: components["schemas"]["UpdateNumberData"][];
             provenance?: components["schemas"]["UpdateProvenanceData"][];
             section: components["schemas"]["UpdateSectionData"];
+            /** @description Opaque version to acknowledge with `SetModeRowSeen`. */
+            seen_revision?: string | null;
             sender_email?: string;
             setting: components["schemas"]["UpdateSourceSettingData"];
             signal: components["schemas"]["UpdateSignalData"];
+            /**
+             * Format: date-time
+             * @description The newest email left the inbox outside mxr; the update is still here.
+             *     Absent for parcel trackers, which represent a delivery, not one email.
+             */
+            source_filed_at?: string | null;
             source_key: string;
             /** @description "GitHub acme/api", "Strava". */
             source_name: string;
@@ -16181,6 +16539,11 @@ export interface components {
              */
             todo_title: string;
             tracker?: components["schemas"]["UpdateTrackerData"] | null;
+            /**
+             * @description This line revision has not been opened or peeked, including trackers.
+             *     Independent of the source email's READ flag. Omitted by older daemons.
+             */
+            unread?: boolean | null;
             /**
              * @description "Here because: automated sender, not a person (rule). In the 08:00
              *     digest."
@@ -22338,6 +22701,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_row_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowSeenBody"];
+            };
+        };
+        responses: {
+            /** @description Ack */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

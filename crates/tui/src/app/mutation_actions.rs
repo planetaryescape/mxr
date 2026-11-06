@@ -450,7 +450,9 @@ impl App {
                 if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
                     // Label picker confirmed — dispatch mutation
                     let ids = self.mutation_target_ids();
-                    if !ids.is_empty() {
+                    if let Some(refusal) = self.label_refusal(&ids, label_name) {
+                        self.status_message = Some(refusal);
+                    } else if !ids.is_empty() {
                         let optimistic_effect = MutationEffect::ModifyLabels {
                             message_ids: ids.clone(),
                             add: vec![label_name.clone()],
@@ -485,14 +487,16 @@ impl App {
                     // Open label picker
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Apply);
+                        .open(self.label_picker_labels(), LabelPickerMode::Apply);
                 }
             }
             Action::MoveToLabel => {
                 if let Some((_, ref label_name)) = self.modals.pending_label_action.take() {
                     // Label picker confirmed — dispatch move
                     let ids = self.mutation_target_ids();
-                    if !ids.is_empty() {
+                    if let Some(refusal) = self.label_refusal(&ids, label_name) {
+                        self.status_message = Some(refusal);
+                    } else if !ids.is_empty() {
                         let optimistic_effect = remove_from_list_effect(&ids);
                         self.queue_or_confirm_bulk_action(BulkActionRequest {
                             title: "Move messages".into(),
@@ -516,7 +520,7 @@ impl App {
                     // Open label picker
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Move);
+                        .open(self.label_picker_labels(), LabelPickerMode::Move);
                 }
             }
             Action::RouteToLabel => {
@@ -525,7 +529,9 @@ impl App {
                         .active_label_record()
                         .map_or_else(|| "INBOX".to_string(), |label| label.name.clone());
                     let ids = self.mutation_target_ids();
-                    if !ids.is_empty() {
+                    if let Some(refusal) = self.label_refusal(&ids, label_name) {
+                        self.status_message = Some(refusal);
+                    } else if !ids.is_empty() {
                         let optimistic_effect = remove_from_list_effect(&ids);
                         self.queue_or_confirm_bulk_action(BulkActionRequest {
                             title: "Route messages".into(),
@@ -552,7 +558,7 @@ impl App {
                 } else if self.active_label_record().is_some() {
                     self.modals
                         .label_picker
-                        .open(self.mailbox.labels.clone(), LabelPickerMode::Route);
+                        .open(self.label_picker_labels(), LabelPickerMode::Route);
                 } else {
                     self.status_message = Some("Open a queue label before routing".into());
                 }

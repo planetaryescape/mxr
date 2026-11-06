@@ -7,6 +7,7 @@ import { fromDefinition } from "@/lib/actions/definition";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { ActionContext } from "@/lib/actions/types";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
+import { announced } from "@/test/movedKeys";
 
 import { newSenderActions } from "./newSenderActions";
 
@@ -42,9 +43,11 @@ afterEach(() => {
 });
 
 describe("1 to 4 on Now", () => {
-  test("say where a new sender's answers went, and answer nothing", () => {
+  test("say where a new sender's answers went while announced, and answer nothing", () => {
     fireEvent.keyDown(document.body, { key: "1" });
-    expect(moved).toHaveBeenCalledExactlyOnceWith("New sender", "X");
+    expect(moved.mock.calls).toEqual(
+      announced("now.sender-1", "1", "now") ? [["New sender", "X"]] : [],
+    );
   });
 
   test("never fire from a text field, which owns its keys", () => {

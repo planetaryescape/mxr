@@ -17,6 +17,9 @@ ALLOW = {
     "mxr-compose": {"mxr-core", "mxr-mail-parse", "mxr-outbound"},
     "mxr-config": {"mxr-core"},
     "mxr-export": {"mxr-core", "mxr-reader"},
+    # Runs untrusted HTML parsing in a child process. Every crate that parses
+    # mail HTML defines its parses against it, so it names no other mxr crate.
+    "mxr-html-worker": set(),
     "mxr-humanizer": {"mxr-core"},
     "mxr-keychain": set(),
     # Every shortcut in every client (chapter 35). Plain data, read by the
@@ -29,16 +32,22 @@ ALLOW = {
     # never reach the store, credentials, or a provider. Adding any internal
     # dependency here fails CI, which is the point.
     "mxr-mailmerge": set(),
-    "mxr-outbound": {"mxr-core"},
+    "mxr-outbound": {"mxr-core", "mxr-html-worker"},
     "mxr-protocol": {"mxr-core"},
-    "mxr-reader": set(),
+    "mxr-reader": {"mxr-html-worker"},
     "mxr-records": {"mxr-core", "mxr-reader", "mxr-store", "mxr-todo"},
     # Reading: extraction, fade and ranking rules, and the guarded article
     # fetch. Plain data in and out; the daemon owns the store.
-    "mxr-reading": {"mxr-llm", "mxr-reader"},
+    "mxr-reading": {"mxr-html-worker", "mxr-llm", "mxr-reader"},
     "mxr-relationship": {"mxr-core", "mxr-llm", "mxr-reader", "mxr-store"},
     "mxr-rules": {"mxr-core"},
-    "mxr-safety": {"mxr-core", "mxr-outbound", "mxr-reader", "mxr-relationship"},
+    "mxr-safety": {
+        "mxr-core",
+        "mxr-html-worker",
+        "mxr-outbound",
+        "mxr-reader",
+        "mxr-relationship",
+    },
     "mxr-store": {"mxr-core"},
     "mxr-search": {"mxr-core", "mxr-reader"},
     "mxr-semantic": {"mxr-core", "mxr-config", "mxr-reader", "mxr-store"},
@@ -56,6 +65,7 @@ ALLOW = {
         "mxr-compose",
         "mxr-config",
         "mxr-core",
+        "mxr-html-worker",
         "mxr-keymap",
         "mxr-mail-parse",
         "mxr-protocol",

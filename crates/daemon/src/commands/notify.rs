@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::types::Label;
@@ -51,7 +52,9 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     render_notify(inbox_unread_count(&labels), fmt.clone())?
                 );
             }
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            Response::Error { message, kind, .. } => {
+                return Err(daemon_response_error(message, kind))
+            }
             _ => anyhow::bail!("Unexpected response"),
         }
 

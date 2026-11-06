@@ -8,6 +8,13 @@ pub enum MxrError {
     #[error("Provider error: {0}")]
     Provider(String),
 
+    /// The provider rejected this account's credentials: a revoked or expired
+    /// OAuth grant, or an IMAP/SMTP login refusal. Typed so the daemon answers
+    /// with `IpcErrorKind::Auth` and the CLI exits 4. The text matches
+    /// `Provider` so status and logs read the same.
+    #[error("Provider error: {0}")]
+    ProviderAuth(String),
+
     #[error("Sync error: {0}")]
     Sync(String),
 

@@ -701,9 +701,8 @@ async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
 #[tokio::test]
 async fn dispatch_download_attachment_persists_local_path() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
-    state.set_attachment_dir_for_tests(
-        std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4())),
-    );
+    let attachments = tempfile::tempdir().unwrap();
+    state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
     let state = Arc::new(state);
 
     state

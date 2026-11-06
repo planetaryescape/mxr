@@ -442,6 +442,7 @@ impl App {
             AnalyticsView::Subscriptions => Some(mxr_protocol::Request::ListSubscriptions {
                 account_id: None,
                 limit: self.analytics.subscriptions_limit,
+                all_accounts: false,
             }),
             AnalyticsView::SearchAggregation => Some(mxr_protocol::Request::SearchAggregation {
                 query: self.analytics.search_aggregation_query.clone(),

@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Validate and describe a backup without restoring it
+
+Usage: mxr backup inspect <BUNDLE>
+
+Arguments:
+  <BUNDLE>
+
+Options:
+  -h, --help  Print help

@@ -372,7 +372,7 @@ export function ThreadReader({
     summarize: () => {
       if (llm.isSuccess && !llm.enabled) {
         toast.info("Summaries need a language model", {
-          description: "Add one under Settings, then press y again.",
+          description: "Add one under Settings, then try again.",
           action: {
             label: "Set up",
             onClick: () => getRuntimeNavigate().navigate("/settings/llm"),

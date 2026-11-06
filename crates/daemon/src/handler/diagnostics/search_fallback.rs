@@ -15,7 +15,8 @@ use mxr_protocol::{SearchDegraded, SearchDegradedReason};
 use mxr_search::ast::{FilterKind, QueryField, QueryNode};
 use mxr_search::query_builder::tokenize_text_value;
 use mxr_search::{parse_query, SearchResult};
-use mxr_store::{FtsClause, FtsColumns, FtsFallbackQuery};
+use mxr_store::{AddressOrWords, FtsClause, FtsColumns, FtsFallbackQuery};
+use unicode_normalization::UnicodeNormalization;
 
 /// Why a search failed, split so a client can tell "the index is down and this
 /// cannot be served" from every other failure.
@@ -63,6 +64,9 @@ pub(super) struct FallbackPlan {
     pub(super) clauses: Vec<FtsClause>,
     /// Whole addresses from `from:`, matched exactly as the index does.
     pub(super) sender_addresses: Vec<String>,
+    /// Bare terms that are whole addresses: the index matches them as an
+    /// address or as their words, so the fallback does the same.
+    pub(super) address_words: Vec<AddressOrWords>,
     pub(super) hide_trash: bool,
     pub(super) hide_spam: bool,
 }
@@ -80,12 +84,17 @@ pub(super) fn plan_fallback(ast: &QueryNode) -> Result<FallbackPlan, Vec<String>
     let mut plan = FallbackPlan {
         clauses: Vec::new(),
         sender_addresses: Vec::new(),
+        address_words: Vec::new(),
         hide_trash: false,
         hide_spam: false,
     };
     let mut unsupported = Vec::new();
     collect(ast, &mut plan, &mut unsupported);
-    if unsupported.is_empty() && plan.clauses.is_empty() && plan.sender_addresses.is_empty() {
+    if unsupported.is_empty()
+        && plan.clauses.is_empty()
+        && plan.sender_addresses.is_empty()
+        && plan.address_words.is_empty()
+    {
         unsupported.push("a query with no words to search for".to_string());
     }
     unsupported.dedup();
@@ -108,6 +117,23 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
         QueryNode::And(left, right) => {
             collect(left, plan, unsupported);
             collect(right, plan, unsupported);
+        }
+        // A bare address is the whole term as one sender address, or its words
+        // (`alice@example.com` also cuts into `alice`, `example`, `com`).
+        QueryNode::Text(text) if text.contains('@') => {
+            let words = words_of(text, node, unsupported);
+            if !words.is_empty() {
+                plan.address_words.push(AddressOrWords {
+                    address: text.clone(),
+                    words: words
+                        .into_iter()
+                        .map(|word| FtsClause {
+                            columns: FtsColumns::Any,
+                            text: word,
+                        })
+                        .collect(),
+                });
+            }
         }
         // The index cuts a bare word into tokens and requires every one of
         // them, each in any searched field: `alpha-beta` is `alpha` AND
@@ -154,11 +180,15 @@ fn collect(node: &QueryNode, plan: &mut FallbackPlan, unsupported: &mut Vec<Stri
     }
 }
 
-/// The words of `text` as the index cuts them. A term with no letters or
-/// digits has none, so the table has nothing to match it against and the
-/// index would not either: it is refused, by name.
+/// The words of `text` as the index cuts them. The text is composed (NFC)
+/// first: a decomposed accent (`i` + U+0308) is not a letter to the cutter,
+/// so it would split `naïve` into `nai` and `ve`, where the index keeps
+/// `naïve`. A term with no letters or digits has none, so the table has
+/// nothing to match it against and the index would not either: it is refused,
+/// by name.
 fn words_of(text: &str, node: &QueryNode, unsupported: &mut Vec<String>) -> Vec<String> {
-    let words = tokenize_text_value(text);
+    let composed: String = text.nfc().collect();
+    let words = tokenize_text_value(&composed);
     if words.is_empty() {
         unsupported.push(format!("{node} (no letters or digits)"));
     }
@@ -211,6 +241,7 @@ pub(super) async fn limited_search(
             &FtsFallbackQuery {
                 clauses: plan.clauses,
                 sender_addresses: plan.sender_addresses,
+                address_words: plan.address_words,
                 visible_accounts,
                 account_id: options.account_id.clone(),
                 hide_trash: plan.hide_trash,
@@ -415,5 +446,43 @@ mod tests {
             plan.clauses,
             vec![clause(FtsColumns::Any, "alpha beta gamma")]
         );
+    }
+
+    #[test]
+    fn a_bare_address_is_one_group_matching_the_address_or_its_words() {
+        let plan = plan("alice@example.com").unwrap();
+        assert!(plan.clauses.is_empty());
+        assert_eq!(
+            plan.address_words,
+            vec![AddressOrWords {
+                address: "alice@example.com".to_string(),
+                words: ["alice", "example", "com"]
+                    .into_iter()
+                    .map(|word| clause(FtsColumns::Any, word))
+                    .collect(),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_decomposed_accent_splits_like_the_precomposed_word() {
+        let decomposed = plan("nai\u{308}ve-beta").unwrap();
+        let precomposed = plan("na\u{ef}ve-beta").unwrap();
+        assert_eq!(decomposed.clauses, precomposed.clauses);
+        assert!(
+            !decomposed
+                .clauses
+                .iter()
+                .any(|clause| clause.text == "nai" || clause.text == "ve"),
+            "got {:?}",
+            decomposed.clauses
+        );
+    }
+
+    #[test]
+    fn a_decomposed_accent_in_a_phrase_matches_the_precomposed_phrase() {
+        let decomposed = plan("\"nai\u{308}ve beta\"").unwrap();
+        let precomposed = plan("\"na\u{ef}ve beta\"").unwrap();
+        assert_eq!(decomposed.clauses, precomposed.clauses);
     }
 }

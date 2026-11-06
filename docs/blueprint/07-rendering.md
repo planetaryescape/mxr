@@ -38,6 +38,33 @@ We considered:
 
 The external `html_command` approach is the Unix way: mxr handles mail, rendering is someone else's job. Just a clean handoff.
 
+### Untrusted HTML is parsed in a helper process
+
+html5ever and html2text have super-linear paths that no cheap pre-scan bounds. Formatting-element reconstruction (`<p>`, 6,000 distinct `<b id=…>`, then 6,000 `</p><p>x`) builds about 36 million DOM elements from 113 KB. A tag with 100,000 attributes costs the tokenizer about 5 × 10^9 comparisons. Foster parenting, entity-encoded spans (`rowspan="6&#48;00"`) and tables hidden by a comment each have their own. An allocation failure aborts the process, which `catch_unwind` cannot stop. Six review rounds of input limits kept finding the next one.
+
+So the limits are the first line and a process boundary is the second. `crates/reader/src/html_limits.rs` still refuses a document over 2 MiB, 20,000 tags, 64 attributes in a tag, 20,000 cells, 64 cells in a row or 200,000 grid slots, because that is cheap and keeps ordinary refusals fast. Every parse of mail HTML then runs in a child process, `mxr __html-worker`, which is the same executable in a hidden mode. The daemon, the TUI and each CLI invocation own their own child, started on the first parse.
+
+Each parse is a named job (`reader.render`, `reader.split_quote`, `reading.walk_html`, `reading.article`, `reading.issue_reader_html`, `safety.html_views`, `outbound.validate_html`, `outbound.text_alternative`, `tui.rich_lines`, `daemon.cid_references`, `daemon.image_sources`) defined next to the code that uses it by `mxr-html-worker`'s `Job`. The same function runs in both places, so a normal message renders byte for byte as it did in-process. With no helper installed (unit tests, library use) the job runs on the calling thread.
+
+The child limits itself before it reads a request:
+
+| Limit | Value | Where it holds |
+|---|---|---|
+| Memory | 512 MiB above the child's starting size | A watchdog thread aborts the child when its peak resident size passes the ceiling (Linux and macOS). On Linux `RLIMIT_AS` also caps the child's address space at its starting size plus the same headroom. macOS refuses a cap near real usage (every process reserves hundreds of gigabytes of address space) and does not enforce `RLIMIT_DATA`, so the watchdog is its only memory limit. |
+| CPU | 8 s per request | `RLIMIT_CPU`, re-armed before each request. The soft limit moves and never passes an inherited hard limit (`ulimit -t`), which cannot be raised. A backstop behind the wall-clock limit. |
+| Wall clock | 5 s per request | The parent. It kills and reaps the child when a reply is late. |
+| Stack | 64 MiB for the job thread | Deeply nested documents recurse; stack is address space, not memory, until used. |
+
+When a request times out or the child dies, the caller gets `None` and uses the fallback it already has for a document over the budget: the linear tag strip for text, no links or images for extraction, a refusal for the send-side checks. The send-side checks (`validate_html`, the unfilled-gap check, the forward `cid:` check) word the refusal by the reason `Job::try_call` gives: a child that could not start says to try again in a few seconds, because the HTML was never looked at; a timeout, a death or a remembered input says the HTML is too complex and to simplify it. The next request starts a fresh child. A request that times out is remembered by hash and answered with the fallback from then on in that process, so one hostile message cannot cost a timeout per view or per index pass. A request that kills the child is retried once on a fresh child, to tell a bad input from a child the operating system killed; dying twice marks the input the same way.
+
+Two children serve at most two requests at once; more callers queue. Callers block: on a multi-thread tokio runtime the wait runs under `block_in_place`, so other tasks keep running. The TUI keeps these waits off its event loop (`crates/tui/src/deferred_html.rs`): a body's reader text, quote split and styled render are worked out on a thread of their own and cached. A frame waits up to 50 ms, which ordinary mail beats; past that it draws the tag strip and is redrawn when the parse lands, so a hostile message never freezes the keyboard. A document is never sent to the child when its job refuses its size (2 MiB for mail; 5 MiB for a fetched web page, the fetch policy's cap).
+
+The child sees nothing from the environment but its limits. It exits when its stdin closes, so a parent that is killed leaves no child behind. On Linux the child is started from `/proc/self/exe`, so a daemon that outlives an upgrade starts the binary it is running. Elsewhere it is the path of the running executable, or the name the process was started as when that path is unknown. On macOS that path can hold a newer release after an upgrade, so the child's ready line names its release (`mxr-html-worker/1 <version>`) and a parent refuses a child from another one: it counts as a child that could not start, and the parent's fallbacks hold until it is restarted. A child that cannot be started gives every parse its fallback; parsing never returns to the parent.
+
+`mxr doctor` and the diagnostics page show one line from the daemon, for example `HTML helper: 2 fallbacks since start (4012 requests, 1 timeouts, 1 helper deaths, 2 restarts, 0 job errors)`. The counts hold no message content. `installed: false` means parsing is in-process, or there is no daemon to ask.
+
+What the helper does not do: it is not a sandbox. The child can still read files and open sockets as the user; the limits are about resources, not authority. Output the helper returns is untrusted data like the input.
+
 ## Reader mode
 
 Reader mode is a second pass on the already-converted plain text. It strips everything that isn't the actual human-written content.

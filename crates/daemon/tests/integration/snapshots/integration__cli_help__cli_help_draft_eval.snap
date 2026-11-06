@@ -1,0 +1,30 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+Measure drafting with your LLM. Nothing is saved or sent.
+
+With --set mine (the default), replay your most recent replies: draft each one from what was known just before you replied and compare it with what you sent (greeting, sign-off, length, invented numbers). With --set quick, draft each labelled compose case and grade it against what that case required (kept sentences, answers, gaps, invented numbers, length, leftovers). Calls your drafting LLM once per case. --rewrite also runs the configured humanizer rewrite stage for each replay. Uses --account with --set mine.
+
+Usage: mxr draft eval [OPTIONS]
+
+Options:
+      --limit <LIMIT>
+          How many replies to replay, at most 50 (--set mine only)
+
+          [default: 10]
+
+      --set <SET>
+          Which cases to draft
+
+          Possible values:
+          - mine:  Your most recent replies, replayed
+          - quick: The labelled compose corpus, graded check by check
+
+          [default: mine]
+
+      --rewrite
+          Allow the configured humanizer rewrite stage for each replay. Runs only when humanizer and auto-fix are enabled and the draft scores below the threshold. Skipped rewrites are not marked
+
+  -h, --help
+          Print help (see a summary with '-h')

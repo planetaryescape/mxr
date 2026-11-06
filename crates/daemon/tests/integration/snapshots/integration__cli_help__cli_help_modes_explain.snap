@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/integration/cli_help.rs
+expression: stdout
+---
+What a mode is for, what lands there, how it works, its keys and its hints. Every mode that has shipped when none is named
+
+Usage: mxr modes explain [OPTIONS] [MODE]
+
+Arguments:
+  [MODE]  The mode, such as todo
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

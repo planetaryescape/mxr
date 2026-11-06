@@ -359,6 +359,52 @@ fn navigation_chords_on_a_not_sure_question_never_answer_it() {
     }
 }
 
+/// One verb per key (blueprint 35): on a Not-sure question, Now's `e` and
+/// `r` act on its email as on any other Now row. Only `X` answers it.
+#[test]
+fn now_keys_on_a_not_sure_question_act_on_its_email() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 1;
+    let question = match app.selected_now_row() {
+        Some(NowRow::NotSure(question)) => question.clone(),
+        other => panic!("expected a question, got {other:?}"),
+    };
+
+    press(&mut app, KeyCode::Char('r'));
+    assert!(
+        matches!(
+            &app.compose.pending_compose,
+            Some(crate::app::ComposeAction::Reply { message_id, .. })
+                if *message_id == question.message_id
+        ),
+        "r replies to the question's email"
+    );
+    app.compose.pending_compose = None;
+
+    press(&mut app, KeyCode::Char('e'));
+    assert!(
+        matches!(
+            queued(&app).as_slice(),
+            [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false, .. }]
+                if *thread_ids == vec![question.thread_id.clone()]
+        ),
+        "e is done here, in the mode it is in for now: {:?}",
+        queued(&app)
+    );
+    assert!(
+        app.mailbox.trust.move_menu.is_none(),
+        "neither key opens the move picker"
+    );
+
+    for key in ['m', 'x'] {
+        let mut app = now_with_questions();
+        app.mailbox.selected_index = 1;
+        press(&mut app, KeyCode::Char(key));
+        assert!(queued(&app).is_empty(), "{key} is not a Now key");
+        assert!(app.compose.pending_compose.is_none(), "{key}");
+    }
+}
+
 #[test]
 fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
@@ -377,11 +423,6 @@ fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
         Some(NowRow::NotSure(question)) => question.message_id.clone(),
         other => panic!("expected a question, got {other:?}"),
     };
-    // The old one-key answers say where answering went and move nothing.
-    press(&mut app, KeyCode::Char('r'));
-    assert_eq!(app.status_message.as_deref(), Some("Move is now X"));
-    assert!(queued(&app).is_empty());
-
     press(&mut app, KeyCode::Char('X'));
     let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
     assert!(menu.not_sure);
@@ -474,8 +515,12 @@ fn the_move_picker_moves_its_highlight_with_j_and_closes_on_q() {
 #[test]
 fn pass_to_mode_and_its_old_key_point_at_x() {
     let mut app = inbox_app();
+    let before = app.status_message.clone();
     press(&mut app, KeyCode::Char('T'));
-    assert_eq!(app.status_message.as_deref(), Some("Pass to is now X"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        notice_while_announced("list", "T", "Pass to is now X", before.as_deref())
+    );
     assert!(app.mailbox.records_page.pass_menu.is_none());
 }
 
@@ -640,4 +685,88 @@ fn an_account_address_change_drops_every_cached_reply_context() {
         !app.compose.reply_context_cache.contains_key(&message),
         "a reply cached before the alias existed would still offer the old To line"
     );
+}
+
+#[test]
+fn a_contacts_rebuild_refreshes_an_open_analytics_screen() {
+    let mut app = inbox_app();
+    app.screen = crate::app::Screen::Analytics;
+    app.analytics.refresh_pending = false;
+
+    handle_daemon_event(&mut app, DaemonEvent::ContactsRefreshed);
+
+    assert!(
+        app.analytics.refresh_pending,
+        "counts built from the old contacts table would stay on screen"
+    );
+}
+
+#[test]
+fn an_event_this_build_does_not_know_changes_nothing() {
+    let mut app = inbox_app();
+    app.analytics.refresh_pending = false;
+    let before = app.mailbox.envelopes.len();
+
+    handle_daemon_event(&mut app, DaemonEvent::Unknown);
+
+    assert!(!app.analytics.refresh_pending);
+    assert_eq!(app.mailbox.envelopes.len(), before);
+}
+
+#[test]
+fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('m'));
+    let loaded =
+        crate::ui::messages_lens::tests::page(crate::ui::messages_lens::tests::populated(), true);
+    app.set_messages(loaded.messages.unwrap(), loaded.guide);
+    let (row_id, topic) = app
+        .mailbox
+        .messages_page
+        .pending_person
+        .take()
+        .expect("the selected row's page");
+    app.set_person_page(row_id, topic, crate::ui::messages_lens::tests::samir_page());
+    press(&mut app, KeyCode::Char('X'));
+    let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
+    assert_eq!(menu.current, Some(ModeKindData::Messages));
+    assert!(!menu.not_sure, "an ordinary move is not a Not-sure answer");
+    assert_eq!(menu.selected, 0, "the highlight starts on the first option");
+
+    // Now marks the mode the lit row is from.
+    let mut app = App::new();
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('h'));
+    let loaded = page(populated(), true);
+    app.set_now(loaded.now.unwrap(), loaded.guide);
+    press(&mut app, KeyCode::Char('X'));
+    assert_eq!(
+        app.mailbox.trust.move_menu.as_ref().and_then(|m| m.current),
+        Some(ModeKindData::Messages)
+    );
+}
+
+/// Dogfood 2026-10-29: the arrivals list's footer said "K sender", but the
+/// sender's key has been `P` since K3 and `K` does nothing there.
+#[test]
+fn the_arrivals_footer_names_the_senders_key() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 0;
+    press(&mut app, KeyCode::Enter);
+    assert!(app.mailbox.trust.arrivals_list.is_some());
+    let backend = ratatui::backend::TestBackend::new(160, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let shown: String = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(shown.contains("X move  P sender"), "{shown}");
+    assert!(!shown.contains("K sender"), "{shown}");
 }

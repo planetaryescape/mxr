@@ -12,6 +12,7 @@ impl super::Store {
             LabelKind::Folder => "folder",
             LabelKind::User => "user",
         };
+        let role = label.role.map(Role::storage_name);
         let unread_count = label.unread_count as i64;
         let total_count = label.total_count as i64;
 
@@ -32,14 +33,16 @@ impl super::Store {
                 "UPDATE labels SET
                     name = ?1,
                     kind = ?2,
-                    color = ?3
+                    color = ?3,
+                    role = ?5
                  WHERE id = ?4
-                   AND (name IS NOT ?1 OR kind IS NOT ?2 OR color IS NOT ?3)",
+                   AND (name IS NOT ?1 OR kind IS NOT ?2 OR color IS NOT ?3 OR role IS NOT ?5)",
             )
             .bind(&label.name)
             .bind(kind)
             .bind(&label.color)
             .bind(existing_id)
+            .bind(role)
             .execute(&mut *tx)
             .await?;
             tx.commit().await?;
@@ -50,13 +53,14 @@ impl super::Store {
         // recalculate_label_counts() from the junction table. Only update
         // metadata (name, kind, color, provider_id).
         sqlx::query(
-            "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count, role)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 kind = excluded.kind,
                 color = excluded.color,
-                provider_id = excluded.provider_id",
+                provider_id = excluded.provider_id,
+                role = excluded.role",
         )
         .bind(&id)
         .bind(&account_id)
@@ -66,6 +70,7 @@ impl super::Store {
         .bind(&label.provider_id)
         .bind(unread_count)
         .bind(total_count)
+        .bind(role)
         .execute(&mut *tx)
         .await?;
 
@@ -79,7 +84,7 @@ impl super::Store {
     ) -> Result<Vec<Label>, sqlx::Error> {
         let aid = account_id.as_str();
         let rows = sqlx::query(
-            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count
+            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count, role
                FROM labels WHERE account_id = ?"#,
         )
         .bind(aid)
@@ -138,8 +143,8 @@ impl super::Store {
         };
 
         sqlx::query(
-            "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count, role)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 account_id = excluded.account_id,
                 name = excluded.name,
@@ -147,7 +152,8 @@ impl super::Store {
                 color = excluded.color,
                 provider_id = excluded.provider_id,
                 unread_count = excluded.unread_count,
-                total_count = excluded.total_count",
+                total_count = excluded.total_count,
+                role = excluded.role",
         )
         .bind(new_label.id.as_str())
         .bind(new_label.account_id.as_str())
@@ -157,6 +163,7 @@ impl super::Store {
         .bind(&new_label.provider_id)
         .bind(unread_count)
         .bind(total_count)
+        .bind(new_label.role.map(Role::storage_name))
         .execute(&mut *tx)
         .await?;
 
@@ -233,7 +240,7 @@ impl super::Store {
     ) -> Result<Option<Label>, sqlx::Error> {
         let aid = account_id.as_str();
         let row = sqlx::query(
-            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count
+            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count, role
                FROM labels WHERE account_id = ? AND provider_id = ?"#,
         )
         .bind(aid)
@@ -259,9 +266,9 @@ fn row_to_label(row: sqlx::sqlite::SqliteRow) -> Result<Label, sqlx::Error> {
         provider_id: row.get::<String, _>("provider_id"),
         unread_count: row.get::<i64, _>("unread_count") as u32,
         total_count: row.get::<i64, _>("total_count") as u32,
-        // role is provider-derived; the store doesn't persist it yet.
-        // Re-derivation happens on the next sync. Persistence + lazy
-        // backfill is queued for MSP alignment Phase B+.
-        role: None,
+        role: row
+            .get::<Option<String>, _>("role")
+            .as_deref()
+            .and_then(Role::from_storage_name),
     })
 }

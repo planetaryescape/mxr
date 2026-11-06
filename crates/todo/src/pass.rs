@@ -329,13 +329,6 @@ where
         })
         .collect();
     for (unit_index, mut detection) in detections {
-        // Payment-failure creation belongs to the daemon's trusted arrival gate.
-        // Projecting the raw ask would bypass sender checks, history and the day claim.
-        // Keep an existing task's reason so reconciliation does not auto-close it.
-        if detection.kind == TodoKind::PaymentFailed {
-            current_keys.push(detection.reason.clone());
-            continue;
-        }
         let commitment = if detection.kind == TodoKind::Promise {
             match store
                 .asks_owner_commitment_id(answer, &detection.reason)

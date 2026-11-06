@@ -14,6 +14,11 @@ then still fails closed without a genuine verdict. Outlook and generic
 IMAP remain unsupported with an explanation. Sources are linked in
 [blueprint 22](../blueprint/22-email-modes.md#verified-receiver-evidence-is-required-before-an-alert-creates-a-to-do).
 
+The expanded synthetic corpus exposed an existing canonical Asks projection
+that created payment-failure tasks before the alert gate. Automatic projection
+now leaves those alerts to the trusted arrival path; existing tasks remain
+for the user to handle. The regression must pass before acceptance.
+
 Resolve that receiver and timestamp boundary with a trustworthy provider
 attestation or independently verifiable evidence. Demonstrate legitimate
 creation through the actual adapter and daemon, retaining zero synthetic

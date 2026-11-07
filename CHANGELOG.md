@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.233](https://github.com/planetaryescape/mxr/compare/v0.6.232...v0.6.233) (2026-11-07)
+
+
+### Bug Fixes
+
+* **daemon:** pass the thread window in the remote-scope test ([#942](https://github.com/planetaryescape/mxr/issues/942)) ([2917bba](https://github.com/planetaryescape/mxr/commit/2917bba53f4e0a6b599afbad67a7dbfd43ed2f3f))
+
+
+### Performance
+
+* **web:** compress bridge JSON and the embedded SPA ([#941](https://github.com/planetaryescape/mxr/issues/941)) ([17273d0](https://github.com/planetaryescape/mxr/commit/17273d0c58a85b10f9821ab5e87c8c098b424608))
+* **web:** load the key definition catalog after the first paint ([#940](https://github.com/planetaryescape/mxr/issues/940)) ([d93d462](https://github.com/planetaryescape/mxr/commit/d93d46269836f270bd6255c462b5319ffba23f02))
+
 ## [0.6.232](https://github.com/planetaryescape/mxr/compare/v0.6.231...v0.6.232) (2026-11-06)
 
 

@@ -11,6 +11,8 @@ import signal
 import socket
 import sqlite3
 import struct
+
+from _ipc_declare import declare
 import subprocess
 import time
 import uuid
@@ -175,6 +177,7 @@ def ipc(request):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(30)
         connection.connect(sock)
+        declare(connection, 'tui', workspace)
         data = json.dumps(
             {"id": 999, "source": "tui", "expected_workspace": workspace, "payload": {"type": "Request", **request}}
         ).encode()

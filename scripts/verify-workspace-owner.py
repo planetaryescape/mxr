@@ -10,6 +10,8 @@ from pathlib import Path
 import signal
 import socket
 import struct
+
+from _ipc_declare import declare
 import subprocess
 import time
 import uuid
@@ -68,6 +70,7 @@ type = "fake"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(30)
             connection.connect(self.sock)
+            declare(connection, 'cli', owner)
             payload = json.dumps(frame).encode()
             connection.sendall(struct.pack('>I', len(payload)) + payload)
             def read(length):

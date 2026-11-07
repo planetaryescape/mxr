@@ -22,7 +22,7 @@ def rpc(env,command,owner=None,ok=True):
  if owner is not None:frame['expected_workspace']=owner
  data=json.dumps(frame).encode()
  with socket.socket(socket.AF_UNIX) as s:
-  s.settimeout(25);s.connect(env['MXR_SOCKET_PATH']);s.sendall(struct.pack('>I',len(data))+data)
+  s.settimeout(25);s.connect(env['MXR_SOCKET_PATH']);declare(s,'cli',owner);s.sendall(struct.pack('>I',len(data))+data)
   def exact(n):
    b=b''
    while len(b)<n:

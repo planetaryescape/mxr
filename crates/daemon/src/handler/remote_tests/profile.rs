@@ -315,7 +315,10 @@ async fn paired_profile_refuses_excluded_reads_while_cli_reads_remain_ordinary()
     assert_eq!(envelopes.len(), 1);
     assert_eq!(envelopes[0].id, mails[0].id);
     // A shared thread request cannot reveal the excluded account's content.
-    let request = Request::GetThread { thread_id: thread };
+    let request = Request::GetThread {
+        thread_id: thread,
+        window: None,
+    };
     assert_profile_denial(
         call(&state, &id, &proof, ClientKind::Mcp, &request).await,
         &request,

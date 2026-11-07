@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.234](https://github.com/planetaryescape/mxr/compare/v0.6.233...v0.6.234) (2026-11-07)
+
+
+### Bug Fixes
+
+* **release:** declare the agent client in the v1 launch proof ([#944](https://github.com/planetaryescape/mxr/issues/944)) ([9cbe9b7](https://github.com/planetaryescape/mxr/commit/9cbe9b729d1c30e9e546a70d2d1992ac4d5dd2c3))
+
 ## [0.6.233](https://github.com/planetaryescape/mxr/compare/v0.6.232...v0.6.233) (2026-11-07)
 
 

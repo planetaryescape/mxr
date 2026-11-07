@@ -189,6 +189,12 @@ def call(req):
         if resp.get('id') == msg['id'] and resp.get('payload', {}).get('type') == 'Response':
             return resp
 
+# IPC 32 binds the client profile at connect time: the first frame must
+# declare who is speaking before any ordinary request or event.
+ack = call({'cmd': 'DeclareClient', 'kind': 'agent', 'protocol_version': 32})
+if ack.get('payload', {}).get('status') != 'Ok':
+    raise RuntimeError('agent DeclareClient failed: ' + json.dumps(ack))
+
 try:
     try:
         body = call({'cmd': 'GetBody', 'message_id': message_id})

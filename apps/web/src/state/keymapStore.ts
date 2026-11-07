@@ -16,7 +16,11 @@ export interface KeymapState {
   /** What in `keys.toml` mxr is ignoring. */
   problems: string[];
   version: number;
+  /** True once the full catalog is in and keys run. */
+  catalogLoaded: boolean;
   setServed: (served: { singleKeys: boolean; remapped: string[]; problems: string[] }) => void;
+  /** The catalog landed: the registry was built, so views that read keys recompute. */
+  markCatalogLoaded: () => void;
 }
 
 export const useKeymapStore = create<KeymapState>((set) => ({
@@ -24,7 +28,9 @@ export const useKeymapStore = create<KeymapState>((set) => ({
   remapped: [],
   problems: [],
   version: 0,
+  catalogLoaded: false,
   setServed: (served) => set((state) => ({ ...served, version: state.version + 1 })),
+  markCatalogLoaded: () => set((state) => ({ catalogLoaded: true, version: state.version + 1 })),
 }));
 
 /** True for a key token the single-key switch turns off: one character on its own. */

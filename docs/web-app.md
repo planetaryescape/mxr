@@ -223,6 +223,25 @@ live at once, and the store's `version` makes hints, the palette, help and
 status strips recompute without a reload. A cached record that isn't the shape
 the daemon serves is dropped field by field rather than applied.
 
+The generated definition ships as two modules, both built from
+`keymap.generated.json` by `keymapPlugin.ts` so neither can drift from it:
+
+- `virtual:mxr-key-index` is small and in the entry. It holds the ids, keys,
+  aliases, scopes and strips the first frame's labels ask for
+  (`definedShortcut`, `definedKeys`, `stripKeys`, the overlay helpers), so no
+  label on the first screen waits for anything.
+- `virtual:mxr-action-catalog` holds the labels, descriptions and groups the
+  registry needs, and loads after the first contentful paint
+  (`servedKeymap.scheduleActionCatalog`). `fromDefinition` and the registry
+  exist only once it lands: before that a keypress runs nothing and claims
+  nothing, and the status strip is empty rather than wrong. The person's keys
+  are applied to both halves, so the chord that runs when the catalog arrives
+  is the one their `keys.toml` names, with no flash of a default.
+
+Neither module is the raw generated JSON, so the 176 kB `keymap.generated.json`
+module that used to sit in the entry — including the TUI's own command mapping
+— is no longer shipped at all.
+
 `lib/keys/dispatcher.ts` is the app's one key dispatcher. Every key is an action
 in the registry (`lib/actions/`), including list and reader motion. Only two
 capture listeners sit in front of it: the right rail's `Esc` (closes the rail
@@ -517,7 +536,7 @@ build`; gzipped transfer as `vite` reports it):
 
 | Chunk | gzip | Contents |
 |---|---|---|
-| `index` (entry) | 134 kB | the shell: sidebar, topbar, key dispatcher, action registry, keymap catalog, query client, WS client |
+| `index` (entry) | 118 kB | the shell: sidebar, topbar, key dispatcher, key index, query client, WS client |
 | `vendor-react` | 76 kB | react, react-dom |
 | `vendor-tanstack` | 44 kB | router, query, virtual |
 | `vendor-radix` | 44 kB | the Radix primitives the shell and lists use |
@@ -531,6 +550,15 @@ dialogs, the assistant and the right rail load the first time they open
 (`components/AppShell.tsx`). The editors are the two largest downloads in the
 app — CodeMirror is 732 kB raw and Tiptap 377 kB — so nothing outside the
 composer may import them, directly or through a shared dependency.
+
+- **Keep the 290 kB key definition off the entry.** `keymap.generated.json` is
+  the single largest module the app used to ship in the entry. `keymapPlugin.ts`
+  splits it at build time into the 25 kB key index (labels and overlays) and
+  the 54 kB catalog (the registry's labels and palette data, 10 kB gzipped),
+  which `servedKeymap.scheduleActionCatalog` loads after the first contentful
+  paint; the generated JSON itself is now imported only by tests and the docs
+  check. The entry went 135 → 118 kB gzipped. Do not import the catalog from
+  the entry, `navMap.ts` or `sidebarRail.ts`; they read the index.
 
 - **Do not give `@tiptap`, `@codemirror` or `@lezer` a named chunk** in
   `vite.config.ts`. A named group also collects that group's dependencies, so
@@ -556,7 +584,10 @@ composer may import them, directly or through a shared dependency.
 - **The first paint waits for no network answer.** `main.tsx` renders as soon
   as the bundle runs: auth and UI prefs come from storage, and the keymap from
   its cache (see Keyboard). The keymap request starts after the first
-  contentful paint, and the daemon's keys take over without a reload.
+  contentful paint, and the daemon's keys take over without a reload. The full
+  action catalog also arrives after that paint; until it does a key runs
+  nothing and the status strip stays empty, rather than running or naming the
+  wrong action.
 - **Recursive ships as two faces, not the package's full one.** The package's
   latin full face is 305 kB because it carries wght, MONO, CASL, CRSV and
   slnt; the app uses three of those. `styles/fonts.css` declares the casl face
@@ -566,18 +597,23 @@ composer may import them, directly or through a shared dependency.
   brings back 125 kB on the first screen. A preload of the casl face was
   measured and rejected — it started the download 2.8 s earlier and cost
   0.3 s of first paint, because the bytes it used were the entry bundle's.
-- Budget: the entry chunk is 134 kB gzipped and the whole first screen
-  855 kB transferred (from 962 kB before the round-2 LCP work: 305 kB of
-  font became 178 kB, and merging chunks moved about 7 kB into the entry).
-  Measured cold, back to back, on Fast 4G against the demo profile on a
-  production build: Messages LCP 4.28 s → 2.72 s at 1× and 4.52 s → 2.99 s at
-  4×. Reading stays data-bound: its reading query answers in about 4 s, so
-  its LCP is 5–7 s whichever assets change (5.0 s in the best 4× run).
+- Budget: the entry chunk is 118 kB gzipped and the whole first screen
+  840 kB transferred (from 850 kB in the round-4 build: the entry lost 18 kB
+  gzipped and gained back 10 kB as the post-paint catalog). The keymap catalog
+  must stay a separate chunk loaded after the first contentful paint;
+  importing it from the entry, `navMap.ts` or `sidebarRail.ts` puts the
+  176 kB generated module back on the first screen.
+  Measured cold, back to back, on Fast 4G at 4× CPU against the 45k-message
+  demo profile on a production build: Messages LCP 2.97 s → 2.89 s (1×:
+  2.71 s → 2.63 s); the 80 ms is the entry's bytes, and the page is
+  data-bound, so the 2.5 s target is not reached yet. Reading stays
+  data-bound and unchanged within run-to-run noise: its reading query answers
+  in about 4 s, so its LCP is 4.5–6 s whichever assets change.
   Raising either budget needs a measurement in the PR.
   `docs/web-app-rubric.md` row 9.2 still says 70 kB; the shell alone (router,
-  query, keymap catalog, sidebar, topbar) is past that, so the row needs its
-  owner's decision rather than a quiet rewrite. Use 135 kB as the regression
-  line until then (130 kB before the chunk merge above).
+  query, key index, sidebar, topbar) is past that, so the row needs its
+  owner's decision rather than a quiet rewrite. Use 120 kB as the regression
+  line until then.
 
 ## Testing
 

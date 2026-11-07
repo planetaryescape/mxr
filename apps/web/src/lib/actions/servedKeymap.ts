@@ -10,11 +10,11 @@
  * On a first visit, or whenever the daemon can't answer, the generated
  * definition's keys stand.
  *
- * The cache is read from module evaluation, not from `main.tsx`'s body:
- * modules that build their key labels once (`components/navMap.ts`,
- * `components/sidebarRail.ts`) are evaluated while `@/App` is imported, which
- * happens before the entry module's body runs. `main.tsx` imports this module
- * first for that reason.
+ * The cache is read from module evaluation: the small key index answers the
+ * synchronous key reads that modules building labels once (`navMap`,
+ * `sidebarRail`) make while `@/App` is imported. The entry module imports
+ * this module first for that reason. The full catalog — the registry the
+ * dispatcher needs — arrives after the first paint (`scheduleActionCatalog`).
  */
 
 import { apiFetch } from "@/api/client";
@@ -22,25 +22,54 @@ import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 import { useKeymapStore } from "@/state/keymapStore";
 
 import { reregisterCatalog } from "./catalog";
-import { setServedKeys, type ServedKeymap } from "./definition";
+import { isDefinitionLoaded, loadDefinition, setServedKeys, type ServedKeymap } from "./definition";
 
-/** Rebuild the registry with these keys, and note the switch. */
+/**
+ * Rebuild the registry with these keys, and note the switch. Until the
+ * catalog has loaded there is no registry to rebuild: the index already has
+ * the keys, and `bootActionCatalog` registers them when the catalog lands.
+ */
 export function applyServedKeymap(keymap: ServedKeymap): void {
   setServedKeys(keymap);
-  try {
-    reregisterCatalog();
-  } catch (error) {
-    // Keys this build's registry rejects (a daemon from another release)
-    // must not take the keyboard away: the defaults still work.
-    console.warn("mxr: the daemon's keys don't fit this build; using the defaults", error);
-    setServedKeys(null);
-    reregisterCatalog();
-  }
+  reregisterKeys();
   useKeymapStore.getState().setServed({
     singleKeys: keymap.single_keys ?? true,
     remapped: keymap.remapped ?? [],
     problems: keymap.problems ?? [],
   });
+}
+
+/**
+ * Rebuild the live registry, or wait for the catalog. Keys this build's
+ * registry rejects (a daemon from another release) must not take the
+ * keyboard away: the defaults still work.
+ */
+function reregisterKeys(): void {
+  if (!isDefinitionLoaded()) return;
+  try {
+    reregisterCatalog();
+  } catch (error) {
+    console.warn("mxr: the daemon's keys don't fit this build; using the defaults", error);
+    setServedKeys(null);
+    reregisterCatalog();
+  }
+}
+
+/** `true` while the catalog is on its way (the registry is empty). */
+export function isKeyCatalogLoaded(): boolean {
+  return isDefinitionLoaded();
+}
+
+/**
+ * Fetch the full definition after the first paint and build the registry.
+ * The entry carries only the small key index, so this is what makes keys
+ * run; the first screen has already painted by then.
+ */
+export async function bootActionCatalog(): Promise<void> {
+  await loadDefinition();
+  reregisterKeys();
+  // The strip, the palette and help read the registry; the bump re-renders them.
+  useKeymapStore.getState().markCatalogLoaded();
 }
 
 /** Cache key: one bridge's `keys.toml`, so two daemons can't share keys. */
@@ -182,6 +211,52 @@ export function applyCachedKeymap(): boolean {
 
 // Read and applied on import, ahead of `@/App` (see the module comment).
 applyCachedKeymap();
+
+let booted: Promise<void> | null = null;
+
+/**
+ * Build the registry after the first contentful paint, the way the keymap
+ * request waits too (#932). The first screen's labels already come from the
+ * index, so nothing it needs is held back; keys go live as it arrives.
+ */
+export function scheduleActionCatalog(): Promise<void> {
+  booted ??= new Promise<void>((resolve) => {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      const load = () => {
+        bootActionCatalog()
+          .catch((error) => {
+            // No catalog, no keys: the rest of the app stays usable.
+            console.error("mxr: the action catalog did not load", error);
+          })
+          .finally(resolve);
+      };
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(load, { timeout: 1000 });
+      } else {
+        load();
+      }
+    };
+    try {
+      const painted = new PerformanceObserver((list) => {
+        if (!list.getEntries().some((entry) => entry.name === "first-contentful-paint")) return;
+        painted.disconnect();
+        start();
+      });
+      painted.observe({ type: "paint", buffered: true });
+      // A browser that never reports the paint still asks.
+      setTimeout(() => {
+        painted.disconnect();
+        start();
+      }, 4000);
+    } catch {
+      start();
+    }
+  });
+  return booted;
+}
 
 /**
  * Ask the daemon for the person's keys and apply them when they arrive. The

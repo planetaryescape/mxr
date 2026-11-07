@@ -150,10 +150,12 @@ with open(dst, 'w', encoding='utf-8') as f:
     json.dump(draft, f)
 PY
 
-agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" <<'PY'
+protocol_version="$(run_mxr status --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["protocol_version"])')"
+
+agent_json="$(python3 - "$MXR_INSTANCE" "$message_id" "$draft_id" "$draft_json_file" "$expected_workspace" "$protocol_version" <<'PY'
 import json, os, socket, struct, sys, uuid
 
-instance, message_id, draft_id, draft_path, owner_json = sys.argv[1:6]
+instance, message_id, draft_id, draft_path, owner_json, protocol_version = sys.argv[1:7]
 owner = json.loads(owner_json)
 sock_path = os.environ.get('MXR_SOCKET_PATH')
 if not sock_path:
@@ -190,6 +192,9 @@ def call(req):
             return resp
 
 try:
+    declared = call({'cmd': 'DeclareClient', 'kind': 'agent', 'protocol_version': int(protocol_version)})
+    if declared.get('payload', {}).get('status') != 'Ok':
+        raise RuntimeError('agent DeclareClient IPC failed: ' + json.dumps(declared))
     try:
         body = call({'cmd': 'GetBody', 'message_id': message_id})
     except Exception as e:

@@ -286,7 +286,7 @@ toml_edit = "0.25"
 yup-oauth2 = "12"
 reqwest = { version = "0.13", features = ["json", "form"] }
 axum = { version = "0.8", features = ["ws"] }
-tower-http = { version = "0.7", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors", "compression-gzip", "compression-br"] }
 tower = { version = "0.5", features = ["util"] }
 keyring = { version = "3", features = ["apple-native", "sync-secret-service", "crypto-rust"] }
 security-framework = { version = "3", features = ["OSX_10_15"] }

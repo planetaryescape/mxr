@@ -123,12 +123,43 @@ def stop(crash=False):
         daemon.wait(timeout=25)
 
 
+_protocol_version = None
+
+
+def ipc_protocol_version():
+    global _protocol_version
+    if _protocol_version is None:
+        result = cli('status', '--format', 'json')
+        _protocol_version = int(json.loads(result.stdout)['protocol_version'])
+    return _protocol_version
+
+
 def ipc(request, drop=False):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
         stream.settimeout(30)
         stream.connect(sock)
-        payload = json.dumps({'id': 41, 'source': 'cli', 'payload': {'type': 'Request', **request}}).encode()
-        stream.sendall(struct.pack('>I', len(payload)) + payload)
+
+        def read(n):
+            data = b''
+            while len(data) < n:
+                part = stream.recv(n - len(data))
+                assert part, 'Daemon closed response'
+                data += part
+            return data
+
+        def send(value):
+            body = json.dumps(value).encode()
+            stream.sendall(struct.pack('>I', len(body)) + body)
+
+        # IPC 32 binds the client profile at connect time: every raw connection
+        # must declare who is speaking before an ordinary request or event.
+        send({'id': 40, 'source': 'cli', 'payload': {
+            'type': 'Request', 'cmd': 'DeclareClient', 'kind': 'cli',
+            'protocol_version': ipc_protocol_version()}})
+        frame = json.loads(read(struct.unpack('>I', read(4))[0]))
+        assert frame['id'] == 40 and frame['payload'].get('status') == 'Ok', frame
+
+        send({'id': 41, 'source': 'cli', 'payload': {'type': 'Request', **request}})
         if drop:
             # Keep the socket alive until UDS peer authentication and durable
             # acceptance complete; otherwise this tests an undelivered request.
@@ -146,14 +177,6 @@ def ipc(request, drop=False):
             records.append({'ipc': request, 'response_intentionally_not_read': True,
                             'durable_acceptance_observed_before_close': True})
             return None
-
-        def read(n):
-            data = b''
-            while len(data) < n:
-                part = stream.recv(n - len(data))
-                assert part, 'Daemon closed response'
-                data += part
-            return data
 
         while True:
             frame = json.loads(read(struct.unpack('>I', read(4))[0]))

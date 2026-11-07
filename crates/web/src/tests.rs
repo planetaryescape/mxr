@@ -920,6 +920,52 @@ async fn health_endpoint_is_unauthenticated() {
     );
 }
 
+/// JSON and the embedded SPA compress when the client sends
+/// `Accept-Encoding`; `/events` stays out of the compressor by content type.
+#[tokio::test]
+async fn json_responses_are_compressed_when_the_client_asks() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::builder()
+        .build()
+        .unwrap()
+        .get(format!("http://{addr}/api/v1/health"))
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-encoding")
+            .and_then(|value| value.to_str().ok()),
+        Some("gzip"),
+        "health JSON should be gzipped when the client accepts it"
+    );
+    let bytes = response.bytes().await.unwrap();
+    assert_eq!(&bytes[..2], &[0x1f, 0x8b], "body should be a gzip stream");
+
+    let plain = reqwest::Client::builder()
+        .build()
+        .unwrap()
+        .get(format!("http://{addr}/api/v1/health"))
+        .send()
+        .await
+        .unwrap();
+    assert!(plain.headers().get("content-encoding").is_none());
+}
+
 /// Slice 4 — Host header allowlist defends against DNS rebinding.
 /// Loopback names allowed; arbitrary external hostnames rejected.
 #[tokio::test]

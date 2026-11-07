@@ -317,6 +317,10 @@ pub(super) fn app_with_state(state: AppState) -> Router {
         ))
         .layer(cors)
         .layer(axum::middleware::from_fn(middleware::security_headers))
+        // JSON, the embedded SPA and its assets compress; the default
+        // predicate leaves images and `text/event-stream` alone, so the live
+        // event stream is never buffered by a compressor.
+        .layer(tower_http::compression::CompressionLayer::new())
 }
 
 /// The OpenAPI document, built on its first request rather than with the

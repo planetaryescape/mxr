@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.235](https://github.com/planetaryescape/mxr/compare/v0.6.234...v0.6.235) (2026-11-07)
+
+
+### Bug Fixes
+
+* **release:** declare the client in the archive recovery proof ([#947](https://github.com/planetaryescape/mxr/issues/947)) ([e1d1039](https://github.com/planetaryescape/mxr/commit/e1d103987726b3c17606c3c4eb0a7696d39360a6))
+* **release:** declare the client in the raw-IPC proof scripts ([#949](https://github.com/planetaryescape/mxr/issues/949)) ([ca7f59c](https://github.com/planetaryescape/mxr/commit/ca7f59c9a313d0536d822c34d65634aca6eb62bf))
+
 ## [0.6.234](https://github.com/planetaryescape/mxr/compare/v0.6.233...v0.6.234) (2026-11-07)
 
 

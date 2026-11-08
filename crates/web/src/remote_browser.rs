@@ -17,9 +17,7 @@ use serde::Deserialize;
 use std::{path::Path, sync::Arc};
 
 const COOKIE: &str = "__Host-mxr-session";
-const LOGIN_HEAD: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect to mxr</title><body><main><h1>Connect to mxr</h1><p>Run <code>mxr web</code> on your paired computer, then enter its single-use code. It expires after two minutes.</p><form method="post" action="/api/v1/remote/browser-session"><label>Connection code <input name="code" type="password" required autocomplete="off" minlength="64" maxlength="64""#;
-const LOGIN_TAIL: &str =
-    r#"></label><button autofocus>Connect</button></form></main></body></html>"#;
+const LOGIN: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect to mxr</title><body><main><h1>Connect to mxr</h1><p>Run <code>mxr web</code> on your paired computer, then enter its single-use code. It expires after two minutes.</p><form method="post" action="/api/v1/remote/browser-session"><label>Connection code <input name="code" type="password" required autocomplete="off" minlength="64" maxlength="64"></label><button autofocus>Connect</button></form></main></body></html>"#;
 
 #[derive(Clone)]
 pub(super) struct Proof {
@@ -168,10 +166,9 @@ async fn authorize(
         return StatusCode::FORBIDDEN.into_response();
     }
     if request.method() == Method::GET && request.uri().path() == "/api/v1/remote/browser-launch" {
-        // The launch URL only pre-fills the form; redeeming the code still
-        // needs the POST below. A link scanner or prefetcher that fetches this
-        // URL therefore cannot consume the single-use code.
-        return login(launch_code(&request).as_deref());
+        // A clean form only: the single-use code is typed into the page, never
+        // carried in the URL, fragment or request query.
+        return login();
     }
     if request.uri().path() == "/api/v1/remote/browser-session" {
         return next.run(request).await;
@@ -186,7 +183,7 @@ async fn authorize(
         if request.uri().path().starts_with("/assets/") {
             return next.run(request).await;
         }
-        return login(None);
+        return login();
     }
     let Some(mut proof) = cookie(&request) else {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -500,15 +497,7 @@ pub(super) fn event_visible(parent: &str, event: &mxr_protocol::DaemonEvent) -> 
     }
 }
 
-fn login(prefill: Option<&str>) -> Response {
-    // `mxr web` can hand the code over in the launch URL so nobody has to retype
-    // 64 characters. The form still submits it deliberately; the page keeps its
-    // own CSP (no script, the field is only pre-filled).
-    let value = prefill
-        .filter(|code| code.len() == 64 && code.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .map(|code| format!(" value=\"{code}\""))
-        .unwrap_or_default();
-    let body = format!("{LOGIN_HEAD}{value}{LOGIN_TAIL}");
+fn login() -> Response {
     (
         [
             (
@@ -517,13 +506,7 @@ fn login(prefill: Option<&str>) -> Response {
             ),
             (header::CACHE_CONTROL, "no-store"),
         ],
-        Html(body),
+        Html(LOGIN),
     )
         .into_response()
-}
-
-/// The decoded `code` query parameter of a launch URL, if the request carries one.
-fn launch_code(request: &Request) -> Option<String> {
-    url::form_urlencoded::parse(request.uri().query()?.as_bytes())
-        .find_map(|(name, value)| (name == "code").then(|| value.into_owned()))
 }

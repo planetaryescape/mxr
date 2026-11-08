@@ -60,22 +60,20 @@ async fn browser_has_no_loopback_bootstrap_or_cross_origin_mutation_path() {
         .unwrap();
     assert_eq!(launch.status(), reqwest::StatusCode::OK);
     assert!(launch.text().await.unwrap().contains("single-use code"));
-    // A launch URL only pre-fills the form; fetching it must not consume the
-    // single-use code or hand a link scanner a session cookie.
+    // A launch URL never carries the credential. Even a query-supplied code is
+    // ignored, and the form is returned clean.
     let code = "a".repeat(64);
-    let prefilled = client
+    let with_code = client
         .get(format!("{base}/api/v1/remote/browser-launch?code={code}"))
         .header("host", "mail.example.test")
         .send()
         .await
         .unwrap();
-    assert_eq!(prefilled.status(), reqwest::StatusCode::OK);
-    assert!(prefilled.headers().get("set-cookie").is_none());
-    assert!(prefilled
-        .text()
-        .await
-        .unwrap()
-        .contains(&format!("value=\"{code}\"")));
+    assert_eq!(with_code.status(), reqwest::StatusCode::OK);
+    assert!(with_code.headers().get("set-cookie").is_none());
+    let body = with_code.text().await.unwrap();
+    assert!(!body.contains(&code));
+    assert!(!body.contains("value=\""));
     let bootstrap = client
         .get(format!("{base}/api/v1/auth/local-token"))
         .header("host", "mail.example.test")

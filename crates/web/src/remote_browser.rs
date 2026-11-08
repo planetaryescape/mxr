@@ -510,9 +510,7 @@ fn login(prefill: Option<&str>) -> Response {
     // 64 characters. The code stays single-use and two-minute bound, and the page
     // keeps its own CSP: no script, the field is only pre-filled.
     let value = prefill
-        .filter(|code| {
-            code.len() == 64 && code.bytes().all(|byte| byte.is_ascii_hexdigit())
-        })
+        .filter(|code| code.len() == 64 && code.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .map(|code| format!(" value=\"{code}\""))
         .unwrap_or_default();
     let body = format!("{LOGIN_HEAD}{value}{LOGIN_TAIL}");

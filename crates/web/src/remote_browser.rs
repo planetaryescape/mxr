@@ -168,15 +168,10 @@ async fn authorize(
         return StatusCode::FORBIDDEN.into_response();
     }
     if request.method() == Method::GET && request.uri().path() == "/api/v1/remote/browser-launch" {
-        // A launch URL carrying a code signs the browser in directly. The code is
-        // single-use and two minutes old at most, and only the host can mint one.
-        if let Some(code) = launch_code(&request) {
-            if valid_secret(code) {
-                let existing = cookie(&request).map(|proof| (proof.id, proof.secret));
-                return issue_session(&state, existing, code.to_string()).await;
-            }
-        }
-        return login(launch_code(&request));
+        // The launch URL only pre-fills the form; redeeming the code still
+        // needs the POST below. A link scanner or prefetcher that fetches this
+        // URL therefore cannot consume the single-use code.
+        return login(launch_code(&request).as_deref());
     }
     if request.uri().path() == "/api/v1/remote/browser-session" {
         return next.run(request).await;
@@ -507,8 +502,8 @@ pub(super) fn event_visible(parent: &str, event: &mxr_protocol::DaemonEvent) -> 
 
 fn login(prefill: Option<&str>) -> Response {
     // `mxr web` can hand the code over in the launch URL so nobody has to retype
-    // 64 characters. The code stays single-use and two-minute bound, and the page
-    // keeps its own CSP: no script, the field is only pre-filled.
+    // 64 characters. The form still submits it deliberately; the page keeps its
+    // own CSP (no script, the field is only pre-filled).
     let value = prefill
         .filter(|code| code.len() == 64 && code.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .map(|code| format!(" value=\"{code}\""))
@@ -527,10 +522,8 @@ fn login(prefill: Option<&str>) -> Response {
         .into_response()
 }
 
-/// The `code` query parameter of a launch URL, if the request carries one.
-fn launch_code(request: &Request) -> Option<&str> {
-    request.uri().query()?.split('&').find_map(|pair| {
-        let (name, value) = pair.split_once('=')?;
-        (name == "code").then_some(value)
-    })
+/// The decoded `code` query parameter of a launch URL, if the request carries one.
+fn launch_code(request: &Request) -> Option<String> {
+    url::form_urlencoded::parse(request.uri().query()?.as_bytes())
+        .find_map(|(name, value)| (name == "code").then(|| value.into_owned()))
 }

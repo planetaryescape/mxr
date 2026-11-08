@@ -53,7 +53,7 @@ export function TokenSection() {
         try {
           const response = await fetch(`${target}/api/v1/admin/status`, {
             headers: { Authorization: `Bearer ${candidate}` },
-            signal: AbortSignal.timeout(10_000),
+            signal: AbortSignal.timeout(30_000),
           });
           assertTarget(target);
           if (response.status === 401) {

@@ -104,8 +104,12 @@ async function sendToBridge(
     reportReachability(false);
     throw new DaemonUnavailableError({ cause: error });
   }
-  // A 5xx is judged by its body in `failureFrom`.
-  if (res.headers.get(OFFLINE_HEADER) === "1") reportReachability(false);
+  // A marked tailnet denial is a network boundary, not a permission verdict.
+  if (
+    res.headers.get(OFFLINE_HEADER) === "1" ||
+    res.headers.get("x-mxr-tailnet-required") === "1"
+  )
+    reportReachability(false);
   else if (res.status < 500) reportReachability(true);
   return res;
 }
@@ -118,6 +122,9 @@ async function sendToBridge(
 async function failureFrom(res: Response): Promise<Error> {
   const text = await res.text().catch(() => "");
   const failure = bridgeRequestError(res.status, res.statusText, text);
+  if (res.status === 403 && res.headers.get("x-mxr-tailnet-required") === "1") {
+    return new DaemonUnavailableError({ cause: failure });
+  }
   if (res.status < 500) return failure;
   if (res.headers.get(OFFLINE_HEADER) === "1") return failure;
   const isJson = jsonObject(text) !== null;

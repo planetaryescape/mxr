@@ -91,7 +91,7 @@ export function setToken(token: string): void {
   const storage = safeStorage();
   if (!storage) return;
   const previous = storage.getItem(STORAGE_KEY);
-  if (previous && previous !== token) clearOfflineMail();
+  if (previous !== token) clearOfflineMail();
   storage.setItem(STORAGE_KEY, token);
   if (previous !== token) for (const listener of tokenListeners) listener(token);
 }

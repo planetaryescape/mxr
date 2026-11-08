@@ -42,6 +42,10 @@ export function mayCacheMail(response: Response): boolean {
 }
 
 export function clearOfflineMail(): void {
+  // Delete directly as well as via the controller: the page may be served
+  // without a worker yet, and a token change must not leave the previous
+  // account's saved mail behind.
+  if (typeof caches !== "undefined") void caches.delete(OFFLINE_MAIL_CACHE);
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
     navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_OFFLINE_MAIL" });
   }

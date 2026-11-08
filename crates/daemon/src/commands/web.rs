@@ -394,7 +394,9 @@ fn ss_port_owner(port: u16) -> Option<String> {
 
 fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_open: bool) {
     if print_url || no_open {
-        println!("{bridge_url}");
+        // Never print the coded URL: a single-use sign-in code shared or
+        // captured here would let someone else claim it.
+        println!("{display_url}");
         return;
     }
 

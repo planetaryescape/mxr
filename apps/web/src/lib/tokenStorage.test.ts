@@ -82,6 +82,7 @@ describe("offline privacy on account changes", () => {
     });
     try {
       setToken("first-browser-token");
+      expect(postMessage).toHaveBeenCalledWith({ type: "CLEAR_OFFLINE_MAIL" });
       postMessage.mockClear();
       setToken("replacement-browser-token");
       expect(postMessage).toHaveBeenCalledWith({ type: "CLEAR_OFFLINE_MAIL" });

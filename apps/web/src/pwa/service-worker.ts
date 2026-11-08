@@ -90,8 +90,16 @@ const privateReads: WorkboxPlugin = {
     // A read finishing after sign-out must not recreate the private cache.
     if (state && state.generation !== cacheGeneration) await caches.delete(OFFLINE_MAIL_CACHE);
   },
-  cachedResponseWillBeUsed: async ({ cachedResponse }) => {
+  cachedResponseWillBeUsed: async ({ cachedResponse, request }) => {
     if (!cachedResponse) return undefined;
+    const owner = request.headers.get("x-mxr-workspace");
+    const cachedOwner = cachedResponse.headers.get("x-mxr-workspace");
+    if (owner && cachedOwner && owner !== cachedOwner) {
+      // A different workspace is reading now. Drop every saved read rather
+      // than serve another owner's mail for URLs this request did not touch.
+      await clearMail();
+      return undefined;
+    }
     const headers = new Headers(cachedResponse.headers);
     headers.set(OFFLINE_HEADER, "1");
     return new Response(cachedResponse.body, {
@@ -139,16 +147,12 @@ for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
 }
 
 registerRoute(
-  new NavigationRoute(
-    new NetworkFirst({
-      cacheName: "mxr-pages-v1",
-      networkTimeoutSeconds: 4,
-      plugins: [requireConnection],
-    }),
-    {
-      denylist: [/^\/api\//],
-    },
-  ),
+  // Do not keep old HTML per URL: after an update its hashed assets may be
+  // gone. Offline navigations fall through to the catch handler, which returns
+  // the current precached shell.
+  new NavigationRoute(new NetworkOnly({ plugins: [requireConnection] }), {
+    denylist: [/^\/api\//],
+  }),
 );
 
 registerRoute(

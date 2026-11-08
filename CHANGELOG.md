@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.237](https://github.com/planetaryescape/mxr/compare/v0.6.236...v0.6.237) (2026-11-08)
+
+
+### Bug Fixes
+
+* **remote:** open a clean browser sign-in form without the code in the URL ([#953](https://github.com/planetaryescape/mxr/issues/953)) ([995756d](https://github.com/planetaryescape/mxr/commit/995756d00bea1bba06a0ac0066ba67a4dd00baa4))
+
 ## [0.6.236](https://github.com/planetaryescape/mxr/compare/v0.6.235...v0.6.236) (2026-11-08)
 
 

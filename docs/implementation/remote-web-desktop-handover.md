@@ -4,6 +4,8 @@ Continue `fix/remote-web-desktop-parity` in `/Users/bhekanik/code/planetaryescap
 
 v0.6.226 ships approved triage/AI grants, parent-bound browser sessions and assistant tools/history, portable inline images, desktop launch packets, leased presence, bounded drain, supervised hosting and selection/pairing/cleanup recovery. IPC is 31 and schema 110. [Runtime notes](remote-hosting-runtime.md) describe supervision; [the issue](../issues/remote-hosting-and-client-lifecycle.md) retains live installation and release gates.
 
+Update 2026-11-08: v0.6.237 ships IPC 32 and a clean browser-launch form. The launch URL carries no code; the two-minute code is printed in the terminal and typed into the page. On Hume, macOS launchd recovered a killed daemon, the client paired with `mail_read`, `mail_send`, `mail_triage` and `mail_ai`, and the deployed origin passed the no-credential launch check. Linux supervisor, host reboot, real-mailbox migration and the full two-client switch remain open. The offline PWA work is in v0.6.236 and later; see `docs/web-app.md`.
+
 ## The real browser journey passed on 514389ba6
 
 The accepted source is `514389ba61641ba902e749666bbab641029aac0a`, based on `origin/main` `f4ab9360a275f7917177c4fd5af7c91c557ce495`. `/tmp/mxr-pool3-final-build-20261106-r3.log` ended exit 0. The immutable binary `/tmp/mxr-remote-candidate-514389ba6/mxr` has SHA-256 `16e7a2dec98e61f51df4ff03cf326cd96ca1924b2f272f328fdf238bcb0d3055`.

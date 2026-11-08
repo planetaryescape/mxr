@@ -53,10 +53,20 @@ build.
 - Local: opens `http://mxr.localhost:42829`, reusing a healthy daemon-hosted
   bridge or spawning a detached one. `mxr web stop` stops a detached bridge;
   `--foreground` keeps it attached.
-- Remote: `--remote-host <host>` opens
-  `https://<host>/#token=<token>&remote=<host>` with the token from
-  `bridge-tokens/<host>.token`. Nothing binds locally; TLS is the remote
-  operator's job.
+- Remote: a saved `mxr connect` selection opens the selected origin's
+  `/api/v1/remote/browser-launch` form. The two-minute single-use code is
+  printed in the terminal and typed into that page; the launch URL carries no
+  code. `--remote-host` legacy token URLs are rejected with an instruction to
+  use `mxr connect`. Nothing binds locally; TLS is the remote operator's job.
+
+`mxr web` on a paired installation does not use the local bridge token. The
+browser receives `__Host-mxr-session` after the POST; the native credential
+never enters browser storage. A reverse proxy must preserve `Host` and resolve
+the gateway's tailnet name with its own resolver. Caddy in an LXC often uses
+the LAN gateway, which cannot resolve MagicDNS; add
+`resolvers 100.100.100.100` to the upstream transport and keep the TLS SNI.
+Otherwise the proxy returns 502 with `lookup …: no such host` while the
+gateway is healthy.
 - Port conflicts fail unless `--auto-port`; the bound port is written to
   `<config_dir>/bridge-port` for the Vite proxy and scripts.
 

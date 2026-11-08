@@ -32,6 +32,27 @@ against the daemon, with **no token paste prompt**.
 
 If you'd rather just see the URL, pass `--no-open` or `--print-url`.
 
+## Read opened mail offline
+
+Open the app and the conversations you want while connected. Its service worker
+saves the app shell, visited mail lists, and opened conversations on that device.
+When the mail host is unreachable, saved reads stay available; items that were
+not saved explain that they need a connection. The app shows an offline banner
+and refreshes when the host returns.
+
+The private cache holds up to 200 read responses for up to 30 days, subject to
+browser storage. It excludes authentication, account configuration, drafts,
+attachments, and writes. Send and other mutations fail while offline; they are
+not queued for replay. Sign-out, token replacement, workspace changes, and
+rejected authentication clear saved mail. Each daemon protocol uses a separate
+cache, and an app update waits for you to accept it rather than reloading an
+open composer.
+
+A reverse proxy that returns 403 when Tailscale is disconnected must add
+`X-Mxr-Tailnet-Required: 1` to that network-gate response. The worker then uses
+saved reads and the offline shell. Unmarked 401/403 responses are mailbox
+authority decisions and clear saved mail.
+
 Press `?` in the web app to open the view's shortcuts; type to filter the
 list. The dialog links to the [account setup guide](/guides/accounts/).
 Open **Settings > About** to check the connected daemon version. It says

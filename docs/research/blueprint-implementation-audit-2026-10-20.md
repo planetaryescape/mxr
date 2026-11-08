@@ -5,6 +5,7 @@ Use this report to choose implementation work separately from documentation repa
 ## Scope and evidence
 
 - Completed: 2026-10-20.
+- Current status (2026-11-08): R3–R5 shipped in v0.6.226; remote protocol is 32 and the clean browser-launch form shipped in v0.6.237. The remote findings below are the October snapshot, not current gaps. Current contract: [blueprint 24](../blueprint/24-remote-hosting-and-clients.md).
 - Source inspected in the checkout: `900d41d82d554cb302126fb7394ecc0156fcf98b` (workspace version `0.6.106`).
 - Fetched upstream and checked the six subsequent commits through `origin/main` at `404c223d4cb66714fa9750cdd8eefc5c935ab1ee` (version `0.6.108`). In particular, this includes Microsoft To Do linking and further web fixes. The website build and generated-reference checks below use that upstream snapshot.
 - Scope: all 39 Markdown files under `docs/blueprint/`, including both chapter-18 files, the index and five supplementary audits; the docs-site sources, navigation, generators and workflows; relevant Rust and web implementation paths and tests.

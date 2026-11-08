@@ -157,6 +157,8 @@ mxr serve --foreground --listen 127.0.0.1:18741 \
 
 The proxy must preserve the original `Host` header. Requests from another browser origin are refused. Keep the TLS proxy private to your tailnet.
 
+The proxy also needs to resolve the gateway's tailnet name. A Caddy instance in an LXC often resolves through the LAN gateway, which does not answer MagicDNS; the result is a 502 with `lookup <host>: no such host` while the gateway is healthy. Add `resolvers 100.100.100.100` to the upstream `transport http` block, or point the upstream at the tailnet IP and keep `tls_server_name` set to the Tailscale Serve name. Check the proxy's own resolver, not the host's.
+
 On the paired client, open the selected host:
 
 ```sh

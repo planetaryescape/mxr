@@ -35,6 +35,7 @@ this product blueprint as design history.
 | 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, scoped binaries, Homebrew, changelog, docs build checks, v1 unsigned macOS policy (D066-D071) |
 | 18a | [OAuth Addendum](18-addendum-oauth.md) | Gmail BYOC-first OAuth guidance, bundled fallback posture, credential storage, redirect flow, and provider scopes |
 | 18b | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
+| 19 | [Docs site addendum](19-addendum-docs-site.md) | Docs-site changes and constraints recorded after the main blueprint |
 | 20 | [Transports](20-transports.md) | Transport-adapter system: frozen protocol + byte-stream adapters + HTTP gateway, trait reference, per-transport security policy, the token gate, the community adapter kit + conformance, and the backlog (D052-D057) |
 | 21 | [Web Experience](21-web-experience.md) | The desk model, what shipped v0.6.34 to v0.6.42, standards every web change keeps, and the ordered plan to pass the experience rubric (D095-D102) |
 | 22 | [Email Modes](22-email-modes.md) | Email as five modes (Messages, To do, Updates, Reading, Archive), each with its own view shape, key map, index recipe and model tier; multi-mode membership and handoff; rules-first classification; to-do lead times; and the phased plan (D107-D114; Messages filters, D162) |
@@ -58,6 +59,7 @@ this product blueprint as design history.
 | 37r | What-it-asks research | [The literature on requests, commitments and machine mail](../research/what-it-asks/literature.md), [how shipping products do it](../research/what-it-asks/industry.md) and [methods, models and their costs](../research/what-it-asks/methods.md) |
 | 26r | Web design research | [Audit of every screen, 2026-10-16](../research/web-design/audit-2026-10-16.md) and [agent panels and the best mail apps](../research/web-design/agents-and-mail-apps.md) |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
+|  | [Crate boundary audit](crate-boundary-audit.md) | Audit of crate boundaries and dependency direction |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 |  | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |
 |  | [Semantic Search Audit](semantic-search-audit.md) | Code-truth audit of semantic ingestion, profiles, OCR removal, and hybrid query semantics |

@@ -28,7 +28,7 @@ The main pressure point is labels vs folders. The current abstraction is still a
 
 ## Document
 
-- `search.server_side` is provider truth, not a promise that the app always routes search there.
+- `search.server_side` is provider truth; the canonical statement is in [03-providers](03-providers.md).
 - `ProviderMeta` is reserved/dormant in the current implementation, not live sync truth.
 - `Envelope.provider_id` is provider-instance identity, not a universal logical-message identity.
 - IMAP moves/copies may materialize as delete+create.

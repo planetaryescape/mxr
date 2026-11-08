@@ -27,7 +27,14 @@ test("done in Messages takes the conversation out of attention, and u brings it 
 }) => {
   const { person, thread, messageIds } = await freshReplyRequest(page);
   try {
+    // Keys are live only after the deferred action catalog lands (#940); this
+    // journey is keyboard-first, so wait for that answer before pressing.
+    const keysReady = page.waitForResponse(
+      (response) => response.url().includes("/api/v1/platform/keymap"),
+      { timeout: 20_000 },
+    );
     await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
+    await keysReady;
     await expect(page.getByTestId("conversation")).toBeVisible();
     expect(await needsAttention(page, thread)).toBe(true);
 

@@ -91,6 +91,37 @@ describe("apiFetch failure reporting", () => {
 });
 
 describe("telling a stopped daemon from a failed request", () => {
+  test("an offline cached success remains readable without claiming the daemon is healthy", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ saved: true }, { headers: { "x-mxr-offline": "1" } })),
+    );
+    try {
+      await expect(apiFetch("/api/v1/mail/threads/saved")).resolves.toEqual({ saved: true });
+      expect(heard).toEqual([false]);
+    } finally {
+      off();
+    }
+  });
+
+  test("a missing offline read remains a specific error, not a dead-daemon diagnosis", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { error: "not saved", code: "offline_not_cached" },
+          { status: 503, headers: { "x-mxr-offline": "1" } },
+        ),
+      ),
+    );
+    await expect(apiFetch("/api/v1/mail/threads/missing")).rejects.toMatchObject({
+      code: "offline_not_cached",
+      status: 503,
+    });
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

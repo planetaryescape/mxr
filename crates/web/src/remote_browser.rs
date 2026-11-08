@@ -17,7 +17,9 @@ use serde::Deserialize;
 use std::{path::Path, sync::Arc};
 
 const COOKIE: &str = "__Host-mxr-session";
-const LOGIN: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect to mxr</title><body><main><h1>Connect to mxr</h1><p>Run <code>mxr web</code> on your paired computer, then enter its single-use code. It expires after two minutes.</p><form method="post" action="/api/v1/remote/browser-session"><label>Connection code <input name="code" type="password" required autocomplete="off" minlength="64" maxlength="64"></label><button>Connect</button></form></main></body></html>"#;
+const LOGIN_HEAD: &str = r#"<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Connect to mxr</title><body><main><h1>Connect to mxr</h1><p>Run <code>mxr web</code> on your paired computer, then enter its single-use code. It expires after two minutes.</p><form method="post" action="/api/v1/remote/browser-session"><label>Connection code <input name="code" type="password" required autocomplete="off" minlength="64" maxlength="64""#;
+const LOGIN_TAIL: &str =
+    r#"></label><button autofocus>Connect</button></form></main></body></html>"#;
 
 #[derive(Clone)]
 pub(super) struct Proof {
@@ -166,7 +168,15 @@ async fn authorize(
         return StatusCode::FORBIDDEN.into_response();
     }
     if request.method() == Method::GET && request.uri().path() == "/api/v1/remote/browser-launch" {
-        return login();
+        // A launch URL carrying a code signs the browser in directly. The code is
+        // single-use and two minutes old at most, and only the host can mint one.
+        if let Some(code) = launch_code(&request) {
+            if valid_secret(code) {
+                let existing = cookie(&request).map(|proof| (proof.id, proof.secret));
+                return issue_session(&state, existing, code.to_string()).await;
+            }
+        }
+        return login(launch_code(&request));
     }
     if request.uri().path() == "/api/v1/remote/browser-session" {
         return next.run(request).await;
@@ -181,7 +191,7 @@ async fn authorize(
         if request.uri().path().starts_with("/assets/") {
             return next.run(request).await;
         }
-        return login();
+        return login(None);
     }
     let Some(mut proof) = cookie(&request) else {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -270,23 +280,18 @@ async fn authenticate(state: &BrowserState, proof: &Proof) -> Result<String, Sta
 struct Claim {
     code: String,
 }
-async fn claim(
-    State(state): State<Arc<BrowserState>>,
-    headers: axum::http::HeaderMap,
-    Form(form): Form<Claim>,
+/// Exchange a connection code for a session cookie. Shared by the form POST and
+/// by the launch URL, so `mxr web` can sign a browser in with no form at all.
+async fn issue_session(
+    state: &BrowserState,
+    replace_session: Option<(String, RemoteSecret)>,
+    code: String,
 ) -> Response {
-    if !valid_secret(&form.code) {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
     match authority(
         &state.app.config.socket_path,
         RemoteRequest::ClaimBrowserCode {
-            code: RemoteSecret::new(form.code),
-            replace_session: {
-                let mut request = Request::new(axum::body::Body::empty());
-                *request.headers_mut() = headers;
-                cookie(&request).map(|proof| (proof.id, proof.secret))
-            },
+            code: RemoteSecret::new(code),
+            replace_session,
         },
     )
     .await
@@ -308,11 +313,31 @@ async fn claim(
             response
                 .headers_mut()
                 .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            // Without a content type and with nosniff, Safari offers a download
+            // instead of following the redirect.
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
             response
         }
         Err(status) => status.into_response(),
         _ => StatusCode::UNAUTHORIZED.into_response(),
     }
+}
+
+async fn claim(
+    State(state): State<Arc<BrowserState>>,
+    headers: axum::http::HeaderMap,
+    Form(form): Form<Claim>,
+) -> Response {
+    if !valid_secret(&form.code) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mut request = Request::new(axum::body::Body::empty());
+    *request.headers_mut() = headers;
+    let existing = cookie(&request).map(|proof| (proof.id, proof.secret));
+    issue_session(&state, existing, form.code).await
 }
 
 pub(super) async fn status(socket: &Path) -> Result<ResponseData, BridgeError> {
@@ -480,7 +505,17 @@ pub(super) fn event_visible(parent: &str, event: &mxr_protocol::DaemonEvent) -> 
     }
 }
 
-fn login() -> Response {
+fn login(prefill: Option<&str>) -> Response {
+    // `mxr web` can hand the code over in the launch URL so nobody has to retype
+    // 64 characters. The code stays single-use and two-minute bound, and the page
+    // keeps its own CSP: no script, the field is only pre-filled.
+    let value = prefill
+        .filter(|code| {
+            code.len() == 64 && code.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .map(|code| format!(" value=\"{code}\""))
+        .unwrap_or_default();
+    let body = format!("{LOGIN_HEAD}{value}{LOGIN_TAIL}");
     (
         [
             (
@@ -489,7 +524,15 @@ fn login() -> Response {
             ),
             (header::CACHE_CONTROL, "no-store"),
         ],
-        Html(LOGIN),
+        Html(body),
     )
         .into_response()
+}
+
+/// The `code` query parameter of a launch URL, if the request carries one.
+fn launch_code(request: &Request) -> Option<&str> {
+    request.uri().query()?.split('&').find_map(|pair| {
+        let (name, value) = pair.split_once('=')?;
+        (name == "code").then_some(value)
+    })
 }

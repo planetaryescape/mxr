@@ -1,6 +1,7 @@
 import type { ManifestOptions, VitePWAOptions } from "vite-plugin-pwa";
 
 export const pwaManifest: Partial<ManifestOptions> = {
+  id: "/",
   name: "mxr",
   short_name: "mxr",
   description: "Local-first mail in the browser, backed by the mxr daemon.",
@@ -30,13 +31,13 @@ export const pwaManifest: Partial<ManifestOptions> = {
 };
 
 export const pwaOptions: Partial<VitePWAOptions> = {
-  registerType: "autoUpdate",
-  selfDestroying: true,
+  strategies: "injectManifest",
+  srcDir: "src/pwa",
+  filename: "service-worker.ts",
+  registerType: "prompt",
   includeAssets: ["favicon.svg", "pwa-192.png", "pwa-512.png", "pwa-maskable-512.png"],
   manifest: pwaManifest,
-  workbox: {
+  injectManifest: {
     globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
-    navigateFallback: "/index.html",
-    navigateFallbackDenylist: [/^\/api\//],
   },
 };

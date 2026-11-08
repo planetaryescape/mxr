@@ -212,11 +212,19 @@ async fn run_selected_remote(args: &Args) -> anyhow::Result<()> {
         );
     } else {
         eprintln!(
-            "Enter this single-use code in the browser (expires in two minutes):\n{}",
+            "Opening mxr with a single-use code already filled in (expires in two minutes).\nIf the field arrives empty, enter:\n{}",
             code.expose()
         );
-        let launch = format!("{}/api/v1/remote/browser-launch", saved.origin);
-        present_launch_url(&launch, &launch, args.print_url, args.no_open);
+        // Hand the code to the page in the launch URL so the field arrives
+        // filled in, instead of asking anyone to retype 64 characters.
+        let launch = format!(
+            "{}/api/v1/remote/browser-launch?code={}",
+            saved.origin,
+            code.expose()
+        );
+        // Print the origin, not the coded URL, so the secret stays out of the
+        // terminal transcript and shell history.
+        present_launch_url(&launch, &saved.origin, args.print_url, args.no_open);
     }
     Ok(())
 }

@@ -67,7 +67,10 @@ build.
    `[bridge].auto_local_token` is on (default). The SPA calls it on cold start
    and on 401, so local use never asks for a token.
 3. Otherwise `#token=…` in the URL is stored and scrubbed from history, and
-   `/settings/token` offers a paste field.
+   `/settings/token` offers a paste field. **Save and connect** checks the
+   candidate against the bridge before storing it, then opens Now on a fresh
+   page. A rejected token, connection failure, or blocked browser storage stays
+   on the form with its own error; an invalid candidate preserves the saved token.
 4. `#remote=<origin>` points the app at another bridge
    (`lib/tokenStorage.ts`). Any page can link there, so switching to a new
    origin asks for confirmation first, and the stored local token is cleared
@@ -187,6 +190,36 @@ the browser can install it, the status bar shows **install app** and the
 command palette has **Install as app**. Installed, mxr opens in its own
 window. Hide the offer with its **×**; it stays hidden after that. Firefox
 and Safari do not fire the install event, so the offer does not show there.
+
+On iPhone, use Safari's Share menu → Add to Home Screen with **Open as Web
+App** enabled. The manifest has a stable app ID, standalone display, and
+touch icons. Hosted sign-in must use the server's browser-session cookie to
+carry across installation; iOS does not copy Safari's localStorage into the app.
+
+### Read opened mail offline
+
+Open the app and the conversations you want while connected. Its service
+worker saves the app resources, visited mail lists, and opened conversations on
+that device. When the mail host is unreachable, saved reads stay available;
+items that were not saved explain that they need a connection. The hosted app
+shows an offline banner and refreshes its views when the host returns.
+
+The private cache holds up to 200 read responses for up to 30 days, subject to
+browser storage availability. It excludes authentication, account configuration,
+drafts, attachments, and writes. Send and other mutations fail while offline;
+they are not queued for replay. Sign-out, token replacement, workspace changes,
+and rejected authentication clear saved mail. Cache keys contain read URLs,
+not bearer-token headers, and each daemon protocol uses a separate private cache.
+
+An app update offers an **Update** action. Finish editing before accepting it;
+the worker waits rather than reloading an open composer automatically. The
+daemon protocol check still applies when the app reconnects.
+
+A reverse proxy that returns 403 when Tailscale is disconnected must add
+`X-Mxr-Tailnet-Required: 1` to that network-gate response. The worker then
+uses saved reads and the offline shell. Unmarked 401/403 responses remain
+mailbox authority decisions and clear saved mail; never mark those responses
+as a network failure.
 
 ### Stop extensions reading mxr's keys
 
@@ -492,6 +525,8 @@ that commits either must emit it once per affected account.
   size such as `text-[13px]` fails `npm run lint` (`scripts/check-type-scale.mjs`,
   with `check-motion.mjs` beside it). A file that needs one goes on the
   script's `ALLOWLIST` with its reason; keep that list short.
+- Editable fields on touch devices or screens narrower than 768 px use at least
+  16 px text to prevent iOS focus zoom. Browser pinch-to-zoom remains available.
 - Cyan (`--primary`) means focus, selection and the primary action; counts and
   unread marks use `--unread-marker`, which is the accent except in Paper
   (rust reads as error red there, so it is `--text-1`). It

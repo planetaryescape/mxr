@@ -9,9 +9,10 @@ use std::{
 
 pub const SELECTION_CHANGED_MESSAGE: &str = "Saved connection changed. Close and reopen this client. Retained drafts and operation outcomes still belong to their original workspace.";
 
-const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
+// Pairing and status handshakes cross a proxy when the saved origin is remote.
+const SETUP_TIMEOUT: Duration = Duration::from_secs(30);
 const SETUP_TIMEOUT_MESSAGE: &str =
-    "connect/authentication/declaration/status handshake timed out after 5 seconds";
+    "connect/authentication/declaration/status handshake timed out after 30 seconds";
 
 #[derive(Clone)]
 pub struct SelectedDaemonTarget {
@@ -162,7 +163,9 @@ impl SelectedDaemonTarget {
         }
         let connector = self.connector();
         let setup = async {
-            let mut connection = IpcConnection::connect_with(connector.as_ref(), source).await?;
+            let mut connection =
+                IpcConnection::connect_with_timeout(connector.as_ref(), source, SETUP_TIMEOUT)
+                    .await?;
             match connection.request(Request::GetStatus).await? {
                 ResponseData::Status { protocol_version, .. } if protocol_version == IPC_PROTOCOL_VERSION => {
                     connection.selected_remote = true;
@@ -226,7 +229,8 @@ pub async fn connect_registration(
         saved.mail_secret.expose(),
     )?;
     let setup = async {
-        let mut connection = IpcConnection::connect_with(&connector, source).await?;
+        let mut connection =
+            IpcConnection::connect_with_timeout(&connector, source, SETUP_TIMEOUT).await?;
         match connection.request(Request::GetRemoteReady).await? {
             ResponseData::RemoteReady {protocol_version, host_id, workspace, client_id, capabilities, accepting_mail, shutdown_deadline_at, boot_id, ..}
                 if protocol_version == IPC_PROTOCOL_VERSION && client_id == saved.client_id

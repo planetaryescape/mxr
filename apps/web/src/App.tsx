@@ -14,9 +14,11 @@ import { createQueryClient, setActiveQueryClient } from "@/lib/queryClient";
 import { scheduleActionCatalog } from "@/lib/actions/servedKeymap";
 import { daemonEvents } from "@/lib/ws";
 import { routeTree } from "@/routeTree.gen";
+import { clearOfflineMail } from "@/pwa/offlineReads";
 
 const queryClient = createQueryClient({
   onUnauthorized: () => {
+    clearOfflineMail();
     const target = "/settings/token?reason=expired";
     if (window.location.pathname + window.location.search !== target) {
       window.location.assign(target);

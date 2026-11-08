@@ -6,12 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useBridgeToken } from "@/hooks/useBridgeToken";
+import { getBridgeBaseUrl, getToken } from "@/lib/tokenStorage";
+import { assertTarget } from "@/lib/workspaceOwner";
 
 export function TokenSection() {
   const { token, setToken, clearToken, hasToken } = useBridgeToken();
   const [draft, setDraft] = useState(token);
   const [reveal, setReveal] = useState(false);
   const reason = new URLSearchParams(window.location.search).get("reason");
+  const [error, setError] = useState<string | null>(
+    reason === "expired"
+      ? "The bridge token was rejected. Paste a valid token to reconnect."
+      : null,
+  );
+  const [checking, setChecking] = useState(false);
 
   if (token === "browser-session") {
     return (
@@ -29,10 +37,50 @@ export function TokenSection() {
   }
 
   return (
-    <div>
+    <form
+      action="/now"
+      method="get"
+      aria-busy={checking}
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (checking || !draft.trim()) return;
+        const form = event.currentTarget;
+        const candidate = draft.trim();
+        const target = getBridgeBaseUrl();
+        setChecking(true);
+        setError(null);
+        let saving = false;
+        try {
+          const response = await fetch(`${target}/api/v1/admin/status`, {
+            headers: { Authorization: `Bearer ${candidate}` },
+            signal: AbortSignal.timeout(30_000),
+          });
+          assertTarget(target);
+          if (response.status === 401) {
+            setError("The bridge token was rejected. Paste a valid token to reconnect.");
+          } else if (!response.ok) {
+            setError(`The mail bridge returned ${response.status}. Try connecting again.`);
+          } else {
+            saving = true;
+            setToken(candidate);
+            if (getToken() !== candidate) throw new Error("Browser storage unavailable");
+            // A fresh page drops failed queries and the stale expired-token URL.
+            form.submit();
+          }
+        } catch {
+          setError(
+            saving
+              ? "Couldn't save the token in this browser. Allow site data for mxr and try again."
+              : "Couldn't reach the mail bridge. Check your connection and try again.",
+          );
+        } finally {
+          setChecking(false);
+        }
+      }}
+    >
       <p className="mb-5 max-w-prose text-sm text-muted-foreground">
-        mxr web needs local access to connect to your mail app. Most local launches set this up
-        automatically. If access expires, paste the token from your active mxr profile here.
+        Paste the bridge token from your active mxr profile to connect to your mail. Most launches
+        on the same computer connect automatically.
       </p>
       <details className="mb-4 text-xs text-muted-foreground">
         <summary className="w-fit cursor-pointer underline underline-offset-4">
@@ -45,9 +93,9 @@ export function TokenSection() {
         </p>
       </details>
       <div className="space-y-4">
-        {reason === "expired" ? (
+        {error ? (
           <Alert variant="destructive" className="px-3 py-2 text-xs">
-            The bridge token was rejected. Paste a valid token to reconnect.
+            {error}
           </Alert>
         ) : null}
         <div className="space-y-1">
@@ -60,10 +108,15 @@ export function TokenSection() {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="paste bridge token here"
               className="font-mono"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={checking}
             />
             <Button
               variant="outline"
               size="icon"
+              type="button"
               onClick={() => setReveal((r) => !r)}
               aria-label={reveal ? "Hide token" : "Show token"}
             >
@@ -72,18 +125,13 @@ export function TokenSection() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            onClick={() => {
-              setToken(draft.trim());
-              window.location.reload();
-            }}
-            disabled={!draft.trim() || draft === token}
-          >
-            Save and reload
+          <Button type="submit" disabled={!draft.trim() || checking}>
+            {checking ? "Connecting…" : "Save and connect"}
           </Button>
           <Button
             variant="outline"
-            disabled={!hasToken}
+            type="button"
+            disabled={!hasToken || checking}
             onClick={() => {
               clearToken();
               window.location.reload();
@@ -93,6 +141,6 @@ export function TokenSection() {
           </Button>
         </div>
       </div>
-    </div>
+    </form>
   );
 }

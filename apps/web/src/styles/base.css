@@ -61,6 +61,17 @@
     color: inherit;
   }
 
+  /* iOS zooms small editable text on focus. Keep touch fields readable while
+   * preserving the person's ability to pinch-zoom the page. */
+  @media (any-pointer: coarse), (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+    textarea,
+    select,
+    [contenteditable="true"] {
+      font-size: max(16px, 1rem) !important;
+    }
+  }
+
   /* Tabular figures for timestamps and counts */
   .tabular {
     font-variant-numeric: tabular-nums;

@@ -17,7 +17,13 @@ vi.mock("@/lib/tokenStorage", () => ({
   getToken: () => "test-token",
 }));
 
-function respond(status: number, statusText: string, body: string, contentType?: string) {
+function respond(
+  status: number,
+  statusText: string,
+  body: string,
+  contentType?: string,
+  extraHeaders?: Record<string, string>,
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(
@@ -25,7 +31,10 @@ function respond(status: number, statusText: string, body: string, contentType?:
         new Response(body, {
           status,
           statusText,
-          headers: contentType ? { "content-type": contentType } : undefined,
+          headers: {
+            ...(contentType ? { "content-type": contentType } : {}),
+            ...extraHeaders,
+          },
         }),
     ),
   );
@@ -91,6 +100,37 @@ describe("apiFetch failure reporting", () => {
 });
 
 describe("telling a stopped daemon from a failed request", () => {
+  test("an offline cached success remains readable without claiming the daemon is healthy", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ saved: true }, { headers: { "x-mxr-offline": "1" } })),
+    );
+    try {
+      await expect(apiFetch("/api/v1/mail/threads/saved")).resolves.toEqual({ saved: true });
+      expect(heard).toEqual([false]);
+    } finally {
+      off();
+    }
+  });
+
+  test("a missing offline read remains a specific error, not a dead-daemon diagnosis", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { error: "not saved", code: "offline_not_cached" },
+          { status: 503, headers: { "x-mxr-offline": "1" } },
+        ),
+      ),
+    );
+    await expect(apiFetch("/api/v1/mail/threads/missing")).rejects.toMatchObject({
+      code: "offline_not_cached",
+      status: 503,
+    });
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -133,6 +173,21 @@ describe("telling a stopped daemon from a failed request", () => {
     respond(200, "OK", "{}", "application/json");
     await apiFetch("/api/v1/mail/desk");
     expect(heard).toEqual([true, true, true]);
+    off();
+  });
+
+  test("a marked tailnet denial is an outage, not a permission verdict", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    respond(
+      403,
+      "Forbidden",
+      JSON.stringify({ error: "mxr is available over Tailscale only." }),
+      "application/json",
+      { "x-mxr-tailnet-required": "1" },
+    );
+    expect(await failure()).toBeInstanceOf(DaemonUnavailableError);
+    expect(heard).toEqual([false]);
     off();
   });
 

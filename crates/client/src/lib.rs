@@ -411,6 +411,17 @@ impl IpcConnection {
         connector: &dyn Connector,
         source: ClientKind,
     ) -> Result<Self, ClientError> {
+        Self::connect_with_timeout(connector, source, Duration::from_secs(5)).await
+    }
+
+    /// Connect with an explicit setup budget. Saved remote origins cross a
+    /// proxy and a tailnet relay, so their callers pass a longer limit than the
+    /// local default.
+    pub async fn connect_with_timeout(
+        connector: &dyn Connector,
+        source: ClientKind,
+        limit: Duration,
+    ) -> Result<Self, ClientError> {
         let setup = async {
             let io = connector.connect().await?;
             let mut conn = Self {
@@ -453,7 +464,6 @@ impl IpcConnection {
             }
             Ok(conn)
         };
-        let limit = Duration::from_secs(5);
         tokio::time::timeout(limit, setup)
             .await
             .map_err(|_| ClientError::Timeout(limit))?

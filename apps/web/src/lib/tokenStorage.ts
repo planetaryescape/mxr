@@ -1,3 +1,5 @@
+import { clearOfflineMail } from "@/pwa/offlineReads";
+
 /*
  * Bridge bearer-token storage.
  *
@@ -89,11 +91,13 @@ export function setToken(token: string): void {
   const storage = safeStorage();
   if (!storage) return;
   const previous = storage.getItem(STORAGE_KEY);
+  if (previous !== token) clearOfflineMail();
   storage.setItem(STORAGE_KEY, token);
   if (previous !== token) for (const listener of tokenListeners) listener(token);
 }
 
 export function clearToken(): void {
+  clearOfflineMail();
   const storage = safeStorage();
   if (!storage) return;
   storage.removeItem(STORAGE_KEY);

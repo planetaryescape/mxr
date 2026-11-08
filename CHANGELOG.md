@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.236](https://github.com/planetaryescape/mxr/compare/v0.6.235...v0.6.236) (2026-11-08)
+
+
+### Features
+
+* **web:** keep opened mail offline and sign in from the launch URL ([#951](https://github.com/planetaryescape/mxr/issues/951)) ([b66f3f9](https://github.com/planetaryescape/mxr/commit/b66f3f9a3b0677e81a877653dabd93d9597864b3))
+
 ## [0.6.235](https://github.com/planetaryescape/mxr/compare/v0.6.234...v0.6.235) (2026-11-07)
 
 

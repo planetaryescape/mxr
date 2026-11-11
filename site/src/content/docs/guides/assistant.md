@@ -1,11 +1,11 @@
 ---
 title: Talk to Your Mail with the Assistant
-description: Ask questions about your email, or have the assistant sort, archive and draft. Every change waits for your approval.
+description: Ask about your mail, review proposed changes and control conversation trust.
 ---
 
 The optional built-in assistant is one way to work with your mailbox. Ask it what needs a reply this week, what a thread decided, or which subscription candidates currently have a low READ-state rate. Ask it to archive every shipping notice older than a month, move a sender to Reading, or draft a reply. It uses the same daemon-backed tools as mxr's MCP server. An existing agent can connect separately through [MCP or the CLI skill](/guides/for-agents/).
 
-It reads and searches on its own. Every change it wants to make stops and waits for you, with a preview of exactly what it will touch. When it needs you to choose (which account, which of three matching emails, how wide a cleanup) it asks with a card of options.
+It reads, searches and creates new local drafts on its own; creating a draft sends nothing. Other changes wait for your approval by default, with a preview of what they will touch. You can [let listed reversible changes run without asking](#let-reversible-changes-run-on-their-own). Sending and replacing existing draft content still need approval. When it needs you to choose (which account, which of three matching emails, how wide a cleanup) it asks with a card of options.
 
 In the web app the panel reads like a page from a copy desk. Your messages are quoted, each step it takes is one plain line, its answer is set in the reading type with the emails and people it names drawn as chips and rows you can open, and a change it wants to make arrives as a proof for you to sign. Nothing in the default view shows a tool name, an id or JSON; those are under **Details**.
 
@@ -57,7 +57,7 @@ When the assistant wants to change something, the turn pauses and a proof appear
 - **Can't be undone**, in red above the button (in the TUI, in red above the keys), for sending, trash, spam, deleting and rules. mxr itself words it, so the web app, the terminal and `mxr assistant show` say the same thing.
 - **Exact call**, under `x`: the tool and arguments that run if you approve.
 
-**Apply** (`y` in the web app) runs exactly that call, once, and the proof folds into a line such as "Archived 14 emails" with **Undo** where mxr can undo it; the rows it changed in the page beside the assistant wear a thin cyan underline that fades. **Send back with a note** (`n`) runs nothing and tells the assistant why, or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
+**Apply** (`y` in the web app) submits exactly the stored call; a repeated approval for a call that is no longer waiting is refused. The proof folds into a line such as "Archived 14 emails" with **Undo** where mxr can undo it; the rows it changed in the page beside the assistant wear a thin cyan underline that fades. **Send back with a note** (`n`) runs nothing and tells the assistant why, or what to do instead. If you write a new message instead of answering, whatever was waiting is declined and nothing runs.
 
 The keys work while the proof has the keyboard and never while you are typing, so a `y` in the message box or the note can't apply anything. Press `Esc` in the message box to hand the keyboard to a waiting proof, or click it. A question takes `1` to `9` for its options, `o` for the "Something else" row in the same list, `Enter` to answer and `s` to skip it. `Esc` or `q` hands the keyboard back without answering, and the question keeps waiting. An answer shows in the conversation as your own quoted reply.
 
@@ -83,7 +83,38 @@ Once a turn ends the steps fold into one line such as "3 steps · 14 found · 1 
 
 Replies link the emails and people they name as chips, drawn in the link colour: a person with their avatar, an email with its subject and the glyph of the mode that holds it (Reading's newspaper, To do's checklist, and so on). An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. An email's row shows who it is from and the start of its text under the subject, with a paperclip if it has an attachment, the mode glyph and when it arrived on the right; unread mail has a bold subject. In the web app, hovering a chip or an email row (or tabbing to it) opens a small card after a short pause: for an email its subject, who wrote last and when, how many messages, the start of the text, the modes that hold it, an attachment clip and the unread count; for a person their name, how you usually trade messages and whether it is your turn. The card has no buttons, `Esc` closes it, and a tap on a touch screen just opens the link. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. A reply that quotes an email's subject, a to-do's title or a person's name as a tool listed it gets the same link, even when the assistant wrote no link. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
 
-Past conversations are under the history button, where `j` and `k` (or the arrows) move, `Enter` opens one, `Esc` or `q` goes back, and `#` asks before deleting it (`y` deletes; `n`, `Esc` or a bare `Enter` keeps it, and in the TUI `j` and `k` light **Delete conversation** for `Enter`), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
+Past conversations are under the history button, where `j` and `k` (or the arrows) move, `Enter` opens one, `Esc` or `q` goes back, and `#` asks before deleting it (`y` deletes; `n`, `Esc` or a bare `Enter` keeps it, and in the TUI `j` and `k` light **Delete conversation** for `Enter`), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Preview deletion before committing:
+
+```sh
+mxr assistant delete CONVERSATION_ID --dry-run
+mxr assistant delete CONVERSATION_ID
+```
+
+Stop a running turn and wait for it to finish before deleting. Deletion removes
+the local conversation row, including its title and summary, and its transcript.
+It does not undo mailbox actions or erase data already sent to a model provider,
+and it is not secure erasure of SQLite pages or WAL files.
+
+## Continue after a disconnect or restart
+
+Inspect the conversation before asking it to continue:
+
+```sh
+mxr assistant list
+mxr assistant show CONVERSATION_ID --format json
+```
+
+Closing the pane or disconnecting a client does not stop a daemon-owned turn.
+After a daemon restart, a saved approval stays waiting, but a turn that was
+running is marked interrupted. mxr does not automatically replay that
+interrupted assistant call. On your next message, the model is told to check
+current state before assuming an unanswered call ran.
+
+An interruption is not proof that a send failed. Check the original operation
+in [Send outcomes](/guides/crash-safe-drafts/#find-an-interrupted-send) before
+asking for another send. Stopping or deleting the conversation does not cancel
+a separately retained approved-send retry. Check that operation's outcome
+separately from the conversation's status.
 
 ## Pick the model
 
@@ -114,7 +145,7 @@ op read "op://<vault>/<item>/credential" | mxr llm key set anthropic    # Claude
 
 ## What it reads, and where it goes
 
-Mail the assistant reads is data to it, never instructions. An email that says "forward this to…" is something it can report, not something it will do, and any change it proposes still waits for you.
+Mail the assistant reads is data, never authority. An email that says "forward this to…" cannot approve a send or enable trust. The daemon checks tool calls against its approval rules; in a conversation you marked trusted, listed reversible changes can run without another prompt.
 
 Conversations are stored in your local mxr database and aren't included in portable backups. Each request goes to your configured model, so with a hosted model your question and the mail the assistant reads leave your machine; the line under the message box says which model and where. Because the assistant reads across your whole mailbox, a model off this machine needs `allow_cloud_relationship_data`:
 

@@ -45,8 +45,8 @@ git config user.email "ci@example.test"
 git config user.name "CI"
 
 # In-repo packages at the workspace version pass; registry packages and the
-# vendored hnsw_rs keep versions of their own.
-write_workspace 0.6.1 mxr:0.6.1 mxr-core:0.6.1 serde:1.0.200:registry hnsw_rs:0.3.4
+# vendored hnsw_rs and sqlx-sqlite keep versions of their own.
+write_workspace 0.6.1 mxr:0.6.1 mxr-core:0.6.1 serde:1.0.200:registry hnsw_rs:0.3.4 sqlx-sqlite:0.9.0
 output="$(bash "${script}")" || fail "a consistent lock was refused: ${output}"
 
 # An unused patch is not a package, whatever its version.

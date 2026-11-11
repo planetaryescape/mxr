@@ -1270,9 +1270,16 @@ async fn demo_state(seed: DateTime<Utc>, cuts: &[String]) -> Arc<AppState> {
     config.updates.cuts = cuts.to_vec();
     state.set_config_for_test(config).await;
     let account_id = state.default_account_id();
+    // Only the seeded head: the generated bulk after it plays no part in
+    // these digests and nearly doubled each sync's classification work.
     let provider = Arc::new(
-        mxr_provider_fake::FakeProvider::with_demo_dataset_at(account_id.clone(), 302, seed, cuts)
-            .with_page_size(500),
+        mxr_provider_fake::FakeProvider::with_demo_dataset_at(
+            account_id.clone(),
+            mxr_provider_fake::fixtures::curated_head_len(),
+            seed,
+            cuts,
+        )
+        .with_page_size(500),
     );
     state.add_sync_provider_for_test(provider.clone());
     loop {

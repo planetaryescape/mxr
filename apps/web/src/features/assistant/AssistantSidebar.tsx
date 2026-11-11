@@ -1,7 +1,8 @@
 /*
- * The assistant as a copy desk: talk to your mail. It reads and searches
- * freely; every change it wants to make waits as a proof for your
- * signature, and every question waits here too. Turns run in the daemon, so
+ * The assistant as a copy desk: talk to your mail. It reads, searches and
+ * saves new drafts freely; every other change waits as a proof for your
+ * signature unless the conversation is trusted, and every question waits
+ * here too. Turns run in the daemon, so
  * closing the sidebar or reloading the page doesn't stop one.
  * Anatomy and voice: docs/blueprint/29-assistant-design.md.
  */

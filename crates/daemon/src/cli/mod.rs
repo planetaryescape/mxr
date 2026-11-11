@@ -1092,8 +1092,8 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Talk to the assistant about your mail. It reads and searches
-    /// freely; every change it wants to make waits for your approval.
+    /// Talk to the assistant about your mail. It reads, searches and saves
+    /// new drafts freely; every other change waits for your approval.
     Assistant {
         #[command(subcommand)]
         action: AssistantAction,

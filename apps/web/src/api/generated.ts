@@ -5439,8 +5439,8 @@ export interface components {
             | "interrupted";
         AssistantConversationData: {
             /**
-             * @description Reversible changes (archive, move, star, read, labels) run without
-             *     asking. Sending, deleting, trash, spam and rules always ask. Set
+             * @description Reversible changes (archive, move, star, read, Reading later,
+             *     categories, to-do state) run without asking. Sending, deleting, trash, spam and rules always ask. Set
              *     only by the user (`SetAssistantAutoApprove`).
              */
             auto_approve?: boolean;
@@ -6420,10 +6420,9 @@ export interface components {
             truncated: boolean;
         };
         /**
-         * @description Originating client for an IPC request. Carried on the envelope so the
-         *     daemon's activity recorder can tag rows with the surface that produced
-         *     them. Legacy clients (pre-source-field) decode as `Cli` — the most
-         *     realistic guess for scripts hand-rolled against the socket.
+         * @description Cooperative client identity, declared during setup and repeated on each
+         *     envelope for activity attribution. Missing legacy envelope tags decode as
+         *     `Cli`; they cannot replace the mandatory `DeclareClient` handshake.
          * @enum {string}
          */
         ClientKind:
@@ -11306,6 +11305,7 @@ export interface components {
                   /** @enum {string} */
                   cmd: "GetThread";
                   thread_id: components["schemas"]["ThreadId"];
+                  window?: components["schemas"]["ThreadWindow"] | null;
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
@@ -12684,6 +12684,13 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "DeclareClient";
+                  kind: components["schemas"]["ClientKind"];
+                  /** Format: int32 */
+                  protocol_version: number;
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "GetStatus";
               }
             | {
@@ -12998,6 +13005,13 @@ export interface components {
             | {
                   /** @enum {string} */
                   cmd: "GetModeMembership";
+                  /**
+                   * Format: int32
+                   * @description Keep only the newest `limit` messages' asks, assessments and
+                   *     pending asks in each answer. Omitted returns every message's
+                   *     evidence, which the CLI and TUI still read.
+                   */
+                  limit?: number | null;
                   message_id?: components["schemas"]["MessageId"] | null;
                   thread_id?: components["schemas"]["ThreadId"] | null;
                   thread_ids?: components["schemas"]["ThreadId"][];
@@ -16020,6 +16034,20 @@ export interface components {
             generated_at: string;
             model: string;
             text: string;
+        };
+        /**
+         * @description One bounded page of a conversation, for readers that must not load a
+         *     2,000-message thread in one payload. `limit` counts messages; the page
+         *     ends just before `before` (exclusive) or starts just after `after`
+         *     (exclusive). `focus` returns the page ending at that message, so a deep
+         *     link can open on an old message without loading everything newer.
+         */
+        ThreadWindow: {
+            after?: components["schemas"]["MessageId"] | null;
+            before?: components["schemas"]["MessageId"] | null;
+            focus?: components["schemas"]["MessageId"] | null;
+            /** Format: int32 */
+            limit: number;
         };
         /** @description One reading of the phrase. */
         TimeChoice: {

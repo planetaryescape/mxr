@@ -455,7 +455,7 @@ pub(crate) fn transcript_lines(
         push_wrapped(
             &mut lines,
             "",
-            "Ask questions, get summaries, or have it sort, archive and draft. Every change waits for your approval first.",
+            "Ask questions, get summaries, or have it sort, archive and draft. New drafts save straight away; other changes wait for your approval.",
             width,
             muted,
             muted,

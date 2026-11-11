@@ -10517,7 +10517,7 @@
         "properties": {
           "auto_approve": {
             "type": "boolean",
-            "description": "Reversible changes (archive, move, star, read, labels) run without\nasking. Sending, deleting, trash, spam and rules always ask. Set\nonly by the user (`SetAssistantAutoApprove`)."
+            "description": "Reversible changes (archive, move, star, read, Reading later,\ncategories, to-do state) run without asking. Sending, deleting, trash, spam and rules always ask. Set\nonly by the user (`SetAssistantAutoApprove`)."
           },
           "created_at": {
             "type": "integer",

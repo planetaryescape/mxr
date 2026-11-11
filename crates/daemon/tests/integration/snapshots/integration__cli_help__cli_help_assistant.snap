@@ -2,7 +2,7 @@
 source: crates/daemon/tests/integration/cli_help.rs
 expression: stdout
 ---
-Talk to the assistant about your mail. It reads and searches freely; every change it wants to make waits for your approval
+Talk to the assistant about your mail. It reads, searches and saves new drafts freely; every other change waits for your approval
 
 Usage: mxr assistant [OPTIONS] <COMMAND>
 
@@ -13,7 +13,7 @@ Commands:
   approve  Approve a change the assistant is waiting on. It runs exactly the call shown
   reject   Decline a change or question; nothing runs
   answer   Answer a question the assistant asked. For one question, use --choose and/or --other; for several, --answers-json
-  trust    Let reversible changes (archive, move, star, read, labels) run without asking in one conversation. Sending, deleting, trash, spam and rules always ask
+  trust    Let reversible changes (archive, move, star, read, Reading later, categories, to-do state) run without asking in one conversation. Sending, deleting, trash, spam and rules always ask
   stop     Stop a running turn, or close what is waiting without running it
   list     Conversations, most recently active first
   show     Show a whole conversation

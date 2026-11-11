@@ -1,13 +1,14 @@
 # 25. The assistant
 
-The assistant is a chat agent you talk to about your mail. It answers questions, analyses, and carries out what you ask (archive, move, label, to-dos, drafts, sending) through mxr's own tools. Reading, searching and creating a new local draft run straight away. Changes to existing drafts and sending wait for approval; the user can let a conversation run listed reversible changes without asking. When it needs a choice from you it asks with a question card. It is most useful for analysis ("who am I waiting on?") and bulk work ("archive every shipping notice older than a month"), where doing it by hand means many clicks.
+The assistant is a chat agent you talk to about your mail. It answers questions, analyses, and carries out what you ask (archive, move, label, to-dos, drafts, sending) through mxr's own tools. Reading, searching and creating a new local draft run straight away. Every other change waits for approval, including edits to existing drafts and sending; the user can let a conversation run listed reversible changes without asking. When it needs a choice from you it asks with a question card. It is most useful for analysis ("who am I waiting on?") and bulk work ("archive every shipping notice older than a month"), where doing it by hand means many clicks.
 
 Decision: [D122](15-decision-log.md#d122-the-assistant-is-a-daemon-agent-over-the-mcp-tools-with-approval-enforced-in-code). How it should look and feel, in web and TUI, is in [29](29-assistant-design.md) (D135).
 
 The shipped runtime is the Rust loop below. The dated
 [Eve/Mastra evaluation](../research/assistant-runtime-evaluation-2026-11-01.md)
 records synthetic experiments, not a production replacement or migration decision.
-Inspect their saved evidence with `git show ebae50492:docs/issues/mastra-runtime-evaluation.md`.
+Its saved evidence is on the local, unpushed branch `spike/mastra-agent-runtime`:
+`git show ebae50492:docs/issues/mastra-runtime-evaluation.md`.
 
 ## The agent runs in the daemon and calls the MCP tools in-process
 

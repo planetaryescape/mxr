@@ -111,7 +111,7 @@ interrupted assistant call. On your next message, the model is told to check
 current state before assuming an unanswered call ran.
 
 An interruption is not proof that a send failed. Check the original operation
-in [Send outcomes](/guides/crash-safe-drafts/#find-an-interrupted-send) before
+with [Find an interrupted send](/guides/crash-safe-drafts/#find-an-interrupted-send) before
 asking for another send. Stopping or deleting the conversation does not cancel
 a separately retained approved-send retry. Check that operation's outcome
 separately from the conversation's status.

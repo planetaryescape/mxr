@@ -22,8 +22,9 @@ git show ebae50492:crates/assistant/prototype-mastra/observations/stdio-mcp.json
 git show 988bc0394:docs/issues/eve-runtime-evaluation.md
 ```
 
-These commits live on `spike/mastra-agent-runtime` and
-`spike/eve-agent-runtime`; a fresh public clone may not contain them. Each
+These commits live on the local branches `spike/mastra-agent-runtime` and
+`spike/eve-agent-runtime`. Neither branch is on origin, so a fresh clone does
+not contain them. Each
 prototype README gives reproduction commands. Tests used synthetic mail only.
 The local-model smoke used Ollama `gemma4:latest`; deterministic crash probes
 used a scripted provider through the real framework runtime.
@@ -90,8 +91,8 @@ documentation closeout did not rerun the prototypes.
 
 Mastra is the better next integration candidate on this evidence. A migration
 is not yet justified solely by features we already ship. The experiment adds a
-Node worker, native libSQL distribution and another data lifecycle; it measured
-roughly 230–246 MB worker RSS and 187 MB installed dependencies on one machine.
+Node worker, native libSQL distribution and another data lifecycle; its saved
+startup samples show 239–246 MB worker RSS on one machine.
 It did not measure net code removal, packaging size or long-term maintenance.
 
 Before deciding to replace Rust, compare one daemon-owned adapter with the code
@@ -114,18 +115,3 @@ The generated CLI reference repeats it. Current gate rules allow local draft
 creation without approval and user-enabled reversible changes. Correcting the
 help source and its snapshot requires a separate code change; do not hand-edit
 the generated reference to hide that mismatch.
-
-## Verify the documentation
-
-Regenerate the CLI/OpenAPI surfaces and build the user guide:
-
-```sh
-agent-work run -- npm --prefix site run build
-git diff --check
-```
-
-The closeout build passed all 10 docs-script tests, validated 273 OpenAPI paths
-and built 209 pages. Separate checks resolved the assistant guide's rendered
-local links and fragments and the touched repo pages' relative file links.
-These checks do not establish framework recovery, live provider behaviour or
-deployment of the revised site.

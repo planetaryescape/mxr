@@ -115,6 +115,7 @@ exclude = [
     "apps/desktop/src-tauri",
     "fuzz",
     "vendor/hnsw_rs",
+    "vendor/sqlx-sqlite",
 ]
 
 [workspace.package]
@@ -196,7 +197,7 @@ mxr-web = { path = "crates/web", version = "0.6.0" }
 glob-match = "0.2"
 shell-words = "1.1"
 which = "8"
-rmcp = "3.5.1"
+rmcp = "3.8.0"
 schemars = "1.1.0"
 
 # Package/delivery detection: carrier tracking-number identification + checksum
@@ -520,5 +521,10 @@ workspace = true
 # hnsw_rs 0.3.4 drops layer-0 back-links for any chunk drawn at level >= 1, so
 # semantic search never returns those chunks (about 1% of a 5,000-vector index).
 # The vendored copy applies upstream's fix; see vendor/hnsw_rs/Cargo.toml.
+# sqlx-sqlite 0.9.0 caps libsqlite3-sys below 0.38, whose bundled SQLite is
+# affected by RUSTSEC-2026-0459. The vendored copy takes upstream's range
+# bump so the lock can carry libsqlite3-sys 0.39; see
+# vendor/sqlx-sqlite/Cargo.toml.
 [patch.crates-io]
 hnsw_rs = { path = "vendor/hnsw_rs" }
+sqlx-sqlite = { path = "vendor/sqlx-sqlite" }

@@ -26,6 +26,9 @@ does not mark it seen. This is local
 mxr state, shared by its clients and independent of the email's read flag.
 New folded mail, a changed fact or a tracker transition makes the line
 unseen again.
+New content arriving while a peek or email remains open stays unseen.
+Close and reopen it to acknowledge that new revision. A background refresh
+alone never acknowledges it.
 
 To acknowledge a line from a script, copy its `id`, `account_id` and
 `seen_revision` from `mxr updates --format json`:
@@ -35,9 +38,10 @@ mxr modes seen updates ROW_ID --account ACCOUNT_ID --revision SEEN_REVISION --dr
 mxr modes seen updates ROW_ID --account ACCOUNT_ID --revision SEEN_REVISION --format json
 ```
 
-An acknowledgment of an older revision never calms newer content. MCP
-clients use `mxr_mode_row_seen` with the same fields; it previews unless
-`confirm` is true.
+An acknowledgment of an older revision never calms newer content. Keep the
+revision you inspected rather than substituting one from a later fetch.
+[MCP clients](/reference/mcp/#acknowledge-an-inspected-row) use
+`mxr_mode_row_seen`; it previews unless `confirm` is true.
 
 Delivery updates and calendar invites have an Updates home too. Their existing
 specialist views remain available. `mxr why MESSAGE_ID --format json` names the

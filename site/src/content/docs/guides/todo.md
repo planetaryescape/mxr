@@ -48,6 +48,10 @@ Unseen tasks are bold and bright; seen tasks use normal-weight grey text,
 even while unfinished. Moving the selection alone does not mark a task seen.
 This state is local to mxr and shared by its clients, not the email's read
 flag. Changed task details or new source evidence make the row unseen again.
+If new content arrives while details or the email remain open, it stays
+unseen until you close and reopen that view. Opening reply compose alone
+does not mark the task seen. Ticking off and reopening an unchanged task
+does not reset its seen state.
 
 For scripts, copy `id`, `account_id` and `seen_revision` from the task's JSON:
 
@@ -58,6 +62,9 @@ mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --form
 
 The preview changes nothing; the second command records only that revision
 as seen. Neither command ticks the task off or marks its email read.
+Keep the revision you inspected; do not substitute a newer one after a
+refetch. See [row attention fields](/reference/json-output/#to-do-and-updates-row-attention)
+for the receipt and optional-field contract.
 
 ```bash
 mxr todo why TODO_ID --format json

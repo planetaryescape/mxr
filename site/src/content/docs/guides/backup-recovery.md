@@ -28,6 +28,10 @@ text, and managed attachment bytes. It excludes credentials, authorization
 tokens, activity data, logs, model files, and derived indexes. Treat the bundle
 as private mail data.
 
+To do and Updates seen revisions are durable local state too. They survive
+backup and restore; a backup from before row-seen support has no such
+receipts, so its rows start unseen. See [row attention fields](/reference/json-output/#to-do-and-updates-row-attention).
+
 Canonical drafts and send outcomes are retained, but runnable cooldown-send
 approvals, their frozen copies and operational attempt history are excluded.
 A portable restore never resumes an approved-send queue. A missing approval is

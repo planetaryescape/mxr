@@ -313,6 +313,43 @@ mxr reading edition --peek --format json \
 `[]` means no returned item has this marker. For digest lines, use the
 [Updates example](/guides/updates/#each-source-is-one-line-sorted-by-what-it-asks-of-you).
 
+## To do and Updates row attention
+
+Inspect the row metadata with:
+
+```bash
+mxr todo --format json
+mxr updates --format json
+```
+
+These fields describe local row attention, not the source email's READ flag:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | Row identity; pass it as `row_id` to bridge/MCP acknowledgments. |
+| `account_id` | string | Owning account ID; copy it from the row, not an account display name. |
+| `unread` | optional boolean | `true` means this revision is unseen; `false` means it was acknowledged. Absence is unknown, not a seen receipt. |
+| `seen_revision` | optional string | Opaque 64-character hexadecimal content revision; pass it unchanged as `revision`. |
+
+The same metadata appears on To do runway, catch-up, detail and change rows,
+Updates lines, and those rows nested in Now. Older payloads can omit the
+optional fields. Do not derive a revision from a timestamp or source read flag.
+
+Acknowledgment is a separate operation:
+
+```bash
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --dry-run --format json
+mxr modes seen todo TODO_ID --account ACCOUNT_ID --revision SEEN_REVISION --format json
+```
+
+The preview returns `{"seen":false,"dry_run":true}`; applying returns
+`{"seen":true,"dry_run":false}`. JSONL returns that same object on one line.
+The receipt means the supplied revision was recorded, not that it is still
+the row's current revision. Fetch the row again to inspect its current
+`unread` value. Task completion, update let-go and provider read state are
+unchanged. See [MCP input mapping](/reference/mcp/#acknowledge-an-inspected-row)
+and the [HTTP route](/reference/bridge/#row-attention).
+
 ## Mutation dry-run
 
 `--dry-run` on a core mail mutation returns one preview object:

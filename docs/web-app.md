@@ -565,6 +565,41 @@ that commits either must emit it once per affected account.
   every utility on buttons; keep it layered.
 - Rows lay out by their list's width (container queries), not the window's.
 
+### Row attention is separate from selection and completion
+
+Shared rows (`components/Row.tsx`) mark the lit row with the `--ink-lamp`
+background alone, with no leading-edge bar. Unread/unseen primary text is
+semibold `--text-1`; read/seen is normal-weight `--text-2`. `components/rowTone.ts` also supplies the catch-up
+row tone. An omitted attention field stays neutral rather than claiming seen.
+
+To do and Updates get `unread` and `seen_revision` from the daemon's exact
+account/mode/row/revision ledger, including rows without an email. Inbox
+and Messages still use message read flags. Opening an email from a mode,
+To do details, or an Updates peek calls `useMarkRowSeen`; moving the lit row
+or opening reply compose does not. Opening transitions own the acknowledgment:
+a new revision fetched while a view remains open must stay unseen until
+the user closes and reopens it. Do not add a revision-dependent effect
+that acknowledges every refetch.
+
+The daemon decorates even cached list responses and Now rows with current
+ledger state. Its lookup reads only the response's own row revisions, one
+query per account and mode, not the lifetime receipt history. The hash
+covers stable task/source evidence or update facts/folded mail/tracker
+state, not every rendered label or client-side gist. D190 in the [decision log](blueprint/15-decision-log.md#d190-opening-a-to-do-or-updates-row-calms-that-revision)
+owns the contract; the [bridge reference](../site/src/content/docs/reference/bridge.md#row-attention)
+documents the request.
+
+Check this behavior without adding another browser spec:
+
+```bash
+cd apps/web
+agent-work run -- npm test -- src/features/modes/rowSeen.test.tsx src/features/todo/TodoRow.test.tsx src/features/updates/UpdateLineRow.test.tsx
+```
+
+Those component tests cover opening and delayed refreshes. The existing
+`e2e/updates.spec.ts` journey checks that the acknowledgment persists through
+a reload against the real daemon.
+
 ## Accessibility
 
 - The mail list is a `listbox` with `aria-activedescendant`; DOM focus follows
@@ -572,7 +607,9 @@ that commits either must emit it once per affected account.
 - Dialogs return focus to the pane that opened them.
 - Enter and Space on a focused button, link or checkbox keep their native
   meaning. `prefers-reduced-motion` removes animation.
-- Axe runs in the Playwright suite on the main routes.
+- Keep component accessibility assertions in Vitest. The Playwright suite
+  covers cross-layer journeys and browser-only security, not axe sweeps;
+  [its inventory](../apps/web/e2e/README.md) names the boundaries.
 
 ## Bundle
 

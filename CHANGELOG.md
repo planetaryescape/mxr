@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.239](https://github.com/planetaryescape/mxr/compare/v0.6.238...v0.6.239) (2026-11-11)
+
+
+### Bug Fixes
+
+* say what the assistant runs without asking in its help text ([#962](https://github.com/planetaryescape/mxr/issues/962)) ([7b117fa](https://github.com/planetaryescape/mxr/commit/7b117fab5f06ce719906b15ce0eac57ca57324fc))
+
 ## [0.6.238](https://github.com/planetaryescape/mxr/compare/v0.6.237...v0.6.238) (2026-11-11)
 
 

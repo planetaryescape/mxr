@@ -197,7 +197,7 @@ mxr-web = { path = "crates/web", version = "0.6.0" }
 glob-match = "0.2"
 shell-words = "1.1"
 which = "8"
-rmcp = "3.8.0"
+rmcp = "3.9.0"
 schemars = "1.1.0"
 
 # Package/delivery detection: carrier tracking-number identification + checksum

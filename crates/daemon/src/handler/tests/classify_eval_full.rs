@@ -9,7 +9,7 @@
 //!   moves any answer shows up as a reviewed snapshot diff. Locally:
 //!   `scripts/cargo-test -p mxr --lib -- --ignored handler::tests::classify_eval_full`
 //!   (once; it is heavy).
-//! * The other tests run the same code over a demo of a few thousand, so the
+//! * The other test runs the same code over a demo of 1,500 messages, so the
 //!   set selection, the held-out accounting and the per-account scoping are
 //!   checked on every run.
 
@@ -394,25 +394,26 @@ fn work_per_sync(sync: Duration, elapsed: Duration) -> f64 {
 /// measured so far came near it.
 const WORK_PER_SYNC_BUDGET: f64 = 25.0;
 
-// Each test below builds one generated demo and runs several checks on it.
-// Building the demo is nearly all of a check's time, and a runner that gives
-// every test its own process (nextest) shares nothing between tests. Grading
-// twice gives the same answer (checked below), so one check's grading does not
-// change what the next one sees.
+/// Messages in the demo the checks below share, across both accounts. Building
+/// it is nearly all of their time, and the time grows with its size. At 1,500
+/// the full set still grades more than 1,000 labelled emails (1,180; 1,200
+/// messages gave 946), with held-out mail in every question and on both
+/// accounts.
+const SHARED_DEMO_MESSAGES: usize = 1_500;
 
+// One test builds one generated demo and runs every check on it: a runner
+// that gives every test its own process (nextest) shares nothing between
+// tests, so a second test means a second demo. Grading twice gives the same
+// answer (checked first), so one check's grading does not change what the
+// next one sees.
 #[tokio::test]
-async fn a_generated_demo_grades_both_accounts_and_the_quick_set_only_on_curated_mail() {
-    let (state, personal, work) = demo_state(2_500).await;
+async fn a_generated_demo_grades_the_same_twice_both_accounts_and_the_quick_set_on_curated_mail() {
+    let (state, personal, work) = demo_state(SHARED_DEMO_MESSAGES).await;
+    grading_the_full_set_twice_gives_the_same_answer(&state).await;
+    the_full_set_labels_the_curated_mail_with_the_quick_sets_labels(&state, &personal).await;
     the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(&state, &personal, &work)
         .await;
     the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail(&state).await;
-}
-
-#[tokio::test]
-async fn a_generated_demo_grades_the_same_twice_and_with_the_quick_sets_labels() {
-    let (state, personal, _) = demo_state(1_200).await;
-    grading_the_full_set_twice_gives_the_same_answer(&state).await;
-    the_full_set_labels_the_curated_mail_with_the_quick_sets_labels(&state, &personal).await;
 }
 
 async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart(

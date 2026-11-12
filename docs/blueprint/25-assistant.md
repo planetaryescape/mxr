@@ -7,8 +7,8 @@ Decision: [D122](15-decision-log.md#d122-the-assistant-is-a-daemon-agent-over-th
 The shipped runtime is the Rust loop below. The dated
 [Eve/Mastra evaluation](../research/assistant-runtime-evaluation-2026-11-01.md)
 records synthetic experiments, not a production replacement or migration decision.
-Its saved evidence is on the local, unpushed branch `spike/mastra-agent-runtime`:
-`git show ebae50492:docs/issues/mastra-runtime-evaluation.md`.
+Its saved evidence is on the branch `spike/mastra-agent-runtime`. Fetch it,
+then read `git show ebae50492:docs/issues/mastra-runtime-evaluation.md`.
 
 ## The agent runs in the daemon and calls the MCP tools in-process
 

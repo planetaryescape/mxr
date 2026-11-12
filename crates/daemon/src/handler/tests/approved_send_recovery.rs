@@ -424,6 +424,31 @@ async fn approved_send_recovery_local_ingestion_repairs_acceptance_without_resen
     assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
 }
 
+/// Opens a file-backed store at `path` through the real `Store::new`, seeded
+/// from the migrated in-memory template.
+///
+/// Migrating an empty file commits each migration statement on its own, and
+/// every commit waits for `F_FULLFSYNC`; on a busy Mac that took 7-12 s per
+/// store. These tests need a file (the restart, and logs beside the database),
+/// not a fresh migration run. `Store::new` still takes the workspace lease,
+/// switches to WAL, checks every migration stamp and validates the schema.
+///
+/// The image is written directly because `VACUUM INTO` from the template
+/// inherits its in-memory open flag and never creates the file.
+async fn migrated_file_store(path: &std::path::Path) -> mxr_store::Store {
+    let template = mxr_store::Store::in_memory().await.unwrap();
+    let image = template
+        .writer()
+        .acquire()
+        .await
+        .unwrap()
+        .serialize(None)
+        .await
+        .unwrap();
+    std::fs::write(path, &*image).unwrap();
+    mxr_store::Store::new(path).await.unwrap()
+}
+
 async fn legacy_fixture() -> (
     Arc<AppState>,
     Draft,
@@ -458,9 +483,7 @@ async fn legacy_fixture() -> (
             .collect(),
     };
     draft.managed_attachments = Some(vec![part.clone()]);
-    let store = mxr_store::Store::new(&temp.path().join("legacy.db"))
-        .await
-        .unwrap();
+    let store = migrated_file_store(&temp.path().join("legacy.db")).await;
     store.insert_account(&account).await.unwrap();
     store.insert_draft(&draft).await.unwrap();
     Arc::get_mut(&mut state).unwrap().store = Arc::new(store);
@@ -721,7 +744,7 @@ async fn approved_send_recovery_restarts_and_replays_the_same_intent_only_once()
     let sender = Arc::new(RecoveringSender::default());
     let (mut state, _, draft) = fixture_with_sender(Some(sender.clone())).await;
     let account = crate::test_fixtures::test_account_with_id(draft.account_id.clone());
-    let store = mxr_store::Store::new(&path).await.unwrap();
+    let store = migrated_file_store(&path).await;
     store.insert_account(&account).await.unwrap();
     store.insert_draft(&draft).await.unwrap();
     Arc::get_mut(&mut state).unwrap().store = Arc::new(store);

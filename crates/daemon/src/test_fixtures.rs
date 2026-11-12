@@ -344,6 +344,30 @@ pub(crate) async fn accept_client_declaration<S>(
         .expect("declaration ack");
 }
 
+// -- Persistent store ---------------------------------------------------------
+
+/// Writes an already-migrated `mxr.db` into `mxr_config::data_dir()`, so the
+/// next `AppState::new()` opens it instead of creating and migrating a new
+/// file. The file store commits every migration statement with
+/// `F_FULLFSYNC`, which costs seconds per new database on macOS; the image
+/// comes from the schema `Store::in_memory` migrates once per test process.
+/// Startup still runs the whole migration check against the written file.
+pub(crate) async fn write_migrated_database() {
+    use std::io::Write;
+    let data_dir = mxr_config::data_dir();
+    std::fs::create_dir_all(&data_dir).unwrap();
+    let template = mxr_store::Store::in_memory().await.unwrap();
+    let mut connection = template.writer().acquire().await.unwrap();
+    let image = connection.serialize(None).await.unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(data_dir.join("mxr.db"))
+        .unwrap()
+        .write_all(&image)
+        .unwrap();
+}
+
 // -- Fake daemon for bulk selection -------------------------------------------
 
 /// A daemon that answers only what a `--search` bulk command sends: the

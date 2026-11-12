@@ -22,10 +22,10 @@ git show ebae50492:crates/assistant/prototype-mastra/observations/stdio-mcp.json
 git show 988bc0394:docs/issues/eve-runtime-evaluation.md
 ```
 
-These commits live on the local branches `spike/mastra-agent-runtime` and
-`spike/eve-agent-runtime`. Neither branch is on origin, so a fresh clone does
-not contain them. Each
-prototype README gives reproduction commands. Tests used synthetic mail only.
+These commits are on the branches `spike/mastra-agent-runtime` and
+`spike/eve-agent-runtime`. A clone does not fetch them by default, so run
+`git fetch origin spike/mastra-agent-runtime spike/eve-agent-runtime` first.
+Each prototype README gives reproduction commands. Tests used synthetic mail only.
 The local-model smoke used Ollama `gemma4:latest`; deterministic crash probes
 used a scripted provider through the real framework runtime.
 

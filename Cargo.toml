@@ -515,6 +515,13 @@ harness = false
 [profile.dev]
 debug = "line-tables-only"
 
+# Dependencies only; workspace crates stay unoptimised so they rebuild fast.
+# Tests spend most of their CPU in SQLite, regex and tantivy: at opt-level 1
+# the mxr lib suite took 37-41% less wall time and half the CPU (2026-11-12).
+# Debug assertions and overflow checks are profile-wide and stay on.
+[profile.dev.package."*"]
+opt-level = 1
+
 [lints]
 workspace = true
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.240](https://github.com/planetaryescape/mxr/compare/v0.6.239...v0.6.240) (2026-11-12)
+
+
+### Bug Fixes
+
+* take rmcp 3.9.0 for RUSTSEC-2026-0462 ([#968](https://github.com/planetaryescape/mxr/issues/968)) ([46c0c98](https://github.com/planetaryescape/mxr/commit/46c0c98eb21c39ab6f033478f11c66eae2f7a44e))
+
+
+### Documentation
+
+* point the runtime evaluation at the pushed spike branches ([#967](https://github.com/planetaryescape/mxr/issues/967)) ([6dcb872](https://github.com/planetaryescape/mxr/commit/6dcb8723decba372a77271f9b499bae3c422a1ac))
+
 ## [0.6.239](https://github.com/planetaryescape/mxr/compare/v0.6.238...v0.6.239) (2026-11-11)
 
 

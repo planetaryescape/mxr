@@ -12,12 +12,6 @@ ignore = [
     # Transitive dependencies with no safe upgrade available.
     # These are pulled in by upstream crates we don't control.
     { id = "RUSTSEC-2025-0052", reason = "async-std remains through mxr-async-imap/provider-imap; no async-imap-compatible upgrade path yet" },
-    # rmcp's Streamable HTTP clients buffer a whole non-streaming response body. mxr
-    # is not exposed: mxr-mcp builds rmcp with stdio transport only, and none of its
-    # transport-streamable-http features. The fix, rmcp 3.9.0, was published
-    # 2026-11-05 and is inside our 7-day crates.io quarantine. On 2026-11-12, set
-    # rmcp to 3.9.0 and delete this entry (docs/issues/rmcp-http-advisory-waiting-on-quarantine.md).
-    { id = "RUSTSEC-2026-0462", reason = "rmcp fix 3.9.0 (2026-11-05) is under 7 days old and mxr builds no HTTP transport; bump on 2026-11-12" },
 ]
 
 [licenses]

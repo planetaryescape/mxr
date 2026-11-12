@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.239](https://github.com/planetaryescape/mxr/compare/v0.6.238...v0.6.239) (2026-11-11)
+
+
+### Bug Fixes
+
+* say what the assistant runs without asking in its help text ([#962](https://github.com/planetaryescape/mxr/issues/962)) ([7b117fa](https://github.com/planetaryescape/mxr/commit/7b117fab5f06ce719906b15ce0eac57ca57324fc))
+
+## [0.6.238](https://github.com/planetaryescape/mxr/compare/v0.6.237...v0.6.238) (2026-11-11)
+
+
+### Bug Fixes
+
+* take the patched SQLite and rmcp for the open advisories ([#961](https://github.com/planetaryescape/mxr/issues/961)) ([da1e0f2](https://github.com/planetaryescape/mxr/commit/da1e0f2c53393644602f596c514d37f17dbc5d0d))
+
+
+### Documentation
+
+* **blueprint:** index the orphan audits and point the provider note at its canonical home ([#955](https://github.com/planetaryescape/mxr/issues/955)) ([937cfa8](https://github.com/planetaryescape/mxr/commit/937cfa80ac11ac03e8ca637778d1cedf0f78c9f8))
+* document row attention for To do and Updates ([#958](https://github.com/planetaryescape/mxr/issues/958)) ([74ff00b](https://github.com/planetaryescape/mxr/commit/74ff00b07fc0e94a0cb9355fd8a3145b02a09da6))
+* record assistant runtime learnings ([#959](https://github.com/planetaryescape/mxr/issues/959)) ([6bc7b10](https://github.com/planetaryescape/mxr/commit/6bc7b10009862af89ed91aa47d2b1de55fa5ef14))
+* record clean launch, offline web app, protocol 32 and proxy DNS ([#956](https://github.com/planetaryescape/mxr/issues/956)) ([cf313d4](https://github.com/planetaryescape/mxr/commit/cf313d46ff70162a3dfa67d40b3ea1af7fa05f06))
+
 ## [0.6.237](https://github.com/planetaryescape/mxr/compare/v0.6.236...v0.6.237) (2026-11-08)
 
 

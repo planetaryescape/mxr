@@ -48,7 +48,10 @@ impl ReminderState {
 /// `idx_reply_pairs_parent`), so a due reminder costs lookups rather than
 /// a scan of the account. `extra` adds a condition on `r` to both.
 fn reply_candidate_branches(extra: &str) -> [String; 2] {
-    let common = "r.account_id = s.account_id
+    // Unary + keeps the account match off idx_messages_account: SQLite 3.54
+    // otherwise walks the account's newer messages (account_id, rowid > ?)
+    // instead of the thread's.
+    let common = "+r.account_id = s.account_id
         AND r.id != s.id
         AND r.direction != 'outbound'
         AND LOWER(r.from_email) != LOWER(s.from_email)";

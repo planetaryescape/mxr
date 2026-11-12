@@ -113,6 +113,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_why`: stored home, deciding claim, evidence and uncertainty for one message
 - `mxr_classify_report`: bounded stored fallback clusters and pending assessment counts
 - `mxr_updates_digest`
+- `mxr_mode_row_seen`: acknowledge an inspected To do or Updates revision; previews unless `confirm=true`
 - `mxr_updates_let_go_preview`
 - `mxr_draft_assist`: writing help for a reply to a thread. With `text` (what the user has typed so far) it finishes it and keeps their sentences; without, it writes the reply. Optional `revise` (a proposal id) applies the instruction to that earlier proposal. Optional `message_id` picks the message to answer (default: the newest one somebody else sent). Returns a proposal; nothing is saved or sent. Gaps come back as `[[?: …]]`, and a draft with one can't be sent
 - `mxr_prepare_reply`
@@ -176,6 +177,39 @@ task ID must belong to it. A preview reads
 the peer's cache; a real sync refreshes first. Never retry an unknown handoff or
 write. Inspect ms-todo's outbox and ask the user to resolve it. Confirmed link and
 sync requests require send permission because they can transmit task context.
+
+## Acknowledge an inspected row
+
+Read a task with `mxr_todo_get` or a line with `mxr_updates_digest`, then
+acknowledge only the revision you inspected. Pass the row's `account_id`,
+map its `id` to `row_id`, and map `seen_revision` to `revision`. Set `mode`
+to `todo` or `updates`.
+
+For example, this `mxr_mode_row_seen` input previews the acknowledgment;
+replace the placeholder values with fields from that row:
+
+```json
+{
+  "account_id": "ACCOUNT_ID",
+  "mode": "updates",
+  "row_id": "ROW_ID",
+  "revision": "SEEN_REVISION",
+  "confirm": false
+}
+```
+
+Repeat with `confirm: true` to record that exact revision. A successful call
+returns `{"kind":"Ack"}`. Repeating it is idempotent. An old acknowledgment
+cannot calm newer content. It changes neither provider read flags nor task
+completion, and it does not let go of an update. For local MCP calls, confirmed
+writes require `safety_policy = "full"` and `allow_destructive = true`, as well
+as an allowed account. `allow_send` is not needed. A preview uses the read path.
+Do not broaden a read-only or draft-only profile just to clear row emphasis;
+leave acknowledgment to the human client if the agent should not mutate state.
+
+Fetching a row, listing a digest or opening a reply draft does not call this
+tool for you. If `seen_revision` is absent, do not synthesize a token; upgrade
+the daemon and client together. See [row attention fields](/reference/json-output/#to-do-and-updates-row-attention).
 
 ## Todo resolution
 

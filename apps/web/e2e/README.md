@@ -16,7 +16,7 @@ These specs run the web app against a real `mxr` daemon (the fake provider's dem
 | `mode-move.spec.ts` | A mode move (`X`) and its undo reach a second client over the event stream. |
 | `freshness.spec.ts` | A new message reaches the page live; a failing sync turns into a warning that links to its details. |
 | `daemon-stopped.spec.ts` | With the daemon stopped, loaded mail stays usable and changes are refused, then everything recovers without a reload; a reply typed during the outage saves once it is back. |
-| `updates.spec.ts` | Let go of all acts on exactly the previewed set, and undo restores it. |
+| `updates.spec.ts` | Opening a peek persists that revision's seen state through reload; let go of all acts on exactly the previewed set, and undo restores it. |
 | `unsubscribe.spec.ts` | Unsubscribe commits the daemon's own preview token, for both choices. |
 | `sorting-rules.spec.ts` | A sorting rule's preview, its apply and a later personal correction agree in the daemon. |
 | `onboarding-redirect.spec.ts` | A blank install lands on onboarding from any URL. |

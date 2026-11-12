@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # Vendored crates keep their own version; release-please excludes them too.
-excluded="hnsw_rs"
+excluded="hnsw_rs sqlx-sqlite"
 
 tree=""
 if [[ "${1:-}" == "--merge-with" ]]; then
@@ -57,8 +57,9 @@ fi
 
 # A lock entry with no `source` is a package in this repository.
 stale="$(read_file Cargo.lock | awk -v want="${workspace_version}" -v excluded="${excluded}" '
+  BEGIN { split(excluded, names, " "); for (i in names) vendored[names[i]] = 1 }
   function flush() {
-    if (name != "" && !from_registry && name != excluded && version != want) {
+    if (name != "" && !from_registry && !(name in vendored) && version != want) {
       print name " " version
     }
     name = ""; version = ""; from_registry = 0

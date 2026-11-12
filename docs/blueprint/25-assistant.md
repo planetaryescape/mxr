@@ -1,8 +1,14 @@
 # 25. The assistant
 
-The assistant is a chat agent you talk to about your mail. It answers questions, analyses, and carries out what you ask (archive, move, label, to-dos, drafts, sending) through mxr's own tools. Reading and searching run straight away; every change waits for your approval, and when it needs a choice from you it asks with a question card. It is most useful for analysis ("who am I waiting on?") and bulk work ("archive every shipping notice older than a month"), where doing it by hand means many clicks.
+The assistant is a chat agent you talk to about your mail. It answers questions, analyses, and carries out what you ask (archive, move, label, to-dos, drafts, sending) through mxr's own tools. Reading, searching and creating a new local draft run straight away. Every other change waits for approval, including edits to existing drafts and sending; the user can let a conversation run listed reversible changes without asking. When it needs a choice from you it asks with a question card. It is most useful for analysis ("who am I waiting on?") and bulk work ("archive every shipping notice older than a month"), where doing it by hand means many clicks.
 
 Decision: [D122](15-decision-log.md#d122-the-assistant-is-a-daemon-agent-over-the-mcp-tools-with-approval-enforced-in-code). How it should look and feel, in web and TUI, is in [29](29-assistant-design.md) (D135).
+
+The shipped runtime is the Rust loop below. The dated
+[Eve/Mastra evaluation](../research/assistant-runtime-evaluation-2026-11-01.md)
+records synthetic experiments, not a production replacement or migration decision.
+Its saved evidence is on the local, unpushed branch `spike/mastra-agent-runtime`:
+`git show ebae50492:docs/issues/mastra-runtime-evaluation.md`.
 
 ## The agent runs in the daemon and calls the MCP tools in-process
 
@@ -17,8 +23,8 @@ mxr assistant┼─ IPC ─▶ daemon ─ turn ──┤
 - **Loop** (`crates/assistant/src/turn.rs`): call the model, run what it asks for, stop when a call needs the user, at most 30 model calls a turn. Turns run in a daemon task, so closing the sidebar or reloading the page doesn't stop one.
 - **Tools**: every MCP tool, unchanged. `mxr_mcp::InProcessTools` runs `MxrMcpServer` over a `tokio::io::duplex` pipe with a requester that calls `handler::handle_request` with `ClientKind::Assistant`. The assistant therefore has exactly MCP's capability and preview/confirm flows, and its calls pass through the global safety policy, workspace ownership checks and the activity log like any client's. Adding an MCP tool adds an assistant tool.
 - **Model**: `LlmFeature::Assistant`, configurable with `[llm.overrides.assistant]`. `mxr-llm` gained a tool-calling chat turn for OpenAI-compatible endpoints and Claude, streamed (`chat_stream_as`, `crates/llm/src/stream.rs`) and sharing routing, route health and observations with completions. Claude's streamed blocks, thinking signatures included, are rebuilt into the same content an unstreamed reply has, so replay stays byte-exact. The reply so far reaches clients as `AssistantProgressData::Writing`, at most every 120ms. The demo profile answers with a short script (`demo_assistant.rs`).
-- **Model choice** (D145): one model for the assistant, not per conversation. `GetAssistantModels` lists the ids in `llm.assistant_models` (default `gemma4:latest`, `gpt-6-luna`, `gpt-5.6-terra`, `claude-haiku-5-5`, `claude-sonnet-5-5`) with `{id, label, cloud, available, unavailable_reason}`, and `SetAssistantModel { model, dry_run }` writes `[llm.overrides.assistant] model` through `AppState::mutate_config`, which rebuilds the provider, so the next turn of any conversation uses it (`crates/daemon/src/assistant/models.rs`). A choice is unavailable when AI features are off, when none of its routes has a key (the reason is `mxr llm key set <provider>`), or when it is a cloud model and `llm.allow_cloud_relationship_data` is off (the reason names that setting). The daemon refuses an id outside the list, and any unavailable one, with the same sentence; it never flips the setting. Agent and MCP clients can't call either request. Each reply stores the model and `leaves_machine` that wrote it in the message's meta, so `AssistantItemData::Assistant` still marks an old reply with its own model after a switch.
-- **Storage**: `assistant_conversations` and `assistant_messages` (migration 88). The transcript is append-only and stored as the model saw it.
+- **Model choice** (D145): one model for the assistant, not per conversation. `GetAssistantModels` lists the ids in shared `llm.models` (`llm.assistant_models` remains a legacy input alias; defaults are `gemma4:latest`, `gpt-6-luna`, `gpt-5.6-terra`, `claude-haiku-5-5`, `claude-sonnet-5-5`) with `{id, label, cloud, sees, available, unavailable_reason}`, and `SetAssistantModel { model, dry_run }` writes `[llm.overrides.assistant] model` through `AppState::mutate_config`, which rebuilds the provider, so the next turn of any conversation uses it (`crates/daemon/src/assistant/models.rs`). A choice is unavailable when AI features are off, when none of its routes has a key (the reason is `mxr llm key set <provider>`), or when it is a cloud model and `llm.allow_cloud_relationship_data` is off (the reason names that setting). The daemon refuses an id outside the list, and any unavailable one, with the same sentence; it never flips the setting. Agent and MCP clients can't call either request. Each reply stores the model and `leaves_machine` that wrote it in the message's meta, so `AssistantItemData::Assistant` still marks an old reply with its own model after a switch.
+- **Storage**: `assistant_conversations` and `assistant_messages` (migration 88). Stored messages and results are append-only. The model-facing view can substitute a summary or supply interrupted results without rewriting that transcript.
 
 ## Approval is enforced in code, never by the prompt
 
@@ -39,13 +45,22 @@ A conversation the user sets to trust (`SetAssistantAutoApprove`, the sidebar's 
 
 Waiting calls are cleared from the store before an approved call runs: a crash mid-turn leaves the call unanswered (the model sees "interrupted, check before assuming it ran") rather than an approval that could run twice.
 
+At startup, `mark_interrupted_assistant_turns` changes conversations left
+`running` to `idle` with outcome `interrupted`; saved `awaiting_user` approvals
+remain waiting. There is no automatic replay of an interrupted assistant tool
+call. `model_input_with` supplies missing results only in the next model request,
+never as invented outcomes in the stored transcript. Inspect with
+`mxr assistant show CONVERSATION_ID --format json` before continuing. For a send,
+check its retained operation outcome rather than assuming interruption means
+non-acceptance; see [crash-safe drafts](../../site/src/content/docs/guides/crash-safe-drafts.md).
+
 Agent and MCP clients can't send assistant requests. The assistant's tools run as a client kind no agent profile governs, so an agent driving the assistant could approve its own changes; agents call the tools directly instead.
 
 ## Email is data, and only the user grants authority
 
 - Every tool result is wrapped in `wrap_untrusted_mail` before the model reads it, and the system prompt carries `UNTRUSTED_MAIL_GUARD` plus the rule that only the user's messages can ask for anything.
 - Results mxr writes itself (approvals, rejections, answers) are plain JSON with `"source": "user"`; mail can't forge one because mail always arrives fenced.
-- The gate, not the prompt, is the boundary: an injected instruction can at most make the model propose a change, which then waits for the user with a preview.
+- The gate, not the prompt, enforces which calls wait. In an untrusted conversation, gated changes require the user's approval; a trusted conversation can execute listed reversible changes without another prompt. Mail cannot enable trust or approve a send. Prompt fences do not prove that the model ignored malicious content; the runtime spikes did not test adversarial mail.
 - Replies render as sanitized markdown: no scripts, no images (a remote image is a tracking pixel), links open outside the app without a referrer.
 - Replies link the emails and people they name as `mxr:thread/<id>` and `mxr:person/<id>`. The daemon keeps a link only when its id came back in a tool result in that conversation, and links a subject or name the reply quotes exactly when a result gave that text to one email or person, since small models rarely write the links themselves. Clients open them in the app: the web goes to the email in All Mail (`/m/archive/<id>`) or the person's row in Messages; the TUI numbers the links of the latest reply that has any, "Q1 report [1]", and `1`-`9` opens the email in the reader or the person in Messages.
 - Each step carries a readout the daemon reads from the whole result, not the 4,000-character preview: how many things it lists, the first five with where to open each, or its plain fields when it lists nothing. On the web, "and N more" opens every row the result lists, up to 500, from `GET /api/v1/mail/assistant/conversations/{id}/steps/{call_id}/rows?seq=N` (`GetAssistantStepRows` over IPC; `seq` is the seq of the assistant message that declared the call, since call ids such as `call_0` repeat); a total larger than the rows the result listed ends the list with a line saying so. A step whose result is still running, or failed, has no rows to open.
@@ -66,8 +81,8 @@ Anthropic replays thinking blocks only in the exact transcript that produced the
 ## Clients
 
 - **Web**: a right-hand pane, closed until opened with the toolbar button or `Mod+.`, beside every page and kept as you navigate; an overlay drawer below 1024px. Steps fold into "N steps" once a turn ends; each opens to what it looked for and what it found, rows linking to the email or person, with the exact call and result under "Raw call". Approval cards show the change in words, the reason, the messages or draft it touches, and for a change that can't be put back (a send, trash, spam, a rule) the daemon's line above Apply ("Sends an email. Can't be undone."). A click on the toolbar button slides the pane in over 180ms; `Mod+.` opens it at once, and reduced motion only fades it. Email chips in a reply carry the glyph of the mode that holds the email. Question cards offer the options, an "Other" box and Skip.
-- **CLI**: `mxr assistant status | send | approve | reject | answer | stop | list | show | delete`. `send` and the decisions wait for the turn and print what waits with the command that answers it; `--format json` prints the conversation.
-- **TUI**: a pane opened with `Ctrl-a` on any screen, beside the content or over its right on narrow terminals, with the same approval and question cards, the same daemon warning in the danger colour, and "trusted" in the title when the conversation is; `x` unfolds an approval's exact call, `1`-`9` opens the numbered links of the latest reply with links, open steps add a line of what each found, and `L` lists past conversations, where `D` deletes one after a dry run. `Mod+.` is listed as a web-only key.
+- **CLI**: `mxr assistant status | model | send | approve | reject | answer | trust | stop | list | show | delete`. `send` and the decisions wait for the turn and print what waits with the command that answers it; `--format json` prints the conversation.
+- **TUI**: a pane opened with `@` on any screen, beside the content or over its right on narrow terminals, with the same approval and question cards, the same daemon warning in the danger colour, and "trusted" in the title when the conversation is; `x` unfolds an approval's exact call, `1`-`9` opens the numbered links of the latest reply with links, open steps add a line of what each found, and `L` lists past conversations, where `#` deletes one after a dry run. `Mod+.` is listed as a web-only key. Run `mxr keys` for current defaults.
 - **MCP**: deliberately absent. An external agent already has the tools; driving the assistant would let it approve its own changes.
 
 ## Privacy

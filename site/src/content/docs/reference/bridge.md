@@ -262,6 +262,7 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids, limit?}`) |
 | `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, dry_run, todo_ids?, sender?}`): `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
 | `GET` | `/mail/modes/guide` | How a mode explains itself (`?mode=now`) |
+| `POST` | `/mail/rows/seen` | Acknowledge one exact To do or Updates revision (`{account_id, mode, row_id, revision, dry_run?}`); `mode` is `todo` or `updates`; omitted `dry_run` writes |
 | `POST` | `/mail/hints/{hint}` | Dismiss a hint in every client, or show it again (`{seen}`) |
 
 ```bash
@@ -270,6 +271,34 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
   -d '{"thread_ids":["..."], "dry_run":true}' \
   "$MXR_BASE/api/v1/mail/modes/messages/done"
 ```
+
+### Row attention
+
+Copy `account_id`, `id` and `seen_revision` from the inspected row. Preview
+before applying; unlike the MCP tool, this HTTP route writes by default:
+
+```bash
+curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"account_id":"ACCOUNT_ID","mode":"todo","row_id":"TODO_ID","revision":"SEEN_REVISION","dry_run":true}' \
+  "$MXR_BASE/api/v1/mail/rows/seen"
+```
+
+Replace the placeholders with the returned values, then repeat with
+`dry_run: false` to acknowledge that same revision. Both calls return
+`{"kind":"Ack"}`. Neither completes a task, lets go of an update nor changes
+an email's read flag. Repeating an acknowledgment is safe; acknowledging an
+old revision does not acknowledge a newer one.
+
+Runway, catch-up, individual task, task-change, Updates and Now responses
+carry the same `unread` and `seen_revision` row metadata. Legacy payloads
+may omit them; see [row attention fields](/reference/json-output/#to-do-and-updates-row-attention).
+
+The list endpoints' `mark_seen` parameter records a mode visit for counts
+such as "expired since you last looked"; Updates also records which source
+suggestions were shown. It does not acknowledge individual row revisions.
+Use `/mail/rows/seen` only when the user opens a row's email or details/peek,
+never on selection or each list refresh.
 
 ### To do
 

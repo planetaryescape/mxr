@@ -79,8 +79,8 @@ pub struct AssistantConversationData {
     pub last_error_detail: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
-    /// Reversible changes (archive, move, star, read, labels) run without
-    /// asking. Sending, deleting, trash, spam and rules always ask. Set
+    /// Reversible changes (archive, move, star, read, Reading later,
+    /// categories, to-do state) run without asking. Sending, deleting, trash, spam and rules always ask. Set
     /// only by the user (`SetAssistantAutoApprove`).
     #[serde(default)]
     pub auto_approve: bool,

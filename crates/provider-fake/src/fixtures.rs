@@ -883,8 +883,9 @@ impl DemoFixtureStream {
 }
 
 /// Messages the personal demo account carries ahead of its generated
-/// threads: [`curated_seed_messages`].
-pub(crate) const fn curated_head_len() -> usize {
+/// threads, as `curated_seed_messages` builds them. A demo of exactly
+/// this many holds all the seeded mail and none of the generated bulk.
+pub const fn curated_head_len() -> usize {
     DELIVERY_DEMO_MESSAGE_COUNT
         + todo_demo::TODO_DEMO_MESSAGE_COUNT
         + modes_demo::MODES_DEMO_MESSAGE_COUNT

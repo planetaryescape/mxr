@@ -359,10 +359,8 @@ pub enum Command {
         )]
         assets: bool,
         #[arg(long, conflicts_with = "view")]
-        #[arg(long)]
         raw: bool,
         #[arg(long, conflicts_with = "view")]
-        #[arg(long)]
         html: bool,
         #[arg(long)]
         format: Option<OutputFormat>,

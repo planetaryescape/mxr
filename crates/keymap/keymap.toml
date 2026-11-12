@@ -2431,10 +2431,6 @@ note = "The web app lists these under the runway, with no key"
 name = "TodoMightNeedYou"
 keys = []
 contexts = ["todo"]
-[[action.moved]]
-key = "m"
-contexts = ["todo"]
-until = "0.6.225"
 
 [[action]]
 id = "todo.open-email"
@@ -7440,10 +7436,6 @@ note = "The TUI composes in $EDITOR and reviews every draft when the editor clos
 name = "inline:add_cc"
 keys = ["c"]
 contexts = ["send-review"]
-[[action.moved]]
-key = "Ctrl+a"
-contexts = ["send-review"]
-until = "0.6.225"
 
 [[action]]
 id = "welcome.start"

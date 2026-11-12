@@ -4985,15 +4985,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "m",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.225"
-        }
       ]
     },
     {
@@ -13755,15 +13746,6 @@
           "contexts": [
             "send-review"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "Ctrl+a",
-          "contexts": [
-            "send-review"
-          ],
-          "until": "0.6.225"
         }
       ]
     },

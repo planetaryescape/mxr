@@ -425,27 +425,12 @@ async fn approved_send_recovery_local_ingestion_repairs_acceptance_without_resen
 }
 
 /// Opens a file-backed store at `path` through the real `Store::new`, seeded
-/// from the migrated in-memory template.
-///
-/// Migrating an empty file commits each migration statement on its own, and
-/// every commit waits for `F_FULLFSYNC`; on a busy Mac that took 7-12 s per
-/// store. These tests need a file (the restart, and logs beside the database),
-/// not a fresh migration run. `Store::new` still takes the workspace lease,
+/// from the migrated in-memory template (a fresh migration took 7-12 s per
+/// store on a busy Mac). These tests need a file (the restart, and logs beside
+/// the database), not a fresh migration run. `Store::new` still takes the workspace lease,
 /// switches to WAL, checks every migration stamp and validates the schema.
-///
-/// The image is written directly because `VACUUM INTO` from the template
-/// inherits its in-memory open flag and never creates the file.
 async fn migrated_file_store(path: &std::path::Path) -> mxr_store::Store {
-    let template = mxr_store::Store::in_memory().await.unwrap();
-    let image = template
-        .writer()
-        .acquire()
-        .await
-        .unwrap()
-        .serialize(None)
-        .await
-        .unwrap();
-    std::fs::write(path, &*image).unwrap();
+    crate::test_fixtures::write_migrated_database(path).await;
     mxr_store::Store::new(path).await.unwrap()
 }
 

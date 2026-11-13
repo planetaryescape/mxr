@@ -258,7 +258,7 @@ fn unchanged_persistent_startup_and_actual_first_and_later_reconciler_ticks_are_
                 config.search.semantic.auto_download_models = false;
                 config.activity.enabled = false;
                 mxr_config::save_config(&config).unwrap();
-                write_migrated_database().await;
+                write_migrated_database(&mxr_config::data_dir().join("mxr.db")).await;
                 let state = Arc::new(AppState::new().await.unwrap());
                 let mail = seed(&state).await;
                 let mut configured = state.config_snapshot();
@@ -430,7 +430,7 @@ fn assert_previous_policy_activates_once(old_policy: &str) {
                 config.search.semantic.auto_download_models = false;
                 config.activity.enabled = false;
                 mxr_config::save_config(&config).unwrap();
-                write_migrated_database().await;
+                write_migrated_database(&mxr_config::data_dir().join("mxr.db")).await;
                 let state = Arc::new(AppState::new().await.unwrap());
                 let mail = seed(&state).await;
                 let shape = state.config_snapshot().messages.large_thread_recipients;

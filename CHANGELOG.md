@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.241](https://github.com/planetaryescape/mxr/compare/v0.6.240...v0.6.241) (2026-11-12)
+
+
+### Bug Fixes
+
+* drop duplicate clap attributes that Rust 1.100 clippy rejects ([#973](https://github.com/planetaryescape/mxr/issues/973)) ([340cacc](https://github.com/planetaryescape/mxr/commit/340caccb582c3ecc6a4d7deeaeac9a58c5985095))
+
 ## [0.6.240](https://github.com/planetaryescape/mxr/compare/v0.6.239...v0.6.240) (2026-11-12)
 
 

@@ -537,7 +537,17 @@ pub async fn handle_request_with_peer(
                         }
                         Err(response) => *response,
                     };
-                if !request_is_read_only(req) {
+                // Presence leases do not change mail. A browser touches its
+                // lease before every API read. Invalidating here defeats all
+                // mode caches for remote clients.
+                let presence_only = matches!(
+                    req,
+                    Request::RemoteAuthority {
+                        request: mxr_protocol::RemoteRequest::TouchSession { .. }
+                            | mxr_protocol::RemoteRequest::CloseSession { .. }
+                    }
+                );
+                if !request_is_read_only(req) && !presence_only {
                     state.mode_cache.note_mutation();
                 }
 

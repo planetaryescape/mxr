@@ -71,6 +71,11 @@ impl super::Store {
 
     /// Initialize the database identity once, including under concurrent first use.
     pub async fn archive_workspace(&self) -> Result<(String, String), sqlx::Error> {
+        // Ownership checks run on every web read. Only first use needs the
+        // writer; an existing identity must stay readable while sync writes.
+        if let Some(identity) = self.read_archive_workspace().await? {
+            return Ok(identity);
+        }
         sqlx::query(
             "INSERT INTO archive_workspace VALUES (1, ?, ?) ON CONFLICT(singleton) DO NOTHING",
         )
@@ -359,6 +364,28 @@ mod tests {
 
         assert!(store.get_mutation_job("missing").await.unwrap().is_none());
     }
+    #[tokio::test]
+    async fn existing_workspace_identity_does_not_wait_for_the_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("workspace.db")).await.unwrap();
+        let identity = store.archive_workspace().await.unwrap();
+        let writer = store.writer().begin().await.unwrap();
+
+        let observed = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            store.archive_workspace(),
+        )
+        .await
+        .expect("reading an initialized workspace must not acquire the writer")
+        .unwrap();
+        assert_eq!(observed, identity);
+        writer.rollback().await.unwrap();
+        store.rotate_archive_generation().await.unwrap();
+        let rotated = store.archive_workspace().await.unwrap();
+        assert_eq!(rotated.0, identity.0);
+        assert_ne!(rotated.1, identity.1);
+    }
+
     #[tokio::test]
     async fn archive_workspace_and_protected_receipts_survive_restart_and_pruning() {
         let dir = tempfile::tempdir().unwrap();

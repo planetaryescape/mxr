@@ -1146,6 +1146,48 @@ async fn dispatch_status_does_not_block_when_search_is_busy() {
 }
 
 #[tokio::test]
+async fn status_does_not_wait_for_queued_semantic_work() {
+    let mut state = AppState::in_memory().await.unwrap();
+    let background = Arc::new(tokio::sync::Semaphore::new(0));
+    let (semantic, worker) = mxr_semantic::SemanticServiceHandle::start(
+        mxr_semantic::SemanticEngine::new(
+            state.store.clone(),
+            &std::env::temp_dir(),
+            state.config_snapshot().search.semantic.clone(),
+        ),
+        background.clone(),
+    );
+    state.semantic = semantic;
+    state
+        .semantic
+        .enqueue_ingest_messages(&[mxr_core::MessageId::new()])
+        .await
+        .unwrap();
+
+    let response = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        crate::handler::diagnostics_impl::get_status(&state),
+    )
+    .await;
+    background.add_permits(1);
+    worker.abort();
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+    match response
+        .expect("status must not queue behind semantic ingest")
+        .unwrap()
+    {
+        ResponseData::Status {
+            degraded: false,
+            semantic_runtime: Some(runtime),
+            ..
+        } => assert_eq!(runtime.in_flight, 1),
+        other => panic!("Expected status with in-flight semantic work, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn status_flags_itself_degraded_when_the_db_snapshot_misses_its_budget() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let _starved_reader = state.store.reader().acquire().await.unwrap();

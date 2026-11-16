@@ -47,6 +47,12 @@ this path before changing it, then evaluate caching capability per connection
 or avoiding the status probe on repeated outcome polls. No latency or load
 estimate is established here.
 
+The 2026-11-16 [web-read measurements](../research/mail-view-performance-2026-10-26.md#web-ownership-checks-wait-behind-background-work)
+now cover the shared status and workspace checks. Commit `15ff0af33` makes
+initialized workspace reads independent of the writer and status counters
+independent of semantic work. Archive outcome polling itself remains
+unmeasured. Keep this follow-up open for that path.
+
 ## Stop dispatching an account's remaining batch after an unknown result
 
 The runner records `unknown` for an ambiguous provider result or timeout, then

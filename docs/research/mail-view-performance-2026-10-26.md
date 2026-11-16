@@ -192,3 +192,96 @@ The `110270f0d` optimized build took 12 minutes 3 seconds. Rail passed at 242 ms
 The next change keeps decoded thread facts in memory, not ready-made Messages responses. Each access still reads the assessment-input clock, facet clock, summed per-account view revisions, account existence and next future-message eligibility boundary. The context and valid-time interval must also match. A build whose before/after tokens differ is not retained. Existing startup maintenance prepares these same facts; a first All response must still compose live turns, Done state, people links, contact facts, rankings, filters and previews. The token query uses the account/thread revision index and covering account/date index; its snapshot probe took less than 0.1 ms. Six focused store tests and 70 daemon tests pass (two mailbox reports ignored), including read invalidation, same-generation facet writes, source/account removal, live people links and future-date expiry. This is not evidence that the final view meets the budget; the final gate and a fresh optimized measurement remain required.
 
 The same trace showed roughly 150 ms of sequential selected-preview work after history was available. Those independent previews now overlap at most four rows at a time, retaining row order, account boundaries and the same quote-lookback and gist rules. No unselected conversation text is loaded. The final Messages run passed 34 tests (one mailbox report ignored), and the scoped Rust gate passed after this change. The optimized build and cold sweep remain pending.
+
+## Web ownership checks wait behind background work
+
+The 2026-11-16 reproduction used the Linux x86-64 release `v0.6.241`
+(`27865d406fc2c7cbb7aa75ff559613712fa3416d`) with 50,000 synthetic messages.
+The fix starts from `origin/main` at
+`f7bf2bd35c70420a9453488bb90235a69416ed75`. The two refs differ only in tests.
+
+Time the HTTP path as well as the CLI. During background work, authenticated
+HTTP reads measured 9,380 ms for lexical search, 6,930 ms for Messages, and
+14,373 ms for the client shell. The traced search handler itself took 29 ms.
+These diagnostic samples overlapped a local build and are not an acceptance
+benchmark. A second run followed a restart, with query tracing off. Search
+took 116–154 milliseconds. Messages took 487–605 milliseconds and the shell
+took 179–185 milliseconds. Idle measurements alone miss the failure.
+
+The bridge's workspace middleware and the shared client's ownership checks
+call `GetArchiveWorkspace`. The client checks `GetStatus` for the ownership
+capability first. Status waits for a full semantic snapshot, even though it
+only uses runtime counters. The workspace store method also attempts an
+insert on every call, including when the identity exists. Both steps can wait
+behind background work before the requested mail read starts. A transaction
+held the demo's SQLite writer for five seconds. An authenticated lexical HTTP
+search then took 5,544 ms. The transaction rolled back without changes.
+
+The fix is commit `15ff0af33e95e1386523c4f97ca3e56c885298eb` on
+`fix/web-mail-latency`. It reads an existing workspace identity through the reader pool and
+retains the conflict-safe insert for first use. It does not cache the identity:
+recovery generation changes remain visible. Semantic work publishes its last
+runtime counters to the service handle. Status reads those counters without
+queuing a command or loading profile records. Ownership and capability checks
+remain in place.
+
+The source paths are the [workspace read](../../crates/store/src/mutation_jobs.rs#L73),
+[status response](../../crates/daemon/src/handler/diagnostics/mod.rs#L1478),
+and [runtime counters](../../crates/semantic/src/service.rs#L340) at that commit.
+
+Run the regressions through the shared build queue:
+
+```sh
+agent-work run -- scripts/cargo-test -p mxr-store --tests existing_workspace_identity_does_not_wait_for_the_writer
+agent-work run -- scripts/cargo-test -p mxr --lib status_does_not_wait_for_queued_semantic_work
+```
+
+Both tests failed before their fixes. The first holds a file-backed store's
+writer and requires the initialized identity within 500 ms. It also checks that
+generation rotation remains visible. The second blocks semantic ingest on its
+background permit and requires status, with runtime counters, within 500 ms.
+
+### The fixed demo passes the one-second HTTP check
+
+The optimized build with `semantic-local,web-ui` and the production web build
+passed. The default-feature Rust tests passed: 560 store tests, 48 status tests,
+and 15 archive-recovery tests. Two store benchmarks remain ignored.
+
+The fixed binary ran against the same 50,000-message demo database on port
+42839, with query tracing off. The store suite ran during these measurements.
+Each HTTP range contains three samples:
+
+| HTTP read | Immediately after restart (ms) | Later reads (ms) |
+| --- | ---: | ---: |
+| Lexical search | 48–78 | 41–75 |
+| Messages | 334–996 | 15–16 |
+| Client shell | 125–965 | 123–127 |
+
+Later Messages reads reuse the daemon's response cache. They do not measure a
+cold composition. The writer-contention probe returned search results in
+49 milliseconds while an independent transaction held the writer for five
+seconds. The earlier candidate probe took 53 milliseconds with the lock held
+throughout that request. Both transactions rolled back without changes.
+
+Browser checks loaded Messages and the default Exact search with a connected
+daemon. After a fresh page navigation, the Messages request finished 145
+milliseconds after navigation began. Search's first page request took 73
+milliseconds. These are network timings, not paint timings. CLI Messages reads
+took 29–37 milliseconds and lexical search took 54–67 milliseconds over three
+samples each.
+
+Startup HTTP reads still approached one second during background work. This
+run did not retest the separate [250 ms cold All-conversations budget](../issues/messages-cold-history-budget.md).
+
+### The local demo runs the verified binary
+
+The running binary is `/tmp/mxr-demo-v0.6.241/mxr-fixed`, copied from the
+optimized build. The demo is at `http://localhost:42839/messages`. Its config
+is `/home/bk/.config/mxr-demo` and its data is `/home/bk/.local/share/mxr-demo`.
+Local reproduction scripts and aggregate timings are in
+`/tmp/mxr-demo-v0.6.241/`. The browser stays on Messages.
+
+Local verification is complete, with no remaining blocker. The next action is
+to review the source commit and these measurements on `fix/web-mail-latency`.
+The source commit contains the fix and regressions. The documentation commit
+records this handover. The source and documentation commits are local.

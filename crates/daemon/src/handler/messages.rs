@@ -786,9 +786,11 @@ async fn load_preview_threads(
             .collect();
         if !wanted.is_empty() {
             let own = self_matcher(state, &g.account_id).await?;
+            // Preview text loads its own bodies and quote lookback. Classifier
+            // evidence here would reread bodies across the whole thread.
             for m in state
                 .store
-                .desk_messages_in_threads(&g.account_id, &wanted)
+                .desk_history_in_threads(&g.account_id, &wanted)
                 .await?
             {
                 if is_outbound(&m, &own) {

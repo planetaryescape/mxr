@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.242](https://github.com/planetaryescape/mxr/compare/v0.6.241...v0.6.242) (2026-11-16)
+
+
+### Bug Fixes
+
+* avoid classifier evidence reads for message previews ([4ed2969](https://github.com/planetaryescape/mxr/commit/4ed2969d8cb2f13c3e1afe62c7a6be7a9f9751fc))
+* keep hosted mail reads independent of background work ([cfe55a1](https://github.com/planetaryescape/mxr/commit/cfe55a100d1c95baa0e43869763236f5cdcce74d))
+* keep shared mail reads responsive during background work ([a46ebc0](https://github.com/planetaryescape/mxr/commit/a46ebc028422f20181315c110ba01a2f18bb88e2))
+* keep web reads independent of background work ([15ff0af](https://github.com/planetaryescape/mxr/commit/15ff0af33e95e1386523c4f97ca3e56c885298eb))
+* reduce shared mail view rebuild work ([9c1557a](https://github.com/planetaryescape/mxr/commit/9c1557aa258c5e4bca4921f5c9bc223c0604db1f))
+* update docs dependencies past the Astro advisory ([bf9062e](https://github.com/planetaryescape/mxr/commit/bf9062e6a30332c360903a943c98b7b1cff9ddfc))
+* update docs dependencies past the Astro advisory ([4648ac6](https://github.com/planetaryescape/mxr/commit/4648ac69e50d657a26703cb2b8679c8829f77956))
+
+
+### Documentation
+
+* record hosted mail performance results and open budgets ([a7c77e7](https://github.com/planetaryescape/mxr/commit/a7c77e7e5f4772251004a6280a2cbb281f2a4207))
+* record real-mail gateway performance checks ([30a88ee](https://github.com/planetaryescape/mxr/commit/30a88eee879a1a7d1b89d215d6c3522cd699a8d9))
+* record web read latency checks ([e9aa8e9](https://github.com/planetaryescape/mxr/commit/e9aa8e9b353dce11240f3eb4a08dfe2d37f2e6fd))
+
 ## [0.6.241](https://github.com/planetaryescape/mxr/compare/v0.6.240...v0.6.241) (2026-11-12)
 
 

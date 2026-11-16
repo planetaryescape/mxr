@@ -478,7 +478,12 @@ The final copied binary is `/tmp/mxr-demo-v0.6.241/mxr-hosted-fixed`.
 Its SHA256 is `eceefee8064957ea8532a7f48e33a5f965ee3ea3f407b78a3d6b1bbb33dac23f`.
 Its package version remains 0.6.241. This is an unpublished local build.
 
-## Hume verification and cold composition remain open
+## Hume live verification and cold composition remain open
+
+The later [Hume results](hume-mail-read-performance-2026-11-16.md) complete the
+isolated real-mailbox check at source `4ed2969d8` and supersede this section's
+pending fixture work. The one-second gateway budget passes on that snapshot.
+The 250 ms budget and live-upgrade check remain open.
 
 Hume still runs v0.6.240. A later read-only aggregate found 112,414 messages
 across three accounts, with 1955 inbox messages. The synthetic stress fixture
@@ -497,7 +502,8 @@ must preserve lane, Done, classification, whole-thread and account semantics.
 Profile this path before changing it. The cold All issue remains open. No
 earlier ship instruction authorizes this branch's release.
 
-The demo uses the copied final binary with its existing isolated profile at
+The demo now uses `/tmp/mxr-demo-v0.6.241/mxr-preview-fixed` at source
+`4ed2969d8`, with its existing isolated profile at
 `http://localhost:42839/messages`. The source and audit remain local on
-`fix/mail-read-performance`. This audit holds the handover.
+`fix/mail-preview-evidence-performance`. The Hume results hold the latest handover.
 This session does not authorize Obsidian writes outside the repository.

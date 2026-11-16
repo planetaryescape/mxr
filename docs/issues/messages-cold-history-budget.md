@@ -3,6 +3,12 @@
 Status: follow-up, not a release blocker under the explicit ship instruction.
 Observed at PR #722 source head `775e19513`.
 
+That ship instruction applies to PR #722 only. On 2026-11-16, local branch
+`fix/mail-read-performance` at `cfe55a100` still failed this budget.
+An independent gateway run on the synthetic 50,000-message fixture took
+1438 ms for its first All request. Hume still runs v0.6.240.
+The audit records the shared fixes, full measurement limits and next steps.
+
 The isolated 111,345-message mailbox measured All at 254 ms in a full view
 sweep and 290 ms as the first view after a separate restart. Both exceed the
 adopted 250 ms target. Repeated 28–31 ms responses do not satisfy that target.

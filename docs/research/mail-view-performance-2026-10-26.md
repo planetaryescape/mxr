@@ -273,15 +273,231 @@ samples each.
 Startup HTTP reads still approached one second during background work. This
 run did not retest the separate [250 ms cold All-conversations budget](../issues/messages-cold-history-budget.md).
 
-### The local demo runs the verified binary
+### The first local check used a copied binary
 
-The running binary is `/tmp/mxr-demo-v0.6.241/mxr-fixed`, copied from the
+The first check used `/tmp/mxr-demo-v0.6.241/mxr-fixed`, copied from the
 optimized build. The demo is at `http://localhost:42839/messages`. Its config
 is `/home/bk/.config/mxr-demo` and its data is `/home/bk/.local/share/mxr-demo`.
 Local reproduction scripts and aggregate timings are in
 `/tmp/mxr-demo-v0.6.241/`. The browser stays on Messages.
 
-Local verification is complete, with no remaining blocker. The next action is
-to review the source commit and these measurements on `fix/web-mail-latency`.
+The first-fix checks are complete. Broader performance acceptance remains open,
+as the real-mail and full-view checks below show. The source is on
+`fix/web-mail-latency`.
 The source commit contains the fix and regressions. The documentation commit
 records this handover. The source and documentation commits are local.
+
+
+## The real mailbox still has slow All-conversations reads
+
+The live route on 2026-11-16 is `https://mxr.justlivin.life`. Caddy forwards
+it to `https://hume-2.tail4d8fc3.ts.net:18741`. Live Caddy configuration and
+Hume's running processes showed this route. The fleet record matched it at
+`1c93d8f86de81c5d7442d52854266dd51a6fd20d`.
+
+Hume runs v0.6.240, whose source tag resolves to
+`04bcfdff98ffa47951e6cb2469b4e62333f70c77`. The running daemon reports that
+version and IPC protocol 32. Its database contains 112,411 messages across
+three accounts. Hume still runs the released code.
+
+A probe used the existing paired client to sign in through Caddy. Credentials,
+cookies and mail stayed inside the Hume process. Only aggregate timings and
+response types left the machine. Each row contains three signed-in HTTP reads.
+
+| Real HTTP read | Samples (ms) |
+| --- | --- |
+| Messages, default attention | 179, 191, 223 |
+| Messages, All conversations | 2460, 902, 1358 |
+| Messages, waiting on them | 313, 308, 252 |
+| Lexical search, `is:unread`, limit 20 | 65, 103, 65 |
+
+Messages returned its structured response type. A separate signed-in search
+check took 59, 57 and 65 ms. It validated nonempty result groups and the
+numeric total. The earlier search samples checked HTTP status only. These requests used the running
+daemon and can reuse caches. They do not establish cold-load performance.
+The public health endpoint took 46 ms. Health does not measure mailbox reads.
+No live service upgrade, restart, configuration edit or mail mutation occurred.
+
+Hume also has the sticky `demo-active` marker in its normal configuration
+directory. In v0.6.240, `run_parsed_cli` applies that marker before dispatching
+non-demo commands. Ordinary CLI probes can therefore reach the demo while the
+existing browser gateway still serves real mail. The measurements above used
+the normal bridge or the signed-in gateway directly. Before an approved live
+upgrade or restart, exit sticky demo mode and verify the normal data and socket
+paths. This investigation changed no marker or service.
+
+
+The full local view sweep also fails. Source `e9aa8e9b3` includes the shared
+ownership/status fix. Its optimized binary read the 50,000-message demo.
+Query tracing was off. First requested All took 399 ms.
+Waiting on them took 519 ms. Now took 1706 ms, Updates 1544 ms, and Reading 15999 ms.
+
+Reading's next two reads took 2762 ms and 21 ms. Views ran in sequence in an existing daemon, so these
+are not independent cold restarts. Repeated cached results cannot satisfy the
+250 ms cold-composition target.
+
+The shared composition changes are commit `9c1557aa258c5e4bca4921f5c9bc223c0604db1f`
+on `fix/mail-read-performance`. The final checks below supersede the pending
+optimized and HTTP verification. Do not report broad performance completion
+from the first fix.
+
+
+### Shared composition work remains expensive after the first fix
+
+Temporary stage probes on base `e9aa8e9b3` reproduced the remaining work.
+The instrumented optimized binary read a disposable copy of the demo database.
+Reading's derived item versions and done marks were reset only in that copy.
+This diagnostic run overlapped focused tests and is not an acceptance benchmark.
+
+Now spent 476 ms and 250 ms loading the two accounts' inbox candidates.
+Their facet reads took another 331 ms and 300 ms. The pending-thread count
+was zero for both accounts. Updates and Reading repeated the same settled
+reads. The new store trace operations are `places.mode_candidates` and
+`assessment.facets_for_messages`. They emit elapsed time and row counts only.
+
+Reading loaded 2,837 issues and rebuilt their item caches in 1,035 ms.
+Only 47 issues appeared. The other 2,790 expired. Expiry uses source dates,
+so it can precede extraction. Source history must still include expired issues.
+Finished issues must still supply the reading-speed estimate, and Later must
+still rebuild saved links after an extractor change.
+
+A paired SQLite probe compared the inbox query with `UNION` and `UNION ALL`.
+All candidate rows matched exactly across both accounts in three runs.
+Removing the redundant deduplication saved 66–78 ms across the accounts.
+The selections cannot overlap: the second excludes messages in the inbox.
+The query-plan regression failed before the change and passed afterward.
+
+
+### The shared fix preserves view behavior
+
+Commit `9c1557aa258c5e4bca4921f5c9bc223c0604db1f` overlaps at most three
+independent account reads while retaining account order. Both inbox composition
+and Messages history/window preparation use this bound. The store combines
+disjoint inbox and filed selections with `UNION ALL`.
+
+Reading resolves source windows before extraction. It rebuilds displayed issues,
+saved Later items, and finished issues needed for the reading-speed estimate.
+Source history, expiry marks and saved link keys retain their existing rules.
+The first regression run caught the pace dependency. The final Reading run
+passed all 22 tests, including pace, expiry, re-extraction and account scoping.
+
+The other focused view checks passed 111 tests, with three real-mailbox reports
+ignored. The full store suite passed 561 tests, with two timing benchmarks
+ignored. The optimized build and scoped Rust gate passed. The cold HTTP checks
+below still fail their budgets. These tests establish behavior, not latency.
+
+
+## Hosted reads also queued on authentication and invalidated their caches
+
+Source `9c1557aa2` still used the single writer connection for native and
+browser authentication. The browser gateway authenticates, touches its presence
+lease, then admits each API operation. Each step checks the credential again.
+A fast local-bridge probe therefore did not establish a fast hosted path.
+
+The original native implementation is commit
+`974ec3d54312e283504fd138e014392b60be6082` (PR #443, 2026-10-12).
+Its comment states that the writer transaction protects completed revocations
+from an older reader snapshot. Browser sessions inherited that choice in
+`f02c7fd3b913f0f162bf30d6726f5a1218487472` (PR #906). Preserve that authority
+requirement while removing unrelated writer serialization.
+
+Commit `cfe55a100d1c95baa0e43869763236f5cdcce74d` checks each credential,
+parent registration, current workspace owner and recovery pause in one
+fresh reader statement. It retains constant-time verifier comparisons.
+Pairing, approval, claim and revocation still commit through the writer.
+The vendored SQLx executor resets statements on completion or drop
+(`vendor/sqlx-sqlite/src/connection/execute.rs`), so these autocommit statements
+do not retain a prior request's snapshot.
+
+The file-backed regression holds an older reader snapshot and an uncommitted
+revocation on the writer. Both authentication forms must complete within
+500 ms and then reject credentials after revocation commits. It failed on the
+old path and passed after the change. Separate checks cover workspace-generation
+rotation and paused recovery. The focused authority run passed 20 tests,
+including the portable-backup authority test.
+
+The gateway's presence heartbeat also called the generic mutation invalidator.
+Every browser API request therefore discarded ready mail views. The regression
+built a view, sent an authenticated browser heartbeat through the real request
+handler, and checked that the view remained valid. It failed before the fix.
+Presence updates now leave mail views intact. Safety classification remains
+unchanged. Mail mutations still invalidate views, and each remote read still
+checks authority before using a cached view. Parent revocation remains effective
+when a cached response exists. All 32 focused remote/cache tests passed.
+
+## Final local checks preserve replies but fail cold-load budgets
+
+Source `cfe55a100d1c95baa0e43869763236f5cdcce74d` built with
+`semantic-local,web-ui` in release mode. The required default `cargo build -p mxr`
+also passed. `scripts/pre-pr-rust-gate` passed formatting, scoped all-feature
+Clippy, architecture checks and cargo-deny 0.20.2. No temporary debug probes remain.
+
+The matched harness restored one frozen 50,000-message database for every run.
+It reset derived Reading items only in this disposable fixture. Both builds
+used the real browser gateway, paired browser credentials and the same routes.
+The gateway ran on loopback behind an expected proxy host, without Caddy or TLS.
+The baseline was the first shared fix, `15ff0af33`, not the released binary.
+Tracing was off. No heavy build jobs owned by this work ran during measurement.
+Other host workloads remained. These are not isolated single-user speed claims.
+
+Each run waited for `updates facts warmed` and then three seconds. That log
+does not establish that every startup task finished. The first request had no
+completed response-cache entry. Later requests could reuse valid responses.
+
+| Fixed gateway route | First request (ms) | Next two requests (ms) |
+| --- | ---: | ---: |
+| Messages, attention | 350 | 31, 23 |
+| Messages, All | 600 | 608, 69 |
+| Messages, your turn | 319 | 13, 13 |
+| Messages, waiting on them | 479 | 21, 20 |
+| Now | 1881 | 18, 16 |
+| Rail | 3517 | 15, 13 |
+| To do | 35 | 34, 30 |
+| Updates, without marking seen | 1480 | 35, 37 |
+| Reading, without marking visited | 1326 | 1584, 16 |
+| Archive | 168 | 144, 117 |
+| Lexical search | 54 | 46, 40 |
+
+Independent restarts still failed the one-second gateway budget.
+First requests took 1438 ms for All, 2338 ms for Now, 1620 ms for Reading and 2734 ms for Rail.
+The concurrent attention/rail/shell/search wave took 851/2913/772/521 ms.
+The final verdict fails both the 250 ms CLI and 1000 ms gateway budgets.
+The separate browser visit flows also remain expensive.
+Reading with `mark_visit=true` took 1007/861/829 ms.
+Updates with `mark_seen=true` took 1252/1112/1115 ms.
+Cached peek results do not establish fast visit flows.
+
+Normalized replies matched across all 11 mail cases through CLI and gateway.
+The comparison excluded only generated time, age and live runway progress.
+Reading kept all 47 items, their fields and ranking buckets.
+The comparison sorted existing equal-rank ties by stable IDs and retained meaningful ranking fields.
+
+Evidence is in `/tmp/mxr-mail-read-profile/final-acceptance.jsonl`,
+`final-verdict.json`, `visit-acceptance.jsonl`, `rust-gate-final.log`, saved replies and the harness there.
+The final copied binary is `/tmp/mxr-demo-v0.6.241/mxr-hosted-fixed`.
+Its SHA256 is `eceefee8064957ea8532a7f48e33a5f965ee3ea3f407b78a3d6b1bbb33dac23f`.
+Its package version remains 0.6.241. This is an unpublished local build.
+
+## Hume verification and cold composition remain open
+
+Hume still runs v0.6.240. A later read-only aggregate found 112,414 messages
+across three accounts, with 1955 inbox messages. The synthetic stress fixture
+has 36,891 inbox messages. Do not extrapolate its timings to the real mailbox.
+
+The next live step is to release the shared fixes and exit sticky demo mode on Hume.
+Then upgrade its daemon and gateway and repeat signed-in real-mail reads.
+This requires BK's approval under the rule for changes outside this repository.
+No release, push, service restart, marker removal or live upgrade occurred.
+
+Cold composition needs further profiling. Rail's quiet count still calls full
+membership placement in batches of 100 threads. That path loads full threads,
+sender context, timers, to-dos and archive records before counting quiet threads
+(`crates/daemon/src/handler/modes.rs:134,800` at `cfe55a100`). A replacement
+must preserve lane, Done, classification, whole-thread and account semantics.
+Profile this path before changing it. The cold All issue remains open. No
+earlier ship instruction authorizes this branch's release.
+
+The demo uses the copied final binary with its existing isolated profile at
+`http://localhost:42839/messages`. The source and audit remain local on
+`fix/mail-read-performance`. This audit holds the handover.
+This session does not authorize Obsidian writes outside the repository.

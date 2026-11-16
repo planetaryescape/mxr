@@ -233,7 +233,7 @@ async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> 
 async fn bands_follow_the_visit_and_each_sources_window() {
     let fx = Fixture::new().await;
     let now = Utc::now();
-    weekly(&fx, now).await;
+    let issues = weekly(&fx, now).await;
     let visit = ReadingVisitRow {
         first_seen: Some(now - Duration::days(60)),
         boundary: Some(now - Duration::days(1)),
@@ -256,6 +256,20 @@ async fn bands_follow_the_visit_and_each_sources_window() {
     assert_eq!(fading.minutes, 2, "400 words at 230 a minute");
     // Three issues past fourteen days are expired: done in Reading.
     assert_eq!(planned.expired.len(), 3);
+    let ids: Vec<_> = issues.iter().map(|(id, _)| id.clone()).collect();
+    let cached = fx
+        .state
+        .store
+        .reading_items_for_messages(&ids)
+        .await
+        .unwrap();
+    let cached_ids: std::collections::HashSet<_> =
+        cached.iter().map(|row| row.message_id.clone()).collect();
+    assert_eq!(
+        cached_ids,
+        ids[..3].iter().cloned().collect(),
+        "expired issues need no extraction to decide their expiry"
+    );
     let source = &edition.sources[0];
     assert!(
         (source.window_days - 14.0).abs() < 0.1,
@@ -917,6 +931,18 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
     assert!(links[0].on_later);
     assert!(links[1..].iter().all(|link| !link.on_later));
     assert_eq!(edition.later[0].title, "SQLite 3.51 release notes");
+    // A new extractor still rebuilds an expired issue if Later needs its link.
+    fx.state
+        .store
+        .replace_reading_items(&id, &[])
+        .await
+        .unwrap();
+    let expired = plan(&fx, &ReadingVisitRow::default(), now + Duration::days(40))
+        .await
+        .edition;
+    assert!(expired.bands.is_empty());
+    assert_eq!(expired.later[0].item_key, sqlite);
+    assert_eq!(expired.later[0].title, "SQLite 3.51 release notes");
 }
 
 /// Send `req` as an MCP client whose profile allows only the fixture's

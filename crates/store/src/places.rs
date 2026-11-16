@@ -95,30 +95,17 @@ impl super::Store {
         &self,
         account_id: &AccountId,
     ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
-        let columns = place_columns(false);
-        let sql = format!(
-            "{} UNION
-             SELECT {columns}, 0 AS in_inbox FROM messages m
-             WHERE m.account_id = ?1 AND m.id IN (
-                 SELECT e.message_id FROM message_events e
-                 JOIN labels l ON l.id = e.label_id
-                 WHERE e.account_id = ?1 AND l.provider_id = 'INBOX'
-                   AND {}
-             ) AND NOT EXISTS (
-                 SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
-                 WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
-             ) AND {NOT_TRASHED}",
-            place_candidates_sql(),
-            crate::message_events::EXTERNAL_FILING
-        );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
+        let started_at = Instant::now();
+        let messages = sqlx::query(sqlx::AssertSqlSafe(mode_candidates_sql()))
             .bind(account_id.as_str())
             .bind(hidden_flags())
             .fetch_all(self.reader())
             .await?
             .iter()
             .map(decode_place_message)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        trace_query("places.mode_candidates", started_at, messages.len());
+        Ok(messages)
     }
 
     /// Mail dated between `since` and `until`, in any folder but Trash and
@@ -345,6 +332,27 @@ const NOT_TRASHED: &str = r#"(m.flags & ?2) = 0
         WHERE tml.message_id = m.id AND tl.provider_id IN ('TRASH', 'SPAM')
     )"#;
 
+// The inbox selection and the filed selection cannot overlap. UNION ALL
+// avoids sorting every candidate's complete envelope to remove duplicates.
+fn mode_candidates_sql() -> String {
+    let columns = place_columns(false);
+    format!(
+        "{} UNION ALL
+         SELECT {columns}, 0 AS in_inbox FROM messages m
+         WHERE m.account_id = ?1 AND m.id IN (
+             SELECT e.message_id FROM message_events e
+             JOIN labels l ON l.id = e.label_id
+             WHERE e.account_id = ?1 AND l.provider_id = 'INBOX'
+               AND {}
+         ) AND NOT EXISTS (
+             SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+             WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
+         ) AND {NOT_TRASHED}",
+        place_candidates_sql(),
+        crate::message_events::EXTERNAL_FILING
+    )
+}
+
 /// `?1` account, `?2` hidden flags.
 /// Starts from the account's INBOX label so the read is proportional to the
 /// inbox, never to the mailbox; CROSS JOIN keeps that order.
@@ -423,6 +431,16 @@ pub(crate) mod tests {
             .into_iter()
             .map(|row| row.get::<String, _>("detail"))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn mode_candidates_do_not_sort_the_inbox() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &mode_candidates_sql()).await;
+        assert!(
+            !steps.iter().any(|step| step.contains("TEMP B-TREE")),
+            "inbox and externally filed selections are disjoint: {steps:#?}"
+        );
     }
 
     /// The candidate read must walk the inbox label, not the mailbox: on a

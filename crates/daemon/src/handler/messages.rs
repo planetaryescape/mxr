@@ -34,6 +34,7 @@ use super::places::scoped_cached_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     messages_copy, ClosenessData, ComposerData, ConversationAttachmentData, ConversationData,
@@ -129,25 +130,26 @@ async fn preload_conversations(
         }
     };
     let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
-    let mut inputs = Vec::with_capacity(accounts.len());
-    for account in accounts {
-        if history {
-            inputs.push(Some(ConversationInputs::History(
-                history::load(state, account, now).await?,
-            )));
-            continue;
-        }
-        let messages = state
-            .store
-            .desk_thread_messages(account, now - Duration::days(days))
-            .await?;
-        let senders = Senders::load(state, account, &messages).await?;
-        inputs.push(Some(ConversationInputs::Window {
-            messages,
-            senders: Box::new(senders),
-        }));
-    }
-    Ok(inputs)
+    futures::stream::iter(accounts.iter().cloned())
+        .map(|account| async move {
+            if history {
+                return Ok(Some(ConversationInputs::History(
+                    history::load(state, &account, now).await?,
+                )));
+            }
+            let messages = state
+                .store
+                .desk_thread_messages(&account, now - Duration::days(days))
+                .await?;
+            let senders = Senders::load(state, &account, &messages).await?;
+            Ok(Some(ConversationInputs::Window {
+                messages,
+                senders: Box::new(senders),
+            }))
+        })
+        .buffered(3)
+        .try_collect()
+        .await
 }
 
 /// Recent and Quiet include conversation history outside the inbox. Done

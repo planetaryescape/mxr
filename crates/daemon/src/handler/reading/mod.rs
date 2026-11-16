@@ -480,31 +480,57 @@ pub(super) async fn plan(
         .map(Issue::from_envelope)
         .collect();
     let all: Vec<&Issue> = issues.iter().chain(later_issues.iter()).collect();
-    let items = ensure_items(state, &all).await?;
-    let message_ids: Vec<MessageId> = all.iter().map(|issue| issue.id.clone()).collect();
-    let ctx = Context::load(state, &message_ids, now).await?;
+    // Expiry depends on source dates, not extracted text. Keep every source's
+    // history, but only rebuild displayed items and finished pace samples.
     let sources = Sources::load(state, &all, visits, now).await?;
+    let scheduled: Vec<_> = issues
+        .iter()
+        .map(|issue| {
+            let window = sources.get(&issue.account_id, &issue.sender).map_or_else(
+                || mxr_reading::fade::source_window(&[issue.date]),
+                |s| s.window,
+            );
+            let expires_at = mxr_reading::fade::expires_at(issue.date, &window);
+            let band = edition::band(issue.date, expires_at, boundary(&issue.account_id), now);
+            (issue, expires_at, band)
+        })
+        .collect();
+    let ids: Vec<_> = all.iter().map(|issue| issue.id.clone()).collect();
+    let finished: HashSet<_> = state
+        .store
+        .reading_states_for_messages(&ids)
+        .await?
+        .into_iter()
+        .filter(|row| row.finished_at.is_some() && row.dwell_ms > 0)
+        .map(|row| row.message_id)
+        .collect();
+    let saved: HashSet<_> = later_rows.iter().map(|row| &row.message_id).collect();
+    let mut eligible: Vec<_> = scheduled
+        .iter()
+        .filter(|(issue, _, band)| {
+            band.is_some() || saved.contains(&issue.id) || finished.contains(&issue.id)
+        })
+        .map(|(issue, _, _)| *issue)
+        .collect();
+    eligible.extend(&later_issues);
+    let items = ensure_items(state, &eligible).await?;
+    let message_ids: Vec<MessageId> = eligible.iter().map(|issue| issue.id.clone()).collect();
+    let ctx = Context::load(state, &message_ids, now).await?;
 
     let mut bands: HashMap<Band, Vec<(ReadingItemData, Rankable)>> = HashMap::new();
     let mut expired_threads: HashMap<(AccountId, ThreadId), bool> = HashMap::new();
-    for issue in &issues {
-        let Some(rows) = items.get(&issue.id) else {
-            continue;
-        };
-        let source = sources.get(&issue.account_id, &issue.sender);
-        let window = source.map_or_else(
-            || mxr_reading::fade::source_window(&[issue.date]),
-            |s| s.window,
-        );
-        let expires_at = mxr_reading::fade::expires_at(issue.date, &window);
+    for (issue, expires_at, band) in scheduled {
         let key = (issue.account_id.clone(), issue.thread_id.clone());
-        let Some(band) = edition::band(issue.date, expires_at, boundary(&issue.account_id), now)
-        else {
+        let Some(band) = band else {
             expired_threads.entry(key).or_insert(true);
             continue;
         };
         // A thread with a current issue is not expired.
         expired_threads.insert(key, false);
+        let Some(rows) = items.get(&issue.id) else {
+            continue;
+        };
+        let source = sources.get(&issue.account_id, &issue.sender);
         let Some(data) = item_data(issue, rows, 0, source, Some(expires_at), &ctx) else {
             continue;
         };

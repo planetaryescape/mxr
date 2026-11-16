@@ -1,3 +1,4 @@
+mod auth_reads;
 use super::*;
 fn secrets() -> (RemoteSecret, RemoteSecret, RemoteSecret, RemoteSecret) {
     let mail = RemoteSecret::new("a".repeat(64));

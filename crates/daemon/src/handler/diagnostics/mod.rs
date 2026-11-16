@@ -1472,21 +1472,10 @@ pub(crate) async fn get_status_within_budget(
     } else {
         crate::server::search_requires_repair(state, total_messages).await
     };
-    // Same fast-fail reasoning as the DB snapshot above: the semantic worker
-    // can be mid-embed for seconds at a time, and `mxr status` (plus the
-    // daemon-version-match check that gates every CLI call) must not hang on
-    // it. Drop the runtime metrics rather than block.
-    let semantic_runtime =
-        match tokio::time::timeout(budget, state.semantic.status_snapshot()).await {
-            Ok(result) => result.ok().map(|snapshot| snapshot.runtime),
-            Err(_elapsed) => {
-                tracing::warn!(
-                    budget_ms = budget.as_millis(),
-                    "semantic status timed out; returning status without semantic runtime metrics"
-                );
-                None
-            }
-        };
+    // Clients use status to check capabilities before ordinary reads. Runtime
+    // counters are already published by the worker, so neither embedding work
+    // nor the profile-table read belongs on that path.
+    let semantic_runtime = state.semantic.runtime_metrics().ok();
     let recovery = if degraded {
         None
     } else {

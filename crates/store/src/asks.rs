@@ -1,6 +1,6 @@
 //! Asks use the assessment storage envelope with their own policy and shape.
 //! Home rows stay inbound-only. No migration or replacement of old rows is needed.
-use crate::{decode_json, encode_json};
+use crate::{decode_json, encode_json, trace_query};
 use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;
@@ -130,6 +130,7 @@ impl super::Store {
         ),
         sqlx::Error,
     > {
+        let started_at = std::time::Instant::now();
         let context = asks_context_token().map_err(sqlx::Error::Io)?;
         let rows: Vec<(String, String)> = sqlx::query_as(FACETS_FOR_MESSAGES)
             .bind(account.as_str())
@@ -152,6 +153,11 @@ impl super::Store {
             }
         }
         homes.retain(|id, _| asks.get(id).is_some_and(|a| !a.owner_authored));
+        trace_query(
+            "assessment.facets_for_messages",
+            started_at,
+            homes.len() + asks.len(),
+        );
         Ok((homes, asks))
     }
 

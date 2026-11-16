@@ -109,16 +109,25 @@ impl crate::Store {
         now: i64,
     ) -> Result<RegisteredClient, sqlx::Error> {
         let proof = verifier(mail)?;
-        let mut tx = self.writer().begin().await?;
-        valid_owner(&mut tx).await?;
-        let row = sqlx::query("SELECT p.*,s.mail_verifier AS session_proof FROM remote_browser_sessions s JOIN remote_clients p ON p.client_id=s.parent_client_id WHERE s.session_id=? AND s.expires_at>? AND p.revoked_at IS NULL AND p.expires_at>?")
-            .bind(session_id).bind(now).bind(now).fetch_optional(&mut *tx).await?.ok_or_else(denied)?;
+        // Match native authentication's fresh, atomic credential/owner read.
+        let row = sqlx::query(
+            "SELECT p.*,s.mail_verifier AS session_proof
+             FROM remote_browser_sessions s JOIN remote_clients p ON p.client_id=s.parent_client_id
+             WHERE s.session_id=?1 AND s.expires_at>?2 AND p.revoked_at IS NULL AND p.expires_at>?2
+               AND EXISTS (SELECT 1 FROM remote_host h JOIN archive_workspace w
+                   ON w.singleton=h.singleton AND w.workspace_id=h.workspace_id
+                   AND w.recovery_generation=h.recovery_generation)
+               AND NOT EXISTS (SELECT 1 FROM restore_recovery WHERE pending=1)",
+        )
+        .bind(session_id)
+        .bind(now)
+        .fetch_optional(self.reader())
+        .await?
+        .ok_or_else(denied)?;
         if !matches(&row.get::<String, _>("session_proof"), &proof) {
             return Err(denied());
         }
-        let result = client(&row);
-        tx.commit().await?;
-        Ok(result)
+        Ok(client(&row))
     }
 }
 

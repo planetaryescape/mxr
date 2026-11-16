@@ -11,6 +11,7 @@ use super::mail_kind::{self, KindSignals};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::{MessageDirection, OwnedAddresses, UnsubscribeMethod};
 use mxr_core::MessageFlags;
@@ -287,40 +288,52 @@ pub(super) async fn scan_inbox(
 ) -> Result<PlacedInbox, HandlerError> {
     let mut placed = Vec::new();
     let mut people_threads = HashMap::new();
-    for account_id in accounts {
-        let candidates = state.store.mode_candidates(account_id).await?;
-        let kinds = AccountKinds::load(state, account_id, &candidates).await?;
-        let mut seen_people = HashSet::new();
-        for message in candidates {
-            if message.snoozed
-                || !same_sender(&message, sender_email)
-                || kinds.is_outbound(&message)
-                || !kinds.has_assessment(&message)
-            {
-                continue;
+    // Each account has independent classification inputs. Keep account order
+    // while allowing peers to use the reader pool during another account's read.
+    let mut scans = futures::stream::iter(accounts.iter().cloned())
+        .map(|account_id| async move {
+            let candidates = state.store.mode_candidates(&account_id).await?;
+            let kinds = AccountKinds::load(state, &account_id, &candidates).await?;
+            let mut placed = Vec::new();
+            let mut people_threads = Vec::new();
+            let mut seen_people = HashSet::new();
+            for message in candidates {
+                if message.snoozed
+                    || !same_sender(&message, sender_email)
+                    || kinds.is_outbound(&message)
+                    || !kinds.has_assessment(&message)
+                {
+                    continue;
+                }
+                // Classify first; only mail that stays gets its reason written.
+                let classification = kinds.classification(&message);
+                if message.in_inbox
+                    && classification.kind.to_data() == SenderKindData::People
+                    && seen_people.insert(message.thread_id.clone())
+                {
+                    people_threads.push(message.thread_id.clone());
+                }
+                if kinds.released.contains(&message.id) {
+                    continue;
+                }
+                if !matches!(
+                    classification.kind.to_data(),
+                    SenderKindData::Reading | SenderKindData::PaperTrail
+                ) {
+                    continue;
+                }
+                let Some(kind) = kinds.description(&message) else {
+                    continue;
+                };
+                placed.push(Placed { message, kind });
             }
-            // Classify first; only mail that stays gets its reason written.
-            let classification = kinds.classification(&message);
-            if message.in_inbox
-                && classification.kind.to_data() == SenderKindData::People
-                && seen_people.insert(message.thread_id.clone())
-            {
-                let threads: &mut Vec<_> = people_threads.entry(account_id.clone()).or_default();
-                threads.push(message.thread_id.clone());
-            }
-            if kinds.released.contains(&message.id) {
-                continue;
-            }
-            if !matches!(
-                classification.kind.to_data(),
-                SenderKindData::Reading | SenderKindData::PaperTrail
-            ) {
-                continue;
-            }
-            let Some(kind) = kinds.description(&message) else {
-                continue;
-            };
-            placed.push(Placed { message, kind });
+            Ok::<_, HandlerError>((account_id, placed, people_threads))
+        })
+        .buffered(3);
+    while let Some((account, mail, threads)) = scans.try_next().await? {
+        placed.extend(mail);
+        if !threads.is_empty() {
+            people_threads.insert(account, threads);
         }
     }
     Ok(PlacedInbox {

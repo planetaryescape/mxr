@@ -1,3 +1,4 @@
+mod mail_view_cache;
 use super::remote;
 use crate::{
     state::AppState,

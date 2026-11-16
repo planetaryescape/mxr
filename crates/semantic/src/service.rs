@@ -198,7 +198,9 @@ impl SemanticServiceHandle {
                 // the two paths never fight over the profile record.
                 let step = if let Some(active) = pass.as_mut() {
                     let _bg_permit = background_db.acquire().await;
-                    Some(engine.index_job_step(&mut active.job).await)
+                    let step = engine.index_job_step(&mut active.job).await;
+                    publish_runtime_metrics(&engine, &worker_metrics);
+                    Some(step)
                 } else {
                     None
                 };
@@ -249,6 +251,7 @@ impl SemanticServiceHandle {
                     // exhaust the reader pool and starve interactive queries.
                     let _bg_permit = background_db.acquire().await;
                     let result = engine.ingest_messages(&message_ids).await;
+                    publish_runtime_metrics(&engine, &worker_metrics);
                     if let Ok(mut metrics) = worker_metrics.lock() {
                         metrics.queue_depth = pending.len() as u32;
                         metrics.in_flight = 0;
@@ -332,12 +335,20 @@ impl SemanticServiceHandle {
         resp_rx.await.map_err(|_| worker_stopped())?
     }
 
-    pub async fn status_snapshot(&self) -> Result<SemanticStatusSnapshot> {
-        let runtime_metrics = self
-            .runtime_metrics
+    /// Read the last observed runtime metrics without queuing behind indexing
+    /// or loading profile records from the database.
+    pub fn runtime_metrics(&self) -> Result<SemanticRuntimeMetrics> {
+        if self.tx.is_closed() {
+            return Err(worker_stopped());
+        }
+        self.runtime_metrics
             .lock()
-            .map_err(|_| anyhow!("semantic runtime metrics lock poisoned"))?
-            .clone();
+            .map(|metrics| metrics.clone())
+            .map_err(|_| anyhow!("semantic runtime metrics lock poisoned"))
+    }
+
+    pub async fn status_snapshot(&self) -> Result<SemanticStatusSnapshot> {
+        let runtime_metrics = self.runtime_metrics()?;
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
             .send(SemanticCommand::StatusSnapshot { resp: resp_tx })
@@ -603,7 +614,16 @@ async fn handle_command(
             let _ = resp.send(Ok(()));
         }
     }
+    publish_runtime_metrics(engine, runtime_metrics);
     Ok(())
+}
+
+fn publish_runtime_metrics(engine: &SemanticEngine, shared: &Arc<Mutex<SemanticRuntimeMetrics>>) {
+    if let Ok(mut metrics) = shared.lock() {
+        metrics.last_extract_ms = engine.runtime_metrics.last_extract_ms;
+        metrics.last_embedding_prep_ms = engine.runtime_metrics.last_embedding_prep_ms;
+        metrics.last_ingest_ms = engine.runtime_metrics.last_ingest_ms;
+    }
 }
 
 /// Starts a backfill pass, or answers straight away when the profile has

@@ -329,17 +329,28 @@ impl crate::Store {
                 .await;
         }
         let mail = verifier(mail)?;
-        // Use the writer transaction: completed revocations cannot race an old reader snapshot.
-        let mut tx = self.writer().begin().await?;
-        valid_owner(&mut tx).await?;
-        let row=sqlx::query("SELECT * FROM remote_clients WHERE client_id=? AND revoked_at IS NULL AND expires_at>?").bind(id).bind(now).fetch_optional(&mut *tx).await?.ok_or_else(denied)?;
+        // One autocommit statement checks the credential and owner at the same
+        // fresh snapshot. Completed revocations stay visible without joining
+        // unrelated background work on the writer connection.
+        let row = sqlx::query(
+            "SELECT c.* FROM remote_clients c
+             WHERE c.client_id=?1 AND c.revoked_at IS NULL AND c.expires_at>?2
+               AND EXISTS (SELECT 1 FROM remote_host h JOIN archive_workspace w
+                   ON w.singleton=h.singleton AND w.workspace_id=h.workspace_id
+                   AND w.recovery_generation=h.recovery_generation)
+               AND NOT EXISTS (SELECT 1 FROM restore_recovery WHERE pending=1)",
+        )
+        .bind(id)
+        .bind(now)
+        .fetch_optional(self.reader())
+        .await?
+        .ok_or_else(denied)?;
         if !matches(&row.get::<String, _>("mail_verifier"), &mail) {
             return Err(denied());
         }
-        let result = client(&row);
-        tx.commit().await?;
-        Ok(result)
+        Ok(client(&row))
     }
+
     pub async fn revoke_remote_client(
         &self,
         id: &str,

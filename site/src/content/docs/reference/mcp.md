@@ -162,7 +162,7 @@ Call `mxr_prepare_reply` with `message_id`, optional `reply_all` and optional `b
 
 Use the attachment begin/chunk/finalize tools to upload bytes, then attach the finalized metadata with `mxr_update_draft` and the current revision. Call `mxr_draft_preview` with the saved draft and original owner. It returns the effective sender, draft, attachment set, safety report and `send_identity`, without persistent writes. `requires_save: true` means it is not yet the canonical saved command; save and preview again.
 
-Pass the reviewed revision, operation ID and original owner to `mxr_send_draft` with `managed_attachments_reviewed=true` and `confirm=true`. After interruption, call `mxr_send_outcome` with the same owner and operation ID. Accepted and unknown operations must never become fresh sends automatically. Remote input and stored drafts with filesystem paths or inline path-backed assets are refused; actual mail prose is preserved.
+Pass the reviewed revision, operation ID and original owner to `mxr_send_draft` with `managed_attachments_reviewed=true` and `confirm=true`. If the daemon reports an uncertain send, the tool error's `data.details.outcome` holds the recorded outcome. After interruption, call `mxr_send_outcome` with the same owner and operation ID. Accepted and unknown operations must never become fresh sends automatically. Remote input and stored drafts with filesystem paths or inline path-backed assets are refused; actual mail prose is preserved.
 
 ## Link tasks with Microsoft To Do
 

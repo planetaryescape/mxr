@@ -297,18 +297,12 @@ impl MxrMcpServer {
         request: Request,
         owner: mxr_protocol::ArchiveWorkspaceData,
     ) -> Result<McpJson<Value>, ErrorData> {
-        match self
+        let response = self
             .requester
             .request_owned(request, owner)
             .await
-            .map_err(mcp_error)?
-        {
-            Response::Ok { data } => serde_json::to_value(data).map(McpJson).map_err(mcp_error),
-            Response::Error { message, code, .. } => Err(ErrorData::internal_error(
-                format!("daemon error {code}: {message}"),
-                None,
-            )),
-        }
+            .map_err(mcp_error)?;
+        response_to_json(response).map(McpJson)
     }
 
     async fn selected_workspace(&self) -> Result<mxr_protocol::ArchiveWorkspaceData, ErrorData> {
@@ -4035,6 +4029,51 @@ mod tests {
                 .expect("prepared reply");
             assert_eq!(prepared["draft"]["subject"], expected, "from {original}");
         }
+    }
+
+    #[derive(Debug)]
+    struct UncertainSendRequester;
+
+    #[async_trait]
+    impl DaemonRequester for UncertainSendRequester {
+        async fn request(&self, _request: Request) -> anyhow::Result<Response> {
+            anyhow::bail!("an owned send must not use the unowned path")
+        }
+
+        async fn request_owned(
+            &self,
+            _request: Request,
+            _owner: mxr_protocol::ArchiveWorkspaceData,
+        ) -> anyhow::Result<Response> {
+            Ok(Response::Error {
+                message: "Send outcome uncertain".into(),
+                kind: mxr_protocol::IpcErrorKind::Provider,
+                code: "send_outcome_unknown".into(),
+                retryable: false,
+                details: Some(json!({"outcome": {"state": "unknown"}})),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn uncertain_owned_send_keeps_the_daemons_structured_outcome() {
+        let server = MxrMcpServer::from_requester(Arc::new(UncertainSendRequester));
+        let input = json!({"operation_id":"uncertain-op", "expected_revision":1,
+            "draft_id":DraftId::new(), "confirm":true, "expected_workspace":test_workspace()});
+
+        let error = server
+            .send_draft(Parameters(serde_json::from_value(input).expect("input")))
+            .await
+            .err()
+            .expect("the daemon refused the send");
+
+        assert_eq!(
+            error.message,
+            "daemon error send_outcome_unknown: Send outcome uncertain"
+        );
+        let data = error.data.expect("structured error data");
+        assert_eq!(data["code"], "send_outcome_unknown");
+        assert_eq!(data["details"]["outcome"]["state"], "unknown");
     }
 
     #[tokio::test]

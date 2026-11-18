@@ -591,12 +591,12 @@ pub(super) async fn read_owned_as(
                     attachment.local_path = None;
                 }
             }
-            match &data {
+            match &mut data {
                 ResponseData::Draft { draft } => super::draft_preview::require_portable(draft)?,
+                // One legacy draft must not hide every other draft from a paired
+                // client. Omitting it keeps its host paths on the host.
                 ResponseData::Drafts { drafts } => {
-                    for draft in drafts {
-                        super::draft_preview::require_portable(draft)?;
-                    }
+                    drafts.retain(|draft| super::draft_preview::require_portable(draft).is_ok());
                 }
                 _ => (),
             }

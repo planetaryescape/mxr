@@ -416,7 +416,7 @@ async fn unsubscribe_receipts_round_trip_through_backup_and_restore() {
 }
 
 #[tokio::test]
-async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
+async fn inspect_accepts_exact_schema_81_and_rejects_schemas_outside_the_supported_range() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -463,13 +463,21 @@ async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     .unwrap();
     inspect(stage.path()).await.unwrap();
 
-    manifest.schema_version = 85;
-    std::fs::write(
-        stage.path().join("manifest.json"),
-        serde_json::to_vec(&manifest).unwrap(),
-    )
-    .unwrap();
-    assert!(inspect(stage.path()).await.is_err());
+    // The first version on each side of the supported range. A new migration
+    // widens the range and fails this test until the bound here moves with it.
+    for unsupported in [80, 115] {
+        manifest.schema_version = unsupported;
+        std::fs::write(
+            stage.path().join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            inspect(stage.path()).await.unwrap_err().to_string(),
+            "Unsupported backup format or schema",
+            "schema {unsupported}"
+        );
+    }
 }
 
 #[tokio::test]

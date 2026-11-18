@@ -158,7 +158,7 @@ owner check.
 
 ## Prepare and preview a portable reply
 
-Call `mxr_prepare_reply` with `message_id`, optional `reply_all` and optional `body`. It returns a complete unsaved draft with the daemon's recipients and reply headers, plus `expected_workspace`. Edit only the intended prose, then call `mxr_save_draft` with that draft and owner.
+Call `mxr_prepare_reply` with `message_id`, optional `reply_all` and optional `body`. It returns a complete unsaved draft with the daemon's recipients, reply headers and a subject with one `Re:` marker, plus `expected_workspace`. Edit only the intended prose, then call `mxr_save_draft` with that draft and owner.
 
 Use the attachment begin/chunk/finalize tools to upload bytes, then attach the finalized metadata with `mxr_update_draft` and the current revision. Call `mxr_draft_preview` with the saved draft and original owner. It returns the effective sender, draft, attachment set, safety report and `send_identity`, without persistent writes. `requires_save: true` means it is not yet the canonical saved command; save and preview again.
 

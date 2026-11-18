@@ -2225,7 +2225,10 @@ impl MxrMcpServer {
                 Vec::new()
             },
             bcc: Vec::new(),
-            subject: context.subject.clone(),
+            subject: mxr_mail_parse::subject::prefix_subject(
+                mxr_mail_parse::subject::SubjectMarker::Reply,
+                &context.subject,
+            ),
             content: mxr_core::DraftContent::markdown(input.body),
             attachments: Vec::new(),
             managed_attachments: Some(Vec::new()),
@@ -3980,6 +3983,58 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[derive(Debug)]
+    struct ReplyContextRequester {
+        subject: &'static str,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for ReplyContextRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            let data = match request {
+                Request::GetArchiveWorkspace => ResponseData::ArchiveWorkspace {
+                    workspace: test_workspace(),
+                },
+                Request::PrepareReply { .. } => ResponseData::ReplyContext {
+                    context: mxr_protocol::ReplyContext {
+                        account_id: AccountId::new(),
+                        in_reply_to: "<original@example.com>".into(),
+                        references: Vec::new(),
+                        reply_to: "sender@example.com".into(),
+                        cc: String::new(),
+                        subject: self.subject.into(),
+                        from: "me@example.com".into(),
+                        thread_context: String::new(),
+                        thread_id: None,
+                    },
+                },
+                other => anyhow::bail!("unexpected request {other:?}"),
+            };
+            Ok(Response::Ok { data })
+        }
+    }
+
+    #[tokio::test]
+    async fn prepared_reply_subject_gets_exactly_one_re_marker() {
+        for (original, expected) in [
+            ("Deploy plan", "Re: Deploy plan"),
+            ("Re: Deploy plan", "Re: Deploy plan"),
+            ("RE: Deploy plan", "Re: Deploy plan"),
+        ] {
+            let server =
+                MxrMcpServer::from_requester(Arc::new(ReplyContextRequester { subject: original }));
+            let McpJson(prepared) = server
+                .prepare_reply(Parameters(PrepareReplyInput {
+                    body: "Thanks".into(),
+                    message_id: mxr_core::MessageId::new().as_str().clone(),
+                    reply_all: false,
+                }))
+                .await
+                .expect("prepared reply");
+            assert_eq!(prepared["draft"]["subject"], expected, "from {original}");
+        }
     }
 
     #[tokio::test]

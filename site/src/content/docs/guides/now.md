@@ -209,9 +209,11 @@ In To do, `e` ticks off that one to-do. Another to-do on the same email stays
 open, and the email stays in the inbox until the last one is ticked off. In
 Updates, `e` lets go of one source in the digest.
 
-On the web To do page, press `e` to tick off the focused item. Space
-on the left checkbox ticks it off or reopens it. Click the source chip on its
-date line to see the explanation, arrival time and field evidence.
+On the web To do page, press `e` to tick off the lit row. When the left
+checkbox has focus, `Space` ticks it off or reopens it. When another button or
+link has focus, `Space` activates that control. Otherwise, press `Space` to see
+the lit row's explanation, arrival time and field evidence. You can also choose
+**details** on the row.
 
 ```bash
 mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run

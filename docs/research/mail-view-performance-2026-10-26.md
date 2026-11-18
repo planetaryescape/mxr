@@ -12,11 +12,34 @@ The script times read-only CLI requests for Messages filters, Now, the rail, ope
 
 The first sample is not necessarily cold: the daemon may already have that view cached. Use a disposable database snapshot and a separate daemon profile for startup, migration and cold-cache experiments. Never switch development binaries against the normal mailbox to run a benchmark.
 
-## Shipping decision
+## Released result: v0.6.166
+
+[PR 722](https://github.com/planetaryescape/mxr/pull/722) merged as `2d0d4fe39adda36cd9cd84841ffc132cf8512c7f`. Ready-PR CI passed on its head, `27e828edb759a85aaf8bbd44c199f7a15ee872a0`. That run covered both workspace Rust suites, classifier evaluation, both Chromium E2E shards, web unit tests, compile, lint, docs, SQLx and security checks, and OpenAPI validation. [Release PR 723](https://github.com/planetaryescape/mxr/pull/723) produced `v0.6.166` at `7cdf016fa4ccd71025c0cba952772b68b8490009`. The [release workflow](https://github.com/planetaryescape/mxr/actions/runs/40399387268) passed and [the release](https://github.com/planetaryescape/mxr/releases/tag/v0.6.166) is published.
+
+The installed daemon ran schema 104 with 111,394 messages. Its timing sweep returned:
+
+| Request | First sample | Repeats |
+| --- | ---: | ---: |
+| Attention | 138 ms | 18–19 ms |
+| All conversations | 237 ms | 29–30 ms |
+| Waiting on them | 203 ms | 19–20 ms |
+| Now | 218 ms | 18–20 ms |
+| Rail | 216 ms | 18 ms |
+| To do | 30 ms | 30 ms |
+| Updates | 171 ms | 21–22 ms |
+| Reading | 171 ms | 23–153 ms |
+| Archive | 84 ms | 74–75 ms |
+| Search | 27 ms | 26–27 ms |
+
+Every sample in this sweep stayed within 250 ms. These are CLI wall times. They include process startup and JSON validation. They are not browser rendering times or a latency guarantee. Your turn and Unread reused Attention. The isolated cold-All results below still stand: consistent performance after an independent restart remains [a follow-up](../issues/messages-cold-history-budget.md).
+
+The sections below keep the experiments in date order. A statement that a build, gate or release was pending describes that candidate, not the release above. For the current procedure and cache-layer definitions, use [Measure local mail views](../contributing/mail-view-performance.md).
+
+## Pre-release shipping decision
 
 The final optimized source candidate, `775e19513`, fixes the multi-second navigation regression, but does **not** consistently meet the adopted 250 ms All-conversations target. On the 111,345-message snapshot, All measured 254 ms in the full sweep and 290 ms as the first view after an independent daemon restart. The 250 ms timing gate therefore remains red; the explicit "ship it" instruction is being applied as a decision to release the substantial improvement with this remaining performance gap documented, not to relabel it as a pass. See [the cold-history follow-up](../issues/messages-cold-history-budget.md).
 
-The full sweep's first-view times were Attention 154 ms, Waiting 209 ms, Now 214 ms, rail 227 ms, Updates 129 ms, Reading 170 ms, Archive 78 ms and search 28 ms. Mine and Unread reused Attention and are not independent cold builds. All repeated at 28–31 ms; those cached responses are not cold-read proof. The All reply remained identical to the earlier source output except `generated_at` (844,337 bytes). The build took 9 minutes 15 seconds. Startup was 2,728 ms and maintenance completed by 22,776 ms; navigation measurements followed maintenance, with no prior All-response cache entry. Full ready-PR CI, release and installed-mailbox checks are still pending.
+The full sweep's first-view times were Attention 154 ms, Waiting 209 ms, Now 214 ms, rail 227 ms, Updates 129 ms, Reading 170 ms, Archive 78 ms and search 28 ms. Mine and Unread reused Attention and are not independent cold builds. All repeated at 28–31 ms; those cached responses are not cold-read proof. The All reply remained identical to the earlier source output except `generated_at` (844,337 bytes). The build took 9 minutes 15 seconds. Startup was 2,728 ms and maintenance completed by 22,776 ms; navigation measurements followed maintenance, with no prior All-response cache entry. At that decision, ready-PR CI, the release and the installed-mailbox sweep were still pending. The released result above records them.
 
 For browser measurements, record resource timing for `/api/v1/mail/people`, document navigation entries, loading-state duration, and `layout-shift` entries. Check filter element identity and its bounding rectangle before and after a change. A fast HTTP response alone does not prove that the content became usable promptly.
 

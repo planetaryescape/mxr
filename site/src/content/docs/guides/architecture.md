@@ -116,3 +116,29 @@ before/after state separately from the authored source quote. A later accepted
 promise date can update the date and its derived timing while preserving a
 corrected title or kind. If you edited the due date directly on the task, that
 authority blocks the entire promise-date update, including its derived timing.
+
+## Lists read compact facts; detail keeps the evidence
+
+Compare the list and detail surfaces:
+
+```bash
+mxr messages list --turn all --format json
+mxr messages person samir@launchpad.example --format json
+mxr modes why MESSAGE_ID --format json
+```
+
+Lists use compact, rebuildable asks and thread facts, so navigation does not
+decode every stored body or full classification explanation. Opening a
+conversation or inspecting a placement reads the full source evidence. List
+previews read a bounded set of stored body text and skip attachment metadata.
+
+Before it reuses thread facts, mxr checks the account, policy, input and view
+revisions, context and time boundaries. Read flags, inbox membership and facet
+writes invalidate thread facts even when the source generation is unchanged.
+Turns, Done state, people links, contact facts, ranking and filters are always
+composed live.
+
+A separate short-lived daemon cache reuses completed mode responses. That cache
+does not hold these facts. For measurement and isolated invalidation checks,
+use the repository's
+[local mail-view procedure](https://github.com/planetaryescape/mxr/blob/main/docs/contributing/mail-view-performance.md).

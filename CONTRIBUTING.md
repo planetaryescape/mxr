@@ -112,7 +112,7 @@ When adding an MCP tool, register its authority in
 the host checks that every exposed tool has both entries.
 
 On a shared agent workstation, queue heavy commands with
-`agent-work run -- <command>` and keep workers at four or fewer. The dotfiles
+`agent-work run -- <command>` and keep workers at five or fewer. The dotfiles
 Cargo wrapper already queues Cargo; do not nest another queue around it.
 Use a separate target directory for each worktree.
 
@@ -159,6 +159,17 @@ mxr burn --dry-run
 ```
 
 That wipes rebuildable local runtime state only. It does not delete `config.toml` or system credentials by default.
+
+## Measuring local navigation
+
+```sh
+python3 scripts/perf-mail-views.py --repeat 3 --budget-ms 250
+```
+
+Use [Measure local mail views](docs/contributing/mail-view-performance.md) to
+separate migration, startup, fact reuse, response-cache hits and browser
+costs. The sweep changes no mail and prints timings only. Run restart and
+invalidation tests on isolated profiles, never on real mail.
 
 ## Measuring the classifier
 

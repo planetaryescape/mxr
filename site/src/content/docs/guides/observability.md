@@ -89,13 +89,17 @@ The table output prints `unknown` for the fields it has no reading for, instead 
 
 ### Why a second `mxr now` is instant
 
-Now, the rail, Messages, Updates and the Reading edition are built from every inbox message, which takes about a second on a large mailbox. The daemon keeps the last build of each one you read and answers the next read from it, as long as nothing it shows can have changed:
+The daemon reuses completed Now, rail, Messages, Updates and Reading-edition responses. It keeps recently read views and serves one only while these checks hold:
 
 - Anything you change through mxr (a done, a move, a reply) makes the next read rebuild first.
 - New mail and other stored changes do the same. Log, sync-bookkeeping and index writes don't count.
 - A view older than a minute, or built before the current hour, is rebuilt first, because the views word time ("due soon", evening, today).
 
-In the background, the daemon rebuilds the views you read in the last 5 minutes a couple of seconds after mail changes, so reads usually find one ready. After a longer gap the first read builds again, which takes about a second on a large mailbox. `generated_at` in the JSON says when a view was built. A read that records something always runs: `mxr reading` counts as a visit; `mxr reading edition --peek` does not.
+The background refresher keeps views read in the last five minutes. It renews each one ten seconds before its one-minute expiry, so the web app's one-minute poll finds a ready view. After a stored change, the refresher waits at least five seconds between rebuilds of a view. It drops idle views. `generated_at` in the JSON says when a response was built.
+
+A rebuild reuses stored asks and history facts when they are still valid. Rebuild cost depends on the view, the mailbox, startup work and which facts are ready. A cached repeat is not a cold-read measurement. See [the architecture](/guides/architecture/#lists-read-compact-facts-detail-keeps-the-evidence) and [slow-view troubleshooting](/troubleshooting/#local-views-take-seconds-to-open).
+
+A read that can record something always runs. `mxr reading` counts as a visit unless activity tracking is off or paused. `mxr reading edition --peek` never counts as a visit.
 
 To watch the rebuilds, set `level = "debug"` under `[logging]` in `config.toml`, restart the daemon, and search the log:
 

@@ -161,6 +161,40 @@ mxr reset --hard                  # destructive; preserves config + credentials
 
 `mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait --wait-timeout-secs 900` after — that resync is a full backfill.
 
+## Local views take seconds to open
+
+Check the installed binary and daemon before resetting or reindexing:
+
+```bash
+mxr version
+mxr status --format json
+mxr doctor
+```
+
+After an upgrade, one-time projection backfills and startup maintenance can
+slow the first views. If status answers quickly but Messages is slow, the
+daemon is up and the delay is in building that view. Reindexing search does not
+fix a slow Messages list.
+
+If you have a repository checkout, run the timing sweep from its root against
+your intended local runtime:
+
+```bash
+python3 scripts/perf-mail-views.py --repeat 3 --budget-ms 250
+```
+
+The sweep changes no mail and prints timings and failure summaries only. Any
+sample can come from a cache, including the first. Follow
+[Measure local mail views](https://github.com/planetaryescape/mxr/blob/main/docs/contributing/mail-view-performance.md)
+for the cache-layer checklist and isolated tests. Do not switch a development
+binary onto your normal mailbox or change real mail for a test.
+
+If CLI requests are quick but the web app still appears to reload, inspect the
+`/api/v1/mail/people` request in browser DevTools. Compare its response time
+with the visible loading time and layout movement. Messages keeps its filter
+controls and open conversation mounted while a view loads. Report a replaced
+pane or shifting controls separately from slow replies.
+
 ## Web app cannot reach mxr
 
 If the web app says **mxr isn't running. Showing what was loaded at 21:04.**,

@@ -454,6 +454,39 @@ remains. A quiet topic is not proof that the user read it or that no reply is
 needed. The [Messages guide](../site/src/content/docs/guides/messages.md) owns
 the user workflow.
 
+## Messages loading and filter continuity
+
+Press `f` to cycle Needs attention, All conversations, Your turn and Waiting
+on them; Unread and Past your pace remain set. `g f` focuses the filter bar.
+The `messages-filters` shortcut scope belongs to `MessagesRoute`, outside its
+result branches, so cycling remains available while loading, empty or failed.
+Do not move it into the populated list controller.
+
+`MessagesBody` keeps the pane group, header, filter controls and open person
+page mounted while a new view loads. A failed request replaces `MessagesBody`
+with the header and an error page. `SelectionAdvance` resets removal tracking
+for the new filter without remounting that tree. A change of view is not a
+sync removing the selected conversation.
+
+`features/messages/api.ts` keys list requests by account and filter. Its
+placeholder can reuse rows only for the same account and turn; a different
+turn gets `LOADING_MESSAGES`, and a different account gets no prior list.
+History must never appear to be an attention answer while a request waits.
+Counts and empty wording wait for the selected filter's answer.
+
+A turn change or a first load shows the shared row skeleton in the existing list
+column. An Unread or Past your pace toggle on the same turn keeps the previous
+rows until the answer arrives, so no skeleton shows. The filter status line
+reserves its height. Messages passes a zero minimum hold to
+`useDelayedPending`, so ready data is not delayed to finish an animation.
+Both list and person requests consume React Query's cancellation signal.
+
+When testing a slow response, compare the filter element's DOM identity,
+focus and rectangle before and after the transition. Also check rapid `f`
+presses, an empty answer, failure, and a change of account. Backend latency
+and layout continuity are separate checks; use
+[Measure local mail views](contributing/mail-view-performance.md) for both.
+
 ## Reading a conversation
 
 - Read messages collapse to one line; the newest and every unread message start

@@ -332,3 +332,40 @@ observed input changes during resolution. Assessment writes do not advance that
 revision. Startup and ingest initialize historical mail in bounded pages;
 projection loaders reconcile the threads they need. Evaluation and fallback
 reports only read stored answers and never initialize them.
+
+## Compact projections avoid repeated source reads
+
+List paths read stored facets before they load full source threads. Only
+missing or changed candidates are materialized. These projections are
+rebuildable inputs. They do not store a Messages response:
+
+- Schema 102 maintains `ask_view_summaries` transactionally with authoritative
+  asks. Lists read compact verdicts and context; detail retains source evidence.
+- Schema 103 maintains one `outbound_recipients` row per supporting outbound
+  message/address. New-sender checks use account/address lookups instead of
+  reparsing all sent recipients.
+- Schema 104 stores per-thread `conversation_summaries` and candidate ID sets.
+  Reads validate source and view revisions, account, policy, timezone, owned
+  addresses, shape configuration and valid-time interval. Facet writes at the
+  same source generation have their own invalidation clock. Publication checks
+  the observed revisions in the writer statement; partial message deletion
+  removes the whole thread synopsis.
+
+The daemon keeps decoded history facts in memory and reuses them after it
+validates their source, facet and view clocks. A cache hit checks the token
+once. A rebuild compares the token before and after its read, and does not keep
+a build that spans a change. Turns, Done state, people links, contact facts,
+ranking and filters stay live. List previews read
+body text in a batch without attachment metadata. Conversation detail keeps its
+complete read.
+
+The short-lived mode-response cache is a separate layer. It validates the
+daemon mutation generation, store change feed, local hour and age, and renews
+recently read views before they expire. A response-cache hit does not prove
+that an independently rebuilt view meets its budget. Prepared history facts do
+not prove it either.
+
+Verify those boundaries with the commands and cache-state checklist in
+[Measure local mail views](../contributing/mail-view-performance.md). The
+[October audit](../research/mail-view-performance-2026-10-26.md) records the
+measurements and remaining cold-All variance.

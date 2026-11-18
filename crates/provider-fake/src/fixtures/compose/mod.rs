@@ -78,6 +78,16 @@ impl DraftState {
 pub struct Answer {
     pub question: &'static str,
     pub any_of: &'static [&'static str],
+    /// Words that identify the sentence answering this question.
+    pub subject: &'static [&'static str],
+    pub polarity: AnswerPolarity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnswerPolarity {
+    Any,
+    Positive,
+    Negative,
 }
 
 /// What a good draft had to do for this case.

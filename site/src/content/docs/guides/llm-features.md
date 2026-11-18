@@ -655,6 +655,7 @@ each a short thread, a few emails in a sample voice, and sometimes text
 already typed (finished the way `mxr compose assist` finishes it) or an
 instruction. Every draft is graded against what its case
 required. The typed sentences must survive, each question must be answered,
+and labelled answers must match their subject's clause and required polarity,
 facts nobody has given must be left as `[[?: …]]` gaps, no number may appear
 that no input carries, the length must fall in the case's band, and there
 must be no subject line, preamble, repeated sign-off or run of the thread

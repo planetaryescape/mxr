@@ -40,6 +40,79 @@ pub(super) fn sentences(typed: &str) -> Vec<String> {
         .collect()
 }
 
+/// What separates a clause from the one before it, weakest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Boundary {
+    /// A comma or "and". A bare subject can carry on across it: "Priya,
+    /// sadly, can't make it".
+    Soft,
+    /// A semicolon, colon, dash or a word such as "but" or "so".
+    Hard,
+    Sentence,
+}
+
+/// A stretch of a sentence that says one thing about one subject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Clause {
+    /// Whole words; a trailing "'s" is dropped so "Priya's out" names Priya.
+    pub words: Vec<String>,
+    pub opened_by: Boundary,
+}
+
+/// Words that start a new clause inside a sentence.
+const CLAUSE_WORDS: [&str; 8] = [
+    "but", "though", "although", "however", "whereas", "because", "while", "so",
+];
+
+/// The clauses of a text in order. Marks only split when they end a token, so
+/// "10:30" and "1,200" stay whole.
+pub(super) fn clauses(text: &str) -> Vec<Clause> {
+    fn close(
+        out: &mut Vec<Clause>,
+        words: &mut Vec<String>,
+        opened_by: &mut Boundary,
+        next: Boundary,
+    ) {
+        if words.is_empty() {
+            *opened_by = (*opened_by).max(next);
+        } else {
+            out.push(Clause {
+                words: std::mem::take(words),
+                opened_by: *opened_by,
+            });
+            *opened_by = next;
+        }
+    }
+
+    let not_alphanumeric = |c: char| !c.is_alphanumeric();
+    let mut out = Vec::new();
+    for sentence in sentences(text) {
+        let spaced = sentence.replace(['\u{2014}', '\u{2013}'], " - ");
+        let mut words = Vec::new();
+        let mut opened_by = Boundary::Sentence;
+        for token in spaced.split_whitespace() {
+            let word = token.trim_matches(not_alphanumeric);
+            if word.is_empty() || CLAUSE_WORDS.contains(&word) {
+                close(&mut out, &mut words, &mut opened_by, Boundary::Hard);
+                continue;
+            }
+            if word == "and" {
+                close(&mut out, &mut words, &mut opened_by, Boundary::Soft);
+                continue;
+            }
+            words.push(word.strip_suffix("'s").unwrap_or(word).to_string());
+            let tail = &token[token.trim_end_matches(not_alphanumeric).len()..];
+            if tail.contains([';', ':']) {
+                close(&mut out, &mut words, &mut opened_by, Boundary::Hard);
+            } else if tail.contains(',') {
+                close(&mut out, &mut words, &mut opened_by, Boundary::Soft);
+            }
+        }
+        close(&mut out, &mut words, &mut opened_by, Boundary::Sentence);
+    }
+    out
+}
+
 /// Whether `phrase` appears in `draft_words` as a run of whole words. "no"
 /// does not match inside "now", and "not able" needs both words in order.
 pub(super) fn contains_phrase(draft_words: &[String], phrase: &str) -> bool {

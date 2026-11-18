@@ -1,8 +1,11 @@
 //! The six graders. Each reads a case's requirements and an output and
 //! returns one grade that names what was required and what happened.
 
-use super::text::{contains_phrase, copied_run, gap_texts, invented_numbers, sentences, words};
-use super::{Check, Grade, Output, Requirements};
+use super::text::{
+    clauses, contains_phrase, copied_run, gap_texts, invented_numbers, sentences, words, Boundary,
+    Clause,
+};
+use super::{Answer, AnswerPolarity, Check, Grade, Output, Requirements};
 use std::collections::HashSet;
 
 /// A typed sentence counts as changed, not missing, when this share of its
@@ -61,6 +64,7 @@ pub(super) fn kept(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 
 pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     let draft_words = words(output.text);
+    let draft_clauses = clauses(output.text);
     let requirement = if req.answers.is_empty() {
         "no question to answer".to_string()
     } else {
@@ -79,12 +83,7 @@ pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     let unanswered: Vec<&str> = req
         .answers
         .iter()
-        .filter(|answer| {
-            !answer
-                .any_of
-                .iter()
-                .any(|phrase| contains_phrase(&draft_words, phrase))
-        })
+        .filter(|answer| !is_answered(answer, &draft_words, &draft_clauses))
         .map(|answer| answer.question)
         .collect();
     let detail = if req.answers.is_empty() {
@@ -100,6 +99,165 @@ pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
         requirement,
         detail,
     }
+}
+
+/// Whether the draft gives this answer. An answer with a subject is read
+/// only where that subject is talked about, so a "not" about the time cannot
+/// answer a question about Priya.
+fn is_answered(answer: &Answer<'_>, draft_words: &[String], draft_clauses: &[Clause]) -> bool {
+    if answer.subject.is_empty() && answer.polarity == AnswerPolarity::Any {
+        return answer
+            .any_of
+            .iter()
+            .any(|phrase| contains_phrase(draft_words, phrase));
+    }
+    draft_clauses
+        .iter()
+        .enumerate()
+        .filter(|(_, clause)| holds_subject(clause, answer.subject))
+        .any(|(index, _)| {
+            let scope = answer_scope(draft_clauses, index, answer);
+            let stated = answer.any_of.iter().any(|phrase| {
+                scope
+                    .iter()
+                    .any(|clause_words| contains_phrase(clause_words, phrase))
+            });
+            stated
+                && (answer.polarity != AnswerPolarity::Positive
+                    || !scope.iter().any(|clause_words| has_negation(clause_words)))
+        })
+}
+
+fn holds_subject(clause: &Clause, subject: &[&str]) -> bool {
+    subject.is_empty()
+        || subject
+            .iter()
+            .any(|subject| contains_phrase(&clause.words, subject))
+}
+
+/// The clauses that speak about the subject found at `index`, with idioms
+/// such as "no problem" removed.
+fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Vec<Vec<String>> {
+    let clause = &clauses[index];
+    let is_bare = clause.words.iter().all(|word| {
+        answer
+            .subject
+            .iter()
+            .any(|subject| contains_phrase(std::slice::from_ref(word), subject))
+    });
+    let mut end = index + 1;
+    if is_bare {
+        while clauses
+            .get(end)
+            .is_some_and(|next| next.opened_by == Boundary::Soft)
+        {
+            end += 1;
+        }
+        // "Priya? No." puts the answer in the sentence after a bare subject.
+        if end == index + 1
+            && clause.opened_by == Boundary::Sentence
+            && clauses
+                .get(end)
+                .is_some_and(|next| next.opened_by == Boundary::Sentence)
+        {
+            end += 1;
+        }
+    }
+    let mut start = index;
+    if answer.polarity == AnswerPolarity::Negative {
+        while clauses
+            .get(end)
+            .is_some_and(|next| opens_with_person_pronoun(next) || concludes_with_no(next))
+        {
+            end += 1;
+        }
+        if index > 0 && opens_with_a_refusal(&clauses[index - 1], clause) {
+            start = index - 1;
+        }
+    }
+    clauses[start..end]
+        .iter()
+        .map(|clause| without_idioms(&clause.words))
+        .collect()
+}
+
+/// "I asked Priya, but she can't make it": the pronoun carries the subject on.
+fn opens_with_person_pronoun(clause: &Clause) -> bool {
+    clause
+        .words
+        .first()
+        .is_some_and(|word| matches!(word.split('\'').next(), Some("she" | "he" | "they")))
+}
+
+/// "Priya is unavailable, so no": the conclusion belongs to the clause before.
+fn concludes_with_no(clause: &Clause) -> bool {
+    clause.opened_by == Boundary::Hard && clause.words == ["no"]
+}
+
+/// "No, Priya is travelling" and "Sadly not, Priya is away" lead with the
+/// answer and name the subject after it.
+fn opens_with_a_refusal(lead: &Clause, clause: &Clause) -> bool {
+    lead.opened_by == Boundary::Sentence
+        && clause.opened_by == Boundary::Soft
+        && lead.words.len() <= 3
+        && matches!(lead.words.last().map(String::as_str), Some("no" | "not"))
+}
+
+/// Phrases that use a negative word to say something positive.
+const POSITIVE_IDIOMS: [&str; 15] = [
+    "no problem",
+    "no problems",
+    "not a problem",
+    "isn't a problem",
+    "no issue",
+    "no issues",
+    "not an issue",
+    "isn't an issue",
+    "no worries",
+    "no doubt",
+    "no trouble",
+    "don't mind",
+    "can't wait",
+    "won't miss",
+    "wouldn't miss",
+];
+
+fn without_idioms(clause_words: &[String]) -> Vec<String> {
+    let mut kept = clause_words.to_vec();
+    for idiom in POSITIVE_IDIOMS {
+        let idiom = words(idiom);
+        while let Some(at) = kept
+            .windows(idiom.len())
+            .position(|run| run == idiom.as_slice())
+        {
+            kept.drain(at..at + idiom.len());
+        }
+    }
+    kept
+}
+
+fn has_negation(clause_words: &[String]) -> bool {
+    const NEGATIONS: [&str; 16] = [
+        "no",
+        "not",
+        "never",
+        "cannot",
+        "can't",
+        "won't",
+        "wouldn't",
+        "shouldn't",
+        "couldn't",
+        "don't",
+        "doesn't",
+        "didn't",
+        "isn't",
+        "aren't",
+        "wasn't",
+        "weren't",
+    ];
+    NEGATIONS
+        .iter()
+        .any(|negation| contains_phrase(clause_words, negation))
 }
 
 pub(super) fn gaps(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
@@ -369,6 +527,8 @@ mod tests {
         let answers = [Answer {
             question: "when",
             any_of: &["friday", "2pm"],
+            subject: &[],
+            polarity: AnswerPolarity::Any,
         }];
         let requirements = req("", &answers, &[]);
         assert_eq!(
@@ -490,6 +650,8 @@ mod tests {
         let answers = [Answer {
             question: "when",
             any_of: &["friday"],
+            subject: &[],
+            polarity: AnswerPolarity::Any,
         }];
         let requirements = req("Friday at 2pm works for me.", &answers, &[]);
         let report = run(
@@ -507,10 +669,14 @@ mod tests {
         let first = Answer {
             question: "when",
             any_of: &["friday"],
+            subject: &[],
+            polarity: AnswerPolarity::Any,
         };
         let second = Answer {
             question: "where",
             any_of: &["room 4"],
+            subject: &[],
+            polarity: AnswerPolarity::Any,
         };
         let forward = [first, second];
         let backward = [second, first];
@@ -542,6 +708,8 @@ mod tests {
         let answers = [Answer {
             question: "will Priya join",
             any_of: &["no", "not"],
+            subject: &[],
+            polarity: AnswerPolarity::Any,
         }];
         let requirements = req("", &answers, &[]);
         assert_eq!(
@@ -552,6 +720,133 @@ mod tests {
             run(&requirements, "3pm works. Priya can't make it, no.").passed(Check::Answers),
             Some(true)
         );
+    }
+
+    #[test]
+    fn answers_are_bound_to_their_own_question_and_polarity() {
+        let answers = [
+            Answer {
+                question: "is 3pm fine",
+                any_of: &["3pm"],
+                subject: &["3pm"],
+                polarity: AnswerPolarity::Positive,
+            },
+            Answer {
+                question: "will Priya join",
+                any_of: &["no", "not", "can't", "cannot", "won't", "out"],
+                subject: &["Priya"],
+                polarity: AnswerPolarity::Negative,
+            },
+        ];
+        let requirements = req("", &answers, &[]);
+        let wrong_subject_and_polarity = run(&requirements, "3pm does not work. Priya will join.");
+        assert_eq!(
+            wrong_subject_and_polarity.passed(Check::Answers),
+            Some(false),
+            "{wrong_subject_and_polarity:?}"
+        );
+        assert_eq!(
+            run(&requirements, "3pm works. Priya cannot make it.").passed(Check::Answers),
+            Some(true)
+        );
+        assert_eq!(
+            run(&requirements, "Priya can’t make it. 3pm works!").passed(Check::Answers),
+            Some(true),
+            "answer order and punctuation do not change the result"
+        );
+    }
+
+    const CALL_ANSWERS: [Answer<'static>; 2] = [
+        Answer {
+            question: "is 3pm fine",
+            any_of: &["3pm"],
+            subject: &["3pm"],
+            polarity: AnswerPolarity::Positive,
+        },
+        Answer {
+            question: "will Priya join",
+            any_of: &["no", "not", "can't", "cannot", "won't", "out"],
+            subject: &["Priya"],
+            polarity: AnswerPolarity::Negative,
+        },
+    ];
+
+    #[test]
+    fn a_negation_in_another_clause_does_not_reverse_a_positive_answer() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works, but Priya can't make it.",
+            "3pm works; Priya can't make it.",
+            "3pm works and Priya can't make it.",
+            "3pm works \u{2014} Priya can't make it.",
+            "Priya can't make it, but 3pm works.",
+            "3pm is no problem. Priya is out.",
+            "I don't mind 3pm. Priya is out.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_negation_in_the_subjects_own_clause_fails_a_positive_answer() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm can't work, but Priya is out.",
+            "3pm, sadly, doesn't work. Priya can't make it.",
+            "3pm? No. Priya can't make it.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(false),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_negative_answer_needs_its_negation_on_the_subject() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. Priya will join, no problem.",
+            "3pm works. No problem, Priya will join.",
+            "3pm works. Priya will join no problem.",
+            "3pm works, not a problem, and Priya will join.",
+            "3pm works. Priya can't wait to join.",
+            "3pm works. Priya won't miss it.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(false),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_negative_answer_may_reach_its_subject_in_the_ways_people_write_it() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. Priya, sadly, can't make it.",
+            "3pm works. Priya's out that day.",
+            "3pm works. Priya and Sam can't make it.",
+            "3pm works. I asked Priya, but she can't make it.",
+            "3pm works. I asked Priya. She can't make it.",
+            "3pm works. No, Priya is travelling.",
+            "3pm works. Sadly not, Priya is away.",
+            "3pm works. Priya is away, so she won't join.",
+            "3pm works. Priya is unavailable, so no.",
+            "3pm? Yes. Priya? No.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
     }
 
     #[test]

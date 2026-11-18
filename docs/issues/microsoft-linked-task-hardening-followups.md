@@ -38,9 +38,10 @@ explicit sync of all links takes every link and runs them one at a time
 none. The request also holds the sync gate (L214), so background passes skip
 while it runs. Many unresponsive peers can make one request take minutes.
 
-Add paging or per-item progress. Do not change the preview and apply selection,
-widen account scope or replay uncertain writes. Test with a synthetic slow CLI
-and many links. Do not use real tasks.
+Bound the work in each request, for example with paging. Per-item progress is
+optional and does not bound the request by itself. Do not change the preview and
+apply selection, widen account scope or replay uncertain writes. Test with a
+synthetic slow CLI and many links. Do not use real tasks.
 
 ## An early child exit loses the refusal
 

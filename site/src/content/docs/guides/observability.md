@@ -99,7 +99,7 @@ The background refresher keeps views read in the last five minutes. It renews ea
 
 A rebuild reuses stored asks and history facts when they are still valid. Rebuild cost depends on the view, the mailbox, startup work and which facts are ready. A cached repeat is not a cold-read measurement. See [the architecture](/guides/architecture/#lists-read-compact-facts-detail-keeps-the-evidence) and [slow-view troubleshooting](/troubleshooting/#local-views-take-seconds-to-open).
 
-A read that records something always runs: `mxr reading` counts as a visit; `mxr reading edition --peek` does not.
+A read that can record something always runs. `mxr reading` counts as a visit unless activity tracking is off or paused. `mxr reading edition --peek` never counts as a visit.
 
 To watch the rebuilds, set `level = "debug"` under `[logging]` in `config.toml`, restart the daemon, and search the log:
 

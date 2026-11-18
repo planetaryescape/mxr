@@ -352,9 +352,10 @@ rebuildable inputs. They do not store a Messages response:
   removes the whole thread synopsis.
 
 The daemon keeps decoded history facts in memory and reuses them after it
-validates their source, facet and view clocks. It compares a token before and
-after each read, and does not keep a build that spans a change. Turns, Done state,
-people links, contact facts, ranking and filters stay live. List previews read
+validates their source, facet and view clocks. A cache hit checks the token
+once. A rebuild compares the token before and after its read, and does not keep
+a build that spans a change. Turns, Done state, people links, contact facts,
+ranking and filters stay live. List previews read
 body text in a batch without attachment metadata. Conversation detail keeps its
 complete read.
 

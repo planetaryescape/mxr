@@ -474,8 +474,10 @@ turn gets `LOADING_MESSAGES`, and a different account gets no prior list.
 History must never appear to be an attention answer while a request waits.
 Counts and empty wording wait for the selected filter's answer.
 
-Loading uses the existing list column and shared row skeleton; the filter
-status line reserves its height. Messages passes a zero minimum hold to
+A turn change or a first load shows the shared row skeleton in the existing list
+column. An Unread or Past your pace toggle on the same turn keeps the previous
+rows until the answer arrives, so no skeleton shows. The filter status line
+reserves its height. Messages passes a zero minimum hold to
 `useDelayedPending`, so ready data is not delayed to finish an animation.
 Both list and person requests consume React Query's cancellation signal.
 

@@ -32,13 +32,13 @@ Record each layer separately when you compare optimized binaries on the same sna
 | Upgrade | Schema before and after, and the one-time projection backfill time |
 | Startup | Whether normal maintenance has completed |
 | Persisted facts | Whether the asks, recipient and thread projections already exist |
-| Decoded facts | Whether startup has prepared in-memory thread history |
+| Decoded facts | Whether the To do loop's first pass has prepared in-memory thread history |
 | Response | Whether the exact view or a reusable Attention response already exists |
 | Client | Whether the browser kept its query data and mounted panes |
 
-A first All response after maintenance can reuse decoded history facts even when no complete All response exists. Your turn and Unread can reuse a fresh Attention response. Neither case is a cold read. The script does not clear caches or restart a daemon.
+The To do loop prepares decoded history facts on its first pass, about 20 seconds after the daemon starts. The log line `updates facts warmed` follows that step. A first All response after that pass can reuse those facts even when no complete All response exists. Your turn and Unread can reuse a fresh Attention response. Neither case is a cold read. A first All timing taken before that pass is not a warm read. The script does not clear caches or restart a daemon.
 
-To measure an independent first response, restart only an isolated daemon that you own. Wait for its normal maintenance to finish, then request All before any other view. Measure a projection miss separately. Keep tracing off for acceptance timings, name the build profile and avoid concurrent heavy work. The [release audit](../research/mail-view-performance-2026-10-26.md) shows how a passing installed sweep and slower cold reads can both be true.
+To measure an independent first response, restart only an isolated daemon that you own. Wait for its normal maintenance to finish, including the To do loop's first pass, then request All before any other view. Measure a projection miss separately. Keep tracing off for acceptance timings, name the build profile and avoid concurrent heavy work. The [release audit](../research/mail-view-performance-2026-10-26.md) shows how a passing installed sweep and slower cold reads can both be true.
 
 ## Verify freshness and output separately
 
@@ -70,7 +70,8 @@ In browser DevTools, record the time to first byte and total duration of the `/a
 Delay the filter response in an isolated browser test and check that:
 
 - The pane and controls stay mounted.
-- Loading rows use the list's geometry.
+- A turn change shows loading rows in the list's geometry.
+- An Unread or Past your pace toggle on the same turn keeps the previous rows until the answer arrives.
 - Ready data appears without a minimum skeleton hold.
 - A superseded read does not replace the selected view when you switch again before the first reply arrives.
 - `f` works in loading, empty, error and populated states.

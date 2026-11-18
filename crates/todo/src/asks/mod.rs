@@ -176,6 +176,7 @@ where
         }
     }
     let mut units = joined;
+    inherit_subject_reference(&facts, &mut units);
     // A subject may summarize the same body obligation. A different explicit
     // reference remains a distinct action, including when one bill is closed.
     let body_tags: Vec<_> = units
@@ -223,6 +224,39 @@ where
     }
 }
 
+/// A biller may name the account only in the subject. That name identifies the
+/// one payment the body asks for; it cannot tell several payments apart.
+fn inherit_subject_reference(facts: &AskFacts, units: &mut [AskUnit]) {
+    let mut named = facts
+        .references
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| facts.zones[r.zone].kind == ZoneKind::Subject);
+    let Some((subject, first)) = named.next() else {
+        return;
+    };
+    if named.any(|(_, r)| r.kind != first.kind || r.value != first.value) {
+        return;
+    }
+    let mut payments = units.iter_mut().filter(|unit| {
+        facts.zones[unit.zone].kind == ZoneKind::Authored
+            && unit
+                .tags
+                .as_ref()
+                .is_some_and(|tags| matches!(tags.action, ActionKind::Pay | ActionKind::FixPayment))
+    });
+    let (Some(only), None) = (payments.next(), payments.next()) else {
+        return;
+    };
+    if only.tags.as_ref().is_some_and(|t| t.reference.is_some()) {
+        return;
+    }
+    let votes = only.votes.iter_mut().map(|vote| &mut vote.tags);
+    for tags in votes.chain(only.tags.as_mut()) {
+        tags.reference = Some(subject);
+    }
+}
+
 fn resolve(tags: Option<&AskTags>, owner_replied: bool) -> AskAnswer {
     let Some(tags) = tags else {
         return AskAnswer::NotSure;
@@ -251,6 +285,8 @@ fn resolve(tags: Option<&AskTags>, owner_replied: bool) -> AskAnswer {
     }
 }
 
+#[cfg(test)]
+mod bill_identity_tests;
 #[cfg(test)]
 mod semantic_tests;
 #[cfg(test)]

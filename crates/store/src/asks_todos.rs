@@ -15,6 +15,107 @@ impl Store {
         prior.map(|json| crate::decode_json(&json)).transpose()
     }
 
+    /// The newest answer an earlier policy stored for this message. An answer
+    /// too old to decode has no identity left to carry forward.
+    pub async fn asks_before_current_policy(
+        &self,
+        answer: &mxr_core::asks::AskAssessment,
+    ) -> Result<Option<mxr_core::asks::AskAssessment>, sqlx::Error> {
+        let prior: Option<String> = sqlx::query_scalar("SELECT assessment_json FROM mail_assessments WHERE account_id=? AND message_id=? AND policy_version LIKE 'asks-r2c-%' AND policy_version != ? ORDER BY CAST(substr(policy_version, 10) AS INTEGER) DESC LIMIT 1")
+            .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(&answer.policy_version).fetch_optional(self.reader()).await?;
+        Ok(prior.and_then(|json| crate::decode_json(&json).ok()))
+    }
+
+    /// A row this message wrote under the identity an earlier policy gave it
+    /// becomes the row for the identity it has now. Only the message's own row
+    /// moves: an older mail must not claim the row a later one wrote, because
+    /// the two may turn out to be different accounts. When the new identity is
+    /// already taken, the two rows are one bill, and the user's decision wins.
+    pub async fn adopt_asks_reference_identity(
+        &self,
+        record: &TodoRecord,
+        answer: &mxr_core::asks::AskAssessment,
+        old_key: &str,
+    ) -> Result<(), sqlx::Error> {
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key=? AND source_message_id=? AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL", crate::todos::SELECT_COLUMNS);
+        let find_old = || {
+            sqlx::query(sqlx::AssertSqlSafe(sql.clone()))
+                .bind(record.account_id.as_str())
+                .bind(old_key)
+                .bind(answer.message_id.as_str())
+        };
+        // A read first, so the common scan with nothing to move takes no write lock.
+        if find_old().fetch_optional(self.reader()).await?.is_none() {
+            return Ok(());
+        }
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let current: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?1 AND a.account_id=?2 AND a.policy_version=?3 AND a.input_fingerprint=?4 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?5)")
+            .bind(answer.message_id.as_str()).bind(record.account_id.as_str()).bind(&answer.policy_version).bind(&answer.input_fingerprint)
+            .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?).fetch_one(&mut *tx).await?;
+        if !current {
+            return Ok(());
+        }
+        let Some(old) = find_old().fetch_optional(&mut *tx).await? else {
+            return Ok(());
+        };
+        let old = crate::todos::row_to_todo(&old)?;
+        let target_sql = format!(
+            "SELECT {} FROM todos WHERE account_id=? AND dedup_key=?",
+            crate::todos::SELECT_COLUMNS
+        );
+        let target = sqlx::query(sqlx::AssertSqlSafe(target_sql))
+            .bind(record.account_id.as_str())
+            .bind(&record.dedup_key)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|row| crate::todos::row_to_todo(&row))
+            .transpose()?;
+        let protected = |row: &TodoRecord| {
+            row.user_touched()
+                || matches!(
+                    row.state,
+                    crate::TodoState::Done | crate::TodoState::Dismissed
+                )
+        };
+        let retire =
+            "UPDATE todos SET dedup_key='asks-superseded|' || id, state='expired' WHERE id=?";
+        match (protected(&old), target) {
+            (false, None) => {
+                sqlx::query("UPDATE todos SET dedup_key=? WHERE id=?")
+                    .bind(&record.dedup_key)
+                    .bind(&old.id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            (false, Some(_)) => {
+                sqlx::query(retire).bind(&old.id).execute(&mut *tx).await?;
+            }
+            // Never merge two histories the user has each acted on.
+            (true, Some(target)) if protected(&target) => {}
+            (true, target) => {
+                if let Some(target) = target {
+                    sqlx::query(retire)
+                        .bind(&target.id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                // An alias, not a move: the row's exact Undo snapshot survives.
+                sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
+                    .bind(&old.id).bind(&record.dedup_key).execute(&mut *tx).await?;
+            }
+        }
+        // Undo reopened a row the alias was protecting, so updates flow again.
+        if !protected(&old) {
+            sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=? AND dedup_key=?")
+                .bind(&old.id)
+                .bind(&record.dedup_key)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Move automatic identities; alias protected history so its exact Undo survives.
     pub async fn adopt_asks_payment_identities(
         &self,

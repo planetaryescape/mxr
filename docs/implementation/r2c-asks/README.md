@@ -13,7 +13,7 @@ history. The [release workflow](https://github.com/planetaryescape/mxr/actions/r
 records artifact publication and installation checks. Earlier round notes below
 retain their original verification limits as implementation history.
 
-The current asks policy is `asks-r2c-17`. If the owner has no observed display
+The current asks policy is `asks-r2c-18`. If the owner has no observed display
 name, a salutation alone no longer overrides the sole owned To recipient.
 Known name mismatches, the sender's name, named copied addressees, shared recipients and context-only
 quotes remain excluded. Inspect the stored answer with `mxr modes why MESSAGE_ID --format json`.
@@ -54,7 +54,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-17` covers received and sent messages in the existing assessment
+`asks-r2c-18` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty

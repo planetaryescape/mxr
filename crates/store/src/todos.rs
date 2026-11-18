@@ -340,7 +340,10 @@ impl super::Store {
                 .fetch_all(self.reader())
                 .await?;
                 match keys.as_slice() {
-                    [key] => record.dedup_key = key.clone(),
+                    [key] => {
+                        record.dedup_key = key.clone();
+                        self.keep_stated_due_date(&mut record).await?;
+                    }
                     [] => {}
                     _ => return Ok(TodoUpsert::Unchanged),
                 }
@@ -348,6 +351,41 @@ impl super::Store {
         }
         self.upsert_todo_from_assessment(&record, Some(answer), None)
             .await
+    }
+
+    /// An undated reminder says nothing about when the bill fell due, so the
+    /// date an earlier mail stated stands. The marker tells a date carried this
+    /// way from one this mail stated itself and has since dropped.
+    async fn keep_stated_due_date(&self, record: &mut TodoRecord) -> Result<(), sqlx::Error> {
+        const CARRIED: &str = "asks_due_carried";
+        let Some(prior) = self
+            .get_todo_by_dedup(&record.account_id, &record.dedup_key)
+            .await?
+        else {
+            return Ok(());
+        };
+        let known: serde_json::Map<String, serde_json::Value> =
+            crate::decode_json(&prior.field_sources)?;
+        if prior.due_at.is_none()
+            || (prior.source_message_id == record.source_message_id && !known.contains_key(CARRIED))
+        {
+            return Ok(());
+        }
+        record.due_at = prior.due_at;
+        record.due_words = prior.due_words;
+        record.act_by_at = prior.act_by_at;
+        let mut fields: serde_json::Map<String, serde_json::Value> =
+            crate::decode_json(&record.field_sources)?;
+        for key in ["due_at", "act_by_at"] {
+            if let Some(value) = known.get(key) {
+                fields.insert(key.into(), value.clone());
+            }
+        }
+        if let Some(value) = known.get("due_at") {
+            fields.insert(CARRIED.into(), value.clone());
+        }
+        record.field_sources = crate::encode_json(&fields)?;
+        Ok(())
     }
 
     /// The accepted commitment snapshot and user-edit guard share the insert CAS.

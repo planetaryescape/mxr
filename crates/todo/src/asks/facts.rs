@@ -268,14 +268,23 @@ fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
         "payout",
         "balance",
         "charge",
+        "overdue",
+        "arrears",
     ]
     .iter()
     .any(|word| before.contains(word))
         && [
             "amount due",
+            "amount outstanding",
+            "amount owed",
+            "balance outstanding",
             "total due",
             "minimum payment",
             "payment due",
+            "payment reference",
+            "reference:",
+            "reference number",
+            "ref:",
             "due ",
             "due:",
             "account number",

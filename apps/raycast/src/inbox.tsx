@@ -6,6 +6,7 @@ import { AccountDropdown } from "./components/AccountDropdown";
 import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { MailRowItem } from "./components/MailRow";
+import { usePane, usePreview } from "./components/pane";
 import { web } from "./components/web";
 
 /**
@@ -35,10 +36,14 @@ export default function Inbox() {
   const rows = [...new Map((data ?? []).map((row) => [row.thread_id, row])).values()];
   const badge = useAccountBadge(account);
   useLiveRefresh(revalidate, (data?.length ?? 0) <= PAGE_SIZE);
+  const pane = usePane("inbox");
+  const preview = usePreview(pane.showing ? pane.selected : undefined);
 
   return (
     <List
       isLoading={isLoading}
+      isShowingDetail={pane.showing && rows.length > 0}
+      onSelectionChange={pane.select}
       pagination={pagination}
       onSearchTextChange={setQuery}
       throttle
@@ -59,6 +64,9 @@ export default function Inbox() {
             key={row.thread_id}
             row={row}
             badge={badge(row.account_id)}
+            account={badge.tagOf(row.account_id)}
+            pane={pane}
+            preview={preview}
             webPath={q ? web.search(row.thread_id) : web.inbox(row.thread_id)}
             onChange={revalidate}
           />

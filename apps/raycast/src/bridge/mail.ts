@@ -46,13 +46,21 @@ export interface MessageBody {
   message_id: string;
   text_plain?: string | null;
   text_html?: string | null;
-  attachments?: { filename: string; size_bytes: number }[];
+  attachments?: { id: string; filename: string; size_bytes: number; content_id?: string | null }[];
+}
+
+/** A message's label, as the thread route resolves it from the provider's ids. */
+export interface ThreadLabel {
+  id: string;
+  name: string;
+  kind: "system" | "folder" | "user";
+  color?: string | null;
 }
 
 export interface Thread {
   thread: { id: string; account_id: string; subject: string; message_count: number };
   /** Oldest first. */
-  messages: (MailRow & { to?: Address[]; cc?: Address[] })[];
+  messages: (MailRow & { to?: Address[]; cc?: Address[]; labels?: ThreadLabel[] })[];
   bodies: MessageBody[];
 }
 

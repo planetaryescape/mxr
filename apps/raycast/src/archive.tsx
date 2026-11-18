@@ -2,6 +2,7 @@ import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getRecords } from "./bridge/modes";
+import type { RecordRow } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
 import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
@@ -10,6 +11,19 @@ import { ReadAction } from "./components/ThreadDetail";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 import { keyFor } from "./components/keys";
+
+/** What a record is, at a glance. */
+const KIND_ICONS = {
+  receipt: Icon.Receipt,
+  order: Icon.Box,
+  booking: Icon.Airplane,
+  invoice: Icon.Document,
+  statement: Icon.BankNote,
+  ticket: Icon.Ticket,
+  contract: Icon.Pencil,
+  warranty: Icon.Shield,
+  account: Icon.Person,
+} satisfies Record<RecordRow["kind"], Icon>;
 
 export default function Archive() {
   const [account, setAccount] = useState<string>();
@@ -43,7 +57,7 @@ export default function Archive() {
           .map((record) => (
             <List.Item
               key={record.id}
-              icon={Icon.Document}
+              icon={KIND_ICONS[record.kind]}
               title={record.issuer ?? record.kind_label}
               subtitle={record.detail_line ?? record.reference ?? undefined}
               accessories={[

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getNow, markDone, tickOffTodo } from "./bridge/modes";
 import type { NowData } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { senderFace } from "./components/faces";
 import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
@@ -56,10 +57,17 @@ export default function Now() {
           .map(({ row, why }) => (
             <List.Item
               key={`person-${row.thread_id}`}
-              icon={row.overdue ? { source: Icon.Clock, tintColor: Color.Orange } : Icon.Person}
+              icon={senderFace(row.counterparty_name, row.counterparty_email)}
               title={row.counterparty_name ?? row.counterparty_email}
               subtitle={row.subject}
-              accessories={[...badge(row.account_id), { text: why }, arrival(row.since)]}
+              accessories={[
+                ...(row.overdue
+                  ? [{ tag: { value: "Overdue", color: Color.Orange }, tooltip: why }]
+                  : []),
+                ...badge(row.account_id),
+                { text: why },
+                arrival(row.since),
+              ]}
               actions={
                 <ActionPanel>
                   <ReadAction
@@ -165,7 +173,7 @@ export default function Now() {
         keep(now.reading.subject, now.reading.sender_name, now.reading.sender_email) && (
           <List.Section title="Reading">
             <List.Item
-              icon={Icon.Book}
+              icon={senderFace(now.reading.sender_name, now.reading.sender_email)}
               title={now.reading.subject}
               subtitle={now.reading.sender_name ?? now.reading.sender_email}
               accessories={[...badge(now.reading.account_id), { text: now.reading.why }]}

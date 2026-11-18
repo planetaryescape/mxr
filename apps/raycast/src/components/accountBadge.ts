@@ -18,23 +18,36 @@ function label(account: Account): string {
   return account.key || account.email.split("@")[0] || account.name;
 }
 
+/** An account's short name and colour, for a tag. */
+export interface AccountTag {
+  label: string;
+  color: Color;
+  email: string;
+}
+
 /**
  * A coloured tag naming the account a row came from. Shown only while the
  * list covers every account and there is more than one; a filtered list is
- * all one account already.
+ * all one account already. `tagOf` names the account anywhere else, such as
+ * the reading pane, which always says where the mail is.
  */
 export function useAccountBadge(selected: string | undefined) {
   const { data: accounts } = useCachedPromise(getAccounts, [], { keepPreviousData: true });
-  return (accountId: string | null | undefined): List.Item.Accessory[] => {
-    if (selected || !accounts || accounts.length < 2 || !accountId) return [];
+  const tagOf = (accountId: string | null | undefined): AccountTag | undefined => {
+    if (!accounts || !accountId) return undefined;
     const index = accounts.findIndex((account) => account.account_id === accountId);
     const account = accounts[index];
-    if (!account) return [];
-    return [
-      {
-        tag: { value: label(account), color: PALETTE[index % PALETTE.length] },
-        tooltip: account.email,
-      },
-    ];
+    if (!account) return undefined;
+    return {
+      label: label(account),
+      color: PALETTE[index % PALETTE.length] ?? Color.Blue,
+      email: account.email,
+    };
   };
+  const badge = (accountId: string | null | undefined): List.Item.Accessory[] => {
+    if (selected || !accounts || accounts.length < 2) return [];
+    const tag = tagOf(accountId);
+    return tag ? [{ tag: { value: tag.label, color: tag.color }, tooltip: tag.email }] : [];
+  };
+  return Object.assign(badge, { tagOf });
 }

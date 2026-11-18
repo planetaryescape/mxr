@@ -14936,5 +14936,12 @@
         "screener.paper-trail"
       ]
     }
+  ],
+  "raycast_action": [
+    {
+      "id": "raycast.reading-pane",
+      "label": "Show or hide the reading pane",
+      "key": "Cmd+d"
+    }
   ]
 }

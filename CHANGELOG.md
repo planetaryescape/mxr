@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.243](https://github.com/planetaryescape/mxr/compare/v0.6.242...v0.6.243) (2026-11-18)
+
+
+### Bug Fixes
+
+* update lettre to close SMTP security advisories ([#985](https://github.com/planetaryescape/mxr/issues/985)) ([1f5e351](https://github.com/planetaryescape/mxr/commit/1f5e35106602b3de4faf783e7eba2060d0fb4b57))
+
 ## [0.6.242](https://github.com/planetaryescape/mxr/compare/v0.6.241...v0.6.242) (2026-11-16)
 
 

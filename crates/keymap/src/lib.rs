@@ -227,6 +227,24 @@ pub struct Keymap {
     /// web's focus-bound keys don't (`Keymap::client_differences`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tui_pass_through: Vec<TuiPassThrough>,
+    /// Keys for what only the Raycast extension has.
+    #[serde(
+        rename = "raycast_action",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub raycast_actions: Vec<RaycastAction>,
+}
+
+/// A key for something only the Raycast extension has. It is not a
+/// [`KeyAction`]: neither the web app nor the TUI can run it, so `GetKeymap`
+/// and `mxr keys` have nothing to offer for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RaycastAction {
+    pub id: String,
+    pub label: String,
+    /// As [`RaycastShortcut::parse`] reads it: `Cmd+d`.
+    pub key: String,
 }
 
 /// The status bar's verbs for one state, in order. A client drops a member
@@ -576,7 +594,8 @@ impl Keymap {
             })
     }
 
-    /// Every web action's Raycast key, by action id.
+    /// Every Raycast key by action id: each web action's, then the keys
+    /// only Raycast has.
     pub fn raycast_keys(&self) -> BTreeMap<String, RaycastShortcut> {
         self.actions
             .iter()
@@ -585,6 +604,10 @@ impl Keymap {
                 let shortcut = RaycastShortcut::parse(&action.raycast_key()?)?;
                 Some((action.id.clone(), shortcut))
             })
+            .chain(self.raycast_actions.iter().filter_map(|action| {
+                let shortcut = RaycastShortcut::parse(&action.key)?;
+                Some((action.id.clone(), shortcut))
+            }))
             .collect()
     }
 
@@ -757,6 +780,21 @@ impl Keymap {
                         ));
                     }
                 }
+            }
+        }
+        for action in &self.raycast_actions {
+            let id = &action.id;
+            if !ids.insert(id.as_str()) {
+                problems.push(format!("{id}: defined twice"));
+            }
+            if action.label.trim().is_empty() {
+                problems.push(format!("{id}: has no label"));
+            }
+            if RaycastShortcut::parse(&action.key).is_none() {
+                problems.push(format!(
+                    "{id}: key `{}` is not Cmd/Shift/Ctrl/Opt plus a key",
+                    action.key
+                ));
             }
         }
         let mut strip_ids = BTreeSet::new();

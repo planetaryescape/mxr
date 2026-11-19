@@ -48,8 +48,28 @@ Shortcuts are Cmd plus the letter the same action has in the TUI and the
 web app, so Done Here is ⌘E, Save for Later ⌘B, Mark as Unread ⌘⇧U and Let
 Go of This Digest ⌘⇧A. Raycast's own keys stay where Raycast has one: ⌘Z
 undoes, ⌘⇧C copies, ⌘. pins, and Reply All is ⌘⇧R because ⌘A selects the
-search text. `mxr keys --client web` lists the letters. Every action is also
-in the ⌘K action panel.
+search text. `mxr keys --client web` lists the letters. ⌘D shows the reading
+pane, which only Raycast has. Every action is also in the ⌘K action panel.
+
+Each row shows who it is from as initials, in a colour picked from them.
+mxr draws the initials on your Mac, so no sender's name or address goes to
+any other service.
+
+Rows also carry what needs your eye: Overdue on a person past your usual
+reply pace, a ring on a Reading item you have started, and an icon for each
+kind of Archive record.
+
+## Read beside the list
+
+⌘D shows the reading pane in Inbox, Messages, Updates and Reading. It puts
+the newest message of the selected conversation beside the list, with who it
+is from, who it went to, when it arrived and which account it is in. Press ⌘D
+again to hide it. Each command remembers whether its pane is open.
+
+The pane marks nothing read, so you can look through mail and leave it unread.
+It loads only the selected conversation, and Raycast keeps no copy of it. An
+Updates line with no email behind it, such as a parcel tracker, shows only
+its summary.
 
 Rows show when mail arrived: the time today, "Yesterday 14:32", the weekday
 within a week, then the date. The tooltip has the full date.
@@ -74,7 +94,9 @@ Reads never count as a Reading visit or mark Updates seen.
 ## Read a conversation
 
 Read (Enter on most rows) opens the conversation in Raycast, newest message
-first, with who it is from and to and when it arrived. Long quoted history and
+first, with who it is from and to and when it arrived. A side panel names the
+account, the conversation's labels and folders, and each attachment with its
+size. Long quoted history and
 signatures fold the way they do in the web reader. HTML-only mail is shown as
 text, with images left out, so opening it never loads a sender's tracking
 pixel. As in the web app, the conversation is marked read once it has been

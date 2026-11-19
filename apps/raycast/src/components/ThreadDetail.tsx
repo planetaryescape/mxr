@@ -2,9 +2,11 @@ import { Action, ActionPanel, Detail, Icon, Toast, showToast } from "@raycast/ap
 import { useCachedPromise } from "@raycast/utils";
 import { useEffect, useRef } from "react";
 import { type Address, type Thread, getCodes, getThread, setRead } from "../bridge/mail";
+import { type AccountTag, useAccountBadge } from "./accountBadge";
 import { bodyMarkdown, inline } from "./body";
 import { message } from "./previewed";
 import { ReplyForm } from "./ReplyForm";
+import { fileSize, labelColor, threadAttachments, threadLabels } from "./threadFacts";
 import { fullDate } from "./time";
 import { useWebBase } from "./web";
 import { keyFor } from "./keys";
@@ -46,9 +48,44 @@ function markdown(data: Thread): string {
   return [`# ${inline(data.thread.subject) || "(no subject)"}`, ...messages].join("\n\n---\n\n");
 }
 
+/** The side panel: which account, its labels and what came with it. */
+function Panel({ data, account }: { data: Thread; account?: AccountTag }) {
+  const labels = threadLabels(data);
+  const attachments = threadAttachments(data);
+  return (
+    <Detail.Metadata>
+      {account ? (
+        <Detail.Metadata.TagList title="Account">
+          <Detail.Metadata.TagList.Item text={account.label} color={account.color} />
+        </Detail.Metadata.TagList>
+      ) : null}
+      {labels.length > 0 ? (
+        <Detail.Metadata.TagList title="Labels">
+          {labels.map((label) => (
+            <Detail.Metadata.TagList.Item
+              key={label.id}
+              text={label.name}
+              color={labelColor(label)}
+            />
+          ))}
+        </Detail.Metadata.TagList>
+      ) : null}
+      {attachments.map((attachment, index) => (
+        <Detail.Metadata.Label
+          key={attachment.id}
+          title={index === 0 ? "Attachments" : ""}
+          text={`${attachment.filename} · ${fileSize(attachment.size_bytes)}`}
+          icon={Icon.Paperclip}
+        />
+      ))}
+    </Detail.Metadata>
+  );
+}
+
 /** Read a conversation in Raycast, newest message first. */
 export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
   const webBase = useWebBase();
+  const accounts = useAccountBadge(undefined);
   const { data, isLoading, error } = useCachedPromise(getThread, [threadId]);
   // A sign-in email's code, while it still works, as the first action.
   const { data: codes } = useCachedPromise(() => getCodes(undefined, 10), [], {
@@ -76,6 +113,9 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
     // Once per opening, when the thread first arrives.
   }, [data?.thread.id]);
 
+  const account = accounts.tagOf(data?.thread.account_id);
+  const hasPanel =
+    data && (account || threadLabels(data).length > 0 || threadAttachments(data).length > 0);
   const latest = data?.messages.at(-1);
   const answer = replyTo ?? (latest && { messageId: latest.id, to: latest.sender });
   const markUnread = async () => {
@@ -105,54 +145,59 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
             ? markdown(data)
             : ""
       }
+      metadata={hasPanel ? <Panel data={data} account={account} /> : undefined}
       actions={
         <ActionPanel>
-          {code && (
-            <Action.CopyToClipboard
-              title={`Copy Code ${code.code}`}
-              icon={Icon.Key}
-              content={code.code}
-              concealed
-            />
-          )}
-          {answer && (
-            <Action.Push
-              title="Reply"
-              icon={Icon.Reply}
-              shortcut={keyFor("mail.reply")}
-              target={<ReplyForm messageId={answer.messageId} to={answer.to} onSent={onChange} />}
-            />
-          )}
-          {answer && (
-            <Action.Push
-              title="Reply All"
-              icon={Icon.Reply}
-              shortcut={keyFor("mail.reply-all")}
-              target={
-                <ReplyForm
-                  messageId={answer.messageId}
-                  kind="reply_all"
-                  to={answer.to}
-                  onSent={onChange}
-                />
-              }
-            />
-          )}
-          {webBase && (
-            <Action.OpenInBrowser
-              title="Open in mxr"
-              url={`${webBase}${webPath}`}
-              shortcut={keyFor("list.open")}
-            />
-          )}
-          {latest && (
-            <Action
-              title="Mark as Unread"
-              icon={Icon.Dot}
-              shortcut={keyFor("mail.mark-unread")}
-              onAction={markUnread}
-            />
-          )}
+          <ActionPanel.Section>
+            {code && (
+              <Action.CopyToClipboard
+                title={`Copy Code ${code.code}`}
+                icon={Icon.Key}
+                content={code.code}
+                concealed
+              />
+            )}
+            {answer && (
+              <Action.Push
+                title="Reply"
+                icon={Icon.Reply}
+                shortcut={keyFor("mail.reply")}
+                target={<ReplyForm messageId={answer.messageId} to={answer.to} onSent={onChange} />}
+              />
+            )}
+            {answer && (
+              <Action.Push
+                title="Reply All"
+                icon={Icon.Reply}
+                shortcut={keyFor("mail.reply-all")}
+                target={
+                  <ReplyForm
+                    messageId={answer.messageId}
+                    kind="reply_all"
+                    to={answer.to}
+                    onSent={onChange}
+                  />
+                }
+              />
+            )}
+          </ActionPanel.Section>
+          <ActionPanel.Section>
+            {webBase && (
+              <Action.OpenInBrowser
+                title="Open in mxr"
+                url={`${webBase}${webPath}`}
+                shortcut={keyFor("list.open")}
+              />
+            )}
+            {latest && (
+              <Action
+                title="Mark as Unread"
+                icon={Icon.Dot}
+                shortcut={keyFor("mail.mark-unread")}
+                onAction={markUnread}
+              />
+            )}
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />

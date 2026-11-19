@@ -7987,4 +7987,9 @@ name = "inline:delete"
 keys = ["#"]
 contexts = ["categories"]
 
-
+# Keys for what only the Raycast extension has. Neither the web app nor the
+# TUI can run these, so they are not actions.
+[[raycast_action]]
+id = "raycast.reading-pane"
+label = "Show or hide the reading pane"
+key = "Cmd+d"

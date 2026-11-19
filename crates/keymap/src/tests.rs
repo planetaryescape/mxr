@@ -398,6 +398,47 @@ fn raycast_keys_are_cmd_and_the_web_letter_unless_the_definition_says() {
 }
 
 #[test]
+fn a_key_only_raycast_has_reaches_raycast_and_no_other_client() {
+    let keymap = defaults();
+    assert_eq!(
+        keymap.raycast_keys().get("raycast.reading-pane"),
+        Some(&RaycastShortcut {
+            modifiers: vec!["cmd".into()],
+            key: "d".into()
+        })
+    );
+    assert!(keymap.get("raycast.reading-pane").is_none());
+}
+
+#[test]
+fn a_raycast_only_key_must_be_sound() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "mail.reply"
+        label = "Reply"
+        group = "Mail"
+        keys = ["r"]
+        clients = ["web"]
+
+        [[raycast_action]]
+        id = "mail.reply"
+        label = " "
+        key = "Hyper+d"
+        "#,
+    )
+    .expect("the test definition parses");
+    let problems = keymap.problems();
+    for expected in [
+        "mail.reply: defined twice",
+        "mail.reply: has no label",
+        "mail.reply: key `Hyper+d` is not Cmd/Shift/Ctrl/Opt plus a key",
+    ] {
+        assert!(problems.iter().any(|p| p == expected), "{problems:?}");
+    }
+}
+
+#[test]
 fn contexts_are_all_or_a_list() {
     let keymap = Keymap::parse(
         r#"

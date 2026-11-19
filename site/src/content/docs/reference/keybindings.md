@@ -16,7 +16,8 @@ Every default in both clients comes from one definition. `mxr keys` lists
 it, and `mxr keys explain <key> --context <place>` says what a key does
 there, for example `mxr keys explain e --context todo`. The Raycast
 extension reads the same definition: its shortcuts are Cmd plus the web app's
-letter, except where Raycast keeps its own key. See [Raycast](/guides/raycast/#what-each-command-shows).
+letter, except where Raycast keeps its own key. ⌘D shows Raycast's reading
+pane, which the other clients don't have. See [Raycast](/guides/raycast/#what-each-command-shows).
 
 When a default moves, the old key keeps a reminder for 30 releases: pressing
 it shows "<action> is now <key>" in the status bar and does nothing else.

@@ -8,6 +8,7 @@
 
 pub mod arrival;
 pub mod receiver_arc;
+pub mod subject;
 
 use chrono::{DateTime, Utc};
 use icalendar::parser::{

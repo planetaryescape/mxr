@@ -6,7 +6,9 @@ import type { MessagesRow } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
 import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
-import { SearchSection, useMailSearch } from "./components/MailRow";
+import { SearchSection, UNREAD, useMailSearch } from "./components/MailRow";
+import { senderFace } from "./components/faces";
+import { MailPane, PaneAction, searchRowThread, usePane, usePreview } from "./components/pane";
 import { ReplyForm } from "./components/ReplyForm";
 import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
@@ -31,6 +33,10 @@ function filterLabel(filter: MessagesFilter): string | undefined {
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
+function rowId(band: string, row: MessagesRow): string {
+  return `${band}-${row.account_id}-${row.id}`;
+}
+
 export default function Messages() {
   const [account, setAccount] = useState<string>();
   // Reopening Messages starts with attention, never a remembered history view.
@@ -43,6 +49,24 @@ export default function Messages() {
     Boolean(label) && data !== undefined && (data.matched ?? data.row_count) === 0;
   const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
+  const pane = usePane("messages");
+  // The pane reads each person's most pressing topic.
+  const bands: [string, MessagesRow[] | undefined][] = [
+    ["turn", data?.your_turn],
+    ["pinned", data?.pinned],
+    ["recent", data?.recent],
+    ["quiet", data?.quiet],
+  ];
+  const topicThreads = new Map(
+    bands.flatMap(([band, rows]) =>
+      (rows ?? []).flatMap((row) =>
+        row.topics[0] ? [[rowId(band, row), row.topics[0].thread_id] as const] : [],
+      ),
+    ),
+  );
+  const selectedThread =
+    searchRowThread(pane.selected) ?? (pane.selected ? topicThreads.get(pane.selected) : undefined);
+  const preview = usePreview(pane.showing ? selectedThread : undefined);
   const webBase = useWebBase();
   const search = useMailSearch(account);
   const shown = (rows: MessagesRow[] | undefined) =>
@@ -91,89 +115,123 @@ export default function Messages() {
   const item = (row: MessagesRow, band: string) => {
     const topic = row.topics[0];
     const name = row.person?.name ?? row.title;
+    const id = rowId(band, row);
     return (
       <List.Item
-        key={`${band}-${row.account_id}-${row.id}`}
-        icon={
-          row.overdue
-            ? { source: Icon.Clock, tintColor: Color.Orange }
-            : row.kind === "group"
-              ? Icon.TwoPeople
-              : Icon.Person
-        }
+        key={id}
+        id={id}
+        icon={senderFace(name, row.person?.addresses?.[0])}
         title={row.title}
-        subtitle={topic?.subject}
-        accessories={[
-          ...badge(row.account_id),
-          ...(row.unread
-            ? [{ icon: { source: Icon.Dot, tintColor: Color.Blue }, tooltip: "Unread" }]
-            : []),
-          ...(row.pace_label ? [{ text: row.pace_label }] : []),
-          arrival(row.last_at, row.why),
-        ]}
+        subtitle={pane.showing ? undefined : topic?.subject}
+        accessories={
+          pane.showing
+            ? undefined
+            : [
+                ...(row.unread ? [UNREAD] : []),
+                ...(row.overdue
+                  ? [{ tag: { value: "Overdue", color: Color.Orange }, tooltip: row.why }]
+                  : []),
+                ...badge(row.account_id),
+                ...(row.pace_label ? [{ text: row.pace_label }] : []),
+                arrival(row.last_at, row.why),
+              ]
+        }
+        detail={
+          pane.showing ? (
+            <MailPane
+              subject={topic?.subject ?? row.title}
+              fromName={name}
+              fromEmail={row.person?.addresses?.[0]}
+              date={row.last_at}
+              account={badge.tagOf(row.account_id)}
+              unread={row.unread}
+              preview={pane.selected === id ? preview : undefined}
+              fallback={row.preview?.text ?? row.why}
+            >
+              {row.why ? <List.Item.Detail.Metadata.Label title="Why Here" text={row.why} /> : null}
+              {row.topics.length > 1 ? (
+                <List.Item.Detail.Metadata.Label
+                  title="Topics"
+                  text={row.topics.map((entry) => entry.subject).join(" · ")}
+                />
+              ) : null}
+            </MailPane>
+          ) : undefined
+        }
         actions={
           <ActionPanel>
-            {topic && (
-              <ReadAction
-                threadId={topic.thread_id}
-                webPath={web.person(row.id, topic.thread_id)}
-                replyTo={{ messageId: topic.reply_to_message_id, to: name }}
-                onChange={revalidate}
-              />
-            )}
-            {topic && (
-              <Action.Push
-                title="Reply"
-                icon={Icon.Reply}
-                shortcut={keyFor("messages.reply")}
-                target={
-                  <ReplyForm messageId={topic.reply_to_message_id} to={name} onSent={revalidate} />
-                }
-              />
-            )}
-            {topic && row.kind !== "person" && (
-              <Action.Push
-                title="Reply All"
-                icon={Icon.Reply}
-                shortcut={keyFor("messages.reply-all")}
-                target={
-                  <ReplyForm
-                    messageId={topic.reply_to_message_id}
-                    kind="reply_all"
-                    to={name}
-                    onSent={revalidate}
-                  />
-                }
-              />
-            )}
-            {webBase && (
-              <Action.OpenInBrowser
-                title="Open in mxr"
-                url={`${webBase}${web.person(row.id, topic?.thread_id)}`}
-                shortcut={keyFor("messages.as-sent")}
-              />
-            )}
-            {row.topics.length > 0 && (
-              <Action
-                title="Done Here"
-                icon={Icon.Checkmark}
-                shortcut={keyFor("messages.done")}
-                onAction={() => {
-                  const threads = row.topics.map((t) => t.thread_id);
-                  return runPreviewed({
-                    title: `Done here with ${name}?`,
-                    confirm: "Done Here",
-                    preview: () => markDone("messages", threads, true),
-                    commit: () => markDone("messages", threads, false),
-                    describe: (done) => done.items.map((outcome) => outcome.copy).join("\n"),
-                    failures: (done) => itemErrors(done.items),
-                    undoId: (done) => done.mutation_id,
-                    done: "Done here",
-                    refresh: revalidate,
-                  });
-                }}
-              />
-            )}
+            <ActionPanel.Section>
+              {topic && (
+                <ReadAction
+                  threadId={topic.thread_id}
+                  webPath={web.person(row.id, topic.thread_id)}
+                  replyTo={{ messageId: topic.reply_to_message_id, to: name }}
+                  onChange={revalidate}
+                />
+              )}
+              {topic && (
+                <Action.Push
+                  title="Reply"
+                  icon={Icon.Reply}
+                  shortcut={keyFor("messages.reply")}
+                  target={
+                    <ReplyForm
+                      messageId={topic.reply_to_message_id}
+                      to={name}
+                      onSent={revalidate}
+                    />
+                  }
+                />
+              )}
+              {topic && row.kind !== "person" && (
+                <Action.Push
+                  title="Reply All"
+                  icon={Icon.Reply}
+                  shortcut={keyFor("messages.reply-all")}
+                  target={
+                    <ReplyForm
+                      messageId={topic.reply_to_message_id}
+                      kind="reply_all"
+                      to={name}
+                      onSent={revalidate}
+                    />
+                  }
+                />
+              )}
+            </ActionPanel.Section>
+            <ActionPanel.Section>
+              {row.topics.length > 0 && (
+                <Action
+                  title="Done Here"
+                  icon={Icon.Checkmark}
+                  shortcut={keyFor("messages.done")}
+                  onAction={() => {
+                    const threads = row.topics.map((t) => t.thread_id);
+                    return runPreviewed({
+                      title: `Done here with ${name}?`,
+                      confirm: "Done Here",
+                      preview: () => markDone("messages", threads, true),
+                      commit: () => markDone("messages", threads, false),
+                      describe: (done) => done.items.map((outcome) => outcome.copy).join("\n"),
+                      failures: (done) => itemErrors(done.items),
+                      undoId: (done) => done.mutation_id,
+                      done: "Done here",
+                      refresh: revalidate,
+                    });
+                  }}
+                />
+              )}
+            </ActionPanel.Section>
+            <ActionPanel.Section>
+              {webBase && (
+                <Action.OpenInBrowser
+                  title="Open in mxr"
+                  url={`${webBase}${web.person(row.id, topic?.thread_id)}`}
+                  shortcut={keyFor("messages.as-sent")}
+                />
+              )}
+              <PaneAction pane={pane} />
+            </ActionPanel.Section>
             <ActionPanel.Section>{filterMenu}</ActionPanel.Section>
           </ActionPanel>
         }
@@ -184,6 +242,8 @@ export default function Messages() {
   return (
     <List
       isLoading={isLoading || search.isLoading}
+      isShowingDetail={pane.showing && (topicThreads.size > 0 || search.results.length > 0)}
+      onSelectionChange={pane.select}
       navigationTitle={label ? `Messages · ${label}` : (data?.header ?? "Messages")}
       searchBarPlaceholder="Filter people and search all mail"
       searchBarAccessory={<AccountDropdown onChange={setAccount} />}
@@ -227,7 +287,13 @@ export default function Messages() {
       <List.Section title="Quiet" subtitle={data ? String(data.quiet_total) : undefined}>
         {shown(data?.quiet).map((row) => item(row, "quiet"))}
       </List.Section>
-      <SearchSection search={search} badge={badge} onChange={revalidate} />
+      <SearchSection
+        search={search}
+        badge={badge}
+        pane={pane}
+        preview={preview}
+        onChange={revalidate}
+      />
     </List>
   );
 }

@@ -393,6 +393,12 @@
     ],
     "key": "t"
   },
+  "raycast.reading-pane": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "d"
+  },
   "reader.bottom": {
     "modifiers": [
       "cmd",

@@ -111,6 +111,8 @@ The trade-off: the mapper has to *know* the shape of every request it cares abou
 
 The seam is *after* `handle_request` returns, not before. That's deliberate: we record `ok = response.is_ok()` so failed actions don't pollute the log. Failures live in `event_log`, not `user_activity`.
 
+A paired client's action arrives wrapped in `RemoteRead`. The seam maps the wrapped request, so the row lands in the host's log with the source the client declared. The remote handler dispatches the wrapped request directly, so each action writes one row. Paired clients still cannot read activity history.
+
 ## Recorder — what's load-bearing
 
 The recorder is the most subtle component. It runs as a single `tokio::spawn`ed worker draining a bounded `mpsc::channel`. Three properties are load-bearing:

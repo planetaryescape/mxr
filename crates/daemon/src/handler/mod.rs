@@ -554,10 +554,16 @@ pub async fn handle_request_with_peer(
                 // Activity capture seam. Fire-and-forget; never propagates errors.
                 // See `docs/activity-log.md`.
                 let ok = response_succeeded(&response);
+                // A paired client's action arrives wrapped, and the remote handler
+                // dispatches it without passing this seam again.
+                let activity_request = match req {
+                    Request::RemoteRead { request, .. } => request.as_ref(),
+                    _ => req,
+                };
                 let account_id_for_activity =
-                    request_account_id(req).map(mxr_core::AccountId::as_str);
+                    request_account_id(activity_request).map(mxr_core::AccountId::as_str);
                 if let Some(entry) = crate::activity::mapper::map_request(
-                    req,
+                    activity_request,
                     msg.source,
                     account_id_for_activity.as_deref(),
                     ok,

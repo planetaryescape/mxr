@@ -102,6 +102,8 @@ mxr connect https://mail-host.example-tailnet.ts.net:8443 \
 | `--allow-triage` | `mail_triage` | Archive, labels, snooze, mode moves, todo changes, reviewed batches and sync |
 | `--allow-ai` | `mail_ai` | Summaries, writing help, mail questions and the assistant |
 
+The host records completed mail actions from paired clients in its local `mxr activity` log. Paired clients cannot read that log.
+
 The grants are independent. AI access follows the host's configured models and privacy policy; it does not grant sending or mail changes. Applying writing help to a stored draft also needs `mail_send`. Assistant tools check the originating registration and its grants for every operation, including after a turn starts. Assistant history belongs to that paired installation: its browser sessions share the history, while local host conversations and other installations remain separate. Re-pairing creates a new registration and does not adopt the previous registration's conversations. Continue a remote conversation from its paired client; the host refuses to resume it with local tool privileges.
 
 Model availability reflects the host. Remote status omits its endpoint addresses, environment-variable names and credential locations. Without `mail_ai`, the client reports AI as disabled. Configure models and keys on the host.
@@ -136,7 +138,7 @@ mxr send-outcome ORIGINAL_OPERATION_ID --account ACCOUNT_ID \
 
 Keep the original identity after a disconnect or host restart. An `accepted` outcome means the provider accepted the send; retrying that operation with the retained account returns the accepted result even after the draft was removed. `unknown` remains uncertain: query it and do not resend under a new operation ID. `not_accepted` requires a fresh review before a new attempt.
 
-Outgoing attachment paths are read on the client and uploaded as bounded bytes. The host opens only managed resources. Reading, previewing and sending legacy drafts with host paths or inline path-backed assets are refused remotely; recreate them with portable uploads. Received attachments download to the client:
+Outgoing attachment paths are read on the client and uploaded as bounded bytes. The host opens only managed resources. Reading, previewing and sending legacy drafts with host paths or inline path-backed assets are refused remotely, and remote draft lists omit them; recreate them with portable uploads. Received attachments download to the client:
 
 ```sh
 mxr attachments download MESSAGE_ID --dir ./downloads --format json

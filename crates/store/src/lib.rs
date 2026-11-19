@@ -22,6 +22,25 @@ macro_rules! todo_untouched_sql {
     };
 }
 
+/// SQL that is true while an alias's linked row still holds a user decision:
+/// `TodoRecord::user_touched`, or a row the user closed. Pass the table alias
+/// with its dot, such as `"old."`.
+macro_rules! asks_alias_protected_sql {
+    ($prefix:literal) => {
+        concat!(
+            "(",
+            $prefix,
+            "user_edited != 0 OR ",
+            $prefix,
+            "origin IN ('manual', 'handoff') OR ",
+            $prefix,
+            "scheduled_for IS NOT NULL OR ",
+            $prefix,
+            "state IN ('done', 'dismissed'))"
+        )
+    };
+}
+
 mod account;
 mod analytics;
 mod approved_sends;

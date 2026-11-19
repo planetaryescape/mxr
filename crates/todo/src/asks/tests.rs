@@ -16,7 +16,7 @@ fn judge_as(
     judge_complete(body, outbound, role, replied, list, "")
 }
 
-fn judge_complete(
+pub(super) fn judge_complete(
     body: &str,
     outbound: bool,
     role: RecipientRole,

@@ -91,6 +91,12 @@ renewal reviews can become tasks automatically. An alert in Updates offers
 `t` to create a task when you choose; it does not automatically create one
 merely because it appears in `Needs a look`.
 
+A reminder for the same bill updates its task. mxr tells bills from one sender
+apart by the account, invoice, policy, order or payment reference in the email,
+including one named only in the subject. The account number you pay into does
+not count, because the sender's other customers pay into it too. A reminder
+with no date keeps the due date the earlier email gave.
+
 ## Correct ownership or details
 
 Press `X` in the web app or TUI and choose `Not a to-do`, `Not mine`,

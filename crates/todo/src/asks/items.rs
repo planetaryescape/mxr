@@ -169,6 +169,12 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             let object = tags
                 .reference
                 .and_then(|i| answer.facts.references.get(i))
+                // A bare reference identifies a payment. Elsewhere it may head
+                // several separate requests, which must keep their own rows.
+                .filter(|r| {
+                    r.kind != "reference"
+                        || matches!(tags.action, ActionKind::Pay | ActionKind::FixPayment)
+                })
                 .map_or_else(
                     || quote.to_lowercase(),
                     |r| format!("{}:{}", r.kind, r.value.to_lowercase()),

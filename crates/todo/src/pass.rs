@@ -319,6 +319,29 @@ where
         catchup_days: cfg.catchup_days,
         catchup_max: cfg.catchup_max,
     };
+    // Rows written by the previous policy, so a changed identity keeps its row.
+    let earlier: Vec<_> = if detections.is_empty() {
+        Vec::new()
+    } else {
+        store
+            .asks_before_current_policy(answer)
+            .await?
+            .filter(|old| old.facts.zones == answer.facts.zones)
+            .map(|old| {
+                crate::asks::items::detections(&old, &envelope)
+                    .into_iter()
+                    .map(|(index, prior)| {
+                        let kind = prior.kind;
+                        let key = stored_record(&frozen, row, prior, run_in_progress)
+                            .0
+                            .dedup_key;
+                        let unit = &old.units[index];
+                        (unit.zone, unit.span.clone(), kind, key)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let mut current_keys = Vec::new();
     let sibling_keys: Vec<String> = detections
         .iter()
@@ -448,6 +471,22 @@ where
         record.commitment_id = commitment.map(|c| c.id);
         if let Some(prior) = prior {
             record.dedup_key = prior.dedup_key;
+        }
+        let unit = &answer.units[unit_index];
+        let mut renamed = earlier.iter().filter(|(zone, span, kind, _)| {
+            *zone == unit.zone
+                && span.start < unit.span.end
+                && unit.span.start < span.end
+                && kind.as_str() == record.kind
+        });
+        // Several earlier items in one unit are a grouped obligation, which
+        // `adopt_asks_payment_identities` already reconciles above.
+        if let (Some((_, _, _, old_key)), None) = (renamed.next(), renamed.next()) {
+            if *old_key != record.dedup_key && !sibling_keys.contains(old_key) {
+                store
+                    .adopt_asks_reference_identity(&record, answer, old_key)
+                    .await?;
+            }
         }
         current_keys.push(record.reason.clone());
         store

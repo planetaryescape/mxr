@@ -823,6 +823,7 @@ mod rule_treatment;
 mod rule_trust;
 
 mod asks_task_identity;
+mod bill_identity;
 mod promise_closed_history;
 mod promise_currencies;
 mod promise_lifecycle;

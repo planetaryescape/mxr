@@ -10,7 +10,7 @@ macro_rules! pattern {
 }
 pattern!(
     COMPLETE,
-    r"(?i)\b(payment (?:received|confirmed|successful|complete)|has been paid|already paid|nothing outstanding|nothing to pay|we have since taken it|no (?:payment|amount) (?:is )?due|now resolved|successfully retried)\b"
+    r"(?i)\b(payment (?:received|confirmed|successful|complete)|has been paid|already paid|nothing outstanding|nothing to pay|no arrears|not in arrears|we have since taken it|no (?:payment|amount) (?:is )?due|now resolved|successfully retried)\b"
 );
 pattern!(
     CREDIT,
@@ -34,7 +34,7 @@ pattern!(
 );
 pattern!(
     BILL,
-    r"(?i)\b(invoice|bill|amount (?:due|owed|outstanding)|(?:payment|balance) (?:of [^!?\n]{1,80} )?is (?:now )?(?:due|payable)|you owe|\beft\b|send me your half|balance (?:due|outstanding)|payment (?:is )?(?:due|overdue)|minimum payment|please pay|pay (?:by|now)|past due)\b"
+    r"(?i)\b(invoice|bill|arrears of|settle (?:the |your |this )?(?:current |outstanding )?(?:arrears|balance|account|amount)|amount (?:due|owed|outstanding)|(?:payment|balance) (?:of [^!?\n]{1,80} )?is (?:now )?(?:due|payable)|you owe|\beft\b|send me your half|balance (?:due|outstanding)|payment (?:is )?(?:due|overdue)|minimum payment|please pay|pay (?:by|now)|past due)\b"
 );
 pattern!(STATEMENT, r"(?i)\b(statement|minimum payment)\b");
 pattern!(MINIMUM, r"(?i)\bminimum (?:payment|amount)\b");

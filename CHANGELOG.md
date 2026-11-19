@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.244](https://github.com/planetaryescape/mxr/compare/v0.6.243...v0.6.244) (2026-11-19)
+
+
+### Features
+
+* add a reading pane, sender initials and command icons to Raycast ([#983](https://github.com/planetaryescape/mxr/issues/983)) ([d13642e](https://github.com/planetaryescape/mxr/commit/d13642e0f91e39e2c388ac05ba47b224820038fc))
+
+
+### Bug Fixes
+
+* close remote and MCP follow-ups ([#988](https://github.com/planetaryescape/mxr/issues/988)) ([c31cdcc](https://github.com/planetaryescape/mxr/commit/c31cdccfe88c7f1a87b920d4386b9c4f66084021))
+
+
+### Documentation
+
+* explain how to measure and troubleshoot local mail views ([#982](https://github.com/planetaryescape/mxr/issues/982)) ([f1d44a2](https://github.com/planetaryescape/mxr/commit/f1d44a24a519b20c8ed4773c81374a51301ebbf0))
+
 ## [0.6.243](https://github.com/planetaryescape/mxr/compare/v0.6.242...v0.6.243) (2026-11-18)
 
 

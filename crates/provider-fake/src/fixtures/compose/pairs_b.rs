@@ -123,7 +123,9 @@ const TWO_QUESTIONS: &[Answer] = &[
     },
     Answer {
         question: "will Priya join",
-        any_of: &["no", "not", "can't", "cannot", "won't", "out"],
+        any_of: &[
+            "no", "not", "can't", "cannot", "won't", "out", "isn't", "unable",
+        ],
         subject: &["Priya"],
         polarity: AnswerPolarity::Negative,
     },

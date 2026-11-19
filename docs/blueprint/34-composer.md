@@ -523,11 +523,16 @@ subject. Clauses end at commas, semicolons, colons, dashes and words such as
 "and", "but" and "so". A positive answer fails on a negation in that clause. A
 negative answer needs one of its phrases in that clause, in a clause that
 carries the subject on with "she", "he" or "they", or in a short lead such as
-"No, Priya is travelling". Idioms such as "no problem" do not count as
-negations. The `call-empty` recordings cover a negative word borrowed from the
-3pm answer, the accepted "Priya cannot make it" wording, and both answers in
-one sentence. The check reads words, not meaning. Its known limits are in
-`docs/issues/compose-eval-answers-per-question.md`.
+"No, Priya is travelling" or "No. Priya is travelling". A lead sentence after
+a bare subject ("3pm? No.") answers that subject instead. A negative answer
+fails when the subject's own statement says yes: it has the word that follows
+the subject in the question ("join" in "will Priya join") and no negation, as
+in "Priya will join, but she can't stay long". Idioms such as "no problem",
+"not bad" and "will not miss it" do not count as negations. The `call-empty`
+recordings cover a negative word borrowed from the 3pm answer, the accepted
+"Priya cannot make it" wording, and both answers in one sentence. The check
+reads words, not meaning. Moving it to a model is a grader design choice for
+the rung that moves answers to a stronger check.
 
 Today's request has no field for typed text or a selection, so neither
 reaches the prompt. Each typed case's prompt in the snapshot says so. That

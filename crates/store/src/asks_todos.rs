@@ -104,11 +104,11 @@ impl Store {
                     .bind(&old.id).bind(&record.dedup_key).execute(&mut *tx).await?;
             }
         }
-        // Undo reopened a row the alias was protecting, so updates flow again.
+        // Undo reopened the row, so it speaks for none of its aliased bills. A
+        // kept alias would suppress them again if the user later closes the row.
         if !protected(&old) {
-            sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=? AND dedup_key=?")
+            sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=?")
                 .bind(&old.id)
-                .bind(&record.dedup_key)
                 .execute(&mut *tx)
                 .await?;
         }

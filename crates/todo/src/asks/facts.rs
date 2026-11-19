@@ -231,6 +231,10 @@ fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
     if separator == '\n' && after.starts_with('\n') || after.starts_with("\n\n") {
         return false;
     }
+    let (original_before, original_line) = (
+        before,
+        after.trim_start().lines().next().unwrap_or_default().trim(),
+    );
     let before = before.to_ascii_lowercase();
     if before.contains("confirm your delivery address")
         && after
@@ -273,18 +277,11 @@ fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
     ]
     .iter()
     .any(|word| before.contains(word))
-        && [
+        && ([
             "amount due",
-            "amount outstanding",
-            "amount owed",
-            "balance outstanding",
             "total due",
             "minimum payment",
             "payment due",
-            "payment reference",
-            "reference:",
-            "reference number",
-            "ref:",
             "due ",
             "due:",
             "account number",
@@ -298,6 +295,18 @@ fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
         ]
         .iter()
         .any(|field| after.starts_with(field))
+            || [
+                "amount outstanding",
+                "amount owed",
+                "balance outstanding",
+                "payment reference",
+                "reference:",
+                "reference number",
+                "ref:",
+            ]
+            .iter()
+            .any(|field| after.starts_with(field))
+                && !super::candidates::restates_billing_terms(original_before, original_line))
 }
 
 fn push_span(text: &str, start: usize, end: usize, spans: &mut Vec<AskSpan>) {

@@ -3,6 +3,7 @@ use chrono::{DateTime, TimeZone};
 use mxr_core::asks::*;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::ops::Range;
 
 static DUE: Lazy<Regex> = Lazy::new(|| {
     trigger_regex(
@@ -53,9 +54,17 @@ fn bank_blocks(text: &str) -> Vec<(usize, usize)> {
         if blocks.last().is_some_and(|(_, end)| opening.start() < *end) {
             continue;
         }
-        let end = text[opening.end()..]
-            .find("\n\n")
-            .map_or(text.len(), |at| opening.end() + at);
+        // Mail may end lines with CRLF, and a "blank" line may hold spaces.
+        let rest = &text[opening.end()..];
+        let mut line_start = opening.end() + rest.find('\n').map_or(rest.len(), |at| at + 1);
+        let mut end = text.len();
+        for line in text[line_start..].split_inclusive('\n') {
+            if line.trim().is_empty() {
+                end = line_start;
+                break;
+            }
+            line_start += line.len();
+        }
         blocks.push((opening.start(), end));
     }
     blocks
@@ -69,6 +78,35 @@ fn is_billers_account(text: &str, blocks: &[(usize, usize)], label: usize) -> bo
         .iter()
         .any(|(start, end)| *start <= label && label < *end)
         || BANK_WORD.is_match(&text[line..label])
+}
+
+/// "Invoice R953.63" states a price. Only a whole number with no cents, like
+/// "Payment reference: R123456", is an identifier.
+fn reads_as_money(text: &str, value: Range<usize>, amount: Range<usize>) -> bool {
+    amount.start < value.start || amount.end > value.end || CENTS.is_match(&text[amount])
+}
+
+/// Whether `text` states an amount, leaving out one that is really a reference.
+fn states_amount(text: &str) -> bool {
+    crate::money::find_candidates(text)
+        .into_iter()
+        .any(|(start, amount)| {
+            let span = start..start + amount.text.len();
+            !REFERENCE
+                .captures_iter(text)
+                .filter_map(|captures| captures.name("value"))
+                .any(|value| {
+                    span.start < value.end()
+                        && value.start() < span.end
+                        && !reads_as_money(text, value.range(), span.clone())
+                })
+        })
+}
+
+/// A second amount or deadline means `line` is another bill, not more detail
+/// about the bill in `before`.
+pub(super) fn restates_billing_terms(before: &str, line: &str) -> bool {
+    states_amount(before) && states_amount(line) || has_due(before) && has_due(line)
 }
 
 /// A remediation with different explicit billing fields is a separate request.
@@ -217,15 +255,12 @@ where
             if kind == "account" && is_billers_account(&source.text, &blocks, whole.start()) {
                 continue;
             }
-            // "Invoice R953.63" states a price. Only a whole number with no
-            // cents, like "Payment reference: R123456", is an identifier.
             let is_money = facts.amounts.iter().any(|amount| {
+                let span = amount.span.start..amount.span.end;
                 amount.zone == zone
-                    && amount.span.start < value.end()
-                    && value.start() < amount.span.end
-                    && (amount.span.start < value.start()
-                        || amount.span.end > value.end()
-                        || CENTS.is_match(&source.text[amount.span.start..amount.span.end]))
+                    && span.start < value.end()
+                    && value.start() < span.end
+                    && reads_as_money(&source.text, value.range(), span)
             });
             if is_money {
                 continue;

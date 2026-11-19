@@ -1064,3 +1064,182 @@ async fn reading_the_source_does_not_block_undoing_a_correction() {
     assert_eq!(undone.title, before.title);
     assert_eq!(undone.source_unread, Some(false));
 }
+
+const BILL_IDENTITY: &str = "asks|payment|fp";
+
+/// An automatic bill row that asks projection may adopt.
+fn asks_bill(fx: &Fx, id: &str, source: &(MessageId, ThreadId), period: &str) -> TodoRecord {
+    TodoRecord {
+        dedup_key: format!("{BILL_IDENTITY}|{period}"),
+        rules_version: 2,
+        field_sources: r#"{"asks_provenance":{"source":"rule","evidence":"unit"}}"#.to_string(),
+        ..fx.record(id, source, at(0))
+    }
+}
+
+async fn alias(fx: &Fx, todo_id: &str, dedup_key: &str) {
+    sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?)")
+        .bind(todo_id)
+        .bind(dedup_key)
+        .execute(fx.store.writer())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn undo_frees_every_bill_its_closed_row_was_standing_in_for() {
+    let fx = Fx::new().await;
+    let source = fx.message("split", at(0)).await;
+    let answers = saved_asks(&fx, &[&source]).await;
+    let ask = &answers[0];
+    let closed = TodoRecord {
+        dedup_key: "asks|payment|old|due:2026-10".to_string(),
+        state: TodoState::Done,
+        done_at: Some(at(1)),
+        ..asks_bill(&fx, "closed", &source, "due:2026-10")
+    };
+    fx.store.insert_todo(&closed).await.unwrap();
+    let first = TodoRecord {
+        dedup_key: "asks|payment|first|due:2026-10".to_string(),
+        ..asks_bill(&fx, "first", &source, "due:2026-10")
+    };
+    let second = TodoRecord {
+        dedup_key: "asks|payment|second|due:2026-10".to_string(),
+        ..asks_bill(&fx, "second", &source, "due:2026-10")
+    };
+    for bill in [&first, &second] {
+        fx.store
+            .adopt_asks_reference_identity(bill, ask, &closed.dedup_key)
+            .await
+            .unwrap();
+        assert_eq!(
+            fx.store.upsert_asks_todo(bill, ask).await.unwrap(),
+            TodoUpsert::Unchanged,
+            "the closed row still speaks for this bill"
+        );
+    }
+
+    sqlx::query("UPDATE todos SET state='open', done_at=NULL WHERE id='closed'")
+        .execute(fx.store.writer())
+        .await
+        .unwrap();
+    for bill in [&first, &second] {
+        fx.store
+            .adopt_asks_reference_identity(bill, ask, &closed.dedup_key)
+            .await
+            .unwrap();
+    }
+
+    let moved = fx.store.get_todo("closed").await.unwrap().unwrap();
+    assert_eq!(moved.dedup_key, first.dedup_key);
+    assert!(matches!(
+        fx.store.upsert_asks_todo(&second, ask).await.unwrap(),
+        TodoUpsert::Inserted { .. }
+    ));
+    let links: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_legacy_links")
+        .fetch_one(fx.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(links, 0, "closing the row again must not revive an alias");
+}
+
+#[tokio::test]
+async fn an_alias_only_suppresses_a_bill_while_its_row_stays_protected() {
+    let fx = Fx::new().await;
+    let source = fx.message("aliased", at(0)).await;
+    let answers = saved_asks(&fx, &[&source]).await;
+    let row = asks_bill(&fx, "row", &source, "due:2026-09");
+    fx.store.insert_todo(&row).await.unwrap();
+    let key = format!("{BILL_IDENTITY}|due:2026-10");
+    alias(&fx, "row", &key).await;
+    let bill = TodoRecord {
+        dedup_key: key,
+        ..asks_bill(&fx, "bill", &source, "due:2026-10")
+    };
+    assert!(matches!(
+        fx.store.upsert_asks_todo(&bill, &answers[0]).await.unwrap(),
+        TodoUpsert::Inserted { .. }
+    ));
+}
+
+#[tokio::test]
+async fn a_stale_alias_does_not_make_an_undated_reminder_ambiguous() {
+    let fx = Fx::new().await;
+    let first = fx.message("dated", at(0)).await;
+    let reminder = fx.message("reminder", at(1)).await;
+    let answers = saved_asks(&fx, &[&first, &reminder]).await;
+    let dated = asks_bill(&fx, "dated", &first, "due:2026-11");
+    fx.store.insert_todo(&dated).await.unwrap();
+    alias(&fx, "dated", &format!("{BILL_IDENTITY}|due:2026-10")).await;
+    let undated = TodoRecord {
+        due_at: None,
+        due_words: None,
+        act_by_at: None,
+        source_date: Some(at(1)),
+        ..asks_bill(&fx, "undated", &reminder, "sent:2026-10")
+    };
+    assert!(matches!(
+        fx.store
+            .upsert_asks_todo(&undated, &answers[1])
+            .await
+            .unwrap(),
+        TodoUpsert::Updated { .. }
+    ));
+    let row = fx.store.get_todo("dated").await.unwrap().unwrap();
+    assert_eq!(row.source_message_id.as_ref(), Some(&reminder.0));
+    assert_eq!(row.due_at, dated.due_at);
+}
+
+#[tokio::test]
+async fn an_undated_reminder_never_restores_a_date_replaced_while_it_was_writing() {
+    // The in-memory store shares one connection, which hides this interleaving.
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(&dir.path().join("todos.db")).await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let fx = Fx {
+        store,
+        account: account.id,
+    };
+    let first = fx.message("dated", at(0)).await;
+    let reminder = fx.message("reminder", at(1)).await;
+    let answers = saved_asks(&fx, &[&first, &reminder]).await;
+    let dated = asks_bill(&fx, "dated", &first, "due:2026-11");
+    fx.store.insert_todo(&dated).await.unwrap();
+    let undated = TodoRecord {
+        due_at: None,
+        due_words: None,
+        act_by_at: None,
+        source_date: Some(at(1)),
+        ..asks_bill(&fx, "undated", &reminder, "sent:2026-10")
+    };
+    let newer = at(400);
+
+    // The open write transaction lets the reminder take any read it does
+    // outside the write lock before the newer date commits.
+    let mut held = fx
+        .store
+        .writer()
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .unwrap();
+    let write_newer_date = async {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        sqlx::query("UPDATE todos SET due_at=?, due_words='due 25 November' WHERE id='dated'")
+            .bind(newer.timestamp())
+            .execute(&mut *held)
+            .await
+            .unwrap();
+        held.commit().await.unwrap();
+    };
+    let (written, ()) = tokio::join!(
+        fx.store.upsert_asks_todo(&undated, &answers[1]),
+        write_newer_date
+    );
+    written.unwrap();
+
+    let row = fx.store.get_todo("dated").await.unwrap().unwrap();
+    assert_eq!(row.source_message_id.as_ref(), Some(&reminder.0));
+    assert_eq!(row.due_at, Some(newer));
+    assert_eq!(row.due_words.as_deref(), Some("due 25 November"));
+}

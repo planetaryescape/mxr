@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.245](https://github.com/planetaryescape/mxr/compare/v0.6.244...v0.6.245) (2026-11-19)
+
+
+### Bug Fixes
+
+* bind compose eval answers to their question and polarity ([#987](https://github.com/planetaryescape/mxr/issues/987)) ([1bad51a](https://github.com/planetaryescape/mxr/commit/1bad51a9e900a48b5bd0e44857d8ab7b935cc9e8))
+* keep bill accounts, amounts and due dates right across reminders ([#984](https://github.com/planetaryescape/mxr/issues/984)) ([0454f49](https://github.com/planetaryescape/mxr/commit/0454f49c994b2e96a380995530a9f489dea23aa4))
+
 ## [0.6.244](https://github.com/planetaryescape/mxr/compare/v0.6.243...v0.6.244) (2026-11-19)
 
 

@@ -46,7 +46,7 @@ changes. They stay in Raycast after you stop it.
 
 Shortcuts are Cmd plus the letter the same action has in the TUI and the
 web app, so Done Here is ⌘E, Save for Later ⌘B, Mark as Unread ⌘⇧U and Let
-Go of This Digest ⌘⇧A. Raycast's own keys stay where Raycast has one: ⌘Z
+Go of This Digest ⌘⇧E. Raycast's own keys stay where Raycast has one: ⌘Z
 undoes, ⌘⇧C copies, ⌘. pins, and Reply All is ⌘⇧R because ⌘A selects the
 search text. `mxr keys --client web` lists the letters. ⌘D shows the reading
 pane, which only Raycast has. Every action is also in the ⌘K action panel.

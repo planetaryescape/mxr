@@ -386,7 +386,7 @@ jobs:
           retention-days: 1
 
   raycast:
-    name: Raycast Typecheck
+    name: Raycast Typecheck and Tests
     runs-on: ubuntu-24.04
     needs: changes
     # It imports the web app's generated bridge types, so any web change can break it.
@@ -405,6 +405,8 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Test
+        run: npm test
 
   web-tests:
     name: Web Unit Tests

@@ -66,6 +66,11 @@ pub(super) fn kept(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     let draft_words = words(output.text);
     let draft_clauses = clauses(output.text);
+    let subjects: Vec<&str> = req
+        .answers
+        .iter()
+        .flat_map(|answer| answer.subject.iter().copied())
+        .collect();
     let requirement = if req.answers.is_empty() {
         "no question to answer".to_string()
     } else {
@@ -84,7 +89,7 @@ pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     let unanswered: Vec<&str> = req
         .answers
         .iter()
-        .filter(|answer| !is_answered(answer, &draft_words, &draft_clauses))
+        .filter(|answer| !is_answered(answer, &draft_words, &draft_clauses, &subjects))
         .map(|answer| answer.question)
         .collect();
     let detail = if req.answers.is_empty() {
@@ -104,8 +109,14 @@ pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 
 /// Whether the draft gives this answer. An answer with a subject is read
 /// only where that subject is talked about, so a "not" about the time cannot
-/// answer a question about Priya.
-fn is_answered(answer: &Answer<'_>, draft_words: &[String], draft_clauses: &[Clause]) -> bool {
+/// answer a question about Priya. `subjects` are every answer's subjects in
+/// the case.
+fn is_answered(
+    answer: &Answer<'_>,
+    draft_words: &[String],
+    draft_clauses: &[Clause],
+    subjects: &[&str],
+) -> bool {
     if answer.subject.is_empty() && answer.polarity == AnswerPolarity::Any {
         return answer
             .any_of
@@ -117,7 +128,13 @@ fn is_answered(answer: &Answer<'_>, draft_words: &[String], draft_clauses: &[Cla
         .enumerate()
         .filter(|(_, clause)| holds_subject(clause, answer.subject))
         .any(|(index, _)| {
-            let scope = &draft_clauses[answer_scope(draft_clauses, index, answer)];
+            // "Priya will join, but she can't stay long" says yes: the
+            // "can't" is about staying, so no phrase near Priya makes it a no.
+            if answer.polarity == AnswerPolarity::Negative && says_yes(draft_clauses, index, answer)
+            {
+                return false;
+            }
+            let scope = &draft_clauses[answer_scope(draft_clauses, index, answer, subjects)];
             let literal: Vec<&[String]> = scope.iter().map(|c| c.words.as_slice()).collect();
             let without: Vec<Vec<String>> =
                 scope.iter().map(|c| without_idioms(&c.words)).collect();
@@ -133,6 +150,45 @@ fn is_answered(answer: &Answer<'_>, draft_words: &[String], draft_clauses: &[Cla
         })
 }
 
+/// Whether the subject's own statement makes the question's claim with no
+/// negation: "Priya will join" and "Priya will sort it out and join" say yes
+/// to "will Priya join".
+fn says_yes(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> bool {
+    let Some(verb) = question_verb(answer) else {
+        return false;
+    };
+    let mut end = subject_clause_end(clauses, index, answer.subject);
+    while clauses.get(end).is_some_and(|next| {
+        next.opened_by == Boundary::And && continuation_kind(next) != Continuation::OtherSubject
+    }) {
+        end += 1;
+    }
+    let statement: Vec<String> = clauses[index..end]
+        .iter()
+        .flat_map(|clause| clause.words.iter().cloned())
+        .collect();
+    let statement = without_idioms(&statement);
+    !has_negation(&statement)
+        && statement.iter().any(|word| {
+            word.strip_prefix(verb.as_str())
+                .is_some_and(|ending| matches!(ending, "" | "s" | "ed" | "ing"))
+        })
+}
+
+/// The word after the subject in a yes/no question: "join" in "will Priya
+/// join". English puts the claim's verb or adjective there once the
+/// auxiliary moves to the front.
+fn question_verb(answer: &Answer<'_>) -> Option<String> {
+    let question = words(answer.question);
+    answer.subject.iter().find_map(|subject| {
+        let subject = words(subject);
+        let at = question
+            .windows(subject.len().max(1))
+            .position(|run| run == subject.as_slice())?;
+        question.get(at + subject.len()).cloned()
+    })
+}
+
 fn holds_subject(clause: &Clause, subject: &[&str]) -> bool {
     subject.is_empty()
         || subject
@@ -141,7 +197,12 @@ fn holds_subject(clause: &Clause, subject: &[&str]) -> bool {
 }
 
 /// The clauses that speak about the subject found at `index`.
-fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Range<usize> {
+fn answer_scope(
+    clauses: &[Clause],
+    index: usize,
+    answer: &Answer<'_>,
+    subjects: &[&str],
+) -> Range<usize> {
     let mut end = subject_clause_end(clauses, index, answer.subject);
     let mut start = index;
     if answer.polarity == AnswerPolarity::Negative {
@@ -151,8 +212,8 @@ fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Range<
         {
             end += 1;
         }
-        if index > 0 && opens_with_a_refusal(&clauses[index - 1], &clauses[index]) {
-            start = index - 1;
+        if let Some(lead) = refusal_lead(clauses, index, subjects) {
+            start = lead;
         }
     }
     start..end
@@ -163,11 +224,7 @@ fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Range<
 /// predicate arrives or another subject takes over.
 fn subject_clause_end(clauses: &[Clause], index: usize, subject: &[&str]) -> usize {
     let clause = &clauses[index];
-    let is_bare = clause.words.iter().all(|word| {
-        subject
-            .iter()
-            .any(|subject| contains_phrase(std::slice::from_ref(word), subject))
-    });
+    let is_bare = is_bare_subject(clause, subject);
     let is_unfinished = clause.words.last().is_some_and(|word| is_auxiliary(word));
     let mut end = index + 1;
     if !is_bare && !is_unfinished {
@@ -200,6 +257,15 @@ fn subject_clause_end(clauses: &[Clause], index: usize, subject: &[&str]) -> usi
         end += 1;
     }
     end
+}
+
+/// "Priya" or "3pm" with nothing said about it yet.
+fn is_bare_subject(clause: &Clause, subject: &[&str]) -> bool {
+    clause.words.iter().all(|word| {
+        subject
+            .iter()
+            .any(|subject| contains_phrase(std::slice::from_ref(word), subject))
+    })
 }
 
 /// What a clause does to the statement it follows.
@@ -280,16 +346,41 @@ fn concludes_with_no(clause: &Clause) -> bool {
     clause.opened_by == Boundary::Hard && clause.words == ["no"]
 }
 
+/// Where a short refusal that leads into the subject at `index` starts.
 /// "No, Priya is travelling" and "Sadly not, Priya is away" lead with the
-/// answer and name the subject after it.
-fn opens_with_a_refusal(lead: &Clause, clause: &Clause) -> bool {
-    lead.opened_by == Boundary::Sentence
-        && clause.opened_by == Boundary::Soft
-        && is_short_refusal(&lead.words)
+/// answer and name the subject after it; so does a refusal sentence of its
+/// own, "No. Priya is travelling", unless it follows a bare subject: in
+/// "3pm? No." the "No" answers 3pm.
+fn refusal_lead(clauses: &[Clause], index: usize, subjects: &[&str]) -> Option<usize> {
+    let opened_by = clauses[index].opened_by;
+    if index == 0 || !matches!(opened_by, Boundary::Soft | Boundary::Sentence) {
+        return None;
+    }
+    let lead = sentence_start(clauses, index - 1);
+    let lead_words: Vec<String> = clauses[lead..index]
+        .iter()
+        .flat_map(|clause| clause.words.iter().cloned())
+        .collect();
+    if !is_short_refusal(&lead_words) {
+        return None;
+    }
+    let answers_a_bare_subject = opened_by == Boundary::Sentence
+        && lead > 0
+        && clauses[lead - 1].opened_by == Boundary::Sentence
+        && is_bare_subject(&clauses[lead - 1], subjects);
+    (!answers_a_bare_subject).then_some(lead)
+}
+
+/// The first clause of the sentence that holds the clause at `index`.
+fn sentence_start(clauses: &[Clause], index: usize) -> usize {
+    (0..=index)
+        .rev()
+        .find(|&at| clauses[at].opened_by == Boundary::Sentence)
+        .unwrap_or(0)
 }
 
 /// Phrases that use a negative word to say something positive.
-const POSITIVE_IDIOMS: [&str; 15] = [
+const POSITIVE_IDIOMS: [&str; 17] = [
     "no problem",
     "no problems",
     "not a problem",
@@ -305,6 +396,8 @@ const POSITIVE_IDIOMS: [&str; 15] = [
     "can't wait",
     "won't miss",
     "wouldn't miss",
+    "not miss",
+    "not bad",
 ];
 
 fn without_idioms(clause_words: &[String]) -> Vec<String> {
@@ -322,7 +415,7 @@ fn without_idioms(clause_words: &[String]) -> Vec<String> {
 }
 
 fn has_negation(clause_words: &[String]) -> bool {
-    const NEGATIONS: [&str; 16] = [
+    const NEGATIONS: [&str; 17] = [
         "no",
         "not",
         "never",
@@ -339,6 +432,7 @@ fn has_negation(clause_words: &[String]) -> bool {
         "aren't",
         "wasn't",
         "weren't",
+        "unable",
     ];
     NEGATIONS
         .iter()
@@ -850,7 +944,9 @@ mod tests {
         },
         Answer {
             question: "will Priya join",
-            any_of: &["no", "not", "can't", "cannot", "won't", "out"],
+            any_of: &[
+                "no", "not", "can't", "cannot", "won't", "out", "isn't", "unable",
+            ],
             subject: &["Priya"],
             polarity: AnswerPolarity::Negative,
         },
@@ -1009,6 +1105,71 @@ mod tests {
             "3pm works. Priya is away, so she won't join.",
             "3pm works. Priya is unavailable, so no.",
             "3pm? Yes. Priya? No.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_yes_about_the_subject_is_not_turned_into_a_no_by_another_negation() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. Priya will join, but she can't stay long.",
+            "3pm works. Priya will join. She can't stay long.",
+            "3pm works. Priya will sort it out and join.",
+            "3pm works. Priya will not miss it.",
+            "3pm works. Priya is joining, but she can't stay long.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(false),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_no_in_its_own_sentence_leads_into_the_subject_after_it() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. No. Priya is travelling.",
+            "3pm works. Unfortunately, no. Priya is away.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
+        // After a bare "3pm?" the "No." answers 3pm, so Priya is unanswered.
+        let report = run(&requirements, "3pm? No. Priya is travelling.");
+        let grade = report
+            .grades
+            .iter()
+            .find(|grade| grade.check == Check::Answers)
+            .expect("answers grade");
+        assert_eq!(grade.detail, "not addressed: is 3pm fine, will Priya join");
+    }
+
+    #[test]
+    fn not_bad_is_a_positive_answer() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        assert_eq!(
+            run(&requirements, "3pm is not bad. Priya is out.").passed(Check::Answers),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_negative_answer_may_say_isnt_or_unable() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. Priya isn't joining.",
+            "3pm works. Priya is unable to join.",
         ] {
             assert_eq!(
                 run(&requirements, draft).passed(Check::Answers),

@@ -58,7 +58,7 @@ invoice-typed-no-price · bad: reversed typed sentence · kept: keep each typed 
 clause-long-thread · bad: recap of thread · kept: keep each typed sentence: "monday at 10am works" -> changed: "monday at 10am works"
 clause-long-thread · bad: recap of thread · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> copies the thread back: "update on clause 4 the board wants to"
 ack-typed · bad: duplicate signature · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> sign-off repeated: "Alex"
-call-empty · bad: borrowed negative for time · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out) -> not addressed: is 3pm fine, will Priya join
-call-empty · bad: now for no · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out) -> not addressed: will Priya join
+call-empty · bad: borrowed negative for time · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out, isn't, unable) -> not addressed: is 3pm fine, will Priya join
+call-empty · bad: now for no · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out, isn't, unable) -> not addressed: will Priya join
 rate-from-instruction · bad: invented price · answers: answer "rate per person" (any of: 85) -> not addressed: rate per person
 rate-from-instruction · bad: invented price · invented: no number, date or amount that no input carries -> not in any input: 95

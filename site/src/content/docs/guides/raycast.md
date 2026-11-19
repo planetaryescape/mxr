@@ -66,9 +66,10 @@ are usually instant. Any change to stored mail, your own actions included,
 makes the next read build afresh, and a view built while a sync was still
 writing is replaced as soon as that write finishes, so a list never misses
 mail the daemon has stored. A view more than a minute old is also built
-afresh, which takes about a second on a large mailbox; the list shows its
-last copy meanwhile. Reads never count as a Reading visit or mark Updates
-seen.
+afresh. The daemon renews active views before that expiry. Rebuild time
+depends on the view and the mailbox. The list shows its last copy meanwhile.
+See [mode-response caching](/guides/observability/#why-a-second-mxr-now-is-instant).
+Reads never count as a Reading visit or mark Updates seen.
 
 ## Read a conversation
 

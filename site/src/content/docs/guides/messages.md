@@ -79,6 +79,11 @@ Choose Needs attention, All conversations, Your turn or Waiting on them.
 Press `f` to cycle through those four views, wrapping back to Needs attention.
 The web filter bar shows the key beside **Cycle views**, which also works as a
 button. Cycling keeps the Unread and Past your pace toggles as they are.
+The shortcut still works while a view loads, has no matching rows or reports
+an error. While a new view loads in the web app, the selected conversation
+stays open and the filter controls stay in place. Loading rows appear in the
+list column. History rows never stand in for Needs attention while its answer
+loads.
 Two toggles narrow the selected view: Unread keeps people with a message from them
 you haven't read, and Past your pace keeps the people whose turn has run
 longer than your usual reply time with them. The toggles and the turn

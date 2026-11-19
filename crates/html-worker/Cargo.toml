@@ -22,7 +22,7 @@ tracing = { workspace = true }
 # setrlimit and getrusage through nix's safe wrappers; the workspace denies
 # unsafe code. The mxr binary already depends on this nix.
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30", features = ["resource"] }
+nix = { version = "0.31", features = ["resource"] }
 
 # A stand-in helper whose jobs misbehave on request, so the supervisor's
 # timeout, crash and limit paths are tested against a real child process.

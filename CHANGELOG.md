@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.247](https://github.com/planetaryescape/mxr/compare/v0.6.246...v0.6.247) (2026-11-19)
+
+
+### Bug Fixes
+
+* **remote:** keep closed sessions inactive when the clock steps back ([#996](https://github.com/planetaryescape/mxr/issues/996)) ([25f2d5e](https://github.com/planetaryescape/mxr/commit/25f2d5ef10bba1804fe251a079c4ab627411f9b7))
+
 ## [0.6.246](https://github.com/planetaryescape/mxr/compare/v0.6.245...v0.6.246) (2026-11-19)
 
 

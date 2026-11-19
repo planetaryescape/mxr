@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.246](https://github.com/planetaryescape/mxr/compare/v0.6.245...v0.6.246) (2026-11-19)
+
+
+### Bug Fixes
+
+* grade the remaining compose eval answer misgrades ([#993](https://github.com/planetaryescape/mxr/issues/993)) ([48ec6e0](https://github.com/planetaryescape/mxr/commit/48ec6e012b3bd3b9ec72d23b505d06f9d4065797))
+* Raycast guide shortcut and Raycast tests in CI ([#992](https://github.com/planetaryescape/mxr/issues/992)) ([63496cc](https://github.com/planetaryescape/mxr/commit/63496cc1d32352e461ca3041a2487b0ef4987411))
+
 ## [0.6.245](https://github.com/planetaryescape/mxr/compare/v0.6.244...v0.6.245) (2026-11-19)
 
 

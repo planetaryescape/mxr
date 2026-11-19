@@ -1,5 +1,7 @@
 import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
-import type { useAccountBadge } from "./accountBadge";
+import type { AccountTag, useAccountBadge } from "./accountBadge";
+import { senderFace } from "./faces";
+import { MailPane, type Pane, PaneAction, type Preview, searchRowId } from "./pane";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { type MailRow, searchMail } from "../bridge/mail";
@@ -12,16 +14,33 @@ import { keyFor } from "./keys";
 /** Shorter queries match too much of the mailbox to be worth asking. */
 const MIN_QUERY = 2;
 
+/** An unread row's mark: a small dot, since the icon is the sender's initials. */
+export const UNREAD: List.Item.Accessory = {
+  icon: { source: Icon.CircleFilled, tintColor: Color.Blue },
+  tooltip: "Unread",
+};
+
 /** A conversation from the inbox or a search: Read, Reply, Open in mxr. */
 export function MailRowItem({
   row,
+  id,
   webPath,
   badge = [],
+  account,
+  pane,
+  preview,
   onChange,
 }: {
   row: MailRow;
+  /** The list item's id, for the pane's selection; the thread by default. */
+  id?: string;
   /** The account tag, from `useAccountBadge`. */
   badge?: List.Item.Accessory[];
+  /** The account, named in the reading pane. */
+  account?: AccountTag;
+  pane?: Pane;
+  /** The selected row's conversation, while the pane shows. */
+  preview?: Preview;
   /** Where Open in mxr goes; the search page by default. */
   webPath?: string;
   onChange?: () => void;
@@ -29,43 +48,69 @@ export function MailRowItem({
   const webBase = useWebBase();
   const path = webPath ?? web.search(row.thread_id);
   const count = row.message_count ?? 1;
+  const itemId = id ?? row.thread_id;
   return (
     <List.Item
       key={row.thread_id}
-      icon={row.unread ? { source: Icon.CircleFilled, tintColor: Color.Blue } : Icon.Circle}
+      id={itemId}
+      icon={senderFace(row.sender, row.sender_detail)}
       title={row.sender}
-      subtitle={row.subject}
-      keywords={[row.sender_detail ?? "", row.snippet]}
-      accessories={[
-        ...badge,
-        ...(row.starred
-          ? [{ icon: { source: Icon.Star, tintColor: Color.Yellow }, tooltip: "Starred" }]
-          : []),
-        ...(row.has_attachments ? [{ icon: Icon.Paperclip, tooltip: "Attachments" }] : []),
-        ...(count > 1 ? [{ text: String(count), tooltip: `${count} messages` }] : []),
-        arrival(row.date),
-      ]}
+      subtitle={pane?.showing ? undefined : row.subject}
+      keywords={[row.subject, row.sender_detail ?? "", row.snippet]}
+      accessories={
+        pane?.showing
+          ? undefined
+          : [
+              ...(row.unread ? [UNREAD] : []),
+              ...badge,
+              ...(row.starred
+                ? [{ icon: { source: Icon.Star, tintColor: Color.Yellow }, tooltip: "Starred" }]
+                : []),
+              ...(row.has_attachments ? [{ icon: Icon.Paperclip, tooltip: "Attachments" }] : []),
+              ...(count > 1 ? [{ text: String(count), tooltip: `${count} messages` }] : []),
+              arrival(row.date),
+            ]
+      }
+      detail={
+        pane?.showing ? (
+          <MailPane
+            subject={row.subject}
+            fromName={row.sender}
+            fromEmail={row.sender_detail}
+            date={row.date}
+            account={account}
+            unread={row.unread}
+            preview={pane.selected === itemId ? preview : undefined}
+            fallback={row.snippet}
+          />
+        ) : undefined
+      }
       actions={
         <ActionPanel>
-          <ReadAction
-            threadId={row.thread_id}
-            webPath={path}
-            replyTo={{ messageId: row.id, to: row.sender }}
-            onChange={onChange}
-          />
-          <Action.Push
-            title="Reply"
-            icon={Icon.Reply}
-            shortcut={keyFor("mail.reply")}
-            target={<ReplyForm messageId={row.id} to={row.sender} onSent={onChange} />}
-          />
-          {webBase && (
-            <Action.OpenInBrowser
-              title="Open in mxr"
-              url={`${webBase}${path}`}
-              shortcut={keyFor("list.open")}
+          <ActionPanel.Section>
+            <ReadAction
+              threadId={row.thread_id}
+              webPath={path}
+              replyTo={{ messageId: row.id, to: row.sender }}
+              onChange={onChange}
             />
-          )}
+            <Action.Push
+              title="Reply"
+              icon={Icon.Reply}
+              shortcut={keyFor("mail.reply")}
+              target={<ReplyForm messageId={row.id} to={row.sender} onSent={onChange} />}
+            />
+          </ActionPanel.Section>
+          <ActionPanel.Section>
+            {webBase && (
+              <Action.OpenInBrowser
+                title="Open in mxr"
+                url={`${webBase}${path}`}
+                shortcut={keyFor("list.open")}
+              />
+            )}
+            {pane ? <PaneAction pane={pane} /> : null}
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -108,10 +153,14 @@ export function useMailSearch(account: string | undefined) {
 export function SearchSection({
   search,
   badge,
+  pane,
+  preview,
   onChange,
 }: {
   search: ReturnType<typeof useMailSearch>;
   badge: ReturnType<typeof useAccountBadge>;
+  pane?: Pane;
+  preview?: Preview;
   onChange?: () => void;
 }) {
   if (!search.searching) return null;
@@ -122,9 +171,13 @@ export function SearchSection({
     >
       {search.results.map((row) => (
         <MailRowItem
-          key={`search-${row.thread_id}`}
+          key={searchRowId(row.thread_id)}
+          id={searchRowId(row.thread_id)}
           row={row}
           badge={badge(row.account_id)}
+          account={badge.tagOf(row.account_id)}
+          pane={pane}
+          preview={preview}
           onChange={onChange}
         />
       ))}

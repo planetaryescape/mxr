@@ -20,7 +20,8 @@
       "title": "Now",
       "subtitle": "mxr",
       "description": "Who is waiting on you, what is due, the Updates card and a Reading pick.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-now.png"
     },
     {
       "name": "inbox",
@@ -32,7 +33,8 @@
         "search",
         "mail",
         "email"
-      ]
+      ],
+      "icon": "command-inbox.png"
     },
     {
       "name": "copy-code",
@@ -47,42 +49,48 @@
         "verification",
         "code",
         "login"
-      ]
+      ],
+      "icon": "command-copy-code.png"
     },
     {
       "name": "messages",
       "title": "Messages",
       "subtitle": "mxr",
       "description": "People and their conversations, your turn first.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-messages.png"
     },
     {
       "name": "todo",
       "title": "To Do",
       "subtitle": "mxr",
       "description": "Instructions from your mail on a runway: now, coming up, whenever.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-todo.png"
     },
     {
       "name": "updates",
       "title": "Updates",
       "subtitle": "mxr",
       "description": "The briefing from automated mail: needs a look, changed, routine.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-updates.png"
     },
     {
       "name": "reading",
       "title": "Reading",
       "subtitle": "mxr",
       "description": "Newsletters you chose, as an edition.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-reading.png"
     },
     {
       "name": "archive",
       "title": "Archive",
       "subtitle": "mxr",
       "description": "Records filed from your mail: receipts, bookings, documents.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "command-archive.png"
     }
   ],
   "preferences": [
@@ -106,6 +114,7 @@
     "@types/turndown": "^5.0.6",
     "eslint": "^10.12.0",
     "prettier": "^3.9.10",
+    "react-test-renderer": "19.0.0",
     "typescript": "^5.9.3"
   },
   "scripts": {

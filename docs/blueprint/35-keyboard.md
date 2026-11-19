@@ -367,10 +367,11 @@ Anything else that differs today is moved to match in K1 or K3. That covers:
 | Mark unread | `⌘⇧U` |
 | Undo | `⌘Z` |
 | Later | `⌘B` |
+| Reading pane (Raycast only) | `⌘D` |
 
 The extension already does most of this (`apps/raycast/src/now.tsx`, `messages.tsx`, `updates.tsx`, `components/ThreadDetail.tsx`). Two keys move: Reading's "Save for Later" goes from `⌘L` to `⌘B`, and "Draft in my voice" (`⌘D`) goes to the palette-only list until it earns a letter.
 
-Raycast's own common shortcuts win where Raycast already has one for the same action, because people carry those across every extension. Copy is `⌘⇧C` and Pin is `⌘.` (Raycast's `Keyboard.Shortcut.Common`). Reply all is `⌘⇧R`, because `⌘A` selects the search text. The definition records each of these as a Raycast exception, and every other Raycast key comes from the definition. The desktop menu follows the same rule, minus the keys macOS reserves (⌘W, ⌘N, ⌘Q, ⌘,).
+Raycast's own common shortcuts win where Raycast already has one for the same action, because people carry those across every extension. Copy is `⌘⇧C` and Pin is `⌘.` (Raycast's `Keyboard.Shortcut.Common`). Reply all is `⌘⇧R`, because `⌘A` selects the search text. The definition records each of these as a Raycast exception, and every other Raycast key comes from the definition. A key for something only Raycast has, such as the reading pane, is a `[[raycast_action]]` in the definition. The desktop menu follows the same rule, minus the keys macOS reserves (⌘W, ⌘N, ⌘Q, ⌘,).
 
 ### The daemon serves the effective key map
 

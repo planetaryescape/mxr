@@ -31,17 +31,20 @@ ack-typed                    good                           pass   pass     pass
 ack-typed                    bad: duplicate signature       pass   pass     pass   pass      pass    FAIL       97: Forced triads
 seats-open                   good                           pass   pass     pass   pass      pass    pass       100
 call-empty                   good                           pass   pass     pass   pass      pass    pass       100
+call-empty                   good: cannot                   pass   pass     pass   pass      pass    pass       100
+call-empty                   good: one sentence             pass   pass     pass   pass      pass    pass       97: Forced triads
+call-empty                   bad: borrowed negative for time pass   FAIL     pass   pass      pass    pass       100
 call-empty                   bad: now for no                pass   FAIL     pass   pass      pass    pass       100
 rate-from-instruction        good                           pass   pass     pass   pass      pass    pass       97: Forced triads
 rate-from-instruction        bad: invented price            pass   FAIL     pass   FAIL      pass    pass       97: Forced triads
 rate-open                    good                           pass   pass     pass   pass      pass    pass       100
 
-kept       3 of 32 outputs fail
-answers    2 of 32 outputs fail
-gaps       1 of 32 outputs fail
-invented   3 of 32 outputs fail
-length     1 of 32 outputs fail
-leftovers  4 of 32 outputs fail
+kept       3 of 35 outputs fail
+answers    3 of 35 outputs fail
+gaps       1 of 35 outputs fail
+invented   3 of 35 outputs fail
+length     1 of 35 outputs fail
+leftovers  4 of 35 outputs fail
 
 Failures
 friday-typed · bad: dropped typed sentence · kept: keep each typed sentence: "friday at 2pm works for me", "i'll bring the deck" -> missing: "friday at 2pm works for me"; missing: "i'll bring the deck"
@@ -55,6 +58,7 @@ invoice-typed-no-price · bad: reversed typed sentence · kept: keep each typed 
 clause-long-thread · bad: recap of thread · kept: keep each typed sentence: "monday at 10am works" -> changed: "monday at 10am works"
 clause-long-thread · bad: recap of thread · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> copies the thread back: "update on clause 4 the board wants to"
 ack-typed · bad: duplicate signature · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> sign-off repeated: "Alex"
-call-empty · bad: now for no · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, won't, out) -> not addressed: will Priya join
+call-empty · bad: borrowed negative for time · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out) -> not addressed: is 3pm fine, will Priya join
+call-empty · bad: now for no · answers: answer "is 3pm fine" (any of: 3pm); answer "will Priya join" (any of: no, not, can't, cannot, won't, out) -> not addressed: will Priya join
 rate-from-instruction · bad: invented price · answers: answer "rate per person" (any of: 85) -> not addressed: rate per person
 rate-from-instruction · bad: invented price · invented: no number, date or amount that no input carries -> not in any input: 95

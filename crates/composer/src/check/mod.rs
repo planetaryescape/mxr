@@ -18,6 +18,20 @@ pub use text::{invented_numbers, replay_invented_numbers};
 pub struct Answer<'a> {
     pub question: &'a str,
     pub any_of: &'a [&'a str],
+    /// Words that identify the sentence answering this question. An empty
+    /// list keeps the historical whole-draft scope for questions without a
+    /// stable subject.
+    pub subject: &'a [&'a str],
+    pub polarity: AnswerPolarity,
+}
+
+/// Whether the answer phrases must keep or reject the proposition in the
+/// target question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnswerPolarity {
+    Any,
+    Positive,
+    Negative,
 }
 
 /// The length a reply should land in, in words, inclusive.

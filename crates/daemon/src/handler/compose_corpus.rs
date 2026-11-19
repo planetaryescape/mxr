@@ -11,7 +11,7 @@ use super::draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS;
 use super::draft_prompt::{self, DraftMode, Help, Me, Prompt, PromptInput, Turn, VoiceExample};
 use super::draft_voice::VoiceMaterial;
 use chrono::{DateTime, Utc};
-use mxr_composer::check::{Answer, Output, Report, Requirements, WordBand};
+use mxr_composer::check::{Answer, AnswerPolarity, Output, Report, Requirements, WordBand};
 use mxr_composer::plan;
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_protocol::DraftSourceData;
@@ -148,6 +148,16 @@ pub(crate) fn grade(case: &Case, raw: &str, text: &str) -> Report {
         .map(|answer| Answer {
             question: answer.question,
             any_of: answer.any_of,
+            subject: answer.subject,
+            polarity: match answer.polarity {
+                mxr_provider_fake::fixtures::compose::AnswerPolarity::Any => AnswerPolarity::Any,
+                mxr_provider_fake::fixtures::compose::AnswerPolarity::Positive => {
+                    AnswerPolarity::Positive
+                }
+                mxr_provider_fake::fixtures::compose::AnswerPolarity::Negative => {
+                    AnswerPolarity::Negative
+                }
+            },
         })
         .collect();
     let (min, max) = case.expect.words;

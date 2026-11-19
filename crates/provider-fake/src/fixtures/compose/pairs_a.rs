@@ -2,8 +2,8 @@
 //! thread with the fact left to the instruction or left open, and selections.
 
 use super::{
-    expect, target, Answer, Case, DraftState, Message, Recording, JONAS, PRIYA, SAM, VOICE_ALEX,
-    VOICE_DE,
+    expect, target, Answer, AnswerPolarity, Case, DraftState, Message, Recording, JONAS, PRIYA,
+    SAM, VOICE_ALEX, VOICE_DE,
 };
 
 const FRIDAY_THREAD: &[Message] = &[target(
@@ -14,6 +14,8 @@ const FRIDAY_THREAD: &[Message] = &[target(
 const FRIDAY: &[Answer] = &[Answer {
     question: "when",
     any_of: &["friday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const PRICE_THREAD: &[Message] = &[target(
@@ -36,6 +38,8 @@ const DECK_THREAD: &[Message] = &[target(
 const DECK: &[Answer] = &[Answer {
     question: "where the deck is",
     any_of: &["legal", "thursday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const INTRO_THREAD: &[Message] = &[target(
@@ -52,6 +56,8 @@ const GERMAN_THREAD: &[Message] = &[target(
 const GERMAN_WHEN: &[Answer] = &[Answer {
     question: "wann",
     any_of: &["freitag"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const DECLINE_THREAD: &[Message] = &[target(
@@ -62,6 +68,8 @@ const DECLINE_THREAD: &[Message] = &[target(
 const DECLINE: &[Answer] = &[Answer {
     question: "can you join",
     any_of: &["can't", "won't", "cannot", "unable", "not able", "sorry"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const SLIDES_THREAD: &[Message] = &[target(
@@ -72,6 +80,8 @@ const SLIDES_THREAD: &[Message] = &[target(
 const SLIDES: &[Answer] = &[Answer {
     question: "slides by when",
     any_of: &["wednesday", "tomorrow"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const ROADMAP_THREAD: &[Message] = &[target(
@@ -82,6 +92,8 @@ const ROADMAP_THREAD: &[Message] = &[target(
 const MONDAY: &[Answer] = &[Answer {
     question: "read it before Monday",
     any_of: &["monday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const REVIEW_THREAD: &[Message] = &[target(
@@ -92,6 +104,8 @@ const REVIEW_THREAD: &[Message] = &[target(
 const STILL_ON: &[Answer] = &[Answer {
     question: "still on for it",
     any_of: &["yes", "still on"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 pub(super) const CASES: &[Case] = &[
@@ -150,6 +164,8 @@ pub(super) const CASES: &[Case] = &[
             &[Answer {
                 question: "price",
                 any_of: &["480"],
+                subject: &[],
+                polarity: AnswerPolarity::Any,
             }],
             &[],
             (8, 60),
@@ -193,6 +209,8 @@ pub(super) const CASES: &[Case] = &[
             &[Answer {
                 question: "when",
                 any_of: &["wednesday"],
+                subject: &[],
+                polarity: AnswerPolarity::Any,
             }],
             &[],
             (6, 40),

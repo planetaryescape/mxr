@@ -144,7 +144,7 @@ fn check_for(defect: &str) -> Option<Check> {
         "bad: dropped typed sentence" | "bad: reversed typed sentence" => Some(Check::Kept),
         "bad: invented price" => Some(Check::Invented),
         "bad: preamble" => Some(Check::Leftovers),
-        "bad: now for no" => Some(Check::Answers),
+        "bad: now for no" | "bad: borrowed negative for time" => Some(Check::Answers),
         _ => None,
     }
 }
@@ -166,7 +166,7 @@ fn every_good_output_passes_and_every_defect_fails_the_check_it_names() {
         for recording in case.recorded {
             let text = clean_draft(recording.text, Some(compose::ME_NAME));
             let report = grade(case, recording.text, &text);
-            if recording.name == "good" {
+            if recording.name.starts_with("good") {
                 assert!(
                     report.all_pass(),
                     "{} good output: {:?}",

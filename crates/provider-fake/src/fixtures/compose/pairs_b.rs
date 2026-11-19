@@ -3,8 +3,8 @@
 //! apologies, two questions in one message, and a question in typed text.
 
 use super::{
-    expect, mine, target, them, Answer, Case, DraftState, Message, Recording, PRIYA, SAM,
-    VOICE_ALEX, VOICE_DASHES, VOICE_INITIAL,
+    expect, mine, target, them, Answer, AnswerPolarity, Case, DraftState, Message, Recording,
+    PRIYA, SAM, VOICE_ALEX, VOICE_DASHES, VOICE_INITIAL,
 };
 
 const INVOICE_WITH_PRICE: &[Message] = &[target(
@@ -20,12 +20,16 @@ const INVOICE_NO_PRICE: &[Message] = &[target(
 const PAID: &[Answer] = &[Answer {
     question: "paid",
     any_of: &["paid"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const LUNCH_THREAD: &[Message] = &[target(SAM, "Thu 22 Oct 2026, 08:10", "Lunch on Friday?")];
 const FRIDAY_LUNCH: &[Answer] = &[Answer {
     question: "lunch on Friday",
     any_of: &["friday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const REVIEW_THURSDAY_THREAD: &[Message] = &[target(
@@ -36,6 +40,8 @@ const REVIEW_THURSDAY_THREAD: &[Message] = &[target(
 const THURSDAY: &[Answer] = &[Answer {
     question: "Thursday",
     any_of: &["thursday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const CLAUSE_THREAD: &[Message] = &[
@@ -57,6 +63,8 @@ const CLAUSE_THREAD: &[Message] = &[
 const MONDAY_10: &[Answer] = &[Answer {
     question: "when to talk",
     any_of: &["monday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const CATCH_UP_THREAD: &[Message] = &[target(
@@ -67,6 +75,8 @@ const CATCH_UP_THREAD: &[Message] = &[target(
 const THURSDAY_MORNING: &[Answer] = &[Answer {
     question: "a time",
     any_of: &["thursday"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const ACK_THREAD: &[Message] = &[target(
@@ -83,6 +93,8 @@ const SEATS_THREAD: &[Message] = &[target(
 const SEATS: &[Answer] = &[Answer {
     question: "how many seats",
     any_of: &["12"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const REPORT_THREAD: &[Message] = &[target(
@@ -93,6 +105,8 @@ const REPORT_THREAD: &[Message] = &[target(
 const WHY_LATE: &[Answer] = &[Answer {
     question: "why it's late",
     any_of: &["travel", "delay", "sorry"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 const CALL_THREAD: &[Message] = &[target(
@@ -104,10 +118,14 @@ const TWO_QUESTIONS: &[Answer] = &[
     Answer {
         question: "is 3pm fine",
         any_of: &["3pm"],
+        subject: &["3pm"],
+        polarity: AnswerPolarity::Positive,
     },
     Answer {
         question: "will Priya join",
-        any_of: &["no", "not", "can't", "won't", "out"],
+        any_of: &["no", "not", "can't", "cannot", "won't", "out"],
+        subject: &["Priya"],
+        polarity: AnswerPolarity::Negative,
     },
 ];
 
@@ -119,6 +137,8 @@ const QUOTE_THREAD: &[Message] = &[target(
 const RATE: &[Answer] = &[Answer {
     question: "rate per person",
     any_of: &["85"],
+    subject: &[],
+    polarity: AnswerPolarity::Any,
 }];
 
 pub(super) const CASES: &[Case] = &[
@@ -359,6 +379,18 @@ pub(super) const CASES: &[Case] = &[
             Recording {
                 name: "good",
                 text: "Hi Sam,\n\n3pm works for me. Priya can't make it.\n\nAlex",
+            },
+            Recording {
+                name: "good: cannot",
+                text: "Hi Sam,\n\n3pm works for me. Priya cannot make it.\n\nAlex",
+            },
+            Recording {
+                name: "good: one sentence",
+                text: "Hi Sam,\n\n3pm works, but Priya can't make it.\n\nAlex",
+            },
+            Recording {
+                name: "bad: borrowed negative for time",
+                text: "Hi Sam,\n\n3pm does not work. Priya will join.\n\nAlex",
             },
             Recording {
                 name: "bad: now for no",

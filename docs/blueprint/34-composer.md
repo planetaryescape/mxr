@@ -493,28 +493,41 @@ the composer that wrote it.
 
 The snapshot layer is measured by `scripts/cargo-test -p mxr --lib -- handler::tests::compose_eval`.
 Its record is in `crates/daemon/src/handler/tests/snapshots/`: the prompt
-today's code builds for each of the 40 cases, and the grade table for 32
+today's code builds for each of the 40 cases, and the grade table for 35
 recorded model outputs. The corpus is `crates/provider-fake/src/fixtures/compose/`:
 40 cases in 20 near-miss pairs, 22 with typed text (two of them with a
 selection) and 18 without.
 
-The 32 outputs are good ones and recorded defects, so the counts show what
+The 35 outputs are good ones and recorded defects, so the counts show what
 the checks catch. They do not say how often a model writes the defect.
 
 | Check | Passed | Of |
 |---|---|---|
-| Kept: typed sentences survive, as whole sentences | 29 | 32 |
-| Answers: each question from the target is addressed, as whole words | 30 | 32 |
-| Gaps: facts nobody gave are left as gaps | 31 | 32 |
-| Invented: no number outside the inputs, compared as whole tokens | 29 | 32 |
-| Length: inside the case's word band | 31 | 32 |
-| Leftovers: no subject, preamble, repeated sign-off or copied run | 28 | 32 |
+| Kept: typed sentences survive, as whole sentences | 32 | 35 |
+| Answers: questions are answered with whole phrases; labelled subjects and polarities match | 32 | 35 |
+| Gaps: facts nobody gave are left as gaps | 34 | 35 |
+| Invented: no number outside the inputs, compared as whole tokens | 32 | 35 |
+| Length: inside the case's word band | 34 | 35 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 31 | 35 |
 
 Every good output passes all six checks. Every bad output fails the check it
 is recorded for: a dropped typed sentence and a typed sentence reversed inside
 a changed one (kept), an invented price (invented, and gaps or answers where
-the price was the answer), "now" standing in for "no" (answers), a subject
-line, a preamble, a recap of the thread and a repeated sign-off (leftovers).
+the price was the answer), "now" standing in for "no" and a negative borrowed
+from the wrong question (answers), a subject line, a preamble, a recap of the
+thread and a repeated sign-off (leftovers).
+
+The answers check keeps optional subject and polarity metadata per answer.
+When a subject is recorded, the check reads only the clause that names the
+subject. Clauses end at commas, semicolons, colons, dashes and words such as
+"and", "but" and "so". A positive answer fails on a negation in that clause. A
+negative answer needs one of its phrases in that clause, in a clause that
+carries the subject on with "she", "he" or "they", or in a short lead such as
+"No, Priya is travelling". Idioms such as "no problem" do not count as
+negations. The `call-empty` recordings cover a negative word borrowed from the
+3pm answer, the accepted "Priya cannot make it" wording, and both answers in
+one sentence. The check reads words, not meaning. Its known limits are in
+`docs/issues/compose-eval-answers-per-question.md`.
 
 Today's request has no field for typed text or a selection, so neither
 reaches the prompt. Each typed case's prompt in the snapshot says so. That

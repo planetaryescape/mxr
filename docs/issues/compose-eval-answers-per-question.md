@@ -39,7 +39,9 @@ The answer uses a word outside the case's phrase list:
 
 ## Acceptance for the fix
 
-- each draft above gets the grade its heading says it should get;
+- every draft under "These drafts pass, but Priya is joining" fails `answers`;
+- every draft under "These drafts fail, but the answers are correct" passes
+  `answers`;
 - every recording in `call-empty` keeps its current grade;
 - the `an_answer_is_a_whole_word_so_now_does_not_answer_no` test still passes.
 

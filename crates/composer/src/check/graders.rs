@@ -7,6 +7,7 @@ use super::text::{
 };
 use super::{Answer, AnswerPolarity, Check, Grade, Output, Requirements};
 use std::collections::HashSet;
+use std::ops::Range;
 
 /// A typed sentence counts as changed, not missing, when this share of its
 /// words still appears in the draft.
@@ -116,15 +117,19 @@ fn is_answered(answer: &Answer<'_>, draft_words: &[String], draft_clauses: &[Cla
         .enumerate()
         .filter(|(_, clause)| holds_subject(clause, answer.subject))
         .any(|(index, _)| {
-            let scope = answer_scope(draft_clauses, index, answer);
-            let stated = answer.any_of.iter().any(|phrase| {
-                scope
-                    .iter()
-                    .any(|clause_words| contains_phrase(clause_words, phrase))
-            });
-            stated
+            let scope = &draft_clauses[answer_scope(draft_clauses, index, answer)];
+            let literal: Vec<&[String]> = scope.iter().map(|c| c.words.as_slice()).collect();
+            let without: Vec<Vec<String>> =
+                scope.iter().map(|c| without_idioms(&c.words)).collect();
+            // "no problem" can be the positive answer itself, but it never
+            // supplies the "no" of a negative one.
+            let stated = |phrase: &&str| match answer.polarity {
+                AnswerPolarity::Negative => without.iter().any(|w| contains_phrase(w, phrase)),
+                _ => literal.iter().any(|w| contains_phrase(w, phrase)),
+            };
+            answer.any_of.iter().any(stated)
                 && (answer.polarity != AnswerPolarity::Positive
-                    || !scope.iter().any(|clause_words| has_negation(clause_words)))
+                    || !without.iter().any(|w| has_negation(w)))
         })
 }
 
@@ -135,34 +140,9 @@ fn holds_subject(clause: &Clause, subject: &[&str]) -> bool {
             .any(|subject| contains_phrase(&clause.words, subject))
 }
 
-/// The clauses that speak about the subject found at `index`, with idioms
-/// such as "no problem" removed.
-fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Vec<Vec<String>> {
-    let clause = &clauses[index];
-    let is_bare = clause.words.iter().all(|word| {
-        answer
-            .subject
-            .iter()
-            .any(|subject| contains_phrase(std::slice::from_ref(word), subject))
-    });
-    let mut end = index + 1;
-    if is_bare {
-        while clauses
-            .get(end)
-            .is_some_and(|next| next.opened_by == Boundary::Soft)
-        {
-            end += 1;
-        }
-        // "Priya? No." puts the answer in the sentence after a bare subject.
-        if end == index + 1
-            && clause.opened_by == Boundary::Sentence
-            && clauses
-                .get(end)
-                .is_some_and(|next| next.opened_by == Boundary::Sentence)
-        {
-            end += 1;
-        }
-    }
+/// The clauses that speak about the subject found at `index`.
+fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Range<usize> {
+    let mut end = subject_clause_end(clauses, index, answer.subject);
     let mut start = index;
     if answer.polarity == AnswerPolarity::Negative {
         while clauses
@@ -171,14 +151,120 @@ fn answer_scope(clauses: &[Clause], index: usize, answer: &Answer<'_>) -> Vec<Ve
         {
             end += 1;
         }
-        if index > 0 && opens_with_a_refusal(&clauses[index - 1], clause) {
+        if index > 0 && opens_with_a_refusal(&clauses[index - 1], &clauses[index]) {
             start = index - 1;
         }
     }
-    clauses[start..end]
+    start..end
+}
+
+/// Where the statement about the subject ends. A clause that stops before
+/// saying anything ("Priya,", "Priya is,") carries on across commas until its
+/// predicate arrives or another subject takes over.
+fn subject_clause_end(clauses: &[Clause], index: usize, subject: &[&str]) -> usize {
+    let clause = &clauses[index];
+    let is_bare = clause.words.iter().all(|word| {
+        subject
+            .iter()
+            .any(|subject| contains_phrase(std::slice::from_ref(word), subject))
+    });
+    let is_unfinished = clause.words.last().is_some_and(|word| is_auxiliary(word));
+    let mut end = index + 1;
+    if !is_bare && !is_unfinished {
+        return end;
+    }
+    while let Some(next) = clauses.get(end) {
+        let joins_subjects = is_bare && next.opened_by == Boundary::And;
+        if !joins_subjects && next.opened_by != Boundary::Soft {
+            break;
+        }
+        let kind = continuation_kind(next);
+        if kind == Continuation::OtherSubject && !joins_subjects {
+            break;
+        }
+        end += 1;
+        if kind != Continuation::Aside {
+            return end;
+        }
+    }
+    // "Priya? No." puts the answer in the sentence after a bare subject, but
+    // "Priya? Sam can't make it." is about someone else.
+    if is_bare
+        && end == index + 1
+        && clause.opened_by == Boundary::Sentence
+        && clauses.get(end).is_some_and(|next| {
+            next.opened_by == Boundary::Sentence
+                && continuation_kind(next) != Continuation::OtherSubject
+        })
+    {
+        end += 1;
+    }
+    end
+}
+
+/// What a clause does to the statement it follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Continuation {
+    /// "sadly", "our lead", "who runs the migration": the statement goes on.
+    Aside,
+    /// "can't make it": the statement ends here.
+    Predicate,
+    /// "Sam can't make it": the clause is about someone else.
+    OtherSubject,
+}
+
+fn continuation_kind(clause: &Clause) -> Continuation {
+    let rest: Vec<&String> = clause
+        .words
         .iter()
-        .map(|clause| without_idioms(&clause.words))
-        .collect()
+        .skip_while(|word| word.ends_with("ly"))
+        .collect();
+    let says_something =
+        |word: &String| is_auxiliary(word) || has_negation(std::slice::from_ref(word));
+    match rest.split_first() {
+        None => Continuation::Aside,
+        Some((first, _)) if says_something(first) => Continuation::Predicate,
+        Some((first, _)) if matches!(first.as_str(), "who" | "whom" | "whose" | "which") => {
+            Continuation::Aside
+        }
+        Some(_) if is_short_refusal(&clause.words) => Continuation::Predicate,
+        Some((_, others)) if others.iter().any(|word| says_something(word)) => {
+            Continuation::OtherSubject
+        }
+        Some(_) => Continuation::Aside,
+    }
+}
+
+fn is_auxiliary(word: &str) -> bool {
+    matches!(
+        word,
+        "am" | "is"
+            | "are"
+            | "was"
+            | "were"
+            | "be"
+            | "been"
+            | "will"
+            | "would"
+            | "can"
+            | "could"
+            | "shall"
+            | "should"
+            | "may"
+            | "might"
+            | "must"
+            | "do"
+            | "does"
+            | "did"
+            | "has"
+            | "have"
+            | "had"
+    )
+}
+
+/// "No", "Sadly not", "Afraid not".
+fn is_short_refusal(clause_words: &[String]) -> bool {
+    clause_words.len() <= 3 && matches!(clause_words.last().map(String::as_str), Some("no" | "not"))
 }
 
 /// "I asked Priya, but she can't make it": the pronoun carries the subject on.
@@ -199,8 +285,7 @@ fn concludes_with_no(clause: &Clause) -> bool {
 fn opens_with_a_refusal(lead: &Clause, clause: &Clause) -> bool {
     lead.opened_by == Boundary::Sentence
         && clause.opened_by == Boundary::Soft
-        && lead.words.len() <= 3
-        && matches!(lead.words.last().map(String::as_str), Some("no" | "not"))
+        && is_short_refusal(&lead.words)
 }
 
 /// Phrases that use a negative word to say something positive.
@@ -770,6 +855,90 @@ mod tests {
             polarity: AnswerPolarity::Negative,
         },
     ];
+
+    #[test]
+    fn a_comma_aside_keeps_the_answer_on_its_subject() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works. Priya is, unfortunately, not able to join.",
+            "3pm works. Priya, however, can't make it.",
+            "3pm works. Priya, our lead, can't make it.",
+            "3pm works. Priya? Afraid not.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
+        let refused = run(
+            &requirements,
+            "3pm is, unfortunately, not possible. Priya is out.",
+        );
+        assert_eq!(refused.passed(Check::Answers), Some(false), "{refused:?}");
+    }
+
+    #[test]
+    fn a_comma_continuation_with_another_subject_ends_the_answer() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        for draft in [
+            "3pm works, but Priya can't make it.",
+            "3pm works, Priya can't make it.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(true),
+                "{draft}"
+            );
+        }
+        for draft in [
+            "3pm works. Priya is, sadly, Sam can't make it.",
+            "3pm works. Priya, Sam can't make it.",
+        ] {
+            assert_eq!(
+                run(&requirements, draft).passed(Check::Answers),
+                Some(false),
+                "{draft}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_answer_is_not_borrowed_from_another_subjects_sentence() {
+        let requirements = req("", &CALL_ANSWERS, &[]);
+        assert_eq!(
+            run(&requirements, "3pm works. Priya? Sam can't make it.").passed(Check::Answers),
+            Some(false)
+        );
+        assert_eq!(
+            run(&requirements, "3pm works. Priya? No.").passed(Check::Answers),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_positive_answer_may_be_worded_as_an_idiom() {
+        let answers = [Answer {
+            question: "is 3pm fine",
+            any_of: &["no problem"],
+            subject: &["3pm"],
+            polarity: AnswerPolarity::Positive,
+        }];
+        let requirements = req("", &answers, &[]);
+        assert_eq!(
+            run(&requirements, "3pm is no problem.").passed(Check::Answers),
+            Some(true)
+        );
+        assert_eq!(
+            run(&requirements, "3pm is not possible, no problem.").passed(Check::Answers),
+            Some(false)
+        );
+        let negative = req("", &CALL_ANSWERS, &[]);
+        assert_eq!(
+            run(&negative, "3pm works. Priya can't wait to join.").passed(Check::Answers),
+            Some(false)
+        );
+    }
 
     #[test]
     fn a_negation_in_another_clause_does_not_reverse_a_positive_answer() {

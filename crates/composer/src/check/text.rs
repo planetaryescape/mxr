@@ -43,8 +43,10 @@ pub(super) fn sentences(typed: &str) -> Vec<String> {
 /// What separates a clause from the one before it, weakest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Boundary {
-    /// A comma or "and". A bare subject can carry on across it: "Priya,
-    /// sadly, can't make it".
+    /// "and" with no comma, which can join two subjects: "Priya and Sam".
+    And,
+    /// A comma. A subject can carry on across it: "Priya, sadly, can't make
+    /// it".
     Soft,
     /// A semicolon, colon, dash or a word such as "but" or "so".
     Hard,
@@ -92,16 +94,24 @@ pub(super) fn clauses(text: &str) -> Vec<Clause> {
         let mut opened_by = Boundary::Sentence;
         for token in spaced.split_whitespace() {
             let word = token.trim_matches(not_alphanumeric);
+            let tail = &token[token.trim_end_matches(not_alphanumeric).len()..];
+            // ", however," is an aside: the clause around it carries on.
+            if CLAUSE_WORDS.contains(&word)
+                && words.is_empty()
+                && opened_by == Boundary::Soft
+                && tail.contains(',')
+            {
+                continue;
+            }
             if word.is_empty() || CLAUSE_WORDS.contains(&word) {
                 close(&mut out, &mut words, &mut opened_by, Boundary::Hard);
                 continue;
             }
             if word == "and" {
-                close(&mut out, &mut words, &mut opened_by, Boundary::Soft);
+                close(&mut out, &mut words, &mut opened_by, Boundary::And);
                 continue;
             }
             words.push(word.strip_suffix("'s").unwrap_or(word).to_string());
-            let tail = &token[token.trim_end_matches(not_alphanumeric).len()..];
             if tail.contains([';', ':']) {
                 close(&mut out, &mut words, &mut opened_by, Boundary::Hard);
             } else if tail.contains(',') {

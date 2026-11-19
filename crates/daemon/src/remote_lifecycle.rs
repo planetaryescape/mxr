@@ -105,7 +105,8 @@ impl Lifecycle {
             .values()
             .cloned()
             .map(|mut s| {
-                s.active = s.expires_at > now;
+                // A closed session stays closed even if the clock steps back.
+                s.active = s.active && s.expires_at > now;
                 s
             })
             .collect::<Vec<_>>();
@@ -177,6 +178,15 @@ mod tests {
         let restarted = Lifecycle::default();
         assert!(restarted.snapshot(191).sessions.is_empty());
         assert_ne!(lifecycle.boot_id(), restarted.boot_id());
+    }
+    #[test]
+    fn closed_sessions_stay_inactive_when_the_clock_steps_back() {
+        let lifecycle = Lifecycle::default();
+        lifecycle.touch("revoked", "a", "web", 100).unwrap();
+        lifecycle.touch("signed-out", "b", "cli", 100).unwrap();
+        lifecycle.close_client("revoked", 110);
+        lifecycle.close("signed-out", "b", 110);
+        assert!(lifecycle.snapshot(105).sessions.iter().all(|s| !s.active));
     }
     #[test]
     fn drain_serializes_admission_and_retains_accepted_work_until_it_finishes() {

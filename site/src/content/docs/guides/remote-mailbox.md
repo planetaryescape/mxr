@@ -102,6 +102,10 @@ mxr connect https://mail-host.example-tailnet.ts.net:8443 \
 | `--allow-triage` | `mail_triage` | Archive, labels, snooze, mode moves, todo changes, reviewed batches and sync |
 | `--allow-ai` | `mail_ai` | Summaries, writing help, mail questions and the assistant |
 
+The flags set the whole grant list. An approved request replaces this installation's registration, so a request with only `--allow-send` drops `mail_triage` and `mail_ai`. Pass every grant the client should keep, and check `capabilities` in the `--dry-run` output before you confirm.
+
+When the host refuses an operation, the error names the operation. An error that says the connection lacks a host-approved grant also names the flag to request. An error that says the operation runs only on the host means no grant covers it. `mxr status` and `mxr doctor` are examples. Run those on the host computer.
+
 The host records completed mail actions from paired clients in its local `mxr activity` log. Paired clients cannot read that log.
 
 The grants are independent. AI access follows the host's configured models and privacy policy; it does not grant sending or mail changes. Applying writing help to a stored draft also needs `mail_send`. Assistant tools check the originating registration and its grants for every operation, including after a turn starts. Assistant history belongs to that paired installation: its browser sessions share the history, while local host conversations and other installations remain separate. Re-pairing creates a new registration and does not adopt the previous registration's conversations. Continue a remote conversation from its paired client; the host refuses to resume it with local tool privileges.

@@ -282,6 +282,55 @@ pub(super) async fn handle(
     Ok(ResponseData::RemoteAuthority { response })
 }
 
+/// Names the operation and the grant it needs, so a denied client knows
+/// whether re-pairing helps or the operation runs only on the host.
+fn grant_denial(
+    granted: &[mxr_core::RemoteCapability],
+    request: &mxr_protocol::Request,
+) -> Option<String> {
+    use mxr_core::RemoteCapability::{MailAi, MailSend, MailTriage};
+    if mxr_protocol::remote_read_allowed(request) {
+        return None;
+    }
+    let grants = [
+        (
+            MailSend,
+            mxr_protocol::remote_send_allowed(request),
+            "--allow-send",
+        ),
+        (
+            MailTriage,
+            mxr_protocol::remote_triage_allowed(request),
+            "--allow-triage",
+        ),
+        (
+            MailAi,
+            mxr_protocol::remote_ai_allowed(request),
+            "--allow-ai",
+        ),
+    ];
+    if grants
+        .iter()
+        .any(|(capability, allowed, _)| *allowed && granted.contains(capability))
+    {
+        return None;
+    }
+    let operation = super::request_kind(request);
+    let missing: Vec<&str> = grants
+        .iter()
+        .filter(|(_, allowed, _)| *allowed)
+        .map(|(_, _, flag)| *flag)
+        .collect();
+    Some(if missing.is_empty() {
+        format!("Remote operation `{operation}` runs only on the host; run it on the host machine")
+    } else {
+        format!(
+            "Remote operation `{operation}` needs a host-approved grant this connection lacks; pair again with mxr connect <host> {} and approve it on the host",
+            missing.join(" or ")
+        )
+    })
+}
+
 /// The proof is checked at each admission on the writer, never cached on a socket.
 #[cfg(test)]
 pub(super) async fn read(
@@ -340,21 +389,8 @@ pub(super) async fn read_owned_as(
             ),
         }))
     })?;
-    if !mxr_protocol::remote_read_allowed(request)
-        && !(client
-            .capabilities
-            .contains(&mxr_core::RemoteCapability::MailSend)
-            && mxr_protocol::remote_send_allowed(request))
-        && !(client
-            .capabilities
-            .contains(&mxr_core::RemoteCapability::MailTriage)
-            && mxr_protocol::remote_triage_allowed(request))
-        && !(client
-            .capabilities
-            .contains(&mxr_core::RemoteCapability::MailAi)
-            && mxr_protocol::remote_ai_allowed(request))
-    {
-        return Err(super::HandlerError::RemoteAuthorityDenied("Remote operation requires an explicit host-approved grant or is local-only; request --allow-send, --allow-triage or --allow-ai with mxr connect and host approval".into()));
+    if let Some(message) = grant_denial(&client.capabilities, request) {
+        return Err(super::HandlerError::RemoteAuthorityDenied(message));
     }
     if matches!(request, Request::ApplyComposeProposal { .. })
         && !client
@@ -425,6 +461,7 @@ pub(super) async fn read_owned_as(
     match request {
         Request::SaveDraft { draft }
         | Request::UpdateDraft { draft }
+        | Request::SaveDraftToServer { draft }
         | Request::SendDraft { draft, .. }
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }

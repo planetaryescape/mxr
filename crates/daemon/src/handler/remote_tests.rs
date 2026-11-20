@@ -451,6 +451,75 @@ async fn remote_new_and_legacy_path_drafts_are_rejected_before_host_files_are_op
 }
 
 #[tokio::test]
+async fn send_grant_pushes_portable_drafts_and_denials_name_the_missing_grant() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let owner = owner(&state).await;
+    let draft = portable_draft(&state);
+    let push = Request::SaveDraftToServer {
+        draft: draft.clone(),
+    };
+
+    let (read_id, read_mail) = registered_client(&state).await;
+    let error = remote::read_owned(&state, &read_id, &read_mail, &push, Some(&owner))
+        .await
+        .unwrap_err()
+        .into_response();
+    assert!(
+        matches!(&error, mxr_protocol::Response::Error { message, .. }
+            if message.contains("save_draft_to_server") && message.contains("--allow-send")),
+        "{error:?}"
+    );
+    let error = remote::read_owned(
+        &state,
+        &read_id,
+        &read_mail,
+        &Request::GetDoctorReport,
+        None,
+    )
+    .await
+    .unwrap_err()
+    .into_response();
+    assert!(
+        matches!(&error, mxr_protocol::Response::Error { message, .. }
+            if message.contains("runs only on the host") && !message.contains("--allow")),
+        "{error:?}"
+    );
+
+    let (id, mail) = send_registration(&state).await;
+    let mut path_backed = draft.clone();
+    path_backed.id = mxr_core::DraftId::new();
+    path_backed
+        .attachments
+        .push("/private/host-secret-do-not-open".into());
+    let error = remote::read_owned(
+        &state,
+        &id,
+        &mail,
+        &Request::SaveDraftToServer {
+            draft: path_backed.clone(),
+        },
+        Some(&owner),
+    )
+    .await
+    .unwrap_err()
+    .into_response();
+    assert!(
+        matches!(error, mxr_protocol::Response::Error { code, .. } if code == "remote_path_backed_draft")
+    );
+    assert!(state
+        .store
+        .get_draft(&path_backed.id)
+        .await
+        .unwrap()
+        .is_none());
+
+    remote::read_owned(&state, &id, &mail, &push, Some(&owner))
+        .await
+        .unwrap();
+    assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
+}
+
+#[tokio::test]
 async fn remote_draft_list_omits_path_backed_drafts_and_direct_reads_still_refuse_them() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let (id, mail) = send_registration(&state).await;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.248](https://github.com/planetaryescape/mxr/compare/v0.6.247...v0.6.248) (2026-11-20)
+
+
+### Bug Fixes
+
+* **remote:** let send-granted clients push drafts to the provider ([#998](https://github.com/planetaryescape/mxr/issues/998)) ([cd69f7c](https://github.com/planetaryescape/mxr/commit/cd69f7cdedbf28d1515ca209cddc798c68b8c5ec))
+
 ## [0.6.247](https://github.com/planetaryescape/mxr/compare/v0.6.246...v0.6.247) (2026-11-19)
 
 

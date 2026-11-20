@@ -56,6 +56,37 @@ would refuse a non-tailnet origin.
   configured origin and lasts at most thirty days. The proxy must not rewrite
   those attributes, and the origin needs a valid certificate.
 
+## Restart the host after an upgrade
+
+A package upgrade replaces the `mxr` binary. The daemon and gateway that are already running keep the old build until they restart. After you upgrade the host, restart both through the service manager that runs them.
+
+For hosting installed with `serve setup`, stop and start the recorded service:
+
+```sh
+mxr serve stop --dry-run
+mxr serve stop --confirm
+mxr serve start --dry-run
+mxr serve start --confirm
+```
+
+For a daemon and gateway under your own service units, restart each unit. On macOS with launchd, use the labels from your LaunchAgent files:
+
+```sh
+launchctl kickstart -k gui/$(id -u)/<daemon-label>
+launchctl kickstart -k gui/$(id -u)/<gateway-label>
+```
+
+On Linux, run `systemctl --user restart <unit>` for each unit. launchd waits for the job's `ThrottleInterval` before it starts a job again, so the gateway can take a few seconds to come back.
+
+Check the version that the host daemon runs, not only the binary on the PATH:
+
+```sh
+MXR_DAEMON_ADDR="unix://$HOME/Library/Application Support/mxr/mxr.sock" \
+  mxr status --format json
+```
+
+`daemon_version` must match `mxr --version`. The socket path above is the macOS default. `MXR_DAEMON_ADDR` reaches the local daemon even when this computer has a saved remote connection selected.
+
 ## Inspect registrations and current sessions separately
 
 ```sh

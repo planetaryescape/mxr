@@ -49,7 +49,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   connect: {
-    use: 'Preview or save this installation\'s remote mailbox connection. Default pairing is read-only. Request independent host approval with --allow-send for compose/send preferences and reviewed sending, --allow-triage for mail organization and sync, and --allow-ai for mail intelligence. Repeat the command with the same grants to claim it. Cancel or restart a pending challenge without changing the selected mailbox. --forget-cleanup drops previewed local retry intents without claiming remote revocation. Switching to local retires only this installation and retains cleanup when the host is offline.',
+    use: 'Preview or save this installation\'s remote mailbox connection. Default pairing is read-only. Request independent host approval with --allow-send for compose/send preferences and reviewed sending, --allow-triage for mail organization and sync, and --allow-ai for mail intelligence. The flags set the full grant list, and an approved request replaces the previous grants. Repeat the command with the same grants to claim it. Cancel or restart a pending challenge without changing the selected mailbox. --forget-cleanup drops previewed local retry intents without claiming remote revocation. Switching to local retires only this installation and retains cleanup when the host is offline.',
     examples: [
       'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --dry-run',
       'mxr connect https://mail-host.example-tailnet.ts.net:8443 --name "My Mac" --confirm',

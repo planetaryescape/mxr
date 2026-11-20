@@ -288,6 +288,7 @@ pub fn remote_send_allowed(request: &crate::Request) -> bool {
             | crate::Request::GetDraft { .. }
             | crate::Request::SaveDraft { .. }
             | crate::Request::UpdateDraft { .. }
+            | crate::Request::SaveDraftToServer { .. }
             | crate::Request::DeleteDraft { .. }
             | crate::Request::PreviewDraft { .. }
             | crate::Request::CheckDraftSafety { .. }

@@ -107,7 +107,6 @@ fn append_signature(html: &str, signature: &str) -> String {
     }
 }
 
-/// Parse repeated `--inline NAME=PATH` arguments.
 fn parse_inline_assets(raw: &[String]) -> anyhow::Result<Vec<InlineAsset>> {
     let mut seen: HashSet<&str> = HashSet::new();
     let mut assets = Vec::with_capacity(raw.len());

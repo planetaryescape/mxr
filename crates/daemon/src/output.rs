@@ -242,7 +242,6 @@ mod tests {
         assert_safe(envelopes[0].from.name.as_deref().unwrap_or_default());
     }
 
-    /// `mxr replies` prints the reply-later queue.
     #[test]
     fn reply_queue_arrives_safe_to_print() {
         let response = sanitize_response(Response::Ok {

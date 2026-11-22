@@ -50,7 +50,6 @@ impl DraftSuggestionView {
     }
 }
 
-/// The canonical JSON object for a draft suggestion (shared by both commands).
 pub(crate) fn draft_suggestion_json(view: &DraftSuggestionView) -> Value {
     json!({
         "body": view.body,

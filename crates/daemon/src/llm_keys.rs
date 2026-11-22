@@ -13,7 +13,6 @@ use mxr_llm::{ApiKey, ApiKeySource, RouteProvider};
 use mxr_protocol::{LlmKeySourceData, LlmKeyStatusData, LlmProviderData};
 use std::path::Path;
 
-/// Longest key accepted. Real keys are around 100 characters.
 const MAX_KEY_LEN: usize = 512;
 
 pub(crate) struct LlmKeys {
@@ -64,7 +63,6 @@ impl LlmKeys {
         self.store.set(&Self::service(), provider.key(), key)
     }
 
-    /// Whether a key was there to remove.
     pub(crate) fn remove(&self, provider: RouteProvider) -> std::io::Result<bool> {
         let service = Self::service();
         let existed = self.store.get(&service, provider.key())?.is_some();
@@ -77,7 +75,6 @@ impl LlmKeys {
         status_of(provider, stored)
     }
 
-    /// What `status` would report with the stored key gone.
     pub(crate) fn status_without_stored(provider: RouteProvider) -> LlmKeyStatusData {
         status_of(provider, None)
     }
@@ -109,7 +106,6 @@ pub(crate) fn status_of(provider: RouteProvider, stored_at: Option<&Path>) -> Ll
 }
 
 impl ApiKeySource for LlmKeys {
-    /// The stored key, then the environment.
     fn api_key(&self, provider: RouteProvider) -> Option<ApiKey> {
         self.stored(provider).or_else(|| Self::from_env(provider))
     }

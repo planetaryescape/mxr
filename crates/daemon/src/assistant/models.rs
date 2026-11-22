@@ -13,7 +13,6 @@ use mxr_protocol::{
     AssistantModelChangeData, AssistantModelChoiceData, AssistantModelsData, ResponseData,
 };
 
-/// Names for the ids mxr ships. Any other id is shown as it is written.
 const LABELS: [(&str, &str); 5] = [
     ("gemma4:latest", "Gemma 4"),
     ("gpt-6-luna", "GPT-6 Luna"),
@@ -41,7 +40,6 @@ fn same_model(a: &str, b: &str) -> bool {
     bare(a) == bare(b)
 }
 
-/// The assistant's settings with `model` in place of the one configured.
 fn effective_with(config: &LlmConfig, model: &str) -> EffectiveLlmConfig {
     let override_config = LlmOverrideConfig {
         model: Some(model.to_string()),

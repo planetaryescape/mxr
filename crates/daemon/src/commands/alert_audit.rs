@@ -60,7 +60,6 @@ impl Inbound {
         Self(map)
     }
 
-    /// Earlier mail from one host: how many, and the oldest.
     fn history(&self, account: &str, host: &str, before: i64, candidate: Option<&str>) -> History {
         let Some(dates) = self.0.get(&(account.to_string(), host.to_string())) else {
             return History::default();
@@ -109,7 +108,6 @@ impl Inbound {
     }
 }
 
-/// Replay the rule over every candidate.
 fn replay(
     candidates: &[AuditCandidate],
     mail: &[AuditMail],

@@ -137,7 +137,6 @@ fn starts_environment_entry(word: &str) -> bool {
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// The value of `key` in a `KEY=VALUE` list.
 pub(crate) fn environment_value<'a>(environment: &'a [String], key: &str) -> Option<&'a str> {
     environment.iter().find_map(|entry| {
         entry

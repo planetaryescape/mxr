@@ -9,7 +9,6 @@ use chrono::{DateTime, Local, Utc};
 use mxr_protocol::{OneTimeCodeData, Request, Response, ResponseData};
 use std::fmt::Write as _;
 
-/// Codes `--all` lists.
 const LISTED: u32 = 20;
 
 pub async fn run(
@@ -113,7 +112,6 @@ fn render_all(codes: &[OneTimeCodeData], format: OutputFormat) -> anyhow::Result
     })
 }
 
-/// "482913  Acme · arrived 14:32 · expires 14:42".
 fn line(code: &OneTimeCodeData) -> String {
     let state = if code.current { "expires" } else { "expired" };
     format!(

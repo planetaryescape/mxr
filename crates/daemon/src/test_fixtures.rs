@@ -232,7 +232,6 @@ pub(crate) fn test_label(account_id: &AccountId, name: &str, provider_id: &str) 
     }
 }
 
-/// Standard set of system labels used by sidebar/label tests.
 pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
     let sys = |name: &str, pid: &str, unread: u32, total: u32| Label {
         id: LabelId::from_provider_id("test", pid),
@@ -548,7 +547,6 @@ impl FakeBulkDaemon {
             .collect()
     }
 
-    /// A notice sink that records into the same log as the requests.
     pub(crate) fn notice_sink(&self) -> NoticeSink {
         NoticeSink {
             events: self.events.clone(),

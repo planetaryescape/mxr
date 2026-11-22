@@ -1512,7 +1512,6 @@ fn demo_account_ids() -> [AccountId; 2] {
     ]
 }
 
-/// The demo's bridge and TCP ports: ten above the real profile's defaults.
 const DEMO_BRIDGE_PORT: u16 = 42839;
 const DEMO_TCP_PORT: u16 = 42840;
 

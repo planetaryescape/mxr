@@ -14,13 +14,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Deleted messages cleared per round, bounding one round's work.
 const DRAIN_BATCH: u32 = 1_000;
 
-/// Longest the cleanup waits on the semantic worker while sync is held off.
 const SEMANTIC_FORGET_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How often owed cleanups are retried with nothing else prompting it.
 pub(crate) const DRAIN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 /// Clears every deleted message whose cleanup is due. A message whose files

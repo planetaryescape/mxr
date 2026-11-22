@@ -17,7 +17,6 @@ use mxr_html_worker::{AnyJob, Config};
 /// command.
 pub const HELPER_ARG: &str = "__html-worker";
 
-/// Every parse any crate runs in the helper, which is what its registry holds.
 pub fn jobs() -> Vec<&'static dyn AnyJob> {
     let mut jobs = mxr_reader::html_jobs();
     jobs.extend(mxr_reading::html_jobs());
@@ -28,7 +27,6 @@ pub fn jobs() -> Vec<&'static dyn AnyJob> {
     jobs
 }
 
-/// Runs this process as a helper until its input closes.
 pub fn run_helper() -> ExitCode {
     mxr_html_worker::run_helper(&jobs())
 }
@@ -56,7 +54,6 @@ fn helper_program() -> PathBuf {
     })
 }
 
-/// Counts for `mxr doctor` and the diagnostics page.
 pub fn stats() -> mxr_protocol::HtmlHelperStats {
     let stats = mxr_html_worker::stats();
     mxr_protocol::HtmlHelperStats {

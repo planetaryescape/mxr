@@ -36,9 +36,7 @@ use mxr_assistant::{readable_result, refused, ASK_USER_TOOL};
 use mxr_protocol::{AssistantCallStateData, AssistantStepTitleData};
 use serde_json::Value;
 
-/// Longest title a client gets, in characters.
 const TITLE_CHARS: usize = 80;
-/// Longest quoted argument inside a title.
 const QUOTED_CHARS: usize = 40;
 
 /// What the daemon knows about a call besides its arguments.
@@ -75,7 +73,6 @@ impl Phrases {
         }
     }
 
-    /// "Archiving", "Archived", "archive" with the same rest of the phrase.
     fn verb(ing: &str, ed: &str, infinitive: &str, rest: &str) -> Self {
         let join = |verb: &str| {
             if rest.is_empty() {
@@ -230,13 +227,11 @@ fn nested_failure(
     }
 }
 
-/// The running title of a call, for the live line.
 pub(crate) fn running_title(tool: &str, arguments: &Value) -> String {
     let phrases = phrases(tool, arguments, Context::default()).unwrap_or_else(|| generic(tool));
     finish(&phrases.running)
 }
 
-/// The title of a change waiting for approval: "Archive 14 emails".
 pub(crate) fn change_title(tool: &str, arguments: &Value, preview: Option<&Value>) -> String {
     let context = Context {
         preview,
@@ -277,12 +272,10 @@ fn preview_of(gerund: &str, what: &str) -> Phrases {
     Phrases::verb("Checking", "Checked", "check", &rest)
 }
 
-/// A tool result as JSON, past mxr's untrusted-mail fence.
 fn result_json(result: Option<&str>) -> Option<Value> {
     serde_json::from_str(&readable_result(result?, usize::MAX)).ok()
 }
 
-/// The first list under `key`, however deep the result wraps it.
 fn find_list<'a>(value: &'a Value, key: &str, depth: usize) -> Option<&'a Vec<Value>> {
     if let Some(list) = value.get(key).and_then(Value::as_array) {
         return Some(list);
@@ -304,7 +297,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     }
 }
 
-/// How many accounts a sync result covers and how many failed to start.
 fn sync_accounts(result: &str) -> Option<(usize, usize)> {
     let value = result_json(Some(result))?;
     let results = find_list(&value, "results", 3)?;
@@ -359,7 +351,6 @@ fn is_send_receipt(result: &str) -> bool {
     })
 }
 
-/// `MutationResultData`: how many were asked for and how many changed.
 fn mutation_counts(result: &str) -> Option<(usize, usize)> {
     let value = result_json(Some(result))?;
     let result = value.get("result")?;
@@ -383,7 +374,6 @@ fn todo_counts(result: &str) -> Option<(usize, usize)> {
     Some((changed, left))
 }
 
-/// A number at the top of the result, past mxr's untrusted-mail fence.
 fn result_number(result: Option<&str>, key: &str) -> Option<u64> {
     result_json(result)?.get(key)?.as_u64()
 }
@@ -396,7 +386,6 @@ fn none_or(total: u64) -> String {
     }
 }
 
-/// For a tool that has no entry: its name as words.
 fn generic(_tool: &str) -> Phrases {
     Phrases::new(
         "Using an unknown tool",
@@ -406,7 +395,6 @@ fn generic(_tool: &str) -> Phrases {
 }
 
 #[cfg(test)]
-/// Whether `tool` has its own phrasing (the rest get the generic words).
 pub(super) fn has_titles(tool: &str) -> bool {
     phrases(tool, &Value::Null, Context::default()).is_some()
 }
@@ -470,7 +458,6 @@ fn flag(arguments: &Value, key: &str) -> bool {
     arguments.get(key).and_then(Value::as_bool) == Some(true)
 }
 
-/// Mirrors the gate: anything but nothing, null or `false` is a real run.
 fn confirmed(arguments: &Value) -> bool {
     !matches!(
         arguments.get("confirm"),
@@ -491,7 +478,6 @@ fn emails(arguments: &Value) -> String {
     counted(arguments, "message_ids", "email", "emails")
 }
 
-/// A mode as the app names it.
 fn mode_name(arguments: &Value) -> String {
     let raw = text(arguments, "mode").unwrap_or_default();
     match raw.to_lowercase().as_str() {
@@ -512,7 +498,6 @@ fn place_name(arguments: &Value) -> &'static str {
     }
 }
 
-/// Who a person argument is: an address, or "a group".
 fn who(arguments: &Value) -> String {
     match text(arguments, "person") {
         Some(person) if person.starts_with("group:") => "a group conversation".into(),

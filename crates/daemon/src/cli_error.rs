@@ -31,17 +31,14 @@ impl CliError {
         Self::new(KIND_DAEMON_UNAVAILABLE, EXIT_DAEMON_UNAVAILABLE, message).into()
     }
 
-    /// The daemon answers but cannot be used by this mxr binary.
     pub fn daemon_incompatible(message: impl Into<String>) -> anyhow::Error {
         Self::new(KIND_DAEMON_INCOMPATIBLE, EXIT_DAEMON_UNAVAILABLE, message).into()
     }
 
-    /// The daemon rejected the token this client presented.
     pub fn daemon_auth(message: impl Into<String>) -> anyhow::Error {
         Self::new(KIND_DAEMON_AUTH, EXIT_AUTH, message).into()
     }
 
-    /// A daemon response whose kind is `IpcErrorKind::Auth`.
     pub fn auth(message: impl Into<String>) -> anyhow::Error {
         Self::new(IpcErrorKind::Auth.as_code(), EXIT_AUTH, message).into()
     }
@@ -67,7 +64,6 @@ impl CliError {
         error.chain().find_map(|cause| cause.downcast_ref::<Self>())
     }
 
-    /// The one-line stderr record for `--format json` and `jsonl`.
     pub fn json_line(&self) -> String {
         serde_json::json!({
             "error": {

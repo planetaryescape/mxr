@@ -156,7 +156,6 @@ fn render_status(snapshot: &LlmStatusSnapshot, format: OutputFormat) -> anyhow::
     Ok(())
 }
 
-/// One line per feature: its model, then where requests go.
 fn features_table(features: &[LlmFeatureStatusData]) -> String {
     let name_width = features.iter().map(|f| f.feature.len()).max().unwrap_or(0);
     let model_width = features.iter().map(|f| f.model.len()).max().unwrap_or(0);
@@ -203,7 +202,6 @@ fn features_table(features: &[LlmFeatureStatusData]) -> String {
     out
 }
 
-/// `base_url` first, then the fallback's routes, and which is in use.
 fn chain_label(endpoint: &LlmEndpointStatusData, feature: &LlmFeatureStatusData) -> String {
     let mut parts = vec![format!(
         "{}: {}",

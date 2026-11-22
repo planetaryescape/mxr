@@ -237,7 +237,6 @@ fn json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {
     Ok(format!("{}\n", serde_json::to_string_pretty(value)?))
 }
 
-/// "16h", "3d", "just now".
 fn age(at: DateTime<Utc>) -> String {
     let seconds = (Utc::now() - at).num_seconds().max(0);
     match seconds {
@@ -550,7 +549,6 @@ fn render_ack(ack: &AckPlanData, format: OutputFormat) -> anyhow::Result<String>
     Ok(out)
 }
 
-/// Keep the text's own line breaks, cleaning each line.
 fn terminal_text_block(text: &str) -> String {
     text.lines()
         .map(|line| terminal_text(line).into_owned())

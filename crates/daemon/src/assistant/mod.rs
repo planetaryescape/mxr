@@ -230,7 +230,6 @@ fn outcome_key(outcome: &TurnOutcome) -> &'static str {
     }
 }
 
-/// The turn's answer for the trace: the last thing the assistant said.
 #[cfg(feature = "langfuse")]
 fn last_reply(history: &[ToolChatMessage]) -> serde_json::Value {
     history

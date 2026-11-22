@@ -72,7 +72,6 @@ fn quoted_gt_attribute_bypass() -> String {
     html
 }
 
-/// No whitespace between attributes, so the scan counts one token.
 fn adjacent_quoted_attributes() -> String {
     let mut html = format!("<p>{MARKER}</p><div ");
     for n in 0..100_000 {

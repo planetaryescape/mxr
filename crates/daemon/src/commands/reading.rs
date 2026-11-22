@@ -256,7 +256,6 @@ fn csv_field(text: &str) -> String {
     format!("\"{}\"", text.replace('"', "\"\""))
 }
 
-/// "3 min".
 fn minutes(n: u32) -> String {
     format!("{n} min")
 }
@@ -300,7 +299,6 @@ fn item_lines(out: &mut String, item: &ReadingItemData) {
     let _ = writeln!(out, "    {}", item.item_key);
 }
 
-/// One item, with the account mark on its first line.
 fn item_block(out: &mut String, item: &ReadingItemData, marks: &AccountMarks) {
     let mut block = String::new();
     item_lines(&mut block, item);
@@ -523,7 +521,6 @@ async fn open(
     Ok(())
 }
 
-/// Greedy word wrap: a reader column needs nothing more, so no crate.
 fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
@@ -542,7 +539,6 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-/// Wrapped to a 66-character measure.
 fn paragraphs_text(out: &mut String, paragraphs: &[ReadingParagraphData]) {
     for paragraph in paragraphs {
         let prefix = match paragraph.kind.as_str() {
@@ -632,7 +628,6 @@ fn reader_text(
     terminal_block(&out)
 }
 
-/// The start of a passage, on one line.
 fn preview(quote: &str) -> String {
     const SHOWN: usize = 60;
     let line = quote.split_whitespace().collect::<Vec<_>>().join(" ");

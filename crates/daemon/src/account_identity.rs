@@ -223,7 +223,6 @@ pub fn clash_message(tag: &str, holder: &str, reveal_holder: bool) -> String {
     }
 }
 
-/// The name and valid tag of every account config defines, except `exclude_key`.
 pub fn configured_tags(config: &mxr_config::MxrConfig, exclude_key: &str) -> Vec<(String, String)> {
     config
         .accounts

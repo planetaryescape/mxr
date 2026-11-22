@@ -17,7 +17,6 @@ const TTL_DAYS: i64 = 7;
 /// Sentences shorter than this ("Thanks so much.") are too common to
 /// attribute.
 const MIN_WORDS: usize = 4;
-/// Per account; the oldest go first past it.
 const MAX_SENTENCES: u32 = 5_000;
 
 /// Remember `text` as written from `account`'s history. A failure is
@@ -170,6 +169,5 @@ mod tests {
         assert_eq!(fingerprints("one two three four"), vec![FOUR_WORDS]);
     }
 
-    /// The first 8 bytes of SHA-256("one two three four"), big-endian.
     const FOUR_WORDS: i64 = 1_242_828_351_107_727_526;
 }

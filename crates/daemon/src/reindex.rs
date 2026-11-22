@@ -24,10 +24,8 @@ const REINDEX_BATCH_SIZE: u32 = 500;
 /// Why a rebuild ran. Recorded on the "Lexical index rebuilt" event, which
 /// is the only place a user can see it.
 pub(crate) const REASON_FULL_REINDEX: &str = "full_reindex";
-/// The indexed text changed since the index was written.
 pub(crate) const REASON_CONTENT_VERSION: &str = "content_version";
 
-/// Drop and rebuild the Tantivy index from all messages in SQLite.
 pub async fn reindex(
     search: &SearchServiceHandle,
     store: &Store,
@@ -348,7 +346,6 @@ mod tests {
         assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
     }
 
-    /// One rebuild page holding `envelope`, as a read at `read_seq` would give it.
     fn page_of(envelope: &mxr_core::Envelope) -> SearchUpdateBatch {
         SearchUpdateBatch {
             entries: vec![SearchIndexEntry {

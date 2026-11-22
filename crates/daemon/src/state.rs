@@ -301,7 +301,6 @@ pub(crate) struct LlmFallbackChain {
 }
 
 impl LlmFallbackChain {
-    /// The same chain with nothing behind the endpoint.
     fn withheld(&self) -> Self {
         Self {
             routes: Vec::new(),
@@ -849,7 +848,6 @@ struct SyncRun {
 }
 
 impl SyncRun {
-    /// Whether the entry still carries anything worth remembering.
     fn is_idle(&self) -> bool {
         self.revision == 0
             && self.deferred_relationship_contacts.is_empty()
@@ -1632,7 +1630,6 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
-    /// Draft locks precede account provider locks for every draft writer.
     pub async fn acquire_draft_operation(
         &self,
         draft_id: &mxr_core::DraftId,
@@ -1781,7 +1778,6 @@ impl AppState {
         self.direction_repair_owed.lock().insert(account_id.clone());
     }
 
-    /// Clear and report whether the account owes a direction reconciliation.
     pub(crate) fn take_direction_repair(&self, account_id: &AccountId) -> bool {
         self.direction_repair_owed.lock().remove(account_id)
     }
@@ -1794,7 +1790,6 @@ impl AppState {
             .analytics_repair_owed = true;
     }
 
-    /// Clear and report the account's analytics debt.
     pub(crate) fn take_analytics_repair_debt(&self, account_id: &AccountId) -> bool {
         let mut runs = self.sync_runs.lock();
         let Some(run) = runs.get_mut(account_id) else {
@@ -1821,7 +1816,6 @@ impl AppState {
             .extend(contacts);
     }
 
-    /// Take everything deferred for `account_id` so far.
     pub(crate) fn take_deferred_relationship_contacts(
         &self,
         account_id: &AccountId,
@@ -2315,7 +2309,6 @@ impl AppState {
         self.runtime.read().providers.get(account_id).cloned()
     }
 
-    /// Get provider for a specific account, or fall back to default.
     pub fn get_provider(
         &self,
         account_id: Option<&AccountId>,
@@ -2495,7 +2488,6 @@ impl AppState {
         }
     }
 
-    /// Create an in-memory AppState for tests.
     #[cfg(test)]
     pub async fn in_memory() -> anyhow::Result<Self> {
         let (state, _) = Self::in_memory_with_fake().await?;
@@ -3201,7 +3193,6 @@ pub(crate) fn accounts_with_changed_addresses(
     changed
 }
 
-/// Every stored account's owned set, read from committed store data.
 pub(crate) async fn owned_sets_by_account(
     store: &Store,
 ) -> std::result::Result<Vec<(AccountId, mxr_core::types::OwnedAddresses)>, sqlx::Error> {

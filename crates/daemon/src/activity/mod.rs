@@ -68,7 +68,6 @@ struct Inner {
 }
 
 impl Recorder {
-    /// Snapshot startup policy. The environment kill switch overrides config.
     pub fn spawn(store: Arc<Store>, config: &mxr_config::ActivityConfig) -> Self {
         let enabled = config.enabled && std::env::var("MXR_ACTIVITY").as_deref() != Ok("off");
         let (tx, rx) = mpsc::channel::<RecorderMessage>(1024);

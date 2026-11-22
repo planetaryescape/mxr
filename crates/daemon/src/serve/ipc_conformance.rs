@@ -71,9 +71,7 @@ const RECV_TIMEOUT: Duration = Duration::from_secs(5);
 /// Longer bound for the multi-MiB frame round-trip: transferring ~15.5 MiB over
 /// the socket pair can be slow on a loaded CI box.
 const BIG_FRAME_RECV_TIMEOUT: Duration = Duration::from_secs(30);
-/// Upper bound on joining a serve task during teardown.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(5);
-/// `IpcCodec`'s frame cap (`crates/protocol/src/codec.rs`): 16 MiB.
 const MAX_FRAME_LEN: usize = 16 * 1024 * 1024;
 
 /// A `#[cfg(test)]`-only mechanism to hold a Bulk-lane request in flight under
@@ -178,7 +176,6 @@ pub(crate) mod gate {
     }
 
     impl GateHandle {
-        /// Release every gated request (current and future while installed).
         pub(crate) fn open(&self) {
             let _ = self.open_tx.send(true);
         }
@@ -196,17 +193,14 @@ pub(crate) mod gate {
             }
         }
 
-        /// Current count of requests that have entered the gate.
         pub(crate) fn entered(&self) -> usize {
             *self.entered_rx.borrow()
         }
 
-        /// Gated requests that ran to completion.
         pub(crate) fn completed(&self) -> usize {
             *self.completed_rx.borrow()
         }
 
-        /// Gated requests cancelled while parked at the gate.
         pub(crate) fn cancelled(&self) -> usize {
             *self.cancelled_rx.borrow()
         }
@@ -218,7 +212,6 @@ pub(crate) mod gate {
         }
     }
 
-    /// Install a fresh gate, serializing against any other gate-using test.
     pub(crate) async fn install() -> GateHandle {
         install_with(false).await
     }
@@ -305,7 +298,6 @@ impl MailSyncProvider for PanicOnCreateLabel {
 /// transports go through the real `bind`/`accept`/`connect` path.
 #[async_trait]
 trait Harness: Send + Sync + Sized + 'static {
-    /// Set up the harness (bind the listener, for transport variants).
     async fn start() -> Self;
 
     /// One connected connection: `(server end for serve, client end for the
@@ -323,7 +315,6 @@ trait Harness: Send + Sync + Sized + 'static {
     }
 }
 
-/// The corpus's fixed TCP token. A real secret in production; a constant here.
 const CORPUS_TOKEN: &str = "corpus-conformance-token";
 
 /// A Unix `socketpair(2)` — the real fd / kernel path, no bind/accept.
@@ -457,7 +448,6 @@ impl Harness for TcpTokenHarness {
     }
 }
 
-/// Hot/Bulk lane semaphores at the daemon's real production sizes.
 fn lanes() -> (Arc<Semaphore>, Arc<Semaphore>) {
     (
         Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT)),
@@ -626,7 +616,6 @@ impl Served {
         self.client.send(request(id, req)).await.unwrap();
     }
 
-    /// Read the next frame within `timeout`, asserting one arrives and decodes.
     async fn recv_within(&mut self, timeout: Duration) -> IpcMessage {
         tokio::time::timeout(timeout, self.client.next())
             .await
@@ -635,12 +624,10 @@ impl Served {
             .expect("frame should decode")
     }
 
-    /// Read the next frame within the default timeout.
     async fn recv(&mut self) -> IpcMessage {
         self.recv_within(RECV_TIMEOUT).await
     }
 
-    /// Read frames, skipping unsolicited events, until the `Response` for `id`.
     async fn recv_response(&mut self, id: u64) -> IpcMessage {
         self.recv_response_within(id, RECV_TIMEOUT).await
     }
@@ -1431,7 +1418,6 @@ mod auth_matrix {
         state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
     }
 
-    /// The good token authenticates; declaration then enables ordinary requests.
     #[tokio::test]
     async fn good_token_unlocks_the_connection() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -1961,7 +1947,6 @@ mod scoped_events {
         ));
     }
 
-    /// Declared CLI event consumers retain their ordinary event stream.
     #[tokio::test]
     async fn a_declared_cli_event_only_connection_receives_events() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -1994,7 +1979,6 @@ mod queued_events {
     use tokio::sync::broadcast;
     use tokio_util::codec::FramedWrite;
 
-    /// Frames one flush wrote, read back from the other end of a duplex pipe.
     async fn flushed(
         sender_capacity: usize,
         queued: usize,

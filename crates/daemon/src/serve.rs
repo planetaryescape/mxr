@@ -130,7 +130,6 @@ fn token_matches(expected: Option<&str>, presented: &str) -> bool {
     }
 }
 
-/// Point-to-point "you missed events, resync" signal for one client.
 fn events_lagged_frame(skipped: u64) -> IpcMessage {
     IpcMessage {
         expected_workspace: None,

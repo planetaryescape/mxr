@@ -64,7 +64,6 @@ pub(crate) fn gist_line(gist: &ThreadGistData) -> String {
     }
 }
 
-/// Where a line came from, in the reader's words.
 fn source_label(gist: &ThreadGistData) -> Option<String> {
     gist.provenance.as_ref().map(provenance_text)
 }

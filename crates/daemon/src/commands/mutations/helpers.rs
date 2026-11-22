@@ -93,7 +93,6 @@ pub(super) async fn resolve_mutation_selection_with_limit(
 }
 
 impl MutationSelection {
-    /// For the commands that take `--all`: the cap notice then says so.
     #[must_use]
     pub(super) fn offering_all(mut self) -> Self {
         self.capped = self.capped.map(CappedSelection::offering_all);
@@ -340,7 +339,6 @@ pub(super) fn print_dry_run_output(
     Ok(())
 }
 
-/// Formats with no room for extra fields get the cap notice on stderr.
 fn announce_cap_on_stderr(selection: &MutationSelection) -> anyhow::Result<()> {
     if let Some(capped) = selection.capped {
         capped.announce(&mut std::io::stderr())?;
@@ -476,7 +474,6 @@ pub(super) fn confirm_selection(
     confirm_selection_to(action, selection, destructive, yes, &mut std::io::stderr())
 }
 
-/// Confirms a mutation whose preview the caller has already rendered as lines.
 pub(super) fn confirm_prompt(preview_lines: &[String]) -> anyhow::Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         anyhow::bail!(

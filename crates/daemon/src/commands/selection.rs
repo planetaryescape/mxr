@@ -56,7 +56,6 @@ impl CappedSelection {
         }
     }
 
-    /// For a command that takes `--all`: the notice then points at it.
     #[must_use]
     pub fn offering_all(mut self) -> Self {
         self.offers_all = true;

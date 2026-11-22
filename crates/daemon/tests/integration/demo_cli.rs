@@ -38,7 +38,6 @@ const DEMO_MESSAGES: usize = 2_000;
 /// is the guard that does not depend on timing at all.
 const IPC_TIMEOUT_SECS: &str = "60";
 
-/// The stdout lines that bracket the seed phase.
 const SEED_START_MARKER: &str = "Seeding demo mailbox";
 const SEED_DONE_MARKER: &str = "Demo mailbox contains";
 
@@ -310,7 +309,6 @@ fn demo_seeds_a_usable_mailbox_and_stops_cleanly() {
     );
 }
 
-/// Last `lines` lines of a captured stderr stream, for failure messages.
 fn stderr_tail(stderr: &str, lines: usize) -> String {
     let all: Vec<&str> = stderr.lines().collect();
     all[all.len().saturating_sub(lines)..].join("\n")

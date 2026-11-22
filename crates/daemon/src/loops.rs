@@ -746,7 +746,6 @@ pub async fn reconcile_interrupted_syncs(state: &AppState) {
     }
 }
 
-/// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
     if state.is_restore_pending() {
         return;
@@ -2108,7 +2107,6 @@ pub async fn process_due_scheduled_sends(
     Ok(count)
 }
 
-/// Background loop: flush due scheduled sends on a 60-second cadence.
 pub async fn scheduled_sends_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut ticker = interval(Duration::from_secs(60));
     loop {

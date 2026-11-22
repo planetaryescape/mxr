@@ -24,7 +24,6 @@ pub enum UnsubscribeResult {
     NoMethod,
 }
 
-/// Execute an unsubscribe action.
 pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) -> UnsubscribeResult {
     match method {
         UnsubscribeMethod::OneClick { url } => {

@@ -204,7 +204,6 @@ async fn unsubscribe_by_address_to(
     Ok(())
 }
 
-/// Plans each address with its own search, so each gets its own request.
 async fn plan_addresses(
     client: &mut IpcClient,
     addresses: &[String],
@@ -299,7 +298,6 @@ fn address_search_request(
     selection_search_request(address_query(address, search), SEARCH_HARD_CAP, account_id)
 }
 
-/// The search for one address. A `--search` scope narrows it with AND.
 fn address_query(address: &str, search: Option<&str>) -> String {
     let from = format!("from:{address}");
     match search.map(str::trim).filter(|scope| !scope.is_empty()) {
@@ -353,7 +351,6 @@ fn request_record(
     }
 }
 
-/// Writes each capped address's notice, for the paths with no prompt to show it.
 fn announce_caps(plans: &[AddressPlan], out: &mut dyn std::io::Write) -> std::io::Result<()> {
     for plan in plans {
         if let Some(capped) = plan.selection.capped {

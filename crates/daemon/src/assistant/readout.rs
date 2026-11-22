@@ -13,14 +13,12 @@ use mxr_protocol::{
 use mxr_store::AssistantMessageRow;
 use serde_json::{Map, Value};
 
-/// Rows a step shows; the total says how many more there were.
 const ROWS: usize = 5;
 const FACTS: usize = 5;
 const DETAIL_CHARS: usize = 90;
 /// Rows kept per step for a reply to draw from, so a reply that names more
 /// emails than a step's readout shows still finds them all.
 const REPLY_ROWS: usize = 50;
-/// How deep to look for lists. mxr's results nest one or two wrappers.
 const DEPTH: usize = 4;
 
 /// The readout of a whole result, or `None` when it is not JSON or holds
@@ -294,7 +292,6 @@ fn unread(object: &Map<String, Value>) -> bool {
         .is_some_and(|flags| !flags.split('|').any(|flag| flag.trim() == "READ"))
 }
 
-/// Where the row opens: its conversation, or the person's row in Messages.
 fn link(object: &Map<String, Value>) -> Option<AssistantLinkData> {
     if let Some(thread_id) = text(object.get("thread_id")) {
         return Some(AssistantLinkData::Thread { thread_id });
@@ -325,7 +322,6 @@ fn clipped(text: &str, max: usize) -> String {
     format!("{}…", kept.trim_end())
 }
 
-/// Fields that mean something to code, not to the person reading.
 fn skipped_fact(key: &str) -> bool {
     key == "kind"
         || key == "id"
@@ -349,7 +345,6 @@ fn fact_value(value: &Value) -> Option<String> {
     }
 }
 
-/// `undo_available` reads "Undo available".
 fn words(key: &str) -> String {
     let spaced = one_line(&key.replace('_', " "));
     let mut chars = spaced.chars();

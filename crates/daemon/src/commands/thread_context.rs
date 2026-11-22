@@ -55,7 +55,6 @@ pub async fn run(
     Ok(())
 }
 
-/// The human view: one labelled line per row, in the words the TUI uses.
 pub(crate) fn render(
     context: &ThreadContextData,
     gist: Option<&ThreadGistData>,

@@ -12,7 +12,6 @@ use mxr_protocol::*;
 use std::io::IsTerminal;
 use std::time::{Duration, Instant};
 
-/// How often a waiting command checks on the turn.
 const POLL_EVERY: Duration = Duration::from_millis(400);
 /// How long a command waits before handing back a turn still running.
 const WAIT_AT_MOST: Duration = Duration::from_secs(600);
@@ -537,7 +536,6 @@ fn state_label(state: AssistantCallStateData) -> &'static str {
     }
 }
 
-/// The id a mail change the assistant made can be undone with.
 fn undo_id(state: AssistantCallStateData, result: Option<&str>) -> Option<String> {
     if !matches!(
         state,
@@ -577,7 +575,6 @@ fn place(cloud: bool) -> &'static str {
     }
 }
 
-/// The choices as a table, the one in use marked with `*`.
 fn models_text(models: &AssistantModelsData) -> String {
     let mut text = String::new();
     match &models.current {

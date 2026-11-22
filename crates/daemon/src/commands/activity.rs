@@ -1049,7 +1049,6 @@ async fn run_replay(
     Ok(())
 }
 
-/// Group consecutive rows by action prefix and emit human-readable lines.
 fn group_for_replay(entries: &[ActivityEntry]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if entries.is_empty() {

@@ -18,12 +18,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-/// Shorter ids could match inside any result by chance.
 const MIN_ID_CHARS: usize = 8;
-/// Shorter names ("Hi", "Ann") are too likely to be ordinary words.
 const MIN_NAME_CHARS: usize = 5;
 
-/// `[words](mxr:thread/<id>)` or `[words](mxr:person/<id>)` in a reply.
 static MXR_LINK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[([^\]\n]*)\]\(mxr:([a-z]+)/([^)\s]+)\)").expect("valid link pattern")
 });
@@ -63,7 +60,6 @@ pub(crate) struct KnownLinks {
 }
 
 impl KnownLinks {
-    /// Learn from one whole tool result, as mxr returned it.
     pub(crate) fn add_result(&mut self, result: &str) {
         self.results.push_str(result);
         self.results.push('\n');
@@ -77,7 +73,6 @@ impl KnownLinks {
         }
     }
 
-    /// The reply with links checked and the emails and people it names linked.
     pub(crate) fn apply(&self, reply: &str) -> String {
         let checked = self.checked(reply);
         self.linked_names(&checked)
@@ -193,7 +188,6 @@ impl KnownLinks {
     }
 }
 
-/// The markdown target a reply link uses for a row's object.
 fn link_target(link: &AssistantLinkData) -> String {
     match link {
         AssistantLinkData::Thread { thread_id } => format!("mxr:thread/{thread_id}"),
@@ -219,7 +213,6 @@ fn unquoted<'a>(before: &'a str, after: &str) -> (&'a str, String) {
     }
 }
 
-/// The first place `name` stands as whole words in `text`.
 fn word_match(text: &str, name: &str) -> Option<usize> {
     text.match_indices(name)
         .map(|(start, _)| start)
@@ -230,7 +223,6 @@ fn word_match(text: &str, name: &str) -> Option<usize> {
         })
 }
 
-/// "Re: Fwd: Plans" reads "Plans": replies often drop the prefixes.
 fn without_reply_prefix(subject: &str) -> &str {
     let mut rest = subject.trim();
     loop {

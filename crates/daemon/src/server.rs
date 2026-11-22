@@ -1426,7 +1426,6 @@ fn process_runs_our_profile(pid: u32) -> bool {
         .is_some_and(|environment| environment_selects_our_profile(&environment))
 }
 
-/// Whether a `KEY=VALUE` environment resolves the same profile as ours.
 fn environment_selects_our_profile(environment: &[String]) -> bool {
     PROFILE_ENV_KEYS.iter().all(|key| {
         crate::process_probe::environment_value(environment, key)

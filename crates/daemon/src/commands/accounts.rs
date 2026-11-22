@@ -280,7 +280,6 @@ async fn set_primary_address(
     )
 }
 
-/// `(to_outbound, to_inbound)`: stored messages the daemon reclassified.
 async fn address_change(request: Request) -> anyhow::Result<(u32, u32)> {
     let mut client = client().await?;
     match client.request(request).await? {

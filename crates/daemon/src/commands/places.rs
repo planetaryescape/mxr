@@ -14,7 +14,6 @@ use crate::output::{resolve_format, terminal_text};
 use mxr_protocol::*;
 use std::io::{IsTerminal, Write};
 
-/// How often `mxr sweep --yes` checks on its archive job.
 const JOB_POLL: std::time::Duration = std::time::Duration::from_millis(300);
 
 const fn place_data(place: PlaceArg) -> MailPlaceData {

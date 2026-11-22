@@ -21,7 +21,6 @@ use serde::Serialize;
 use std::io::{IsTerminal, Write};
 use std::time::{Duration, Instant};
 
-/// How often a waiting command asks the daemon how the job is going.
 const POLL: Duration = Duration::from_millis(500);
 /// Progress lines on a non-terminal stderr are at most this far apart.
 const PROGRESS_EVERY: Duration = Duration::from_secs(2);
@@ -58,7 +57,6 @@ impl BulkAction {
         }
     }
 
-    /// The action as the other bulk output names it.
     fn action(&self) -> String {
         match self {
             Self::Archive => "archive".to_owned(),
@@ -68,7 +66,6 @@ impl BulkAction {
         }
     }
 
-    /// "Would archive 12 message(s)" / "Archived 12 message(s)".
     fn would(&self) -> String {
         match self {
             Self::Archive => "archive".to_owned(),
@@ -429,10 +426,8 @@ fn capitalise(text: &str) -> String {
         .unwrap_or_default()
 }
 
-/// How many sample rows the table shows.
 const TABLE_SAMPLE: usize = 8;
 
-/// Said wherever an `--all` run is previewed or confirmed (D192).
 const NO_UNDO: &str = "An --all job cannot be undone: this preview is the check.";
 
 fn preview_lines(action: &BulkAction, preview: &SelectionPreviewData) -> Vec<String> {

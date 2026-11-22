@@ -530,7 +530,6 @@ fn print_change(change: TodoChangeData, format: OutputFormat) -> anyhow::Result<
     Ok(())
 }
 
-/// The short id printed with each row; any unique prefix works.
 fn short_id(id: &str) -> &str {
     let bare = id.strip_prefix("todo_").unwrap_or(id);
     bare.get(..8).unwrap_or(bare)
@@ -594,7 +593,6 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
     let _ = writeln!(out, "{indent}            {}", todo.why);
 }
 
-/// One runway row, with the account mark in front of it.
 fn push_row(out: &mut String, todo: &TodoData, indent: &str, marks: &AccountMarks) {
     out.push_str(&marks.prefix(&todo.account_id));
     row(out, todo, indent);
@@ -791,7 +789,6 @@ fn why_text(todo: &TodoData) -> String {
     out
 }
 
-/// The field's value as the row shows it.
 fn field_value(todo: &TodoData, field: &str) -> String {
     let day = |at: Option<chrono::DateTime<chrono::Utc>>| {
         at.map(|at| {

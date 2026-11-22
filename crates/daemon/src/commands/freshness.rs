@@ -37,7 +37,6 @@ pub async fn run(
     Ok(())
 }
 
-/// The arrival's line: "09:37  Dana Lee  Lunch?  → Messages · person".
 fn arrival_line<Tz: chrono::TimeZone>(arrival: &ArrivalData, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,

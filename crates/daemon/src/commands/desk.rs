@@ -36,7 +36,6 @@ pub async fn run(
     Ok(())
 }
 
-/// Cached gists by conversation.
 type Gists = HashMap<ThreadId, ThreadGistData>;
 
 /// The desk's conversations' cached gists: never a model call.
@@ -413,7 +412,6 @@ pub(crate) fn lane_key(lane: DeskLaneKind) -> &'static str {
     }
 }
 
-/// "2d", "5h", "in 3d" for a promise not yet due, plus the usual pace.
 fn age_cell(row: &DeskRowData) -> String {
     let age = if row.age_seconds < 0 {
         format!("in {}", short_duration(-row.age_seconds))

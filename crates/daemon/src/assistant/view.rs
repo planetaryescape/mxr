@@ -17,7 +17,6 @@ use mxr_protocol::{
 use mxr_store::{AssistantConversationRow, AssistantMessageRow};
 use std::collections::{HashMap, HashSet};
 
-/// How much of a tool result a client gets for its details view.
 const RESULT_PREVIEW_CHARS: usize = 4_000;
 
 pub(crate) fn summary_view(row: &AssistantConversationRow) -> AssistantConversationSummaryData {
@@ -156,7 +155,6 @@ pub(crate) fn conversation_view(
     }
 }
 
-/// Most rows a reply gets.
 const REPLY_ROWS: usize = 8;
 
 /// Put the rows a reply names under it: when it links two or more emails
@@ -360,7 +358,6 @@ fn mark_failed_steps(items: &mut [AssistantItemData]) {
     }
 }
 
-/// The summary sits where the messages it replaces end.
 fn with_summary(
     mut items: Vec<AssistantItemData>,
     row: &AssistantConversationRow,
@@ -392,7 +389,6 @@ fn item_seq(item: &AssistantItemData) -> i64 {
     }
 }
 
-/// Changes whose effect the user can't take back from mxr.
 const IRREVERSIBLE_TOOLS: &[&str] = &[
     "mxr_send_draft",
     "mxr_got_it",

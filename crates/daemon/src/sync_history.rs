@@ -12,7 +12,6 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Newest `sync_log` rows read per account.
 pub(crate) const WINDOW: u32 = 50;
 /// The trend compares the newest this-many finished syncs with the rest of the
 /// window.
@@ -83,7 +82,6 @@ fn median_of(values: &[u64]) -> Option<u64> {
     })
 }
 
-/// `recent` and `prior` are finished durations, newest first.
 pub(crate) fn trend(recent: &[u64], prior: &[u64]) -> Option<SyncDurationTrend> {
     if recent.len() < TREND_MIN_FINISHED || prior.len() < TREND_MIN_FINISHED {
         return None;

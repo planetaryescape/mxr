@@ -1188,7 +1188,6 @@ fn format_duration(d: std::time::Duration) -> String {
     }
 }
 
-/// `None` means the daemon could not read its config, or predates the field.
 fn history_retention_label(days: Option<u32>) -> String {
     match days {
         Some(0) => "kept forever (automatic prune off)".to_string(),

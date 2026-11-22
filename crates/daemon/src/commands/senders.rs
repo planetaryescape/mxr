@@ -121,7 +121,6 @@ mod tests {
     use super::*;
     use chrono::{Duration, Utc};
 
-    /// Phase 2.6: shorthand `7d` is "last 7 days".
     #[test]
     fn parse_since_accepts_day_shorthand() {
         let before = Utc::now() - Duration::days(7);

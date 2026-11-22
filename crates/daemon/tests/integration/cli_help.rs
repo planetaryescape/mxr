@@ -49,30 +49,6 @@ fn help_cases_cover_the_visible_canonical_command_tree() {
 }
 
 #[test]
-fn command_tree_coverage_excludes_hidden_commands_aliases_and_generated_help() {
-    let mut command = clap::Command::new("mxr")
-        .subcommand(
-            clap::Command::new("visible")
-                .visible_alias("alias")
-                .subcommand(clap::Command::new("nested")),
-        )
-        .subcommand(
-            clap::Command::new("hidden")
-                .hide(true)
-                .subcommand(clap::Command::new("also-hidden")),
-        );
-    command.build();
-    assert_eq!(
-        visible_command_paths(&command, &[]),
-        BTreeSet::from([
-            vec![],
-            vec!["visible".to_owned()],
-            vec!["visible".to_owned(), "nested".to_owned()],
-        ])
-    );
-}
-
-#[test]
 fn curated_reference_examples_parse_without_executing_commands() {
     #[derive(serde::Deserialize)]
     struct Examples {

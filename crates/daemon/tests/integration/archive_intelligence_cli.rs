@@ -9,7 +9,6 @@
 //! assertion there.
 
 use mxr_test_support::daemon::{daemon_lock, run_json, spawn_fake_daemon};
-use serde_json::Value;
 use tempfile::TempDir;
 
 /// `mxr ask "<question>" --format json` against an empty archive
@@ -108,7 +107,7 @@ fn decisions_show_unknown_id_exits_nonzero() {
 /// "no prior interaction" path lives entirely in the daemon — no
 /// LLM is required. (Acceptance: 03, line 275.)
 #[test]
-fn whois_unknown_email_returns_structured_json() {
+fn whois_unknown_email_and_term_return_structured_json() {
     let _guard = daemon_lock();
     let temp = TempDir::new().expect("temp dir");
     let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "whois-empty");
@@ -133,17 +132,8 @@ fn whois_unknown_email_returns_structured_json() {
             .is_some_and(std::vec::Vec::is_empty),
         "no citations for unknown contact: {resp}"
     );
-}
 
-/// `mxr whois <term>` for a term with zero corpus must also return a
-/// valid JSON (kind=unknown, no citations) — the daemon path differs
-/// from the email-shaped one and we want both wired.
-#[test]
-fn whois_unknown_term_returns_structured_json() {
-    let _guard = daemon_lock();
-    let temp = TempDir::new().expect("temp dir");
-    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "whois-term");
-
+    // A term with zero corpus takes the other daemon path: kind unknown.
     let resp = run_json(
         &instance,
         &data_dir,
@@ -152,5 +142,4 @@ fn whois_unknown_term_returns_structured_json() {
     );
     assert_eq!(resp["canonical_name"], "ghostproject");
     assert_eq!(resp["kind"], "unknown");
-    let _ = Value::Null; // anchor — keep Value import meaningful
 }

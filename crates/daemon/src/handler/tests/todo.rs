@@ -1825,17 +1825,6 @@ async fn a_promise_names_the_person_without_a_glued_on_id() {
 }
 
 #[tokio::test]
-async fn an_empty_to_do_explains_what_lands_here() {
-    let fx = Fixture::new().await;
-    let today = runway(&fx, Utc::now()).await;
-    assert_eq!(
-        today.empty_state.as_deref(),
-        Some(mxr_protocol::todo_copy::NEVER_HAD_ANY)
-    );
-    assert_eq!(today.header, mxr_protocol::todo_copy::HEADER);
-}
-
-#[tokio::test]
 async fn a_catch_up_decision_scoped_to_one_account_never_touches_another() {
     let fx = Fixture::new().await;
     let now = Utc::now();

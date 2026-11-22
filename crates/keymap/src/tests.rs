@@ -16,10 +16,6 @@ fn the_shipped_definition_is_sound() {
     assert_eq!(defaults().problems(), Vec::<String>::new());
 }
 
-/// Blueprint 35: TUI defaults never depend on a key a terminal cannot
-/// deliver (`Ctrl-a` is GNU screen's prefix, `Ctrl-b` tmux's, and the rest).
-/// Such a key may stay as an alias beside one that arrives everywhere, as
-/// the assistant's `Alt-Enter` does beside `Ctrl-j`.
 #[test]
 fn every_tui_binding_has_a_key_a_terminal_can_send() {
     let undeliverable: Vec<String> = defaults()
@@ -96,8 +92,6 @@ fn the_key_check_derives_differences_from_the_definition() {
         "#,
     )
     .expect("the test definition parses");
-    // `Mod+k` is the TUI's `Ctrl+k`; `Mod+a` would be `Ctrl+a`, screen's
-    // prefix. `c` is in the web only, and `Tab`'s action doesn't say why.
     let differences = keymap.client_differences();
     assert!(
         differences.iter().any(|d| d.starts_with("list `c`")),
@@ -171,7 +165,6 @@ fn compose_proof_keys_are_registered_only_for_the_proof_overlay() {
 
 #[test]
 fn the_tui_keys_are_what_its_dispatcher_does() {
-    // Written by the TUI's dispatcher probe (crates/tui/src/runner/tests/keymap.rs).
     let probed: BTreeMap<String, BTreeMap<String, String>> = serde_json::from_str(
         &std::fs::read_to_string(repo_file("docs/reference/tui-keymap.json"))
             .expect("docs/reference/tui-keymap.json is readable"),
@@ -218,7 +211,6 @@ fn the_web_data_is_generated_from_the_definition() {
     );
 }
 
-/// The Raycast extension's keys. Regenerated with `UPDATE_KEYMAP=1` too.
 const RAYCAST_DATA: &str = "apps/raycast/src/keymap.generated.json";
 
 #[test]
@@ -239,7 +231,6 @@ fn the_raycast_data_is_generated_from_the_definition() {
     );
 }
 
-/// The page whose TUI tables are generated from the definition.
 const KEYBINDINGS_DOC: &str = "site/src/content/docs/reference/keybindings.md";
 const TUI_DOC_START: &str = "<!-- tui-keys:start (generated from crates/keymap/keymap.toml; run UPDATE_KEYMAP=1 cargo test -p mxr-keymap) -->";
 const TUI_DOC_END: &str = "<!-- tui-keys:end -->";
@@ -248,7 +239,6 @@ const TUI_DOC_END: &str = "<!-- tui-keys:end -->";
 fn the_tui_keybindings_tables_are_generated_from_the_definition() {
     let path = repo_file(KEYBINDINGS_DOC);
     let doc = std::fs::read_to_string(&path).expect("keybindings.md is readable");
-    // A missing marker means the generated block was deleted from the page.
     let start = doc
         .find(TUI_DOC_START)
         .expect("keybindings.md has the TUI start marker");
@@ -272,8 +262,6 @@ fn the_tui_keybindings_tables_are_generated_from_the_definition() {
     );
 }
 
-/// A place with keys of its own gets a table on the page, so a new screen
-/// can't go unpublished.
 #[test]
 fn every_place_with_tui_keys_has_a_table() {
     let keymap = defaults();
@@ -318,9 +306,6 @@ fn every_place_with_tui_keys_has_a_table() {
     );
 }
 
-/// An overlay reads its own keys, so an action lives in overlays only or
-/// in none, only an overlay's web keys can be the browser's, and keys.toml
-/// can't remap an overlay's key.
 #[test]
 fn overlay_keys_stay_in_overlays() {
     let keymap = Keymap::parse(
@@ -534,8 +519,6 @@ fn a_tui_only_action_needs_a_tui_binding_and_no_web_keys() {
     );
 }
 
-/// A palette-only TUI action names what the palette runs with a binding that
-/// has no keys; a keyless binding anywhere else would be a key nobody can press.
 #[test]
 fn a_keyless_tui_binding_is_for_a_palette_only_action() {
     let keymap = Keymap::parse(
@@ -702,8 +685,6 @@ fn a_moved_key_must_be_free_where_it_moved() {
     );
 }
 
-/// The definition with one move announced until 0.6.197, beside another
-/// until 0.6.200, and a TUI action that only carries a move.
 const EXPIRING: &str = r#"
 [[action]]
 id = "todo.catchup"
@@ -767,8 +748,6 @@ fn a_move_is_ignored_from_its_until_on() {
         ]
     );
     assert_eq!(keymap.expired_moves("0.6.196"), Vec::<String>::new());
-    // Expiry is never a problem in the file as written either: the clients
-    // ignore the entry, so no release waits on deleting it.
     assert_eq!(keymap.problems(), Vec::<String>::new());
 }
 
@@ -777,8 +756,6 @@ fn the_clients_use_the_definition_at_this_version() {
     assert_eq!(*defaults(), definition().live_at(VERSION));
 }
 
-/// Each release that crosses an `until` drops moves from the definition the
-/// clients use. None of those releases may fail the definition check.
 #[test]
 fn no_release_fails_the_check_by_crossing_an_until() {
     let mut versions: Vec<&str> = definition()
@@ -815,9 +792,6 @@ fn the_prune_deletes_exactly_the_expired_moves() {
     );
 }
 
-/// The prune of the shipped file at any version leaves what the clients
-/// use at that version. The file may hold expired moves until the
-/// scheduled prune runs, so this never compares it with the file itself.
 #[test]
 fn the_prune_of_the_shipped_file_matches_what_the_clients_ignore() {
     for version in ["0.6.197", "0.6.200", "999.0.0"] {
@@ -1035,7 +1009,6 @@ fn unusable_action_keys_are_reported_and_left_out() {
             "missing {expected:?} in:\n{joined}"
         );
     }
-    // The mode-section check accepts the new section and setting.
     let (_, mode_problems) = remaps("single_keys = false\n[actions]\n\"mail.archive\" = \";\"\n");
     assert_eq!(mode_problems, Vec::<String>::new());
 }
@@ -1080,8 +1053,6 @@ fn an_action_key_that_clashes_is_left_out() {
 
 #[test]
 fn a_remap_onto_a_moved_key_drops_that_notice() {
-    // Its own definition, since which moves the shipped one announces
-    // changes as they expire (D171).
     let keymap = Keymap::parse(
         r#"
         [[action]]
@@ -1193,7 +1164,6 @@ fn action_keys_reach_the_modes_under_their_own_sections() {
     assert!(remaps.retires("todo", "todo.done"));
     assert_eq!(remaps.lookup("todo", "y"), Some(Some("todo.edit")));
     assert_eq!(remaps.lookup("now", "e"), Some(None));
-    // A mode section that moved the action itself wins.
     let (own, _) = remaps_text("[todo]\n\"z\" = \"todo.done\"\n");
     let own = own.with_actions(&actions, defaults());
     assert_eq!(own.lookup("todo", "x"), None);

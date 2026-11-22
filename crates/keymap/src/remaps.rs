@@ -7,7 +7,6 @@ use crate::keys_file::{tui_key, ACTIONS_SECTION, SINGLE_KEYS_SETTING};
 use crate::{is_well_formed, Keymap};
 use std::collections::BTreeMap;
 
-/// The `keys.toml` sections that remap a mode's keys.
 pub const MODE_SECTIONS: [&str; 8] = [
     "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive",
 ];
@@ -23,13 +22,10 @@ const TERMINAL_ALIASES: [(&str, &str); 4] = [
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModeRemaps {
-    /// context → key → action id, or `None` where the key is unbound.
     by_context: BTreeMap<String, BTreeMap<String, Option<String>>>,
 }
 
 impl ModeRemaps {
-    /// The mode sections of a parsed `keys.toml`, and what in them can't be
-    /// used. Unusable entries are left out; other sections are ignored.
     pub fn from_table(table: &toml::Table, keymap: &Keymap) -> (Self, Vec<String>) {
         let mut remaps = Self::default();
         let mut problems = Vec::new();
@@ -168,8 +164,6 @@ impl ModeRemaps {
         self.by_context.is_empty()
     }
 
-    /// The person's binding for `keys` in `context`: `Some(None)` when they
-    /// unbound it, `None` when they left it alone.
     pub fn lookup(&self, context: &str, keys: &str) -> Option<Option<&str>> {
         self.by_context
             .get(context)?
@@ -177,12 +171,10 @@ impl ModeRemaps {
             .map(Option::as_deref)
     }
 
-    /// The key the person gave this action in `context`, if any.
     pub fn key_for(&self, context: &str, action_id: &str) -> Option<&str> {
         self.keys_for(context, action_id).into_iter().next()
     }
 
-    /// Every key the person gave this action in `context`.
     pub fn keys_for(&self, context: &str, action_id: &str) -> Vec<&str> {
         self.by_context
             .get(context)
@@ -195,13 +187,10 @@ impl ModeRemaps {
             .unwrap_or_default()
     }
 
-    /// True when the person moved this action to another key here, so its
-    /// default keys no longer trigger it.
     pub fn retires(&self, context: &str, action_id: &str) -> bool {
         self.key_for(context, action_id).is_some()
     }
 
-    /// True when `prefix` starts a sequence the person bound in `context`.
     pub fn starts_sequence(&self, context: &str, prefix: &str) -> bool {
         let start = format!("{prefix} ");
         self.by_context

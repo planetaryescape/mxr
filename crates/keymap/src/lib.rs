@@ -27,7 +27,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-/// The shipped definition.
 pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
@@ -79,7 +78,6 @@ pub const SCREEN_CONTEXTS: [&str; 24] = [
     "search-preview",
     "search-editor",
     "assistant-input",
-    // The web's desk page: its list says where `w` (Done until K5) went.
     "desk",
 ];
 
@@ -90,7 +88,6 @@ pub const SCREEN_CONTEXTS: [&str; 24] = [
 /// live in, and a web action's `scopes` name the dialog that reads it. A
 /// TUI runner test holds each TUI overlay's handler to its entries.
 pub const OVERLAY_CONTEXTS: [&str; 58] = [
-    // Both clients.
     "help",
     "palette",
     "label-picker",
@@ -111,7 +108,6 @@ pub const OVERLAY_CONTEXTS: [&str; 58] = [
     "assistant-approval",
     "assistant-question",
     "assistant-history",
-    // The TUI's.
     "not-now-custom",
     "send-review",
     "send-time",
@@ -145,7 +141,6 @@ pub const OVERLAY_CONTEXTS: [&str; 58] = [
     "identity-editor",
     "auth-session",
     "promise-prompt",
-    // The web's.
     "send-confirm",
     "let-go-preview",
     "compose-discard",
@@ -153,7 +148,6 @@ pub const OVERLAY_CONTEXTS: [&str; 58] = [
     "popover",
 ];
 
-/// The web app's shortcut scopes (`ActionScope` in `apps/web`).
 pub const WEB_SCOPES: [&str; 19] = [
     "global",
     "sidebar",
@@ -220,14 +214,12 @@ pub fn definition() -> &'static Keymap {
 pub struct Keymap {
     #[serde(rename = "action")]
     pub actions: Vec<KeyAction>,
-    /// The verbs the status bar offers for each state (D130).
     #[serde(rename = "strip", default, skip_serializing_if = "Vec::is_empty")]
     pub strips: Vec<Strip>,
     /// Where a TUI key reaches the pane beside the focused one, which the
     /// web's focus-bound keys don't (`Keymap::client_differences`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tui_pass_through: Vec<TuiPassThrough>,
-    /// Keys for what only the Raycast extension has.
     #[serde(
         rename = "raycast_action",
         default,
@@ -243,7 +235,6 @@ pub struct Keymap {
 pub struct RaycastAction {
     pub id: String,
     pub label: String,
-    /// As [`RaycastShortcut::parse`] reads it: `Cmd+d`.
     pub key: String,
 }
 
@@ -270,10 +261,8 @@ fn is_both(clients: &[Client]) -> bool {
     clients == both_clients()
 }
 
-/// One thing a key can do.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyAction {
-    /// Stable id shared by every client, e.g. `mail.archive`.
     pub id: String,
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -281,36 +270,28 @@ pub struct KeyAction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub group: String,
-    /// Web scopes the keys are live in; empty means `global`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
-    /// Web keys, primary first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keys: Vec<String>,
-    /// Web keys bound on macOS only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mac_keys: Vec<String>,
-    /// Web keys that still work but are never shown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retired_keys: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub palette_only: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_in_palette: bool,
-    /// Why the web key differs from the TUI's, shown beside it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     #[serde(default = "both_clients", skip_serializing_if = "is_both")]
     pub clients: Vec<Client>,
-    /// How the TUI binds this action today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tui: Vec<TuiBinding>,
     /// Keys this action had until a recent release. For a short window
     /// pressing one shows where the action went and runs nothing (D171).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub moved: Vec<MovedKey>,
-    /// The Raycast key when it can't be Cmd plus the web letter: Raycast's
-    /// own shortcut for the same action, or `""` for none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raycast_key: Option<String>,
     /// An overlay key the web gets from the browser or the dialog
@@ -366,7 +347,6 @@ impl KeyAction {
         places.peek().is_some() && places.all(|place| OVERLAY_CONTEXTS.contains(&place))
     }
 
-    /// The web scopes the action's keys are live in.
     pub fn web_scopes(&self) -> Vec<&str> {
         if self.scopes.is_empty() {
             vec!["global"]
@@ -376,7 +356,6 @@ impl KeyAction {
     }
 }
 
-/// An action's Raycast key, as `@raycast/api` takes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RaycastShortcut {
     pub modifiers: Vec<String>,
@@ -384,7 +363,6 @@ pub struct RaycastShortcut {
 }
 
 impl RaycastShortcut {
-    /// `Cmd+Shift+e` → `{ modifiers: ["cmd", "shift"], key: "e" }`.
     pub fn parse(spelling: &str) -> Option<Self> {
         let mut parts: Vec<&str> = spelling.split('+').collect();
         let key = parts.pop()?.to_string();
@@ -410,7 +388,6 @@ impl RaycastShortcut {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MovedKey {
     pub key: String,
-    /// Web scopes and TUI contexts (the names are shared) where it moved.
     pub contexts: Vec<String>,
     /// The first release that no longer shows the notice. From it on the
     /// entry is ignored ([`defaults`]) until the scheduled prune deletes it.
@@ -437,7 +414,6 @@ pub struct TuiBinding {
     pub contexts: Contexts,
 }
 
-/// Where a TUI binding is live: every probed context, or a list of them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "RawContexts", into = "RawContexts")]
 pub enum Contexts {
@@ -491,7 +467,6 @@ impl From<Contexts> for RawContexts {
     }
 }
 
-/// A key the web app binds, as its registry records it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct WebBinding {
     pub scope: String,
@@ -506,7 +481,6 @@ impl Keymap {
         toml::from_str(text)
     }
 
-    /// The TUI binding a key or sequence (`e`, `g i`) triggers in `context`.
     pub fn tui_binding(&self, context: &str, keys: &str) -> Option<(&KeyAction, &TuiBinding)> {
         self.actions.iter().find_map(|action| {
             action
@@ -519,8 +493,6 @@ impl Keymap {
         })
     }
 
-    /// True when `prefix` starts a longer TUI sequence in `context`, so the
-    /// TUI waits for the next key.
     pub fn tui_starts_sequence(&self, context: &str, prefix: &str) -> bool {
         let start = format!("{prefix} ");
         self.actions
@@ -540,8 +512,6 @@ impl Keymap {
         self.actions.iter().find(|action| action.id == id)
     }
 
-    /// The TUI's keys by context: context → key → TUI action name, the
-    /// shape of `docs/reference/tui-keymap.json`.
     pub fn tui_keymap(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         let mut map: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
         for binding in self.actions.iter().flat_map(|action| &action.tui) {
@@ -555,13 +525,10 @@ impl Keymap {
         map
     }
 
-    /// The action whose old key `key` was in `context`, while its move is
-    /// still being announced.
     pub fn moved_from(&self, context: &str, key: &str) -> Option<&KeyAction> {
         self.moved_entry(context, key).map(|(action, _)| action)
     }
 
-    /// The action whose old key `key` was in `context`, with its move.
     pub fn moved_entry(&self, context: &str, key: &str) -> Option<(&KeyAction, &MovedKey)> {
         self.actions.iter().find_map(|action| {
             action
@@ -572,8 +539,6 @@ impl Keymap {
         })
     }
 
-    /// The action a moved key's notice names the key of: its `to`, or
-    /// the action itself.
     pub fn moved_target<'a>(&'a self, action: &'a KeyAction, moved: &MovedKey) -> &'a KeyAction {
         moved
             .to
@@ -582,8 +547,6 @@ impl Keymap {
             .unwrap_or(action)
     }
 
-    /// True when `prefix` starts a moved sequence in `context`, so the TUI
-    /// still waits for the second key and can say where `z z` went.
     pub fn moved_starts_sequence(&self, context: &str, prefix: &str) -> bool {
         let start = format!("{prefix} ");
         self.actions
@@ -594,8 +557,6 @@ impl Keymap {
             })
     }
 
-    /// Every Raycast key by action id: each web action's, then the keys
-    /// only Raycast has.
     pub fn raycast_keys(&self) -> BTreeMap<String, RaycastShortcut> {
         self.actions
             .iter()
@@ -611,7 +572,6 @@ impl Keymap {
             .collect()
     }
 
-    /// Every key the web app binds.
     pub fn web_bindings(&self) -> Vec<WebBinding> {
         let mut bindings = Vec::new();
         for action in self.actions.iter().filter(|a| a.is_for(Client::Web)) {
@@ -704,8 +664,6 @@ impl Keymap {
             if !action.is_for(Client::Tui) && !action.tui.is_empty() {
                 problems.push(format!("{id}: has TUI bindings but is not a TUI action"));
             }
-            // A TUI action whose key retired keeps its entry while the move
-            // is announced (`z z`), with no binding left.
             if action.clients == [Client::Tui] && action.tui.is_empty() && action.moved.is_empty() {
                 problems.push(format!("{id}: is a TUI action with no TUI binding"));
             }
@@ -738,7 +696,6 @@ impl Keymap {
                         action.id, moved.key
                     ));
                 }
-                // A misspelt place would never announce the move.
                 for context in &moved.contexts {
                     let known = TUI_CONTEXTS.contains(&context.as_str())
                         || WEB_SCOPES.contains(&context.as_str())
@@ -751,8 +708,6 @@ impl Keymap {
                         ));
                     }
                 }
-                // Only the clients the action is for: the TUI reader's `o`
-                // moved while the web reader keeps `o` for its own verb.
                 for context in &moved.contexts {
                     let web_bound = action.is_for(Client::Web)
                         && self.web_bindings().iter().any(|b| {
@@ -834,8 +789,6 @@ impl Keymap {
     }
 }
 
-/// Two actions on one key in one place, or a key that is also the start of
-/// a longer sequence there (the prefix could never complete).
 fn clashes(place: &str, rows: impl Iterator<Item = (String, String, String)>) -> Vec<String> {
     let mut by_place: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
     for (where_, key, id) in rows {
@@ -864,8 +817,6 @@ fn clashes(place: &str, rows: impl Iterator<Item = (String, String, String)>) ->
     problems
 }
 
-/// A key is a chord, or chords separated by single spaces: `e`, `g i`,
-/// `Mod+Shift+k`. A literal space is spelled `Space`.
 fn is_well_formed(key: &str) -> bool {
     !key.is_empty()
         && key.split(' ').all(|chord| {

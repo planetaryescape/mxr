@@ -18,8 +18,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Read at run time, not the compiled-in copy, so a prune and a second
-    // run see the file as it is now.
     let keymap = match mxr_keymap::Keymap::parse(&text) {
         Ok(keymap) => keymap,
         Err(error) => {

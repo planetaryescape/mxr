@@ -15,10 +15,8 @@ fn mail_contexts() -> impl Iterator<Item = &'static str> {
         .filter(|c| *c != "screener" && *c != "focus")
 }
 
-/// The places that show an email, whose shared verbs are listed once.
 const ON_AN_EMAIL: [&str; 3] = ["list", "reader", "place"];
 
-/// Each place's table, in page order, with what to say above it.
 pub(crate) const PLACES: &[(&str, &str)] = &[
     ("list", "Inbox, labels and saved searches."),
     ("reader", "An open conversation."),
@@ -93,10 +91,8 @@ pub(crate) const PLACES: &[(&str, &str)] = &[
     ),
 ];
 
-/// What the overlays' tables say before them.
 const OVERLAYS_INTRO: &str = "An open overlay takes every key until it closes. Each one closes with `Esc` without changing anything, and with `q` where nothing is typed; `Enter` runs the highlighted option, and in a yes-or-no question `y` is `Enter` and `n` is `Esc`. Each prints its keys in its footer too.";
 
-/// Each TUI overlay's table, in page order, with what to say above it.
 pub(crate) const OVERLAYS: &[(&str, &str)] = &[
     ("help", "`?` opens it. Letters type into its filter."),
     ("palette", "`:` or `Ctrl-k` opens it. Letters type into its filter."),
@@ -178,8 +174,6 @@ pub(crate) const OVERLAYS: &[(&str, &str)] = &[
 ];
 
 impl Keymap {
-    /// Markdown tables of every TUI key, by place: the keys every mail
-    /// context shares, then the list's and reader's, then each place's own.
     pub fn tui_reference_markdown(&self) -> String {
         let everywhere = self.shared_keys(&mail_contexts().collect::<Vec<_>>(), &BTreeSet::new());
         let on_an_email = self.shared_keys(&ON_AN_EMAIL, &everywhere);
@@ -229,7 +223,6 @@ impl Keymap {
         out.join("\n").trim_end().to_string()
     }
 
-    /// `(action id, key)` pairs bound in every one of `places`.
     fn shared_keys(
         &self,
         places: &[&str],
@@ -253,8 +246,6 @@ impl Keymap {
         shared
     }
 
-    /// One row per action with keys in `place` that `keep` accepts, in the
-    /// definition's order: the keys cell, then the label.
     fn place_rows(
         &self,
         place: &str,
@@ -274,7 +265,6 @@ impl Keymap {
             if keys.is_empty() {
                 continue;
             }
-            // Nine rows that differ only by their digit read better as one.
             if action.id.starts_with("nav.saved-search-") {
                 saved_searches.extend(keys);
                 continue;
@@ -319,8 +309,6 @@ fn section(
     out.push(String::new());
 }
 
-/// The keys, `, ` between them; a run of three or more digits reads as one
-/// range (`1`–`9`).
 fn keys_cell(keys: &[String]) -> String {
     let digit = |key: &String| key.len() == 1 && key.as_bytes()[0].is_ascii_digit();
     let consecutive = keys.windows(2).all(|pair| {
@@ -339,8 +327,6 @@ fn code(key: &str) -> String {
     format!("`{}`", escape_cell(&doc_key(key)))
 }
 
-/// A key as the page spells it: the definition's spelling, with arrows
-/// and Esc as people see them on the key.
 fn doc_key(key: &str) -> String {
     key.split(' ')
         .map(|chord| match chord {

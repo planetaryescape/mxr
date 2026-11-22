@@ -1,5 +1,3 @@
-//! What help and the keybindings page call each place a key can live,
-//! overlays included.
 
 /// The title of a TUI context or screen, as help and the keybindings page
 /// head its keys. `None` for a place with no keys of its own.

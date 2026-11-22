@@ -310,7 +310,6 @@ impl mxr_core::MailSyncProvider for FolderCopyProvider {
                 add.as_slice(),
                 remove.as_slice(),
             ),
-            // Trash / SetRead / SetStarred are no-ops for this folder-tracking mock.
             _ => return Ok(()),
         };
 
@@ -477,7 +476,6 @@ async fn insert_request_invite_body(state: &AppState) -> mxr_core::MessageId {
     message_id
 }
 
-/// Helper: sync, list envelopes, return first envelope's id.
 async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
     state
         .sync_engine
@@ -564,18 +562,8 @@ fn tiny_png_bytes() -> Vec<u8> {
             .expect("valid 1x1 png")
 }
 
-/// The classifier is exhaustive at compile time, so total coverage is
-/// already guaranteed by the build. These assertions pin the
-/// audit-flagged reads that were previously mis-classified as
-/// mutations (and so wrongly rejected under read-only / draft-only
-/// policies), plus the security-sensitive non-reads, so a future
-/// reclassification can't silently regress them. `classify_request`
-/// and `RequestClass` are in scope via `use super::*`.
 #[test]
 fn classify_request_pins_previously_broken_reads() {
-    // Calendar-invite and activity-log reads: the original bug — these
-    // are pure reads but were absent from the old allowlist, so an
-    // agent under read-only policy got hard failures on them.
     let reads: &[Request] = &[
         Request::ListInvites {
             account_id: None,
@@ -611,7 +599,6 @@ fn classify_request_pins_previously_broken_reads() {
 
 #[test]
 fn classify_request_keeps_send_and_destructive_gates() {
-    // Sends require the send capability.
     let send = Request::SendStoredDraft {
         managed_attachments_reviewed: true,
         send_identity: Some(mxr_core::SendIdentity::for_revision(
@@ -625,8 +612,6 @@ fn classify_request_keeps_send_and_destructive_gates() {
     assert!(request_requires_send_capability(&send));
     assert!(!request_is_read_only(&send));
 
-    // Mailbox mutations and unsubscribe require the destructive
-    // capability and are not reads.
     let destructive: &[Request] = &[
         Request::mutation(MutationCommand::Trash {
             message_ids: vec![mxr_core::MessageId::new()],
@@ -644,7 +629,6 @@ fn classify_request_keeps_send_and_destructive_gates() {
         assert!(!request_is_read_only(req), "{} not read", request_kind(req));
     }
 
-    // Looking at Reading is a read; opening it writes the visit.
     assert!(request_is_read_only(&Request::GetReadingEdition {
         account_id: None,
         mark_visit: false,
@@ -656,15 +640,11 @@ fn classify_request_keeps_send_and_destructive_gates() {
     assert_eq!(classify_request(&visit), RequestClass::Mutate);
     assert!(!request_is_read_only(&visit));
 
-    // A GET of remote HTML image assets does remote egress
-    // (tracking-pixel risk) and must NOT be read-only.
     assert!(!request_is_read_only(&Request::GetHtmlImageAssets {
         message_id: mxr_core::MessageId::new(),
         allow_remote: true,
     }));
 
-    // Draft delete (including a linked provider draft) is draft-only, not read
-    // and not send.
     let del = Request::DeleteDraft {
         expected_revision: Some(1),
         draft_id: mxr_core::DraftId::new(),
@@ -674,8 +654,6 @@ fn classify_request_keeps_send_and_destructive_gates() {
     assert!(!request_requires_send_capability(&del));
 }
 
-/// `+word` in the rules form is a whole-word match: it fires on the word
-/// and its punctuation-bearing forms are matched literally.
 #[test]
 fn rules_form_exact_word_matches_whole_word_only() {
     let condition = parse_rule_condition_string("+invoice").unwrap();
@@ -699,11 +677,6 @@ fn rules_form_exact_word_matches_whole_word_only() {
     assert!(!pattern.matches("I write cxx daily"));
 }
 
-/// The rules form maps the link-density search filters to the rules
-/// engine's `LinkDensity` condition (and rejects `has:calendar`, which
-/// has no rule-engine equivalent). Guards the live
-/// `query_ast_to_conditions` path — previously only "covered" by an
-/// orphaned, never-compiled duplicate of this logic, now deleted.
 #[test]
 fn rules_form_maps_link_filters_to_link_density() {
     use mxr_rules::LinkDensityMatch;
@@ -721,8 +694,6 @@ fn rules_form_maps_link_filters_to_link_density() {
         }
     }
 
-    // `has:calendar` has no rules-engine condition, so it must stay an
-    // explicit unsupported error rather than silently matching everything.
     assert!(
         parse_rule_condition_string("has:calendar").is_err(),
         "has:calendar has no rule-engine equivalent and must be rejected"
@@ -795,10 +766,6 @@ mod undo_preview;
 mod unsubscribe_plan;
 mod updates;
 
-/// The dispatch future holds every request arm's state inline. Past about a
-/// megabyte it overflows a Tokio worker's 2 MiB stack in debug builds (the
-/// daemon aborted on its first request on Linux CI); large handlers box
-/// their futures to keep it small.
 #[tokio::test]
 async fn dispatch_future_stays_well_inside_a_worker_stack() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

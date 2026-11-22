@@ -1,5 +1,3 @@
-//! Outgoing signatures: daemon-side validation and IPC/store translation.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::Utc;

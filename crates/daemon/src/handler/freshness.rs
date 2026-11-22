@@ -1,12 +1,3 @@
-//! Freshness (`Request::GetFreshness`): when the newest mail came in, how
-//! each account's sync is doing, and the last few arrivals with the modes
-//! they went to.
-//!
-//! Nothing new is tracked: the newest arrival is a read of the messages
-//! table, sync health comes from the sync runtime status the sync loop
-//! already writes (error, failure class, backoff), and each arrival's mode
-//! comes from the sender classifier the modes use (`mail_kind`).
-
 use super::desk::{self_matcher, Senders};
 use super::mail_kind;
 use super::mode_rules::membership;
@@ -25,16 +16,10 @@ use mxr_protocol::{
 use mxr_store::{Arrival, DeskMessage, SyncRuntimeStatus};
 use std::collections::{HashMap, HashSet};
 
-/// A sync that has not worked for this long is stale even with no error:
-/// five missed intervals, and never under fifteen minutes, so a slow
-/// provider page or a laptop waking from sleep does not cry wolf.
 pub(super) fn stale_after_secs(sync_interval_secs: u64) -> u64 {
     sync_interval_secs.saturating_mul(5).max(15 * 60)
 }
 
-/// Failure classes that are not failures: a sync still running past a
-/// caller's wait, and one cut short by a daemon restart. Neither says the
-/// provider is unreachable, and the next pass clears both.
 const NOT_FAILURES: &[&str] = &["timeout", "interrupted"];
 
 pub(super) async fn get_freshness(
@@ -104,8 +89,6 @@ pub(super) async fn get_freshness(
     })
 }
 
-/// The account's newest received mail, at least one message so its newest
-/// arrival is known when no arrivals were asked for.
 async fn received_mail(
     state: &AppState,
     account: &Account,
@@ -117,7 +100,6 @@ async fn received_mail(
         .await?)
 }
 
-/// Status names the actual account so two accounts on one provider are clear.
 fn account_label(account: &Account) -> String {
     if account.email.trim().is_empty() {
         account.name.clone()
@@ -126,7 +108,6 @@ fn account_label(account: &Account) -> String {
     }
 }
 
-/// What the reply knows about an account beyond its sync status.
 pub(super) struct AccountView {
     pub newest_message_at: Option<DateTime<Utc>>,
 }
@@ -173,8 +154,6 @@ pub(super) fn account_freshness(
     }
 }
 
-/// The stored error as the client sees it, with the retry the rate limit
-/// scheduled. Classes that are not failures yield none.
 fn sync_error(row: &SyncRuntimeStatus) -> Option<SyncErrorData> {
     let message = row.last_error.clone()?;
     let class = row.failure_class.as_deref();
@@ -189,8 +168,6 @@ fn sync_error(row: &SyncRuntimeStatus) -> Option<SyncErrorData> {
     })
 }
 
-/// Each arrival's current primary destination, including copied-thread
-/// placement and archived arrivals, by the same rule as the arrival chips.
 async fn place_arrivals(
     state: &AppState,
     arrivals: Vec<Arrival>,
@@ -259,8 +236,6 @@ async fn place_arrivals(
         .collect())
 }
 
-/// The shared primary destination. Archived arrivals retain their destination;
-/// screened-out/spam placement has no five-mode membership.
 fn arrival_mode(placement: &mxr_store::ArrivalPlacement) -> Vec<ModeMembershipData> {
     let Some(mode) = ModeKindData::parse(&placement.mode) else {
         return Vec::new();

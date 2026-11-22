@@ -1,11 +1,3 @@
-//! Archive: IPC handlers, the post-sync scan and the background tick.
-//!
-//! Detection, grouping, the answer box's ranking and the export live in
-//! `mxr-records`; this module runs them against the daemon's store and
-//! clock and serves the ledger and cards. Every mutation takes `dry_run`,
-//! and a preview runs the same write inside a transaction that is rolled
-//! back, so what was previewed is what changes.
-
 use super::places::scoped_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -32,15 +24,10 @@ use mxr_store::{
 use mxr_todo::money::format_amount;
 use std::collections::{BTreeMap, HashMap};
 
-/// History pages read per background tick, so a big mailbox is filed in
-/// steps rather than one long hold on the writer.
 const FIRST_RUN_PAGES_PER_TICK: u32 = 10;
 const FIRST_RUN_PAGE_SIZE: u32 = 500;
-/// PDFs downloaded per tick, so prefetch never crowds out sync.
 const PDFS_PER_TICK: u32 = 8;
-/// How many of a sender's emails "always file" reads at once.
 const SENDER_BACKFILL: u32 = 1000;
-/// Issuers in the facet list.
 const ISSUER_FACETS: usize = 30;
 
 pub(crate) fn pass_config(now: DateTime<Utc>) -> PassConfig<Local> {
@@ -51,19 +38,11 @@ fn enabled(state: &AppState) -> bool {
     state.config_snapshot().records.enabled
 }
 
-// ---------------------------------------------------------------------------
-// Background work
-// ---------------------------------------------------------------------------
-
-/// The records scan as of now, for tests.
 #[cfg(test)]
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
     scan_messages_at(state, message_ids, Utc::now()).await;
 }
 
-/// File records from newly synced mail as of `now`, which the full
-/// classifier eval pins as it does the to-do scan's. Never errors the caller;
-/// failures are logged, like the to-do scan.
 pub(crate) async fn scan_messages_at(
     state: &AppState,
     message_ids: &[MessageId],
@@ -86,9 +65,6 @@ pub(crate) async fn scan_messages_at(
     }
 }
 
-/// The semantic worker may have chunked these messages before they were
-/// filed; ingesting them again adds Archive's field chunk. Unchanged chunks
-/// are not re-embedded.
 async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
     let filed: Vec<MessageId> = match state
         .store
@@ -114,9 +90,6 @@ async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
     }
 }
 
-/// One background tick: advance each account's first run, file delivered
-/// orders, then prefetch record PDFs within the budget. Returns whether a
-/// first run is still going, so the loop can come back sooner.
 pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, HandlerError> {
     if !enabled(state) {
         return Ok(false);
@@ -166,10 +139,6 @@ pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, H
     Ok(in_progress)
 }
 
-/// Downloads record PDFs that are not on disk, newest first, while the
-/// total stays inside `records.pdf_budget_mb`. The semantic index then
-/// reads their text. Failures (offline, a provider error) are logged and
-/// retried next tick.
 pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
     let config = state.config_snapshot().records;
     if !config.pdf_prefetch {
@@ -183,10 +152,6 @@ pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
     .await
 }
 
-/// The prefetch against a budget and a per-file cap in bytes. Each fetch
-/// may write at most what is left of the budget (and the per-file cap);
-/// the attachment's declared size only picks candidates, and the bytes
-/// actually written are what count against the budget.
 pub(crate) async fn prefetch_pdfs_within(state: &AppState, budget: u64, max_file: u64) -> u32 {
     let used = match state.store.record_pdfs_on_disk().await {
         Ok((bytes, _)) => u64::try_from(bytes).unwrap_or(0),
@@ -231,8 +196,6 @@ pub(crate) async fn prefetch_pdfs_within(state: &AppState, budget: u64, max_file
                 fetched.push(pdf.message_id);
             }
             Ok(super::Materialized::TooLarge { bytes }) => {
-                // Record the real size, so the next tick doesn't fetch it
-                // again: it is left until opened.
                 tracing::debug!(message = %pdf.message_id, cap, bytes, "record PDF larger than it said");
                 if let Err(error) = state
                     .store
@@ -260,8 +223,6 @@ pub(crate) async fn prefetch_pdfs_within(state: &AppState, budget: u64, max_file
     count
 }
 
-/// Files the records ticked-off to-dos leave behind. Logged, never fails
-/// the tick-off: the to-do is done either way.
 pub(crate) async fn file_ticked_todos(state: &AppState, todos: &[TodoRecord]) -> u32 {
     if !enabled(state) {
         return 0;
@@ -291,7 +252,6 @@ pub(crate) async fn file_ticked_todos(state: &AppState, todos: &[TodoRecord]) ->
     filed
 }
 
-/// Undoes what [`file_ticked_todos`] filed, for reopened to-dos.
 pub(crate) async fn unfile_todos(state: &AppState, todos: &[TodoRecord]) {
     for todo in todos {
         if let Err(error) = state
@@ -304,15 +264,12 @@ pub(crate) async fn unfile_todos(state: &AppState, todos: &[TodoRecord]) {
     }
 }
 
-/// Subscription signals, then records with a moment soon, soonest first,
-/// at most `cap`: the strip on Archive and the line on Now.
 pub(super) async fn coming_up(
     state: &AppState,
     accounts: &[AccountId],
     now: DateTime<Utc>,
     cap: usize,
 ) -> Result<Vec<RecordMomentData>, HandlerError> {
-    // Only records with a date still ahead: Now asks on every refresh.
     let records = state
         .store
         .list_archive_records(&RecordQuery {
@@ -327,9 +284,6 @@ pub(super) async fn coming_up(
         .into_iter()
         .map(|g| (g.id.clone(), g))
         .collect();
-    // A price change or a missed charge leads: it may want doing
-    // something about, where a moment only wants knowing. Signals leave
-    // one place for a moment, so a trip tomorrow is never crowded out.
     let moments: Vec<RecordMomentData> =
         mxr_records::coming_up::moments(&records, &groups, now, &Local)
             .into_iter()
@@ -354,14 +308,9 @@ fn moment_data(moment: mxr_records::coming_up::Moment) -> RecordMomentData {
     }
 }
 
-/// Whether ticking off a to-do of this kind files a record.
 pub(crate) fn todo_files_record(todo_kind: &str) -> bool {
     pass::todo_record_kind(todo_kind).is_some()
 }
-
-// ---------------------------------------------------------------------------
-// Ids and scopes
-// ---------------------------------------------------------------------------
 
 pub(super) async fn resolve_record_id(state: &AppState, raw: &str) -> Result<String, HandlerError> {
     let raw = raw.trim();
@@ -412,7 +361,6 @@ async fn resolve_record_ids(state: &AppState, raw: &[String]) -> Result<Vec<Stri
     Ok(ids)
 }
 
-/// The accounts these records belong to, for request scoping.
 pub(super) async fn record_accounts(
     state: &AppState,
     raw_ids: &[String],
@@ -427,12 +375,6 @@ pub(super) async fn record_accounts(
     Ok(accounts)
 }
 
-// ---------------------------------------------------------------------------
-// Turning rows into what clients draw
-// ---------------------------------------------------------------------------
-
-/// Everything a set of records needs to become `RecordData`, loaded in a
-/// few queries.
 struct Context {
     groups: HashMap<String, RecordGroup>,
     group_counts: HashMap<String, u32>,
@@ -442,8 +384,6 @@ struct Context {
 }
 
 impl Context {
-    /// Loads what the records need in parallel: their fields, documents and
-    /// sources, and the groups they belong to with member counts.
     async fn load(
         state: &AppState,
         records: &[ArchiveRecord],
@@ -490,12 +430,10 @@ impl Context {
     }
 }
 
-/// A day stored at midday UTC (see `mxr_records::fields::day_at`).
 fn is_day(at: DateTime<Utc>) -> bool {
     at.hour() == 12 && at.minute() == 0 && at.second() == 0
 }
 
-/// "3 Mar 2025", or "Thu 12 Jun 2025 07:40" for an instant.
 fn date_label(at: DateTime<Utc>) -> String {
     if is_day(at) {
         at.format("%-d %b %Y").to_string()
@@ -506,7 +444,6 @@ fn date_label(at: DateTime<Utc>) -> String {
     }
 }
 
-/// "7 Mar".
 fn short_day(at: DateTime<Utc>) -> String {
     if is_day(at) {
         at.format("%-d %b").to_string()
@@ -567,7 +504,6 @@ fn field_data(kind: RecordKind, value: &RecordFieldValue) -> Option<RecordFieldD
     })
 }
 
-/// The winning candidate per field, in the store's order.
 fn winners(values: &[RecordFieldValue]) -> Vec<&RecordFieldValue> {
     let mut seen: Vec<&str> = Vec::new();
     let mut out = Vec::new();
@@ -676,7 +612,6 @@ fn to_data(record: &ArchiveRecord, ctx: &Context, full: bool, now: DateTime<Utc>
         .iter()
         .filter_map(|value| field_data(kind, value))
         .collect();
-    // Only money and dates decide whether a record is checked.
     let unchecked_fields = fields
         .iter()
         .filter(|field| {
@@ -757,7 +692,6 @@ fn to_data(record: &ArchiveRecord, ctx: &Context, full: bool, now: DateTime<Utc>
     }
 }
 
-/// One total per currency, largest first.
 fn totals<'a>(records: impl IntoIterator<Item = &'a ArchiveRecord>) -> Vec<RecordAmountData> {
     let mut sums: BTreeMap<String, i64> = BTreeMap::new();
     for record in records {
@@ -932,10 +866,6 @@ async fn first_run_data(
     }))
 }
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
 pub(super) async fn list_records(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -1051,21 +981,15 @@ pub(super) async fn get_record(state: &AppState, raw_id: &str) -> HandlerResult 
     })
 }
 
-/// What the answer box was asked to return besides the query.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AnswerAsk {
-    /// Fall back to `mxr ask` over all mail when no record matches.
     pub fallback: bool,
-    /// Records in "also matching".
     pub limit: u32,
-    /// Every match as a list, whatever the query asks for.
     pub list: bool,
     pub offset: u32,
     pub list_limit: u32,
 }
 
-/// Every match of a list-mode query, newest first like the ledger, with
-/// this page's rows.
 fn answer_list(
     query: &str,
     matched: Vec<ArchiveRecord>,
@@ -1191,7 +1115,6 @@ pub(super) async fn answer_query(
                 (Some(list), page)
             }
         };
-        // One load covers the card, "also matching" and the list's page.
         let mut owned: Vec<ArchiveRecord> = top.iter().map(|r| (*r).clone()).collect();
         for record in &page {
             if !owned.iter().any(|known| known.id == record.id) {
@@ -1307,11 +1230,6 @@ pub(super) async fn answer_query(
     })
 }
 
-// ---------------------------------------------------------------------------
-// Mutations
-// ---------------------------------------------------------------------------
-
-/// A value the user typed, as the store keeps it for `field`.
 fn parse_value(
     state: &AppState,
     field: FieldName,
@@ -1359,9 +1277,6 @@ fn parse_value(
             let day = NaiveDate::parse_from_str(raw, "%Y-%m-%d")
                 .ok()
                 .or_else(|| {
-                    // A date with a year reads as written; without one, a
-                    // past field (issued) means the last such day and a
-                    // future one the next.
                     let past = mxr_records::rules::past_day(raw, today);
                     let has_year = raw.split_whitespace().any(|w| w.len() == 4 && w.chars().all(|c| c.is_ascii_digit()));
                     if has_year || field == FieldName::IssuedAt || field == FieldName::DeliveredAt {
@@ -1401,7 +1316,6 @@ fn change(
     }
 }
 
-/// The record built from a preview's rows, as a card.
 async fn preview_data(
     state: &AppState,
     record: &ArchiveRecord,
@@ -1487,8 +1401,6 @@ pub(super) async fn set_field(
             )
         }
     };
-    // A sender-wide edit is checked before anything is written, then
-    // applied to every record of the sender in one transaction.
     let sender = if apply_to_sender {
         let issuer = match edit {
             RecordEditData::Set { field, value } if field_of(field)? == FieldName::Issuer => {
@@ -1564,8 +1476,6 @@ fn plural(count: usize, noun: &str) -> String {
     }
 }
 
-/// The address of the first email a record came from: the issuer's own
-/// (a carrier's delivery email comes later).
 async fn issuer_sender(state: &AppState, record: &ArchiveRecord) -> Result<String, HandlerError> {
     let sources = state
         .store
@@ -1643,8 +1553,6 @@ pub(super) async fn dismiss(
     ))
 }
 
-/// How a filing says the email was already in Archive; Move reads it to
-/// know nothing was made.
 pub(super) const ALREADY_FILED: &str = "Already in Archive";
 
 pub(super) async fn file(
@@ -1659,8 +1567,6 @@ pub(super) async fn file(
     let filing = pass::plan_manual(&state.store, &cfg, message_id, kind)
         .await
         .map_err(|error| HandlerError::InvalidRequest(error.to_string()))?;
-    // The dry run and the filing run the same restore-then-file write; the
-    // dry run's transaction is rolled back.
     let (filed, restored, after) = state.store.file_record_by_hand(&filing, !dry_run).await?;
     let (record, fields) =
         after.ok_or_else(|| HandlerError::Message("The filed record vanished.".to_string()))?;
@@ -1692,7 +1598,6 @@ pub(super) async fn file(
     Ok(change(dry_run, "file", vec![data], message, undo))
 }
 
-/// "Dell, XPS 14 laptop".
 fn describe(record: &RecordData) -> String {
     match (&record.issuer, &record.title) {
         (Some(issuer), Some(title)) => format!("{issuer}, {title}"),
@@ -1922,8 +1827,6 @@ pub(super) async fn export_records(
     Ok(ResponseData::RecordExport { export: data })
 }
 
-/// Copies a record's PDF into `dir` as "2025-03-03 Dell invoice.pdf",
-/// downloading it first when it isn't on disk.
 async fn copy_pdf(
     state: &AppState,
     record: &ArchiveRecord,

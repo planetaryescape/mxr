@@ -1,10 +1,3 @@
-//! The rules that place a thread in modes and the words each mode uses
-//! for it (blueprint 22). Pure functions: the handlers in `modes.rs`,
-//! `mode_done.rs` and `now.rs` read the store and pass plain data in, so
-//! every rule here is unit-tested without a daemon.
-//!
-//! Rules only, no model, so every placement can say exactly why.
-
 use chrono::{DateTime, Duration, TimeZone, Timelike, Utc};
 use mxr_core::id::AccountId;
 use mxr_core::types::ProviderKind;
@@ -15,10 +8,6 @@ use mxr_protocol::{
 use mxr_store::DeskDismissal;
 use std::collections::HashMap;
 
-/// A mode's done mark still holds when it saw every message of the mode
-/// (its id list; an older mark, its watermark). Updates and Reading read
-/// only their own messages, so your reply in a notification thread
-/// doesn't bring the notification back.
 pub(super) fn mark_covers<'a>(
     mark: &DeskDismissal,
     messages: impl IntoIterator<Item = (DateTime<Utc>, &'a mxr_core::id::MessageId)>,
@@ -26,9 +15,6 @@ pub(super) fn mark_covers<'a>(
     messages.into_iter().all(|(date, id)| mark.saw(date, id))
 }
 
-/// The desk's own dismissals and done-in-Messages marks, as one map: a
-/// thread put away by either stays off Messages, Now and the desk alike.
-/// Where both exist the later watermark wins.
 pub(super) fn merge_marks(
     mut dismissals: HashMap<mxr_core::id::ThreadId, DeskDismissal>,
     marks: HashMap<mxr_core::id::ThreadId, DeskDismissal>,
@@ -48,7 +34,6 @@ pub(super) fn merge_marks(
     dismissals
 }
 
-/// The mode a sender kind lands in.
 pub(super) const fn mode_for_kind(kind: SenderKindData) -> Option<ModeKindData> {
     match kind {
         SenderKindData::People => Some(ModeKindData::Messages),
@@ -58,7 +43,6 @@ pub(super) const fn mode_for_kind(kind: SenderKindData) -> Option<ModeKindData> 
     }
 }
 
-/// A first-time sender's one question, asked where their mail landed.
 pub(super) fn screener_question(
     account_id: &AccountId,
     sender_email: &str,
@@ -96,8 +80,6 @@ pub(super) fn screener_question(
     })
 }
 
-/// Whose turn it is with whom, in the words the row's lane uses:
-/// "your turn with Maya Ortiz", "waiting on Sam", "new from Iris".
 pub(super) fn messages_summary(row: &DeskRowData) -> String {
     let who = row
         .counterparty_name
@@ -111,7 +93,6 @@ pub(super) fn messages_summary(row: &DeskRowData) -> String {
     }
 }
 
-/// "22h", "3d", "40m": how long a row has waited.
 pub(super) fn age_label(since: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let age = now - since;
     if age < Duration::hours(1) {
@@ -123,7 +104,6 @@ pub(super) fn age_label(since: DateTime<Utc>, now: DateTime<Utc>) -> String {
     }
 }
 
-/// Messages' membership for a desk row.
 pub(super) fn messages_membership(row: &DeskRowData, early: bool) -> ModeMembershipData {
     let summary = messages_summary(row);
     membership(
@@ -135,7 +115,6 @@ pub(super) fn messages_membership(row: &DeskRowData, early: bool) -> ModeMembers
     )
 }
 
-/// Messages' membership for person mail no lane holds: "quiet".
 pub(super) fn quiet_membership(
     from: &mxr_core::types::Address,
     date: DateTime<Utc>,
@@ -159,11 +138,8 @@ pub(super) fn quiet_membership(
     )
 }
 
-/// Messages holds person mail: its reason in one word.
 const PERSON_TAG: &str = "person";
 
-/// One membership line, with the mode's name and key filled in. `tag` is
-/// the reason in one word, for an arrival's line ("→ Updates · automated").
 pub(super) fn membership(
     mode: ModeKindData,
     reason: String,
@@ -183,7 +159,6 @@ pub(super) fn membership(
     }
 }
 
-/// How a provider is named in a toast: "Archived in Gmail."
 pub(super) fn provider_name(kind: Option<&ProviderKind>) -> &'static str {
     match kind {
         Some(ProviderKind::Gmail) => "Gmail",
@@ -192,7 +167,6 @@ pub(super) fn provider_name(kind: Option<&ProviderKind>) -> &'static str {
     }
 }
 
-/// "in Gmail", "on the mail server".
 fn provider_place(provider: &str) -> String {
     if provider.starts_with("the ") {
         format!("on {provider}")
@@ -201,32 +175,21 @@ fn provider_place(provider: &str) -> String {
     }
 }
 
-/// A mode still holding a thread, with what it says about it: "To do (due
-/// Wed)".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StillIn {
     pub mode: ModeKindData,
     pub detail: Option<String>,
 }
 
-/// What a mode's done did, for the toast.
 pub(super) struct Handoff<'a> {
     pub mode: ModeKindData,
     pub still_in: &'a [StillIn],
-    /// Archived at the provider because the last mode let go.
     pub archived: bool,
-    /// Still in the provider's inbox although no mode holds it (the
-    /// setting is off).
     pub left_in_inbox: bool,
-    /// To do: the source is a record, so it is filed in Archive.
     pub filed: bool,
     pub provider: &'a str,
 }
 
-/// The handoff toast (blueprint 22): "Done in Messages. Still in To do
-/// (due Wed)." or "Done. Archived in Gmail." Archive the mode and archive
-/// the provider action share a word, so the copy keeps them apart: "Filed
-/// in Archive" for a record, "Archived in Gmail" for the provider.
 pub(super) fn handoff_copy(handoff: &Handoff<'_>) -> String {
     let mut parts = Vec::new();
     parts.push(match handoff.mode {
@@ -259,7 +222,6 @@ pub(super) fn handoff_copy(handoff: &Handoff<'_>) -> String {
     parts.join(" ")
 }
 
-/// "A", "A and B", "A, B and C".
 pub(super) fn join_and(items: &[String]) -> String {
     match items {
         [] => String::new(),
@@ -268,8 +230,6 @@ pub(super) fn join_and(items: &[String]) -> String {
     }
 }
 
-/// "due Wed" within the week, "due Wed 21 Oct" further out, "was due Fri"
-/// once past.
 pub(super) fn due_detail<Tz: TimeZone>(due: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -284,7 +244,6 @@ where
     }
 }
 
-/// "Friday afternoon".
 pub(super) fn day_part<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -307,7 +266,6 @@ pub(super) fn count_phrase(count: u32, one: &str, many: &str) -> String {
     }
 }
 
-/// "Friday afternoon. 3 people waiting on you, 2 things to act on."
 pub(super) fn now_headline(day_part: &str, people: u32, due: u32) -> String {
     let mut counts = Vec::new();
     if people > 0 {
@@ -326,20 +284,13 @@ pub(super) fn now_headline(day_part: &str, people: u32, due: u32) -> String {
     }
 }
 
-/// "and 8 more in Messages".
 pub(super) fn more_line(total: u32, shown: usize, mode: ModeKindData) -> Option<String> {
     let more = total.saturating_sub(u32::try_from(shown).unwrap_or(u32::MAX));
     (more > 0).then(|| format!("and {more} more in {}", mode.name()))
 }
 
-/// People waiting on you past this many becomes one line instead of a pile.
 pub(super) const OVERLOAD_PEOPLE: u32 = 5;
 
-/// "11 people waiting on you: 7 you write with, 4 others. Start with the
-/// three below." (Sunsama's workload warning.) The split is the one
-/// every surface counts (`turn_units`), `write_with + others == total`,
-/// and the headline, the rail and Messages' Your turn count the same
-/// total. You owe comes first, sorted by how far past your usual pace.
 pub(super) fn overload_line(split: PeopleSplitData, shown: usize) -> Option<String> {
     let PeopleSplitData { write_with, others } = split;
     let total = split.total();
@@ -363,7 +314,6 @@ pub(super) fn overload_line(split: PeopleSplitData, shown: usize) -> Option<Stri
     })
 }
 
-/// "23 updates from 9 sources. Most from GitHub, Vercel and Stripe."
 pub(super) fn updates_line(messages: u32, sources: u32, top: &[String]) -> String {
     let counts = format!(
         "{} from {}.",
@@ -377,14 +327,9 @@ pub(super) fn updates_line(messages: u32, sources: u32, top: &[String]) -> Strin
     }
 }
 
-/// The hour the Reading pick appears (Things' This Evening).
 pub(super) const EVENING_HOUR: u32 = 17;
 
-/// How long a newsletter's issues stay in Reading before they fade: twice
-/// the source's median interval, clamped to 2 to 14 days (blueprint 22,
-/// Reading's rhythm). A source with one issue so far fades after a week.
 pub(super) fn reading_fade(dates: Vec<DateTime<Utc>>) -> Duration {
-    // One rule for Now's pick and the edition.
     mxr_reading::fade::source_window(&dates).window
 }
 
@@ -400,7 +345,6 @@ mod tests {
             mxr_core::id::MessageId::new(),
             mxr_core::id::MessageId::new(),
         );
-        // An older mark, without its id list: the (date, id) watermark.
         let mark = DeskDismissal {
             through_date: 10,
             through_id: *newest.as_uuid(),
@@ -409,12 +353,9 @@ mod tests {
         };
         assert!(mark_covers(&mark, [(at(4), &older), (at(10), &newest)]));
         assert!(!mark_covers(&mark, [(at(4), &older), (at(11), &later)]));
-        // Same second: the id breaks the tie, and ids made later sort later.
         assert!(!mark_covers(&mark, [(at(10), &later)]));
         assert!(mark_covers(&mark, []));
 
-        // With its id list, a message the mark never saw is new even when
-        // it is dated before everything the mark saw.
         let mut seen = vec![*older.as_uuid(), *newest.as_uuid()];
         seen.sort_unstable();
         let mark = DeskDismissal {

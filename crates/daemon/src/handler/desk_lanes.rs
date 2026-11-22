@@ -1,9 +1,3 @@
-//! Lane rules for the desk: pure functions from store rows to desk rows.
-//!
-//! Kept free of I/O so every rule (who counts as a person, which lane a
-//! thread lands in, how rows are ordered, what the reason says) is tested
-//! directly. `desk.rs` fetches the inputs and assembles the response.
-
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{MessageDirection, UnsubscribeMethod};
@@ -11,25 +5,14 @@ use mxr_protocol::{DeskElsewhereData, DeskLaneKind, DeskRowData};
 use mxr_store::{DeskContact, DeskDismissal, DeskMessage, ScreenerDisposition};
 use std::collections::{HashMap, HashSet};
 
-/// Threads with activity this recent are considered for the desk.
 pub(super) const DESK_WINDOW_DAYS: i64 = 30;
-/// "New from people" and the everything-else counts look this far back.
 pub(super) const RECENT_DAYS: i64 = 7;
-/// Senders first seen this recently, with no screener decision, count as
-/// waiting on a screener decision.
 pub(super) const SCREENER_NEW_SENDER_DAYS: i64 = 14;
-/// A thread only shows as waiting on someone after this long; a message
-/// sent a minute ago is not yet waiting on anyone.
 pub(super) const WAITING_MIN_HOURS: i64 = 12;
-/// Promises due within this many days show under Due.
 pub(super) const DUE_AHEAD_DAYS: i64 = 7;
-/// A person's usual pace needs at least this many past replies.
 pub(super) const USUAL_MIN_SAMPLES: usize = 2;
-/// Your turn lasts at least this long before it can go quiet.
 pub(super) const TURN_DECAY_FLOOR_DAYS: i64 = 7;
-/// Rows younger than this never show as overdue, whatever the usual pace.
 const OVERDUE_FLOOR_SECONDS: i64 = 60 * 60;
-/// Pace assumed for ordering when a person has no reply history.
 const DEFAULT_PACE_SECONDS: i64 = 24 * 60 * 60;
 
 use super::conversation_shape::{conversation_shape, Shape, ShapeConfig, ShapeInputs};
@@ -44,25 +27,16 @@ pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool)
                 == MessageDirection::Outbound)
 }
 
-/// Work for the user now, not ordinary waiting or conversation history.
-/// A due explicit follow-up is attention even though they still owe the reply.
 pub(super) fn needs_attention(row: &DeskRowData) -> bool {
     matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
         || (row.lane == DeskLaneKind::Waiting && row.back_at.is_some())
 }
 
-/// A thread's messages up to a day ahead of `now`, in date order: who wrote
-/// last is judged on these, so a bad future Date header cannot pose as the
-/// newest message. Messages are in date order, so the rest are a suffix.
 pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[DeskMessage] {
     let cutoff = now + Duration::days(1);
     &thread[..thread.partition_point(|m| m.date <= cutoff)]
 }
 
-/// The message of `current` (see `current_messages`) stored last among
-/// those `keep` accepts. Who wrote last goes by the order mail was stored,
-/// not its Date header, so a reply whose clock is behind still counts as
-/// the newest. The desk, Done and deferral all judge it here.
 pub(super) fn last_stored(
     current: &[DeskMessage],
     keep: impl Fn(&DeskMessage) -> bool,
@@ -73,18 +47,13 @@ pub(super) fn last_stored(
         .max_by_key(|message| message.seq)
 }
 
-/// What sets a Waiting row aside besides the thread itself.
 pub(super) struct WaitingAside<'a> {
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
     pub timers: &'a DeskTimers,
-    /// A message that answers you: a person other than you wrote it.
     pub answers: &'a dyn Fn(&DeskMessage) -> bool,
     pub now: DateTime<Utc>,
 }
 
-/// Every Waiting row, from a thread or from a watched contact, stays off
-/// the desk while its conversation is snoozed, trashed, marked done
-/// waiting with nothing new since, or waiting on a time you set.
 pub(super) fn waiting_set_aside(thread: &[DeskMessage], aside: &WaitingAside<'_>) -> bool {
     let Some(latest) = thread.last() else {
         return true;
@@ -98,63 +67,43 @@ pub(super) fn waiting_set_aside(thread: &[DeskMessage], aside: &WaitingAside<'_>
         || aside.timers.waiting(thread, aside.answers, aside.now) == Some(Timer::Pending)
 }
 
-/// A thread you wrote last also leaves Waiting when you archive it, if it
-/// has mail from them to archive. (A watched contact's row is about the
-/// person, whose old conversation is usually archived, so it skips this.)
 fn waiting_archived(thread: &[DeskMessage], is_self: &dyn Fn(&str) -> bool) -> bool {
     let has_inbound = thread.iter().any(|m| !is_outbound(m, is_self));
     let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
     has_inbound && !in_inbox
 }
 
-/// Any message of the conversation is starred.
 pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
     thread
         .iter()
         .any(|m| m.flags.contains(mxr_core::MessageFlags::STARRED))
 }
 
-/// Everything the lane rules need about one account.
 pub(super) struct AccountInputs<'a> {
     pub pending_threads: &'a HashSet<ThreadId>,
     pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub asks: &'a HashMap<MessageId, mxr_store::AskSummary>,
     pub account_id: &'a AccountId,
-    /// Messages of recently active threads, ordered by thread then date.
     pub messages: &'a [DeskMessage],
-    /// Keyed by lowercased email.
     pub contacts: &'a HashMap<String, DeskContact>,
     pub written_to: &'a HashSet<String>,
-    /// Keyed by lowercased email.
     pub screener: &'a HashMap<String, ScreenerDisposition>,
-    /// Threads marked done (or "done waiting"), through the messages
-    /// stored at the time. Covers every thread lane; promises stand.
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
-    /// Times you set: reply later, and "bring it back if nobody replies".
     pub timers: &'a DeskTimers,
     pub is_self: &'a dyn Fn(&str) -> bool,
-    /// Emails the user moved (`X`), with the kind each move gave.
     pub moves: &'a HashMap<MessageId, SenderKind>,
     pub treatments: &'a HashMap<MessageId, (String, String)>,
-    /// The thread shape thresholds: a copied thread is nobody's turn.
     pub shape: ShapeConfig,
     pub now: DateTime<Utc>,
 }
 
-/// What the window itself shows about each address, for when the contacts
-/// table has not been refreshed yet (a fresh sync, a new account).
 #[derive(Debug, Default)]
 struct WindowFacts {
-    /// Addresses you sent mail to inside the window.
     written_to: HashSet<String>,
-    /// Inbound messages per sender inside the window.
     inbound: HashMap<String, u32>,
 }
 
 impl WindowFacts {
-    /// You have written to them: the window shows it, or the contacts
-    /// table counts mail from you. Being in conversation and never being
-    /// screened both rest on this (D104).
     fn wrote_to(&self, inputs: &AccountInputs<'_>, email: &str) -> bool {
         inputs.contact(email).is_some_and(|c| c.total_outbound > 0)
             || inputs.written_to.contains(&email.to_ascii_lowercase())
@@ -194,8 +143,6 @@ impl AccountInputs<'_> {
         is_outbound(message, self.is_self)
     }
 
-    /// The shared classifier (`mail_kind`), so the desk and the places
-    /// never disagree about a message.
     fn signals<'a>(&'a self, message: &'a DeskMessage) -> KindSignals<'a> {
         let email = &message.from.email;
         let mut signals = desk_signals(
@@ -221,13 +168,10 @@ impl AccountInputs<'_> {
         mail_kind::classify(&self.signals(message)).kind
     }
 
-    /// A person other than you wrote it: an answer. An auto-responder or a
-    /// notification in the thread is not.
     pub(super) fn answers(&self, message: &DeskMessage) -> bool {
         !self.is_outbound(message) && mail_kind::human_response(&self.signals(message))
     }
 
-    /// The thread's shape, judged by the shared rule (`conversation_shape`).
     pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
         let assessed: Vec<_> = thread
             .iter()
@@ -240,7 +184,6 @@ impl AccountInputs<'_> {
                 Shape::NotConversation
             };
         }
-        // Geometry only: membership was already decided by stored homes.
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
         let kept = |m: &DeskMessage| mail_kind::kept_in_messages(&self.signals(m));
@@ -261,20 +204,16 @@ impl AccountInputs<'_> {
         )
     }
 
-    /// An address you wrote to that could be a person.
     pub(super) fn human_address(&self, email: &str) -> bool {
         super::conversation_shape::human_address(email, self.screener)
     }
 
-    /// Only copied, not addressed: the reason says so.
     fn only_copied(&self, message: &DeskMessage) -> bool {
         !message.to.iter().any(|a| (self.is_self)(&a.email))
             && message.cc.iter().any(|a| (self.is_self)(&a.email))
     }
 }
 
-/// The kind signals for one desk message. "Written to" comes from the
-/// contacts table, the same everywhere a message is classified.
 pub(super) fn desk_signals<'a>(
     message: &'a DeskMessage,
     contact: Option<&DeskContact>,
@@ -308,8 +247,6 @@ pub(super) fn desk_signals<'a>(
     }
 }
 
-/// Positive evidence of a known owned To address. Unknown routing remains
-/// visible through the shape rule, but cannot assert directed attention.
 pub(super) fn addressed_to_you(
     to: &[mxr_core::types::Address],
     is_self: &dyn Fn(&str) -> bool,
@@ -317,34 +254,24 @@ pub(super) fn addressed_to_you(
     to.iter().any(|a| is_self(&a.email))
 }
 
-/// A desk row before the usual pace is known.
 #[derive(Debug, Clone)]
 pub(super) struct DraftRow {
     pub row: DeskRowData,
-    /// Which reply direction's history gives this row its usual pace.
     pub pace: Option<PaceDirection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PaceDirection {
-    /// How fast you usually reply to them (owed).
     Mine,
-    /// How fast they usually reply to you (waiting).
     Theirs,
 }
 
-/// The thread-driven lanes (owed, waiting, people new) and the counts for
-/// everything else, for one account.
 #[derive(Debug, Default)]
 pub(super) struct ThreadLanes {
     pub rows: Vec<DraftRow>,
     pub elsewhere: DeskElsewhereData,
     pub last_from_people_at: Option<DateTime<Utc>>,
-    /// The other people (lowercased) in each thread that has a turn row,
-    /// for counting turns the way Messages lists them (`turn_units`).
     pub turn_people: HashMap<ThreadId, Vec<String>>,
-    /// Lowercased senders the Screener badge counts. The Screener page
-    /// lists exactly these, so the two cannot disagree.
     pub screener_senders: HashSet<String>,
 }
 
@@ -361,8 +288,6 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             continue;
         }
 
-        // Everything-else counts and the quiet line look at recent inbox
-        // mail, message by message.
         for message in thread {
             if inputs.is_outbound(message)
                 || !message.in_inbox
@@ -372,8 +297,6 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
                 continue;
             }
             match inputs.sender_kind(message) {
-                // Issues this week, read or not: the count is never an
-                // unread count.
                 SenderKind::List => {
                     lanes.elsewhere.reading += 1;
                 }
@@ -404,15 +327,11 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             }
         }
 
-        // A snoozed conversation is out of sight until it wakes, and one
-        // set to reply later until its time comes.
         if thread.iter().any(|m| m.snoozed)
             || inputs.timers.reply_later(&thread[0].thread_id, inputs.now) == Some(Timer::Pending)
         {
             continue;
         }
-        // The lane is judged on current mail; verbs still cover the whole
-        // thread.
         let current = current_messages(thread, inputs.now);
         let Some(latest) = last_stored(current, |_| true) else {
             continue;
@@ -440,8 +359,6 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
     lanes
 }
 
-/// A thread's messages: all of them (what a verb acts on) and those not
-/// dated in the future (what decides the lane).
 #[derive(Clone, Copy)]
 struct Conversation<'a> {
     all: &'a [DeskMessage],
@@ -454,8 +371,6 @@ fn thread_row(
     conversation: Conversation<'_>,
     latest: &DeskMessage,
 ) -> Option<DraftRow> {
-    // Done (or done waiting) with nothing stored since: put away, from
-    // every thread lane.
     if inputs
         .dismissed
         .get(&latest.thread_id)
@@ -472,8 +387,6 @@ fn thread_row(
     if inputs.is_outbound(latest) {
         return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
     }
-    // An auto-responder or notification after your message answers nothing:
-    // a time you set on the wait still hides it or brings it back.
     if let Some(sent) = latest_outbound {
         let answers = |m: &DeskMessage| inputs.answers(m);
         if inputs
@@ -487,10 +400,6 @@ fn thread_row(
     }
 
     let inbound = latest_inbound?;
-    // You said you'd reply by now: owed, wherever the mail is and whoever
-    // sent it, since you asked for it back. The newest message from a
-    // person anchors it; any inbound one when no person wrote (a reply
-    // later on a newsletter still comes back).
     if let Some(Timer::Back(back_at)) = inputs.timers.reply_later(&latest.thread_id, now) {
         let anchor = last_stored(thread, |m| inputs.answers(m)).unwrap_or(inbound);
         if !anchor.trashed {
@@ -510,7 +419,6 @@ fn thread_row(
             .answers
             .contains(&mxr_core::asks::AskAnswer::AsksYouToReply)
     });
-    // Their promise can coexist with your response; explicit return times above still win.
     if !owes_reply
         && inputs.asks.get(&latest.id).is_some_and(|answer| {
             answer
@@ -523,22 +431,15 @@ fn thread_row(
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
-    // A thread you were only copied on, or one sent to a crowd, that you
-    // never wrote in is nobody's turn: it belongs in Updates.
     if inputs.shape(conversation.all) == Shape::Copied {
         return None;
     }
-    // Human response occurrence is not a new obligation. Unknown semantics
-    // stays in Messages' Recent/Quiet views, never the attention rail.
     if !owes_reply {
         return None;
     }
     let email = inbound.from.email.as_str();
     let key = email.to_ascii_lowercase();
     let contact = inputs.contact(email);
-    // An actual exchange: you wrote in this thread or to them before.
-    // Allowing a sender makes them a person (the classifier), not someone
-    // you owe; their first mail is new from people until you write (D104).
     let in_conversation = latest_outbound.is_some() || facts.wrote_to(inputs, email);
 
     let (lane, reason, pace) = if in_conversation {
@@ -557,16 +458,11 @@ fn thread_row(
         } else {
             "wrote to you".to_string()
         };
-        // Your turn decays: past max(3 times their cadence, 7 days), capped
-        // at the window, a turn nobody took goes quiet (blueprint 22's
-        // relevancy table; Kooti et al., WWW 2015).
         if inbound.date < now - turn_decay(contact) {
             return None;
         }
         (DeskLaneKind::Owed, reason, Some(PaceDirection::Mine))
     } else {
-        // A sender you allowed stays as long as the window would keep them
-        // in You owe; Allow took them out of there, not off the desk (D104).
         let days = if inputs.decision(email) == Some(ScreenerDisposition::Allow) {
             DESK_WINDOW_DAYS
         } else {
@@ -609,8 +505,6 @@ fn thread_row(
     })
 }
 
-/// How long your turn with someone lasts before it goes quiet:
-/// max(3 times their cadence, 7 days), never past the window.
 pub(super) fn turn_decay(contact: Option<&DeskContact>) -> Duration {
     let floor = Duration::days(TURN_DECAY_FLOOR_DAYS);
     let cadence = contact
@@ -629,7 +523,6 @@ fn waiting_row(
 ) -> Option<DraftRow> {
     let thread = conversation.current;
     let now = inputs.now;
-    // Done waiting counts every stored message, future-dated or not.
     let answers = |m: &DeskMessage| inputs.answers(m);
     let aside = WaitingAside {
         dismissed: inputs.dismissed,
@@ -648,7 +541,6 @@ fn waiting_row(
     };
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
-    // Nobody replied by the time you set: back, however old or archived.
     if let Some(Timer::Back(back_at)) = timer {
         return Some(back_row(
             inputs,
@@ -671,8 +563,6 @@ fn waiting_row(
     }) {
         return None;
     }
-    // Automatic waiting remains conservative; an explicit timer above is
-    // authoritative even for a role/list destination.
     if looks_automated(email)
         || contact.is_some_and(|c| c.is_list_sender)
         || inputs.decision(email) == Some(ScreenerDisposition::Deny)
@@ -750,8 +640,6 @@ fn base_row(
     }
 }
 
-/// A row a time you set brought back. It is due by definition, so it is
-/// overdue and takes no pace (the usual pace would second-guess it).
 fn back_row(
     inputs: &AccountInputs<'_>,
     lane: DeskLaneKind,
@@ -782,7 +670,6 @@ fn back_row(
     DraftRow { row, pace: None }
 }
 
-/// Attach a person's usual pace and decide whether the row is past it.
 pub(super) fn apply_pace(row: &mut DeskRowData, latencies: Option<&[i64]>) {
     let Some(latencies) = latencies.filter(|l| l.len() >= USUAL_MIN_SAMPLES) else {
         return;
@@ -795,9 +682,6 @@ pub(super) fn apply_pace(row: &mut DeskRowData, latencies: Option<&[i64]>) {
     row.overdue = row.age_seconds > median && row.age_seconds >= OVERDUE_FLOOR_SECONDS;
 }
 
-/// Lane order, most pressing first. Owed and waiting rows rank by how far
-/// past the person's usual pace they are; due rows by due date; new mail
-/// from people newest first.
 pub(super) fn sort_lane(lane: DeskLaneKind, rows: &mut [DeskRowData]) {
     match lane {
         DeskLaneKind::Owed | DeskLaneKind::Waiting => rows.sort_by(|a, b| {
@@ -819,18 +703,14 @@ pub(super) fn sort_lane(lane: DeskLaneKind, rows: &mut [DeskRowData]) {
     }
 }
 
-/// The pace an owed or waiting row is measured against: the person's usual
-/// pace, or a day when there is no history.
 pub(super) fn pace_seconds(row: &DeskRowData) -> i64 {
     row.usual_seconds.unwrap_or(DEFAULT_PACE_SECONDS).max(60)
 }
 
-/// How many paces old a row is: the lane's sort key.
 pub(super) fn pace_ratio(row: &DeskRowData) -> f64 {
     row.age_seconds as f64 / pace_seconds(row) as f64
 }
 
-/// Lane precedence when one conversation qualifies for several.
 pub(super) const LANE_PRECEDENCE: [DeskLaneKind; 4] = [
     DeskLaneKind::Owed,
     DeskLaneKind::Due,
@@ -838,7 +718,6 @@ pub(super) const LANE_PRECEDENCE: [DeskLaneKind; 4] = [
     DeskLaneKind::PeopleNew,
 ];
 
-/// Keep each conversation in its highest-precedence lane only.
 pub(super) fn dedupe_by_precedence(rows: Vec<DeskRowData>) -> Vec<DeskRowData> {
     let rank = |lane: DeskLaneKind| {
         LANE_PRECEDENCE
@@ -861,7 +740,6 @@ pub(super) fn dedupe_by_precedence(rows: Vec<DeskRowData>) -> Vec<DeskRowData> {
         .collect()
 }
 
-/// "Re: Re: Fwd: Launch plan" reads as "Launch plan" on the desk.
 pub(super) fn clean_subject(subject: &str) -> String {
     mxr_compose::strip_reply_forward_prefixes(subject)
 }
@@ -882,8 +760,6 @@ mod tests {
 
     #[test]
     fn unknown_direction_mail_filed_as_sent_is_outbound_from_an_unowned_alias() {
-        // Synced before its alias was registered: no stored direction, but the
-        // provider filed it as sent, so it is yours.
         let thread = ThreadId::new();
         let mut sent = message(&thread, "alias@send-as.example", "carol@example.com", 2);
         sent.direction = "unknown".into();
@@ -1140,10 +1016,7 @@ mod tests {
 
     #[test]
     fn allowing_a_sender_controls_visibility_not_human_response_or_reply_debt() {
-        // Allow gives Messages visibility, not evidence that a notifying
-        // address is a human response or an obligation to reply.
         let never_replied = ThreadId::new();
-        // Allowed and you replied in the thread: an exchange, so owed.
         let replied = ThreadId::new();
         let messages = vec![
             message(&never_replied, "notifications@studio.example", ME, 3),
@@ -1210,7 +1083,6 @@ mod tests {
             message(&ThreadId::new(), "theo@example.com", ME, 3),
             message(&ThreadId::new(), "priya@example.com", ME, 2),
         ];
-        // Priya: the contacts table knows you wrote to her before.
         let priya = DeskContact {
             email: "priya@example.com".into(),
             display_name: None,
@@ -1284,10 +1156,8 @@ mod tests {
         let twice = ThreadId::new();
         let twice_again = ThreadId::new();
         let messages = vec![
-            // You wrote Maya in one thread; her new thread is owed.
             message(&earlier, ME, "maya@example.com", 100),
             message(&fresh, "maya@example.com", ME, 4),
-            // Theo wrote twice: new from people, but not a first message.
             message(&twice, "theo@example.com", ME, 30),
             message(&twice_again, "theo@example.com", ME, 3),
         ];
@@ -1308,7 +1178,6 @@ mod tests {
         let mut messages = vec![
             message(&thread, ME, "maya@example.com", 30),
             message(&thread, "maya@example.com", ME, 5),
-            // Your outbound with a bogus Date a year ahead.
             message(&thread, ME, "maya@example.com", 0),
         ];
         messages[2].date = now() + Duration::days(365);
@@ -1348,7 +1217,6 @@ mod tests {
         assert_eq!(row.usual_samples, 3);
         assert!(row.overdue);
 
-        // One past reply is not a pattern.
         let mut single = row.clone();
         single.usual_seconds = None;
         single.overdue = false;
@@ -1371,7 +1239,6 @@ mod tests {
             }
             row
         };
-        // 10h against a 2h habit outranks 30h against the 24h default.
         let quick_person = make(10, Some(2));
         let unknown_pace = make(30, None);
         let slow_person = make(20, Some(48));

@@ -1,8 +1,3 @@
-//! `GetKeymap` and `UpdateKeys`: every keyboard shortcut in every client,
-//! from the one definition in `crates/keymap` with the person's `keys.toml`
-//! applied (blueprint chapter 35, "The daemon serves the effective key map").
-//! The file is read on every request, so an edit applies without a restart.
-
 use super::{HandlerError, HandlerResult};
 use mxr_keymap::{Client, KeyAction, Keymap, KeysEdit, KeysFile, ModeRemaps};
 use mxr_protocol::{
@@ -18,7 +13,6 @@ pub(super) fn update(change: &KeysChangeData, dry_run: bool) -> HandlerResult {
     update_at(&keys_toml_path(), change, dry_run)
 }
 
-/// `keys.toml`, beside the config file.
 pub(crate) fn keys_toml_path() -> PathBuf {
     mxr_config::config_file_path()
         .parent()
@@ -30,10 +24,6 @@ fn get_at(path: &Path) -> HandlerResult {
     Ok(ResponseData::Keymap { keymap })
 }
 
-/// Make `change` to the `keys.toml` at `path`, unless this is a dry run or
-/// the change brings a problem the file didn't already have. The config
-/// file lock is held across read, check and write, so a concurrent
-/// `mxr keys set` can't lose this change or have this one lose its.
 fn update_at(path: &Path, change: &KeysChangeData, dry_run: bool) -> HandlerResult {
     let _lock = mxr_config::lock_config_file_at(path).map_err(|error| {
         HandlerError::Message(format!("can't lock {}: {error}", path.display()))
@@ -89,8 +79,6 @@ fn read(path: &Path) -> Result<String, HandlerError> {
     }
 }
 
-/// Write through a sibling file and rename it into place, so a TUI starting
-/// at that moment reads the old file or the new one, never half of it.
 fn write(path: &Path, text: &str) -> Result<(), HandlerError> {
     let io = |error: std::io::Error| {
         HandlerError::Message(format!("can't write {}: {error}", path.display()))
@@ -103,7 +91,6 @@ fn write(path: &Path, text: &str) -> Result<(), HandlerError> {
     std::fs::rename(&staged, path).map_err(io)
 }
 
-/// The key map for `keys.toml` text, and everything in the file it ignores.
 fn effective(text: &str) -> (KeymapData, Vec<String>) {
     let defaults = mxr_keymap::defaults();
     let (file, mut problems) = KeysFile::parse(text, defaults);
@@ -283,7 +270,6 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "[todo");
     }
 
-    /// A mode's own context and its sub-views, in both clients.
     fn places(mode: &str) -> &'static [&'static str] {
         match mode {
             "todo" => &["todo", "catchup", "expired"],
@@ -296,10 +282,6 @@ mod tests {
         }
     }
 
-    /// Every action a mode's guide or hints name has a key, and that key
-    /// does that action in that mode in both clients, so `mxr modes
-    /// explain`, the `?` sheet and the hints can't advertise a key that does
-    /// something else.
     #[test]
     fn every_key_a_mode_guide_shows_does_that_action_there() {
         let keymap = mxr_keymap::defaults();

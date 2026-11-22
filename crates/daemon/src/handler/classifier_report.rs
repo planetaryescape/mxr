@@ -1,10 +1,8 @@
-//! Bounded stored-only classifier reports and truthful policy-history comparison.
 use super::assessments::fresh_stored;
 use crate::state::AppState;
 use mxr_core::{assessment::CLASSIFIER_POLICY_VERSION, AccountId};
 use std::collections::HashMap;
 
-/// A report is a stored-only read, including explicit missing answers.
 pub(super) async fn report(
     state: &AppState,
     account: Option<&AccountId>,

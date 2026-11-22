@@ -1,7 +1,3 @@
-//! `GetThreadContext`: what the store already knows about a conversation,
-//! with no model involved. The reader shows it before the messages, so its
-//! reads run concurrently.
-
 use super::relationship_profile::commitment_data;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -31,7 +27,6 @@ pub(super) async fn load_thread_context(
     build_thread_context(state, thread_id, &envelopes, &owned).await
 }
 
-/// The account's own addresses, lowercased.
 pub(super) async fn owned_addresses(
     state: &AppState,
     account_id: &AccountId,
@@ -44,8 +39,6 @@ pub(super) async fn owned_addresses(
         .collect())
 }
 
-/// Facts for a thread whose envelopes (non-empty) and owned addresses the
-/// caller already loaded.
 pub(super) async fn build_thread_context(
     state: &AppState,
     thread_id: &ThreadId,
@@ -66,8 +59,6 @@ pub(super) async fn build_thread_context(
     let is_yours = |envelope: &Envelope| match directions.get(&envelope.id) {
         Some(MessageDirection::Outbound) => true,
         Some(MessageDirection::Inbound) => false,
-        // Rows synced before the address table existed: fall back to the
-        // rule the direction column would have used.
         _ => {
             MessageDirection::for_message(
                 owned.contains(&envelope.from.email.to_ascii_lowercase()),
@@ -95,9 +86,6 @@ pub(super) async fn build_thread_context(
     let counterparty = match counterparty_address {
         Some(address) if !address.email.trim().is_empty() => {
             let email = address.email.trim().to_ascii_lowercase();
-            // Every spelling of the address in this thread (From, To, Cc):
-            // the store matches them exactly so its address indexes apply,
-            // while reply pairs and From headers keep the original case.
             let mut variants: Vec<String> = envelopes
                 .iter()
                 .flat_map(|envelope| {
@@ -147,10 +135,6 @@ pub(super) async fn build_thread_context(
         _ => None,
     };
 
-    // "You owe a reply" only when the desk has this thread as someone's
-    // turn (You owe or New from people). An old thread past its window, a
-    // newsletter, a thread you were copied on or one in the archive has no
-    // line, so this agrees with Now, Messages and the Owed page.
     let owed_reply = super::desk::thread_turn(state, &account_id, thread_id, chrono::Utc::now())
         .await?
         .map(|row| OwedReplyHereData {
@@ -176,9 +160,6 @@ pub(super) async fn build_thread_context(
     })
 }
 
-/// Who made a promise, named the way the thread names them. Theirs are owned
-/// by `who_owes` (an address, or a name the extractor wrote), not by the
-/// thread's main counterparty: in a group thread each keeps its own owner.
 fn promise_owner(
     commitment: &CommitmentData,
     envelopes: &[Envelope],
@@ -356,9 +337,6 @@ mod tests {
             Some(39)
         );
         assert!(!person.bulk_sender);
-        // These messages are not in the inbox, so it is nobody's turn on
-        // the desk and the thread says nothing is owed (the positive case,
-        // on the desk's lanes, is in tests/one_waiting.rs).
         assert!(facts.owed_reply.is_none());
         let mut whats: Vec<_> = facts
             .promises
@@ -457,8 +435,6 @@ mod tests {
         );
     }
 
-    /// Reply pairs keep the address as the mail spelled it; a mixed-case
-    /// sender still gets a usual reply time.
     #[tokio::test]
     async fn a_mixed_case_address_still_has_a_usual_reply_time() {
         let state = AppState::in_memory().await.unwrap();

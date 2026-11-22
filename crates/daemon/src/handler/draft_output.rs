@@ -1,22 +1,11 @@
-//! Deterministic clean-up of a model's draft before the user sees it.
-//!
-//! Models wrap an email in chatter ("Here's a draft:"), fences, a
-//! `Subject:` line or a `[Your Name]` placeholder even when told not to.
-//! None of that should reach a compose window.
-
-/// The email body with model chatter removed. `my_name` fills a leftover
-/// name placeholder; anything the model marked `[[?: …]]` stays for the
-/// user to fill.
 pub(crate) fn clean_draft(raw: &str, my_name: Option<&str>) -> String {
     let mut text = raw.trim().replace("\r\n", "\n");
 
-    // A fenced block is the email; keep its inside.
     if let Some(inner) = fenced(&text) {
         text = inner;
     }
 
     let mut lines: Vec<&str> = text.lines().collect();
-    // Leading chatter: "Here's a draft:", "Sure! Here is your reply:".
     while let Some(first) = lines.first() {
         let lower = first.trim().to_lowercase();
         let chatter = lower.ends_with(':')
@@ -39,7 +28,6 @@ pub(crate) fn clean_draft(raw: &str, my_name: Option<&str>) -> String {
             break;
         }
     }
-    // Trailing chatter: "---", "Let me know if you'd like changes", notes.
     while let Some(last) = lines.last() {
         let lower = last.trim().to_lowercase();
         let chatter = lower == "---"
@@ -57,7 +45,6 @@ pub(crate) fn clean_draft(raw: &str, my_name: Option<&str>) -> String {
     }
     let mut text = lines.join("\n");
 
-    // A quoted whole: "…".
     if text.len() > 2
         && text.starts_with('"')
         && text.ends_with('"')

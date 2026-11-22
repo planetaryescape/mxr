@@ -1,11 +1,3 @@
-//! Messages rows from conversations: pure rules, tested directly.
-//!
-//! `messages.rs` gathers each account's threads, their shapes and the
-//! shared lane rule; this file turns them into person and group rows,
-//! picks each row's band, ranks the bands and words the labels. Ranking is
-//! code, never a model (model-fit review): closeness from your history
-//! with them, then how far past your usual pace the turn has run.
-
 use super::desk_lanes::{pace_ratio, RECENT_DAYS};
 use chrono::{DateTime, Datelike, Duration, Local, TimeZone, Utc};
 use mxr_core::id::{AccountId, ThreadId};
@@ -16,26 +8,17 @@ use mxr_protocol::{
 use mxr_store::{PersonFacts, PersonLink};
 use std::collections::{HashMap, HashSet};
 
-/// Pinned shows at most this many people, as iMessage pins nine.
 pub(super) const PINNED_CAP: usize = 9;
-/// Close: you've written this often...
 const CLOSE_MIN_OUTBOUND: u32 = 10;
-/// ...they've written back at least this often...
 const CLOSE_MIN_RECIPROCAL: u32 = 5;
-/// ...within this many days...
 const CLOSE_RECENT_DAYS: i64 = 90;
-/// ...and you've known them this long.
 const CLOSE_MIN_KNOWN_DAYS: i64 = 30;
-/// Regular: you've written this often, within the last year.
 const REGULAR_MIN_OUTBOUND: u32 = 3;
 const REGULAR_RECENT_DAYS: i64 = 365;
 
-/// Who a row is about.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum RowKey {
-    /// A person, by primary address.
     Person(String),
-    /// A group thread.
     Group(ThreadId),
 }
 
@@ -48,7 +31,6 @@ impl RowKey {
     }
 }
 
-/// Which addresses are one person (`person_links`).
 #[derive(Debug, Default, Clone)]
 pub(super) struct People {
     primary_of: HashMap<String, String>,
@@ -71,13 +53,11 @@ impl People {
         people
     }
 
-    /// The person an address belongs to, by primary address.
     pub(super) fn primary(&self, email: &str) -> String {
         let email = email.to_ascii_lowercase();
         self.primary_of.get(&email).cloned().unwrap_or(email)
     }
 
-    /// Every address of the person, primary first.
     pub(super) fn addresses(&self, primary: &str) -> Vec<String> {
         let mut out = vec![primary.to_string()];
         if let Some(aliases) = self.aliases.get(primary) {
@@ -89,28 +69,20 @@ impl People {
     }
 }
 
-/// One conversation, placed: its topic data, whose row it belongs to and
-/// the lane row when it is somebody's turn.
 #[derive(Debug, Clone)]
 pub(super) struct Topic {
     pub key: RowKey,
     pub data: MessagesTopicData,
-    /// The other people, by primary address.
     pub people: Vec<String>,
-    /// The shared lane row (You owe or New from people) when it's your turn.
     pub turn: Option<DeskRowData>,
     pub unread: bool,
 }
 
-/// The facts a row is ranked and labelled with.
 pub(super) struct RowContext<'a> {
     pub account_id: &'a AccountId,
     pub people: &'a People,
-    /// By lowercased address.
     pub facts: &'a HashMap<String, PersonFacts>,
-    /// Best name seen per primary address.
     pub names: &'a HashMap<String, String>,
-    /// Pinned primary addresses.
     pub pinned: &'a HashSet<String>,
     pub now: DateTime<Utc>,
 }
@@ -129,7 +101,6 @@ impl RowContext<'_> {
         }
     }
 
-    /// The person's facts summed over their addresses.
     pub(super) fn merged_facts(&self, primary: &str) -> Option<PersonFacts> {
         let mut merged: Option<PersonFacts> = None;
         for address in self.people.addresses(primary) {
@@ -154,7 +125,6 @@ impl RowContext<'_> {
     }
 }
 
-/// How close you are: reciprocity, recency and longevity.
 pub(super) fn closeness(facts: Option<&PersonFacts>, now: DateTime<Utc>) -> ClosenessData {
     let Some(facts) = facts.filter(|f| f.total_outbound > 0) else {
         return ClosenessData::New;
@@ -175,7 +145,6 @@ pub(super) fn closeness(facts: Option<&PersonFacts>, now: DateTime<Utc>) -> Clos
     }
 }
 
-/// Most pressing topic first: your turn, then waiting, then by recency.
 pub(super) fn sort_topics(topics: &mut [Topic]) {
     let rank = |state: TopicStateData| match state {
         TopicStateData::YourTurn => 0,
@@ -191,9 +160,6 @@ pub(super) fn sort_topics(topics: &mut [Topic]) {
     });
 }
 
-/// A row's band: Your turn when any topic is; Quiet when every topic is
-/// done here, or nothing has moved for a week and you're not waiting on
-/// them; Recent otherwise. Pinned is laid over this in `bands`.
 pub(super) fn band(topics: &[Topic], now: DateTime<Utc>) -> MessagesBandData {
     if topics
         .iter()
@@ -216,8 +182,6 @@ pub(super) fn band(topics: &[Topic], now: DateTime<Utc>) -> MessagesBandData {
     }
 }
 
-/// Build one row from its topics. The preview is filled in later, for the
-/// rows that are shown.
 pub(super) fn build_row(
     key: RowKey,
     mut topics: Vec<Topic>,
@@ -298,7 +262,6 @@ pub(super) fn build_row(
     }
 }
 
-/// "Samir, Ruth" or "Samir, Ruth and 2 others".
 pub(super) fn group_title(members: &[PersonRefData]) -> String {
     let names: Vec<String> = members.iter().map(PersonRefData::first_name).collect();
     match names.len() {
@@ -339,7 +302,6 @@ fn why_line(
     }
 }
 
-/// "usually 47m", "usually 3h", "usually 2d".
 pub(super) fn pace_label(seconds: i64) -> String {
     let minutes = (seconds / 60).max(1);
     if minutes < 60 {
@@ -351,7 +313,6 @@ pub(super) fn pace_label(seconds: i64) -> String {
     }
 }
 
-/// "today", "yesterday", "Tuesday", "12 Mar", "12 Mar 2024".
 pub(super) fn day_label<Tz: TimeZone>(at: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -368,8 +329,6 @@ where
     }
 }
 
-/// Your turn: closest first, then furthest past your usual pace, then
-/// waiting longest.
 pub(super) fn rank_your_turn(rows: &mut [(MessagesRowData, Option<f64>)]) {
     rows.sort_by(|(a, a_ratio), (b, b_ratio)| {
         a.closeness
@@ -380,12 +339,10 @@ pub(super) fn rank_your_turn(rows: &mut [(MessagesRowData, Option<f64>)]) {
     });
 }
 
-/// Newest activity first.
 pub(super) fn rank_by_recency(rows: &mut [MessagesRowData]) {
     rows.sort_by(|a, b| b.last_at.cmp(&a.last_at).then_with(|| a.id.cmp(&b.id)));
 }
 
-/// The pace ratio of the row's turn, for ranking.
 pub(super) fn turn_ratio(topics: &[Topic]) -> Option<f64> {
     topics
         .iter()
@@ -394,8 +351,6 @@ pub(super) fn turn_ratio(topics: &[Topic]) -> Option<f64> {
         .reduce(f64::max)
 }
 
-/// A preview line: the first lines of the text, whitespace collapsed, at
-/// most `PREVIEW_CHARS`.
 pub(super) fn preview_text(text: &str) -> String {
     const PREVIEW_CHARS: usize = 140;
     let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");

@@ -1,11 +1,3 @@
-//! The labelled compose corpus as the product asks for each draft: the
-//! prompt `draft_prompt::build` gives for a case, and the grade the composer's
-//! check stage gives a reply to it. Pure: no store and no model, so the same
-//! code serves the snapshot test and `mxr draft eval --set quick`.
-//!
-//! A case's typed text and selection reach the prompt the way a `ComposeAssist`
-//! request carries them: typed text is finished, a selection is edited.
-
 use super::draft_compose::{max_tokens_for_words, target_words};
 use super::draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS;
 use super::draft_prompt::{self, DraftMode, Help, Me, Prompt, PromptInput, Turn, VoiceExample};
@@ -19,15 +11,11 @@ use mxr_protocol::TextRangeData;
 use mxr_provider_fake::fixtures::compose::{self, Case, DraftState};
 use mxr_relationship::analyse_habits;
 
-/// The prompt for one case, and how many tokens its reply may take.
 pub(crate) struct Assembled {
     pub prompt: Prompt,
     pub max_tokens: u32,
 }
 
-/// What the product would send for this case. Mirrors the reply path of
-/// `draft_compose` (no relationship summary, no tone, no length hint), with
-/// the corpus standing in for the user's stored mail.
 pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
     let me = Me {
         name: Some(compose::ME_NAME.to_string()),
@@ -65,8 +53,6 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
     let bodies: Vec<&str> = case.voice.iter().map(|sent| sent.text).collect();
     let analysed = analyse_habits(&bodies, &[]);
     let mut habits = analysed.describe();
-    // The same note `voice_material` adds when the user has written little
-    // to this person.
     let counterparty = case
         .thread
         .iter()
@@ -100,7 +86,6 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
             }),
         ),
     };
-    // The corpus is hand-written to be valid; a bad case is a bug in it.
     let resolved = plan::resolve(None, typed, selection).expect("corpus case resolves");
     let typed_words = u32::try_from(typed.split_whitespace().count()).unwrap_or(u32::MAX);
     let words = plan::target_words(target_words(None, &material), resolved.action, typed_words);
@@ -131,8 +116,6 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
     }
 }
 
-/// Grade a reply to a case. `raw` is the model's output before clean-up and
-/// `text` the draft after it; leftovers are read from `raw`.
 pub(crate) fn grade(case: &Case, raw: &str, text: &str) -> Report {
     let kept = case.draft.kept_text();
     let conversation = case
@@ -175,8 +158,6 @@ pub(crate) fn grade(case: &Case, raw: &str, text: &str) -> Report {
     )
 }
 
-/// The "who" in `Name <address>`, or the whole string when there is no
-/// address.
 fn address_of(who: &str) -> &str {
     who.rsplit_once('<')
         .map_or(who, |(_, rest)| rest.trim_end_matches('>'))

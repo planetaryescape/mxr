@@ -1,11 +1,3 @@
-//! Bulk actions over a daemon-resolved selection (`--all`).
-//!
-//! The client never holds the message ids. `PreviewSelection` resolves the
-//! selection and keeps the ids here under a single-use token, answering with
-//! counts and a sample. `StartSelectionJob` takes the token and runs the
-//! action over exactly those ids as one background job, so what the user
-//! confirmed is what runs, and mail that arrives later is left alone.
-
 use super::diagnostics_impl::search_resolve::{resolve_search_selection, ResolvedSelection};
 use super::job_records::{bounded_text, job_detail, MAX_ACCOUNT_NAME_BYTES, MAX_JOB_TEXT_BYTES};
 use super::mutations::{FrozenLabelEdits, ResolvedLabelEdit};
@@ -22,33 +14,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// How long a preview can be committed.
 const PREVIEW_TTL: Duration = Duration::from_secs(10 * 60);
-/// Previews kept at once; the oldest goes first.
 const MAX_PREVIEWS: usize = 16;
-/// Message ids kept across all previews; the oldest previews go first. At 16
-/// bytes an id this is about 32 MB.
 const MAX_PREVIEW_IDS: usize = 2_000_000;
 const DEFAULT_SAMPLE: u32 = 20;
 const MAX_SAMPLE: u32 = 100;
-/// The longest search a selection job takes. The selection is kept with the
-/// job and listed with every job, so it is bounded like the job's other text.
 const MAX_SELECTION_QUERY_BYTES: usize = 2048;
-/// The most labels one selection label edit names, added and removed.
 const MAX_SELECTION_LABELS: usize = 8;
-/// The most bytes of a sample message's sender or subject a preview carries:
-/// stored mail can hold a subject of any size, and 100 of them would pass
-/// the frame limit.
 const MAX_SAMPLE_TEXT_BYTES: usize = 256;
-/// The longest `client_correlation_id` a start takes: the daemon echoes it in
-/// events about the job.
 const MAX_CORRELATION_ID_BYTES: usize = 128;
 
-/// What a selection job needs of its request: archive, read-archive and label
-/// edits, a query and labels of bounded size. Everything else (trash, spam,
-/// flags, move) is not offered for a whole selection yet, so a client cannot
-/// reach it by skipping the CLI; a label edit outside the user's own labels is
-/// refused by [`freeze_labels`].
 fn require_supported(
     selection: &SelectionData,
     mutation: &MutationCommand,
@@ -96,15 +71,12 @@ fn require_supported(
     Ok(())
 }
 
-/// The action as a string to compare: a token is for one action only.
 fn action_key(mutation: &MutationCommand) -> String {
     serde_json::to_string(mutation).unwrap_or_default()
 }
 
-/// One label a label edit names, as the preview resolved it in one account.
 #[derive(Debug, Clone)]
 struct FrozenLabel {
-    /// What the user typed, for messages.
     reference: String,
     label_id: LabelId,
     provider_id: String,
@@ -116,7 +88,6 @@ struct FrozenAccountLabels {
     remove: Vec<FrozenLabel>,
 }
 
-/// A label edit's labels, by account the selection reaches.
 type FrozenLabels = HashMap<AccountId, FrozenAccountLabels>;
 
 #[derive(Debug)]
@@ -125,24 +96,17 @@ struct PreviewEntry {
     action: String,
     ids: Vec<MessageId>,
     accounts: Vec<AccountMutationResultData>,
-    /// Set for a label edit: the labels it names, resolved in each account
-    /// the selection reaches.
     labels: Option<FrozenLabels>,
     created: Instant,
 }
 
-/// A test's hold on a start between taking its token and recording its job.
 #[cfg(test)]
 pub(crate) type StartPause = (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
 
-/// Previews waiting to be committed, by token. Single use. A daemon restart
-/// loses them, which is safe: nothing had happened yet.
 pub(crate) struct SelectionPreviews {
     entries: Mutex<Vec<(String, PreviewEntry)>>,
     max_previews: usize,
     max_ids: usize,
-    /// Set by a test: the next start signals the first notify once it holds
-    /// its token, then waits for the second.
     #[cfg(test)]
     pub(crate) pause_after_take: Mutex<Option<StartPause>>,
 }
@@ -168,8 +132,6 @@ impl SelectionPreviews {
         let token = uuid::Uuid::now_v7().to_string();
         let mut entries = self.entries.lock();
         entries.retain(|(_, kept)| kept.created.elapsed() < PREVIEW_TTL);
-        // Oldest first, so eviction takes from the front. One preview larger
-        // than the whole budget is kept alone rather than refused.
         let mut held: usize = entries.iter().map(|(_, kept)| kept.ids.len()).sum();
         while !entries.is_empty()
             && (entries.len() >= self.max_previews || held + entry.ids.len() > self.max_ids)
@@ -181,8 +143,6 @@ impl SelectionPreviews {
         token
     }
 
-    /// The preview behind `token` for this selection and action, once. A
-    /// request for another selection or action leaves the token usable.
     fn take(
         &self,
         token: &str,
@@ -214,14 +174,11 @@ impl SelectionPreviews {
         Err("that preview expired or was already used; preview again".into())
     }
 
-    /// Give back a taken preview whose job did not start, under its token and
-    /// with its age, so whoever it was meant for can still use it.
     fn put_back(&self, token: &str, entry: PreviewEntry) {
         self.entries.lock().push((token.to_string(), entry));
     }
 }
 
-/// How a job is described in the activity log.
 #[derive(Debug, Clone)]
 pub(super) struct JobActivity {
     pub source: ClientKind,
@@ -242,10 +199,6 @@ fn action_token(mutation: &MutationCommand) -> &'static str {
     }
 }
 
-/// One entry when the daemon accepts the job. Counts only: no message ids,
-/// subjects or bodies (a job over 500k messages would put megabytes of ids in
-/// the log). `query` is dropped by the recorder unless search queries are
-/// tracked.
 pub(super) fn record_job_accepted(state: &AppState, activity: &JobActivity, job: &JobData) {
     let mut context = serde_json::json!({
         "count": job.progress.total,
@@ -256,7 +209,6 @@ pub(super) fn record_job_accepted(state: &AppState, activity: &JobActivity, job:
     record(state, activity, job, context);
 }
 
-/// One entry when the job ends, whatever the outcome.
 pub(super) fn record_job_finished(state: &AppState, activity: &JobActivity, job: &JobData) {
     let mut context = serde_json::json!({
         "job_id": job.job_id,
@@ -292,23 +244,6 @@ fn record(state: &AppState, activity: &JobActivity, job: &JobData, context: serd
     });
 }
 
-/// A label edit over a whole selection may only name labels the user created,
-/// and the preview pins each to the label it means in each account.
-///
-/// A provider acts on some labels rather than just tagging: adding `TRASH` or
-/// `SPAM` trashes or spams, IMAP maps a trash folder to an id of its own, and a
-/// name like `DELETED` becomes the IMAP `\Deleted` flag. Those mailbox
-/// actions are not offered for a selection yet, and a block-list would miss
-/// aliases, so this is an allow-list: each label named, added or removed, must
-/// be one the store holds for the account with kind `User`. System labels
-/// (INBOX, TRASH, SPAM, IMPORTANT, STARRED, UNREAD, DRAFT, SENT, anything with
-/// a role), provider folders and names that match no label are refused. The
-/// name is resolved the way the runner resolves names, in each account the
-/// resolved selection reaches (`accounts`) and only those.
-///
-/// The result is what the job applies: the label's id in each account, so a
-/// label renamed after the preview, or another created under the old name,
-/// does not change which label the job edits.
 async fn freeze_labels(
     state: &AppState,
     accounts: &[AccountId],
@@ -359,16 +294,10 @@ async fn freeze_labels(
     Ok(Some(frozen))
 }
 
-/// A label the user created: kind `User`, and no mailbox role (Inbox, Trash,
-/// Spam, …) either, in case a provider tags a role on a label it calls a user
-/// label.
 fn is_users_own(label: &mxr_core::types::Label) -> bool {
     label.kind == LabelKind::User && label.role.is_none()
 }
 
-/// The provider ids a starting job applies: each label the preview froze,
-/// provided it is still there, still the user's, under the same provider id.
-/// `Ok(Err(..))` when one is not: the preview is stale.
 async fn check_frozen_labels(
     state: &AppState,
     frozen: &FrozenLabels,
@@ -423,8 +352,6 @@ pub(super) async fn preview_selection(
         return Err("a selection needs a non-empty search query".into());
     }
     let resolved = resolve_search_selection(state, query, account_id.as_ref()).await?;
-    // The labels are checked in the accounts the selection reaches, after it
-    // is resolved, and kept with the preview for the job.
     let reached: Vec<AccountId> = resolved
         .accounts
         .iter()
@@ -436,7 +363,6 @@ pub(super) async fn preview_selection(
     let count = resolved.ids.len() as u32;
 
     let (preview_token, expires_at) = if resolved.ids.is_empty() {
-        // Nothing to commit, so no token to hold.
         (String::new(), 0)
     } else {
         let results = accounts
@@ -477,7 +403,6 @@ pub(super) async fn preview_selection(
     })
 }
 
-/// Account names and the newest messages, for the confirmation table.
 async fn describe(
     state: &AppState,
     resolved: &ResolvedSelection,
@@ -528,15 +453,6 @@ async fn describe(
     Ok((accounts, sample))
 }
 
-/// Start the job a preview counted.
-///
-/// The order is what makes a job id mean a real job: (1) the token is taken
-/// from memory, so of any number of requests holding it one gets it; (2) the
-/// job's full row is inserted as `queued` with an insert that fails when the
-/// id exists; (3) the job is spawned. A job id is only ever returned for a
-/// row that is a real queued, running or finished job. When the insert finds
-/// the id taken, the token goes back and the request gets that job if it is
-/// the same selection and action (a retry of an accepted start), or an error.
 #[allow(clippy::too_many_arguments, reason = "mirrors the request's fields")]
 pub(super) async fn start_selection_job(
     state: &Arc<AppState>,
@@ -558,8 +474,6 @@ pub(super) async fn start_selection_job(
         .into());
     }
 
-    // A job with this id already exists: the first request got through and
-    // its reply was lost. Hand the job back instead of starting another.
     if let Some(job) = existing_job(state, job_id, selection, mutation).await? {
         return Ok(ResponseData::JobStarted { job });
     }
@@ -570,8 +484,6 @@ pub(super) async fn start_selection_job(
         .take(preview_token, selection, &action)
     {
         Ok(previewed) => previewed,
-        // Another request took it. If that was this job's own start, its row
-        // may be there by now; otherwise this request did not start a job.
         Err(error) => {
             return match existing_job(state, job_id, selection, mutation).await? {
                 Some(job) => Ok(ResponseData::JobStarted { job }),
@@ -588,8 +500,6 @@ pub(super) async fn start_selection_job(
         }
     }
 
-    // The labels the preview froze must still be there; a stale preview is
-    // dropped, a store error leaves it usable.
     let labels = match previewed.labels.as_ref() {
         None => None,
         Some(frozen) => match check_frozen_labels(state, frozen).await {
@@ -644,8 +554,6 @@ pub(super) async fn start_selection_job(
     Ok(mutations::run_claimed_job(state.clone(), job, spec))
 }
 
-/// The job already started under `job_id`, if any. It must be the same
-/// selection and action; a reused id for something else is an error.
 async fn existing_job(
     state: &AppState,
     job_id: &str,
@@ -657,8 +565,6 @@ async fn existing_job(
     };
     let job: JobData =
         serde_json::from_str(&json).map_err(|e| HandlerError::from(e.to_string()))?;
-    // The whole action, not just its kind: `label Work` and `unlabel Work`
-    // under one id are different requests.
     if job.selection.as_ref() == Some(selection) && job.action.as_ref() == Some(mutation) {
         return Ok(Some(job_detail(job)));
     }
@@ -674,7 +580,6 @@ fn with_ids(mutation: &MutationCommand, message_ids: Vec<MessageId>) -> Mutation
             add: add.clone(),
             remove: remove.clone(),
         },
-        // `require_supported` has refused every other command.
         other => other.clone(),
     }
 }
@@ -743,7 +648,6 @@ mod tests {
         let token = previews.insert(entry(2, &selection, "archive"));
         let just_before = Instant::now() + PREVIEW_TTL - Duration::from_secs(1);
         let later = Instant::now() + PREVIEW_TTL + Duration::from_secs(1);
-        // Not consumed by a look that finds it too late.
         assert!(previews
             .take_at(&token, &selection, "archive", later)
             .is_err());
@@ -759,7 +663,6 @@ mod tests {
         let selection = search("from:x");
         let first = previews.insert(entry(4, &selection, "archive"));
         let second = previews.insert(entry(4, &selection, "archive"));
-        // 8 held; 4 more would pass 10, so the oldest goes.
         let third = previews.insert(entry(4, &selection, "archive"));
         assert!(previews.take(&first, &selection, "archive").is_err());
         assert!(previews.take(&second, &selection, "archive").is_ok());

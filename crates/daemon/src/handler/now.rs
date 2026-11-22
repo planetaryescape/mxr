@@ -1,10 +1,3 @@
-//! `Request::GetNow`: the front page (blueprint 22). Four fixed sections,
-//! never reordered: People (from Messages, the desk's lanes), Due soon
-//! (To do's Now band, by act-by), one Updates card, and one Reading pick
-//! from 17:00. At most three items each, so Now never shows more than ten
-//! things, and nothing past its relevancy window enters it. The caps live
-//! here so every client shows the same Now.
-
 use super::desk::compose_desk;
 use super::mode_rules::{
     day_part, more_line, now_headline, overload_line, reading_fade, updates_line, EVENING_HOUR,
@@ -26,27 +19,19 @@ use mxr_protocol::{
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-/// What Now and the rail are built from, read once.
 pub(super) struct NowSnapshot {
-    /// The people waiting on you, counted once for every surface
-    /// (`turn_units`): You owe first, then New from people.
     pub turn: TurnUnits,
-    /// To do's Now band, by act-by, inside its relevancy window.
     pub due_now: Vec<TodoData>,
     pub next_surface: Option<TodoNextData>,
     pub inbox: InboxModes,
-    /// Updates' latest digest, for the card and the rail's count.
     pub digest: UpdatesDigestData,
 }
 
 impl NowSnapshot {
-    /// Work only: people whose turn it is with you, and things to act on.
     pub(super) fn badge(&self) -> u32 {
         self.turn.split.total() + count(self.due_now.len())
     }
 
-    /// People needing attention, including due explicit follow-ups but
-    /// never ordinary waiting: Now's People and the rail's Messages count.
     pub(super) fn your_turn_total(&self) -> u32 {
         self.turn.split.total()
     }
@@ -69,10 +54,6 @@ where
     snapshot_inner(state, account_id, accounts, now, tz).await
 }
 
-/// Rail's own snapshot plus the Messages quiet count, which only the rail
-/// shows. The snapshot itself is shared with Now: whoever builds it first in
-/// a cache tick leaves it in [`ModeCache`], so a change does not read the
-/// inbox, classify it and compose Updates twice.
 pub(super) async fn rail_snapshot<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -89,10 +70,6 @@ where
     Ok((snapshot, quiet))
 }
 
-/// The one NowSnapshot both Now and the rail are built from. Reused only
-/// inside one cache tick (a second) and only while the change feed and the
-/// mutation counter have not moved, so nothing it words can be more than a
-/// tick late; the mode cache's own freshness window is a minute.
 async fn snapshot_inner<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -113,9 +90,6 @@ where
         return Ok(snapshot);
     }
 
-    // These independent reads used to add their latencies together. Keep
-    // the same membership and digest rules, but let SQLite's reader pool
-    // serve the People, To do and inbox branches concurrently.
     let inbox_and_digest = async {
         let mut inbox = inbox_modes(state, accounts).await?;
         let scope = super::updates_digest::Scope {
@@ -142,14 +116,11 @@ where
         todo_records,
         inbox_and_digest,
     )?;
-    // Hard rule: nothing past its relevancy window enters Now.
     let records = records
         .into_iter()
         .filter(|record| record.relevant_until.is_none_or(|until| until >= now))
         .collect();
     let bands = bands(records, now, tz);
-    // To do's own Now band keeps late rows after the ones still in time;
-    // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
     let snapshot = Arc::new(NowSnapshot {
@@ -176,7 +147,6 @@ pub(super) async fn get_now(state: &AppState, account_id: Option<&AccountId>) ->
     })
 }
 
-/// Now as it stands at `now` in `tz` (tests move the clock).
 pub(super) async fn now_at<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -265,8 +235,6 @@ where
     })
 }
 
-/// The new-sender question for each shown person row, from membership's
-/// own first-time check (D117), so Now asks exactly when Messages would.
 async fn sender_questions(
     state: &AppState,
     snapshot: &NowSnapshot,
@@ -323,8 +291,6 @@ where
     }
 }
 
-/// Why a person is on Now, worded to read after "Here because:" (the row's
-/// mode mark already says Messages): "your turn since Wednesday".
 fn person_reason<Tz: TimeZone>(
     row: &DeskRowData,
     new_sender: bool,
@@ -353,8 +319,6 @@ fn lane_reason(lane: DeskLaneKind, who: &str, new_sender: bool, since: &str) -> 
     }
 }
 
-/// "earlier today", "yesterday", a weekday within the week, else "12 Oct",
-/// in the viewer's time zone.
 fn since_label<Tz: TimeZone>(since: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -387,9 +351,6 @@ fn due_section(snapshot: &NowSnapshot) -> NowDueData {
     }
 }
 
-/// One card, whatever the count: the latest digest's headline, up to
-/// three lines that need a look or changed, and how much waits behind
-/// them. No card when the digest is empty.
 fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
     let all: Vec<_> = digest
         .needs_a_look
@@ -397,8 +358,6 @@ fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
         .chain(&digest.changed)
         .chain(&digest.routine)
         .collect();
-    // Parcels on their way aren't a digest to read: once its mail is let
-    // go, the card leaves Now unless a tracker went wrong.
     if all.is_empty() || (digest.message_count == 0 && digest.needs_a_look.is_empty()) {
         return None;
     }
@@ -417,7 +376,6 @@ fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
         (more, 0) => Some(format!("+{more} more")),
         (more, routine) => Some(format!("+{more} more, {routine} routine")),
     };
-    // The busiest sources, for the one-line summary the card had before.
     let mut ranked: Vec<NowUpdateSourceData> = Vec::new();
     for line in &all {
         if line.sender_email.is_empty() {
@@ -469,9 +427,6 @@ fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
     })
 }
 
-/// The evening's one thing to read: the newest unread issue still inside
-/// its source's fade, from the source you read most of (read share, then
-/// how many you've read).
 fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPickData> {
     struct Source<'a> {
         read: usize,
@@ -480,7 +435,6 @@ fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPick
         dates: Vec<DateTime<Utc>>,
     }
     let mut sources: HashMap<String, Source<'_>> = HashMap::new();
-    // Newest first already, so the first unread seen is the newest.
     for item in reading {
         let source = sources
             .entry(item.message.from_email.to_ascii_lowercase())
@@ -506,7 +460,6 @@ fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPick
             (item.message.date >= now - fade).then_some((source, item))
         })
         .max_by(|(a, a_item), (b, b_item)| {
-            // read/total compared without floats: a.read * b.total vs b.read * a.total.
             (a.read * b.total)
                 .cmp(&(b.read * a.total))
                 .then(a.read.cmp(&b.read))
@@ -550,7 +503,7 @@ mod reason_tests {
     #[test]
     fn since_is_today_yesterday_a_weekday_then_a_date() {
         let utc = FixedOffset::east_opt(0).unwrap();
-        let now = at(16, 12); // Friday
+        let now = at(16, 12);
         assert_eq!(since_label(at(16, 1), now, &utc), "earlier today");
         assert_eq!(since_label(at(15, 23), now, &utc), "yesterday");
         assert_eq!(since_label(at(14, 9), now, &utc), "Wednesday");
@@ -560,7 +513,6 @@ mod reason_tests {
 
     #[test]
     fn since_follows_the_viewers_time_zone_not_the_machines() {
-        // 23:30 UTC on the 15th is already the 16th at UTC+2.
         let plus_two = FixedOffset::east_opt(2 * 3600).unwrap();
         let now = at(16, 12);
         assert_eq!(since_label(at(15, 23), now, &plus_two), "earlier today");

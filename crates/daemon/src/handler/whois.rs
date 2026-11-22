@@ -1,11 +1,3 @@
-//! Slice 6.1 of docs/reference/ai-email.md
-//!
-//! Query-time entity explainer. No new schema -- per the doc,
-//! `entities`/`entity_mentions` are deferred until query-time
-//! becomes slow. For an email-shaped query we surface the
-//! sender_profile + relationship summary; for free-text we run a
-//! lexical search and surface the cited matches.
-
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
@@ -30,8 +22,6 @@ pub(crate) async fn explain(
         return explain_email(state, account_id, trimmed).await;
     }
 
-    // A name or a term, typed as words rather than query syntax: a colon
-    // in it must not turn it into a field filter.
     let hits = match QueryBuilder::new(&MxrSchema::build()).build_any_words(trimmed) {
         Some(query) => {
             state
@@ -58,7 +48,6 @@ pub(crate) async fn explain(
         });
     }
 
-    // Walk hits, collect unique sender candidates, build citations.
     let mut citations: Vec<WhoisCitationData> = Vec::new();
     let mut by_sender: HashMap<String, EntityCandidateData> = HashMap::new();
     let mut first_seen: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -292,7 +281,6 @@ mod tests {
         let (state, account) = fixture().await;
         let e = env(&account, "alice@example.com", "hi", "hi");
         index(&state, &e, "hi").await;
-        // Refresh contacts so the row exists.
         state.store.refresh_contacts().await.unwrap();
         let resp = explain(&state, &account, "alice@example.com", 10)
             .await
@@ -376,7 +364,6 @@ mod tests {
     #[tokio::test]
     async fn no_evidence_returns_empty_summary_no_search_call() {
         let (state, account) = fixture().await;
-        // No documents indexed -- just an empty search index.
         let resp = explain(&state, &account, "ghost-term", 10).await.unwrap();
         let ResponseData::EntityExplanation { entity } = resp else {
             panic!("unexpected")

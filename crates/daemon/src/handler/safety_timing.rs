@@ -1,17 +1,3 @@
-//! Slice 4.1 wiring (C2.5): turn `SendTimeRecommendation` into a
-//! `Severity::Info` safety hint when the proposed send time hits a
-//! materially slower bucket than the recipient's fastest one.
-//!
-//! The hint appears in `mxr send <draft> --check` output and the
-//! TUI safety modal. It never blocks; the user can ignore it.
-//!
-//! Conditions for emitting the hint:
-//! * `context.proposed_send_at` is `Some` (caller wants timing input).
-//! * Recipient's confidence band is Medium or High (don't warn on
-//!   weak data).
-//! * `proposed_p50 >= 2 * best_p50` (at least 2x slower than the
-//!   fastest historic bucket).
-
 use crate::state::AppState;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use mxr_core::types::{
@@ -19,9 +5,6 @@ use mxr_core::types::{
 };
 use mxr_store::SendTimeConfidence;
 
-/// Run the timing check against every `to`/`cc` recipient. Returns
-/// at most one Info issue listing the slow recipients (a single
-/// row in the modal is easier to scan than N).
 pub(crate) async fn check_send_time(
     state: &AppState,
     draft: &Draft,
@@ -135,9 +118,6 @@ mod tests {
         (state, account_id)
     }
 
-    /// Insert a `they_replied` reply_pair with a synthetic message
-    /// pair so the bucketing query can find it. Mirrors the helper
-    /// used by the send_time tests in mxr-store.
     async fn insert_reply(
         store: &Store,
         account_id: &mxr_core::AccountId,
@@ -215,22 +195,16 @@ mod tests {
         }
     }
 
-    /// Helper: a Friday 14:00 UTC datetime (the test fixture's
-    /// fast bucket).
     fn fri_14_utc() -> chrono::DateTime<Utc> {
         use chrono::TimeZone;
         Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap()
     }
 
-    /// Mon 09:00 UTC — the test fixture's slow bucket.
     fn mon_09_utc() -> chrono::DateTime<Utc> {
         use chrono::TimeZone;
         Utc.with_ymd_and_hms(2026, 4, 27, 9, 0, 0).unwrap()
     }
 
-    /// Seed a recipient with: 5 fast Fri 14:00 replies (60s) + 5 slow
-    /// Mon 09:00 replies (3 days). Fast bucket p50 = 60s, slow bucket
-    /// p50 = 3 days. Sample count >= 8 -> Medium confidence.
     async fn seed_medium_confidence(state: &AppState, account: &mxr_core::AccountId, email: &str) {
         for _ in 0..5 {
             insert_reply(&state.store, account, email, fri_14_utc(), 60).await;
@@ -245,7 +219,6 @@ mod tests {
         let (state, account) = fixture().await;
         seed_medium_confidence(&state, &account, "alice@example.com").await;
         let draft = draft_to(&account, "alice@example.com");
-        // Proposed: Mon 09:00 UTC -> the slow bucket.
         let issues = check_send_time(&state, &draft, mon_09_utc()).await;
         assert_eq!(issues.len(), 1);
         let issue = &issues[0];
@@ -263,7 +236,6 @@ mod tests {
         let (state, account) = fixture().await;
         seed_medium_confidence(&state, &account, "alice@example.com").await;
         let draft = draft_to(&account, "alice@example.com");
-        // Proposed: Fri 14:00 UTC -> the fast bucket itself.
         let issues = check_send_time(&state, &draft, fri_14_utc()).await;
         assert!(
             issues.is_empty(),
@@ -274,7 +246,6 @@ mod tests {
     #[tokio::test]
     async fn low_confidence_emits_no_issue() {
         let (state, account) = fixture().await;
-        // Only 3 samples -> Low confidence.
         for _ in 0..3 {
             insert_reply(&state.store, &account, "bob@example.com", mon_09_utc(), 60).await;
         }

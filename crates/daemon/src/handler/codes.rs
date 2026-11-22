@@ -1,7 +1,3 @@
-//! One-time codes from recent mail (`Request::ListOneTimeCodes`), for "copy
-//! the code I just asked for". The code and its window come from the same
-//! rules and cached facts as Updates, so a code shows the same everywhere.
-
 use chrono::{Duration, Local, Utc};
 use mxr_core::AccountId;
 use mxr_protocol::{OneTimeCodeData, ResponseData};
@@ -9,12 +5,8 @@ use mxr_protocol::{OneTimeCodeData, ResponseData};
 use super::{updates, HandlerResult};
 use crate::state::AppState;
 
-/// How far back codes are looked for. Sign-up codes can last a day.
 const LOOKBACK: Duration = Duration::hours(24);
-/// How far ahead of this machine's clock a message may be dated and still
-/// count: clocks drift. Beyond it a sender's date is not believed.
 const SKEW: Duration = Duration::minutes(5);
-/// Most recent messages read for codes, newest first.
 const SCANNED: u32 = 200;
 const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 50;
@@ -37,8 +29,6 @@ pub(super) async fn list(
         .filter_map(|message| {
             let fact = facts.get(&message.id)?;
             let code = fact.code.clone()?;
-            // The code's own lifetime, not the message's Updates window: a
-            // sign-in alert stays two days, its code five minutes.
             let expires_at = fact
                 .code_expires
                 .unwrap_or(message.date + Duration::minutes(10));
@@ -57,8 +47,6 @@ pub(super) async fn list(
             })
         })
         .collect();
-    // Current codes first, then expired ones, each newest first, so a limit
-    // never hides a code that still works behind newer expired ones.
     codes.sort_by_key(|code| !code.current);
     codes.truncate(limit);
     Ok(ResponseData::OneTimeCodes { codes })

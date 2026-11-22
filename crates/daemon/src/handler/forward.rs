@@ -52,8 +52,6 @@ pub(super) async fn prepare_source(
         .filter(|html| !html.trim().is_empty())
         .cloned()
         .unwrap_or_else(|| format!("<pre>{}</pre>", htmlescape::encode_minimal(&original_text)));
-    // A forward with no HTML part sends generated, escaped markup: nothing to
-    // check. With an HTML part, the document is checked whole or refused.
     let has_html_part = body
         .text_html
         .as_deref()
@@ -63,7 +61,6 @@ pub(super) async fn prepare_source(
             .map_err(|error| format!("Cannot forward original HTML: {error}"))?;
         validate_html_cid_references(body, &original_html)?;
     }
-    // CSS background images may reference related parts without an img/src.
     static CSS_URL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r#"(?i)url\(\s*['"]?(cid:[^'"\s)]+)"#).expect("static CSS CID URL regex")
     });
@@ -167,10 +164,6 @@ pub(super) async fn prepare_source(
     })
 }
 
-/// Every `cid:` attribute in the original HTML must name a related part. Over
-/// the parser budget, or with the HTML helper unable to read it, the HTML cannot
-/// be checked, so the forward is refused rather than sent with its references
-/// unchecked.
 fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), HandlerError> {
     let values = CID_REFERENCES
         .try_call(html, &())
@@ -182,7 +175,6 @@ fn validate_html_cid_references(body: &MessageBody, html: &str) -> Result<(), Ha
     Ok(())
 }
 
-/// No helper would start: the original may be fine, so the fix is a retry.
 fn unchecked_forward_message(reason: FallbackReason) -> &'static str {
     if reason == FallbackReason::Unavailable {
         "Cannot forward original HTML yet: mxr's HTML helper process did not start, so \
@@ -194,8 +186,6 @@ fn unchecked_forward_message(reason: FallbackReason) -> &'static str {
     }
 }
 
-/// The attribute values that start `cid:`, from a parse in the HTML helper
-/// process. `None` is a document over the parser budget.
 pub(crate) static CID_REFERENCES: Job<(), Option<Vec<String>>> =
     Job::new("daemon.cid_references", |html, ()| {
         if !mxr_reader::within_budget(html) {
@@ -241,8 +231,6 @@ fn validate_cid_reference(body: &MessageBody, value: &str) -> Result<(), Handler
     Ok(())
 }
 
-/// Keep the immediate local Sent copy complete too. Its cache must outlive the
-/// draft resources, which can be collected after the accepted draft is deleted.
 pub(super) async fn sent_attachments(
     state: &AppState,
     draft: &mxr_core::Draft,
@@ -388,7 +376,6 @@ mod budget_tests {
         let error =
             mxr_html_worker::with_supervisor(lost, || validate_html_cid_references(&body, html))
                 .expect_err("an unchecked forward is not sent");
-        // The original may be fine; the helper never saw it.
         assert!(
             error.to_string().contains("try again in a few seconds"),
             "got {error}"

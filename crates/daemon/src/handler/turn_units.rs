@@ -1,30 +1,13 @@
-//! Who needs your attention, counted once for every surface.
-//!
-//! The desk's You owe, New from people and due explicit follow-ups say whose turn it is, per
-//! conversation. Messages lists them as rows: a person once however many
-//! conversations they have with you, a group thread once. Now's headline,
-//! its People total, the rail's Messages badge, Messages' Your turn header,
-//! the Owed page and Focus all count those same rows, so this module turns
-//! desk rows into them with the keys `place_topic` gives Messages' rows.
-//!
-//! The split is by lane, never by a second rule: a unit with a You owe or
-//! due follow-up conversation is someone you write with; every other unit is someone who
-//! wrote to you (first time or repeat).
-
 use super::desk_lanes::needs_attention;
 use super::messages_view::{People, RowKey};
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{DeskLaneKind, DeskRowData, PeopleSplitData};
 use std::collections::{HashMap, HashSet};
 
-/// Each turn conversation's Messages row key.
 #[derive(Debug, Default)]
 pub(super) struct TurnKeys(HashMap<(AccountId, ThreadId), RowKey>);
 
 impl TurnKeys {
-    /// Keys for one account's turn threads. `turn_people` is each thread's
-    /// other people (the shape rule's); `people` merges one person's
-    /// addresses, as Messages does.
     pub(super) fn add_account<'a>(
         &mut self,
         account: &AccountId,
@@ -56,9 +39,6 @@ impl TurnKeys {
         self.0.extend(other.0);
     }
 
-    /// The row Messages lists this turn under. Messages reads it from here
-    /// and never derives it again, so the two cannot differ. A conversation
-    /// the shape rule gave no key counts as its sender.
     pub(super) fn key(&self, row: &DeskRowData) -> RowKey {
         self.0
             .get(&(row.account_id.clone(), row.thread_id.clone()))
@@ -71,8 +51,6 @@ impl TurnKeys {
     }
 }
 
-/// The people waiting on you: one desk row per unit, at their most
-/// pressing conversation, with the split.
 #[derive(Debug, Default, Clone)]
 pub(super) struct TurnUnits {
     pub rows: Vec<DeskRowData>,
@@ -80,8 +58,6 @@ pub(super) struct TurnUnits {
 }
 
 impl TurnUnits {
-    /// Lane rows in their lane order; ordinary waiting never qualifies.
-    /// A unit shows once, at its first attention row.
     pub(super) fn from_lanes(
         keys: &TurnKeys,
         owed: &[DeskRowData],

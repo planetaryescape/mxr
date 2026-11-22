@@ -1,6 +1,3 @@
-//! Explicit task links plus field-wise two-way reconciliation. Only linked
-//! tasks participate. No whole-list import, task deletion, or email-body export.
-
 use super::microsoft_todo_cli::{MicrosoftTodoCli, INSTALL_HINT, INSTALL_URL};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -186,8 +183,6 @@ async fn link_with_cli(
                         &serde_json::to_string(&outbound.fields)?,
                     )
                     .await?;
-                // Linking is an explicit user decision: reclassification and
-                // ageing must not erase the local half of a live task link.
                 result.state = "linked".into();
                 result.task_id = Some(task.id);
                 result.summary = "Linked. Changes sync both ways; ms-todo queues Microsoft updates while offline.".into();
@@ -295,8 +290,6 @@ async fn sync_links(
     })
 }
 
-/// Called by To do's background tick. Installation is optional; absent or
-/// unavailable credentials never hold up email sync or other To do work.
 pub(crate) async fn background(state: &AppState) {
     let Ok(_guard) = gate().try_lock() else {
         return;
@@ -320,8 +313,6 @@ pub(crate) async fn background(state: &AppState) {
         }
         return;
     }
-    // One failing link never stops the rest. The store's attempt time gives
-    // each row a retry interval, including conflicts and unavailable peers.
     for link in links.into_iter().take(8) {
         let _ = state
             .store
@@ -399,7 +390,6 @@ async fn sync_one(
             return finish(state, result, dry_run, None).await;
         }
     };
-    // Validate the complete inbound plan before an outbound change can happen.
     let edited = local_update(state, &record, &local, &desired)?;
     result.merged = Some(wire_fields(&desired));
     if dry_run {
@@ -509,9 +499,6 @@ fn local_update(
 ) -> Result<TodoRecord, HandlerError> {
     let mut edited = super::todos::apply_edits(state, record.clone(), &[], Utc::now(), None)?;
     let mut sources = FieldSources::from_json(&edited.field_sources);
-    // Set directly, not as an edit phrase: the phrase parser refuses a day
-    // that has passed, and a task overdue in Microsoft To Do (or due today,
-    // after the morning hour) is still a task.
     if local.due != desired.due {
         edited.due_at = desired
             .due

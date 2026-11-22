@@ -34,8 +34,6 @@ pub(crate) async fn triage_search(
     else {
         return Err("unexpected search response".into());
     };
-    // Triage judges and caches a verdict per message from the results, so it
-    // must not be fed the narrower set the SQLite fallback returns.
     if let Some(degraded) = degraded {
         return Err(crate::handler::HandlerError::SearchIndexUnavailable(
             format!("{} Triage needs the full index.", degraded.notice()),
@@ -50,9 +48,6 @@ pub(crate) async fn triage_search(
             continue;
         };
         let body_text = load_body_text(state, &envelope).await;
-        // One read feeds both the cache key and the prompt. A failed read fails
-        // the search like the envelope read above: an empty set would be cached
-        // and served as if the account owned nothing.
         let owned = state.owned_addresses(&envelope.account_id).await?;
         let owned_revision = crate::state::owned_addresses_revision(&owned);
         let content_hash = triage_content_hash(&envelope, &body_text, &owned_revision);
@@ -183,9 +178,6 @@ fn build_triage_prompt(
         .date
         .with_timezone(&chrono::Local)
         .format("%a %b %e %Y %H:%M %Z");
-    // The single-message block is attacker-controllable mail content;
-    // wrap it in untrusted-content delimiters. The trusted classification
-    // instruction stays outside the markers.
     let message_block = format!(
         "--- Message 1 of 1 ---\nDate: {}\nFrom: {}\nTo: {}\nCc: {}\nBcc: {}\nSubject: {}\nBody:\n{}\n",
         date,
@@ -268,9 +260,6 @@ fn verdict_from_token(token: &str) -> Option<TriageVerdictData> {
     }
 }
 
-/// `owned_revision` covers the owner's address block in the prompt, so an
-/// alias added or removed later misses the cache. Like the summary key, this
-/// changes the key rather than the prompt version: the wording did not change.
 fn triage_content_hash(envelope: &Envelope, body_text: &str, owned_revision: &str) -> String {
     let mut hasher = Sha256::new();
     hash_str(&mut hasher, summarize::SUMMARY_PROMPT_VERSION);
@@ -347,7 +336,6 @@ mod tests {
             .account_id(state.default_account_id())
             .provider_id("snapshot")
             .build();
-        // The prompt uses the snapshot the caller hashed, not a fresh store read.
         let snapshot = OwnedAddresses::new(Some("snapshot-owner@example.com"), []);
         let prompt = build_triage_prompt(&snapshot, &envelope, "body");
         assert!(

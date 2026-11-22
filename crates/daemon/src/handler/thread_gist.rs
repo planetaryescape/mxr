@@ -1,14 +1,3 @@
-//! `GetThreadGist`: the model-written half of the reader's context block, a
-//! one-sentence gist and what the conversation asks of you.
-//!
-//! The thread's own messages go to the model under the same rule as
-//! `SummarizeThread` (the `Summarize` feature). Your history with the
-//! counterparty only rides along when `state::relationship_data_allowed`
-//! says so. The ask's quote is checked against the message text before it
-//! is returned, so a client can highlight it without trusting the model,
-//! and every number in the gist must be written in the mail
-//! (`gist_numbers`). Answers are cached per thread and newest message.
-
 use super::gist_kind::{style_of, GistStyle};
 use super::gist_numbers::NumberSource;
 use super::thread_context::{build_thread_context, owned_addresses};
@@ -31,19 +20,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 
-/// Bump when the prompt or the output rules change, so cached gists
-/// written under the old rules regenerate. v2: gists are number-checked and
-/// automated mail has its own prompt.
 const GIST_PROMPT_VERSION: &str = "v2";
-/// Model output limits, in characters. Longer text is cut at a word.
 const GIST_MAX_CHARS: usize = 240;
-/// A notification's gist is one fact; a list row has room for little more.
 const NOTIFICATION_GIST_MAX_CHARS: usize = 160;
 const ASK_MAX_CHARS: usize = 160;
 const QUOTE_MAX_CHARS: usize = 400;
-/// Shorter "quotes" ("yes", "ok?") would highlight noise.
 const QUOTE_MIN_CHARS: usize = 8;
-/// Prompt budget: each message is capped, and older messages drop first.
 const MESSAGE_MAX_CHARS: usize = 6_000;
 const TRANSCRIPT_MAX_CHARS: usize = 24_000;
 
@@ -63,9 +45,6 @@ ask: what the other people want the account owner to do (reply, decide, send, co
 
 Messages the account owner sent are marked (you)."#;
 
-/// The prompt for mail a machine sent (receipts, alerts, status updates):
-/// the fact it reports, not a conversation. Same output shape as
-/// `SYSTEM_PROMPT`, so one parser, cache and event path serve both.
 pub(crate) const NOTIFICATION_PROMPT: &str = r#"You write the gist of one automated email (a receipt, alert, notification or status update), shown as a line in a list of updates in an email client.
 
 Output STRICT JSON and nothing else:
@@ -114,27 +93,19 @@ struct RawAsk {
     quote: String,
 }
 
-/// What the cache row holds, as JSON in `context_briefings.body_markdown`.
 #[derive(Debug, Serialize, Deserialize)]
 struct CachedGist {
     gist: String,
     ask: Option<ThreadAskData>,
     provenance: AiProvenanceData,
-    /// Messages that had no synced body, so their snippet stood in. The gist
-    /// is regenerated once any of them syncs.
     #[serde(default)]
     snippet_ids: Vec<MessageId>,
 }
 
-/// The gist shares the briefings cache table; the prefix keeps its rows
-/// apart from `GetThreadBriefing`'s, which key on the bare thread id.
 fn cache_key(thread_id: &ThreadId) -> String {
     format!("gist:{thread_id}")
 }
 
-/// How the model is called: a reader waiting on the gist gets the
-/// foreground budget; the list-row writer runs under the background
-/// timeout and breaker, so a slow or dead endpoint can't pile up work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GistCall {
     Foreground,
@@ -150,8 +121,6 @@ pub(super) async fn get_thread_gist(
     Ok(ResponseData::ThreadGist { gist })
 }
 
-/// Load the conversation and return its gist (cached unless `refresh`),
-/// with the content hash it answers for.
 pub(super) async fn load_and_write_gist(
     state: &AppState,
     thread_id: &ThreadId,
@@ -166,7 +135,6 @@ pub(super) async fn load_and_write_gist(
     Ok((gist, setup.content_hash))
 }
 
-/// The conversation's messages, oldest first; empty for an unknown thread.
 pub(super) async fn thread_envelopes(
     state: &AppState,
     thread_id: &ThreadId,
@@ -179,13 +147,8 @@ pub(super) async fn thread_envelopes(
     Ok(envelopes)
 }
 
-/// The model a gist request uses and what its prompt may carry, decided
-/// once per request (or once per batch).
 #[derive(Clone)]
 pub(super) struct GistPolicy {
-    /// Pin the provider once: what the prompt may carry, the provenance
-    /// label and the call itself all follow this one endpoint, even if a
-    /// config reload swaps the runtime mid-request.
     pub llm: PinnedLlm,
     share_history: bool,
 }
@@ -199,23 +162,17 @@ impl GistPolicy {
     }
 }
 
-/// One conversation's gist request: the policy plus its cache key.
 pub(super) struct GistSetup {
     policy: GistPolicy,
     style: GistStyle,
     account_id: AccountId,
     pub content_hash: String,
     key: String,
-    /// The conversation's newest message: what the gist answers for.
     newest: MessageId,
-    /// Every message the gist is built from. The cache write is refused if
-    /// any was deleted while the model ran.
     sources: Vec<MessageId>,
 }
 
 impl GistSetup {
-    /// `envelopes` is the whole conversation, oldest first; `None` when it
-    /// has no messages.
     pub fn new(
         policy: &GistPolicy,
         thread_id: &ThreadId,
@@ -238,9 +195,6 @@ impl GistSetup {
     }
 }
 
-/// The cached gist, when it was written for this conversation's newest
-/// message under the same model, endpoint and privacy setting, and no
-/// message it read from a snippet has synced its body since. No model call.
 pub(super) async fn cached_gist(
     state: &AppState,
     thread_id: &ThreadId,
@@ -269,8 +223,6 @@ pub(super) async fn cached_gist(
     )))
 }
 
-/// The gist for a conversation: from the cache unless `refresh`, else
-/// written by the model and cached. An unavailable model is a status.
 async fn thread_gist(
     state: &AppState,
     thread_id: &ThreadId,
@@ -286,7 +238,6 @@ async fn thread_gist(
     }
     let llm = &setup.policy.llm;
     let owned = owned_addresses(state, &setup.account_id).await?;
-    // A notification has no relationship to speak of: no history rides along.
     let facts = if setup.policy.share_history && setup.style == GistStyle::Conversation {
         Some(build_thread_context(state, thread_id, envelopes, &owned).await?)
     } else {
@@ -336,8 +287,6 @@ async fn thread_gist(
             ))
         }
     };
-    // Quotes are checked against each message's stored plain text first,
-    // then against the text the prompt carried.
     let candidates: Vec<(MessageId, &str)> = texts
         .iter()
         .flat_map(|text| {
@@ -348,8 +297,6 @@ async fn thread_gist(
                 .map(|candidate| (text.id.clone(), candidate))
         })
         .collect();
-    // Every number the gist states must be written in the mail the model
-    // read: the subjects, the message texts and the history line.
     let numbers = NumberSource::new(
         envelopes
             .iter()
@@ -386,9 +333,6 @@ async fn thread_gist(
             .collect(),
     };
     let generated_at = chrono::Utc::now();
-    // A message arrived while the model was writing: this gist answers for
-    // the conversation as it was. Return it (it says which message it
-    // answers for) but don't cache it over whatever the newer state gets.
     if newest_message_id(state, thread_id).await?.as_ref() != Some(&setup.newest) {
         tracing::debug!(%thread_id, "thread gist: a newer message arrived; not cached");
         return Ok(ready(thread_id, setup, payload, generated_at, false));
@@ -410,7 +354,6 @@ async fn thread_gist(
         )
         .await?;
     if !written {
-        // Mail it read was deleted mid-call; its text must not come back.
         tracing::debug!(%thread_id, "thread gist: a source message was deleted; not cached");
         return Ok(unavailable(
             thread_id,
@@ -421,7 +364,6 @@ async fn thread_gist(
     Ok(ready(thread_id, setup, payload, generated_at, false))
 }
 
-/// The conversation's newest message now, by the same order the gist uses.
 pub(super) async fn newest_message_id(
     state: &AppState,
     thread_id: &ThreadId,
@@ -466,10 +408,6 @@ fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str)
     }
 }
 
-/// Changes when a message arrives, the prompt or its style changes, the model or its
-/// endpoint changes (so a same-named model moved from local to cloud never
-/// serves a gist with the old provenance), or the privacy setting changes
-/// what the prompt may carry.
 fn gist_content_hash(
     envelopes: &[Envelope],
     share_history: bool,
@@ -487,7 +425,6 @@ fn gist_content_hash(
     hash.update([u8::from(share_history)]);
     hash.update(llm.model_name().as_bytes());
     hash.update(b"|");
-    // Routed models have no single URL; they are still not on this machine.
     let endpoint = llm.base_url().unwrap_or_else(|| {
         if llm.leaves_machine() {
             "hosted"
@@ -499,21 +436,13 @@ fn gist_content_hash(
     base16ct::lower::encode_string(&hash.finalize())
 }
 
-/// One message as the gist reads it.
 struct MessageText {
     id: MessageId,
-    /// What the prompt carries: the plain part when there is one, else the
-    /// HTML reduced to text, capped per message.
     prompt: String,
-    /// The plain part as stored, which the readers show; quotes are looked
-    /// up here first so the returned span is literally in the body.
     plain: Option<String>,
-    /// No body was synced yet, so the prompt used the snippet.
     from_snippet: bool,
 }
 
-/// The newest messages that fit the prompt budget, oldest first. Older
-/// messages past the budget are never read.
 async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<MessageText> {
     let mut out = Vec::new();
     let mut used = 0usize;
@@ -600,8 +529,6 @@ fn build_user_prompt(
     prompt
 }
 
-/// Relationship stats as one line of background, or `None` when there is
-/// nothing to say.
 fn history_line(facts: &ThreadContextData) -> Option<String> {
     let person = facts.counterparty.as_ref()?;
     let mut line = format!(
@@ -625,9 +552,6 @@ fn history_line(facts: &ThreadContextData) -> Option<String> {
     Some(line)
 }
 
-/// Validate the model's JSON: plain text within limits, numbers that the
-/// mail writes, and a quote only when it really appears in the cited message
-/// (or, when the model cited the wrong id, in another message of the thread).
 fn parse_gist(
     content: &str,
     texts: &[(MessageId, &str)],
@@ -639,15 +563,12 @@ fn parse_gist(
     if gist.is_empty() {
         return None;
     }
-    // A gist with a figure the mail doesn't write is worse than none: the
-    // caller shows the subject instead.
     if !numbers.verifies(&gist) {
         tracing::warn!("thread gist: a number in the gist is not in the mail; dropped");
         return None;
     }
     let ask = raw.ask.and_then(|ask| {
         let summary = plain_text(&ask.summary, ASK_MAX_CHARS);
-        // The same check, but the ask alone goes: the gist stands.
         if summary.is_empty() || !numbers.verifies(&summary) {
             return None;
         }
@@ -659,7 +580,6 @@ fn parse_gist(
     Some((gist, ask))
 }
 
-/// The JSON object inside a completion that may carry prose or code fences.
 pub(super) fn json_object(content: &str) -> &str {
     let trimmed = content.trim();
     match (trimmed.find('{'), trimmed.rfind('}')) {
@@ -668,8 +588,6 @@ pub(super) fn json_object(content: &str) -> &str {
     }
 }
 
-/// One line of display text: no control characters, markdown marks or em
-/// dashes, whitespace collapsed, cut at a word boundary within `max_chars`.
 pub(super) fn plain_text(value: &str, max_chars: usize) -> String {
     let cleaned: String = value
         .replace(" — ", ", ")
@@ -691,13 +609,6 @@ pub(super) fn plain_text(value: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', ';', ':', ' ']))
 }
 
-/// The quote exactly as it appears in a message's text, or `None` when it is
-/// too short, too long, or not in the thread. Matching ignores how
-/// whitespace is laid out and curly versus straight quote marks; the span
-/// returned is the original slice of the text, so it is literally a
-/// substring of it. A paraphrase never matches. `texts` holds each
-/// message's candidate texts (stored plain part first); the cited message is
-/// tried before the others, newest first.
 fn verify_quote(
     quote: &str,
     msg_id: &str,
@@ -721,8 +632,6 @@ fn verify_quote(
     })
 }
 
-/// `phrase` (already whitespace-collapsed) as the chars `find_normalized`
-/// compares against.
 fn normalize(phrase: &str, fold: impl Fn(char) -> char) -> Vec<char> {
     phrase.chars().map(fold).collect()
 }
@@ -751,7 +660,6 @@ mod tests {
             Self::at(answer, None)
         }
 
-        /// A stub that reports `base_url` as its endpoint.
         fn at(answer: impl Into<String>, base_url: Option<&str>) -> Arc<Self> {
             Arc::new(Self {
                 answer: answer.into(),
@@ -805,7 +713,6 @@ mod tests {
         );
         let quote = verify_quote(ASK_SENTENCE, &id.as_str(), &texts).expect("exact quote verifies");
         assert_eq!(quote.message_id, id);
-        // The original slice, line breaks and all: literally in the body.
         assert_eq!(
             quote.text,
             "Can you confirm who owns the\nrollout check before Monday?"
@@ -894,25 +801,20 @@ mod tests {
         ] {
             assert!(parse(content).is_none(), "{content}");
         }
-        // The object is found inside prose or an array, as with code fences,
-        // and its text is still number-checked like any other.
         assert!(parse(r#"[{"gist": "Canary at 5%"}]"#).is_some());
         assert!(parse(r#"[{"gist": "Canary at 9%"}]"#).is_none());
-        // Unknown keys, including prototype names, are ignored beside a real gist.
         let (gist, ask) = parse(
             r#"{"__proto__": {"x": 1}, "constructor": 7, "gist": "Canary at 5%.", "ask": null}"#,
         )
         .expect("a gist beside odd keys");
         assert_eq!(gist, "Canary at 5%.");
         assert!(ask.is_none());
-        // A notification's gist is capped shorter than a conversation's.
         let long = format!(r#"{{"gist": "{}"}}"#, "word ".repeat(80));
         let capped = parse(&long).unwrap().0;
         assert!(
             capped.chars().count() <= NOTIFICATION_GIST_MAX_CHARS,
             "{capped}"
         );
-        // An invented figure in the ask drops the ask and keeps the gist.
         let kept = parse(
             r#"{"gist": "Canary at 5%.", "ask": {"summary": "raise it to 9%", "msg_id": "", "quote": ""}}"#,
         )
@@ -998,7 +900,6 @@ mod tests {
         assert_eq!(second.gist, first.gist);
         assert_eq!(llm.calls.load(Ordering::SeqCst), 1, "second read is cached");
 
-        // A new message invalidates the cache.
         let reply = TestEnvelopeBuilder::new()
             .account_id(state.default_account_id())
             .thread_id(thread_id.clone())
@@ -1015,7 +916,6 @@ mod tests {
         assert!(!third.from_cache);
         assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
 
-        // refresh skips the cache.
         gist(get_thread_gist(&state, &thread_id, true).await.unwrap());
         assert_eq!(llm.calls.load(Ordering::SeqCst), 3);
     }
@@ -1029,8 +929,6 @@ mod tests {
         get_thread_gist(&state, &thread_id, false).await.unwrap();
         let prompt = llm.prompts.lock().unwrap()[0].clone();
         assert!(prompt.contains(mxr_llm::UNTRUSTED_MAIL_GUARD));
-        // The guard in the system prompt names the markers too; look in the
-        // user message only.
         let user = &prompt[prompt.find("Account owner addresses").unwrap()..];
         let begin = user.find(mxr_llm::UNTRUSTED_MAIL_BEGIN).unwrap();
         let end = user.find(mxr_llm::UNTRUSTED_MAIL_END).unwrap();
@@ -1059,7 +957,6 @@ mod tests {
         assert_eq!(provenance.sources, vec![AiSourceData::ThisThread]);
         assert!(!llm.prompts.lock().unwrap()[0].contains("History with"));
 
-        // With the opt-in, the same thread carries the history line.
         config.llm.allow_cloud_relationship_data = true;
         state.set_config_for_test(config).await;
         state.llm.replace(llm.clone());
@@ -1120,10 +1017,6 @@ mod tests {
         );
     }
 
-    /// What the prompt may carry follows the endpoint actually called, not
-    /// the config: a cloud provider behind a config that still says local
-    /// gets no history, and moving the same model from local to cloud never
-    /// serves the cached local gist.
     #[tokio::test]
     async fn the_called_endpoint_decides_history_and_the_cache() {
         let state = AppState::in_memory().await.unwrap();
@@ -1133,8 +1026,6 @@ mod tests {
         let first = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
         assert_eq!(first.provenance.unwrap().locality, AiLocalityData::Local);
 
-        // Config untouched (local by default, no cloud opt-in); the runtime
-        // now serves the same model from the cloud.
         let cloud = ScriptedLlm::at(
             answer_for(&message_id),
             Some("https://api.example-cloud.com/v1"),

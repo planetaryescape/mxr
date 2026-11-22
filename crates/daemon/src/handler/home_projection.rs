@@ -1,4 +1,3 @@
-//! Live specialist windows are projection state, never a change of home.
 use super::{updates, updates_digest, HandlerError};
 use crate::state::AppState;
 use chrono::{DateTime, Local, Utc};

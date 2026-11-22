@@ -147,8 +147,6 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tracing::Instrument;
 
-/// Subdirectory of the attachment dir holding inline HTML images, one
-/// directory per message.
 pub(crate) const HTML_ASSETS_DIR: &str = "_html_assets";
 
 pub(crate) use account_config::{config_account_id, list_account_configs, repair_account_config};
@@ -396,36 +394,14 @@ async fn get_decision(state: &Arc<AppState>, id: &str) -> HandlerResult {
     })
 }
 
-/// IPC concurrency lane for a request. Splits the semaphore pool into a
-/// fast lane for short user-initiated commands (lists, gets, mutations)
-/// and a slow lane for long-running operations (LLM inference, network
-/// attachment downloads, full-store rebuilds) so a burst of slow ops
-/// can't starve fast commands of permits.
-///
-/// Sized so the bulk lane holds enough headroom for a handful of
-/// parallel LLM calls or attachment downloads while leaving the hot
-/// lane untouched. See `server.rs` for the concrete pool sizes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcLane {
-    /// Fast user-initiated commands: lists, gets, mutations, sync
-    /// status, label CRUD. Should complete in milliseconds. Bound is
-    /// generous so realistic burst traffic never queues.
     Hot,
-    /// Slow operations: anything that calls into the LLM runtime,
-    /// fetches a network attachment, rebuilds an entire index, or runs
-    /// a multi-second store aggregate. Bounded tighter to keep the
-    /// daemon from spawning unbounded LLM/network work in parallel.
     Bulk,
 }
 
-/// Classify a request for permit routing. Default to `Hot`; only
-/// requests that are known to be slow (network round-trips, LLM,
-/// rebuilds) belong on the bulk lane. Adding a new request defaults to
-/// the hot lane — if it turns out to be slow, demote it explicitly.
 pub fn request_lane(req: &Request) -> IpcLane {
     match req {
-        // LLM-bearing operations: variable latency, can hold permits for
-        // many seconds while awaiting inference.
         Request::ArchiveAsk { .. }
         | Request::AnswerFromRecords { fallback: true, .. }
         | Request::ExportRecords {
@@ -452,7 +428,6 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::SummarizeThread { .. }
         | Request::TriageSearch { .. } => IpcLane::Bulk,
 
-        // Network-bound: hit Gmail / IMAP / SMTP, can stall on a slow link.
         Request::DownloadAttachment { .. }
         | Request::SendTodoToMicrosoft { dry_run: false, .. }
         | Request::SyncMicrosoftTodos { .. }
@@ -475,7 +450,6 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::UnsubscribePurge { .. }
         | Request::CommitUnsubscribePreview { .. } => IpcLane::Bulk,
 
-        // Full-store rebuilds and bulk indexing.
         Request::RebuildAnalytics
         | Request::RebuildDecisionLog { .. }
         | Request::RebuildRelationshipProfile { .. }
@@ -489,24 +463,16 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::UseSemanticProfile { .. }
         | Request::EnableSemantic { .. } => IpcLane::Bulk,
 
-        // HTML asset prefetch with remote-content fetching is a network
-        // round-trip per image; demote so a large gallery can't tie up
-        // every fast slot.
         Request::GetHtmlImageAssets { allow_remote, .. } if *allow_remote => IpcLane::Bulk,
 
-        // Diagnostics that scan large tables.
         Request::GenerateBugReport { .. } => IpcLane::Bulk,
 
-        // Reads every match of a search, which can be hundreds of thousands.
         Request::PreviewSelection { .. } => IpcLane::Bulk,
 
         _ => IpcLane::Hot,
     }
 }
 
-/// Handle an IPC request with the connection's [`PeerInfo`] in scope. The real
-/// entry point for served connections; [`handle_request`] is the in-process
-/// convenience wrapper that supplies a local peer.
 pub async fn handle_request_with_peer(
     state: &Arc<AppState>,
     msg: &IpcMessage,
@@ -537,9 +503,6 @@ pub async fn handle_request_with_peer(
                         }
                         Err(response) => *response,
                     };
-                // Presence leases do not change mail. A browser touches its
-                // lease before every API read. Invalidating here defeats all
-                // mode caches for remote clients.
                 let presence_only = matches!(
                     req,
                     Request::RemoteAuthority {
@@ -551,11 +514,7 @@ pub async fn handle_request_with_peer(
                     state.mode_cache.note_mutation();
                 }
 
-                // Activity capture seam. Fire-and-forget; never propagates errors.
-                // See `docs/activity-log.md`.
                 let ok = response_succeeded(&response);
-                // A paired client's action arrives wrapped, and the remote handler
-                // dispatches it without passing this seam again.
                 let activity_request = match req {
                     Request::RemoteRead { request, .. } => request.as_ref(),
                     _ => req,
@@ -585,9 +544,6 @@ pub async fn handle_request_with_peer(
     }
 }
 
-/// Handle an IPC request that originated in-process (daemon-internal
-/// re-dispatch, tests). Supplies a [`PeerInfo::local`] peer; served connections
-/// call [`handle_request_with_peer`] with the accepted peer instead.
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
     let mut internal = msg.clone();
     if internal.expected_workspace.is_none() {
@@ -621,9 +577,6 @@ async fn dispatch(
     let account_id =
         request_account_id(req).map_or_else(|| "-".to_string(), mxr_core::AccountId::as_str);
     let account_key = request_account_key(req).unwrap_or("-");
-    // `peer` is the connection's auth evidence; carried here as the plumbing
-    // point for phase 5's per-transport policy. No policy consults it this
-    // phase — logged for observability so the seam is visible in traces.
     tracing::debug!(request, account_id, account_key, peer = ?peer.auth, "handling request");
 
     let config = state.config_snapshot();
@@ -636,12 +589,9 @@ async fn dispatch(
         return Response::error(message);
     }
 
-    // A scoped profile passed `enforce_client_profile`, so it exists.
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
-    // A scoped caller may not learn which account holds a tag it asked for.
     let scoped_caller = account_scope::profile_name(source).is_some();
-    // Scoped profiles filter what they read, so they always build.
     if let Some(view) = scoped_profile
         .is_none()
         .then(|| mode_cache::ModeView::of(req))
@@ -907,7 +857,6 @@ async fn dispatch(
                 .await
                 .map_err(Into::into)
         }
-        // mxr app/platform
         Request::ListAccounts => accounts::list_accounts(state).await,
         Request::ListAccountsConfig => accounts::list_accounts_config(),
         Request::AuthorizeAccountConfig {
@@ -1193,7 +1142,6 @@ async fn dispatch(
             account_id,
         } => platform::run_saved_search(state, name, *limit, account_id.as_ref()).await,
 
-        // admin / maintenance / operational
         Request::ListEvents {
             limit,
             level,
@@ -1256,16 +1204,11 @@ async fn dispatch(
         Request::GetStatus => admin::get_status(state).await,
         Request::Ping => Ok(ResponseData::Pong),
         Request::Shutdown => admin::shutdown(state).await,
-        // Token transports authenticate in the serve core before dispatch; a
-        // request reaching here is on an already-trusted connection (UDS,
-        // in-process, stdio, or a redundant handshake after a valid one), so
-        // acknowledge it as a harmless no-op.
         Request::DeclareClient { .. } => Err(HandlerError::InvalidRequest(
             "client declaration is only accepted during connection setup".into(),
         )),
         Request::Authenticate { .. } => Ok(ResponseData::Authenticated),
 
-        // ----- activity log (Phase 3) -----
         Request::ListActivity {
             filter,
             limit,
@@ -1303,7 +1246,6 @@ async fn dispatch(
             activity::delete_saved_filter(state, slug).await
         }
 
-        // core mail/runtime
         Request::Search {
             query,
             limit,
@@ -1920,15 +1862,10 @@ async fn dispatch(
             revision,
             dry_run,
         } => row_seen::mark(state, account_id, *mode, row_id, revision, *dry_run).await,
-        // Boxed with the other mode requests below: their futures build the
-        // Updates digest, and inline they overflowed a debug worker's stack.
         Request::GetNow { account_id } => Box::pin(now::get_now(state, account_id.as_ref())).await,
         Request::GetRail { account_id } => {
             Box::pin(modes::get_rail(state, account_id.as_ref())).await
         }
-        // One boxed call for all of D119's requests, as for Reading below:
-        // inline, their futures grow `dispatch`'s poll frame for every
-        // request, down to a plain mutation.
         Request::GetArrivals { .. }
         | Request::ListArrivals { .. }
         | Request::GetArrivalModes { .. }
@@ -2011,9 +1948,6 @@ async fn dispatch(
             )
             .await
         }
-        // One boxed call for all of Reading: its arms inline make
-        // `dispatch`'s poll frame big enough to overflow a debug build's
-        // worker stack on deep paths such as a mutation.
         Request::GetReadingEdition { .. }
         | Request::GetReadingItem { .. }
         | Request::SetReadingLater { .. }
@@ -2244,7 +2178,6 @@ async fn dispatch(
             model,
             revise,
         } => {
-            // Boxed: the gather, write and check stages hold a lot of state.
             Box::pin(compose_assist::compose_assist(
                 state,
                 source,
@@ -2505,9 +2438,6 @@ async fn enforce_client_profile(
         | ClientKind::Daemon
         | ClientKind::Assistant => return Ok(()),
     };
-    // The assistant's changes are gated by a person's approval, and its
-    // tools run as `Assistant`, which no profile governs. An agent driving
-    // it could approve its own changes, so agents use the tools directly.
     if is_assistant_request(req) {
         return Err(format!(
             "{profile_name} clients can't drive the in-app assistant; call mxr's tools directly"
@@ -2541,10 +2471,6 @@ async fn enforce_client_profile(
         ));
     }
 
-    // Fine-grained restriction within the destructive gate: when the
-    // profile lists specific allowed actions, a destructive request whose
-    // action isn't listed is rejected even though `allow_destructive` is
-    // true. An empty list means "no per-action restriction" (back-compat).
     if !profile.allowed_destructive_actions.is_empty() {
         if let Some(action) = request_destructive_action(req) {
             if !profile.allowed_destructive_actions.contains(&action) {
@@ -2559,11 +2485,6 @@ async fn enforce_client_profile(
     account_scope::enforce_account_allowlist(state, profile_name, profile, req).await
 }
 
-/// Map a destructive-class request to the specific action it performs,
-/// for per-action profile scoping. Benign mailbox mutations (star, mark
-/// read, label tagging) and non-destructive requests return `None` — the
-/// per-action allowlist doesn't constrain them (the coarse
-/// `allow_destructive` gate still applies via `classify_request`).
 fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
     match req {
         Request::Mutation { mutation, .. }
@@ -2576,9 +2497,7 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
         | Request::UnsubscribePurge { .. }
         | Request::CommitUnsubscribePreview { .. } => Some(DestructiveAction::Unsubscribe),
         Request::SweepPlace { dry_run: false, .. } => Some(DestructiveAction::Archive),
-        // Done in the last mode holding a thread archives it at the provider.
         Request::SetModeDone { dry_run: false, .. } => Some(DestructiveAction::Archive),
-        // Letting go of a digest archives what no other mode holds.
         Request::LetGoDigest { dry_run: false, .. } => Some(DestructiveAction::Archive),
         Request::RedactActivity { .. } => Some(DestructiveAction::RedactActivity),
         Request::PruneActivity { .. } => Some(DestructiveAction::PruneActivity),
@@ -2599,34 +2518,12 @@ fn mutation_destructive_action(cmd: &MutationCommand) -> Option<DestructiveActio
         MutationCommand::Trash { .. } => Some(DestructiveAction::Trash),
         MutationCommand::Spam { .. } => Some(DestructiveAction::Spam),
         MutationCommand::Move { .. } => Some(DestructiveAction::Move),
-        // Reversible / benign mailbox mutations: not per-action scoped.
         MutationCommand::Star { .. }
         | MutationCommand::SetRead { .. }
         | MutationCommand::ModifyLabels { .. } => None,
     }
 }
 
-/// Safety class for an IPC request. Every `Request` variant maps to
-/// exactly one class via an exhaustive match — adding a new request
-/// variant is a compile error until it is classified here, which is
-/// the whole point: a new mutating request can never silently slip
-/// through a `ReadOnly`/`DraftOnly` policy because someone forgot to
-/// add it to an allowlist.
-///
-/// Classes, from least to most authority:
-/// - `Read`: no user-visible state change and no significant side
-///   effect. Pure DB reads, exports, previews, and local AI analysis.
-///   Remote-fetching requests (tracking-pixel risk) and requests that
-///   persist anything are deliberately NOT `Read`.
-/// - `DraftOnly`: creates or deletes a *local* draft.
-/// - `Send`: transmits mail to a provider.
-/// - `Mutate`: reversible local/provider state change that isn't a
-///   send and isn't destructive (config, rules, snippets, signatures,
-///   snooze, reminders, semantic, screener, activity controls).
-/// - `Destructive`: irreversible or provider-destructive mailbox /
-///   account / data mutation (batch mailbox mutations, label/account
-///   removal, unsubscribe, activity redaction/pruning).
-/// - `Admin`: daemon lifecycle (shutdown).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RequestClass {
     Read,
@@ -2652,7 +2549,6 @@ fn classify_request(req: &Request) -> RequestClass {
         Request::ResolveTodoSuggestion {
             action, dry_run, ..
         } if *dry_run || matches!(action, mxr_protocol::TodoResolutionActionData::Preview) => Read,
-        // --- Read: pure reads, exports, previews, local AI analysis ---
         Request::ListEnvelopes { .. }
         | Request::ListEnvelopesByIds { .. }
         | Request::PlanUnsubscribe { .. }
@@ -2761,8 +2657,6 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetMicrosoftTodoStatus
         | Request::SendTodoToMicrosoft { dry_run: true, .. }
         | Request::SyncMicrosoftTodos { dry_run: true, .. }
-        // A conversation changes no mail: each call the assistant makes is
-        // classified on its own when it runs.
         | Request::GetAssistantAvailability
         | Request::GetAssistantModels
         | Request::GetComposeModels
@@ -2808,7 +2702,6 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListPlace { .. }
         | Request::GetMessageKind { .. }
         | Request::SweepPlace { dry_run: true, .. }
-        // Holds an in-memory token and changes nothing, like a dry run.
         | Request::PreviewSelection { .. }
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
@@ -2848,8 +2741,6 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetSavedActivityFilter { .. }
         | Request::SetModeRowSeen { dry_run: true, .. } => Read,
 
-        // --- DraftOnly: logical draft create/update/delete (local plus an
-        // optional linked provider resource) ---
         Request::SaveDraft { .. }
         | Request::UpdateDraft { .. }
         | Request::EnsureReplyDraft { dry_run: false, .. }
@@ -2860,19 +2751,16 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::WriteDraftAttachmentChunk { .. }
         | Request::FinalizeDraftAttachment { .. } => DraftOnly,
 
-        // --- Send: transmits mail to a provider ---
         Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
         | Request::RecoverSendOutcome { dry_run: false, .. }
         | Request::ScheduleSend { .. }
         | Request::RespondInvite { dry_run: false, .. }
         | Request::AckMessage { dry_run: false, .. }
-        // Sends an email's text to a third-party app.
         | Request::SendReadingToMarginalia { dry_run: false, .. }
         | Request::SendTodoToMicrosoft { dry_run: false, .. }
         | Request::SyncMicrosoftTodos { dry_run: false, .. } => Send,
 
-        // --- Destructive: irreversible / provider-destructive ---
         Request::RuleCategories {
             preview_token: Some(_),
             delete: true,
@@ -2892,13 +2780,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RedactActivity { .. }
         | Request::PruneActivity { .. } => Destructive,
 
-        // --- Admin: daemon lifecycle ---
         Request::Shutdown => Admin,
 
-        // --- Mutate: everything else (reversible state change) ---
-        // A dry-run RSVP is the same verb as a real RSVP, so it stays
-        // out of `Read`; `GetHtmlImageAssets`/attachment fetches do
-        // remote egress and are deliberately not `Read` either.
         Request::RespondInvite { dry_run: true, .. }
         | Request::AckMessage { dry_run: true, .. }
         | Request::MergePeople { .. }
@@ -3018,14 +2901,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::UpdateHighlight { dry_run: false, .. }
         | Request::RemoveHighlight { dry_run: false, .. }
         | Request::SetReadingSource { .. }
-        // Decides where Reading items may be sent.
         | Request::SetMarginaliaConnection { .. }
-        // Contacts Marginalia and writes highlights read back.
         | Request::SyncMarginaliaHighlights { .. }
         | Request::DeleteAssistantConversation { dry_run: false, .. }
-        // Decides which changes run without asking.
         | Request::SetAssistantAutoApprove { .. }
-        // Decides which model, and so which provider, reads the mailbox.
         | Request::SetAssistantModel { dry_run: false, .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
@@ -3049,11 +2928,6 @@ fn request_requires_send_capability(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::Send)
 }
 
-/// The destructive capability gates everything that is not a read, a
-/// local-draft edit, or a send. This intentionally spans `Mutate`,
-/// `Destructive`, and `Admin` so the gate's behaviour is unchanged
-/// from the previous hand-rolled definition; PR 2.1 will split the
-/// gate per granular scope using the finer `RequestClass`.
 fn request_requires_destructive_capability(req: &Request) -> bool {
     matches!(
         classify_request(req),
@@ -3065,10 +2939,6 @@ fn request_is_draft_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::DraftOnly)
 }
 
-/// Whether a response counts as success for the activity log. An account
-/// operation the daemon refused comes back as `Ok` with `ok: false`, and that
-/// is not a success. One that saved its config and then failed a later phase
-/// still changed the config, so it is recorded.
 fn response_succeeded(response: &Response) -> bool {
     match response {
         Response::Ok {
@@ -3083,16 +2953,6 @@ fn request_is_read_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::Read)
 }
 
-/// Whether the daemon may cancel this request's task when its client goes
-/// away. Reads only: a mutation, send or draft write must run to completion
-/// whether or not anyone is waiting for the answer.
-///
-/// `RequestClass::Read` means "no user-visible state change", which is not
-/// the same as "safe to drop mid-flight". The assistant requests are classed
-/// `Read` because the tools a conversation calls are classified one by one
-/// when they run, but a turn drives those tools, so cancelling it would cut
-/// off the mutation an approved step is making. `ExportRecords` copies files
-/// to disk between awaits and would leave a partial export.
 pub(crate) fn request_is_abandonable(req: &Request) -> bool {
     request_is_read_only(req)
         && !matches!(
@@ -3597,7 +3457,6 @@ fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
     references
 }
 
-/// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
     state: &AppState,
     thread_id: &mxr_core::ThreadId,
@@ -3672,19 +3531,10 @@ async fn find_label_by_name(
         .ok_or_else(|| format!("Label not found: {name}"))
 }
 
-/// The parses the daemon's own handlers run in the HTML helper process.
 pub(crate) fn html_jobs() -> Vec<&'static dyn mxr_html_worker::AnyJob> {
     vec![&forward::CID_REFERENCES, &mailbox::IMAGE_SOURCES]
 }
 
-/// Fast path used for reply/forward quoted text. The user is composing a
-/// reply; they want the original content quoted, *not* the aggressive
-/// reader-view cleaning (which strips signatures, boilerplate, tracking,
-/// collapses prior quotes, and runs several regex passes that get
-/// slow-to-pathological on big HTML emails).
-///
-/// Plain text passes through as-is. HTML-only messages get one
-/// `html2text` pass. Empty bodies return an empty string.
 pub(crate) fn render_reply_quoted_text(body: &mxr_core::types::MessageBody) -> String {
     if let Some(text) = body.text_plain.as_deref() {
         if !text.is_empty() {
@@ -3724,9 +3574,6 @@ mod reply_quote_tests {
     }
 }
 
-/// Memoized render of the reply quoted text for `message_id`. Bodies
-/// are immutable post-sync, so a hit is correct forever. Misses do
-/// the (now cheap) render and insert into the cache.
 pub(crate) fn get_or_render_reply_context(
     state: &crate::state::AppState,
     message_id: &mxr_core::MessageId,
@@ -3774,10 +3621,6 @@ async fn persist_local_label_changes(
     state.store.recalculate_label_counts(&account_id).await
 }
 
-/// [`persist_local_label_changes`] without refreshing the account's label
-/// counts, and the account whose counts are now stale. The refresh scans every
-/// label's rows, so a batch that does it per message costs the size of the
-/// mailbox times the size of the batch; the batch refreshes once instead.
 async fn persist_local_label_changes_deferred(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -3787,13 +3630,9 @@ async fn persist_local_label_changes_deferred(
     persist_label_changes_matching(state, message_id, add, remove, LabelRefs::IdsOrNames).await
 }
 
-/// How a label edit names its labels when the local copy is brought in line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LabelRefs {
-    /// A provider id or a display name, whichever label matches first.
     IdsOrNames,
-    /// Exactly the account's provider ids, never a name: a label *named*
-    /// like another label's provider id must not be picked instead.
     ProviderIds,
 }
 
@@ -3851,9 +3690,6 @@ async fn persist_label_changes_matching(
     Ok(envelope.account_id)
 }
 
-/// [`reconcile_label_mutation`] for a batch that refreshes the account's label
-/// counts itself, once, when it is done. A provider without label mutation
-/// still re-syncs here, which refreshes them.
 pub(crate) async fn reconcile_label_mutation_deferred(
     state: &AppState,
     provider: &dyn MailSyncProvider,
@@ -3876,9 +3712,6 @@ pub(crate) async fn reconcile_label_mutation_deferred(
     }
 }
 
-/// [`reconcile_label_mutation_deferred`] for edits that name labels by
-/// provider id only: a selection's frozen labels and an undo's snapshot. The
-/// local copy then gets exactly the labels the provider got.
 pub(crate) async fn reconcile_label_ids_deferred(
     state: &AppState,
     provider: &dyn MailSyncProvider,
@@ -3976,9 +3809,6 @@ pub(crate) async fn apply_snooze(
     message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<(), String> {
-    // Snoozed again (Not now from Snoozed): the email is already out of the
-    // inbox, so only the wake time moves. Its labels from before the first
-    // snooze are the ones waking restores; reading them now would lose INBOX.
     if let Some(existing) = state
         .store
         .get_snooze(message_id)
@@ -4294,8 +4124,6 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             | FilterKind::HasYoutube
             | FilterKind::HasInlineImage,
         ) => return Err("search filter is not supported in rules form".to_string()),
-        // Mxr-specific custom filters route through Custom; rules don't
-        // support them (computed dynamically across thread state).
         QueryNode::Filter(FilterKind::Custom(_)) => {
             return Err("search filter is not supported in rules form".to_string())
         }
@@ -4625,7 +4453,6 @@ async fn handle_export_search(
         }
     };
 
-    // Collect unique thread IDs from search results
     let thread_ids: Vec<mxr_core::ThreadId> = {
         let mut seen = std::collections::HashSet::new();
         search_results
@@ -4677,9 +4504,7 @@ async fn materialize_attachment_file(
     }
 }
 
-/// What [`materialize_attachment_capped`] did.
 pub(super) enum Materialized {
-    /// On disk, with the bytes it takes there.
     Written {
         file: mxr_protocol::AttachmentFile,
         bytes: u64,
@@ -4688,13 +4513,6 @@ pub(super) enum Materialized {
     TooLarge { bytes: u64 },
 }
 
-/// [`materialize_attachment_file`] with a hard cap on the bytes written:
-/// when the provider returns more than `cap` bytes, nothing is written. A
-/// file already on disk counts its size on disk. The bytes actually written
-/// become the attachment row's size, so a budget sums real bytes.
-///
-/// The provider trait hands back the whole attachment at once, so the cap
-/// bounds disk, not the memory of one fetch.
 pub(super) async fn materialize_attachment_capped(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -4809,10 +4627,6 @@ pub(super) async fn materialize_attachment_capped(
     })
 }
 
-/// Like `materialize_attachment_file` but writes the bytes to a user-chosen
-/// `destination` path instead of the daemon's internal cache. The caller
-/// owns the full path including the filename; the daemon creates parent
-/// directories as needed. Used by the TUI save-attachment modal.
 pub(super) async fn materialize_attachment_to_path(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -4834,8 +4648,6 @@ pub(super) async fn materialize_attachment_to_path(
         .cloned()
         .ok_or_else(|| mxr_core::MxrError::NotFound(format!("attachment {attachment_id}")))?;
 
-    // Reuse the cached bytes if we've already pulled them down, so a
-    // user-initiated save after Open doesn't refetch from the provider.
     let bytes = match attachment.local_path.as_ref().filter(|path| path.exists()) {
         Some(cached) => tokio::fs::read(cached)
             .await
@@ -5014,10 +4826,6 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         sanitized
     };
 
-    // APFS limits individual path components to 255 bytes. Some
-    // real-world attachment filenames exceed that once MIME-decoded;
-    // keep the extension when possible and always add a stable attachment-id
-    // suffix to avoid cache collisions between same-name attachments.
     let path = std::path::Path::new(&sanitized);
     let extension = path
         .extension()
@@ -5119,8 +4927,6 @@ fn is_assistant_request(req: &Request) -> bool {
     )
 }
 
-/// `[search] max_results` as a page size. Zero would return empty pages with
-/// `has_more` set and clients would page forever, so it reads as one row.
 fn search_page_size_from_config(max_results: usize) -> u32 {
     u32::try_from(max_results).unwrap_or(u32::MAX).max(1)
 }

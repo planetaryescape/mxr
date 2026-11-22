@@ -1,16 +1,3 @@
-//! Slice 3.2 LLM extractor + rebuild loop (C2.4).
-//!
-//! `extract_thread` walks one thread's envelopes + bodies, runs the
-//! cheap keyword/length prefilter, calls `LlmFeature::DecisionLog`
-//! with strict JSON, validates each citation against the retrieved
-//! msg_id set, and upserts via the existing `Store::upsert_decision`
-//! (which is idempotent on the stable decision id and refreshes
-//! `source_hash` when thread content changes).
-//!
-//! `rebuild` walks every thread for an account whose latest message
-//! is within `since_days` and calls `extract_thread` for each
-//! candidate that passes the prefilter.
-
 use super::time::due_words_in_zone;
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -25,10 +12,6 @@ use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-/// Cheap keyword prefilter — if a thread has no message body matching
-/// any of these terms, skip the LLM call. Threads with ≥3 messages
-/// also bypass this filter (long threads often contain decisions
-/// without using the literal keyword).
 static DECISION_KEYWORDS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b(decided|agreed|we['\u{2019}]ll\s+use|settled|approved|go\s+with|chose|signed off)\b",
@@ -46,7 +29,6 @@ struct LlmDecision {
     topic: Option<String>,
     #[serde(default)]
     evidence_msg_ids: Vec<String>,
-    /// The words the thread copied for when it was decided, not a date.
     #[serde(default)]
     decided_at: Option<String>,
 }
@@ -57,9 +39,6 @@ struct LlmDecisions {
     decisions: Vec<LlmDecision>,
 }
 
-/// Extract decisions from a single thread. Returns the count of
-/// rows persisted (0 if the prefilter skipped or the LLM returned
-/// no decisions).
 pub(crate) async fn extract_thread(
     state: &AppState,
     account_id: &AccountId,
@@ -74,13 +53,9 @@ pub(crate) async fn extract_thread(
         return Ok(0);
     }
 
-    // Allowed citation set: every msg id in this thread.
     let allowed: std::collections::HashSet<String> =
         envelopes.iter().map(|e| e.id.to_string()).collect();
 
-    // Build the transcript and gather the prefilter signal. Each message's
-    // cleaned text and date are kept so a decided_at the model copied can be
-    // checked against, and resolved from, the message that cites it.
     let mut transcript = String::new();
     let mut keyword_hit = false;
     let mut message_texts: HashMap<String, (String, chrono::DateTime<chrono::Utc>)> =
@@ -108,7 +83,6 @@ pub(crate) async fn extract_thread(
         message_texts.insert(env.id.to_string(), (cleaned, env.date));
     }
 
-    // Prefilter: skip the LLM call when neither signal fires.
     if envelopes.len() < 3 && !keyword_hit {
         return Ok(0);
     }
@@ -131,10 +105,6 @@ pub(crate) async fn extract_thread(
                  decided, copied exactly as written (for example \"on Friday\"), \
                  else null. Never work out a date yourself.",
             )),
-            // Wrap the thread transcript in untrusted-content delimiters.
-            // `transcript` stays raw for `decision_source_hash` below so
-            // the stable-id / cache behavior is unchanged. The citation
-            // validator is the boundary.
             ChatMessage::user(format!(
                 "THREAD:\n{}\n\nReturn JSON only.",
                 wrap_untrusted_mail(&transcript)
@@ -156,7 +126,6 @@ pub(crate) async fn extract_thread(
         if d.decision.trim().is_empty() {
             continue;
         }
-        // Validate every cited msg id is in the retrieved set.
         let mut evidence: Vec<MessageId> = Vec::new();
         let mut bad_citation = false;
         for cited in &d.evidence_msg_ids {
@@ -180,9 +149,6 @@ pub(crate) async fn extract_thread(
             continue;
         }
 
-        // The words are checked against, and resolved from, the first cited
-        // message: its text and its date are the "now" the thread was
-        // written in. Anything the text doesn't say leaves the decision undated.
         let decided_at = match (
             d.decided_at.as_deref(),
             evidence
@@ -212,7 +178,6 @@ pub(crate) async fn extract_thread(
             extracted_at: now,
             source_hash,
         };
-        // Refused when a cited message was deleted while the model ran.
         if state
             .store
             .upsert_extracted_decision(&entry)
@@ -232,17 +197,12 @@ pub(crate) struct RebuildSummary {
     pub errors: u32,
 }
 
-/// Walk every thread in `account_id` whose latest message is within
-/// `since_days` days, calling `extract_thread` for each. Returns a
-/// summary of what happened.
 pub(crate) async fn rebuild(
     state: &AppState,
     account_id: &AccountId,
     since_days: u32,
 ) -> Result<RebuildSummary, String> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(since_days as i64);
-    // Threads with only Trash or Spam mail in the window are not sent to the
-    // model; `extract_thread` on one still works when asked for directly.
     let thread_ids = state
         .store
         .thread_ids_with_live_mail_since(account_id, cutoff)
@@ -325,7 +285,6 @@ mod tests {
         thread_fixture(&messages, body).await
     }
 
-    /// A three-message thread whose messages are written at the given times.
     async fn thread_fixture(
         messages: &[(&str, chrono::DateTime<chrono::Utc>); 3],
         body: &str,
@@ -426,8 +385,6 @@ mod tests {
             }
         }
 
-        // The fixture thread has 3 messages, so the prefilter passes and
-        // the LLM is actually invoked.
         let (state, account, thread, _ids, _) = fixture("placeholder").await;
         let cap = Arc::new(Capture {
             msgs: Mutex::new(vec![]),
@@ -457,7 +414,6 @@ mod tests {
     #[tokio::test]
     async fn extracts_decision_with_valid_citation() {
         let (state, account, thread, ids, _) = fixture("placeholder").await;
-        // Set the canned response now we know the real msg ids.
         let canned = format!(
             r#"{{"decisions":[{{
                 "decision":"Use Postgres",
@@ -484,7 +440,6 @@ mod tests {
         assert_eq!(rows[0].evidence_msg_ids, vec![ids[2].clone()]);
     }
 
-    /// A thread written on Tuesday 5 March 2024. A "Thursday" in it means 7 March.
     fn tuesday_thread(last_body: &str) -> [(&str, chrono::DateTime<chrono::Utc>); 3] {
         let tuesday = chrono::Utc.with_ymd_and_hms(2024, 3, 5, 12, 0, 0).unwrap();
         [
@@ -530,8 +485,6 @@ mod tests {
             .await
             .unwrap();
         let decided = rows[0].decided_at.expect("resolved from the words");
-        // The Thursday after the Tuesday the message was written, not the
-        // Thursday after today.
         assert_eq!(
             decided.with_timezone(&Local).date_naive(),
             chrono::NaiveDate::from_ymd_opt(2024, 3, 7).expect("valid date")
@@ -603,8 +556,6 @@ mod tests {
     #[tokio::test]
     async fn unknown_evidence_msg_id_is_rejected() {
         let (state, account, thread, _ids, _) = fixture("placeholder").await;
-        // Made-up msg id not in the thread -- the citation validator
-        // must reject the entire decision (don't write half-credible rows).
         let canned = r#"{"decisions":[{
             "decision":"made-up",
             "evidence_msg_ids":["00000000-0000-0000-0000-000000000099"]
@@ -650,8 +601,6 @@ mod tests {
     #[tokio::test]
     async fn rebuild_walks_all_account_threads_in_window() {
         let (state, account, _thread1, ids1, _) = fixture("placeholder").await;
-        // Add a second, brainstorming-only thread with <3 messages and
-        // no decision keywords -- the prefilter should skip it.
         let thread2 = ThreadId::new();
         let env = Envelope {
             id: MessageId::new(),
@@ -695,7 +644,6 @@ mod tests {
         };
         state.store.insert_body(&body).await.unwrap();
 
-        // LLM canned to return one decision for the long thread.
         let canned = format!(
             r#"{{"decisions":[{{
                 "decision":"Use Postgres",
@@ -718,8 +666,6 @@ mod tests {
         assert_eq!(summary.errors, 0);
     }
 
-    /// One trashed message in a live thread stays out of the transcript, so
-    /// the model cannot cite it and no decision rests on it.
     #[tokio::test]
     async fn extract_thread_leaves_a_trashed_message_out_of_the_transcript() {
         let canned_for = |id: &MessageId| {
@@ -765,16 +711,8 @@ mod tests {
     #[tokio::test]
     async fn rebuild_returns_zero_when_no_threads_match_window() {
         let (state, account, _, _, _) = fixture(r#"{"decisions":[]}"#).await;
-        // since_days = 0 -> cutoff = now -> nothing qualifies (the
-        // fixture timestamps are slightly in the past).
-        // Use an absurdly small window. None of the fixture messages
-        // were dated more than 3 hours ago; since_days=0 cuts them
-        // all out.
         let summary = rebuild(&state, &account, 0).await.unwrap();
-        // Threads can still match if their date >= cutoff(now) and
-        // a message was inserted in the same second; be permissive.
         assert!(summary.errors == 0);
-        // Suppress unused import warning:
         let _ = CommitmentStatus::Open;
     }
 }

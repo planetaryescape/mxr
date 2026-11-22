@@ -1,5 +1,3 @@
-//! One bounded style-repair pass for generated compose sentences.
-
 use super::draft_compose::complete_with_retry;
 use super::draft_prompt;
 use mxr_composer::check::{self, ProposalInput};
@@ -25,8 +23,6 @@ pub(super) struct RepairInput<'a> {
     pub(super) max_tokens: u32,
 }
 
-/// The repaired proposal and the model label of the answer that repaired it,
-/// which may differ from the first answer's when a fallback took the repair.
 pub(super) async fn repair_style_sentences(
     llm: &mxr_llm::PinnedLlm,
     input: RepairInput<'_>,

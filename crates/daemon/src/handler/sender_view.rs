@@ -1,5 +1,3 @@
-//! Sender profile: per-(account, email) relationship aggregates.
-
 use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;

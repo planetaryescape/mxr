@@ -1,14 +1,3 @@
-//! Mail kinds: who a message is from, as far as treatment goes (a person,
-//! a newsletter, a machine, or someone screened out), which rule decided it,
-//! and the reason to show for it.
-//!
-//! Pure functions, shared by the desk (which keeps non-people mail off it)
-//! and by Reading and Paper trail (which hold that mail). The user's choice
-//! for one email (a move, `X`) wins, then the user's choice for a sender,
-//! stored as a screener decision; after them come the automatic rules, most
-//! specific first. Rule-based on purpose: every placement can say exactly
-//! why.
-
 use mxr_protocol::{KindRuleData, MailKindData, ModeKindData, SenderKindData};
 use mxr_store::{DeskContact, ScreenerDisposition};
 use once_cell::sync::Lazy;
@@ -17,9 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// Local parts of machines that notify: receipts, alerts, notifications.
-/// Their mail is paper trail even when it carries list headers (GitHub's
-/// notifications have List-Unsubscribe).
 const NOTIFYING_LOCAL_PARTS: &[&str] = &[
     "notifications",
     "notification",
@@ -37,19 +23,13 @@ const NOTIFYING_LOCAL_PARTS: &[&str] = &[
     "verify",
     "verification",
     "security",
-    // Banks' card and account alerts (`inContact@`, `transactions@`,
-    // `statements@`).
     "incontact",
     "transaction",
     "statement",
 ];
 
-/// Local parts of newsletters.
 const NEWSLETTER_LOCAL_PARTS: &[&str] = &["newsletter", "digest"];
 
-/// Local parts that only say "don't answer": receipts and newsletters both
-/// use them, so list headers decide which (marketing must carry
-/// List-Unsubscribe; transactional mail usually doesn't).
 const NO_REPLY_LOCAL_PARTS: &[&str] = &[
     "noreply",
     "no-reply",
@@ -59,11 +39,6 @@ const NO_REPLY_LOCAL_PARTS: &[&str] = &[
     "do_not_reply",
 ];
 
-/// Local parts of a role, not a person: a team, a desk or a function
-/// (`forex@`, `hello@`, `support@`). Matched against the whole local part
-/// (before any `+tag`) or its first word (`team-uk@`). Only decisive for a
-/// sender you have never written to: a support desk you correspond with is
-/// someone you talk to.
 const ROLE_LOCAL_PARTS: &[&str] = &[
     "billing",
     "invoice",
@@ -115,10 +90,8 @@ const ROLE_LOCAL_PARTS: &[&str] = &[
     "founders",
 ];
 
-/// A sender's latest subjects needed before their variety counts.
 const TEMPLATED_MIN_SUBJECTS: usize = 5;
 
-/// Subdomain labels of notifying hosts (`alerts.example.com`).
 const NOTIFYING_DOMAIN_LABELS: &[&str] = &[
     "alerts",
     "alert",
@@ -130,18 +103,13 @@ const NOTIFYING_DOMAIN_LABELS: &[&str] = &[
     "mailer",
 ];
 
-/// Subdomain labels of newsletter hosts (`news.example.com`).
 const NEWSLETTER_DOMAIN_LABELS: &[&str] = &["newsletter", "news", "updates", "marketing"];
 
-/// How a sender's mail is treated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SenderKind {
     Person,
-    /// Newsletters and mailing lists: Reading.
     List,
-    /// Receipts, notifications, deliveries, invites: Paper trail.
     Automated,
-    /// Screened out by the user: never on the desk or in a place.
     Denied,
 }
 
@@ -156,8 +124,6 @@ impl SenderKind {
     }
 }
 
-/// Explicit Messages visibility survives the copied/crowd rules. Visibility
-/// alone never proves a human response or an obligation to reply.
 pub(super) fn kept_in_messages(signals: &KindSignals<'_>) -> bool {
     let classification = classify(signals);
     classification.kind == SenderKind::Person
@@ -167,8 +133,6 @@ pub(super) fn kept_in_messages(signals: &KindSignals<'_>) -> bool {
         )
 }
 
-/// The kind a move of one email to `mode` gives it. To do and Archive add
-/// the email there instead of moving it, so they have no kind.
 pub(super) const fn kind_for_mode(mode: ModeKindData) -> Option<SenderKind> {
     match mode {
         ModeKindData::Messages => Some(SenderKind::Person),
@@ -178,12 +142,10 @@ pub(super) const fn kind_for_mode(mode: ModeKindData) -> Option<SenderKind> {
     }
 }
 
-/// A stored move (`arrivals.now_mode`) as the kind it gives.
 pub(super) fn kind_for_stored_mode(mode: &str) -> Option<SenderKind> {
     ModeKindData::parse(mode).and_then(kind_for_mode)
 }
 
-/// The screener decision that puts a sender in `kind`.
 pub(super) const fn disposition_for(kind: SenderKindData) -> ScreenerDisposition {
     match kind {
         SenderKindData::People => ScreenerDisposition::Allow,
@@ -193,7 +155,6 @@ pub(super) const fn disposition_for(kind: SenderKindData) -> ScreenerDisposition
     }
 }
 
-/// The kind a screener decision chose; `Unknown` chose none.
 pub(super) const fn kind_for(disposition: ScreenerDisposition) -> Option<SenderKindData> {
     match disposition {
         ScreenerDisposition::Allow => Some(SenderKindData::People),
@@ -204,7 +165,6 @@ pub(super) const fn kind_for(disposition: ScreenerDisposition) -> Option<SenderK
     }
 }
 
-/// What an address alone says about its sender.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AddressHint {
     Notifying(KindRuleData),
@@ -216,8 +176,6 @@ fn address_hint(email: &str) -> Option<AddressHint> {
     let email = email.trim().to_ascii_lowercase();
     let (local, domain) = email.split_once('@').unwrap_or((email.as_str(), ""));
     let local_has = |parts: &[&str]| !local.is_empty() && parts.iter().any(|p| local.contains(p));
-    // Only subdomain labels: the registrable name itself ("news.com") can
-    // belong to a person's employer.
     let labels: Vec<&str> = domain.split('.').collect();
     let subdomains = &labels[..labels.len().saturating_sub(2)];
     let subdomain_in = |set: &[&str]| subdomains.iter().any(|label| set.contains(label));
@@ -242,8 +200,6 @@ pub(super) fn no_reply_address(email: &str) -> bool {
     NO_REPLY_LOCAL_PARTS.iter().any(|part| local.contains(part))
 }
 
-/// A money amount with two decimals and its currency: "R437.77",
-/// "£1,204.50", "USD 12.00".
 static AMOUNT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)(?:\b(?:R|ZAR|USD|GBP|EUR|KES|NGN|ZWL|US\$)\s?|[$£€¥₹])\d{1,3}(?:[,\s]?\d{3})*\.\d{2}\b",
@@ -255,16 +211,11 @@ static DOCUMENT_AMOUNT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^\d+(?:[, ]\d{3})*\.\d{2}(?:\s+[a-z]{3})?$").expect("valid document amount")
 });
 
-/// A masked card or account number: "card..6131", "a/c ..748989",
-/// "**** 1234", "ending in 1234".
 static MASKED_NUMBER: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:\.\.\s?|\*{2,}\s?|\bx{2,}|\bending(?:\s+in)?\s+)\d{3,}")
         .expect("valid regex")
 });
 
-/// A bank or card alert's subject: an amount with a masked card or account
-/// number. Money words alone are personal correspondence too. A reply ("Re: paid
-/// £40.00?") is never one: alerts are not replies.
 fn transaction_alert(subject: &str) -> bool {
     let subject = subject.trim_start();
     let lower = subject.to_ascii_lowercase();
@@ -287,8 +238,6 @@ fn role_address(email: &str) -> bool {
     ROLE_LOCAL_PARTS.contains(&local) || ROLE_LOCAL_PARTS.contains(&first_word)
 }
 
-/// A subject with what changes between a template's sends taken out: reply
-/// prefixes, numbers, amounts and dates.
 fn subject_template(subject: &str) -> String {
     let mut rest = subject.trim();
     loop {
@@ -310,7 +259,6 @@ fn subject_template(subject: &str) -> String {
             }
             in_number = true;
         } else if in_number && matches!(c, '.' | ',') {
-            // "1,204.50" is one number.
         } else {
             in_number = false;
             template.extend(c.to_lowercase());
@@ -319,19 +267,13 @@ fn subject_template(subject: &str) -> String {
     template.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// What a sender's history says about them, beyond any one message.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct SenderFacts {
-    /// You have written to them.
     pub wrote_to: bool,
-    /// Their latest subjects are a few templates repeated ("Payment
-    /// Confirmation", "Foreign Payment", over and over).
     pub templated: bool,
 }
 
 impl SenderFacts {
-    /// From the contact row and the history its loader read. No contact
-    /// row: nothing is known, so nothing here decides.
     pub(super) fn of(contact: Option<&DeskContact>) -> Self {
         let Some(contact) = contact else {
             return Self::default();
@@ -349,13 +291,10 @@ impl SenderFacts {
     }
 }
 
-/// A machine's address, not a person's: newsletters, notifications and
-/// no-reply senders alike.
 pub(super) fn looks_automated(email: &str) -> bool {
     address_hint(email).is_some()
 }
 
-/// Everything about one message and its sender that decides its kind.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct KindSignals<'a> {
     pub assessment: Option<&'a mxr_core::assessment::MailAssessment>,
@@ -368,29 +307,20 @@ pub(super) struct KindSignals<'a> {
     pub has_unsubscribe: bool,
     pub is_delivery: bool,
     pub is_invite: bool,
-    /// What the sender's history says.
     pub sender: SenderFacts,
-    /// The user's choice for this sender, if any.
     pub decision: Option<ScreenerDisposition>,
-    /// You have written to this sender, anywhere in the account.
     pub written_to: bool,
-    /// One of the account's owned addresses is positively matched in To.
     pub addressed: bool,
-    /// The user moved this one email (`X`) and no later sender decision
-    /// overrode it.
     pub moved: Option<SenderKind>,
     pub treatment: Option<(SenderKind, &'a str)>,
 }
 
-/// A message's kind and the rule that decided it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Classification {
     pub kind: SenderKind,
     pub rule: KindRuleData,
 }
 
-/// A visibility correction cannot turn an automated message into a human
-/// response (and thereby clear a waiting timer).
 pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
     let purpose = purpose_evidence(signals);
     let automatic = classify_with_purpose(
@@ -484,16 +414,12 @@ const ORDER_LABEL: &[&str] = &[
 ];
 const AMOUNT_LABEL: &[&str] = &["total", "amount", "due", "invoice", "billing", "balance"];
 
-/// Every field label is made only of these words, so a label containing any
-/// other word cannot be a field.
 fn label_word(word: &str) -> bool {
     [REFERENCE_LABEL, ISSUE_DATE_LABEL, ORDER_LABEL, AMOUNT_LABEL]
         .iter()
         .any(|allowed| allowed.contains(&word))
 }
 
-/// Labels are a small field grammar: order and qualifiers vary, but the
-/// independent reference/date/order/amount families must still be present.
 fn document_field(label: &str) -> Option<DocumentField> {
     let words: Vec<_> = label
         .split(|c: char| !c.is_alphabetic())
@@ -534,10 +460,6 @@ fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentF
     if let Some(field) = document_field(line) {
         return Some((field, next?));
     }
-    // A label is a short run of label words, so only a split before the
-    // first other word, or within the first few words, can match. Trying
-    // every split of a long paragraph re-parsed it once per word: quadratic,
-    // and most of a Now request.
     let label_end = label_end(line);
     line[..label_end]
         .char_indices()
@@ -546,14 +468,8 @@ fn document_value<'a>(line: &'a str, next: Option<&'a str>) -> Option<(DocumentF
         .find_map(|(index, _)| Some((document_field(&line[..index])?, line[index..].trim())))
 }
 
-/// No field label is longer than a few words ("web order reference
-/// number"); a longer run of label words is prose, not a label.
 const MAX_LABEL_WORDS: usize = 8;
 
-/// Byte offset where a label must have ended: the start of the first word
-/// that cannot appear in a label or of the word after `MAX_LABEL_WORDS`, or
-/// the line's length. Words split on non-alphabetic characters, as in
-/// `document_field`.
 fn label_end(line: &str) -> usize {
     let mut start = None;
     let mut words = 0;
@@ -578,13 +494,7 @@ fn label_end(line: &str) -> usize {
     line.len()
 }
 
-/// Recognize a document's field/value grammar, not an invoice subject word
-/// or a sender identity. Independent reference/date/order/amount families
-/// plus document-delivery framing are required.
 fn billing_document(text: &str, asks_owner: bool) -> bool {
-    // A record can also carry a current conversational ask. Its fields and
-    // purchase framing do not erase that ask; explicit machine/list evidence
-    // is handled separately by the classifier.
     if asks_owner {
         return false;
     }
@@ -665,12 +575,8 @@ fn authored_content(evidence: &mxr_core::mail_evidence::MailEvidence) -> String 
     mxr_reader::authored_text(text, &earlier)
 }
 
-/// Most authored-text entries, and bytes of text, a daemon keeps before
-/// starting over. Evidence text is cut to 8 KiB when it is read, so the
-/// byte budget only matters if a caller ever passes a whole body.
 const AUTHORED_CACHE_LIMIT: usize = 4096;
 const AUTHORED_CACHE_BYTES: usize = 16 * 1024 * 1024;
-/// A result larger than this is returned but not kept.
 const AUTHORED_CACHE_ENTRY_BYTES: usize = 64 * 1024;
 
 #[derive(Default)]
@@ -682,10 +588,6 @@ struct AuthoredCache {
 static AUTHORED_CACHE: Lazy<Mutex<AuthoredCache>> =
     Lazy::new(|| Mutex::new(AuthoredCache::default()));
 
-/// The lowercased authored text, computed once per distinct body. Every
-/// classification of a message (kind, reason, directed request) needs it,
-/// and stripping quoted history is the costly part of a mode read; the
-/// result depends only on the two cached texts, so it is keyed by them.
 fn authored_lower(evidence: &mxr_core::mail_evidence::MailEvidence) -> Arc<str> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     (evidence.text.as_deref(), evidence.previous_text.as_deref()).hash(&mut hasher);
@@ -780,8 +682,6 @@ fn directed_request(text: &str) -> bool {
     .find_map(|prefix| text.strip_prefix(*prefix)) else {
         return false;
     };
-    // Positive conversational speech acts, not arbitrary ACTION items such
-    // as "please pay" or informational "please find attached".
     [
         "reply",
         "respond",
@@ -821,8 +721,6 @@ fn without_greeting(text: &str) -> &str {
     .trim_start_matches('@')
 }
 
-/// A nameless salutation/pleasantry is not evidence of another addressee.
-/// Only strip it at a boundary, leaving "Hi Alice" to named-address handling.
 fn without_bare_greeting(text: &str) -> &str {
     for greeting in [
         "good morning",
@@ -867,9 +765,6 @@ fn has_named_addressee(text: &str) -> bool {
         && !directed_request(candidate)
 }
 
-/// Conservative positive evidence of a directed request, not a general language
-/// classifier. Quoted history, infrastructure and past correspondence cannot
-/// create debt. Unsupported languages/phrasing remain visible without a turn.
 pub(super) fn needs_reply(
     message: &mxr_store::DeskMessage,
     is_self: &dyn Fn(&str) -> bool,
@@ -918,8 +813,6 @@ pub(super) fn directed_to_owner(
     let opening = without_bare_greeting(opening);
     let owner_greeting = names_owner(opening);
     let other_greeting = !owner_greeting && has_named_addressee(opening);
-    // Require a request addressed to "you"; a question about an invoice,
-    // an FYI or "Alice, can you ..." is not evidence of the owner's debt.
     lower.lines().any(|line| {
         let line = without_bare_greeting(line.trim().trim_start_matches([',', ' ']));
         let request =
@@ -1008,9 +901,6 @@ fn classify_with_purpose(
     if signals.has_list_id || signals.evidence.list_id.is_some() {
         return list(KindRuleData::ListId);
     }
-    // An ATS/support reply can carry an opt-out header. That delivery
-    // mechanism alone loses to positive message-level response evidence,
-    // unlike an actual List-Id or an auto-generated declaration.
     if (signals.has_unsubscribe || signals.evidence.unsubscribe)
         && !personal_reply
         && purpose.purpose != MessagePurpose::BillingDocument
@@ -1032,8 +922,6 @@ fn classify_with_purpose(
     ) {
         return automated(KindRuleData::BulkSender);
     }
-    // History can support a personal interpretation of a role address or
-    // templated bulk mail, but cannot erase the per-message evidence above.
     if !signals.sender.wrote_to
         && !signals.written_to
         && !signals.evidence.is_reply
@@ -1052,7 +940,6 @@ fn classify_with_purpose(
     }
 }
 
-/// Read an already validated home without constructing raw body signals.
 pub(super) fn stored_classification(
     assessment: &mxr_core::assessment::MailAssessment,
 ) -> Classification {
@@ -1063,9 +950,6 @@ pub(super) fn stored_classification(
     }
 }
 
-/// The reason to show for a classification, in plain words. A machine's
-/// mail also says what list headers it carries, since that is what makes a
-/// one-key unsubscribe possible.
 fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
     let list_headers = if signals.has_unsubscribe {
         ", has List-Unsubscribe"
@@ -1127,7 +1011,6 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
     }
 }
 
-/// The rule in one word, for an arrival's line: "→ Updates · automated".
 pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
     match rule {
         KindRuleData::Fallback => "not sure",
@@ -1150,18 +1033,14 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
     }
 }
 
-/// Why mail from someone you've written to is in Messages (N1).
 pub(super) const WRITTEN_TO_REASON: &str = "addressed to you by someone you've written to";
 
-/// Why a person's mail is in Updates: the thread's shape, not the sender.
 pub(super) const COPIED_REASON: &str = "copied to you, or sent to a crowd, and not your turn";
 
-/// The wire form: kind, rule, reason and whether the user chose it.
 pub(super) fn describe(signals: &KindSignals<'_>) -> MailKindData {
     describe_classified(signals, classify(signals))
 }
 
-/// `describe` for a caller that already classified these signals.
 pub(super) fn describe_classified(
     signals: &KindSignals<'_>,
     classification: Classification,
@@ -1407,8 +1286,6 @@ mod tests {
         );
     }
 
-    /// The cache returns what stripping returns, and the earlier message is
-    /// part of the key: the same body reads differently against it.
     #[test]
     fn authored_text_cache_matches_stripping_and_keys_on_the_earlier_message() {
         let prior = "Could you confirm the launch date by Monday and send the signed copy?\nPlease also share the final reference with everyone before the Friday review meeting.";
@@ -1433,8 +1310,6 @@ mod tests {
         );
     }
 
-    /// The bounded split search must find exactly what trying every split
-    /// found, and a long unbroken paragraph must stay linear.
     #[test]
     fn document_value_matches_every_split_search_and_stays_linear() {
         fn every_split(line: &str) -> Option<(DocumentField, &str)> {
@@ -1473,8 +1348,6 @@ mod tests {
             );
         }
 
-        // Prose, and a long run of words that could each be in a label
-        // (untrusted mail can be written to be slow).
         for paragraph in [
             "word ".repeat(5_000) + "total 12",
             "invoice order number ".repeat(2_000) + "12",
@@ -1546,7 +1419,6 @@ mod tests {
         assert_eq!(described.reason, "automated sender, has List-Unsubscribe");
         assert!(!described.corrected);
 
-        // Account security mail is a machine's, however it's addressed.
         let verify = describe(&signals("verify@security-mail.example.com"));
         assert_eq!(verify.kind, SenderKindData::PaperTrail);
         assert_eq!(verify.rule, KindRuleData::AutomatedAddress);
@@ -1660,7 +1532,6 @@ mod tests {
             assert!(described.corrected);
             assert_eq!(kind_for(disposition_for(kind)), Some(kind));
         }
-        // "No decision yet" is automatic.
         let unknown = describe(&KindSignals {
             decision: Some(ScreenerDisposition::Unknown),
             ..robot
@@ -1671,7 +1542,6 @@ mod tests {
 
     #[test]
     fn bank_and_card_alerts_are_paper_trail() {
-        // The local part alone: alert senders that say nothing about money.
         for email in [
             "inContact@bank.example",
             "transactions@card.example",
@@ -1681,8 +1551,6 @@ mod tests {
             assert_eq!(described.kind, SenderKindData::PaperTrail, "{email}");
             assert_eq!(described.rule, KindRuleData::AutomatedAddress, "{email}");
         }
-        // The subject: an amount with what happened to it, from an address
-        // that looks like anyone's.
         for subject in [
             "Bank:-) R437.77 reserved for purchase @ Example Store from a/c..123456 using card..6131",
             "Card ending in 4321: USD 9.99",
@@ -1695,7 +1563,6 @@ mod tests {
             assert_eq!(described.rule, KindRuleData::TransactionAlert, "{subject}");
             assert_eq!(described.reason, "bank or card transaction alert");
         }
-        // A person writing about money is still a person.
         for subject in [
             "Re: paid £40.00 for the tickets",
             "Dinner on Friday?",
@@ -1731,7 +1598,6 @@ mod tests {
     #[test]
     fn a_sender_you_never_wrote_to_must_write_like_a_person() {
         let never = contact(0, &["Hello"], false);
-        // A role address: a desk, not a person.
         for email in [
             "forex@bank.example",
             "hello@toys.example",
@@ -1745,7 +1611,6 @@ mod tests {
             assert_eq!(described.kind, SenderKindData::PaperTrail, "{email}");
             assert_eq!(described.rule, KindRuleData::RoleAddress, "{email}");
         }
-        // Bulk-mail infrastructure on their latest message.
         let bulk = contact(0, &["Your monthly statement"], true);
         let described = describe(&KindSignals {
             sender: SenderFacts::of(Some(&bulk)),
@@ -1758,7 +1623,6 @@ mod tests {
         });
         assert_eq!(described.kind, SenderKindData::People);
         assert_eq!(described.rule, KindRuleData::Person);
-        // Forty of the same two templates, numbers aside.
         let templated: Vec<String> = (0..40)
             .map(|n| {
                 if n % 2 == 0 {
@@ -1788,7 +1652,6 @@ mod tests {
 
     #[test]
     fn someone_you_write_to_or_who_writes_like_a_person_stays_a_person() {
-        // Varied subjects from their own address.
         let varied = contact(
             0,
             &[
@@ -1806,7 +1669,6 @@ mod tests {
             ..signals("maya@orbit.example")
         });
         assert_eq!(described.kind, SenderKindData::People);
-        // Too few messages to judge the subjects.
         let new = contact(0, &["Invoice 1", "Invoice 2"], false);
         assert_eq!(
             describe(&KindSignals {
@@ -1816,7 +1678,6 @@ mod tests {
             .kind,
             SenderKindData::People
         );
-        // You wrote to the support desk and the bulk sender: both people.
         let answered = contact(2, &["Payment Confirmation"; 10], true);
         for email in ["support@app.example", "dan@broker.example"] {
             assert_eq!(
@@ -1829,7 +1690,6 @@ mod tests {
                 "{email}"
             );
         }
-        // Your choice beats every history rule.
         let robot = contact(0, &["Payment Confirmation"; 10], true);
         let described = describe(&KindSignals {
             sender: SenderFacts::of(Some(&robot)),
@@ -1851,7 +1711,6 @@ mod tests {
 
     #[test]
     fn correspondence_history_does_not_erase_message_list_evidence() {
-        // A list, a no-reply sender and a list sender all give way.
         for list in [
             KindSignals {
                 has_list_id: true,
@@ -1869,9 +1728,6 @@ mod tests {
             });
             assert_eq!(known.kind, SenderKindData::Reading);
             assert_ne!(known.rule, KindRuleData::WrittenTo);
-            // Only copied: still theirs, not Reading. Placement then asks
-            // about it (the thread is copied), and `kept_in_messages` holds
-            // only what is addressed to you.
             let copied_signals = KindSignals {
                 written_to: true,
                 addressed: false,
@@ -1883,10 +1739,8 @@ mod tests {
                 written_to: true,
                 ..list
             }));
-            // A stranger's list mail stays Reading.
             assert_eq!(describe(&list).kind, SenderKindData::Reading);
         }
-        // A newsletter address gives way too.
         let by_address = describe(&KindSignals {
             written_to: true,
             ..signals("newsletter@orbit.example")
@@ -1897,13 +1751,11 @@ mod tests {
             describe(&signals("newsletter@orbit.example")).kind,
             SenderKindData::Reading
         );
-        // Plain mail from someone you wrote to keeps its own reason.
         let plain = describe(&KindSignals {
             written_to: true,
             ..signals("maya@orbit.example")
         });
         assert_eq!(plain.rule, KindRuleData::Person);
-        // Your own decision and machines' addresses still win.
         let decided = describe(&KindSignals {
             written_to: true,
             decision: Some(ScreenerDisposition::Feed),

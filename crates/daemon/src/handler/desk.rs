@@ -1,10 +1,3 @@
-//! `Request::GetDesk`: what needs you, not what arrived.
-//!
-//! Composes lanes from what the store already knows: thread direction and
-//! inbox state, contacts, screener decisions, reply latencies, open
-//! commitments and cadence drift. Local reads only; no LLM on this path.
-//! The lane rules live in `desk_lanes.rs`.
-
 use super::desk_lanes::{
     apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sort_lane, thread_lanes,
     thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
@@ -35,7 +28,6 @@ pub(super) async fn get_desk(
     get_desk_at(state, account_id, lane_limit, Utc::now()).await
 }
 
-/// The desk as it stands at `now` (tests move the clock).
 pub(super) async fn get_desk_at(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -65,12 +57,9 @@ pub(super) async fn get_desk_at(
     Ok(data)
 }
 
-/// Every desk row, each conversation in its highest lane, plus the counts.
 pub(super) struct ComposedDesk {
     pub rows: Vec<DeskRowData>,
-    /// How each turn conversation is counted (`turn_units`).
     pub turn_keys: TurnKeys,
-    /// The senders the Screener count counts, per account.
     pub screener_senders: Vec<(AccountId, String)>,
     elsewhere: DeskElsewhereData,
     last_from_people_at: Option<DateTime<Utc>>,
@@ -78,7 +67,6 @@ pub(super) struct ComposedDesk {
 }
 
 impl ComposedDesk {
-    /// The people waiting on you, counted once (`turn_units`).
     pub(super) fn turn_units(&self) -> TurnUnits {
         let owed = desk_lane(&self.rows, DeskLaneKind::Owed, u32::MAX).rows;
         let new = desk_lane(&self.rows, DeskLaneKind::PeopleNew, u32::MAX).rows;
@@ -87,7 +75,6 @@ impl ComposedDesk {
     }
 }
 
-/// The desk for one account, or every enabled account, at `now`.
 pub(super) async fn compose_desk(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -110,9 +97,6 @@ pub(super) async fn compose_desk(
     let mut screener_senders = Vec::new();
     let mut elsewhere = DeskElsewhereData::default();
     let mut last_from_people_at: Option<DateTime<Utc>> = None;
-    // Bound concurrency and retain account order: the first account with a
-    // screener queue still owns the link, but its peers need not wait for
-    // another account's local reads to finish.
     let mut desks = futures::stream::iter(accounts.iter().cloned())
         .map(|account| async move {
             let desk = account_desk(state, &account, now).await?;
@@ -129,8 +113,6 @@ pub(super) async fn compose_desk(
         );
         elsewhere.reading += desk.elsewhere.reading;
         elsewhere.paper_trail += desk.elsewhere.paper_trail;
-        // The Screener page composes one account, so the count is that
-        // account's: the first with anyone waiting, which the link opens.
         if desk.elsewhere.screener > 0 && elsewhere.screener_account.is_none() {
             elsewhere.screener = desk.elsewhere.screener;
             elsewhere.screener_account = Some(account.clone());
@@ -149,7 +131,6 @@ pub(super) async fn compose_desk(
     })
 }
 
-/// One lane in its order, trimmed to `limit`; the total counts every row.
 pub(super) fn desk_lane(rows: &[DeskRowData], kind: DeskLaneKind, limit: u32) -> DeskLaneData {
     let mut lane_rows: Vec<DeskRowData> = rows
         .iter()
@@ -165,14 +146,6 @@ pub(super) fn desk_lane(rows: &[DeskRowData], kind: DeskLaneKind, limit: u32) ->
     }
 }
 
-/// The turn row (You owe or New from people) a thread has on the composed
-/// desk, or `None` when it is nobody's turn: not in the inbox, not from a
-/// person, copied only, decayed, snoozed, put away, or outranked by another
-/// lane (a watched person's Waiting on). The lane rule on this thread alone
-/// is a cheap first test, since most threads fail it; only a thread that
-/// passes is checked against the composed desk, which is what Now, Messages
-/// and the rail count, so the thread line says "you owe" exactly when they
-/// count it.
 pub(super) async fn thread_turn(
     state: &AppState,
     account_id: &AccountId,
@@ -222,7 +195,6 @@ pub(super) async fn thread_turn(
         .find(|row| row.thread_id == *thread_id && super::desk_lanes::needs_attention(row)))
 }
 
-/// Whether an address is this account's own (any of its addresses).
 pub(super) async fn self_matcher(
     state: &AppState,
     account_id: &AccountId,
@@ -231,10 +203,6 @@ pub(super) async fn self_matcher(
     Ok(move |email: &str| owned.contains(email))
 }
 
-/// Reads the recent history of every sender in `from` you have never
-/// written to into their contact row, so the classifier can tell a person
-/// from a machine that writes like one. `from` spells addresses as their
-/// messages do: the history lookup is case-sensitive.
 pub(super) async fn attach_histories<'a>(
     state: &AppState,
     account_id: &AccountId,
@@ -257,7 +225,6 @@ pub(super) async fn attach_histories<'a>(
     senders.sort_unstable();
     for (email, history) in state.store.sender_histories(account_id, &senders).await? {
         if let Some(contact) = contacts.get_mut(&email) {
-            // Two spellings of one address: keep the longer history.
             if history.subjects.len() >= contact.history.subjects.len() {
                 contact.history = history;
             }
@@ -266,17 +233,12 @@ pub(super) async fn attach_histories<'a>(
     Ok(())
 }
 
-/// What the store knows about the senders of some desk messages, for the
-/// shared classifier: contacts and screener decisions, keyed by lowercased
-/// email.
 pub(super) struct Senders {
     pub asks: HashMap<MessageId, mxr_store::AskSummary>,
     pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
     pub screener: HashMap<String, ScreenerDisposition>,
-    /// Emails the user moved (`X`) whose move is in force, with the kind
-    /// each gives.
     pub moves: HashMap<MessageId, SenderKind>,
     pub treatments: HashMap<MessageId, (String, String)>,
 }
@@ -293,9 +255,6 @@ impl Senders {
             .store
             .assessment_facets_for_messages(account_id, &ids)
             .await?;
-        // Facets already validate policy, timezone and the thread's effective
-        // input revision in one snapshot. Re-reading and fingerprinting every
-        // settled thread here turned each filter into a mailbox-sized rebuild.
         let own = self_matcher(state, account_id).await?;
         let pending = senders.pending_threads(messages, &own);
         if !pending.is_empty() {
@@ -310,9 +269,6 @@ impl Senders {
                 .assessment_facets_for_messages(account_id, &ids)
                 .await?;
         }
-        // A validated home already observed whether we wrote to its sender.
-        // Re-scanning every outbound recipient for each tiny list duplicates
-        // that observation. Raw resolver reads still perform the live lookup.
         for message in messages {
             if senders
                 .assessments
@@ -365,9 +321,6 @@ impl Senders {
             messages
                 .iter()
                 .filter(|m| m.direction != "outbound")
-                // Stored homes need no sender-template classification. The
-                // timer's raw human-response check only uses that observation
-                // for bulk mail; the resolver still observes every sender.
                 .filter(|m| observe_written_to || m.evidence.bulk)
                 .map(|m| m.from.email.as_str()),
         )
@@ -424,7 +377,6 @@ impl Senders {
             .collect()
     }
 
-    /// The kind signals for one of these messages.
     pub(super) fn signals<'a>(
         &'a self,
         message: &'a DeskMessage,
@@ -447,7 +399,6 @@ impl Senders {
         signals
     }
 
-    /// The thread rules leave this message in Messages (`kept_in_messages`).
     pub(super) fn kept_in_messages(
         &self,
         message: &DeskMessage,
@@ -466,8 +417,6 @@ impl Senders {
         mail_kind::kept_in_messages(&self.signals(message, is_self))
     }
 
-    /// A person other than you wrote it (not an auto-responder, list or
-    /// notification): it answers you.
     pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
         !is_outbound(message, is_self) && mail_kind::human_response(&self.signals(message, is_self))
     }
@@ -496,8 +445,6 @@ async fn account_desk(
             .desk_reminders(account_id, now - Duration::days(DESK_WINDOW_DAYS))
             .await?,
     );
-    // A conversation a time you set brought back may have gone quiet
-    // before the window: load it whole, once.
     let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
     let mut back: Vec<ThreadId> = timers
         .maybe_back(now)
@@ -545,10 +492,7 @@ async fn account_desk(
         .map(|draft| (draft.row, draft.pace))
         .collect();
 
-    // Promises and watched contacts start from a thread, which may be older
-    // than the window: fetch those threads whole, once.
     let due = due_commitments(state, account_id, now).await?;
-    // A watched contact already on the desk (owed, due) needs no drift row.
     let already: HashSet<String> = rows
         .iter()
         .map(|(row, _)| row.counterparty_email.to_ascii_lowercase())
@@ -570,8 +514,6 @@ async fn account_desk(
         .collect();
     let exchanges = store.desk_latest_exchanges(account_id, &wanted).await?;
 
-    // Only the threads these rows point at: from the window when there,
-    // fetched whole otherwise.
     let wanted_threads: HashSet<ThreadId> = due
         .iter()
         .map(|(commitment, _)| commitment.thread_id.clone())
@@ -615,7 +557,6 @@ async fn account_desk(
     );
     rows.extend(drift);
 
-    // Usual pace for every counterparty in one query.
     let mut paced: Vec<String> = rows
         .iter()
         .filter(|(_, pace)| pace.is_some())
@@ -663,10 +604,8 @@ async fn account_desk(
     })
 }
 
-/// Every message of each thread the desk touches, keyed by thread.
 type Threads = HashMap<ThreadId, Vec<DeskMessage>>;
 
-/// Promises you made that are due within the week, or overdue this month.
 async fn due_commitments(
     state: &AppState,
     account_id: &AccountId,
@@ -680,7 +619,6 @@ async fn due_commitments(
         .await?
         .into_iter()
         .filter_map(|commitment| {
-            // A date a model wrote is not a deadline the desk acts on.
             let by_when = commitment.actionable_by_when()?;
             (commitment.direction == CommitmentDirection::Yours
                 && by_when <= horizon
@@ -690,8 +628,6 @@ async fn due_commitments(
         .collect())
 }
 
-/// A promise stands whatever happens to its thread (archive, snooze), so
-/// due rows skip the inbox checks; they still cover the whole thread.
 fn due_rows(
     account_id: &AccountId,
     due: Vec<(ContactCommitmentRecord, DateTime<Utc>)>,
@@ -741,11 +677,6 @@ fn thread_message_ids(thread: &[DeskMessage], fallback: &MessageId) -> Vec<Messa
     }
 }
 
-/// Watched contacts who have gone quiet longer than usual join the waiting
-/// lane, anchored on the latest conversation with them. Snooze, trash,
-/// done waiting and a pending "bring it back" time set them aside like
-/// every Waiting row; archive does not, because the row is about the
-/// person and their last thread is usually archived.
 fn drift_rows(
     account_id: &AccountId,
     drifting: Vec<(CadenceDriftRow, DateTime<Utc>)>,
@@ -784,7 +715,6 @@ fn drift_rows(
                 since: last_contact,
                 age_seconds: (now - last_contact).num_seconds(),
                 usual_seconds: Some(expected_seconds),
-                // The pace is the watch's cadence, not measured replies.
                 usual_samples: 0,
                 overdue: true,
                 unread: false,
@@ -823,8 +753,6 @@ async fn count_active_deliveries(
         .count() as u32)
 }
 
-/// Upcoming invitations that still want your answer, by the same rule the
-/// invites page uses to show response buttons.
 async fn count_pending_invites(
     state: &AppState,
     account_id: &AccountId,
@@ -865,7 +793,6 @@ async fn count_pending_invites(
         .count() as u32)
 }
 
-/// "Done waiting" on threads, or preview which threads that covers.
 pub(super) async fn dismiss_threads(
     state: &AppState,
     thread_ids: &[mxr_core::id::ThreadId],
@@ -888,8 +815,6 @@ pub(super) async fn restore_threads(
     state: &AppState,
     thread_ids: &[mxr_core::id::ThreadId],
 ) -> HandlerResult {
-    // The desk reads done-in-Messages marks as dismissals too, so restoring
-    // clears both, or a thread done in Messages would stay hidden.
     let restored = state.store.restore_desk_threads(thread_ids).await?
         + state.store.clear_mode_done(thread_ids, "messages").await?;
     Ok(ResponseData::DeskThreadsRestored { restored })

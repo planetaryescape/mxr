@@ -1,10 +1,3 @@
-//! A verified alert becomes its own to-do on arrival (blueprint 22, D193).
-//!
-//! `mxr_updates::trust::decide` makes the decision from plain data; this
-//! module reads that data from the store and the clock, and writes the
-//! to-do. The same assessment feeds the digest, which only explains why a
-//! suggestion was not made into a to-do and never creates one.
-
 use super::todos::retime_record;
 use super::HandlerError;
 use crate::state::AppState;
@@ -21,20 +14,16 @@ use mxr_updates::trust::{
 use mxr_updates::{Fact, NeedsYou, WindowKind};
 use std::collections::HashMap;
 
-/// `origin` of a to-do made by this module.
 pub(super) const ORIGIN: &str = "rule";
 
-/// The decision with what the digest needs to explain it.
 #[derive(Debug, Clone)]
 pub(super) struct Assessment {
     pub decision: Decision,
-    /// The verified host, when there is one.
     pub host: Option<String>,
     pub history: History,
     pub handled_at: Option<DateTime<Utc>>,
 }
 
-/// What kind of alert a message is, and when a sign-in stops mattering.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Alert {
     pub kind: NeedsYou,
@@ -42,7 +31,6 @@ pub(super) struct Alert {
 }
 
 impl Alert {
-    /// The alert a message's fact states, if it states one.
     pub(super) fn of_fact(fact: &Fact) -> Option<Self> {
         Some(Self {
             kind: fact.needs_you?,
@@ -54,7 +42,6 @@ impl Alert {
         })
     }
 
-    /// The email that told mxr a parcel went wrong.
     pub(super) fn delivery_problem() -> Self {
         Self {
             kind: NeedsYou::DeliveryException,
@@ -63,7 +50,6 @@ impl Alert {
     }
 }
 
-/// Decide for one alert.
 pub(super) async fn assess(
     state: &AppState,
     message: &PlaceMessage,
@@ -88,7 +74,6 @@ pub(super) async fn assess(
             messages: found.messages,
             oldest: found.oldest,
         };
-        // Only a host with real history could be imitated.
         established = state
             .store
             .established_hosts(&message.account_id, received, MIN_HISTORY_MESSAGES)
@@ -117,8 +102,6 @@ pub(super) async fn assess(
     })
 }
 
-/// Whether the account is an Outlook.com or Microsoft 365 one, for the
-/// wording of "doesn't give mxr a verified sender".
 pub(super) async fn is_outlook(
     state: &AppState,
     account_id: &AccountId,
@@ -136,7 +119,6 @@ pub(super) async fn is_outlook(
         }))
 }
 
-/// What the digest shows beside a suggested alert.
 pub(super) async fn hold_note(
     state: &AppState,
     message: &PlaceMessage,
@@ -145,8 +127,6 @@ pub(super) async fn hold_note(
 ) -> Result<Option<AutoTodoData>, HandlerError> {
     let assessment = assess(state, message, alert, now).await?;
     let Decision::Hold(held) = &assessment.decision else {
-        // A creatable alert not yet in To do (the scan has not reached it):
-        // no reason to give.
         return Ok(None);
     };
     let outlook = is_outlook(state, &message.account_id).await?;
@@ -161,7 +141,6 @@ pub(super) async fn hold_note(
     }))
 }
 
-/// Digest notes for the alerts in view, keyed by message.
 pub(super) async fn hold_notes(
     state: &AppState,
     alerts: &[(&PlaceMessage, Alert)],
@@ -180,8 +159,6 @@ pub(super) async fn hold_notes(
     notes
 }
 
-/// Digest notes for the parcels in view that went wrong: why the email
-/// behind the problem did not make a to-do, or that none is tied to it.
 pub(super) async fn parcel_notes(
     state: &AppState,
     deliveries: &[mxr_store::Delivery],
@@ -225,13 +202,11 @@ async fn parcel_note(
         let Some(message) = state.store.place_message(&id).await? else {
             continue;
         };
-        // The newest email that reported the problem decides.
         return hold_note(state, &message, Alert::delivery_problem(), now).await;
     }
     Ok(Some(not_tied()))
 }
 
-/// The reason line stored on a created to-do.
 fn created_reason(host: &str, history: History) -> String {
     let since = history
         .oldest
@@ -245,10 +220,6 @@ fn created_reason(host: &str, history: History) -> String {
     format!("Created automatically: verified origin {host} and receiver handling age{since}.")
 }
 
-/// On arrival: create the alert's to-do if the decision says so. Returns
-/// the number of tasks made. A claim already held (a re-sync, a
-/// reclassification, the same alert twice in a local day, a to-do the user
-/// since dismissed) makes nothing.
 pub(super) async fn create_on_arrival(
     state: &AppState,
     message: &PlaceMessage,
@@ -276,7 +247,6 @@ pub(super) async fn create_on_arrival(
         return Ok(0);
     }
     if made.alert_created {
-        // Kind only: the host and the message stay out of the activity log.
         state.activity.record(crate::activity::OwnedEntry {
             ts: now.timestamp_millis(),
             account_id: Some(message.account_id.to_string()),
@@ -291,8 +261,6 @@ pub(super) async fn create_on_arrival(
     Ok(made.tasks())
 }
 
-/// Asks projection uses the same receiver gate before acknowledging its work.
-/// This avoids creating an untrusted payment task before the Updates scan.
 pub(super) async fn project_payment_ask(
     state: &AppState,
     id: &mxr_core::MessageId,
@@ -517,8 +485,6 @@ pub(super) fn alert_record(
     record
 }
 
-/// `t` on an alert keeps working; this is the response data for a created
-/// to-do's line.
 pub(super) fn created_note(record: &TodoRecord) -> Option<AutoTodoData> {
     (record.origin == ORIGIN && record.dedup_key.starts_with("alert|")).then(|| AutoTodoData {
         state: "created".to_string(),

@@ -1,7 +1,3 @@
-//! To do rows as clients draw them: the runway's bands, each row's labels,
-//! its why line, its one button and every field's provenance. Built here
-//! so the CLI, TUI and web show the same words.
-
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone, Utc};
 use mxr_protocol::{
     todo_copy, TodoActionData, TodoActionKindData, TodoAmountData, TodoData, TodoFieldData,
@@ -13,10 +9,8 @@ use mxr_todo::money::format_amount;
 use mxr_todo::provenance::FieldSources;
 use mxr_todo::TodoKind;
 
-/// How far ahead Coming up looks; dated rows past it are Later.
 pub(super) const COMING_UP_DAYS: i64 = 30;
 
-/// "Wed 7 Oct", in the daemon's zone.
 pub(super) fn day_label<Tz: TimeZone>(at: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
@@ -40,7 +34,6 @@ pub(super) fn state_data(state: TodoState) -> TodoStateData {
     }
 }
 
-/// When the row shows up: the user's own date wins.
 pub(super) fn effective_surface(record: &TodoRecord) -> Option<DateTime<Utc>> {
     record.scheduled_for.or(record.surface_at)
 }
@@ -129,7 +122,6 @@ where
         source_message_id: record.source_message_id.clone(),
         source_date: record.source_date,
         source_filed_at: record.source_filed_at,
-        // Filled from the exact row ledger at the IPC response seam.
         unread: None,
         seen_revision: None,
         surfaced_at: record.surfaced_at,
@@ -151,7 +143,6 @@ fn why_line(record: &TodoRecord) -> String {
     )
 }
 
-/// What happens next, only where it's true of this build.
 fn next_line(kind: TodoKind, record: &TodoRecord) -> Option<String> {
     if record.state != TodoState::Open {
         return None;
@@ -223,7 +214,6 @@ where
     }
 }
 
-/// The bar fills from the day it showed up to the deadline.
 fn runway(record: &TodoRecord, now: DateTime<Utc>) -> Option<f64> {
     let start = effective_surface(record)?;
     let end = record.due_at?;
@@ -236,8 +226,6 @@ fn runway(record: &TodoRecord, now: DateTime<Utc>) -> Option<f64> {
     Some(fill.clamp(0.0, 1.0))
 }
 
-/// The row's action opens the source email with the link highlighted;
-/// nothing on a to-do opens a link directly.
 fn action(record: &TodoRecord, kind: TodoKind) -> Option<TodoActionData> {
     Some(TodoActionData {
         kind: TodoActionKindData::OpenEmail,
@@ -249,8 +237,6 @@ fn action(record: &TodoRecord, kind: TodoKind) -> Option<TodoActionData> {
     })
 }
 
-/// Now's order: by act-by, promises first on the same day, and rows past
-/// their deadline after the ones still in time.
 pub(super) fn now_order(a: &TodoRecord, b: &TodoRecord, now: DateTime<Utc>) -> std::cmp::Ordering {
     let late = |record: &TodoRecord| record.due_at.is_some_and(|due| due < now);
     let promise_last = |record: &TodoRecord| u8::from(record.kind != "promise");
@@ -267,7 +253,6 @@ pub(super) fn now_order(a: &TodoRecord, b: &TodoRecord, now: DateTime<Utc>) -> s
         .then_with(|| a.id.cmp(&b.id))
 }
 
-/// The open and recently done rows sorted into bands.
 #[derive(Default)]
 pub(super) struct Bands {
     pub now: Vec<TodoData>,
@@ -276,7 +261,6 @@ pub(super) struct Bands {
     pub whenever: Vec<TodoData>,
     pub done_this_week: Vec<TodoData>,
     pub next_surface: Option<TodoNextData>,
-    /// The first row in Now, for the headline.
     pub first_now: Option<TodoRecord>,
 }
 
@@ -370,14 +354,11 @@ fn monday_of(day: NaiveDate) -> NaiveDate {
     day - Duration::days(i64::from(day.weekday().num_days_from_monday()))
 }
 
-/// Monday 00:00 of this week in `tz`.
 pub(super) fn start_of_week<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTime<Utc> {
     let monday = monday_of(now.with_timezone(tz).date_naive());
     mxr_todo::timing::start_of_day(monday, tz, 0)
 }
 
-/// "3 things need you. Pay council tax first, act by Wed." The act-by part
-/// only when it's still ahead: a failed payment's is already now.
 pub(super) fn headline<Tz: TimeZone>(
     count: usize,
     first: Option<&TodoRecord>,
@@ -402,8 +383,6 @@ where
     }
 }
 
-/// The empty state when Now has nothing: what lands here, or when the next
-/// thing does.
 pub(super) fn empty_state(never_had_any: bool, next: Option<&TodoNextData>) -> String {
     if never_had_any {
         return todo_copy::NEVER_HAD_ANY.to_string();
@@ -419,8 +398,6 @@ pub(super) fn empty_state(never_had_any: bool, next: Option<&TodoNextData>) -> S
     }
 }
 
-/// "1 past invite", "50 past invites": a kind the first run found already
-/// over, for the catch-up's line.
 pub(super) fn already_over_label(kind: &str, count: i64) -> String {
     let (one, many) = match kind {
         "bill" => ("old bill", "old bills"),

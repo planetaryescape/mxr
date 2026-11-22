@@ -42,7 +42,6 @@ pub(super) async fn activate(
                 .restore_pending
                 .store(false, std::sync::atomic::Ordering::Release);
         }
-        // Activation is durable even if runtime reload fails; a confirmed retry repairs it.
         if status.restore_pending || status.source_owner_stopped {
             state.reload_accounts_from_disk().await.map_err(|error| {
                 super::HandlerError::Message(format!(

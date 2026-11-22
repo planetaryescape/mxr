@@ -1,15 +1,3 @@
-//! Messages (blueprint 22, phase 3): people you talk with, one row each,
-//! with your conversations inside as topics.
-//!
-//! - Your turn is the shared lane rule (`desk_lanes`: You owe and New from
-//!   people), so Messages, Now's People and the rail never disagree.
-//! - Each thread's shape (`conversation_shape`) decides its row: a
-//!   one-to-one thread is a topic in that person's row, a group thread is
-//!   its own row keyed by the thread, a copied thread is not here at all.
-//! - People are merged across addresses only by hand (`person_links`, D117).
-//! - Each message's text is its new text (`mxr_reader::new_text`), so every
-//!   client shows the same words and the same "trimmed" marker.
-
 mod history;
 pub(crate) use history::warm as warm_history;
 pub(crate) use history::HistoryCache;
@@ -47,18 +35,12 @@ use mxr_protocol::{
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
 
-/// How far back a manual-merge preview counts conversations.
 const MERGE_HISTORY_DAYS: i64 = 730;
-/// Most conversations a person page lists.
 const PERSON_TOPICS_MAX: u32 = 40;
-/// Most messages a conversation shows; earlier ones are counted.
 const CONVERSATION_MAX: usize = 20;
-/// A message of this many wrapped lines or fewer reads like chat.
 const COMPACT_MAX_LINES: usize = 3;
-/// Earlier messages a preview looks back through when the latest is only a quote.
 const PREVIEW_LOOKBACK: usize = 8;
 
-/// One account's conversations, placed.
 pub(super) struct Gathered {
     pub account_id: AccountId,
     pub topics: Vec<Topic>,
@@ -67,7 +49,6 @@ pub(super) struct Gathered {
     pub facts: HashMap<String, PersonFacts>,
     pub names: HashMap<String, String>,
     pub pinned: HashSet<String>,
-    /// Messages you sent.
     pub outbound: HashSet<MessageId>,
 }
 
@@ -84,21 +65,13 @@ impl Gathered {
     }
 }
 
-/// A thread the composed desk says is someone's turn, with the row key the
-/// desk counted it under (`TurnKeys`).
 struct DeskTurn {
     row: DeskRowData,
     key: RowKey,
 }
 
-/// Which threads to gather: the recent window, or a fixed set.
 enum Scope<'a> {
-    /// Only the composed desk's actionable threads, including due returns.
     Attention(HashMap<ThreadId, DeskTurn>),
-    /// The recent window or explicit All history, plus every thread the desk says is
-    /// someone's turn (`turns`, this account's You owe and New from people
-    /// rows after the desk's precedence). Your turn is the desk's, so the
-    /// window decides only what else shows in Recent and Quiet.
     Conversations {
         turns: HashMap<ThreadId, DeskTurn>,
         inputs: Box<ConversationInputs>,
@@ -106,8 +79,6 @@ enum Scope<'a> {
     Threads(&'a [ThreadId]),
 }
 
-/// History/window reads do not depend on the desk's lane precedence. Prepare
-/// them alongside the desk, then apply its authoritative turns in `gather`.
 enum ConversationInputs {
     Window {
         messages: Vec<DeskMessage>,
@@ -152,8 +123,6 @@ async fn preload_conversations(
         .await
 }
 
-/// Recent and Quiet include conversation history outside the inbox. Done
-/// must accept those topics too, using the same selection as the person page.
 pub(super) async fn done_topics(
     state: &AppState,
     account_id: &AccountId,
@@ -199,8 +168,6 @@ async fn gather(
                     (Vec::new(), None)
                 }
             };
-            // A conversation a time you set brought back, or one the desk
-            // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages
                 .iter()
                 .map(|m| &m.thread_id)
@@ -215,8 +182,6 @@ async fn gather(
                 .into_iter()
                 .collect();
             back.sort_by_key(ThreadId::as_str);
-            // Additional returned/owed threads need their own facets and
-            // contacts. Reuse the prepared context only when it is complete.
             let prepared_senders = if back.is_empty() { senders } else { None };
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
             (messages, Some(turns), prepared_senders)
@@ -250,8 +215,6 @@ async fn gather(
         .collect();
     let shape = super::conversation_shape::shape_config(state);
 
-    // The lane rule and the shapes, with no await while `inputs` (which
-    // borrows `dyn Fn`) is alive.
     let (mut topics, threads, names, outbound) = {
         let inputs = AccountInputs {
             pending_threads: &senders.pending_threads(&messages, &is_self),
@@ -270,8 +233,6 @@ async fn gather(
             shape,
             now,
         };
-        // A fixed set of threads (a person's page) has no composed desk
-        // to read, so its turns come from the lane rule on those threads.
         let mut turns: HashMap<ThreadId, (DeskRowData, Option<RowKey>)> = match desk_turns {
             Some(turns) => turns
                 .into_iter()
@@ -311,8 +272,6 @@ async fn gather(
             for (email, name, at) in &summary.names {
                 note_name(&mut names, &people, email, Some(name), *at);
             }
-            // Someone's turn is always a row, whatever the thread's shape
-            // (a reply-later thread you were only copied on).
             if (!summary.shape.in_messages() && !turns.contains_key(&thread_id))
                 || summary.latest.is_none()
             {
@@ -337,8 +296,6 @@ async fn gather(
         (topics, threads, names, outbound)
     };
 
-    // Your usual pace with each person whose turn it is, as the desk
-    // measures it.
     let mut owed: Vec<String> = topics
         .iter()
         .filter_map(|t| t.turn.as_ref())
@@ -392,7 +349,6 @@ async fn gather(
     })
 }
 
-/// Keep the newest real name seen for each person.
 fn note_name(
     names: &mut HashMap<String, (DateTime<Utc>, String)>,
     people: &People,
@@ -442,7 +398,6 @@ fn summary_topic(
         }
         (_, 1, _) => RowKey::Person(others[0].clone()),
         (Shape::Group(_), _, _) => RowKey::Group(summary.thread_id.clone()),
-        // The turn row names who it is with; `turn_units` counts it the same.
         (_, 0, Some(row)) => {
             let primary = people.primary(&row.counterparty_email);
             others.push(primary.clone());
@@ -490,7 +445,6 @@ fn summary_topic(
     })
 }
 
-/// Rows of one account, keyed and built, with each Your turn row's ratio.
 fn account_rows(
     gathered: &Gathered,
     now: DateTime<Utc>,
@@ -498,8 +452,6 @@ fn account_rows(
 ) -> Vec<(MessagesRowData, Option<f64>)> {
     let mut grouped: HashMap<RowKey, Vec<Topic>> = HashMap::new();
     for topic in &gathered.topics {
-        // Select topics before building rows and previews. Filtering only
-        // people would leak unrelated history into an actionable person's row.
         let keep = match view {
             None | Some(MessagesTurnData::Mine) => topic.turn.is_some(),
             Some(MessagesTurnData::Theirs) => topic.data.state == TopicStateData::Waiting,
@@ -521,7 +473,6 @@ fn account_rows(
             (build_row(key, topics, &ctx), ratio)
         })
         .collect();
-    // Idle pinned people are history too, never filler in the attention queue.
     if view != Some(MessagesTurnData::All) {
         return rows;
     }
@@ -581,7 +532,6 @@ pub(super) async fn list_messages(
     })
 }
 
-/// Messages as they stand at `now` (tests move the clock).
 pub(super) async fn messages_at(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -591,15 +541,10 @@ pub(super) async fn messages_at(
 ) -> Result<MessagesData, HandlerError> {
     let started = std::time::Instant::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    // Your turn is the composed desk's: the same accounts' rows after
-    // lane precedence, over the desk's own window, as Now and the rail
-    // count them (`turn_units`).
     let (desk, inputs) = tokio::try_join!(
         compose_desk(state, account_id, now),
         preload_conversations(state, &accounts, filter.turn, now),
     )?;
-    // From the same desk, so it holds when the Waiting on view clears
-    // Your turn below.
     let your_turn_split = desk.turn_units().split;
     let row_count = your_turn_split.total();
     let thread_count = u32::try_from(desk.rows.iter().filter(|row| needs_attention(row)).count())
@@ -640,7 +585,6 @@ pub(super) async fn messages_at(
             match row.band {
                 MessagesBandData::YourTurn => your_turn.push((row, ratio)),
                 MessagesBandData::Pinned => pinned.push(row),
-                // A pinned person lives in Pinned, not again below it.
                 MessagesBandData::Recent if !row.pinned => recent.push(row),
                 MessagesBandData::Quiet if !row.pinned => quiet.push(row),
                 _ => {}
@@ -652,8 +596,6 @@ pub(super) async fn messages_at(
     rank_by_recency(&mut pinned);
     rank_by_recency(&mut recent);
     rank_by_recency(&mut quiet);
-    // Toggles narrow every band, so the counts a list is limited by are
-    // the filtered ones.
     let keep = |row: &MessagesRowData| {
         (!filter.unread || row.unread) && (!filter.past_pace || row.overdue)
     };
@@ -725,8 +667,6 @@ pub(super) async fn messages_at(
     })
 }
 
-/// Rows across bands, once each: a pinned row also sits in its own band. A
-/// person id is an address, so the same person in two accounts is two rows.
 fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
     let rows: HashSet<(&AccountId, &str)> = bands
         .iter()
@@ -735,9 +675,6 @@ fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
     u32::try_from(rows.len()).unwrap_or(u32::MAX)
 }
 
-/// Attention has no history pagination: its rows are complete. Narrowing a
-/// fresh attention snapshot therefore needs no new mailbox query. Rebuild
-/// pinned faces after narrowing, so a match beyond the old pin cap survives.
 pub(super) fn narrow_attention(mut data: MessagesData, filter: MessagesFilterData) -> MessagesData {
     data.your_turn
         .retain(|row| (!filter.unread || row.unread) && (!filter.past_pace || row.overdue));
@@ -765,9 +702,6 @@ pub(super) fn narrow_attention(mut data: MessagesData, filter: MessagesFilterDat
     data
 }
 
-/// The line under each shown row: for Your turn, the ask from the
-/// conversation's gist when one is cached, else what they wrote last; for
-/// the rest, the latest message, as "You: ..." when you wrote it.
 async fn load_preview_threads(
     state: &AppState,
     gathered: &mut [Gathered],
@@ -786,8 +720,6 @@ async fn load_preview_threads(
             .collect();
         if !wanted.is_empty() {
             let own = self_matcher(state, &g.account_id).await?;
-            // Preview text loads its own bodies and quote lookback. Classifier
-            // evidence here would reread bodies across the whole thread.
             for m in state
                 .store
                 .desk_history_in_threads(&g.account_id, &wanted)
@@ -809,8 +741,6 @@ async fn fill_previews(
     rows: &mut [MessagesRowData],
 ) -> Result<(), HandlerError> {
     use futures::TryStreamExt;
-    // Each preview has independent body/gist reads. Bound their overlap to
-    // four without reordering rows or loading unselected conversation text.
     futures::stream::iter(rows.iter_mut().map(Ok::<_, HandlerError>))
         .try_for_each_concurrent(4, |row| fill_preview(state, gathered, row))
         .await
@@ -861,10 +791,6 @@ async fn fill_preview(
     let Some(text) = texts.remove(&target) else {
         return Ok(());
     };
-    // A message that is only a quote says nothing of its own, and the
-    // placeholder is not a preview: read the latest earlier message
-    // that does, or show none and let the client fall back to the
-    // subject.
     let (target, text) = if text.only_quoted {
         match earlier_with_text(state, thread, g, &target).await? {
             Some(found) => found,
@@ -890,8 +816,6 @@ async fn fill_preview(
     Ok(())
 }
 
-/// The latest message before `target` whose new text is its own, for a
-/// preview when `target` is only quoted.
 async fn earlier_with_text(
     state: &AppState,
     thread: &[DeskMessage],
@@ -923,7 +847,6 @@ async fn earlier_with_text(
     }))
 }
 
-/// A person argument: `person:<email>`, `group:<thread>`, or an address.
 enum PersonArg {
     Person(String),
     Group(ThreadId),
@@ -1048,7 +971,6 @@ async fn person_page(
     let ctx = g.ctx(now);
     let mut row = build_row(key, own.clone(), &ctx);
     if own.is_empty() {
-        // Only group conversations: the row stands on them for its band.
         row.band = band(&groups, now);
         row.your_turn = row.band == MessagesBandData::YourTurn;
     }
@@ -1058,8 +980,6 @@ async fn person_page(
         .map(|t| t.data.clone())
         .collect();
     let mut rows = vec![row];
-    // The preview line and the conversation are message text; a profile
-    // read leaves both out.
     if with_conversation {
         fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
         let drafts = conversation_drafts(state, std::slice::from_ref(account_id)).await?;
@@ -1141,8 +1061,6 @@ fn pick_topic<'a>(
             return Some(found);
         }
     }
-    // With no topic named, never open one just done here: that reads as
-    // the done not having happened.
     topics
         .iter()
         .find(|t| t.state == TopicStateData::YourTurn)
@@ -1242,14 +1160,6 @@ async fn conversation(
     })
 }
 
-/// Blocks of consecutive non-blank lines: what "Read all N paragraphs"
-/// counts. A naive `split("\n\n")` misses a break written as `\r\n\r\n`
-/// (the raw body `new_text` returns when nothing was trimmed keeps its
-/// original line endings), undercounting to one block and showing a
-/// nonsensical "Read all 1 paragraphs" on a message that collapses. Line
-/// splitting takes both line endings, matching `wrapped_lines` and the
-/// client's own paragraph split (`\n\s*\n`, which treats a blank-ish line
-/// the same way regardless of what runs between the two newlines).
 fn paragraphs(text: &str) -> usize {
     let mut blocks = 0;
     let mut in_block = false;
@@ -1272,7 +1182,6 @@ fn join_names(names: &[String]) -> String {
     }
 }
 
-/// "You've written 48 times since 2023. Last: Tuesday."
 fn relationship_line(
     facts: Option<&PersonFacts>,
     person: Option<&PersonRefData>,
@@ -1308,15 +1217,12 @@ fn times(n: u32) -> String {
     }
 }
 
-/// "close · usually 47m".
 fn header_line(closeness: ClosenessData, pace: Option<&str>) -> String {
     match pace {
         Some(pace) => format!("{} · {pace}", closeness.label()),
         None => closeness.label().to_string(),
     }
 }
-
-// ----- Merging people -----
 
 fn clean_address(address: &str) -> Result<String, HandlerError> {
     let address = address
@@ -1474,7 +1380,6 @@ pub(super) async fn merge_suggestions(
     Ok(ResponseData::MergeSuggestions { suggestions })
 }
 
-/// Same name, written to both, not merged yet (D117). Never applied here.
 async fn suggestions_for(
     state: &AppState,
     account_id: &AccountId,
@@ -1552,7 +1457,6 @@ mod pick_topic_tests {
 
     #[test]
     fn with_no_topic_named_a_topic_just_done_is_not_opened() {
-        // The done one is the newest: it was the one on screen.
         let topics = vec![
             topic(TopicStateData::Done, 1),
             topic(TopicStateData::Quiet, 48),
@@ -1572,7 +1476,6 @@ mod pick_topic_tests {
             pick_topic(&topics, None).map(|t| t.state),
             Some(TopicStateData::YourTurn)
         );
-        // Named explicitly (a link, a click), even a done topic opens.
         let done = topics[2].thread_id.clone();
         assert_eq!(
             pick_topic(&topics, Some(&done)).map(|t| t.thread_id.clone()),
@@ -1605,9 +1508,6 @@ mod paragraphs_tests {
 
     #[test]
     fn a_crlf_blank_line_still_breaks_a_paragraph() {
-        // `new_text` keeps a message's original line endings when nothing
-        // was trimmed, so a break can be CRLF: a naive `split("\n\n")`
-        // never finds "\n\n" inside "\r\n\r\n" and undercounts to one.
         assert_eq!(
             paragraphs("Senior Software Engineer at throxy.\r\n\r\nJack"),
             2

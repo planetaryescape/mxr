@@ -94,13 +94,6 @@ async fn start_gmail_auth_session(request: GmailAuthSessionRequest<'_>) -> Handl
     } = request;
     let (client_id, client_secret) =
         resolve_gmail_credentials(credential_source, client_id, client_secret)?;
-    // This session task runs in the daemon, which has no controlling terminal,
-    // so `AuthFlow::auto_detect()` here would always resolve to the device-code
-    // flow (Google then rejects our Desktop OAuth client with
-    // "invalid_client: Invalid client type"). Clients resolve `Auto` themselves,
-    // where the TTY/SSH/display signals are real, and send a concrete flow; any
-    // residual `Auto` falls back to the loopback flow — the correct default for
-    // the common local-daemon case. Headless/remote clients send `Device`.
     let flow = match requested_flow {
         AuthFlowData::Auto | AuthFlowData::Installed => {
             mxr_provider_gmail::auth::AuthFlow::Installed
@@ -321,7 +314,6 @@ pub(super) async fn complete_auth_session(
     }
 
     if save_account {
-        // The auth flow does not carry the caller, so it never names a holder.
         let result = upsert_account_config(state, account, false).await;
         update_session(&status, |session| {
             if result.ok {

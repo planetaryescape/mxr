@@ -1,11 +1,3 @@
-//! What kind of mail a conversation is, for gists: who may be asked about
-//! (people's conversations, and Updates when a client says so) and which
-//! prompt writes it (a conversation's, or a notification's).
-//!
-//! The kind comes from the shared `mail_kind` rules applied to the newest
-//! message from someone other than the account, so a gist, Inbox and Updates
-//! agree on what a message is.
-
 use super::mail_kind::SenderKind;
 use super::places::AccountKinds;
 use super::HandlerError;
@@ -14,14 +6,9 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::Envelope;
 use std::collections::HashMap;
 
-/// Which prompt writes a conversation's gist, and so part of its cache key:
-/// a sender moved between Messages and Updates gets a new gist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GistStyle {
-    /// People writing to each other: the state of the exchange and what is
-    /// asked of the owner.
     Conversation,
-    /// A machine reporting a fact: the one number, state or date that matters.
     Notification,
 }
 
@@ -41,9 +28,6 @@ impl GistStyle {
     }
 }
 
-/// The kind of each conversation, by its newest message from someone else.
-/// A conversation only the owner has written in is with the people they
-/// wrote to. Absent from the map: the message is gone (trashed since).
 pub(super) async fn thread_kinds(
     state: &AppState,
     threads: &[(&ThreadId, &[Envelope])],
@@ -86,8 +70,6 @@ pub(super) async fn thread_kinds(
     Ok(out)
 }
 
-/// The prompt style for one conversation; a conversation whose message is
-/// gone reads as a conversation.
 pub(super) async fn style_of(
     state: &AppState,
     thread_id: &ThreadId,

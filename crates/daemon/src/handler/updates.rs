@@ -1,16 +1,3 @@
-//! Updates as a twice-daily briefing (blueprint 22, phase 4): IPC
-//! handlers, the per-message fact cache and the breakthrough to To do.
-//!
-//! Membership is Updates' own: automated inbox mail the sender classifier
-//! puts in Updates, minus its done marks (`modes::inbox_modes`), so the
-//! digest, the rail, Now's card and `SetModeDone` agree on what Updates
-//! holds. Each message is read once into a fact by `mxr-updates` rules and
-//! cached in `update_facts`; the digest is built from those facts by
-//! `updates_digest`. Letting go of a digest goes through `mode_done`, so
-//! the archive-on-last-done rule, its toasts and undo are the same as `e`
-//! anywhere else, and the preview selects exactly the messages the run
-//! lets go.
-
 use super::alert_todos::Alert;
 use super::modes::inbox_modes;
 use super::places::{scoped_accounts, AccountKinds, Placed};
@@ -29,29 +16,21 @@ use mxr_store::{PlaceMessage, SourceLetGo, TodoRecord, UpdateFactRow};
 use mxr_updates::{derive, Cuts, Fact, FactInput, RULES_VERSION};
 use std::collections::{HashMap, HashSet};
 
-/// The mode name `mode_views` and the guide use.
 pub(super) const MODE: &str = "updates";
-/// How far back a source's history is read for "new source" and deltas.
 const HISTORY_DAYS: i64 = 365;
-/// Earlier messages read per sender for that history.
 const HISTORY_PER_SENDER: u32 = 20;
 
-/// One automated message in Updates, with its fact.
 pub(super) struct Item {
     pub message: PlaceMessage,
-    /// The classifier's reason: "automated sender, not a person".
     pub reason: String,
-    /// You chose this sender's kind.
     pub corrected: bool,
     pub fact: Fact,
 }
 
-/// The configured cuts; a bad list falls back to 08:00 and 16:30.
 pub(super) fn cuts(state: &AppState) -> Cuts {
     cuts_from(&state.config_snapshot().updates.cuts)
 }
 
-/// `cuts` for a config's list, before any state exists.
 pub(crate) fn cuts_from(configured: &[String]) -> Cuts {
     Cuts::parse(configured).unwrap_or_else(|error| {
         tracing::warn!(%error, "updates.cuts is invalid; using 08:00 and 16:30");
@@ -59,9 +38,6 @@ pub(crate) fn cuts_from(configured: &[String]) -> Cuts {
     })
 }
 
-/// The facts of these messages: cached ones at the current rules version,
-/// the rest derived now and cached. A failed cache write is logged; the
-/// facts are still returned.
 pub(super) async fn facts_for<Tz: TimeZone>(
     state: &AppState,
     messages: &[&PlaceMessage],
@@ -87,8 +63,6 @@ pub(super) async fn facts_for<Tz: TimeZone>(
             None => stale.push(message),
         }
     }
-    // A fact derived before the body arrived misses what only the body says
-    // (a one-time code): derive it again once the body is there.
     if !bodiless.is_empty() {
         let ids: Vec<MessageId> = bodiless.iter().map(|m| m.id.clone()).collect();
         let arrived = state.store.update_body_texts(&ids).await?;
@@ -147,7 +121,6 @@ pub(super) async fn facts_for<Tz: TimeZone>(
     Ok(facts)
 }
 
-/// Placed Updates mail as items with facts.
 pub(super) async fn items_for<Tz: TimeZone>(
     state: &AppState,
     placed: Vec<Placed>,
@@ -169,9 +142,6 @@ pub(super) async fn items_for<Tz: TimeZone>(
         .collect())
 }
 
-/// Earlier mail from the senders of `items`, inbox or not, as facts by
-/// account and source, oldest first: what "new source" and deltas compare
-/// with.
 pub(super) async fn histories<Tz: TimeZone>(
     state: &AppState,
     items: &[Item],
@@ -216,8 +186,6 @@ pub(super) async fn histories<Tz: TimeZone>(
     Ok(out)
 }
 
-/// The digest at `now` in `tz`, over `accounts`, built from Updates'
-/// placed mail. Shared by `GetUpdatesDigest`, Now's card and the rail.
 pub(super) async fn digest_from<Tz: TimeZone>(
     state: &AppState,
     accounts: &[AccountId],
@@ -317,10 +285,6 @@ where
     Ok((digest, items, selection))
 }
 
-/// Drop each message a thread's Updates mark already saw. Membership
-/// keeps a thread in Updates while any of its Updates mail is new; the
-/// digest shows only that new mail, so a let go of one cut never brings
-/// its messages back with the next.
 async fn without_let_go(
     state: &AppState,
     accounts: &[AccountId],
@@ -348,7 +312,6 @@ fn seen_key(account_id: Option<&AccountId>) -> String {
     account_id.map_or_else(|| MODE.to_string(), |account| format!("{MODE}:{account}"))
 }
 
-/// Updates' inbox mail across `accounts`, after its done marks.
 async fn placed_updates(
     state: &AppState,
     accounts: &[AccountId],
@@ -376,7 +339,6 @@ pub(super) async fn get_digest(
     Ok(ResponseData::UpdatesDigest { digest })
 }
 
-/// The digest as it stands at `now` in `tz` (tests move the clock).
 pub(super) async fn digest_at<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -397,8 +359,6 @@ where
         source_key: None,
         list_expired: expired,
     };
-    // Boxed: the digest's future is deep, and a debug build's request
-    // future overflowed a worker's stack without it.
     let (digest, _, _) = Box::pin(digest_from(state, &accounts, placed, &scope, now, tz)).await?;
     if mark_seen {
         state
@@ -421,9 +381,6 @@ where
     Ok(digest)
 }
 
-/// Let go of a cut, or of one source in it. The selection is the digest's
-/// own, so a dry run and the run that follows act on the same messages;
-/// a token from the preview makes the run refuse if the cut changed.
 pub(super) async fn let_go(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -448,7 +405,6 @@ pub(super) async fn let_go(
     Ok(ResponseData::UpdatesLetGo { result })
 }
 
-/// One `LetGoDigest`, as the handler hands it over.
 pub(super) struct LetGo<'a> {
     pub account_id: Option<&'a AccountId>,
     pub cut: Option<DateTime<Utc>>,
@@ -457,7 +413,6 @@ pub(super) struct LetGo<'a> {
     pub dry_run: bool,
 }
 
-/// Let go as it stands at `now` in `tz` (tests move the clock).
 pub(super) async fn let_go_at<Tz: TimeZone>(
     state: &AppState,
     request: &LetGo<'_>,
@@ -484,8 +439,6 @@ where
     };
     let (digest, items, selection) =
         Box::pin(digest_from(state, &accounts, placed, &scope, now, tz)).await?;
-    // The run lets go of exactly what a preview listed: its token hashes
-    // the cut and that message id set, and a run without one is refused.
     match selection_token.filter(|token| !token.is_empty()) {
         Some(expected) if expected != selection.token => {
             return Err(HandlerError::InvalidRequest(
@@ -562,8 +515,6 @@ where
     })
 }
 
-/// Count this let go toward each source's "let go without opening"
-/// streak. A failure is logged: the streak only feeds a suggestion.
 async fn record_streaks(
     state: &AppState,
     items: &[Item],
@@ -602,8 +553,6 @@ async fn record_streaks(
     }
 }
 
-/// Tune a source. `source` is a key or a sender address; an address maps
-/// to the key its mail derives.
 pub(super) async fn set_source(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -660,9 +609,6 @@ pub(super) async fn set_source(
     })
 }
 
-/// Derive and cache the facts the digest will read: Updates' inbox mail
-/// and its senders' history. Returns whether it finished; a failure is
-/// logged and tried again on the next tick.
 pub(crate) async fn warm(state: &AppState) -> bool {
     let started = std::time::Instant::now();
     let result = async {
@@ -690,15 +636,6 @@ pub(crate) async fn warm(state: &AppState) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------------
-// On arrival
-// ---------------------------------------------------------------------------
-
-/// Read newly synced Updates mail into facts, so the next digest doesn't
-/// pay for them, and make the to-do for an alert the receiving provider
-/// vouches for (blueprint 22, D193). Any other alert is a suggestion at the
-/// top of Needs a look, and `t` is yours to press. Never errors the caller;
-/// failures are logged, like the delivery and to-do scans.
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId], now: DateTime<Utc>) {
     if message_ids.is_empty() {
         return;
@@ -708,7 +645,6 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId], n
     }
 }
 
-/// Facts for new Updates mail. Returns how many messages it read.
 pub(super) async fn scan(
     state: &AppState,
     message_ids: &[MessageId],
@@ -745,7 +681,6 @@ pub(super) async fn scan(
                 tracing::warn!(%error, "could not make an alert's to-do");
             }
         }
-        // The email that told mxr a parcel went wrong is an alert too.
         for message in messages
             .iter()
             .filter(|m| m.is_delivery && !kinds.is_outbound(m))

@@ -1,8 +1,3 @@
-//! Deliveries: IPC handlers (list/get/resolve/dismiss/scan) plus the scan
-//! engine shared by the post-sync fan-out and the `mxr deliveries scan`
-//! backfill. Detection is local (`mxr_deliveries::detect`); the LLM confirm
-//! step runs only on shortlisted candidates when an LLM is configured.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{Duration, Utc};
@@ -15,10 +10,6 @@ use mxr_protocol::{DeliveryData, DeliveryItemData, DeliveryScanSummary, Response
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{Delivery, DeliveryListFilter};
 
-// ---------------------------------------------------------------------------
-// IPC handlers
-// ---------------------------------------------------------------------------
-
 pub(super) async fn list_deliveries(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -30,8 +21,6 @@ pub(super) async fn list_deliveries(
     let deliveries = rows
         .into_iter()
         .filter(|row| account_id.is_none_or(|account_id| row.account_id == *account_id))
-        // A parcel with no news for too long went quiet: it is no longer
-        // active (blueprint 22, the delivery window), though All lists it.
         .filter(|row| {
             wanted != DeliveryListFilter::Active
                 || super::updates_digest::parcel_quiet_since(row).is_none_or(|quiet| quiet > now)
@@ -85,12 +74,6 @@ pub(super) async fn scan_deliveries(
     Ok(ResponseData::DeliveryScan { summary })
 }
 
-// ---------------------------------------------------------------------------
-// Scan engine
-// ---------------------------------------------------------------------------
-
-/// Scan newly-upserted messages during the post-sync fan-out. Respects
-/// `[deliveries].enabled`. Never errors the caller — failures are logged.
 pub(crate) async fn scan_messages(
     state: &AppState,
     message_ids: &[MessageId],
@@ -112,9 +95,6 @@ pub(crate) async fn scan_messages(
     summary
 }
 
-/// Backfill scan over mail received within `since_days`. Explicit user action,
-/// so it runs regardless of `[deliveries].enabled`. `dry_run` previews without
-/// calling the LLM or writing.
 async fn scan_recent(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -134,7 +114,6 @@ async fn scan_recent(
         ..Default::default()
     };
     for message_id in &ids {
-        // Explicit user backfill: retry messages the background scan gave up on.
         match scan_one(state, message_id, llm_enabled, dry_run, true).await {
             Ok(outcome) => summary_add(&mut summary, outcome),
             Err(error) => {
@@ -171,10 +150,6 @@ async fn scan_one(
     };
     outcome.scanned = 1;
 
-    // Never treat spam or trashed mail as a delivery. Phishing that spoofs
-    // carriers — fake "DHL" senders with bogus tracking numbers — lands in
-    // Spam; a genuine shipping notice does not. Skipping these is a cheap,
-    // high-precision guard against false-positive deliveries.
     if envelope
         .flags
         .intersects(MessageFlags::SPAM | MessageFlags::TRASH)
@@ -207,7 +182,6 @@ async fn scan_one(
         has_unsubscribe: !matches!(envelope.unsubscribe, UnsubscribeMethod::None),
     });
 
-    // Resolve a shortlist candidate: LLM confirm (live only), else degrade.
     if signal.decision == Decision::ShortlistLlm {
         if dry_run {
             outcome.shortlisted = 1;
@@ -231,8 +205,6 @@ async fn scan_one(
             )
             .await;
         }
-        // If still shortlisted (LLM off/blocked/errored), degrade to
-        // heuristic-only: keep only when a checksum-valid tracking # exists.
         if signal.decision == Decision::ShortlistLlm {
             signal.decision = degrade(&signal);
         }
@@ -270,11 +242,6 @@ async fn scan_one(
     Ok(outcome)
 }
 
-/// Heuristic-only resolution of a shortlist candidate (no LLM available):
-/// create only when there's both a tracking number AND a real shipping context
-/// (carrier/merchant sender, shipping subject, or schema.org). Without LLM
-/// confirmation, a bare tracking-number match from an unrelated email is
-/// almost always a false positive (loose formats match codes/hashes).
 fn degrade(signal: &DeliverySignal) -> Decision {
     if signal.primary_tracking_number().is_some()
         && mxr_deliveries::is_corroborated(&signal.matched_signals)
@@ -300,10 +267,6 @@ async fn lookup_exists(
         .map_err(|e| e.to_string())?
         .is_some())
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn summary_add(summary: &mut DeliveryScanSummary, outcome: ScanOutcome) {
     summary.scanned += outcome.scanned;

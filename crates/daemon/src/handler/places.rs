@@ -1,12 +1,3 @@
-//! Reading and Paper trail: mail that isn't from people, grouped by sender,
-//! with the reason each sender is there, one-key corrections, pins, and a
-//! sweep that archives everything unpinned.
-//!
-//! Kinds come from `mail_kind`, the same classifier the desk uses. The
-//! sweep's preview and the sweep itself share `sweep_selection`, and the
-//! archive runs as an ordinary mutation job, so undo works as it does for
-//! any bulk archive.
-
 use super::mail_kind::{self, KindSignals};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -25,14 +16,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Subjects shown in a sweep preview.
 const SWEEP_SAMPLE_SUBJECTS: usize = 5;
-/// Upper bound on messages listed per bundle, whatever the client asks.
 const MAX_MESSAGES_PER_BUNDLE: u32 = 200;
-/// Upper bound on bundles per page.
 const MAX_BUNDLES_PER_PAGE: u32 = 500;
 
-/// The kind of mail a place holds.
 const fn place_kind(place: MailPlaceData) -> SenderKindData {
     match place {
         MailPlaceData::Reading => SenderKindData::Reading,
@@ -40,22 +27,18 @@ const fn place_kind(place: MailPlaceData) -> SenderKindData {
     }
 }
 
-/// Everything deciding kinds needs about one account, read once.
 pub(super) struct AccountKinds {
     assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     released: HashSet<MessageId>,
     decisions: HashMap<String, ScreenerDisposition>,
     contacts: HashMap<String, DeskContact>,
-    /// Senders you have written to, for the never-bury rule.
     written_to: HashSet<String>,
-    /// Emails the user moved (`X`) whose move is in force.
     moves: HashMap<MessageId, mail_kind::SenderKind>,
     treatments: HashMap<MessageId, (String, String)>,
     owned: OwnedAddresses,
 }
 
 impl AccountKinds {
-    /// Observe the requested messages, including archived readers, through the same resolver.
     pub(super) async fn load(
         state: &AppState,
         account_id: &AccountId,
@@ -74,9 +57,6 @@ impl AccountKinds {
         let (mut assessments, asks) = store
             .assessment_facets_for_messages(account_id, &ids)
             .await?;
-        // The stored facets already validate policy, context and generation.
-        // Opening Now, Reading or Updates must not re-read and fingerprint all
-        // settled inbox threads merely to describe their stored homes.
         let mut pending: Vec<_> = candidates
             .iter()
             .filter(|m| {
@@ -98,9 +78,6 @@ impl AccountKinds {
                 .await?
                 .0;
         }
-        // Raw signals are only a fallback for unresolved detail reads (gist).
-        // A validated home needs neither sender histories nor a fresh scan of
-        // every outbound recipient. Normal lists never classify unresolved mail.
         let senders: Vec<String> = candidates
             .iter()
             .filter(|m| !assessments.contains_key(&m.id))
@@ -220,7 +197,6 @@ impl AccountKinds {
         }
     }
 
-    /// Mail you sent (or sent to yourself) never belongs to a place.
     pub(super) fn is_outbound(&self, message: &PlaceMessage) -> bool {
         message.direction == "outbound"
             || (message.direction != "inbound"
@@ -229,7 +205,6 @@ impl AccountKinds {
     }
 }
 
-/// One message in a place, with its classification.
 pub(super) struct Placed {
     pub message: PlaceMessage,
     pub kind: MailKindData,
@@ -240,9 +215,6 @@ pub(super) struct PlacedInbox {
     pub people_threads: HashMap<AccountId, Vec<mxr_core::ThreadId>>,
 }
 
-/// Inbox mail and retained externally filed Updates/Reading of `accounts`
-/// (from `sender_email` only, when given)
-/// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
     state: &AppState,
     accounts: &[AccountId],
@@ -259,18 +231,9 @@ async fn place_messages(
         .into_iter()
         .filter(|placed| placed.kind.kind == kind)
         .collect();
-    // Done in Updates or Reading takes a thread out of its early view too,
-    // even while To do keeps it in the inbox.
     super::modes::without_done(state, accounts, &[mode], placed).await
 }
 
-/// Inbox mail and retained externally filed Updates/Reading of `accounts`
-/// (from `sender_email` only, when given)
-/// that belongs in Reading or Paper trail, each with its kind, in one
-/// pass. Deliveries and invites have places of their own (and an invite
-/// may still need an answer), so they stay out, as they do from the
-/// desk's paper-trail count. The modes read Updates and Reading from here
-/// too, so a mode and its early view never disagree.
 pub(super) async fn placed_inbox(
     state: &AppState,
     accounts: &[AccountId],
@@ -279,8 +242,6 @@ pub(super) async fn placed_inbox(
     Ok(scan_inbox(state, accounts, sender_email).await?.mail)
 }
 
-/// Share classified inbox and retained filed mail with the rail's quiet-thread selector.
-/// Membership still decides whether each complete thread is actually quiet.
 pub(super) async fn scan_inbox(
     state: &AppState,
     accounts: &[AccountId],
@@ -288,8 +249,6 @@ pub(super) async fn scan_inbox(
 ) -> Result<PlacedInbox, HandlerError> {
     let mut placed = Vec::new();
     let mut people_threads = HashMap::new();
-    // Each account has independent classification inputs. Keep account order
-    // while allowing peers to use the reader pool during another account's read.
     let mut scans = futures::stream::iter(accounts.iter().cloned())
         .map(|account_id| async move {
             let candidates = state.store.mode_candidates(&account_id).await?;
@@ -305,7 +264,6 @@ pub(super) async fn scan_inbox(
                 {
                     continue;
                 }
-                // Classify first; only mail that stays gets its reason written.
                 let classification = kinds.classification(&message);
                 if message.in_inbox
                     && classification.kind.to_data() == SenderKindData::People
@@ -359,7 +317,6 @@ pub(super) async fn scoped_accounts(
     })
 }
 
-/// Account visibility for cached reads only; sweep/effect scopes stay enabled-only.
 pub(super) async fn scoped_cached_accounts(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -385,7 +342,6 @@ fn same_sender(message: &PlaceMessage, sender_email: Option<&str>) -> bool {
     })
 }
 
-/// Newest message first; storage order breaks a tie.
 fn newest_first(a: &Placed, b: &Placed) -> std::cmp::Ordering {
     b.message
         .date
@@ -397,8 +353,6 @@ fn non_empty(name: Option<&String>) -> Option<String> {
     name.filter(|n| !n.trim().is_empty()).cloned()
 }
 
-/// Which page of a place to list: bundles by `offset`/`limit`, and within
-/// each bundle messages by `message_offset`/`messages_per_bundle`.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PlacePage {
     pub limit: u32,
@@ -453,7 +407,6 @@ pub(super) async fn list_place(
                 .count() as u32;
             let pinned_count = items.iter().filter(|item| item.message.pinned).count() as u32;
             let message_count = items.len() as u32;
-            // Pinned messages first so the first page shows them, then newest.
             items.sort_by_key(|item| !item.message.pinned);
             let messages = items
                 .iter()
@@ -561,8 +514,6 @@ pub(super) async fn set_sender_kind(
     }
     let applied = apply_sender_kind(state, account_id, &sender_email, kind, None).await?;
     let previous = applied.previous;
-    // The decision is the move; logging and re-placing it is bookkeeping a
-    // failure of which must not report the move as failed.
     if let Err(error) =
         super::arrivals::after_sender_kind(state, account_id, &sender_email, applied, kind).await
     {
@@ -576,16 +527,12 @@ pub(super) async fn set_sender_kind(
     })
 }
 
-/// What a sender's decision was before `apply_sender_kind` replaced it.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AppliedKind {
     pub previous: Option<SenderKindData>,
     pub previous_decided_at: Option<chrono::DateTime<Utc>>,
 }
 
-/// Store a sender's kind (`None`: back to automatic) and return what it
-/// replaced. `decided_at` dates the decision (undo puts the original date
-/// back); `None` is now. `sender_email` is lowercased already.
 pub(super) async fn apply_sender_kind(
     state: &AppState,
     account_id: &AccountId,
@@ -610,8 +557,6 @@ pub(super) async fn apply_sender_kind(
                     account_id: account_id.clone(),
                     sender_email: sender_email.clone(),
                     disposition: mail_kind::disposition_for(kind),
-                    // A routing label chosen in the screener survives a
-                    // change of kind.
                     route_label: existing.and_then(|decision| decision.route_label),
                     decided_at: decided_at.unwrap_or_else(Utc::now),
                 })
@@ -634,8 +579,6 @@ pub(super) async fn pin_messages(
     message_ids: &[MessageId],
     pinned: bool,
 ) -> HandlerResult {
-    // One account at a time: its gate is held only while its own pins are
-    // written, never while waiting for another account's.
     let mut by_account: HashMap<AccountId, Vec<MessageId>> = HashMap::new();
     for id in message_ids {
         if let Some(envelope) = state.store.get_envelope(id).await? {
@@ -656,37 +599,13 @@ pub(super) async fn pin_messages(
     })
 }
 
-/// Keeps a sweep's recheck and each message's archive together, per
-/// account. A change to what a sweep may take (a pin, a sender move) holds
-/// its account's gate while it writes and bumps the account's generation;
-/// a sweep holds the gate for one message at a time, from its check through
-/// that message's archive, and redoes the recheck when the generation moved.
-///
-/// Lock order, which keeps it free of cycles:
-/// 1. A sweep takes the account's provider lock first
-///    (`AppState::acquire_provider_operation`), then that account's gate, one
-///    message at a time; it never holds two gates.
-/// 2. Changes (pins, sender moves, screener decisions, the contact refresh
-///    that marks list senders) take only gates, never a provider lock. A pin
-///    takes one account's gate at a time; only the contact refresh, which
-///    rewrites every account at once, holds several, in account-id order.
-///
-/// The provider call sits inside the gate on purpose: the archive the
-/// provider records is what the pin guarantee is about, and a pin landing
-/// between the check and that call would be archived on the server.
 #[derive(Default)]
 pub(crate) struct SweepGate {
     accounts: Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<u64>>>>,
-    /// Tests only: signalled when a sweep is about to wait for a provider
-    /// lock, so a test can act at exactly that point without sleeping.
     #[cfg(test)]
     pub(crate) before_provider: tokio::sync::Notify,
 }
 
-/// Held by a change to what a sweep may take while it writes; the
-/// accounts' generations move on when it is dropped, whether or not the
-/// write succeeded. Every writer of pins, screener decisions (sender kinds)
-/// or contacts' list-sender flag goes through `SweepGate::change`.
 pub(crate) struct SweepChange(Vec<tokio::sync::OwnedMutexGuard<u64>>);
 
 impl Drop for SweepChange {
@@ -706,7 +625,6 @@ impl SweepGate {
             .clone()
     }
 
-    /// Held by a change to what a sweep may take in these accounts.
     pub(crate) async fn change<'a>(
         &self,
         accounts: impl IntoIterator<Item = &'a AccountId>,
@@ -721,7 +639,6 @@ impl SweepGate {
         SweepChange(guards)
     }
 
-    /// Held by a sweep for one message, after its account's provider lock.
     pub(crate) async fn hold(&self, account_id: &AccountId) -> tokio::sync::OwnedMutexGuard<u64> {
         self.account(account_id).lock_owned().await
     }
@@ -731,8 +648,6 @@ impl SweepGate {
     }
 }
 
-/// A sweep chunk's view of what it may still archive, kept current as it
-/// goes: rechecked whenever an account's generation has moved since.
 pub(super) struct SweepCheck {
     scope: SweepScope,
     ids: Vec<MessageId>,
@@ -741,8 +656,6 @@ pub(super) struct SweepCheck {
 }
 
 impl SweepCheck {
-    /// Recheck the chunk now. Generations are read before the query, so a
-    /// change made during it is caught at the message.
     pub(super) async fn start(
         state: &AppState,
         scope: &SweepScope,
@@ -762,7 +675,6 @@ impl SweepCheck {
         })
     }
 
-    /// The chunk's ids it may take right now.
     pub(super) fn kept(&self) -> Vec<MessageId> {
         self.ids
             .iter()
@@ -771,8 +683,6 @@ impl SweepCheck {
             .collect()
     }
 
-    /// Whether `id` in `account_id` may still be archived. Call with that
-    /// account's gate held (`generation` is its value).
     pub(super) async fn allows(
         &mut self,
         state: &AppState,
@@ -788,8 +698,6 @@ impl SweepCheck {
     }
 }
 
-/// The contact refresh, which can change who counts as a list sender (and
-/// so what Reading and Paper trail hold) in every account at once.
 pub(crate) async fn refresh_contacts(state: &AppState) -> Result<u32, HandlerError> {
     let accounts: Vec<AccountId> = state
         .store
@@ -804,12 +712,9 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> Result<u32, HandlerErr
     Ok(rows)
 }
 
-/// How long a sweep preview can be committed.
 const SWEEP_PREVIEW_TTL: Duration = Duration::from_secs(10 * 60);
-/// Previews kept at once; the oldest goes first.
 const MAX_SWEEP_PREVIEWS: usize = 64;
 
-/// What a sweep covers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SweepScope {
     pub place: MailPlaceData,
@@ -817,8 +722,6 @@ pub(super) struct SweepScope {
     pub sender_email: Option<String>,
 }
 
-/// Which of `ids` a sweep of `scope` may still archive: in the place and
-/// unpinned right now. The sweep's job asks before every chunk.
 pub(super) async fn still_sweepable(
     state: &AppState,
     scope: &SweepScope,
@@ -838,9 +741,6 @@ struct SweepPreviewEntry {
     created: Instant,
 }
 
-/// Dry-run selections waiting to be committed, by preview token. The real
-/// sweep archives only what its preview listed: mail that arrives, moves
-/// into the place, or is pinned after the preview is never taken.
 #[derive(Default)]
 pub(crate) struct SweepPreviews {
     entries: Mutex<HashMap<String, SweepPreviewEntry>>,
@@ -872,8 +772,6 @@ impl SweepPreviews {
         token
     }
 
-    /// The preview behind `token` for `scope`, once: a token cannot be
-    /// replayed, and a request for another scope leaves it usable.
     fn take(&self, token: &str, scope: &SweepScope) -> Result<SweepPreviewEntry, HandlerError> {
         let mut entries = self.entries.lock();
         match entries.get(token) {
@@ -898,9 +796,6 @@ impl SweepPreviews {
     }
 }
 
-/// What a sweep archives: every unpinned message of the place (or of one
-/// sender's bundle in it), narrowed to `allowed` when committing a preview.
-/// The preview and the sweep both come from here.
 struct SweepSelection {
     message_ids: Vec<MessageId>,
     preview: SweepPreviewData,
@@ -914,7 +809,6 @@ async fn sweep_selection(
     let accounts = scoped_accounts(state, scope.account_id.as_ref()).await?;
     let mut placed =
         place_messages(state, &accounts, scope.place, scope.sender_email.as_deref()).await?;
-    // A provider sweep only archives inbox mail, not retained mode items.
     placed.retain(|item| item.message.in_inbox);
     let (pinned, mut selected): (Vec<&Placed>, Vec<&Placed>) =
         placed.iter().partition(|item| item.message.pinned);
@@ -1001,7 +895,6 @@ pub(super) async fn sweep_place(
         )
     })?;
     let previewed = state.sweep_previews.take(token, &scope)?;
-    // Only what the preview listed, still in the place and still unpinned.
     let selection = sweep_selection(state, &scope, Some(&previewed.message_ids)).await?;
     if selection.message_ids.is_empty() {
         return Ok(ResponseData::PlaceSwept {

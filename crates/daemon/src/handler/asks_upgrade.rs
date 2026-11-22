@@ -1,4 +1,3 @@
-//! Upgrade a bounded batch before new automatic identities can be inserted.
 use super::HandlerError;
 use crate::state::AppState;
 use chrono::{DateTime, Utc};

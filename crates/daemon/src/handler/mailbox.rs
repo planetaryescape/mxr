@@ -75,10 +75,6 @@ async fn resolve_local_account_id(
         .map(|account| account.id.clone()))
 }
 
-/// A `label_role` request resolved to the role and the accounts it covers:
-/// the named account, or every enabled account when none is named. `None`
-/// when the request carries no role (an old client), so the label id path
-/// runs as before.
 async fn resolve_role_scope(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -95,9 +91,6 @@ async fn resolve_role_scope(
     )))
 }
 
-/// The accounts a merged listing may read: the named account, or every
-/// enabled one, and only if it is enabled. A disabled account's mail stays
-/// out whether it is named or not.
 async fn enabled_accounts_in_scope(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -179,8 +172,6 @@ pub(super) async fn list_envelopes(
         .map(|account| account.id)
         .collect::<HashSet<_>>();
     envelopes.retain(|envelope| visible_accounts.contains(&envelope.account_id));
-    // Store reads already hydrate provider label IDs in the envelope query.
-    // Repeating two label queries per row cost 10,000 round trips on a TUI page.
 
     tracing::debug!(
         count = envelopes.len(),
@@ -243,8 +234,6 @@ pub(super) async fn list_invites(
     limit: u32,
 ) -> HandlerResult {
     let records = state.store.list_calendar_invites(limit, account_id).await?;
-    // Cache account addresses so a page of invites across a handful of
-    // accounts doesn't issue one address query per row.
     let mut address_cache: std::collections::HashMap<AccountId, Vec<String>> =
         std::collections::HashMap::new();
     let mut invites = Vec::with_capacity(records.len());
@@ -263,9 +252,6 @@ pub(super) async fn list_invites(
                 addresses
             }
         };
-        // Derive the viewer's own RSVP status so the invites list can show
-        // it without each client re-walking attendees. Mirrors the GetBody
-        // enrichment in `enrich_calendar_viewer_fields`.
         if let Some((email, partstat)) =
             mxr_mail_parse::matching_attendee_lenient(&metadata, &addresses).map(|a| {
                 (
@@ -293,11 +279,6 @@ pub(super) async fn backfill_invites(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
-    // First recover attachment-only invites: messages whose `.ics` arrived as
-    // an attachment with no inline `text/calendar` part have no parsed calendar
-    // metadata in their stored body, so the row rebuild below cannot see them.
-    // Re-hydrate them from the provider (whose body fetch now parses calendar
-    // attachments) before rebuilding rows from body metadata.
     let rehydrated = rehydrate_attachment_only_invites(state, account_id).await;
     let backfilled = state
         .store
@@ -309,11 +290,6 @@ pub(super) async fn backfill_invites(
     })
 }
 
-/// Re-fetch messages that carry a calendar attachment but have no parsed
-/// calendar metadata, persisting the re-parsed body (which now populates
-/// `metadata.calendar` and the `calendar_invites` row). Returns the count of
-/// messages that gained calendar metadata. Per-message failures are logged and
-/// skipped so one bad message never aborts the whole pass.
 async fn rehydrate_attachment_only_invites(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -345,8 +321,6 @@ async fn rehydrate_attachment_only_invites(
                     continue;
                 }
             };
-            // Already has calendar metadata, or has no calendar attachment to
-            // recover from — nothing to re-hydrate.
             if body.metadata.calendar.is_some()
                 || !body
                     .attachments
@@ -384,9 +358,6 @@ async fn rehydrate_attachment_only_invites(
     rehydrated
 }
 
-/// The next page of every envelope in id order. Pages seek by key rather than
-/// offset, so rows rewritten during the walk (a re-hydrated invite is saved
-/// again) cannot shift a later page past unvisited rows.
 async fn next_envelope_page(
     store: &mxr_store::Store,
     after: &mut Option<MessageId>,
@@ -514,18 +485,6 @@ pub(super) async fn mark_invite_answered(
     Ok(ResponseData::Acknowledged)
 }
 
-/// Validate a draft's inline iCal REPLY at the send choke point and rebuild
-/// its ICS server-side from the trusted `(source message, action)` — never
-/// from client-supplied bytes (sidecar or IPC), which a tampered compose
-/// session could forge.
-///
-/// Rejects, with an `invalid`-kinded error, when: the source message isn't a
-/// real invite owned by the sending account; the RSVP PARTSTAT isn't a
-/// sendable response; or the invite's matched ATTENDEE (an owned address of
-/// this account) doesn't equal the effective `from` the send resolved to
-/// (e.g. the user edited `from:` to a different owned alias after the session
-/// started). On success returns a reply whose ATTENDEE and ICS are the
-/// canonical, server-derived values.
 pub(super) async fn validate_and_rebuild_inline_reply(
     state: &AppState,
     account_id: &AccountId,
@@ -543,7 +502,6 @@ pub(super) async fn validate_and_rebuild_inline_reply(
         }
     };
 
-    // The source must be a real invite that belongs to the sending account.
     let source_account = preview_account_id(state, &reply.source_message_id).await?;
     if &source_account != account_id {
         return Err(format!(
@@ -552,12 +510,8 @@ pub(super) async fn validate_and_rebuild_inline_reply(
         ));
     }
 
-    // Rebuild the canonical preview (re-validates the invite and matches the
-    // ATTENDEE against this account's owned addresses); the ICS it returns is
-    // the only ICS we trust.
     let preview = build_invite_response_preview(state, &reply.source_message_id, action).await?;
 
-    // The identity we RSVP as must be the identity we send from.
     if !preview.attendee_email.eq_ignore_ascii_case(&from.email) {
         return Err(format!(
             "invalid invite reply: ATTENDEE {} does not match the send From {}",
@@ -908,12 +862,9 @@ pub(super) async fn read_attachment_chunk(
 }
 
 fn collect_html_image_sources(html: &str) -> Vec<String> {
-    // Over the parser budget, or with the HTML helper lost, no image list is
-    // offered for the message; the document is not parsed here.
     IMAGE_SOURCES.call(html, &()).unwrap_or_default()
 }
 
-/// The parse, which runs in the HTML helper process.
 pub(crate) static IMAGE_SOURCES: Job<(), Vec<String>> =
     Job::new("daemon.image_sources", |html, ()| {
         if !mxr_reader::within_budget(html) {
@@ -955,9 +906,6 @@ async fn load_body_for_message(
     enrich_calendar_viewer_fields(state, message_id, body).await
 }
 
-/// Derive `viewer_partstat`, `viewer_attendee_email`, and `is_update` on the
-/// body's `metadata.calendar` so every client (TUI, web SPA) renders the
-/// invite card consistently without re-walking attendees or stored invites.
 async fn enrich_calendar_viewer_fields(
     state: &AppState,
     message_id: &MessageId,
@@ -1111,8 +1059,6 @@ fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&En
         || raw_headers.contains("content-type: text/html")
 }
 
-/// Keeps the SENT bit the store already has on a hydrated envelope. The plain
-/// IMAP fetch carries no Gmail labels, so it can miss a SENT the store has.
 fn keep_stored_sent_flag(
     fetched: &mut mxr_core::types::Envelope,
     stored: &mxr_core::types::Envelope,
@@ -1427,9 +1373,6 @@ async fn materialize_remote_asset(
         return Ok((path, None));
     }
 
-    // The same guards the reader uses for a linked article: public addresses
-    // only, every redirect re-checked, no proxy, a pinned address and a
-    // deadline. `Accept::Image` also refuses a body that is not an image.
     let policy = mxr_reading::fetch::FetchPolicy::for_image(MAX_REMOTE_ASSET_BYTES as usize);
     #[cfg(test)]
     let policy = policy.allowing_loopback_for_tests();
@@ -1467,8 +1410,6 @@ fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {
 
 pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> HandlerResult {
     tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
-    // Two queries for the whole set instead of two per message. Missing
-    // bodies stay per-id failures; one absent body must not fail the rest.
     let mut found = state
         .store
         .bodies_for_messages(message_ids)
@@ -1501,8 +1442,6 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
     Ok(ResponseData::Bodies { bodies, failures })
 }
 
-/// Largest page a reader may ask for in one open. A client asking for more
-/// still gets a bounded answer instead of the whole thread.
 const MAX_THREAD_WINDOW: u32 = 500;
 
 pub(super) async fn get_thread(
@@ -1510,9 +1449,6 @@ pub(super) async fn get_thread(
     thread_id: &ThreadId,
     window: Option<&mxr_protocol::ThreadWindow>,
 ) -> HandlerResult {
-    // A legacy thread id can span accounts. Only enabled accounts' messages
-    // are read, so a disabled account's subject, snippet, participants and
-    // message ids never reach a reader (which would go on to fetch bodies).
     let accounts = enabled_accounts_in_scope(state, None).await?;
     let thread = state
         .store
@@ -1528,8 +1464,6 @@ pub(super) async fn get_thread(
         .into_iter()
         .filter(|message| accounts.contains(&message.account_id))
         .collect::<Vec<_>>();
-    // The summary describes the whole conversation, so validate it against
-    // every message before the window hides older ones from the reader.
     let summary = super::summarize::valid_cached_summary(
         &state.store,
         thread_id,
@@ -1667,8 +1601,6 @@ mod hydration_flag_tests {
 
     #[test]
     fn hydration_keeps_the_stored_sent_bit_the_plain_fetch_lacks() {
-        // Gmail over IMAP: the message is stored as sent, but the plain fetch
-        // returns no SENT label, so the fetched envelope lacks the bit.
         let stored = TestEnvelopeBuilder::new()
             .flags(MessageFlags::READ | MessageFlags::SENT)
             .build();

@@ -1,9 +1,3 @@
-//! Slice 5.1 / 5.2 of docs/reference/ai-email.md
-//!
-//! Thread and recipient briefings with content-hash caching. The
-//! briefing daemon module owns prompt construction, cache lookup,
-//! LLM invocation, and citation validation.
-
 use crate::state::AppState;
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::CitationRef;
@@ -100,8 +94,6 @@ pub(crate) async fn get_thread_briefing(
                  [msg_id=...] markers. If you can't summarize meaningfully, return \
                  a one-line note and an empty citations array.",
             )),
-            // Wrap the attacker-controllable thread transcript. The
-            // citation validator below is the boundary.
             ChatMessage::user(format!(
                 "THREAD:\n{}\n\nReturn JSON only.",
                 wrap_untrusted_mail(&transcript)
@@ -112,7 +104,6 @@ pub(crate) async fn get_thread_briefing(
     let response = match runtime.complete(req).await {
         Ok(r) => r,
         Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
-            // Deterministic fallback: list participants and most recent line.
             let fallback = deterministic_thread_fallback(&envelopes);
             let entry = ContextBriefing {
                 id: new_briefing_id(),
@@ -124,7 +115,6 @@ pub(crate) async fn get_thread_briefing(
                 citations: vec![],
                 generated_at: chrono::Utc::now(),
             };
-            // Don't cache the fallback (it's stale-by-default).
             return Ok(ResponseData::ThreadBriefing {
                 briefing: to_thread_briefing(&entry, false),
             });
@@ -139,7 +129,6 @@ pub(crate) async fn get_thread_briefing(
     let mut citations = Vec::new();
     for c in parsed.citations {
         if !allowed_set.contains(c.msg_id.as_str()) {
-            // Reject and fall through with a note.
             tracing::warn!(msg_id = %c.msg_id, "Briefing: ignoring unknown msg_id");
             continue;
         }
@@ -236,8 +225,6 @@ fn to_thread_briefing(b: &ContextBriefing, from_cache: bool) -> ThreadBriefingDa
     }
 }
 
-// --- recipient briefings (Slice 5.2) -------------------------------
-
 pub(crate) async fn get_recipient_briefing(
     state: &AppState,
     account_id: &AccountId,
@@ -263,7 +250,6 @@ pub(crate) async fn get_recipient_briefing(
         }
     }
 
-    // Deterministic baseline -- works even when the LLM is off.
     let baseline = recipient_baseline(&key, contact.as_ref());
 
     let runtime = state.llm.for_feature(LlmFeature::Briefing);
@@ -277,9 +263,6 @@ pub(crate) async fn get_recipient_briefing(
                  {\"summary\": str (markdown)}\nIf no useful summary is possible, \
                  return an empty summary.",
             )),
-            // The baseline is deterministic contact stats plus the
-            // mail-derived address; wrap it as untrusted data all the
-            // same. `baseline` stays intact for the stored fallback below.
             ChatMessage::user(wrap_untrusted_mail(&baseline)),
         ],
     };
@@ -296,7 +279,6 @@ pub(crate) async fn get_recipient_briefing(
                 .unwrap_or_default()
         }
         Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => {
-            // Don't cache the deterministic-only fallback.
             return Ok(ResponseData::RecipientBriefing {
                 briefing: ThreadBriefingData {
                     thread_id: key,
@@ -321,8 +303,6 @@ pub(crate) async fn get_recipient_briefing(
         citations: vec![],
         generated_at: chrono::Utc::now(),
     };
-    // Refused when a delete touched this contact while the model ran; the
-    // answer is still returned, just not cached.
     state
         .store
         .upsert_recipient_briefing_if_contact_unchanged(
@@ -337,8 +317,6 @@ pub(crate) async fn get_recipient_briefing(
 }
 
 struct ContactSummary {
-    /// The row's `refreshed_at`: the version the briefing write is checked
-    /// against.
     version: i64,
     last_inbound_at: Option<chrono::DateTime<chrono::Utc>>,
     last_outbound_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -531,8 +509,6 @@ mod tests {
         let end = user
             .find(mxr_llm::UNTRUSTED_MAIL_END)
             .expect("end marker present");
-        // The mail-derived contact address in the baseline must sit inside
-        // the markers.
         let addr = user
             .find("alice@example.com")
             .expect("contact address present in baseline");

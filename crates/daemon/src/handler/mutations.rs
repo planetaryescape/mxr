@@ -24,17 +24,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// How long after the mutation the user can undo it. Matches the plan
-/// (~60s) and pairs with `tick_connection_state`-style UI affordances on
-/// the TUI side.
 pub(super) const UNDO_WINDOW_SECS: i64 = 60;
 const MUTATION_JOB_CHUNK_SIZE: usize = 100;
 const MAX_RETAINED_JOBS: usize = 100;
 pub(super) use super::job_records::MAX_JOB_FAILURES;
-/// Waits in a row, with nothing done in between, before a job gives up on a
-/// provider that keeps refusing.
 pub(super) const MAX_CONSECUTIVE_RATE_LIMIT_WAITS: u32 = 20;
-/// Longest a job waits out one rate limit, whatever the provider asked.
 const MAX_RATE_LIMIT_WAIT_SECS: u64 = 15 * 60;
 #[cfg(not(test))]
 const PROVIDER_MUTATION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -140,8 +134,6 @@ async fn enforce_draft_safety_with_override(
         },
     )
     .await?;
-    // Always persist the audit row, including the Safe path. Helps
-    // `mxr doctor` and post-mortem debugging.
     let _ = state
         .store
         .record_safety_run(&draft.account_id, Some(&draft.id), &report)
@@ -155,9 +147,6 @@ async fn enforce_draft_safety_with_override(
         return Ok(());
     }
 
-    // Blocker present. If an override token was provided AND it covers
-    // the actually-present blocker kinds, consume it and let the send
-    // proceed. Otherwise refuse.
     let blocker_kinds: Vec<_> = report
         .issues
         .iter()
@@ -165,8 +154,6 @@ async fn enforce_draft_safety_with_override(
         .map(|i| i.code)
         .collect();
 
-    // An unfilled gap is never overridden: the text isn't finished, and no
-    // reviewed token can make `[[?: the date]]` something to send.
     if blocker_kinds.contains(&DraftSafetyIssueCode::UnfilledGap) {
         let messages = report
             .issues
@@ -213,12 +200,6 @@ async fn enforce_draft_safety_with_override(
         .collect::<Vec<_>>()
         .join("; ");
 
-    // Mint a single-use override token scoped to this draft and the
-    // blocker kinds that fired, and surface it in the error so the
-    // caller can use the reviewed revision/operation with `--override-safety <token>` without a
-    // separate `mxr send --check` round-trip. This does NOT auto-approve
-    // the send: the token only exists in the rejection, and the user
-    // must consciously re-issue the send carrying it.
     let resend_hint = match state
         .store
         .mint_safety_override(Some(&draft.id), &blocker_kinds)
@@ -237,10 +218,6 @@ async fn enforce_draft_safety_with_override(
     ))
 }
 
-/// Build a `mxr_safety::SafetyContext` from store data: self addresses,
-/// known contacts for typo/first-time-external detection, per-recipient
-/// style baselines for tone-mismatch, and the parent thread's display
-/// names for reply-all vocative filtering.
 async fn build_safety_context(
     state: &AppState,
     draft: &Draft,
@@ -320,11 +297,6 @@ async fn build_safety_context(
                 .chain(envelope.bcc.iter())
             {
                 if let Some(name) = participant.name.as_deref() {
-                    // Push the full display ("Sam Carter") and each alpha
-                    // token ("Sam", "Carter"). The reply-all vocative
-                    // regex matches a single capitalized word, so we need
-                    // tokens; full-name pushes future-proof callers that
-                    // match exact display.
                     let trimmed = name.trim();
                     if !trimmed.is_empty() && seen.insert(trimmed.to_ascii_lowercase()) {
                         thread_display_names.push(trimmed.to_string());
@@ -353,19 +325,9 @@ async fn build_safety_context(
     })
 }
 
-/// Cap how many contacts we pull into safety context. The typo check is
-/// O(recipients * contacts) with a damerau-levenshtein early-exit, so a
-/// few hundred rows is fine; large mailboxes don't get penalized.
 const KNOWN_CONTACTS_LIMIT: u32 = 200;
-/// Cap how many recipients we look up baselines for. Drafts with many
-/// recipients are almost always replies-to-list; the tone check is most
-/// useful for direct correspondence.
 const CONTACT_STYLE_LOOKUP_CAP: usize = 10;
 
-/// The `[safety]` config as the safety crate takes it. A threshold outside
-/// 0.0..=1.0 is clamped to the documented range, and NaN falls back to the
-/// crate default, so a mistyped value cannot silence the tone check or make
-/// it fire on every send.
 pub(super) fn safety_check_config(config: &mxr_config::SafetyConfig) -> mxr_safety::SafetyConfig {
     let threshold = config.tone.formality_delta_threshold;
     let formality_delta_threshold = if threshold.is_nan() {
@@ -387,16 +349,11 @@ pub(super) fn safety_check_config(config: &mxr_config::SafetyConfig) -> mxr_safe
     }
 }
 
-/// Run the full safety pipeline: existing daemon checks (recipients,
-/// reply-all parent diff) + new `mxr-safety` deterministic checks.
 pub(super) async fn run_safety_pipeline(
     state: &AppState,
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> Result<DraftSafetyReport, String> {
-    // Clients pass an mxr `ThreadId` when they have one; a reply draft can
-    // always be tied to its thread through `In-Reply-To`, so fall back to that
-    // rather than run the thread-scoped checks against nothing.
     let derived_context;
     let context = if context.thread_id.is_none() && draft.reply_headers.is_some() {
         derived_context = DraftSafetyContextData {
@@ -420,9 +377,6 @@ pub(super) async fn run_safety_pipeline(
         }
     }
 
-    // Slice 4.1 wiring (C2.5): if the caller provided a
-    // `proposed_send_at`, emit a Severity::Info hint when the slot is
-    // materially slower than the recipient's fastest historic bucket.
     if let Some(proposed_at) = context.proposed_send_at {
         let issues = super::safety_timing::check_send_time(state, draft, proposed_at).await;
         report.extend(issues);
@@ -431,10 +385,6 @@ pub(super) async fn run_safety_pipeline(
     Ok(report)
 }
 
-/// IPC handler: `Request::CheckDraftSafety`. When the verdict is
-/// Blocked, mints a single-use override token and stamps it onto each
-/// Blocker issue, so callers (CLI, TUI) can surface a copy-pasteable
-/// `--override-safety <token>` value next to the user-facing reason.
 pub(crate) async fn check_draft_safety_request(
     state: &Arc<AppState>,
     draft: &Draft,
@@ -444,13 +394,9 @@ pub(crate) async fn check_draft_safety_request(
         super::draft_attachments::require_visible_set(draft, &stored)?;
     }
     super::draft_attachments::resolve(state, draft).await?;
-    // `--check` builds a transient draft that was never stored, so the text
-    // alternative has to be materialised here too — otherwise an HTML draft
-    // would be checked against an empty body and always come back SAFE.
     let draft = &*materialize_text_alternative(draft);
     let mut report = run_safety_pipeline(state, draft, context).await?;
 
-    // Always audit a check run.
     let _ = state
         .store
         .record_safety_run(&draft.account_id, Some(&draft.id), &report)
@@ -467,7 +413,6 @@ pub(crate) async fn check_draft_safety_request(
             .filter(|i| i.severity == DraftSafetySeverity::Blocker)
             .map(|i| i.code)
             .collect();
-        // No token for a draft with an unfilled gap: nothing overrides it.
         if !blocker_kinds.is_empty() && !blocker_kinds.contains(&DraftSafetyIssueCode::UnfilledGap)
         {
             match state
@@ -516,7 +461,6 @@ async fn log_mutation(
         .map_err(|e| e.to_string())
 }
 
-/// Claims the message before anything is sent. Only a granted claim may send.
 async fn claim_unsubscribe(state: &AppState, envelope: &Envelope) -> Result<Claim, HandlerError> {
     Ok(state
         .store
@@ -528,10 +472,6 @@ async fn claim_unsubscribe(state: &AppState, envelope: &Envelope) -> Result<Clai
         .await?)
 }
 
-/// Grants this attempt the right to send. `Ok(None)` means an unsubscribe was
-/// already confirmed, so the request is acknowledged without sending. A live
-/// claim held by another attempt is a retryable error, never an acknowledgement:
-/// that attempt may still fail and release its claim.
 async fn claim_for_send(
     state: &AppState,
     envelope: &Envelope,
@@ -548,9 +488,6 @@ async fn claim_for_send(
     }
 }
 
-/// Records a send that happened. The claim stays in place, so a retry is
-/// acknowledged without sending. Not retryable: a retry would report success
-/// for an unsubscribe that was never recorded.
 async fn confirm_unsubscribe(
     state: &AppState,
     envelope: &Envelope,
@@ -570,10 +507,6 @@ async fn confirm_unsubscribe(
         })
 }
 
-/// The attempt did not confirm an unsubscribe, so its claim is released and a
-/// retry may send. `reason` is shown to the user and logged, so it must never
-/// carry a URL or an address. If the release itself fails, the claim stays and
-/// the error says so: a stuck marker is safer than a second send.
 async fn not_confirmed(
     state: &AppState,
     envelope: &Envelope,
@@ -607,10 +540,6 @@ async fn not_confirmed(
     }
 }
 
-/// Opening the page in a browser hands the request to the user. mxr cannot see
-/// whether the page loaded or the sender acted, so nothing is recorded as sent.
-/// The claim is released so a retry opens the page again, and the handoff is
-/// logged so the event log shows that it happened.
 pub(super) async fn browser_handoff(
     state: &AppState,
     envelope: &Envelope,
@@ -705,17 +634,9 @@ fn emit_mutation_reconciliation_failed_if_needed(
     );
 }
 
-/// How a batch treats the trouble a background job can ride out. An
-/// immediate request (one the user is waiting on) keeps the strict rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ChunkMode {
-    /// A message missing from the store fails the batch; a rate limit is a
-    /// plain failure of that message.
     Immediate,
-    /// A selection job's chunk: a message missing from the store is skipped,
-    /// a rate limit hands the rest back to the caller to retry, and the
-    /// failing message is counted as failed (the rest of its account's batch
-    /// stays skipped). It keeps no undo (D192): no snapshots, no entry.
     Job,
 }
 
@@ -725,8 +646,6 @@ impl ChunkMode {
     }
 }
 
-/// Why one message's mutation failed. A rate limit is kept apart so a
-/// background job can wait it out instead of stopping.
 #[derive(Debug)]
 pub(super) enum ApplyError {
     RateLimited {
@@ -750,25 +669,18 @@ impl From<String> for ApplyError {
     }
 }
 
-/// A provider asked a job to wait; these messages were not tried.
 #[derive(Debug, Clone)]
 pub(super) struct RateLimitStop {
     pub retry_after_secs: u64,
     pub unprocessed: Vec<mxr_core::MessageId>,
 }
 
-/// What one chunk of a mutation did.
 pub(super) struct ChunkOutcome {
     pub result: MutationResultData,
-    /// Left out by a sweep's check (not failures).
     pub left_out: u32,
-    /// Not in the store any more (background jobs only).
     pub missing: u32,
-    /// The first failing message of each account that failed.
     pub failures: Vec<JobFailureData>,
     pub rate_limit: Option<RateLimitStop>,
-    /// Accounts whose label counts are stale until refreshed. Empty for an
-    /// immediate request, which refreshes them before it returns.
     pub stale_label_counts: Vec<mxr_core::AccountId>,
 }
 
@@ -791,9 +703,6 @@ pub(super) async fn mutation(
     })
 }
 
-/// `mutation`, holding each message to a sweep's check as it goes, and with
-/// the trouble a background job rides out when `mode` says so. A label edit
-/// with `labels` applies those provider ids instead of resolving its names.
 async fn mutation_checked(
     state: &AppState,
     cmd: &MutationCommand,
@@ -803,11 +712,7 @@ async fn mutation_checked(
     labels: Option<&FrozenLabelEdits>,
 ) -> Result<ChunkOutcome, HandlerError> {
     let message_ids = mutation_message_ids(cmd);
-    // A selection job's chunk keeps no undo (D192).
     let undoable_kind = undoable_kind(cmd).filter(|_| !mode.is_job());
-    // One id per MutationCommand batch — drives both the dedup log
-    // (retry safety) and the undo log (user-undo). Generated up-front
-    // so dedup applies even to non-undoable commands.
     let mutation_id = uuid::Uuid::now_v7().to_string();
 
     if matches!(cmd, MutationCommand::Route { dry_run: true, .. }) {
@@ -868,11 +773,6 @@ async fn mutation_checked(
     let skipped = accounts.iter().map(|account| account.skipped).sum();
     let failed = accounts.iter().map(|account| account.failed).sum();
 
-    // Persist an undo entry for undoable kinds whenever a message may have
-    // changed: those that succeeded, and the one that failed part way (a
-    // retry is a new mutation with its own snapshot, so this entry is the
-    // only record of the original). The mutation_id is the same one used
-    // for dedup above; undo + dedup share a key by design.
     succeeded_snapshots.extend(failed_snapshots);
     let (mutation_id, undo_unavailable) = match (undoable_kind, succeeded_snapshots.is_empty()) {
         (Some(kind), false) => {
@@ -886,9 +786,6 @@ async fn mutation_checked(
                 expires_at: now + UNDO_WINDOW_SECS,
             };
             if let Err(error) = state.store.write_undo_entry(&entry).await {
-                // Non-fatal: the mutation already succeeded. The user
-                // loses the undo affordance, but flag it so clients can
-                // say so rather than silently dropping undo.
                 tracing::warn!(%error, "failed to write undo entry");
                 (None, true)
             } else {
@@ -920,9 +817,6 @@ async fn mutation_checked(
     })
 }
 
-/// The envelopes of `message_ids` grouped by account, and (when
-/// `skip_missing`) the ids the store no longer has. Without `skip_missing`
-/// one missing message is an error.
 async fn envelopes_by_account(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
@@ -952,33 +846,17 @@ async fn envelopes_by_account(
     Ok((grouped, missing))
 }
 
-/// What `apply_mutation_batch` did, with each message's state from before
-/// it for undo (undoable kinds only).
 pub(super) struct BatchOutcome {
-    /// Per account, sorted by name.
     pub accounts: Vec<AccountMutationResultData>,
     pub changed: Vec<UndoEntrySnapshot>,
-    /// Messages whose mutation failed, possibly after part of it applied
-    /// (ReadAndArchive marks read before it archives). Undo restores them
-    /// too: restoring an unchanged message is a no-op.
     pub failed: Vec<UndoEntrySnapshot>,
-    /// Left out by a sweep's check (not failures).
     pub left_out: u32,
-    /// Not in the store (only counted for `ChunkMode::Job`).
     pub missing: u32,
-    /// The first failing message of each account that failed (only recorded
-    /// for `ChunkMode::Job`).
     pub failures: Vec<JobFailureData>,
-    /// Set when a provider asked to wait (only for `ChunkMode::Job`).
     pub rate_limit: Option<RateLimitStop>,
-    /// Accounts whose label counts the batch left stale: a job refreshes them
-    /// on its own schedule, an immediate batch has already done it.
     pub stale_label_counts: Vec<mxr_core::AccountId>,
 }
 
-/// Apply `cmd` message by message under `mutation_id`, account by account,
-/// stopping an account at its first failure, and holding each message to a
-/// sweep's `check` when there is one.
 pub(super) async fn apply_mutation_batch(
     state: &AppState,
     cmd: &MutationCommand,
@@ -988,16 +866,12 @@ pub(super) async fn apply_mutation_batch(
     apply_mutation_batch_with(state, cmd, mutation_id, check, ChunkMode::Immediate, None).await
 }
 
-/// The provider label ids a label edit applies in one account, resolved once
-/// when the user previewed it. A label renamed, or another created under the
-/// old name, afterwards does not change what the edit touches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolvedLabelEdit {
     pub add: Vec<String>,
     pub remove: Vec<String>,
 }
 
-/// [`ResolvedLabelEdit`] for each account a selection reaches.
 pub(super) type FrozenLabelEdits = HashMap<mxr_core::AccountId, ResolvedLabelEdit>;
 
 async fn apply_mutation_batch_with(
@@ -1008,18 +882,10 @@ async fn apply_mutation_batch_with(
     mode: ChunkMode,
     labels: Option<&FrozenLabelEdits>,
 ) -> Result<BatchOutcome, HandlerError> {
-    // A selection job's chunk keeps no undo (D192), so it takes no snapshots.
     let undoable = undoable_kind(cmd).is_some() && !mode.is_job();
     let mut left_out = 0u32;
-    // Snapshot the prior state of every envelope so that undoable
-    // mutations can be reversed. Captured before `apply_mutation_to_envelope`
-    // touches the store.
     let mut succeeded_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
     let mut failed_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
-    // Every message the batch may have changed, reindexed together at the
-    // end. Each search commit also reloads the reader, so a commit per
-    // message made batch time grow with commit latency (about 30 ms a
-    // message in a debug build: 12 s of a 405-message archive job).
     let mut touched_ids: Vec<mxr_core::MessageId> = Vec::new();
     let mut failures: Vec<JobFailureData> = Vec::new();
     let mut rate_limit: Option<RateLimitStop> = None;
@@ -1055,9 +921,6 @@ async fn apply_mutation_batch_with(
                 continue;
             }
         };
-        // A label edit with frozen labels applies this account's ids. A
-        // message of an account the preview did not resolve labels for is
-        // not edited by name instead.
         let resolved = match (labels, cmd) {
             (Some(labels), MutationCommand::ModifyLabels { .. }) => match labels.get(&account_id) {
                 Some(edit) => Some(edit),
@@ -1073,9 +936,6 @@ async fn apply_mutation_batch_with(
         };
 
         for (index, envelope) in envelopes.iter().enumerate() {
-            // Capture the prior state BEFORE the mutation runs so undo
-            // can restore exactly what the user had. Cheap clone — flags
-            // are u32 and label IDs are short strings.
             let snapshot = undoable.then(|| UndoEntrySnapshot {
                 message_id: envelope.id.clone(),
                 account_id: envelope.account_id.clone(),
@@ -1105,8 +965,6 @@ async fn apply_mutation_batch_with(
                     .await
                 }
                 Some(check) => {
-                    // Provider lock, then the account's sweep gate (see
-                    // `SweepGate` for the order), held through the archive.
                     #[cfg(test)]
                     state.sweep_gate.before_provider.notify_one();
                     let provider_guard =
@@ -1154,11 +1012,6 @@ async fn apply_mutation_batch_with(
                 Err(ApplyError::RateLimited {
                     retry_after_secs, ..
                 }) if mode.is_job() => {
-                    // The provider refused this call, so it is not a failure.
-                    // This message and the rest of the account's batch go
-                    // back to the job to try again after the wait. A message
-                    // left part done (marked read, archive refused) is
-                    // finished by the retry; there is no undo to keep.
                     let unprocessed = envelopes[index..].iter().map(|e| e.id.clone());
                     let stop = rate_limit.get_or_insert_with(|| RateLimitStop {
                         retry_after_secs,
@@ -1169,9 +1022,6 @@ async fn apply_mutation_batch_with(
                     break;
                 }
                 Err(error) => {
-                    // It may have changed in part (read, then the archive
-                    // failed), or at the provider but not here: its undo
-                    // restores it to this snapshot at the provider too.
                     if let Some(snapshot) = snapshot {
                         failed_snapshots.push(UndoEntrySnapshot {
                             uncertain: true,
@@ -1198,9 +1048,6 @@ async fn apply_mutation_batch_with(
         accounts.push(account_result);
     }
 
-    // The store and the provider already hold the change, so a stale search
-    // index is not a failed mutation: reporting it as one would invite a
-    // retry of work that is done, and would drop the undo entry.
     if let Err(error) = reindex_messages_in_search(state, &touched_ids).await {
         tracing::warn!(
             %error,
@@ -1210,9 +1057,6 @@ async fn apply_mutation_batch_with(
         );
     }
 
-    // Per message, refreshing label counts scans every label's rows, which
-    // made a batch cost the mailbox size times the batch size. Once per
-    // batch here, or on the job's schedule.
     let mut stale_label_counts: Vec<mxr_core::AccountId> = label_changed_in.into_iter().collect();
     if !mode.is_job() {
         refresh_label_counts(state, &stale_label_counts).await;
@@ -1237,8 +1081,6 @@ async fn apply_mutation_batch_with(
     })
 }
 
-/// Whether the command moves messages between labels, so the counts the
-/// sidebar shows need refreshing.
 const fn changes_labels(cmd: &MutationCommand) -> bool {
     !matches!(
         cmd,
@@ -1246,9 +1088,6 @@ const fn changes_labels(cmd: &MutationCommand) -> bool {
     )
 }
 
-/// Recompute these accounts' label counts. They are derived from the
-/// messages, so a failure is logged, not a failed mutation: the next sync
-/// recomputes them.
 pub(super) async fn refresh_label_counts(state: &AppState, accounts: &[mxr_core::AccountId]) {
     for account_id in accounts {
         if let Err(error) = state.store.recalculate_label_counts(account_id).await {
@@ -1257,12 +1096,8 @@ pub(super) async fn refresh_label_counts(state: &AppState, accounts: &[mxr_core:
     }
 }
 
-/// How often a running job refreshes label counts: the refresh costs about the
-/// size of the mailbox, so a job over a large one does not do it per batch.
 const LABEL_COUNT_REFRESH: Duration = Duration::from_secs(5);
 
-/// Label counts a job has left stale, refreshed at most every
-/// `LABEL_COUNT_REFRESH` and once more when the job ends.
 pub(super) struct LabelCountSchedule {
     stale: HashSet<mxr_core::AccountId>,
     last: std::time::Instant,
@@ -1293,33 +1128,20 @@ impl LabelCountSchedule {
     }
 }
 
-/// A check a job runs on each chunk just before applying it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ChunkGuard {
     None,
-    /// A sweep: leave out messages that are no longer in its place or were
-    /// pinned since it was queued. A pin or a sender move made while the
-    /// job runs still keeps its mail.
     Sweep(super::places::SweepScope),
 }
 
-/// What starts a background mutation job.
 pub(super) struct JobSpec {
     pub cmd: MutationCommand,
     pub client_correlation_id: Option<String>,
     pub guard: ChunkGuard,
-    /// Client-chosen id; `None` makes one.
     pub job_id: Option<String>,
-    /// Set for a selection job: it waits out rate limits, keeps no undo
-    /// (D192), and is persisted before it is acknowledged.
     pub selection: Option<SelectionData>,
-    /// The accounts the job will touch, so a scoped caller can read it from
-    /// the first poll.
     pub accounts: Vec<AccountMutationResultData>,
-    /// Activity to record at the start and end of the job.
     pub activity: Option<super::selection_jobs::JobActivity>,
-    /// A selection's label edit: the provider ids its preview resolved, by
-    /// account, applied to every batch.
     pub labels: Option<FrozenLabelEdits>,
 }
 
@@ -1351,7 +1173,6 @@ pub(super) async fn start_mutation_job(
     start_job(state, JobSpec::new(cmd, client_correlation_id, guard)).await
 }
 
-/// A job as it is when accepted: queued, nothing done.
 pub(super) fn queued_job(
     job_id: String,
     cmd: &MutationCommand,
@@ -1363,8 +1184,6 @@ pub(super) fn queued_job(
         accounts: accounts.to_vec(),
         ..empty_mutation_result(total)
     });
-    // Remember what a selection job does, without its ids, so the same job
-    // id sent again with another action is not mistaken for it.
     let action = selection.map(|_| mutation_command_with_ids(cmd, Vec::new()));
     JobData {
         job_id,
@@ -1391,8 +1210,6 @@ pub(super) fn queued_job(
     }
 }
 
-/// Record a new job's row. Exactly one caller of any number with the same id
-/// gets `true`; the rest find that caller's job.
 pub(super) async fn claim_job(state: &AppState, job: &JobData) -> Result<bool, HandlerError> {
     let data_json = super::job_records::encode_job_record(job).map_err(HandlerError::from)?;
     state
@@ -1428,8 +1245,6 @@ pub(super) async fn start_job(state: Arc<AppState>, spec: JobSpec) -> HandlerRes
     Ok(run_claimed_job(state, job, spec))
 }
 
-/// Start the job whose row is already saved: record its acceptance and run it
-/// in the background.
 pub(super) fn run_claimed_job(state: Arc<AppState>, job: JobData, spec: JobSpec) -> ResponseData {
     if let Some(activity) = spec.activity.as_ref() {
         super::selection_jobs::record_job_accepted(&state, activity, &job);
@@ -1469,8 +1284,6 @@ pub(super) async fn get_job(state: &AppState, job_id: &str) -> HandlerResult {
     })
 }
 
-/// How long a job waits out a provider's rate limit. Tests count each
-/// requested second as ten milliseconds so a pause does not stall them.
 pub(super) fn rate_limit_wait(retry_after_secs: u64) -> Duration {
     let secs = retry_after_secs.clamp(1, MAX_RATE_LIMIT_WAIT_SECS);
     #[cfg(test)]
@@ -1492,9 +1305,6 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         labels,
         ..
     } = spec;
-    // A selection job waits out rate limits and skips mail that left the
-    // store, and keeps no undo (D192). Every other job (`StartMutationJob`, a
-    // sweep) keeps the immediate rules and its per-chunk undo.
     let mode = if job.selection.is_some() {
         ChunkMode::Job
     } else {
@@ -1521,10 +1331,7 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
         .clone()
         .unwrap_or_else(|| empty_mutation_result(total));
     let mut terminal_error: Option<String> = None;
-    // A stop whose message carries the final counts, written once they are.
     let mut early_stop: Option<JobStop> = None;
-    // Where the next chunk starts, and messages a provider asked us to hold
-    // back: they go first in the next chunk.
     let mut next = 0usize;
     let mut carry: Vec<mxr_core::MessageId> = Vec::new();
     let mut waits_in_a_row = 0u32;
@@ -1549,8 +1356,6 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
                 break;
             }
         };
-        // Left out on purpose, so not a failure: counted as skipped without
-        // stopping the job.
         aggregate.skipped += left_out;
         if ids.is_empty() {
             continue;
@@ -1575,8 +1380,6 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
 
         label_counts.note(outcome.stale_label_counts);
         label_counts.refresh_if_due(&state).await;
-        // A message that left the store while the job ran is skipped: there
-        // is nothing to change, and it is not a reason to stop.
         aggregate.skipped += outcome.left_out + outcome.missing;
         if let Some(mutation_id) = outcome.result.mutation_id.as_ref() {
             job.undo_ids.push(mutation_id.clone());
@@ -1613,8 +1416,6 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
             break;
         }
 
-        // The provider asked us to wait. Nothing was done to the messages it
-        // refused, so they are tried again, once, after the wait.
         if let Some(stop) = outcome.rate_limit {
             waits_in_a_row += 1;
             if waits_in_a_row > MAX_CONSECUTIVE_RATE_LIMIT_WAITS {
@@ -1649,8 +1450,6 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
     job.finished_at = Some(finished_at);
     job.paused_until = None;
     write_progress(&mut job, &aggregate);
-    // Queued before the row says the job is over, so whoever sees it finished
-    // also finds its entry.
     if let Some(activity) = activity.as_ref() {
         super::selection_jobs::record_job_finished(&state, activity, &job);
     }
@@ -1685,12 +1484,9 @@ async fn run_mutation_job(state: Arc<AppState>, mut job: JobData, spec: JobSpec)
     }
 }
 
-/// Why a job stopped early, said with its final counts.
 #[derive(Debug, Clone, Copy)]
 enum JobStop {
-    /// A chunk skipped or failed messages.
     PartialProgress,
-    /// The provider kept asking it to wait.
     KeptRateLimited,
 }
 
@@ -1709,7 +1505,6 @@ impl JobStop {
     }
 }
 
-/// Copy the running totals into the job's progress and result.
 fn write_progress(job: &mut JobData, aggregate: &MutationResultData) {
     job.progress.completed = aggregate.succeeded + aggregate.skipped + aggregate.failed;
     job.progress.succeeded = aggregate.succeeded;
@@ -1718,8 +1513,6 @@ fn write_progress(job: &mut JobData, aggregate: &MutationResultData) {
     job.result = Some(aggregate.clone());
 }
 
-/// The chunk's ids that `guard` lets through now, how many it left out,
-/// and (for a sweep) the check each message is held to as it is archived.
 async fn start_chunk(
     state: &AppState,
     guard: &ChunkGuard,
@@ -1738,7 +1531,6 @@ async fn start_chunk(
     }
 }
 
-/// A chunk's ids to archive, how many were left out, and a sweep's check.
 type ChunkStart = (
     Vec<mxr_core::MessageId>,
     u32,
@@ -1754,16 +1546,12 @@ const fn job_status_str(status: &JobStatusData) -> &'static str {
     }
 }
 
-/// Persist (insert or replace) a job row and prune the table to the
-/// retention cap. Persistence failures are non-fatal — the mutation
-/// itself already ran; we just lose the history row.
 pub(super) async fn persist_job(state: &AppState, job: &JobData) {
     if let Err(error) = persist_job_checked(state, job).await {
         tracing::warn!(%error, job_id = %job.job_id, "failed to persist mutation job");
     }
 }
 
-/// [`persist_job`] for a caller that must know the row was written.
 pub(super) async fn persist_job_checked(state: &AppState, job: &JobData) -> Result<(), String> {
     let data_json = super::job_records::encode_job_record(job)?;
     state
@@ -1881,12 +1669,6 @@ pub(super) fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
     }
 }
 
-/// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
-/// the reverse op, or `None` if the mutation isn't reversible. A move or
-/// label edit can drop a message out of the view it was in, so those
-/// restore the prior label set. A star restores each message's own prior
-/// star, not the inverse: starring a conversation where one message was
-/// already starred leaves that one starred on undo.
 fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     match cmd {
         MutationCommand::Archive { .. } => Some(UndoableMutationKind::Archive),
@@ -1906,28 +1688,13 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     }
 }
 
-/// Log a non-fatal error rather than silently discarding it. For
-/// best-effort cleanup — dropping a spent undo entry, removing a draft
-/// after it sends — where a failure must not abort the caller but
-/// shouldn't vanish without a trace either.
 fn log_non_fatal<T, E: std::fmt::Display>(context: &str, result: Result<T, E>) {
     if let Err(error) = result {
         tracing::warn!(%error, "{context}");
     }
 }
 
-/// Reverse a recent undoable mutation by id.
-///
-/// Restores both local state (label memberships and read flag) and
-/// provider state (via `modify_labels`). When the upstream message
-/// has been hard-deleted (e.g. IMAP EXPUNGE) the provider call fails
-/// and we surface that as an "irreversible" error rather than leaving
-/// the local store and provider out of sync.
 pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> HandlerResult {
-    // Claim the entry before restoring anything: the delete is what makes an
-    // id single-use, so two overlapping `mxr undo <id>` calls can't both
-    // restore and both report success. The loser sees no entry and is refused
-    // as already undone.
     let Some(entry) = claim_undo_entry(state, mutation_id).await? else {
         if let Some(refusal) = selection_job_undo_refusal(state, mutation_id).await? {
             return Err(refusal.into());
@@ -1938,9 +1705,6 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         return Err(undo_window_expired(mutation_id).into());
     }
 
-    // Group snapshots by account so we resolve the provider once per
-    // account (not per message). Inside each account, restore each
-    // message's labels and read flag.
     let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
     for snapshot in &entry.snapshots {
         by_account
@@ -1949,13 +1713,9 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             .push(snapshot);
     }
 
-    // The desk's Done also dismissed conversations and resolved promises.
-    // Those are local rows: put them back first, and only once.
     let mut restored = 0u32;
     let mut last_error: Option<String> = None;
     if let Some(desk) = entry.desk.as_ref() {
-        // Nothing has been attempted if the desk rows won't restore: hand the
-        // claim back so the same id retries rather than being spent.
         if let Err(error) =
             super::desk_done::restore_desk_state(state, desk, entry.applied_at).await
         {
@@ -1983,8 +1743,6 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         }
     }
     let mut irreversible = 0u32;
-    // Failures a retry can fix (a provider or account hiccup), kept so the
-    // same id undoes just those next time.
     let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
     let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
     for (account_id, snapshots) in by_account {
@@ -2014,10 +1772,6 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         }
     }
 
-    // One search commit for the whole undo, as `apply_mutation_batch` does:
-    // a commit per message made undoing a large let-go take seconds. The
-    // store is already restored, and a failed reindex leaves its messages
-    // marked for the next one, so it doesn't fail the undo.
     log_non_fatal(
         "undo: search reindex failed; the messages are marked for the next reindex",
         reindex_messages_in_search(state, &reindex).await,
@@ -2028,13 +1782,9 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             let detail = last_error.unwrap_or_else(|| "no messages restored".into());
             return Err(undo_irreversible(irreversible, &detail).into());
         }
-        // Done: the claim already deleted the entry, so the same id can't be
-        // replayed.
         return Ok(ResponseData::Ack);
     }
 
-    // Part failed: keep only what failed under the same id, so `u` or
-    // `mxr undo` retries exactly those, and say how it went.
     let failed = retryable.len();
     state
         .store
@@ -2051,8 +1801,6 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     .into())
 }
 
-/// Claim the undo entry `mutation_id` names: delete it and return what was
-/// there, in one statement. `Ok(None)` means another caller already took it.
 async fn claim_undo_entry(
     state: &AppState,
     mutation_id: &str,
@@ -2060,8 +1808,6 @@ async fn claim_undo_entry(
     Ok(state.store.take_undo_entry(mutation_id).await?)
 }
 
-/// Put a claimed entry back when the undo stopped before it could try the
-/// messages, so the same id still retries. The claim deleted it first.
 async fn return_undo_claim(state: &AppState, entry: &UndoEntry) {
     log_non_fatal(
         "undo: could not put the claimed entry back; this id can no longer be retried",
@@ -2069,9 +1815,6 @@ async fn return_undo_claim(state: &AppState, entry: &UndoEntry) {
     );
 }
 
-/// The undo entry `mutation_id` names, read without changing it, for the
-/// preview. The undo claims the entry instead ([`claim_undo_entry`]), so both
-/// refuse the same ids with the same messages but only the undo consumes one.
 async fn preview_undo_entry(
     state: &AppState,
     mutation_id: &str,
@@ -2096,9 +1839,6 @@ fn undo_irreversible(count: u32, detail: &str) -> String {
     format!("undo: irreversible ({count} message(s)) — {detail}")
 }
 
-/// What `undo_mutation` would do with `mutation_id`, changing nothing. It
-/// refuses what the undo refuses without contacting the provider: a provider
-/// can still refuse a message the store holds, and only the undo finds that.
 pub(super) async fn undo_preview(state: &AppState, mutation_id: &str) -> HandlerResult {
     let entry = preview_undo_entry(state, mutation_id).await?;
     let mut targets = Vec::with_capacity(entry.snapshots.len());
@@ -2159,7 +1899,6 @@ pub(super) async fn undo_preview(state: &AppState, mutation_id: &str) -> Handler
     }
     let any_restorable = restored_desk_rows > 0 || targets.iter().any(|t| t.in_local_store);
     if !any_restorable {
-        // The undo's own refusal for this case, from its last failed message.
         let detail = last_error.unwrap_or_else(|| match last_missing {
             Some(id) => format!("message `{id}` no longer exists locally"),
             None => "no messages restored".into(),
@@ -2193,8 +1932,6 @@ fn undo_kind_name(kind: UndoableMutationKind) -> &'static str {
     }
 }
 
-/// An `--all` job keeps no undo (D192). Its id sent to undo is refused for
-/// that reason, rather than as an id nobody knows.
 async fn selection_job_undo_refusal(
     state: &AppState,
     id: &str,
@@ -2211,24 +1948,17 @@ async fn selection_job_undo_refusal(
         .then(|| all_job_undo_refusal(&job.job_id)))
 }
 
-/// Why `job_id`, an `--all` job, cannot be undone. One wording for the daemon's
-/// refusal and the CLI's `mxr undo --dry-run`, so the preview and the real
-/// path say the same thing.
 pub(crate) fn all_job_undo_refusal(job_id: &str) -> String {
     format!(
         "undo: job `{job_id}` ran with --all, and an --all job cannot be undone: it keeps no undo, so its preview was the check. `mxr jobs {job_id}` shows what it changed"
     )
 }
 
-/// What an undo says about an id with no undo entry.
 pub(crate) fn undo_not_found(mutation_id: &str) -> String {
     format!("undo: mutation `{mutation_id}` not found (expired or already undone)")
 }
 
 enum SnapshotError {
-    /// The upstream message can't be modified (e.g. EXPUNGE, deleted on
-    /// the server). Surfacing this distinct from generic errors lets
-    /// the UI explain why undo failed.
     Irreversible(String),
     Other(String),
 }
@@ -2239,9 +1969,6 @@ async fn restore_snapshot(
     kind: UndoableMutationKind,
     snapshot: &UndoEntrySnapshot,
 ) -> Result<(), SnapshotError> {
-    // Read current state so we can compute the diff to apply against
-    // the provider. If the message is gone locally, the provider almost
-    // certainly does not have it either.
     let current = state
         .store
         .get_envelope(&snapshot.message_id)
@@ -2254,13 +1981,8 @@ async fn restore_snapshot(
             ))
         })?;
 
-    // Undo runs under a fresh mutation_id (a retry of undo would be a
-    // distinct operation in the user's mind). Dedup against the reverse
-    // op's provider call.
     let undo_mutation_id = uuid::Uuid::now_v7().to_string();
 
-    // A star changes no labels: put back only the star, and leave alone any
-    // label change made since (a sync, another client).
     if kind == UndoableMutationKind::Star {
         restore_flag(
             state,
@@ -2293,9 +2015,6 @@ async fn restore_snapshot(
         .difference(&prior_labels)
         .map(|s| (*s).to_string())
         .collect();
-    // The mutation may have reached the provider without the local copy
-    // showing it: reverse what it could have done there too. Adding a
-    // label a message has, or removing one it lacks, is a no-op.
     if snapshot.uncertain {
         let (may_remove, may_add) =
             uncertain_label_changes(kind, &snapshot.prior_label_provider_ids);
@@ -2341,8 +2060,6 @@ async fn restore_snapshot(
             .map_err(SnapshotError::Other)?;
     }
 
-    // Read flag: only relevant for SetRead, ReadAndArchive and the desk's
-    // Done. For the other kinds (Archive, Trash, Spam) we don't touch the read flag.
     if matches!(
         kind,
         UndoableMutationKind::SetRead
@@ -2361,15 +2078,9 @@ async fn restore_snapshot(
         .await?;
     }
 
-    // `undo_mutation` reindexes every restored message in one commit.
     Ok(())
 }
 
-/// Put one provider-routed flag (`READ` or `STARRED`) back as the snapshot
-/// had it, at the provider and locally. An uncertain snapshot sets it at the
-/// provider whatever the local copy shows: the change may have reached the
-/// provider without the local copy showing it. Setting a flag is idempotent,
-/// so a repeat (a retried undo) is harmless.
 async fn restore_flag(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
@@ -2384,8 +2095,6 @@ async fn restore_flag(
     }
     let provider_message_id = snapshot.provider_id.clone();
     let starred = flag == MessageFlags::STARRED;
-    // Suffixed dedup keys, so this co-exists with the same undo's label
-    // change (a ReadAndArchive undo makes both calls).
     let (mutation, dedup_suffix) = if starred {
         (
             mxr_core::Mutation::SetStarred {
@@ -2434,9 +2143,6 @@ async fn restore_flag(
     stored.map_err(|e| SnapshotError::Other(e.to_string()))
 }
 
-/// For a message whose mutation failed, possibly after the provider applied
-/// it: the prior labels the mutation could have removed, and the labels it
-/// could have added that the message didn't have.
 fn uncertain_label_changes(
     kind: UndoableMutationKind,
     prior: &[String],
@@ -2463,10 +2169,7 @@ fn uncertain_label_changes(
         | UndoableMutationKind::ModeDone => (inbox(), Vec::new()),
         UndoableMutationKind::Trash => (inbox(), added("TRASH")),
         UndoableMutationKind::Spam => (inbox(), added("SPAM")),
-        // A move or label edit may have removed any of them.
         UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
-        // A deferral or a highlight change touches no message, so it has no
-        // snapshots to reverse. A star is restored before labels are looked at.
         UndoableMutationKind::SetRead
         | UndoableMutationKind::Star
         | UndoableMutationKind::Deferral
@@ -2509,14 +2212,10 @@ async fn apply_mutation_to_envelope(
     cmd: &MutationCommand,
     envelope: &Envelope,
 ) -> Result<(), ApplyError> {
-    // Keep the account-scoped provider guard held across the dedup
-    // check, provider apply, dedup record, and local reconciliation.
     let provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
     apply_mutation_under_guard(state, provider, &provider_guard, mutation_id, cmd, envelope).await
 }
 
-/// [`apply_mutation_under_guard`], or with `resolved` the label edit with
-/// those provider ids (no name lookup).
 async fn apply_resolved_under_guard(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
@@ -2546,7 +2245,6 @@ async fn apply_resolved_under_guard(
     }
 }
 
-/// Add and remove these provider label ids on one message.
 async fn apply_label_edit(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
@@ -2583,19 +2281,12 @@ async fn apply_label_edit(
     Ok(())
 }
 
-/// Where a label edit's provider ids came from, which decides how the local
-/// copy finds the labels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LabelEditRefs {
-    /// Frozen at a selection's preview: exact provider ids, never names.
     Frozen,
-    /// Resolved from names just now; a name that matched no label passes
-    /// through as itself (a system label like `INBOX`).
     Resolved,
 }
 
-/// `apply_mutation_to_envelope` with the account's provider guard already
-/// held by the caller.
 async fn apply_mutation_under_guard(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
@@ -2632,8 +2323,6 @@ async fn apply_mutation_under_guard(
             .await?;
         }
         MutationCommand::ReadAndArchive { .. } => {
-            // Two provider calls under one mutation_id; suffix the dedup
-            // key so the rows don't collide.
             apply_one_mutation(
                 state,
                 provider,
@@ -2688,9 +2377,6 @@ async fn apply_mutation_under_guard(
                 &envelope.account_id,
             )
             .await?;
-            // Trash is provider-specific (Gmail relabels, IMAP moves+expunges).
-            // Mirror the common case locally: drop INBOX, add TRASH if labels-capable;
-            // otherwise let reconcile_label_mutation_deferred re-sync from the provider.
             reconcile_label_mutation_deferred(
                 state,
                 provider,
@@ -2881,20 +2567,9 @@ async fn apply_mutation_under_guard(
             }
         }
     }
-    // Search is reindexed by `apply_mutation_batch`, once for the whole batch.
     Ok(())
 }
 
-/// Dedup-aware provider mutation: skips the provider call if a row for
-/// `(mutation_id, dedup_key)` already exists in `mutation_dedup_log`,
-/// otherwise calls the provider and records the apply.
-/// The caller must hold the account-scoped provider operation guard
-/// across this whole helper; that serializes the non-atomic check/apply/record
-/// sequence within a daemon process.
-///
-/// `dedup_key` is normally the envelope's provider id, but
-/// ReadAndArchive uses suffixed keys (`${pid}#read`, `${pid}#labels`)
-/// so its two provider calls don't collide in the dedup table.
 async fn apply_one_mutation(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,
@@ -2928,7 +2603,6 @@ async fn apply_one_mutation(
             PROVIDER_MUTATION_TIMEOUT.as_secs()
         )))
     })
-    // A typed rate limit stays typed, so a background job can wait it out.
     .map_err(|error| match error {
         MxrError::RateLimited {
             retry_after_secs, ..
@@ -2944,9 +2618,6 @@ async fn apply_one_mutation(
         .record_mutation_applied(mutation_id, dedup_key, account_id, now)
         .await
     {
-        // Non-fatal: provider already applied the mutation. A future
-        // retry of the same mutation_id will be safe because Gmail/IMAP
-        // ops are set-semantics; logged so it's visible.
         tracing::warn!(%error, mutation_id, dedup_key, "failed to record mutation dedup row");
     }
     Ok(())
@@ -2959,21 +2630,8 @@ async fn reindex_message_in_search(
     reindex_messages_in_search(state, std::slice::from_ref(message_id)).await
 }
 
-/// Most marked messages one reindex retries, so a long backlog of failed
-/// reads cannot turn a single mutation into a rebuild.
 const PENDING_REINDEX_BATCH: u32 = 500;
 
-/// Refreshes the indexed copy of each message from the store in one search
-/// commit, so queries (`mxr search ...`) see new flags and labels at once.
-///
-/// The store reads and the commit run under `state.search_reindex`. A
-/// mutation writes the store before it reindexes, so whichever reindex
-/// commits last also read last, and search ends on the newest state even
-/// when two mutations of one message race.
-///
-/// Messages marked by an earlier failed read are retried here too. A message
-/// whose read fails is left out of the commit, marked for the next reindex,
-/// and reported in the error; the rest are still committed.
 pub(super) async fn reindex_messages_in_search(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
@@ -3007,7 +2665,6 @@ pub(super) async fn reindex_messages_in_search(
     for message_id in targets {
         match search_entry_from_store(state, &message_id).await {
             Ok(Some(entry)) => batch.entries.push(entry),
-            // Removed locally (e.g. IMAP delete); drop it from the index.
             Ok(None) => batch.removed_message_ids.push(message_id.clone()),
             Err(error) => {
                 first_error.get_or_insert(error);
@@ -3019,7 +2676,6 @@ pub(super) async fn reindex_messages_in_search(
     }
 
     if let Err(error) = state.search.apply_batch(batch).await {
-        // Nothing reached the index, so every message is still stale.
         skipped.extend(read);
         mark_for_reindex(state, &mut unrecorded, skipped).await;
         return Err(error.to_string());
@@ -3029,7 +2685,6 @@ pub(super) async fn reindex_messages_in_search(
     unrecorded.retain(|id| !read.contains(id));
     let done: Vec<_> = pending.into_iter().filter(|id| read.contains(id)).collect();
     if let Err(error) = state.store.clear_search_reindex_pending(&done).await {
-        // Harmless: they are reindexed again next time.
         tracing::warn!(%error, "failed to clear reindexed messages from the pending list");
     }
 
@@ -3045,9 +2700,6 @@ pub(super) async fn reindex_messages_in_search(
     }
 }
 
-/// Marks `message_ids` in the store for the next reindex. If the store
-/// cannot take the mark, keeps them in memory instead, so this daemon run
-/// still retries them.
 async fn mark_for_reindex(
     state: &AppState,
     unrecorded: &mut HashSet<mxr_core::MessageId>,
@@ -3070,8 +2722,6 @@ async fn mark_for_reindex(
     }
 }
 
-/// The message's search entry as the store holds it now, or `None` when the
-/// store no longer has it.
 async fn search_entry_from_store(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -3101,9 +2751,6 @@ async fn search_entry_from_store(
     }))
 }
 
-/// Startup's retry of messages an earlier reindex left marked. Stops at the
-/// first batch that cannot finish, leaving the rest for the next mutation or
-/// startup.
 pub(crate) async fn drain_search_reindex_pending(state: &AppState) {
     loop {
         match state.store.list_search_reindex_pending(1).await {
@@ -3258,9 +2905,6 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::Drafts { drafts })
 }
 
-/// List drafts presumed orphaned mid-send. Mirrors the cutoff used by
-/// the daemon's startup recovery loop (1h since last activity) so the
-/// CLI surfaces what would be auto-reset, only earlier.
 pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
     let orphan_ids = state.store.list_orphaned_sending_drafts(cutoff).await?;
@@ -3274,7 +2918,6 @@ pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::Drafts { drafts })
 }
 
-/// Legacy compatibility endpoint; elapsed time cannot prove provider rejection.
 pub(super) async fn reset_orphaned_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
@@ -3286,21 +2929,7 @@ pub(super) async fn reset_orphaned_draft(
     Ok(ResponseData::Ack)
 }
 
-/// Gate a draft on validation before it can be stored or sent.
-///
-/// Enforced here, at the IPC boundary, rather than only in the CLI — the
-/// daemon is the authority, and an external client speaking the socket
-/// directly must hit the same gate.
-///
-/// The draft is never modified. A rejected document comes back to the caller
-/// with the reasons; mxr does not sanitise it into something sendable.
 pub(super) fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerError> {
-    // Inline assets are checked whatever the body kind. `inline_assets` is
-    // documented as always empty on a markdown draft, but nothing stops an IPC
-    // client from setting it, the store persists it either way, and the
-    // outbound builder writes `Content-ID` from whatever cid it is handed. A
-    // cid carrying CRLF would forge a header, so the check cannot live behind
-    // the HTML branch.
     let mut seen = std::collections::HashSet::new();
     for asset in &draft.inline_assets {
         if let Some(metadata) = draft
@@ -3309,8 +2938,6 @@ pub(super) fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler
             .flatten()
             .find(|part| part.content_id.as_deref() == Some(asset.cid.as_str()))
         {
-            // Forwarded Content-IDs are RFC addr-specs and commonly include @.
-            // Their stricter resource validator rejects header injection.
             super::draft_attachments::preview(metadata)?;
         } else {
             mxr_outbound::attachments::validate_cid(&asset.cid)
@@ -3324,8 +2951,6 @@ pub(super) fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler
         }
     }
 
-    // Only a supplied document is validated for active content. mxr generated
-    // the HTML for a markdown draft itself.
     let DraftContent::Html { html, .. } = &draft.content else {
         return Ok(());
     };
@@ -3335,21 +2960,6 @@ pub(super) fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler
     Ok(())
 }
 
-/// Fill in the `text/plain` alternative for an HTML draft that has none.
-///
-/// Without this, `DraftContent::analysis_text()` returns an empty string for an
-/// HTML-only draft, and every safety check — PII, secrets, tone, commitments —
-/// would silently pass because it had nothing to read. Generating the fallback
-/// once, at creation, means the stored draft is complete for analysis, preview,
-/// export, and the TUI alike.
-///
-/// The HTML itself is not touched; generation only reads it.
-///
-/// A blank alternative counts as absent, not just a missing one. A row carrying
-/// `text: Some("")` — written by an older binary, or by any IPC client that
-/// skips the CLI — used to survive this function untouched, and then reached
-/// safety as an empty analysis body: the exact scan-nothing hazard the function
-/// exists to close, one variant over.
 pub(super) fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
     let DraftContent::Html { html, text } = &draft.content else {
         return std::borrow::Cow::Borrowed(draft);
@@ -3393,7 +3003,6 @@ async fn create_draft_locked(state: &AppState, draft: &Draft) -> HandlerResult {
     let draft = materialize_text_alternative(draft);
     if let Some(stored) = state.store.get_draft(&draft.id).await? {
         super::draft_attachments::require_visible_set(&draft, &stored)?;
-        // Lost creation responses may repeat the same identity and content.
         let mut submitted = draft.clone().into_owned();
         submitted.revision = stored.revision;
         submitted.created_at = stored.created_at;
@@ -3415,7 +3024,6 @@ pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult
     create_draft_locked(state, draft).await
 }
 
-/// Fetch a single stored draft by id so a client can load it into `$EDITOR`.
 pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
     let draft = state
         .store
@@ -3425,14 +3033,6 @@ pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) ->
     Ok(ResponseData::Draft { draft })
 }
 
-/// Update a stored draft in place (same `DraftId`). The store only touches
-/// rows still in `'draft'` status; when nothing is updated we inspect the
-/// current status to return a precise reason.
-///
-/// An update may not change the draft's body kind. `DraftContent` defaults a
-/// payload without body fields to empty markdown, so omitting `body_html`
-/// would erase an HTML document. Revision and status checks cannot catch that
-/// change; composing a different body kind requires a new draft.
 pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResult {
     let _draft_guard = state.acquire_draft_operation(&draft.id).await;
     validate_draft_content(draft)?;
@@ -3462,9 +3062,6 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
             let sender = state.send_provider_for_account(&draft.account_id)?;
             let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
             let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
-            // Not persisted here: the trailing `store.update_draft` writes the
-            // whole draft on success, and an early return on provider failure
-            // leaves the stored row untouched.
             if let Some(threaded) = resolved_reply_thread(sender.as_ref(), &draft).await {
                 draft = Cow::Owned(threaded);
             }
@@ -3492,9 +3089,6 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
                         )
                         .await?
                         .ok_or_else(|| "Provider did not recreate the linked draft".to_string())?;
-                    // Point at the replacement before touching the local content.
-                    // If the local UPDATE then fails, the next sync can still pull
-                    // the replacement rather than deleting the canonical row.
                     state
                         .store
                         .set_provider_draft_link(&draft.id, &replacement_id, None)
@@ -3529,8 +3123,6 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
             "Draft not found: {}",
             draft.id
         ))),
-        // Row is editable yet UPDATE matched nothing — a concurrent status
-        // transition slipped between the update and this read; ask for a retry.
         Some(DraftStatus::Draft) => Err(crate::handler::HandlerError::Message(
             "draft state changed during edit; retry".to_string(),
         )),
@@ -3581,9 +3173,6 @@ pub(super) async fn delete_draft(
     Ok(ResponseData::Ack)
 }
 
-/// Remove linked local drafts whose provider draft was deleted outside mxr.
-/// Lookup errors preserve every local row; only an explicit provider 404 is
-/// destructive.
 pub(crate) async fn reconcile_provider_drafts(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -3646,9 +3235,6 @@ pub(crate) async fn reconcile_provider_drafts(
                 continue;
             }
             if stored_revision.is_none() {
-                // A link created by an older mxr version has no baseline. Its
-                // current provider version corresponds to the local draft, so
-                // record it without downloading or rewriting its contents.
                 state
                     .store
                     .set_provider_draft_revision(&local_draft_id, &revision)
@@ -3656,8 +3242,6 @@ pub(crate) async fn reconcile_provider_drafts(
                     .map_err(|error| error.to_string())?;
                 continue;
             }
-            // The raw response's own revision is authoritative if Gmail edits
-            // or deletes the draft between the metadata and content requests.
             sender.fetch_draft(&provider_draft_id).await
         } else {
             Ok(None)
@@ -3938,14 +3522,9 @@ pub(super) async fn prepare_reply(
         None => String::new(),
     };
 
-    // Default the reply's From to the owned address the message was delivered
-    // to, so a message that arrived at an alias is answered from that alias.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
-    // Reply-To is captured into the body metadata at parse time. The rules for
-    // who receives the reply, including replies to the user's own messages,
-    // live in `reply_recipients`.
     let reply_to_header = body
         .as_ref()
         .and_then(|body| body.metadata.reply_to.first());
@@ -3975,9 +3554,6 @@ pub(super) async fn prepare_reply(
     })
 }
 
-/// Resolve a reply source by account-scoped RFC Message-ID. Provider thread IDs
-/// are deliberately not used here: they are hints for sending, not local
-/// conversation identity.
 async fn reply_source_for_draft(state: &AppState, draft: &Draft) -> Result<Envelope, HandlerError> {
     let headers = draft
         .reply_headers
@@ -4011,8 +3587,6 @@ fn reply_conversation_lock_id(
     account_id: &mxr_core::AccountId,
     thread_id: &mxr_core::ThreadId,
 ) -> mxr_core::DraftId {
-    // This ID is only a mutex key. The namespace prevents collision with a
-    // persisted draft ID; it is never written to the drafts table.
     const REPLY_LOCK_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
         0xe4, 0xc8, 0xa3, 0x1d, 0x91, 0x6b, 0x5f, 0x47, 0xa4, 0x22, 0x70, 0x92, 0xa0, 0xf1, 0x88,
         0x3c,
@@ -4077,9 +3651,6 @@ pub(super) async fn ensure_reply_draft(
         .await;
 
     let mut drafts = state.store.list_drafts(&source.account_id).await?;
-    // Legacy duplicates stay intact; choose one with text first, as
-    // Messages shows only those on a row (`messages_drafts`), so `r`
-    // continues the draft the row names; then the oldest, then the id.
     let empty = |draft: &mxr_core::types::Draft| {
         super::messages_view::preview_text(draft.content.analysis_text()).is_empty()
     };
@@ -4215,8 +3786,6 @@ fn merge_audience(
         .into_iter()
         .filter(|address| bcc_seen.insert(address_key(address)))
         .collect();
-    // A custom Bcc must not become visible just because the reply policy also
-    // selected that address for To or Cc.
     let mut visible_seen = bcc_seen;
     let mut visible = |addresses: Vec<Address>| {
         addresses
@@ -4319,8 +3888,6 @@ pub(super) async fn prepare_forward(
     let source = super::forward::prepare_source(state, &envelope, &body).await?;
     let forwarded_content = source.content.analysis_text().to_string();
 
-    // Default the forward's From to the owned address the message was
-    // delivered to (same rule as reply), falling back to the primary.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, Some(&body));
 
@@ -4335,17 +3902,6 @@ pub(super) async fn prepare_forward(
     })
 }
 
-/// Resolve the effective From address for a send, validating that any
-/// per-message override is an address the account actually owns.
-///
-/// This is the single daemon-side choke point for From selection: both the
-/// real send path (`send_stored_draft`) and the dry-run/preview path
-/// (`Request::ResolveSendFrom`) call it, so a preview is guaranteed to show
-/// — and accept/reject — exactly what a real send would.
-///
-/// `requested` is the draft's `from` override (`None` ⇒ account primary). On
-/// an unowned override this returns an `InvalidRequest`-classified error (the
-/// message contains "invalid") listing the account's registered addresses.
 pub(crate) async fn resolve_from_address(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -4357,7 +3913,6 @@ pub(crate) async fn resolve_from_address(
         .map_or_else(|| "user@example.com".to_string(), |a| a.email.clone());
     let account_name = account.as_ref().map(|a| a.name.clone());
 
-    // Owned set = the account's primary address plus every registered alias.
     let mut owned: Vec<String> = state
         .owned_addresses(account_id)
         .await?
@@ -4371,8 +3926,6 @@ pub(crate) async fn resolve_from_address(
     resolve_owned_from(account_name.as_deref(), &primary_email, &owned, requested).map_err(
         |registered| {
             let requested_email = requested.map(|a| a.email.trim()).unwrap_or_default();
-            // Kinded so the wire carries `IpcErrorKind::InvalidRequest`
-            // explicitly rather than being string-sniffed.
             HandlerError::InvalidRequest(format!(
                 "invalid From address: {requested_email} is not a registered address for this account. \
                  Registered addresses: {}. Register it with `mxr accounts addresses add <account> {requested_email}`.",
@@ -4382,17 +3935,6 @@ pub(crate) async fn resolve_from_address(
     )
 }
 
-/// Pure From-resolution: given the account's display name, primary email, and
-/// the full set of owned emails (primary + aliases), resolve `requested` into
-/// the `Address` to stamp on the outgoing message.
-///
-/// * `requested == None` ⇒ the account primary, named with `account_name`.
-/// * `requested == Some` and its email is owned (case-insensitive, trimmed) ⇒
-///   the owned address, keeping the requester's display name when it set one
-///   and otherwise falling back to `account_name` (Zoho-composer behaviour:
-///   "Your Name <alias@…>").
-/// * `requested == Some` and its email is not owned ⇒ `Err(registered list)`,
-///   for the caller to format into a user-facing error.
 fn resolve_owned_from(
     account_name: Option<&str>,
     primary_email: &str,
@@ -4411,7 +3953,6 @@ fn resolve_owned_from(
         .iter()
         .find(|owned| owned.trim().eq_ignore_ascii_case(&key));
     let Some(canonical) = canonical else {
-        // De-duplicate the registered list for a clean error, preserving order.
         let mut seen = HashSet::new();
         let registered = owned
             .iter()
@@ -4435,25 +3976,6 @@ fn resolve_owned_from(
     })
 }
 
-/// Choose the default From for a reply/forward, given the account's owned
-/// addresses, its primary, and the parent's routing headers.
-///
-/// Precedence, hardest-to-spoof first:
-///  1. `Delivered-To:` — stamped by the *receiving* MTA, so it names the
-///     address the message actually landed on. The topmost owned occurrence
-///     wins outright, even if `To:`/`Cc:` name a different owned address (that
-///     is exactly the Bcc/`To`-forgery a sender would use to steer the From).
-///  2. Absent an owned `Delivered-To:`, the sole owned address across `To:`/`Cc:`.
-///  3. Otherwise — no owned recipient, or *several distinct* owned addresses
-///     (ambiguous; we refuse to guess which identity the mail was for) — the
-///     account primary.
-///
-/// This is best-effort, header-based defaulting: `To:`/`Cc:` are sender-set and
-/// `Delivered-To:` can, in adversarial setups, still be spoofed — the same
-/// residual exposure mainstream clients carry. It is bounded: the result is
-/// always one of the *user's own* addresses, never an attacker's, and the
-/// effective From is surfaced in every dry-run and the send-confirm before a
-/// message goes out, so a wrong guess is visible and overridable.
 fn default_reply_from<'a>(
     owned: &[String],
     primary_email: &str,
@@ -4472,7 +3994,6 @@ fn default_reply_from<'a>(
             .map(|owned| owned.trim().to_string())
     };
 
-    // 1. Delivered-To wins — topmost owned occurrence.
     for recipient in delivered_to {
         let key = recipient.trim().to_ascii_lowercase();
         if !key.is_empty() && owned_lower.contains(&key) {
@@ -4482,7 +4003,6 @@ fn default_reply_from<'a>(
         }
     }
 
-    // 2/3. The lone owned To/Cc address, else primary on absence or ambiguity.
     let mut distinct: Vec<String> = Vec::new();
     for recipient in addressed_to {
         let key = recipient.trim().to_ascii_lowercase();
@@ -4504,9 +4024,6 @@ fn default_reply_from<'a>(
     }
 }
 
-/// Resolve the reply/forward default From from an account's owned set and the
-/// parent envelope + raw headers. See [`default_reply_from`] for the ordering
-/// and its security properties.
 fn reply_from_default(
     owned: &[String],
     primary_email: &str,
@@ -4531,10 +4048,6 @@ fn reply_from_default(
     )
 }
 
-/// Load an account's primary email and the full set of owned emails
-/// (primary + registered aliases). Returns `(primary, owned)` where `owned`
-/// always leads with the primary. A store error fails the prepare: an empty
-/// owned set would address a reply to your own sent message back to you.
 async fn account_owned_addresses(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -4546,10 +4059,6 @@ async fn account_owned_addresses(
     ))
 }
 
-/// IPC handler for `Request::ResolveSendFrom`: resolve (and ownership-validate)
-/// the effective From a draft would send from, without sending. Backs the
-/// dry-run/preview path so a preview shows exactly the From a real send would
-/// use and rejects an unowned override identically.
 pub(crate) async fn resolve_send_from(
     state: &AppState,
     account_id: &mxr_core::AccountId,
@@ -4562,7 +4071,6 @@ pub(crate) async fn resolve_send_from(
 pub(super) fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
     use sha2::{Digest, Sha256};
     let mut command = materialize_text_alternative(draft).into_owned();
-    // Storage timestamps and revision metadata are not mail content.
     command.created_at = chrono::DateTime::UNIX_EPOCH;
     command.updated_at = chrono::DateTime::UNIX_EPOCH;
     command.revision = None;
@@ -4790,10 +4298,6 @@ async fn send_draft_reviewed_scoped(
     send_stored_draft_locked(state, &draft.id, identity, override_safety_token, portable).await
 }
 
-/// Everything `send_stored_draft` checks before it reaches the provider:
-/// content, safety and the From address. A caller that must record its
-/// intent before the provider call (Got it) runs these first, so a failure
-/// here never leaves that record behind.
 pub(super) async fn check_before_send(state: &AppState, draft: &Draft) -> Result<(), HandlerError> {
     validate_draft_content(draft)?;
     if let Some(stored) = state.store.get_draft(&draft.id).await? {
@@ -4829,8 +4333,6 @@ pub(super) async fn schedule_send(
     {
         return Err("A retained send already owns this draft; inspect its outcome instead of scheduling another operation".into());
     }
-    // The flusher looks the provider up only when it fires; refuse now
-    // rather than accept a send that is bound to fail later.
     state.send_provider_for_account(&draft.account_id)?;
     state.store.schedule_send(draft_id, send_at).await?;
     Ok(ResponseData::Ack)
@@ -4902,9 +4404,6 @@ pub(crate) async fn send_stored_draft_reviewed(
     send_stored_draft_locked(state, draft_id, identity, override_safety_token, false).await
 }
 
-/// `send_stored_draft_reviewed` for a caller that already holds the draft's
-/// operation lock: the scheduled-send flusher claims and sends under it, so
-/// a reschedule cannot be accepted while a claimed send is going out.
 pub(crate) async fn send_stored_draft_reviewed_locked(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
@@ -4989,30 +4488,16 @@ async fn send_stored_draft_locked(
     }
     let command_hash = send_command_hash(&draft)?;
     draft = super::draft_attachments::resolve(state, &draft).await?;
-    // Resolve all definite local failures before claiming submission.
     let sender = state
         .send_provider_for_account(&draft.account_id)
         .map_err(HandlerError::Message)?;
-    // Re-validated at the send choke point, not just on the way in: a row
-    // could have been written by an older binary, or edited by a path that
-    // predates the gate. Nothing reaches a provider unvalidated.
     validate_draft_content(&draft)?;
-    // Covers rows written before the alternative was materialised at creation:
-    // safety must never run against an empty body.
     draft = materialize_text_alternative(&draft).into_owned();
 
     enforce_draft_safety_with_override(state, &draft, override_safety_token).await?;
 
-    // Resolve (and validate ownership of) the effective From *before* the
-    // status CAS: an unowned override must fail cleanly without wedging the
-    // draft in `Sending`. Same choke point the dry-run/preview path uses.
     let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
 
-    // Re-validate and rebuild any inline iCal REPLY at the send choke point:
-    // the source invite must be owned by this account, the ATTENDEE must equal
-    // the effective From, and the ICS is rebuilt server-side — a tampered
-    // compose session (sidecar/IPC) can neither forge the ICS nor RSVP as an
-    // identity it isn't sending from.
     if let Some(reply) = draft.inline_calendar_reply.as_ref() {
         let rebuilt = super::mailbox::validate_and_rebuild_inline_reply(
             state,
@@ -5149,8 +4634,6 @@ pub(super) async fn finish_accepted_send(
     {
         tracing::warn!(error = %e, "commitments promotion failed after send_stored_draft");
     }
-    // The provider already accepted this send. Classification can remain dirty
-    // for durable replay on failure, but cannot turn acceptance into a resend.
     if let Err(error) = super::assessments::reconcile_messages(
         state,
         &draft.account_id,
@@ -5214,19 +4697,6 @@ async fn clear_reply_later_for_reply_parent(state: &AppState, draft: &Draft) {
     }
 }
 
-/// Insert a synthetic envelope + body into the local store immediately after a
-/// successful provider send so the message is searchable as `is:sent` without
-/// waiting for the next sync. Keyed by `provider_message_id` (Gmail) or the
-/// rendered Message-ID header (SMTP) so the next sync's `upsert_envelope` is
-/// idempotent for Gmail (same UUID v5) — see `MessageId::from_scoped_provider_id`.
-/// Best-effort APPEND of a just-sent message into the account's server Sent
-/// folder. SMTP relays the mail but does not file Sent, so we mirror Gmail's
-/// auto-file behavior: render the exact RFC822 bytes the SMTP path produced and
-/// hand them to the sync provider's `append_sent`. Returns the new "mailbox:uid"
-/// id when the server surfaced it (UIDPLUS), else `Ok(None)`. Providers whose
-/// send already files Sent (Gmail) use the default `Ok(None)` and never reach
-/// here. This must never fail the send — the mail already went out on the wire;
-/// callers treat any `Err` as "keep the local-only copy".
 async fn append_sent_to_server(
     state: &AppState,
     draft: &Draft,
@@ -5255,11 +4725,6 @@ async fn append_sent_to_server(
         .map_err(|error| error.to_string())
 }
 
-/// Body halves for the synthetic Sent envelope a send ingests locally.
-///
-/// Markdown drafts file their source as `text/plain`, as before. HTML drafts
-/// file the supplied text alternative (or a generated one) plus the HTML
-/// itself, so the Sent copy renders the same message the recipient got.
 fn sent_body_parts(content: &DraftContent) -> (String, Option<String>) {
     match content {
         DraftContent::Markdown { source } => (source.clone(), None),
@@ -5278,10 +4743,6 @@ async fn ingest_sent_message(
     receipt: &SendReceipt,
     file_on_server: bool,
 ) -> Result<mxr_core::MessageId, String> {
-    // Gmail's send already files Sent and returns a real id. For IMAP/SMTP the
-    // SMTP transport does NOT file Sent, so best-effort APPEND a copy to the
-    // server Sent folder (parity with Gmail). A failed APPEND must never turn
-    // into a send failure — the mail already went out on the wire.
     let (provider_namespace, provider_id_value, sent_label_provider_ids): (
         &str,
         String,
@@ -5289,9 +4750,6 @@ async fn ingest_sent_message(
     ) = if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
         ("gmail", gmail_id.to_string(), vec!["SENT".to_string()])
     } else {
-        // An acceptance repair is local-only: a first APPEND may already have
-        // succeeded before local ingestion failed. Never repeat provider writes
-        // while inspecting/recovering that accepted operation.
         let appended = if file_on_server {
             append_sent_to_server(state, draft, from, receipt).await
         } else {
@@ -5299,19 +4757,11 @@ async fn ingest_sent_message(
         };
         match appended {
             Ok(Some(mailbox_uid)) => {
-                // Landed on the server under UIDPLUS. Use the real
-                // "mailbox:uid" id and label with the actual Sent folder
-                // name so the local copy reconciles with the next sync
-                // (same Message-ID) and is mutatable via parse_provider_id.
                 let sent_folder = mailbox_uid
                     .rsplit_once(':')
                     .map_or_else(|| "SENT".to_string(), |(mailbox, _)| mailbox.to_string());
                 ("imap", mailbox_uid, vec![sent_folder])
             }
-            // APPEND unsupported / no Sent folder / no UIDPLUS uid: keep the
-            // smtp-local fallback, but still tag the message SENT so it
-            // surfaces in the local SENT view. Local-only until a real
-            // APPEND + resync lands.
             Ok(None) => (
                 "smtp-local",
                 receipt.rfc2822_message_id.clone(),
@@ -5336,8 +4786,6 @@ async fn ingest_sent_message(
         &provider_id_value,
     );
 
-    // An HTML draft files a Sent copy carrying both halves, so the user's own
-    // reader shows the message they actually sent instead of a blank body.
     let (sent_text, sent_html) = sent_body_parts(&draft.content);
 
     let snippet: String = sent_text
@@ -5379,11 +4827,6 @@ async fn ingest_sent_message(
     };
     let thread_id = envelope.thread_id.clone();
 
-    // The store resolves by `(account_id, provider_id)` and keeps the id an
-    // existing row already has, so a Sent copy the provider already handed us
-    // under a different derivation comes back under that row's id. The body,
-    // the labels and the search entry below — and the id this hands back to
-    // the caller — all follow what was written, not what we computed.
     let stored_id = state
         .store
         .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
@@ -5409,12 +4852,6 @@ async fn ingest_sent_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Link the sent copy to its Sent label if the account already knows it (it
-    // will, post-first-sync). Gmail uses "SENT"; an IMAP APPEND uses the real
-    // Sent folder name (e.g. "Sent"). `label_provider_ids` on the envelope is a
-    // read-only projection of the labels junction, so the label must be linked
-    // explicitly here. Missing label is non-fatal: `is:sent` queries match on
-    // MessageFlags::SENT regardless of the junction.
     let mut sent_label_ids = Vec::new();
     for label_provider_id in &envelope.label_provider_ids {
         if let Ok(Some(label)) = state
@@ -5445,10 +4882,6 @@ async fn ingest_sent_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Refresh the now-stale thread summary in the background. Sends
-    // are rare enough that the LLM cost doesn't matter, but we spawn
-    // fire-and-forget so the user's "sent" confirmation lands
-    // immediately rather than waiting on the LLM round-trip.
     if state.config_snapshot().llm.enabled {
         let summary_store = state.store.clone();
         let summary_llm = state.llm.clone();
@@ -5472,12 +4905,6 @@ async fn ingest_sent_message(
     Ok(stored_id)
 }
 
-/// The reply draft with its provider-native thread id filled in, or `None`
-/// when it already had one, is not a reply, or the parent could not be found.
-/// Pure: the caller persists with [`persist_reply_thread_id`] only once the
-/// provider has accepted the draft, so a failed push leaves the local row
-/// exactly as it was. Only a confirmed parent lookup produces a `Some`, so a
-/// transient miss cannot freeze the draft off-thread — the next push retries.
 async fn resolved_reply_thread(sender: &dyn MailSendProvider, draft: &Draft) -> Option<Draft> {
     let headers = draft.reply_headers.as_ref()?;
     if headers.thread_id.is_some() {
@@ -5499,9 +4926,6 @@ async fn resolved_reply_thread(sender: &dyn MailSendProvider, draft: &Draft) -> 
     })
 }
 
-/// Cache a resolved thread id on the local row so later pushes and the send
-/// skip the lookup. Best-effort: the draft is already on the right thread at
-/// the provider, and losing the cache only costs one repeat lookup.
 async fn persist_reply_thread_id(state: &AppState, draft: &Draft) {
     let Some(headers) = draft.reply_headers.as_ref() else {
         return;
@@ -5515,8 +4939,6 @@ async fn persist_reply_thread_id(state: &AppState, draft: &Draft) {
     }
 }
 
-/// The local thread a reply draft belongs to, found through its parent's
-/// `Message-ID`.
 async fn reply_parent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::ThreadId> {
     let in_reply_to = draft.reply_headers.as_ref()?.in_reply_to.as_str();
     state
@@ -5550,8 +4972,6 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
             return get_draft(state, &draft.id).await;
         }
     };
-    // Validate the per-message From (owned-address) exactly like the send
-    // path — an unvalidated `Draft.from` must never reach a provider payload.
     let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
     let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
     let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
@@ -5576,8 +4996,6 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                 return get_draft(state, &draft.id).await;
             }
             Err(MxrError::NotFound(_)) => {
-                // The user may have deleted the provider draft directly. Drop
-                // the stale link and create a fresh provider draft below.
                 state.store.clear_provider_draft_id(&draft.id).await?;
                 tracing::info!(provider_draft_id, "Linked server draft no longer exists");
             }
@@ -5613,12 +5031,9 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     }
 }
 
-/// How long an unsubscribe preview's token stays good.
 const PURGE_PREVIEW_TTL: std::time::Duration = std::time::Duration::from_secs(600);
 const MAX_PURGE_PREVIEWS: usize = 64;
 
-/// One unsubscribe preview: the sender it was for, the mail it listed and
-/// the method it showed.
 struct PurgePreview {
     scope: (String, Option<mxr_core::AccountId>),
     message_ids: std::collections::HashSet<mxr_core::MessageId>,
@@ -5626,8 +5041,6 @@ struct PurgePreview {
     created: std::time::Instant,
 }
 
-/// Unsubscribe previews by token, so a commit acts on exactly what its
-/// preview showed, once.
 #[derive(Default)]
 pub(crate) struct PurgePreviews {
     entries: parking_lot::Mutex<std::collections::HashMap<String, PurgePreview>>,
@@ -5691,8 +5104,6 @@ pub(super) async fn unsubscribe_purge(
     }
     let mut selection = select_sender_footprint(state, address, account_id).await?;
     let scope = (selection.address.clone(), account_id.cloned());
-    // Committing a preview: only the mail it listed, and only if the
-    // sender still offers the method it showed.
     let previewed = match (dry_run, preview_token) {
         (false, Some(token)) => Some(state.purge_previews.take(token, &scope)?),
         _ => None,
@@ -5922,11 +5333,7 @@ pub(super) async fn unsubscribe(
     unsubscribe_envelope(state, &envelope).await
 }
 
-// Execute the envelope snapshot validated against the preview, even if sync
-// changes its stored header while this external operation awaits.
 async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerResult {
-    // Only the attempt holding the claim sends. Any failure releases the claim
-    // so a retry can send again; a confirmed unsubscribe is never sent again.
     match &envelope.unsubscribe {
         UnsubscribeMethod::Mailto { address, subject } => {
             let sender = state.send_provider_for_account(&envelope.account_id)?;
@@ -5970,8 +5377,6 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
             let Some(claimed_at) = claim_for_send(state, envelope).await? else {
                 return Ok(ResponseData::Ack);
             };
-            // The provider's error text can carry the recipient address, so
-            // only the failure kind is kept.
             match sender
                 .send_classified(&draft, &from, &rfc2822_message_id)
                 .await
@@ -6057,14 +5462,6 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
     }
 }
 
-/// Resolve label references (names or provider IDs) to provider IDs.
-///
-/// Both the TUI and CLI send label display names (e.g. "Follow Up") but
-/// the Gmail API requires provider IDs (e.g. "Label_123"). This function
-/// looks up each reference in the account's label list and returns the
-/// corresponding provider_id. If no match is found the original string
-/// is passed through (handles system labels like "INBOX", "SPAM" where
-/// name == provider_id).
 fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -> Vec<String> {
     refs.iter()
         .map(|label_ref| {
@@ -6074,10 +5471,6 @@ fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -
         .collect()
 }
 
-/// The label a name or provider id refers to in one account: the first whose
-/// name or provider id matches exactly. Label edits resolve through here, and
-/// a selection job checks the labels it names through here, so the two agree
-/// on what a name means.
 pub(super) fn find_label<'a>(
     labels: &'a [mxr_core::types::Label],
     label_ref: &str,
@@ -6408,8 +5801,6 @@ mod mutation_dedup_invariant_tests {
         );
     }
 
-    /// Provider ids repeat across accounts (two IMAP accounts both hold
-    /// `INBOX:42`), so one batch touching both must reach each provider.
     #[tokio::test]
     async fn same_provider_id_in_two_accounts_reaches_both_providers() {
         let first_account = AccountId::new();
@@ -6476,14 +5867,6 @@ mod mutation_dedup_invariant_tests {
 
 #[cfg(test)]
 mod safety_context_wiring_tests {
-    //! Slice 1.3 integration tests for `build_safety_context`.
-    //!
-    //! These exercise the daemon through the public IPC handler
-    //! `check_draft_safety_request`. They assert the *observable*
-    //! consequence of populating each `SafetyContext` field: the safety
-    //! report contains the issue that the field's data should trigger.
-    //! If any of these regress, the deterministic check (recipients /
-    //! reply-all / tone) is running on an empty context.
     use super::*;
     use crate::state::AppState;
     use chrono::Utc;
@@ -6670,13 +6053,6 @@ mod safety_context_wiring_tests {
         }
     }
 
-    /// known_contacts wiring: seed a strong contact for `alice@example.com`,
-    /// draft to `alcie@example.com` (one-edit transposition). The
-    /// recipient typo check must see the strong contact and emit a
-    /// WrongRecipient warning naming both addresses.
-    ///
-    /// FAILS today: build_safety_context returns `known_contacts =
-    /// Vec::new()` so `best_typo_candidate` finds no candidates.
     #[tokio::test]
     async fn known_contacts_loaded_emits_typo_warning() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -6733,13 +6109,6 @@ mod safety_context_wiring_tests {
         );
     }
 
-    /// thread_display_names wiring: seed a thread whose envelope's
-    /// `from.name` is "Sam", then issue a reply-all draft of size >2
-    /// with body "Hi Sam,". The reply-all check should treat Sam as
-    /// thread context (ambiguous) and NOT warn.
-    ///
-    /// FAILS today: build_safety_context returns `thread_display_names
-    /// = Vec::new()`, so the reply_all check fires the warning.
     #[tokio::test]
     async fn thread_display_names_loaded_suppresses_reply_all_warning() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -6812,10 +6181,6 @@ mod safety_context_wiring_tests {
         );
     }
 
-    /// A client that has no mxr `ThreadId` for the draft (the CLI's
-    /// `--check`, a pushed reply whose `reply_headers.thread_id` is now the
-    /// provider's id) still gets thread-scoped checks: the daemon ties the
-    /// reply to its thread through `In-Reply-To`.
     #[tokio::test]
     async fn reply_thread_is_derived_from_in_reply_to_when_context_has_none() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -6871,7 +6236,6 @@ mod safety_context_wiring_tests {
         draft.reply_headers = Some(ReplyHeaders {
             in_reply_to: "<sam-2@example.com>".into(),
             references: vec![],
-            // A provider-native id, not an mxr ThreadId: must not be needed.
             thread_id: Some("19fdc6a4f108c577".into()),
         });
         let mut context = check_context();
@@ -6892,12 +6256,6 @@ mod safety_context_wiring_tests {
         );
     }
 
-    /// contact_styles wiring: seed a high-confidence baseline for
-    /// `alice@example.com` skewed casual, draft her in formal voice.
-    /// The tone check should fire a ToneMismatch warning.
-    ///
-    /// FAILS today: build_safety_context returns `contact_styles =
-    /// Vec::new()`, so the tone check short-circuits at the top.
     #[tokio::test]
     async fn contact_styles_loaded_emits_tone_warning() {
         use mxr_relationship::StylometryMetrics;
@@ -6905,7 +6263,6 @@ mod safety_context_wiring_tests {
         let state = Arc::new(state);
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
 
-        // Seed a casual baseline (low formality_score) with high sample.
         let their_baseline = StylometryMetrics {
             formality_score: 0.1,
             avg_sentence_len: 6.0,
@@ -6960,11 +6317,6 @@ mod safety_context_wiring_tests {
 
 #[cfg(test)]
 mod sent_append_tests {
-    //! `ingest_sent_message` files a copy of an IMAP/SMTP-sent message into the
-    //! server Sent folder via `MailSyncProvider::append_sent`. These tests use a
-    //! fake sync provider with a configurable `append_sent` result to assert
-    //! both branches: a UIDPLUS success (real "mailbox:uid" id + Sent-folder
-    //! label) and the best-effort fallback (smtp-local + SENT label, no error).
     use super::*;
     use crate::state::AppState;
     use chrono::Utc;
@@ -6975,10 +6327,6 @@ mod sent_append_tests {
     };
     use std::sync::Arc;
 
-    /// Fake sync provider whose `append_sent` returns a configured result,
-    /// standing in for an IMAP account. `append_result` is the `Ok` value the
-    /// provider yields: `Some("mailbox:uid")` for a UIDPLUS server, `None` for a
-    /// server that filed the message but reported no UID (or has no Sent folder).
     struct AppendSentProvider {
         account_id: AccountId,
         append_result: Option<String>,
@@ -7101,8 +6449,6 @@ mod sent_append_tests {
     async fn append_success_stores_imap_provider_id_and_sent_folder_label() {
         let account_id = AccountId::new();
         let state = state_with_append_result(&account_id, Some("Sent:42".to_string())).await;
-        // IMAP's SENT system label carries the real folder name as its
-        // provider_id; seed it so the sent copy links to it.
         let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "Sent");
         state.store.upsert_label(&sent_label).await.unwrap();
         let draft = sent_draft(&account_id);
@@ -7116,8 +6462,6 @@ mod sent_append_tests {
             .await
             .expect("ingest must succeed");
 
-        // The message id is scoped under the imap namespace + real "mailbox:uid",
-        // so the next sync (same Message-ID → same UUID v5) reconciles it.
         assert_eq!(
             message_id,
             MessageId::from_scoped_provider_id(&account_id, "imap", "Sent:42"),
@@ -7169,11 +6513,6 @@ mod sent_append_tests {
         assert!(state.store.get_body(&id).await.unwrap().is_some());
     }
 
-    /// Same hazard as a synced page: the Sent copy's `(account_id,
-    /// provider_id)` may already name a row stored under an older id
-    /// derivation. The natural key is unique, so the store keeps that row —
-    /// and the body, labels and search entry have to land on it, or the
-    /// ingest dies on a foreign key instead of filing the sent message.
     #[tokio::test]
     async fn append_reuses_the_stored_id_when_the_sent_copy_already_exists() {
         let account_id = AccountId::new();
@@ -7181,7 +6520,6 @@ mod sent_append_tests {
         let sent_label = crate::test_fixtures::test_label(&account_id, "SENT", "Sent");
         state.store.upsert_label(&sent_label).await.unwrap();
 
-        // A row for the same provider id under the pre-0.4.52 unscoped id.
         let legacy_id = MessageId::from_provider_id("imap", "Sent:42");
         let derived_id = MessageId::from_scoped_provider_id(&account_id, "imap", "Sent:42");
         assert_ne!(legacy_id, derived_id, "the two derivations must differ");
@@ -7254,8 +6592,6 @@ mod sent_append_tests {
             .unwrap()
             .expect("stored envelope");
         assert_eq!(envelope.provider_id, "<append-none@example.com>");
-        // Still tagged SENT so the local SENT view shows it (local-only until a
-        // real APPEND + resync lands).
         assert_eq!(envelope.label_provider_ids, vec!["SENT".to_string()]);
     }
 }
@@ -7295,7 +6631,6 @@ mod from_selection_tests {
         )
         .expect("registered alias is owned");
         assert_eq!(got.email, "hello@planetaryescape.xyz");
-        // Zoho-composer behaviour: "Your Name <alias@…>".
         assert_eq!(got.name.as_deref(), Some("Bhekani"));
     }
 
@@ -7353,19 +6688,14 @@ mod from_selection_tests {
 
     #[test]
     fn reply_default_delivered_to_beats_a_forged_to_address() {
-        // Bcc/To-forgery steering: the sender puts owned alias A in `To:` to
-        // steer our From, but the MTA's `Delivered-To:` names owned alias B —
-        // the real destination. Delivered-To must win.
-        let delivered = ["hello@planetaryescape.xyz"]; // B (truth)
-        let addressed = ["accounts@planetaryescape.xyz"]; // A (forged To)
+        let delivered = ["hello@planetaryescape.xyz"];
+        let addressed = ["accounts@planetaryescape.xyz"];
         let got = default_reply_from(&owned(), PRIMARY, delivered, addressed);
         assert_eq!(got, "hello@planetaryescape.xyz");
     }
 
     #[test]
     fn reply_default_is_primary_when_owned_to_cc_is_ambiguous() {
-        // Two distinct owned addresses across To/Cc and no Delivered-To: we
-        // refuse to guess which identity the mail was for.
         let addressed = ["accounts@planetaryescape.xyz", "hello@planetaryescape.xyz"];
         let got = default_reply_from(&owned(), PRIMARY, std::iter::empty(), addressed);
         assert_eq!(got, PRIMARY);

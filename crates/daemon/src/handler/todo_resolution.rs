@@ -1,5 +1,3 @@
-//! Evidence-backed resolution offers from related later mail.
-
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::MessageId;
@@ -324,9 +322,6 @@ fn rule_resolution(
             quote_location,
         });
     }
-    // A cancelled direct debit or failed bill payment does not discharge the
-    // underlying obligation. Cancellation can resolve subscriptions and
-    // other tasks, but payment obligations need affirmative payment evidence.
     if matches!(
         kind,
         mxr_todo::TodoKind::Bill | mxr_todo::TodoKind::PaymentFailed
@@ -350,8 +345,6 @@ fn rule_resolution(
         })
 }
 
-/// A rule pattern, compiled once. The patterns are fixed, and compiling them
-/// for every sentence of every reviewed email was most of a resolution scan.
 fn rule_regex(pattern: &'static str) -> Option<Regex> {
     static COMPILED: std::sync::LazyLock<
         std::sync::Mutex<std::collections::HashMap<&'static str, Option<Regex>>>,

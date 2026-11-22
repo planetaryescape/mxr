@@ -1167,9 +1167,6 @@ async fn remote_presence_is_authenticated_revocable_and_drain_closes_new_admissi
     )
     .await
     .unwrap();
-    // Revocation closes the lease at the handler's own clock read. A snapshot
-    // must look from that moment or later, as the daemon's callers do; the
-    // `now` read above can be a second earlier and still see the lease open.
     let after_revoke = chrono::Utc::now().timestamp();
     assert!(
         !state.remote_lifecycle.snapshot(after_revoke).sessions[0].active,

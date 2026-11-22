@@ -1,12 +1,3 @@
-//! Slice 5.3 of docs/reference/ai-email.md
-//!
-//! "Maybe include" recipient suggestions. Build a query from the
-//! draft, hybrid-retrieve prior threads (lexical for the slice;
-//! semantic deferred), count participants who appear repeatedly
-//! across topic-similar threads, exclude self addresses and any
-//! addresses already on the draft, and never reveal Bcc'd
-//! recipients unless the current user is the original sender.
-
 use crate::state::AppState;
 use mxr_core::types::Draft;
 use mxr_core::SortOrder;
@@ -17,7 +8,6 @@ use std::collections::{HashMap, HashSet};
 const MIN_SUPPORT_THREADS: usize = 3;
 
 pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
-    // Draft text is prose, not query syntax: search it as plain words.
     let Some(query) = QueryBuilder::new(&MxrSchema::build()).build_any_words(&topic_text(draft))
     else {
         return Ok(ResponseData::SuggestedCollaborators {
@@ -29,8 +19,6 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
         .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
-    // A failed read fails the request: an empty set would suggest your own
-    // address, which the compose view can copy into Cc.
     let self_addresses = state.owned_addresses(&draft.account_id).await?;
     let on_draft: HashSet<String> = draft
         .to
@@ -40,11 +28,6 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
         .map(|a| a.email.to_ascii_lowercase())
         .collect();
 
-    // Per-candidate aggregate: distinct thread_ids (for support) +
-    // evidence msg ids (for citations). Bcc-leak safety: a candidate
-    // who appears on a thread *only* because of a bcc on a message
-    // not sent by the user is excluded; the simplest way to enforce
-    // that is to ignore Bcc fields entirely when iterating candidates.
     let mut by_email: HashMap<String, Aggregate> = HashMap::new();
     for hit in page.results.iter() {
         let id: mxr_core::MessageId = match hit.message_id.parse() {
@@ -105,17 +88,12 @@ struct Aggregate {
     display_name: Option<String>,
 }
 
-/// Words that pick out topic-similar threads: the subject and the first
-/// paragraph of the draft.
 fn topic_text(draft: &Draft) -> String {
     let analysis_text = draft.content.analysis_text();
     let first_para = analysis_text.split("\n\n").next().unwrap_or("");
     format!("{} {first_para}", draft.subject)
 }
 
-/// Bcc safety: do NOT include bcc participants in the candidate set.
-/// Even when the current user was the sender, Bcc'd addresses are
-/// confidential; we never surface them as suggestions.
 fn collect_participants_no_bcc(env: &mxr_core::types::Envelope) -> Vec<String> {
     std::iter::once(env.from.email.clone())
         .chain(env.to.iter().map(|a| a.email.clone()))
@@ -280,7 +258,6 @@ mod tests {
     #[tokio::test]
     async fn repeated_co_participant_is_suggested() {
         let (state, account) = fixture().await;
-        // Three threads about "rollout planning" co-starring bob.
         for _ in 0..3 {
             let thread = ThreadId::new();
             let env = envelope(
@@ -381,8 +358,6 @@ mod tests {
     #[tokio::test]
     async fn bcc_recipient_is_never_leaked_as_suggestion() {
         let (state, account) = fixture().await;
-        // Three "rollout" threads where carol is Bcc'd. Carol must
-        // never appear as a suggestion.
         for _ in 0..3 {
             let thread = ThreadId::new();
             let env = envelope(
@@ -434,7 +409,6 @@ mod tests {
             );
             index(&state, &env, "rollout details").await;
         }
-        // Bob is already on the draft -- must not be suggested.
         let d = draft(
             &account,
             "rollout follow-up",
@@ -453,9 +427,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_differently_cased_unicode_spelling_is_never_suggested_as_your_own_address() {
-        // Owned-address matching folds ASCII case only, so `user@BÜCHER.example`
-        // is not the owned `user@bücher.example`. A Unicode-folded candidate key
-        // would turn the first into the second and suggest your own address.
         let (state, account) = fixture().await;
         state
             .store

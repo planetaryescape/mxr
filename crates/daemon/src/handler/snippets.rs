@@ -1,6 +1,3 @@
-//! Snippets: thin pass-through to the store with `Snippet` ↔
-//! `SnippetData` translation at the IPC boundary.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::Utc;
@@ -35,7 +32,6 @@ pub(super) async fn set_snippet(
         ));
     }
     let now = Utc::now();
-    // Preserve created_at on update; only updated_at advances.
     let created_at = match state.store.get_snippet(&name).await? {
         Some(existing) => existing.created_at,
         None => now,

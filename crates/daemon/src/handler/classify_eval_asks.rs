@@ -1,17 +1,3 @@
-//! `mxr classify eval`, the asks: to-do rows graded against the items each
-//! email should ask of you (blueprint 37, "The eval grades what the person
-//! relies on", label schema v2).
-//!
-//! An email's to-do rows are matched to its expected items by kind and
-//! direction, then the fields of each matched pair are compared. What is
-//! reported is precision and recall per kind of ask, exact match per field,
-//! duplicates and merges, twin-pair accuracy and slices. Accuracy is not
-//! reported: nearly every email asks nothing, so it measures how many true
-//! negatives there are.
-//!
-//! The grading here is pure: it reads labels and rows and touches no store,
-//! so the matching, its ordering and its edge cases are unit tested below.
-
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use mxr_protocol::{
     ClassifyEvalAskKindData, ClassifyEvalAsksData, ClassifyEvalCountsData, ClassifyEvalFieldData,
@@ -27,10 +13,8 @@ use mxr_todo::dates::{parse_date, DateOrder, YearIntent};
 use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
-/// What the Your turn answer reads, for the output.
 pub(super) const REPLY_PROJECTION: &str = "Stored asks unit answer asks_you_to_reply; missing or stale rows remain pending and eval never materializes them.";
 
-/// The mismatch questions the asks add, in the order they are listed.
 pub(super) const ASK_QUESTIONS: [&str; 8] = [
     "ask",
     "amount",
@@ -42,32 +26,18 @@ pub(super) const ASK_QUESTIONS: [&str; 8] = [
     "state",
 ];
 
-/// A to-do row, translated to chapter 37's vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Row {
     pub kind: AskKind,
     pub direction: Direction,
-    /// The to-do kind the row was made as, for the mismatch text.
     pub made_as: String,
     pub counterparty: Option<String>,
     pub amount: Option<(i64, String)>,
-    /// The due date as stored: the end of the day it resolved to, in the
-    /// daemon's time zone.
     pub due_at: Option<DateTime<Utc>>,
     pub due_words: Option<String>,
     pub provenance: Option<AskProvenance>,
 }
 
-/// Today's to-do kinds in chapter 37's kinds, in one place.
-///
-/// Judgement calls:
-/// * `Return` is `send`: giving an item back is sending it.
-/// * `Rsvp` is `attend`: answering an invitation is about turning up.
-/// * `Document` (a passport or licence expiring), `Lease` (give notice) and
-///   `Renewal` are all `renew_or_cancel`: the action is to renew, or to end.
-/// * `Promise` is a promise in the owner's sent mail, so its direction is
-///   `you_promised` and its kind comes from the verb its title starts with
-///   ([`promise_kind`]); a title that starts with anything else is `other`.
 #[cfg(test)]
 pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
     let asked = |kind| (kind, Direction::AsksYou);
@@ -84,8 +54,6 @@ pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
     }
 }
 
-/// The kind of a promise from the first word of its title ("Send the signed
-/// form" is `send`); `other` when the verb is not one of the vocabulary's.
 #[cfg(test)]
 fn promise_kind(title: &str) -> AskKind {
     match title
@@ -144,8 +112,6 @@ impl Row {
                     A::FixPayment => AskKind::FixPayment,
                     A::Sign => AskKind::Sign,
                     A::Verify => AskKind::Verify,
-                    // Attend is the historical RSVP reporting bucket; the stored
-                    // action and its provenance remain Reply.
                     A::Reply if mxr_todo::asks::items::is_rsvp(answer, unit) => AskKind::Attend,
                     A::Reply => AskKind::Reply,
                     A::Send => AskKind::Send,
@@ -230,7 +196,6 @@ impl Row {
     }
 }
 
-/// Lowercase words, single spaces, so "Camden  Council" equals "camden council".
 fn normalise(value: &str) -> String {
     value
         .to_lowercase()
@@ -274,7 +239,6 @@ impl Counts {
     }
 }
 
-/// How the fields of the matched pairs came out, per field.
 #[derive(Debug, Clone, Copy, Default)]
 struct FieldTally {
     pairs: u32,
@@ -291,43 +255,30 @@ enum Verdict {
     Missing,
     Wrong,
     Spurious,
-    /// The label's value cannot be resolved to an exact one, and the row has
-    /// one: reported as present, never as exact.
     Present,
 }
 
 const FIELDS: [&str; 6] = ["amount", "due", "counterparty", "quote", "actor", "state"];
 
-/// What was graded for one email, kept for the checks that need the whole
-/// set: merges and twin pairs.
 #[derive(Debug)]
 struct Outcome {
     scenario: &'static str,
     twin_of: Option<&'static str>,
     from_domain: String,
-    /// The expected items and whether a row matched each.
     expected: Vec<(Item, bool)>,
-    /// Misses, to be written once merges are known.
     misses: Vec<usize>,
-    /// The email is right on what it asks: no missed item, no extra row,
-    /// every matched field exact, and the reply owed as labelled.
     right: bool,
-    /// Whether a reply is owed, as labelled; part of a twin pair's signature.
     reply: bool,
     label_review: Option<String>,
     provider_id: String,
     held_out: bool,
 }
 
-/// One email to grade.
 pub(super) struct AskInput<'a> {
     pub provenance_slices: Vec<(&'static str, String)>,
     pub label: &'a Labelled,
     pub rows: Vec<Row>,
-    /// Whether the classifier says a reply is owed; `None` for sent mail,
-    /// which owes none.
     pub reply_found: Option<bool>,
-    /// The email's own date, which a due date is read against.
     pub sent: DateTime<Utc>,
 }
 
@@ -373,8 +324,6 @@ impl AskGrader {
             reason,
             twin_of: label.twin_of.map(str::to_string),
             held_out: label.held_out,
-            // The doubt on a label's to-do answer covers its items and the
-            // reply it owes.
             label_review: label
                 .review
                 .filter(|review| review.questions.contains(&"todo"))
@@ -396,7 +345,6 @@ impl AskGrader {
             .0 += 1;
     }
 
-    /// Match `rows` to the label's items and tally the result.
     pub(super) fn grade(&mut self, input: AskInput<'_>, from_email: &str) {
         let label = input.label;
         let expected = &label.items;
@@ -411,7 +359,6 @@ impl AskGrader {
             row_taken[j] = true;
         }
 
-        // Per kind and slice counts.
         let mut email_counts = Counts::default();
         let mut bump = |kind: AskKind, direction: Direction, f: &dyn Fn(&mut Counts)| {
             let mut one = Counts::default();
@@ -433,7 +380,6 @@ impl AskGrader {
         let mut duplicates = 0;
         for (row, _) in rows.iter().zip(&row_taken).filter(|(_, taken)| !**taken) {
             bump(row.kind, row.direction, &|c| c.false_positives += 1);
-            // A second row for an item the email does ask is a duplicate.
             let asked = expected
                 .iter()
                 .any(|item| item.kind == row.kind && item.direction == row.direction);
@@ -465,7 +411,6 @@ impl AskGrader {
         self.duplicates += duplicates;
         self.total.add(email_counts);
 
-        // Fields of the matched pairs.
         let mut fields_exact = true;
         for &(i, j) in &matched {
             let (item, row) = (&expected[i], &rows[j]);
@@ -497,7 +442,6 @@ impl AskGrader {
             }
         }
 
-        // Slices.
         let held = if label.held_out {
             "held_out"
         } else {
@@ -516,7 +460,6 @@ impl AskGrader {
             entry.1.add(email_counts);
         }
 
-        // Reply owed, its own question.
         if let Some(found) = input.reply_found {
             let expected_reply = label.expect.reply;
             self.reply_emails += 1;
@@ -569,8 +512,6 @@ impl AskGrader {
         });
     }
 
-    /// Counts the merges, writes the misses and sums up. Misses are written
-    /// here because whether a miss was a merge needs every email.
     pub(super) fn finish(
         mut self,
     ) -> (Option<ClassifyEvalAsksData>, Vec<ClassifyEvalMismatchData>) {
@@ -614,9 +555,6 @@ impl AskGrader {
         (Some(data), self.mismatches)
     }
 
-    /// A miss is a merge when a row of the same sender, kind and counterparty
-    /// was made from another email with a different reference: the two
-    /// accounts share one row. Returns the number of merges.
     fn write_misses(&mut self) -> u32 {
         let mut merges = 0;
         let mut written = Vec::new();
@@ -692,8 +630,6 @@ impl AskGrader {
         for direction in [Direction::AsksYou, Direction::YouPromised] {
             for kind in AskKind::ALL {
                 let counts = self.kinds.get(&(kind, direction)).copied();
-                // Everything a person can be asked for is always listed;
-                // promises only when one appeared.
                 if counts.is_none() && direction == Direction::YouPromised {
                     continue;
                 }
@@ -707,8 +643,6 @@ impl AskGrader {
         out
     }
 
-    /// Slices with something to say: a template family appears only if it
-    /// has an expected item or a row, so the rest do not bury it.
     fn slice_data(&self) -> Vec<ClassifyEvalSliceData> {
         self.slices
             .iter()
@@ -727,16 +661,6 @@ impl AskGrader {
     }
 }
 
-/// The calendar day a label expects for a due date, read against the email's
-/// own date; `None` when it cannot be resolved exactly.
-///
-/// * `AfterSent(h)` is the UTC day `h` hours after the email's date, which is
-///   the day the corpus writes into the mail (the mail and its date move with
-///   the seed clock together).
-/// * `Words` are read by the to-do code's own date reader, from the email's
-///   date in the daemon's time zone, so a weekday resolves the way detection
-///   resolves it. That grades the row against the same reader, not an
-///   independent one.
 fn expected_day(due: Due, sent: DateTime<Utc>) -> Option<NaiveDate> {
     match due {
         Due::None => None,
@@ -751,8 +675,6 @@ fn expected_day(due: Due, sent: DateTime<Utc>) -> Option<NaiveDate> {
     }
 }
 
-/// The day a row's due date falls on, in the zone detection resolved it in
-/// (`handler/todos.rs` `pass_config`: `Local`; `end_of_day` in `dates.rs`).
 fn row_day(row: &Row) -> Option<NaiveDate> {
     row.due_at.map(|due| due.with_timezone(&Local).date_naive())
 }
@@ -818,9 +740,6 @@ fn plural(count: i64, unit: &str) -> String {
     format!("{count} {unit}{}", if count == 1 { "" } else { "s" })
 }
 
-/// A label's due date in words, from the label alone. It never goes through
-/// a calendar day, because the day a mail was sent on depends on the hour of
-/// the seed clock, while the label's hours do not.
 fn expected_due_text(due: Due) -> String {
     match due {
         Due::None => "none".to_string(),
@@ -842,9 +761,6 @@ fn expected_due_text(due: Due) -> String {
     }
 }
 
-/// A row's due date against the day the label expects. Both days come from
-/// the same mail, so their difference does not move with the clock; the
-/// row's own calendar date would.
 fn actual_due_text(item: &Item, row: &Row, sent: DateTime<Utc>) -> String {
     let Some(got) = row_day(row) else {
         return "none".to_string();
@@ -859,7 +775,6 @@ fn actual_due_text(item: &Item, row: &Row, sent: DateTime<Utc>) -> String {
     }
 }
 
-/// The expected and the actual value of a field, for the mismatch text.
 fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (String, String) {
     let none = || "none".to_string();
     match field {
@@ -894,10 +809,8 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
     }
 }
 
-/// More items or rows of one kind than this are matched greedily.
 const EXACT_ASSIGNMENT_LIMIT: usize = 6;
 
-/// How alike a row and an item are: the number of exact fields.
 fn agreement(item: &Item, row: &Row, sent: DateTime<Utc>) -> usize {
     FIELDS
         .iter()
@@ -905,9 +818,6 @@ fn agreement(item: &Item, row: &Row, sent: DateTime<Utc>) -> usize {
         .count()
 }
 
-/// The content a tie is broken by, never the position: items and rows of one
-/// kind are put in this order before they are paired, so the same emails in
-/// any order of rows pair the same way.
 fn item_order(item: &Item) -> (Option<(i64, &'static str)>, String, Option<String>) {
     (
         item.amount.map(|a| (a.minor, a.currency)),
@@ -926,11 +836,6 @@ fn row_order(row: &Row) -> RowOrder {
     )
 }
 
-/// Pair each expected item with a row of the same kind and direction so that
-/// the most pairs are made and, among those, the most fields agree. Ties go
-/// to the pairing found first over content-ordered items and rows. Above
-/// [`EXACT_ASSIGNMENT_LIMIT`] of one kind the search is too large to be worth
-/// it, so each item takes its best free row in content order instead.
 fn assign(expected: &[Item], rows: &[Row], sent: DateTime<Utc>) -> Vec<(usize, usize)> {
     let mut kinds: Vec<(AskKind, Direction)> = expected
         .iter()
@@ -980,10 +885,6 @@ fn assign(expected: &[Item], rows: &[Row], sent: DateTime<Utc>) -> Vec<(usize, u
     out
 }
 
-/// Depth-first over the items in order: each takes a free row or is left
-/// out. Keeps the pairing with the most pairs, then the highest agreement;
-/// a later pairing replaces it only when strictly better, so ties stay with
-/// the first, which is the content-ordered one.
 fn search(
     items: &[usize],
     rows: &[usize],
@@ -1036,7 +937,6 @@ mod tests {
         }
     }
 
-    /// A Wednesday at noon, UTC.
     fn sent() -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-10-21T12:00:00Z")
             .unwrap()
@@ -1100,7 +1000,6 @@ mod tests {
 
     #[test]
     fn a_missing_row_and_an_unexpected_row_are_told_apart() {
-        // Polarity: an item with no row is a miss; a row with no item is not.
         let (data, mismatches) = grade(&label("a", vec![pay()]), Vec::new());
         assert_eq!(kind(&data, "pay").false_negatives, 1);
         assert_eq!(kind(&data, "pay").recall_percent, Some(0.0));
@@ -1135,8 +1034,6 @@ mod tests {
         assert!(mismatches[0].reason.contains("duplicate"));
     }
 
-    /// Two items of one kind match their own rows by fields, not by the order
-    /// the rows arrive in.
     #[test]
     fn matching_does_not_depend_on_row_order() {
         let items = vec![pay().amount(1_000, "GBP"), pay().amount(2_000, "GBP")];
@@ -1160,8 +1057,6 @@ mod tests {
         }
     }
 
-    /// The day `days` after the email's own date, as a row's due date: the
-    /// end of that day in the zone detection resolves in.
     fn due_on(days: i64) -> Option<DateTime<Utc>> {
         Some(mxr_todo::dates::end_of_day(
             (sent() + Duration::days(days)).date_naive(),
@@ -1186,7 +1081,6 @@ mod tests {
         assert!(data.fields.iter().all(|f| f.pairs == 1 && f.exact == 1));
         assert!(mismatches.is_empty());
 
-        // Missing, wrong and spurious are different failures.
         let (data, _) = grade(
             &label("wrong", vec![item]),
             vec![Row {
@@ -1218,8 +1112,6 @@ mod tests {
         );
     }
 
-    /// A due date is exact only on the day the label names: a row with some
-    /// other date is wrong, not "present".
     #[test]
     fn a_due_date_is_graded_on_its_day_not_its_presence() {
         let due = |expected_hours: i64, row_days: i64| {
@@ -1238,7 +1130,6 @@ mod tests {
                 .clone();
             (field, mismatches)
         };
-        // 12:00 + 60 hours is the 24th, three days later.
         let (right, _) = due(60, 3);
         assert_eq!((right.exact, right.wrong, right.present), (1, 0, 0));
         let (wrong, mismatches) = due(60, 4);
@@ -1251,20 +1142,15 @@ mod tests {
                 "1 day later than expected"
             )
         );
-        // A date already past is a negative offset.
         assert_eq!(due(-48, -2).0.exact, 1);
     }
 
-    /// The text of a due mismatch is the same whichever side of midnight UTC
-    /// the email was sent on: it comes from the label and from the row's
-    /// distance from the expected day, never from the calendar day of the send.
     #[test]
     fn due_text_does_not_depend_on_the_hour_the_email_was_sent() {
         let text = |sent_at: &str| {
             let sent = DateTime::parse_from_rfc3339(sent_at)
                 .unwrap()
                 .with_timezone(&Utc);
-            // The mail writes the day 7 days and 11 hours after it was sent.
             let due = Due::AfterSent(7 * 24 + 11);
             let written = Some(mxr_todo::dates::end_of_day(
                 (sent + Duration::hours(7 * 24 + 11)).date_naive(),
@@ -1296,7 +1182,6 @@ mod tests {
         );
         assert_eq!(evening.0 .1, "on the expected day");
         assert_eq!(evening.2 .1, "none");
-        // Words and a label that expects no date.
         assert_eq!(expected_due_text(Due::Words("Friday")), "Friday");
         assert_eq!(
             expected_due_text(Due::AfterSent(-81)),
@@ -1313,9 +1198,6 @@ mod tests {
         assert_eq!(field_texts("due", &pay(), &spurious, sent()).1, "a date");
     }
 
-    /// Words are read by the to-do code's own reader from the email's date, so
-    /// "Friday" is the next Friday after a Wednesday; words it cannot read
-    /// are counted as present, never as exact.
     #[test]
     fn due_words_are_resolved_from_the_email_date_or_counted_as_present() {
         let words = |words: &'static str, row_days: i64| {
@@ -1391,7 +1273,6 @@ mod tests {
             },
             "alex@demo.mxr.local",
         );
-        // A promise row does not satisfy an ask of the same kind.
         grader.grade(
             AskInput {
                 provenance_slices: vec![],
@@ -1423,7 +1304,6 @@ mod tests {
             .unwrap();
         assert_eq!(asked.counts.true_positives, 0);
         assert_eq!(asked.counts.false_negatives, 1);
-        // Sent mail owes no reply and is not asked about one.
         assert_eq!(data.unwrap().reply_owed.emails, 1);
     }
 
@@ -1441,7 +1321,6 @@ mod tests {
             )
         };
         let mut grader = AskGrader::default();
-        // Only the later email kept the row, as the store does.
         grader.grade(
             AskInput {
                 provenance_slices: vec![],
@@ -1469,7 +1348,6 @@ mod tests {
             .iter()
             .any(|m| m.scenario == "first" && m.actual.contains("merged")));
 
-        // The same miss from an unrelated sender is just a miss.
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
@@ -1528,11 +1406,9 @@ mod tests {
             ),
             (1, 1, 1, 1)
         );
-        // Asking for the plain one too, because the surface looks alike.
         let one_wrong = run(vec![row(AskKind::Pay)], vec![row(AskKind::Pay)]);
         assert_eq!((one_wrong.pairs, one_wrong.both_right), (1, 0));
         assert_eq!(one_wrong.differing_both_right, 0);
-        // A twin whose target is not in the set is not a pair.
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
@@ -1547,8 +1423,6 @@ mod tests {
         assert_eq!(grader.finish().0.unwrap().twins.pairs, 0);
     }
 
-    /// A pair of emails that ask nothing differs by whether a reply is owed;
-    /// finding no reply on the open one is a wrong answer, not a right one.
     #[test]
     fn a_twin_pair_is_wrong_when_a_reply_owed_is_missed() {
         let mut open = label("open", Vec::new());
@@ -1591,8 +1465,6 @@ mod tests {
         );
     }
 
-    /// An item found with the wrong currency is not a right answer for its
-    /// email, so a pair holding it is not both right.
     #[test]
     fn a_twin_pair_is_wrong_when_a_field_is_wrong() {
         let plain = label("plain", vec![pay().amount(123_456, "GBP")]);
@@ -1624,8 +1496,6 @@ mod tests {
         assert_eq!(run("GBP").both_right, 0);
     }
 
-    /// The same two rows in either order pair the same way and score the
-    /// same: ties go by content, not by position.
     #[test]
     fn matching_two_rows_gives_the_same_result_in_either_order() {
         let items = vec![
@@ -1651,8 +1521,6 @@ mod tests {
         let reversed = grade(&label, vec![second, first]);
         assert_eq!(forward.0, reversed.0);
         assert_eq!(forward.1, reversed.1);
-        // Item 1 (Acme, 10.00) is paired with the row that agrees on the most
-        // fields over the pairing that makes one pair better and one worse.
         let counts = |data: &ClassifyEvalAsksData, field: &str| {
             data.fields
                 .iter()
@@ -1663,8 +1531,6 @@ mod tests {
         assert_eq!(counts(&forward.0, "counterparty"), 2);
     }
 
-    /// More rows than items: the extra row is a duplicate and the pairing
-    /// does not depend on which came first.
     #[test]
     fn the_better_row_is_paired_whichever_comes_first() {
         let item = pay().amount(1_000, "GBP");
@@ -1763,7 +1629,6 @@ mod tests {
         assert_eq!(slice("sender_kind", "person").unwrap().emails, 1);
         assert_eq!(slice("locale", "en-ZA").unwrap().counts.expected, 1);
         assert!(slice("template_family", "held").is_some());
-        // A family with nothing to say is left out.
         assert!(slice("template_family", "quiet").is_none());
     }
 

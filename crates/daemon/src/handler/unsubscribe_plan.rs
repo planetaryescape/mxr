@@ -1,15 +1,3 @@
-//! Plans the one unsubscribe request for the messages an email address selected.
-//!
-//! An address sends one request. It comes from the newest message that has any
-//! usable List-Unsubscribe method. Date decides first, so a current mailto
-//! supersedes an old one-click token that may have expired. Method rank only
-//! breaks a tie between messages with the same date: one-click, then an
-//! http(s) link, then mailto, then a body link. A sender that runs several
-//! lists is unsubscribed per message id instead.
-//!
-//! The dry run and the real run both call this plan, so the preview is the
-//! request the real run sends.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use mxr_core::id::MessageId;
@@ -34,12 +22,9 @@ pub(super) async fn plan_unsubscribe(state: &AppState, message_ids: &[MessageId]
         return Ok(ResponseData::UnsubscribePlan { plan });
     };
     match state.store.unsubscribe_receipt_method(&envelope.id).await? {
-        // Confirmed: this sender was already unsubscribed through this message.
         Some(method) if method != UNSUBSCRIBE_PENDING_METHOD => {
             plan.already_unsubscribed = true;
         }
-        // No receipt, or an attempt still in flight. An in-flight request stays
-        // in the plan so the real run reports it as in progress, as it does today.
         _ => {
             plan.request = Some(UnsubscribePlanRequestData {
                 message_id: envelope.id,
@@ -50,7 +35,6 @@ pub(super) async fn plan_unsubscribe(state: &AppState, message_ids: &[MessageId]
     Ok(ResponseData::UnsubscribePlan { plan })
 }
 
-/// Lower is preferred. Body links come from scraping the HTML, so they rank last.
 fn method_rank(method: &UnsubscribeMethod) -> Option<u8> {
     match method {
         UnsubscribeMethod::OneClick { .. } => Some(0),
@@ -61,8 +45,6 @@ fn method_rank(method: &UnsubscribeMethod) -> Option<u8> {
     }
 }
 
-/// The newest message with a usable method. Among messages with the same date,
-/// the better method wins, then the lower message id so the choice is stable.
 fn choose_message(envelopes: Vec<Envelope>) -> Option<Envelope> {
     envelopes
         .into_iter()
@@ -109,8 +91,6 @@ mod tests {
 
     #[test]
     fn a_newer_mailto_supersedes_an_old_one_click_token() {
-        // The one-click URL may have expired (HTTP 410). The current mailto
-        // is the newest usable method, so it is chosen.
         let envelopes = vec![
             envelope(ONE, one_click("https://a/u/1"), 1),
             envelope(TWO, mailto("unsub@a.example"), 9),

@@ -1,4 +1,3 @@
-//! Draft guard precedes file I/O and store writes. No upload lock or open SQL transaction.
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -46,8 +45,6 @@ fn validate(metadata: &DraftAttachment) -> Result<(), HandlerError> {
     Ok(())
 }
 
-/// Cache provider bytes for an as-yet unsaved forward. Like fetched message
-/// bodies, these resources may be prepared during preview; no draft is saved.
 pub(super) async fn import_forward(
     state: &AppState,
     metadata: &DraftAttachment,
@@ -184,7 +181,6 @@ pub(super) async fn write_chunk(
     offset: u64,
     encoded: &str,
 ) -> HandlerResult {
-    // Bound the encoded allocation before decoding untrusted client bytes.
     if encoded.len() > (MAX_ATTACHMENT_CHUNK_BYTES as usize).div_ceil(3) * 4 {
         return Err("Draft attachment chunk exceeds 256 KiB".into());
     }
@@ -282,7 +278,6 @@ pub(super) async fn finalize(
         }
         file.sync_all().map_err(|e| e.to_string())?;
         std::fs::rename(&partial, &final_path).map_err(|e| e.to_string())?;
-        // File publication precedes ready metadata; retries recognize and reverify published bytes.
         std::fs::File::open(final_path.parent().ok_or("Missing resource directory")?)
             .and_then(|dir| dir.sync_all())
             .map_err(|e| e.to_string())?;
@@ -335,7 +330,6 @@ pub(super) fn require_visible_set(incoming: &Draft, stored: &Draft) -> Result<()
     Ok(())
 }
 
-/// Only the provider clone receives daemon-local paths. Reviewed and persisted drafts stay portable.
 pub(super) async fn resolve(state: &AppState, draft: &Draft) -> Result<Draft, HandlerError> {
     validate_set(state, draft).await?;
     let mut resolved = draft.clone();
@@ -358,7 +352,6 @@ async fn cleanup(state: &AppState) -> Result<(), HandlerError> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).timestamp();
     for metadata in state.store.stale_draft_attachments(cutoff).await? {
         let _guard = state.acquire_draft_operation(&metadata.draft_id).await;
-        // Existing owners retain even abandoned partials. Sending/uncertain/accepted drafts stay owners.
         if state.store.get_draft(&metadata.draft_id).await?.is_some() {
             continue;
         }

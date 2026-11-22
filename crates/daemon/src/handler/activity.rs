@@ -1,7 +1,3 @@
-//! Handlers for the `*Activity` IPC verbs. Reads delegate to the store
-//! repo; mutating verbs additionally emit a synthesized marker so the
-//! activity log records its own administration.
-
 use mxr_protocol::{
     ActivityCursor, ActivityEntry, ActivityExportFormat, ActivityFilter, ActivityStatBucket,
     ActivityStatGroupBy, ActivityTier, ClientKind, ResponseData, SavedActivityFilterEntry,
@@ -15,9 +11,7 @@ use crate::state::AppState;
 
 type HandlerResult = Result<ResponseData, HandlerError>;
 
-const INLINE_EXPORT_CAP_BYTES: usize = 1_048_576; // 1 MiB
-
-// ===== conversions =====
+const INLINE_EXPORT_CAP_BYTES: usize = 1_048_576;
 
 fn proto_tier_to_store(t: ActivityTier) -> store::Tier {
     match t {
@@ -85,8 +79,6 @@ fn store_row_to_proto(r: &store::ActivityRow) -> ActivityEntry {
     }
 }
 
-// ===== handlers =====
-
 pub(super) async fn list_activity(
     state: &Arc<AppState>,
     filter: &ActivityFilter,
@@ -150,7 +142,6 @@ pub(super) async fn export_activity(
     path: Option<String>,
 ) -> HandlerResult {
     let store_filter = proto_filter_to_store(filter);
-    // Stream rows in chunks of 1k via cursor pagination.
     let mut all_rows: Vec<store::ActivityRow> = Vec::new();
     let mut cursor: Option<store::ActivityCursor> = None;
     loop {
@@ -183,7 +174,6 @@ pub(super) async fn export_activity(
     };
     let size_bytes = body.len() as u64;
 
-    // Synthesized marker — always emitted, even if writing fails below.
     state.activity.record(OwnedEntry {
         ts: current_unix_ms(),
         account_id: None,
@@ -201,7 +191,6 @@ pub(super) async fn export_activity(
 
     match path {
         Some(p) => {
-            // Atomic write via tmp-rename to avoid partial files.
             let tmp = format!("{p}.tmp");
             std::fs::write(&tmp, &body).map_err(|e| format!("write {p}.tmp: {e}"))?;
             std::fs::rename(&tmp, &p).map_err(|e| format!("rename {p}: {e}"))?;
@@ -310,7 +299,6 @@ pub(super) async fn redact_activity(
     }
 
     if dry_run {
-        // Best-effort affected count without mutating.
         let count = if !ids.is_empty() {
             ids.len() as i64
         } else {
@@ -332,7 +320,6 @@ pub(super) async fn redact_activity(
         (n as i64, "filter")
     };
 
-    // Synthesized marker AFTER the redaction lands so the marker itself isn't redacted.
     state.activity.record(OwnedEntry {
         ts: current_unix_ms(),
         account_id: None,
@@ -357,7 +344,6 @@ pub(super) async fn prune_activity(
     dry_run: bool,
 ) -> HandlerResult {
     if dry_run {
-        // Count without deleting.
         let mut store_filter = store::ActivityFilter {
             until: Some(before_ts),
             include_redacted: true,
@@ -417,8 +403,6 @@ pub(super) async fn pause_activity(state: &Arc<AppState>, until_ts: Option<i64>)
     });
     Ok(ResponseData::Acknowledged)
 }
-
-// ===== saved filter handlers (Phase 8) =====
 
 fn store_saved_to_proto(s: &store::SavedActivityFilter) -> SavedActivityFilterEntry {
     let filter: ActivityFilter = serde_json::from_str(&s.filter_json).unwrap_or_default();
@@ -802,7 +786,6 @@ mod tests {
     #[tokio::test]
     async fn dry_run_redact_does_not_mutate() {
         let s = state().await;
-        // seed
         s.store
             .record_activity(store::ActivityInsert {
                 ts: 1_000,
@@ -825,7 +808,6 @@ mod tests {
             }
             other => panic!("wrong shape: {other:?}"),
         }
-        // Row remains un-redacted.
         let page = s
             .store
             .list_activity(&store::ActivityFilter::default(), 10, None)
@@ -840,8 +822,6 @@ mod tests {
         let s = state().await;
         pause_activity(&s, None).await.unwrap();
         crate::activity::wait_for_pause_state(&s.activity, true).await;
-        // Barrier only: `pause_activity` queues the marker behind the pause, so
-        // it is the resume edge that proves the marker was written.
         s.activity.resume();
         crate::activity::wait_for_pause_state(&s.activity, false).await;
 

@@ -1,12 +1,3 @@
-//! Building the Updates briefing from facts (blueprint 22, phase 4).
-//!
-//! A source line folds everything one source sent into its latest fact
-//! per template; things with a state (parcels, builds, incidents) show
-//! where they are now. Lines sort into Needs a look, Changed and Routine
-//! by their strongest signal, never by date. Counts, latest states and
-//! deltas are code. The digest's selection (what letting go acts on) is
-//! computed here once and shared by the preview and the run.
-
 use super::mode_rules::count_phrase;
 use super::updates::Item;
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -26,26 +17,17 @@ use mxr_updates::{
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// Digests let go without opening a source before mxr asks about muting it.
 pub(super) const MUTE_SUGGEST_AFTER: i64 = 8;
-/// The mute question comes back no sooner than this.
 const MUTE_SUGGEST_EVERY_DAYS: i64 = 30;
-/// A parcel that went wrong stays in Needs a look this long.
 pub(super) const PARCEL_WRONG_DAYS: i64 = 7;
-/// A delivered parcel shows for a day, then leaves on its own.
 const PARCEL_DELIVERED_DAYS: i64 = 1;
-/// No news for this long past its latest arrival date, a parcel goes quiet.
 const PARCEL_QUIET_PAST_ETA_DAYS: i64 = 7;
-/// Or this long since its last event when it has no arrival date.
 const PARCEL_QUIET_NO_ETA_DAYS: i64 = 14;
 
-/// What a digest request is about.
 #[derive(Debug, Clone, Default)]
 pub(super) struct Scope {
     pub account_id: Option<AccountId>,
-    /// A past cut; the latest one when absent.
     pub cut: Option<DateTime<Utc>>,
-    /// One source only, for letting go of a source.
     pub source_key: Option<String>,
     pub list_expired: bool,
 }
@@ -57,7 +39,6 @@ struct Past {
     numbers: Vec<Quoted>,
 }
 
-/// Each source's earlier facts, oldest first.
 #[derive(Default)]
 pub(super) struct Histories(HashMap<(AccountId, String), Vec<Past>>);
 
@@ -81,8 +62,6 @@ impl Histories {
         }
     }
 
-    /// The signal an item carries given what its source sent before, and
-    /// the delta against the previous message of its template.
     fn score<Tz: TimeZone>(&self, item: &Item, tz: &Tz) -> (Signal, Option<Delta>)
     where
         Tz::Offset: std::fmt::Display,
@@ -92,7 +71,6 @@ impl Histories {
             item.fact.source_key.clone(),
         );
         let list = self.0.get(&key).map_or(&[][..], Vec::as_slice);
-        // Sorted by (date, id): everything before this message is a prefix.
         let at = (item.message.date, item.message.id.as_uuid());
         let earlier = &list[..list.partition_point(|past| (past.date, past.id.as_uuid()) < at)];
         let previous = earlier
@@ -122,13 +100,10 @@ pub(super) struct DigestInputs<'a, Tz: TimeZone> {
     pub items: &'a [Item],
     pub histories: &'a Histories,
     pub sources: &'a HashMap<(AccountId, String), UpdateSourceRow>,
-    /// Open to-dos on the threads in view.
     pub todos: &'a [TodoRecord],
     pub deliveries: &'a [Delivery],
     pub delivery_sources: &'a HashMap<mxr_core::DeliveryId, HashSet<MessageId>>,
-    /// Why an alert in view was not made into a to-do on arrival.
     pub alert_notes: &'a HashMap<MessageId, AutoTodoData>,
-    /// The same for a parcel that went wrong.
     pub parcel_notes: &'a HashMap<mxr_core::DeliveryId, AutoTodoData>,
     pub cuts: &'a Cuts,
     pub scope: &'a Scope,
@@ -144,15 +119,12 @@ struct Scored<'a> {
     delta: Option<Delta>,
 }
 
-/// What letting go of a digest acts on.
 pub(super) struct Selection {
     pub thread_ids: Vec<ThreadId>,
     pub message_ids: Vec<MessageId>,
     pub token: String,
     pub source_count: usize,
-    /// Selected but not shown: muted, changes only, or past its window.
     pub hidden: usize,
-    /// Selected threads To do also holds.
     pub in_todo: usize,
 }
 
@@ -180,9 +152,6 @@ fn token(ids: &[&MessageId], cut_at: DateTime<Utc>) -> String {
         .collect()
 }
 
-/// Everything in the cut and in scope, shown or hidden: the digest's
-/// stable set, and what letting go of it does. Nothing that arrived after
-/// the cut is in it. The preview and the run both read this one rule.
 fn select(
     items: &[Item],
     scope: &Scope,
@@ -223,7 +192,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     count_phrase(super::now::count(n), one, many)
 }
 
-/// "Let go of 31 updates from 12 sources; 2 also in To do stay there."
 pub(super) fn let_go_line(
     messages: usize,
     sources: usize,
@@ -354,7 +322,6 @@ where
 
 struct LineContext<'a, Tz: TimeZone> {
     inputs: &'a DigestInputs<'a, Tz>,
-    /// "08:00" for the digest, the next cut for what arrives after it.
     digest_label: &'a str,
     todo_by_thread: &'a HashMap<&'a ThreadId, &'a TodoRecord>,
 }
@@ -376,9 +343,6 @@ where
         .map(|m| m.signal)
         .max()
         .unwrap_or(Signal::Routine);
-    // The fact to show: in Changed, the newest message that changed (one
-    // with a delta first); otherwise the newest.
-    // A tracked thing shows its latest state, whatever changed before it.
     let lead = if section == UpdateSectionData::Changed && newest.item.fact.tracked.is_none() {
         members
             .iter()
@@ -407,7 +371,6 @@ where
         .iter()
         .find_map(|thread| ctx.todo_by_thread.get(thread));
     let todo = todo_record.map(|todo| todo.id.clone());
-    // Why the alert is, or is not, already a to-do: the provider's word.
     let alert = members.iter().any(|m| m.item.fact.needs_you.is_some());
     let auto_todo = match todo_record.and_then(|record| super::alert_todos::created_note(record)) {
         Some(created) => Some(created),
@@ -418,7 +381,6 @@ where
             .cloned(),
         None => None,
     };
-    // Otherwise a suggestion: `t` is the user's to press.
     let todo_suggestion = if todo.is_some() {
         None
     } else {
@@ -473,8 +435,6 @@ where
         section,
         account_id: account.clone(),
         source_key: fact.source_key.clone(),
-        // In Needs a look the sending host sits beside the display name,
-        // so a borrowed brand ("Google" from someone else's domain) shows.
         source_name: if section == UpdateSectionData::NeedsALook {
             mxr_updates::fact::branded_name(&fact.source_name, &fact.sender_host)
         } else {
@@ -483,8 +443,6 @@ where
         sender_email: message.from_email.to_ascii_lowercase(),
         fact: fact.text.clone(),
         fact_source: fact.fact_source.as_str().to_string(),
-        // Only while the code works: a sign-in alert stays two days, the
-        // code it carries minutes.
         code: newest.item.fact.code.clone().filter(|_| {
             newest
                 .item
@@ -498,7 +456,6 @@ where
         count: super::now::count(members.len()),
         latest_message_id: Some(message.id.clone()),
         latest_message_pinned: message.pinned,
-        // Filled from the exact row ledger at the IPC response seam.
         unread: None,
         seen_revision: None,
         source_filed_at: ctx.inputs.filed.get(&message.id).copied(),
@@ -526,9 +483,6 @@ where
     })
 }
 
-/// One source's lines. Tracked things fold to one line each, with the
-/// latest state deciding the section; needs-a-look mail gets a line per
-/// template; the rest folds into one Changed or Routine line.
 fn lines_for_source<Tz: TimeZone>(
     members: &[Scored<'_>],
     ctx: &LineContext<'_, Tz>,
@@ -603,20 +557,12 @@ where
     out
 }
 
-/// One source's needs-a-look mail, a group per subject template, folded so
-/// a kind of alert is one line: "Payment failed" and "Payment failed again"
-/// differ as templates but are one failed payment to look at. The fold only
-/// joins whole template groups, so a line's messages are the union of the
-/// lines it replaces and letting go, the to-do and tuning (which act on the
-/// source's messages, not on a line) see the same set. The folded line keeps
-/// the first template's id, so a line that did not fold keeps its id.
 fn fold_repeats<'a>(
     needs: BTreeMap<&'a str, Vec<&'a Scored<'a>>>,
 ) -> Vec<(&'a str, Vec<&'a Scored<'a>>)> {
     let mut by_kind: BTreeMap<&'static str, (&'a str, Vec<&'a Scored<'a>>)> = BTreeMap::new();
     let mut lines: Vec<(&'a str, Vec<&'a Scored<'a>>)> = Vec::new();
     for (template, group) in needs {
-        // The kind of the group's newest message that carries one.
         let kind = group
             .iter()
             .filter_map(|m| Some((m.item.message.date, m.item.fact.needs_you?)))
@@ -636,7 +582,6 @@ fn fold_repeats<'a>(
     lines
 }
 
-/// Scored mail grouped by account and source, in a stable order.
 fn by_source(scored: Vec<Scored<'_>>) -> BTreeMap<(String, String), Vec<Scored<'_>>> {
     let mut groups: BTreeMap<(String, String), Vec<Scored<'_>>> = BTreeMap::new();
     for entry in scored {
@@ -651,9 +596,6 @@ fn by_source(scored: Vec<Scored<'_>>) -> BTreeMap<(String, String), Vec<Scored<'
     groups
 }
 
-/// Lines for a set of items, split by setting: muted sources are hidden,
-/// changes-only sources keep only lines that aren't routine. Returns the
-/// lines and how many messages tuning hid (muted, changes only).
 fn build_lines<'a, Tz: TimeZone>(
     scored: Vec<Scored<'a>>,
     ctx: &LineContext<'_, Tz>,
@@ -683,8 +625,6 @@ where
                     }
                 }
             }
-            // A breakthrough source leads Needs a look every time, with a
-            // suggested to-do; mxr still never adds the to-do itself.
             UpdateSourceSettingData::Breakthrough => {
                 for mut line in lines_for_source(members, ctx) {
                     line.section = UpdateSectionData::NeedsALook;
@@ -703,8 +643,6 @@ where
     (lines, muted, changes_only)
 }
 
-/// What arrived after the cut, one line per source: a glance at what the
-/// next digest holds, not a second briefing. Muted sources stay hidden.
 fn since_lines<Tz: TimeZone>(
     scored: Vec<Scored<'_>>,
     ctx: &LineContext<'_, Tz>,
@@ -738,12 +676,10 @@ where
         .collect()
 }
 
-/// The claim a parcel's breakthrough to-do holds, one per state.
 pub(super) fn parcel_dedup_key(delivery: &Delivery) -> String {
     format!("update|delivery|{}|{}", delivery.id, delivery.status)
 }
 
-/// What `t` and the breakthrough call a parcel's to-do.
 pub(super) fn parcel_todo_title(name: &str) -> String {
     format!("Check delivery from {name}")
 }
@@ -762,7 +698,6 @@ pub(super) fn parcel_went_wrong(status: DeliveryStatus) -> bool {
     )
 }
 
-/// "Bookshop", the carrier, or "Your parcel".
 pub(super) fn parcel_name(delivery: &Delivery) -> String {
     delivery
         .merchant
@@ -772,10 +707,6 @@ pub(super) fn parcel_name(delivery: &Delivery) -> String {
         .unwrap_or_else(|| "Your parcel".to_string())
 }
 
-/// When a parcel still in flight went quiet: 7 days past its latest
-/// arrival date or its latest event, whichever is later, or 14 days
-/// without news when it has no arrival date. A newer event restarts the
-/// clock. `None` once delivered.
 pub(super) fn parcel_quiet_since(delivery: &Delivery) -> Option<DateTime<Utc>> {
     if delivery.delivered_at.is_some() {
         return None;
@@ -813,8 +744,6 @@ fn parcel_label(status: DeliveryStatus) -> &'static str {
     }
 }
 
-/// A parcel as a tracker line, or nothing once it has left: delivered a
-/// day ago, quiet before this digest, or a problem older than a week.
 pub(super) fn parcel_line<Tz: TimeZone>(
     delivery: &Delivery,
     previous_cut: DateTime<Utc>,
@@ -843,7 +772,6 @@ where
     } else if status == DeliveryStatus::Expired {
         return None;
     } else if let Some(quiet) = quiet_since.filter(|quiet| *quiet <= now) {
-        // One "went quiet" line in the digest after it happened, then gone.
         if quiet <= previous_cut {
             return None;
         }
@@ -872,19 +800,13 @@ where
         }
         _ => {}
     }
-    if let Some(carrier) = delivery
-        .carrier
-        .as_ref()
-        // A carrier-only source already names the carrier; likewise when a
-        // merchant starts with its carrier ("Amazon.com" / "amazon").
-        .filter(|c| {
-            !name.trim().eq_ignore_ascii_case(c.trim())
-                && delivery
-                    .merchant
-                    .as_ref()
-                    .is_none_or(|merchant| !merchant.to_lowercase().starts_with(&c.to_lowercase()))
-        })
-    {
+    if let Some(carrier) = delivery.carrier.as_ref().filter(|c| {
+        !name.trim().eq_ignore_ascii_case(c.trim())
+            && delivery
+                .merchant
+                .as_ref()
+                .is_none_or(|merchant| !merchant.to_lowercase().starts_with(&c.to_lowercase()))
+    }) {
         detail.push(carrier.clone());
     }
     let dedup = parcel_dedup_key(delivery);
@@ -978,7 +900,6 @@ fn sort_lines(lines: &mut [UpdateLineData], section: UpdateSectionData) {
             })
         });
     } else {
-        // Suggested to-dos lead Needs a look; then newest first.
         lines.sort_by(|a, b| {
             b.todo_suggestion
                 .is_some()
@@ -989,7 +910,6 @@ fn sort_lines(lines: &mut [UpdateLineData], section: UpdateSectionData) {
     }
 }
 
-/// "1 needs a look, 2 changed. 23 routine from 9 sources."
 fn headline(needs: usize, changed: usize, routine: &[UpdateLineData]) -> String {
     let mut first = Vec::new();
     if needs > 0 {
@@ -1067,7 +987,6 @@ where
         .iter()
         .filter(|item| in_scope(item, inputs.scope))
     {
-        // Delivery messages are folded into their existing parcel tracker.
         if item.message.is_delivery {
             continue;
         }
@@ -1076,8 +995,6 @@ where
             continue;
         }
         let (mut signal, found) = inputs.histories.score(item, tz);
-        // New or changed means since the last digest: mail carried over
-        // from an earlier cut is routine now, whatever it was then.
         let fresh_from = if item.message.date <= window.at {
             window.previous
         } else {
@@ -1118,7 +1035,6 @@ where
                 })
                 .filter_map(|d| {
                     let mut line = parcel_line(d, window.previous, inputs.todos, now, tz)?;
-                    // Why the parcel problem is, or is not, already a to-do.
                     line.auto_todo = match line
                         .todo_id
                         .as_ref()

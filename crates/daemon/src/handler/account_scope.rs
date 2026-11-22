@@ -1,11 +1,3 @@
-//! Which accounts a request touches, for the agent and MCP profiles'
-//! `allowed_accounts`.
-//!
-//! `request_scope` is an exhaustive match with no catch-all arm, so a new
-//! `Request` variant does not compile until someone decides what it touches.
-//! The old hand-kept list ended in `_ => None`, which let every request it
-//! forgot through unchecked.
-
 use super::{reading, records, request_kind, todos};
 use crate::state::AppState;
 use mxr_config::{AgentProfileConfig, MxrConfig};
@@ -19,56 +11,33 @@ use mxr_protocol::{
 use mxr_store::SignatureScope;
 use std::sync::Arc;
 
-/// What a request reads or changes, as far as accounts go.
 #[derive(Debug)]
 enum RequestScope<'a> {
-    /// Touches no account's mail or account data: liveness, the daemon
-    /// version handshake, text-only tools, UI hints.
     Unscoped,
-    /// Reads or changes data across every account, or daemon-wide data
-    /// that mixes accounts (logs, rules, the activity log). A scoped agent
-    /// can't be given part of it, so it is denied.
     AllAccounts,
-    /// Global sync is narrowed to accounts on the caller profile's allowlist
-    /// by the sync target selector before any provider is touched.
     AllAllowedSyncAccounts,
-    /// Touches exactly these accounts, named directly or through the
-    /// entities they own. An empty list touches no account.
     Targets(Vec<ScopeTarget<'a>>),
 }
 
-/// One thing a request names, to be resolved to its account.
 #[derive(Debug)]
 enum ScopeTarget<'a> {
     Account(&'a AccountId),
-    /// A config account key; matched against the allowlist as written.
     AccountKey(&'a str),
     Rule(&'a str),
     AuthSession(&'a AuthSessionId),
-    /// A label that must belong to the account named beside it: listing by
-    /// label ignores the account, so a foreign label would list another
-    /// account's mail.
     LabelIn(&'a LabelId, &'a AccountId),
     CategoryIn(&'a CategoryId, &'a AccountId),
     Message(&'a MessageId),
     Thread(&'a ThreadId),
     Draft(&'a DraftId),
-    /// A draft sent by value: its own `account_id`, plus the stored draft
-    /// with the same id when there is one, so a write can't overwrite
-    /// another account's draft by claiming a different account.
     DraftBody(&'a Draft),
-    /// A to-do id or unique prefix.
     Todo(&'a str),
-    /// An Archive record id or unique prefix.
     Record(&'a str),
-    /// A Reading item key; it belongs to its message's account.
     ReadingItem(&'a str),
-    /// A Reading highlight id; it belongs to its own account.
     ReadingHighlight(&'a str),
     Delivery(&'a DeliveryId),
     Commitment(&'a str),
     Decision(&'a str),
-    /// A move or Not-sure correction, by its row id.
     MoveCorrection(i64),
     Undo(&'a str),
     CategoryPreview(&'a str),
@@ -84,7 +53,6 @@ fn account(account_id: &AccountId) -> RequestScope<'_> {
     Targets(vec![T::Account(account_id)])
 }
 
-/// `None` means every account.
 fn optional_account(account_id: Option<&AccountId>) -> RequestScope<'_> {
     account_id.map_or(AllAccounts, account)
 }
@@ -114,13 +82,9 @@ fn mutation_messages(mutation: &MutationCommand) -> &[MessageId] {
 fn request_scope(req: &Request) -> RequestScope<'_> {
     match req {
         Request::SetModeRowSeen { account_id, .. } => account(account_id),
-        // The authenticated remote admission checks the inner operation's
-        // profile before any specialized branch or generic dispatch.
         Request::RemoteRead { .. } | Request::GetRemoteReady => Unscoped,
         Request::RemoteAuthority { .. } => AllAccounts,
         Request::GetRecoveryStatus | Request::ActivateRecovery {..} | Request::PrepareRecoveredDraft {..} => AllAccounts,
-        // Refused for agent profiles before scoping; a conversation can
-        // read any account.
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
         | Request::GetComposeModels
@@ -133,7 +97,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::GetAssistantConversation { .. }
         | Request::GetAssistantStepRows { .. }
         | Request::DeleteAssistantConversation { .. } => AllAccounts,
-        // ----- Named by account -----
         Request::ListEnvelopes {
             account_id,
             label_id,
@@ -210,10 +173,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExportRecords { account_id, .. }
         | Request::ListPlace { account_id, .. }
         | Request::SweepPlace { account_id, .. } => optional_account(account_id.as_ref()),
-        // A selection names its account, not its messages: the id list is
-        // empty and never crosses IPC, so classifying by messages would let
-        // it past every scoped profile. No account is `AllAccounts`, denied
-        // to a scoped profile like a search with no account.
         Request::PreviewSelection {
             selection: SelectionData::Search { account_id, .. },
             ..
@@ -266,7 +225,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SetSenderKind { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => account(account_id),
 
-        // ----- Account config, named by key -----
         Request::AuthorizeAccountConfig { account, .. }
         | Request::StartAuthSession { account, .. }
         | Request::UpsertAccountConfig { account }
@@ -284,7 +242,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             Targets(vec![T::AuthSession(session_id)])
         }
 
-        // ----- Named by message -----
         Request::GetEnvelope { message_id }
         | Request::GetBody { message_id }
         | Request::GetInvite { message_id }
@@ -326,9 +283,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } | Request::PreviewArchive { mutation, .. } | Request::SubmitArchive { mutation, .. } => {
             messages(mutation_messages(mutation))
         }
-        // With no account these read only the caller's accounts: dispatch
-        // narrows them with `allowed_accounts`, so Reading keeps working
-        // for a scoped agent instead of being denied.
         Request::GetReadingEdition { account_id, .. }
         | Request::ExportReadingHighlights { account_id } => match account_id {
             Some(account_id) => account(account_id),
@@ -357,7 +311,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             PromiseSourceData::SentMessage { message_id } => Targets(vec![T::Message(message_id)]),
         },
 
-        // ----- Named by thread -----
         Request::GetThread { thread_id, .. }
         | Request::SummarizeThread { thread_id }
         | Request::GetThreadBriefing { thread_id, .. }
@@ -425,7 +378,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             Targets(targets)
         }
 
-        // ----- Named by draft -----
         Request::DraftCompose {
             account_id,
             source_message_id,
@@ -435,8 +387,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             let mut targets: Vec<_> = account_id.iter().map(T::Account).collect();
             targets.extend(source_message_id.as_ref().map(T::Message));
             targets.extend(thread_id.as_ref().map(T::Thread));
-            // A new message with no account falls back to the default
-            // account, which a scoped agent did not name.
             if targets.is_empty() {
                 AllAccounts
             } else {
@@ -475,7 +425,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::GetDraft { draft_id }
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
-        // ----- Named by another entity -----
         Request::SyncMicrosoftTodos { todo_id, account_id, .. } => {
             let mut targets = Vec::new();
             if let Some(account_id) = account_id { targets.push(T::Account(account_id)); }
@@ -527,8 +476,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         }
         Request::GetRule {rule} | Request::GetRuleForm {rule} => Targets(vec![T::Rule(rule)]),
 
-        // ----- Every account, or daemon-wide data that mixes them -----
-        // Quick drafts a fixed corpus, so it reads no account's mail.
         Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::DraftEvalQuick
@@ -550,13 +497,10 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::RefreshContacts
         | Request::RebuildAnalytics
         | Request::RecomputeLinkCounts
-        // Decides which model every account's mail is sent to.
         | Request::UpdateLlmConfig { .. }
         | Request::ReloadLlmConfig
         | Request::SetLlmKey { .. }
         | Request::RemoveLlmKey { .. }
-        // Decides where every account's Reading items may be sent, and
-        // reads back highlights on every account's sent items.
         | Request::GetMarginaliaStatus
         | Request::SetMarginaliaConnection { .. }
         | Request::SyncMarginaliaHighlights { item_key: None }
@@ -575,11 +519,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListSnoozed
         | Request::ListReplyQueue
         | Request::ListSignatureDefaults
-        // Signatures are shared by every account's defaults.
         | Request::SetSignature { .. }
         | Request::DeleteSignature { .. }
-        // Snippets are user text with no account binding, so a scoped
-        // profile can't be given a part of them.
         | Request::ListSnippets
         | Request::SetSnippet { .. }
         | Request::DeleteSnippet { .. }
@@ -599,13 +540,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::UpsertSavedActivityFilter { .. }
         | Request::DeleteSavedActivityFilter { .. } => AllAccounts,
 
-        // ----- No account data -----
-        // Every client calls status as the daemon version handshake and the
-        // MCP status tool depends on it; `scope_response` cuts its account
-        // rows down to the allowed accounts.
-        // Freshness across every account is the status bar's poll:
-        // `scope_response` keeps only the allowed accounts' sync health and
-        // arrivals. Naming an account scopes it like any other request.
         Request::GetFreshness {
             account_id: Some(account_id),
             ..
@@ -636,7 +570,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
     }
 }
 
-/// The accounts a request's targets resolve to.
 #[derive(Debug, Default)]
 struct ResolvedAccounts {
     keys: Vec<String>,
@@ -651,9 +584,6 @@ impl ResolvedAccounts {
     }
 }
 
-/// Look up the account behind every target. A target that names something
-/// that doesn't exist is an error: the request is denied rather than let
-/// through with nothing checked.
 async fn resolve_targets(
     state: &Arc<AppState>,
     targets: &[ScopeTarget<'_>],
@@ -887,9 +817,6 @@ async fn message_account(state: &AppState, message_id: &MessageId) -> Result<Acc
         .ok_or_else(|| format!("Message not found: {message_id}"))
 }
 
-/// Every account holding each thread. Legacy Gmail thread ids aren't
-/// account-scoped, so one id can span accounts; all of them must be in
-/// scope, not just the one the thread row reports.
 pub(super) async fn thread_accounts(
     state: &AppState,
     thread_ids: &[ThreadId],
@@ -911,8 +838,6 @@ pub(super) async fn thread_accounts(
         .collect())
 }
 
-/// An undo puts back messages, desk dismissals, promises, mode-done marks
-/// and to-dos; every one of them must be in scope.
 async fn resolve_undo(
     state: &Arc<AppState>,
     mutation_id: &str,
@@ -958,11 +883,6 @@ async fn resolve_undo(
     Ok(())
 }
 
-/// The accounts of an `--all` job, for an undo sent its id. `None` when the id
-/// has an undo entry (an ordinary undo, scoped by its snapshots) or is not an
-/// `--all` job. An `--all` job keeps no undo entry (D192); its accounts are
-/// the ones its result recorded, or its selection's account. Empty means
-/// every account.
 async fn all_job_accounts_without_undo(
     state: &Arc<AppState>,
     id: &str,
@@ -1007,10 +927,6 @@ async fn all_job_accounts_without_undo(
     Ok(Some(accounts))
 }
 
-/// A caller cleared for every account of the `--all` job reaches the
-/// handler's refusal, which says why it cannot be undone. Any other caller
-/// gets the not-found an unknown id gets, so the job's existence does not
-/// leak outside its accounts.
 async fn all_job_undo_scope(
     state: &Arc<AppState>,
     profile: &AgentProfileConfig,
@@ -1036,8 +952,6 @@ async fn all_job_undo_scope(
     }
 }
 
-/// A job only knows its accounts once its result is in; until then it
-/// can't be attributed, so a scoped agent can't read it.
 async fn job_accounts(state: &Arc<AppState>, job_id: &str) -> Result<Vec<AccountId>, String> {
     let json = state
         .store
@@ -1259,7 +1173,6 @@ async fn profile_covers_all_accounts(
     Ok(true)
 }
 
-/// The enabled accounts a scoped profile may see.
 pub(super) async fn allowed_accounts(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1278,7 +1191,6 @@ pub(super) async fn allowed_accounts(
     Ok(allowed)
 }
 
-/// Scope cached reads without changing the enabled-only SyncAll scope.
 pub(super) async fn allowed_cached_accounts(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1304,7 +1216,6 @@ fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
         .any(|allowed| allowed == token || allowed.eq_ignore_ascii_case(token))
 }
 
-/// Which profile governs a client kind, if any.
 pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
     match source {
         ClientKind::Agent | ClientKind::Mcp => Some(source.as_str()),
@@ -1318,11 +1229,6 @@ pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
     }
 }
 
-/// Cut a response down to what a scoped profile may see. Request checks
-/// already keep a scoped client to its accounts; this covers responses that
-/// are allowed but carry other accounts' rows (status, signatures, threads
-/// whose id another account shares) and is a second safety net for thread
-/// loads.
 pub(super) async fn scope_response(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1485,8 +1391,6 @@ pub(super) async fn scope_response(
     }
 }
 
-/// Keep only the allowed accounts' messages of a thread, and rebuild the
-/// thread's summary fields from them so nothing of the rest shows through.
 async fn scope_thread(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1509,7 +1413,6 @@ async fn scope_thread(
         });
     }
     rebuild_thread(&mut thread, &kept)?;
-    // A cached summary was written over every message, the hidden ones too.
     Ok(ResponseData::Thread {
         thread,
         messages: kept,
@@ -1517,9 +1420,6 @@ async fn scope_thread(
     })
 }
 
-/// `Thread` and `Threads` are the responses that carry hydrated threads.
-/// A listed thread whose id another account also holds is rebuilt from the
-/// allowed accounts' messages, and one with none of them is dropped.
 async fn scope_threads(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1562,9 +1462,6 @@ async fn scope_threads(
     Ok(scoped)
 }
 
-/// Rebuild a thread's aggregate fields from the messages a scoped client
-/// may see, so nothing of a hidden message shows through: the store
-/// aggregates a shared thread id over every account's messages.
 fn rebuild_thread(thread: &mut Thread, kept: &[Envelope]) -> Result<(), String> {
     let Some(latest) = kept.iter().max_by_key(|message| message.date) else {
         return Err(format!("Thread not found: {}", thread.id));
@@ -1572,7 +1469,6 @@ fn rebuild_thread(thread: &mut Thread, kept: &[Envelope]) -> Result<(), String> 
     thread.account_id = latest.account_id.clone();
     thread.snippet = latest.snippet.clone();
     thread.latest_date = latest.date;
-    // The store takes `MIN(subject)`; do the same over what's kept.
     if let Some(subject) = kept.iter().map(|message| &message.subject).min() {
         thread.subject = subject.clone();
     }
@@ -1593,10 +1489,6 @@ fn rebuild_thread(thread: &mut Thread, kept: &[Envelope]) -> Result<(), String> 
     Ok(())
 }
 
-/// Cut a daemon event down to what a scoped profile may see, or drop it.
-/// Events that concern no account (daemon health, lag without its count)
-/// pass; events whose
-/// account can't be worked out are dropped.
 pub(crate) async fn scope_event(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -1616,8 +1508,6 @@ pub(crate) async fn scope_event(
                     kept.push(envelope);
                 }
             }
-            // The full count would tell how much mail other accounts got,
-            // so a scoped client's total is what it can see.
             (!kept.is_empty()).then_some(DaemonEvent::NewMessages {
                 total: kept.len(),
                 envelopes: kept,
@@ -1666,7 +1556,6 @@ pub(crate) async fn scope_event(
         | DaemonEvent::ModesChanged { ref account_id } => {
             let allowed = match account_id {
                 Some(account_id) => account_id_allowed(state, profile, account_id).await?,
-                // An operation over every account, or one that didn't say.
                 None => false,
             };
             keep_if(allowed, event)
@@ -1675,19 +1564,11 @@ pub(crate) async fn scope_event(
             let allowed = account_id_allowed(state, profile, account_id).await?;
             keep_if(allowed, event)
         }
-        // Carries nothing: only that the shared contacts table was rebuilt.
         DaemonEvent::ContactsRefreshed => Some(DaemonEvent::ContactsRefreshed),
-        // Not an event this build understands, so it cannot be scoped.
         DaemonEvent::Unknown => None,
-        // Its summary can name another account's messages, and nothing
-        // ties it to an account.
         DaemonEvent::MutationReconciliationFailed { .. } => None,
         DaemonEvent::ServerStopping { .. } => Some(event),
-        // The count covers every account's events, so a scoped client is
-        // told to resync without learning how much the others got.
         DaemonEvent::EventsLagged { .. } => Some(DaemonEvent::EventsLagged { skipped: 0 }),
-        // Agent profiles can't use the assistant, and a conversation can
-        // touch any account.
         DaemonEvent::AssistantUpdated { .. } => None,
         DaemonEvent::ThreadGistReady { ref gist } => {
             let mut allowed = true;

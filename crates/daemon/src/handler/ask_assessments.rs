@@ -1,4 +1,3 @@
-//! Independently versioned asks facet; the home materializer remains inbound-only.
 use super::HandlerError;
 use crate::state::AppState;
 use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
@@ -7,8 +6,6 @@ use mxr_store::DeskMessage;
 use mxr_todo::asks::{assess, AskInput, Predecessor};
 use std::collections::HashMap;
 
-/// Acceptance uses the same authored units even before the reconciler stores them.
-/// Preview reads cached source only and never publishes an assessment.
 pub(super) async fn promise_source(
     state: &AppState,
     envelope: &Envelope,
@@ -33,7 +30,6 @@ pub(super) async fn promise_source(
             let senders = super::desk::Senders::load_raw(state, account, &messages).await?;
             let own = super::desk::self_matcher(state, account).await?;
             let prepared = prepare(state, account, &messages, &senders, &own).await?;
-            // A concurrent reconciler may have stored the answer before prepare read it.
             state
                 .store
                 .asks_for_messages(account, ids)
@@ -99,8 +95,6 @@ pub(super) async fn prepare(
         .iter()
         .map(str::to_string)
         .collect();
-    // Names are observations from this account's envelopes, never derived
-    // from an email address or an account's UI label.
     let mut answers: Vec<AskAssessment> = Vec::new();
     let mut grouped: HashMap<&ThreadId, Vec<&DeskMessage>> = HashMap::new();
     for message in messages {
@@ -215,7 +209,6 @@ pub(super) async fn prepare(
             answers.push(answer);
         }
     }
-    // A timezone change during the read cannot publish an answer for the old context.
     if mxr_store::asks_context_token().map_err(|e| HandlerError::from(e.to_string()))?
         != context_token
     {

@@ -1,12 +1,3 @@
-//! Reply-later queue and auto-reminders: local-only nudges that don't
-//! roundtrip to the provider.
-//!
-//! * `message_flags` (migration 013) — manually-flagged "reply later"
-//!   set; user-driven curation. A flag can carry a time (migration 056,
-//!   set through `DeferThreads`): out of the queue until then.
-//! * `auto_reminders` (migration 014) — time-based "remind me if no
-//!   reply in N days"; daemon-driven, fired by a background loop.
-
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
@@ -77,12 +68,8 @@ pub(crate) async fn refresh_reply_later_search_marker(
 }
 
 pub(super) async fn list_reply_queue(state: &AppState) -> HandlerResult {
-    // A timed reply later joins the queue when its time comes.
     let ids = state.store.list_reply_later(Utc::now()).await?;
     let messages = state.store.list_envelopes_by_ids(&ids).await?;
-    // The store returns IDs in set_at-desc order, but the join may
-    // reshuffle envelopes. Re-sort to honor the original ordering so
-    // the UI surfaces the most recently flagged message first.
     let id_order: std::collections::HashMap<_, _> = ids
         .iter()
         .enumerate()
@@ -98,8 +85,6 @@ pub(super) async fn set_auto_reminder(
     sent_message_id: &MessageId,
     remind_at: DateTime<Utc>,
 ) -> HandlerResult {
-    // Look up the message's account so the reminder row carries it for
-    // analytics and per-account loop sharding later.
     let envelope = state
         .store
         .get_envelope(sent_message_id)

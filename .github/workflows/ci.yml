@@ -116,6 +116,22 @@ jobs:
       - uses: actions/checkout@v7
       - run: scripts/check_architecture_boundaries.sh
 
+  comment-ratchet:
+    name: Comment Ratchet
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install TypeScript for the comment scanner
+        working-directory: apps/web
+        run: npm ci --ignore-scripts
+      - run: node --test scripts/comment-ratchet.test.mjs
+      - run: node scripts/comment-ratchet.mjs
+
   # examples/adapter-skeleton is excluded from the root workspace so it stays
   # copyable as a standalone template — which also means `cargo check
   # --workspace` never builds it, and a provider-trait refactor can rot it

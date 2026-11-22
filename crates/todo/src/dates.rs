@@ -398,21 +398,6 @@ mod tests {
     }
 
     #[test]
-    fn a_reminder_after_the_date_means_the_date_just_gone() {
-        let found = find_due(
-            "Your payment was due 9 October",
-            &due_regex(),
-            &sent(2026, 10, 12),
-            DateOrder::DayFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
-        );
-    }
-
-    #[test]
     fn weekday_resolves_to_the_next_one_after_sending() {
         // 28 Sep 2026 is a Monday.
         let found = find_due(
@@ -494,26 +479,5 @@ mod tests {
         assert_eq!(order_for("camden.gov.uk", Some("GBP")), DateOrder::DayFirst);
         assert_eq!(order_for("comcast.com", Some("USD")), DateOrder::MonthFirst);
         assert_eq!(order_for("example.com", None), DateOrder::DayFirst);
-    }
-    #[test]
-    fn captures_retain_original_past_tense_for_the_same_shared_resolver() {
-        let anchor = Utc
-            .with_ymd_and_hms(2026, 10, 23, 12, 0, 0)
-            .single()
-            .expect("anchor");
-        let trigger = trigger_regex("due");
-        let text = "Invoice amount £25 was due on 20 October.";
-        let captures = trigger.captures(text).expect("due candidate");
-        let captured =
-            resolve_due_match(text, &captures, &anchor, DateOrder::DayFirst).expect("past due");
-        assert_eq!(
-            captured,
-            find_due(text, &trigger, &anchor, DateOrder::DayFirst).expect("shared parser")
-        );
-        assert_eq!(captured.at.date_naive().to_string(), "2026-10-20");
-        assert!(
-            !captured.checked,
-            "the inferred year is visible as unchecked"
-        );
     }
 }

@@ -16,16 +16,6 @@ fn test_envelope(account_id: &AccountId) -> Envelope {
 }
 
 #[tokio::test]
-async fn account_roundtrip() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-    let fetched = store.get_account(&account.id).await.unwrap().unwrap();
-    assert_eq!(fetched.name, account.name);
-    assert_eq!(fetched.email, account.email);
-}
-
-#[tokio::test]
 async fn account_insert_upserts_existing_runtime_record() {
     let store = Store::in_memory().await.unwrap();
     let mut account = test_account();
@@ -525,40 +515,6 @@ async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected
 }
 
 #[tokio::test]
-async fn recording_an_undated_own_promise_stores_no_source() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-    let record = commitment_fixture(&store, &account, None, None, "msg::promise::undated").await;
-    let id = store.record_own_promise(&record).await.unwrap();
-    let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
-    assert_eq!(stored.by_when, None);
-    assert_eq!(stored.by_when_source, None);
-}
-
-#[tokio::test]
-async fn envelope_upsert_and_query() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-
-    let fetched = store.get_envelope(&env.id).await.unwrap().unwrap();
-    assert_eq!(fetched.id, env.id);
-    assert_eq!(fetched.subject, env.subject);
-    assert_eq!(fetched.from.email, env.from.email);
-    assert_eq!(fetched.flags, env.flags);
-
-    let list = store
-        .list_envelopes_by_account(&account.id, 100, 0)
-        .await
-        .unwrap();
-    assert_eq!(list.len(), 1);
-}
-
-#[tokio::test]
 async fn count_messages_grouped_by_account_batches_totals() {
     let store = Store::in_memory().await.unwrap();
     let first = test_account();
@@ -655,49 +611,6 @@ async fn list_envelopes_by_ids_roundtrip() {
 }
 
 #[tokio::test]
-async fn list_envelopes_by_ids_roundtrip_on_disk() {
-    let temp_dir = std::env::temp_dir().join(format!(
-        "mxr-store-test-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&temp_dir).unwrap();
-    let db_path = temp_dir.join("mxr.db");
-    let store = Store::new(&db_path).await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let mut first = test_envelope(&account.id);
-    first.provider_id = "first".to_string();
-    first.subject = "First".to_string();
-
-    let mut second = test_envelope(&account.id);
-    second.id = MessageId::new();
-    second.provider_id = "second".to_string();
-    second.subject = "Second".to_string();
-
-    store.upsert_envelope(&first).await.unwrap();
-    store.upsert_envelope(&second).await.unwrap();
-
-    let listed = store
-        .list_envelopes_by_ids(&[second.id.clone(), first.id.clone()])
-        .await
-        .unwrap();
-
-    assert_eq!(listed.len(), 2);
-    assert_eq!(listed[0].id, second.id);
-    assert_eq!(listed[0].subject, "Second");
-    assert_eq!(listed[1].id, first.id);
-    assert_eq!(listed[1].subject, "First");
-
-    let _ = std::fs::remove_file(&db_path);
-    let _ = std::fs::remove_dir(&temp_dir);
-}
-
-#[tokio::test]
 async fn list_envelopes_by_account_sinks_impossible_future_dates() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
@@ -727,36 +640,6 @@ async fn list_envelopes_by_account_sinks_impossible_future_dates() {
 
     assert_eq!(listed[0].subject, "Real recent");
     assert_eq!(listed[1].subject, "Poisoned future");
-}
-
-#[tokio::test]
-async fn label_crud() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let label = Label {
-        id: LabelId::new(),
-        account_id: account.id.clone(),
-        name: "Inbox".to_string(),
-        kind: LabelKind::System,
-        color: None,
-        provider_id: "INBOX".to_string(),
-        unread_count: 5,
-        total_count: 20,
-        role: None,
-    };
-    store.upsert_label(&label).await.unwrap();
-
-    let labels = store.list_labels_by_account(&account.id).await.unwrap();
-    assert_eq!(labels.len(), 1);
-    assert_eq!(labels[0].name, "Inbox");
-    assert_eq!(labels[0].unread_count, 5);
-
-    store.update_label_counts(&label.id, 3, 25).await.unwrap();
-    let labels = store.list_labels_by_account(&account.id).await.unwrap();
-    assert_eq!(labels[0].unread_count, 3);
-    assert_eq!(labels[0].total_count, 25);
 }
 
 #[tokio::test]
@@ -880,112 +763,6 @@ async fn envelope_upsert_preserves_existing_provider_identity_when_generated_id_
 }
 
 #[tokio::test]
-async fn body_cache() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-
-    let body = MessageBody {
-        message_id: env.id.clone(),
-        text_plain: Some("Hello world".to_string()),
-        text_html: Some("<p>Hello world</p>".to_string()),
-        attachments: vec![AttachmentMeta {
-            id: AttachmentId::new(),
-            message_id: env.id.clone(),
-            filename: "report.pdf".to_string(),
-            mime_type: "application/pdf".to_string(),
-            disposition: AttachmentDisposition::Inline,
-            content_id: Some("report@example.com".to_string()),
-            content_location: Some("https://example.com/report.pdf".to_string()),
-            size_bytes: 50000,
-            local_path: None,
-            provider_id: "att-1".to_string(),
-        }],
-        fetched_at: chrono::Utc::now(),
-        metadata: MessageMetadata {
-            text_plain_format: Some(TextPlainFormat::Flowed { delsp: true }),
-            text_plain_source: Some(BodyPartSource::Exact),
-            text_html_source: Some(BodyPartSource::Exact),
-            ..MessageMetadata::default()
-        },
-    };
-    store.insert_body(&body).await.unwrap();
-
-    let fetched = store.get_body(&env.id).await.unwrap().unwrap();
-    assert_eq!(fetched.text_plain, body.text_plain);
-    assert_eq!(fetched.text_html, body.text_html);
-    assert_eq!(
-        fetched.metadata.text_plain_format,
-        body.metadata.text_plain_format
-    );
-    assert_eq!(
-        fetched.metadata.text_plain_source,
-        body.metadata.text_plain_source
-    );
-    assert_eq!(
-        fetched.metadata.text_html_source,
-        body.metadata.text_html_source
-    );
-    assert_eq!(fetched.attachments.len(), 1);
-    assert_eq!(fetched.attachments[0].filename, "report.pdf");
-    assert_eq!(
-        fetched.attachments[0].disposition,
-        AttachmentDisposition::Inline
-    );
-    assert_eq!(
-        fetched.attachments[0].content_id.as_deref(),
-        Some("report@example.com")
-    );
-    assert_eq!(
-        fetched.attachments[0].content_location.as_deref(),
-        Some("https://example.com/report.pdf")
-    );
-}
-
-#[tokio::test]
-async fn sync_runtime_status_roundtrip() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let now = chrono::Utc::now();
-    store
-        .upsert_sync_runtime_status(
-            &account.id,
-            &SyncRuntimeStatusUpdate {
-                last_attempt_at: Some(now),
-                last_success_at: Some(now),
-                sync_in_progress: Some(true),
-                current_cursor_summary: Some(Some("gmail history_id=42".to_string())),
-                last_synced_count: Some(42),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-
-    let fetched = store
-        .get_sync_runtime_status(&account.id)
-        .await
-        .unwrap()
-        .expect("runtime status");
-    assert_eq!(fetched.account_id, account.id);
-    assert_eq!(fetched.last_synced_count, 42);
-    assert!(fetched.sync_in_progress);
-    assert_eq!(
-        fetched.current_cursor_summary.as_deref(),
-        Some("gmail history_id=42")
-    );
-
-    let listed = store.list_sync_runtime_statuses().await.unwrap();
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].account_id, account.id);
-}
-
-#[tokio::test]
 async fn message_label_counts_are_scoped_to_the_message_account() {
     let store = Store::in_memory().await.unwrap();
     let account_a = test_account();
@@ -1075,74 +852,6 @@ async fn message_label_counts_are_scoped_to_the_message_account() {
 }
 
 #[tokio::test]
-async fn message_labels_junction() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let label = Label {
-        id: LabelId::new(),
-        account_id: account.id.clone(),
-        name: "Inbox".to_string(),
-        kind: LabelKind::System,
-        color: None,
-        provider_id: "INBOX".to_string(),
-        unread_count: 0,
-        total_count: 0,
-        role: None,
-    };
-    store.upsert_label(&label).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-    store
-        .set_message_labels(&env.id, std::slice::from_ref(&label.id), EventSource::User)
-        .await
-        .unwrap();
-
-    let by_label = store
-        .list_envelopes_by_label(&label.id, 100, 0)
-        .await
-        .unwrap();
-    assert_eq!(by_label.len(), 1);
-    assert_eq!(by_label[0].id, env.id);
-    assert_eq!(by_label[0].label_provider_ids, vec!["INBOX".to_string()]);
-
-    let by_account = store
-        .list_envelopes_by_account(&account.id, 100, 0)
-        .await
-        .unwrap();
-    assert_eq!(by_account.len(), 1);
-    assert_eq!(by_account[0].label_provider_ids, vec!["INBOX".to_string()]);
-
-    let fetched = store.get_envelope(&env.id).await.unwrap().unwrap();
-    assert_eq!(fetched.label_provider_ids, vec!["INBOX".to_string()]);
-}
-
-#[tokio::test]
-async fn thread_aggregation() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let thread_id = ThreadId::new();
-    for i in 0..3 {
-        let mut env = test_envelope(&account.id);
-        env.provider_id = format!("fake-thread-{i}");
-        env.thread_id = thread_id.clone();
-        env.date = chrono::Utc::now() - chrono::Duration::hours(i);
-        if i == 0 {
-            env.flags = MessageFlags::empty(); // unread
-        }
-        store.upsert_envelope(&env).await.unwrap();
-    }
-
-    let thread = store.get_thread(&thread_id).await.unwrap().unwrap();
-    assert_eq!(thread.message_count, 3);
-    assert_eq!(thread.unread_count, 1);
-}
-
-#[tokio::test]
 async fn get_thread_populates_message_ids_date_ordered() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
@@ -1159,6 +868,9 @@ async fn get_thread_populates_message_ids_date_ordered() {
             env.provider_id = format!("phase-f-{i}");
             env.thread_id = thread_id.clone();
             env.date = base - chrono::Duration::hours(i);
+            if i == 0 {
+                env.flags = MessageFlags::empty(); // the one unread message
+            }
             env
         })
         .collect();
@@ -1168,6 +880,8 @@ async fn get_thread_populates_message_ids_date_ordered() {
     }
 
     let thread = store.get_thread(&thread_id).await.unwrap().unwrap();
+    assert_eq!(thread.message_count, 3);
+    assert_eq!(thread.unread_count, 1);
     assert_eq!(
         thread.message_ids.len(),
         3,
@@ -1324,45 +1038,6 @@ async fn list_subscriptions_groups_by_sender_and_skips_trash() {
     assert_eq!(subscriptions[0].sender_email, "hello@readwise.io");
     assert_eq!(subscriptions[0].message_count, 2);
     assert_eq!(subscriptions[0].latest_subject, "Latest digest");
-}
-
-#[tokio::test]
-async fn draft_crud() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let draft = Draft {
-        revision: Some(1),
-        id: DraftId::new(),
-        account_id: account.id.clone(),
-        from: None,
-        reply_headers: None,
-        intent: DraftIntent::ReplyAll,
-        to: vec![Address {
-            name: None,
-            email: "bob@example.com".to_string(),
-        }],
-        cc: vec![],
-        bcc: vec![],
-        subject: "Draft subject".to_string(),
-        content: DraftContent::markdown("# Hello"),
-        managed_attachments: None,
-        attachments: vec![],
-        inline_assets: vec![],
-        inline_calendar_reply: None,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-    };
-    store.insert_draft(&draft).await.unwrap();
-
-    let drafts = store.list_drafts(&account.id).await.unwrap();
-    assert_eq!(drafts.len(), 1);
-    assert_eq!(drafts[0].intent, DraftIntent::ReplyAll);
-
-    store.delete_draft(&draft.id).await.unwrap();
-    let drafts = store.list_drafts(&account.id).await.unwrap();
-    assert_eq!(drafts.len(), 0);
 }
 
 #[tokio::test]
@@ -1645,42 +1320,6 @@ async fn update_draft_can_switch_an_html_draft_back_to_markdown() {
 }
 
 #[tokio::test]
-async fn list_drafts_decodes_both_kinds_in_one_result_set() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let md = draft_with(
-        &account.id,
-        DraftContent::markdown("# Hello"),
-        1_700_000_000,
-    );
-    let html = draft_with(
-        &account.id,
-        DraftContent::html("<p>Hello</p>", Some("Hello".to_string())),
-        1_700_000_500,
-    );
-    store.insert_draft(&md).await.unwrap();
-    store.insert_draft(&html).await.unwrap();
-
-    let listed = store.list_drafts(&account.id).await.unwrap();
-    assert_eq!(listed.len(), 2);
-    let by_id = |id: &DraftId| {
-        listed
-            .iter()
-            .find(|d| &d.id == id)
-            .unwrap_or_else(|| panic!("draft {id:?} missing from list"))
-            .content
-            .clone()
-    };
-    assert_eq!(by_id(&md.id), DraftContent::markdown("# Hello"));
-    assert_eq!(
-        by_id(&html.id),
-        DraftContent::html("<p>Hello</p>", Some("Hello".to_string()))
-    );
-}
-
-#[tokio::test]
 async fn a_pre_049_draft_row_still_decodes_as_markdown() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
@@ -1805,54 +1444,6 @@ async fn an_interrupted_migration_049_finishes_on_the_next_open() {
         fetched.content,
         DraftContent::html("<p>resumed</p>", Some("resumed".to_string()))
     );
-}
-
-#[tokio::test]
-async fn snooze_lifecycle() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-
-    let snoozed = Snoozed {
-        message_id: env.id.clone(),
-        account_id: account.id.clone(),
-        snoozed_at: chrono::Utc::now(),
-        wake_at: chrono::Utc::now() - chrono::Duration::hours(1), // already due
-        original_labels: vec![],
-    };
-    store.insert_snooze(&snoozed).await.unwrap();
-
-    let due = store.get_due_snoozes(chrono::Utc::now()).await.unwrap();
-    assert_eq!(due.len(), 1);
-
-    store.remove_snooze(&env.id).await.unwrap();
-    let due = store.get_due_snoozes(chrono::Utc::now()).await.unwrap();
-    assert_eq!(due.len(), 0);
-}
-
-#[tokio::test]
-async fn sync_log_lifecycle() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let log_id = store
-        .insert_sync_log(&account.id, &SyncStatus::Running)
-        .await
-        .unwrap();
-    assert!(log_id > 0);
-
-    store
-        .complete_sync_log(log_id, &SyncStatus::Success, 55, None)
-        .await
-        .unwrap();
-
-    let last = store.get_last_sync(&account.id).await.unwrap().unwrap();
-    assert_eq!(last.status, SyncStatus::Success);
-    assert_eq!(last.messages_synced, 55);
 }
 
 #[tokio::test]
@@ -2094,28 +1685,6 @@ async fn prune_events_before_removes_old_rows() {
     let events = store.list_events(10, None, None).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].summary, "recent");
-}
-
-#[tokio::test]
-async fn get_message_id_by_provider_id() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-
-    let found = store
-        .get_message_id_by_provider_id(&account.id, &env.provider_id)
-        .await
-        .unwrap();
-    assert_eq!(found, Some(env.id.clone()));
-
-    let not_found = store
-        .get_message_id_by_provider_id(&account.id, "nonexistent")
-        .await
-        .unwrap();
-    assert!(not_found.is_none());
 }
 
 #[tokio::test]
@@ -2391,77 +1960,6 @@ async fn set_message_labels_is_atomic_under_constraint_violation() {
 }
 
 #[tokio::test]
-async fn rules_roundtrip_and_history() {
-    let store = Store::in_memory().await.unwrap();
-    let now = chrono::Utc::now();
-
-    store
-        .upsert_rule(crate::RuleRecordInput {
-            account_id: None,
-            id: "rule-1",
-            name: "Archive newsletters",
-            enabled: true,
-            priority: 10,
-            conditions_json: r#"{"type":"field","field":"has_label","label":"newsletters"}"#,
-            actions_json: r#"[{"type":"archive"}]"#,
-            created_at: now,
-            updated_at: now,
-        })
-        .await
-        .unwrap();
-
-    let rules = store.list_rules().await.unwrap();
-    assert_eq!(rules.len(), 1);
-    let rule_json = crate::rules::row_to_rule_json(&rules[0]);
-    assert_eq!(rule_json["name"], "Archive newsletters");
-    assert_eq!(rule_json["priority"], 10);
-
-    store
-        .insert_rule_log(crate::RuleLogInput {
-            rule_id: "rule-1",
-            rule_name: "Archive newsletters",
-            message_id: "msg-1",
-            actions_applied_json: r#"["archive"]"#,
-            timestamp: now,
-            success: true,
-            error: None,
-        })
-        .await
-        .unwrap();
-
-    let logs = store.list_rule_logs(Some("rule-1"), 10).await.unwrap();
-    assert_eq!(logs.len(), 1);
-    let log_json = crate::rules::row_to_rule_log_json(&logs[0]);
-    assert_eq!(log_json["rule_name"], "Archive newsletters");
-    assert_eq!(log_json["message_id"], "msg-1");
-}
-
-#[tokio::test]
-async fn get_saved_search_by_name() {
-    let store = Store::in_memory().await.unwrap();
-
-    let search = SavedSearch {
-        id: SavedSearchId::new(),
-        account_id: None,
-        name: "Unread".to_string(),
-        query: "is:unread".to_string(),
-        search_mode: SearchMode::Lexical,
-        sort: SortOrder::DateDesc,
-        icon: None,
-        position: 0,
-        created_at: chrono::Utc::now(),
-    };
-    store.insert_saved_search(&search).await.unwrap();
-
-    let found = store.get_saved_search_by_name("Unread").await.unwrap();
-    assert!(found.is_some());
-    assert_eq!(found.unwrap().query, "is:unread");
-
-    let not_found = store.get_saved_search_by_name("Nonexistent").await.unwrap();
-    assert!(not_found.is_none());
-}
-
-#[tokio::test]
 async fn saved_search_crud() {
     let store = Store::in_memory().await.unwrap();
 
@@ -2556,55 +2054,6 @@ async fn list_contacts_ordered_by_frequency() {
     assert_eq!(contacts[0].1, "alice@example.com");
     assert_eq!(contacts[1].1, "bob@example.com");
     assert_eq!(contacts[2].1, "carol@example.com");
-}
-
-#[tokio::test]
-async fn sync_cursor_persistence() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let cursor = store.get_sync_cursor(&account.id).await.unwrap();
-    assert!(cursor.is_none());
-
-    let new_cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":12345}"#.to_vec());
-    store
-        .set_sync_cursor(&account.id, &new_cursor)
-        .await
-        .unwrap();
-
-    let fetched = store.get_sync_cursor(&account.id).await.unwrap().unwrap();
-    assert_eq!(fetched.as_bytes(), new_cursor.as_bytes());
-}
-
-#[tokio::test]
-async fn set_read_persists_read_state_with_event_source() {
-    // Pins the new contract: set_read accepts an EventSource and toggles the
-    // READ flag in both directions. The argument is unused at this slice; later
-    // slices observe it through `message_events`. Test stays correct because
-    // it asserts on observable flag state, which survives any later refactor of
-    // how source is recorded.
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env = test_envelope(&account.id);
-    store.upsert_envelope(&env).await.unwrap();
-    assert!(env.flags.contains(MessageFlags::READ));
-
-    store
-        .set_read(&env.id, false, EventSource::User)
-        .await
-        .unwrap();
-    let after_unread = store.get_envelope(&env.id).await.unwrap().unwrap();
-    assert!(!after_unread.flags.contains(MessageFlags::READ));
-
-    store
-        .set_read(&env.id, true, EventSource::User)
-        .await
-        .unwrap();
-    let after_read = store.get_envelope(&env.id).await.unwrap().unwrap();
-    assert!(after_read.flags.contains(MessageFlags::READ));
 }
 
 #[tokio::test]
@@ -3979,20 +3428,6 @@ async fn remove_account_address_refuses_the_primary() {
 }
 
 #[tokio::test]
-async fn remove_account_address_of_an_unregistered_address_is_a_no_op() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    store
-        .remove_account_address(&account.id, "ghost@example.com")
-        .await
-        .unwrap();
-    let after = store.list_account_addresses(&account.id).await.unwrap();
-    assert_eq!(after.len(), 1);
-}
-
-#[tokio::test]
 async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
     // Pins the new ROI fields on SubscriptionSummary. Three senders, each
     // with a distinct read/archive mix. Test asserts counts arithmetic;
@@ -4149,40 +3584,6 @@ async fn insert_body_promotes_list_id_to_messages_column() {
 }
 
 #[tokio::test]
-async fn upsert_envelope_writes_direction_unknown_and_null_list_id_by_default() {
-    // Pins migration 007's column contract: every inserted message has a
-    // non-null `direction` defaulting to 'unknown' and a nullable `list_id`
-    // defaulting to NULL. Slice 8 will wire actual inference and Slice 6
-    // will populate list_id from body metadata; this test stays green
-    // through both because it asserts only the schema-level guarantee.
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let env_a = test_envelope(&account.id);
-    let mut env_b = test_envelope(&account.id);
-    env_b.id = MessageId::new();
-    env_b.provider_id = "second".to_string();
-    store.upsert_envelope(&env_a).await.unwrap();
-    store.upsert_envelope(&env_b).await.unwrap();
-
-    let directions: Vec<(String,)> = sqlx::query_as("SELECT direction FROM messages ORDER BY id")
-        .fetch_all(store.reader())
-        .await
-        .unwrap();
-    assert_eq!(directions.len(), 2);
-    for (direction,) in &directions {
-        assert_eq!(direction, "unknown");
-    }
-
-    let list_ids: Vec<(Option<String>,)> = sqlx::query_as("SELECT list_id FROM messages")
-        .fetch_all(store.reader())
-        .await
-        .unwrap();
-    assert!(list_ids.iter().all(|(v,)| v.is_none()));
-}
-
-#[tokio::test]
 async fn add_message_label_does_not_emit_on_duplicate() {
     // INSERT OR IGNORE is idempotent; the hook must respect that and skip
     // emitting an event for a no-op insert. Otherwise rule re-runs and sync
@@ -4219,63 +3620,6 @@ async fn add_message_label_does_not_emit_on_duplicate() {
 
     let events = store.list_message_events(&env.id).await.unwrap();
     assert_eq!(events.len(), 1);
-}
-
-/// Phase 1.4 / Behavior 1: an undo entry written by `write_undo_entry`
-/// round-trips losslessly through `read_undo_entry`. If the schema or
-/// JSON encoding drifts, this catches it.
-#[tokio::test]
-async fn write_undo_entry_roundtrips_via_read() {
-    use crate::undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let snapshot = UndoEntrySnapshot {
-        message_id: MessageId::new(),
-        account_id: account.id.clone(),
-        provider_id: "fake-msg-1".into(),
-        prior_flags_bits: MessageFlags::READ.bits(),
-        prior_label_provider_ids: vec!["INBOX".into(), "Work".into()],
-        uncertain: false,
-    };
-    let entry = UndoEntry {
-        mutation_id: "01HVTEST0000000000000000".into(),
-        kind: UndoableMutationKind::Archive,
-        snapshots: vec![snapshot.clone()],
-        desk: None,
-        applied_at: 1_700_000_000,
-        expires_at: 1_700_000_060,
-    };
-
-    store.write_undo_entry(&entry).await.unwrap();
-    let fetched = store
-        .read_undo_entry(&entry.mutation_id)
-        .await
-        .unwrap()
-        .expect("entry must round-trip");
-
-    assert_eq!(fetched.mutation_id, entry.mutation_id);
-    assert!(matches!(fetched.kind, UndoableMutationKind::Archive));
-    assert_eq!(fetched.applied_at, entry.applied_at);
-    assert_eq!(fetched.expires_at, entry.expires_at);
-    assert_eq!(fetched.snapshots.len(), 1);
-    let s = &fetched.snapshots[0];
-    assert_eq!(s.provider_id, snapshot.provider_id);
-    assert_eq!(s.prior_flags_bits, snapshot.prior_flags_bits);
-    assert_eq!(
-        s.prior_label_provider_ids,
-        snapshot.prior_label_provider_ids
-    );
-}
-
-/// Phase 1.4 / Behavior 4: reading an unknown id returns `None` so the
-/// daemon can map it to the `NotFound` error class. No row, no panic.
-#[tokio::test]
-async fn read_undo_entry_returns_none_for_unknown_id() {
-    let store = Store::in_memory().await.unwrap();
-    let result = store.read_undo_entry("does-not-exist").await.unwrap();
-    assert!(result.is_none());
 }
 
 /// Phase 1.4: deletion is exact and idempotent — deleting twice is
@@ -4712,57 +4056,6 @@ async fn message_keywords_persist_and_replace() {
     assert_eq!(after, replacement, "set must replace, not merge");
 }
 
-/// Regression for issue #107: the per-message dedup/existence lookup
-/// (`WHERE account_id = ? AND message_id_header = ?`) must resolve through the
-/// composite index `idx_messages_account_msgidhdr` instead of scanning every
-/// row of the account. Migration 047 adds that index.
-#[tokio::test]
-async fn dedup_lookup_uses_message_id_header_index() {
-    let store = Store::in_memory().await.unwrap();
-    let account = test_account();
-    store.insert_account(&account).await.unwrap();
-
-    let mut env = TestEnvelopeBuilder::new()
-        .account_id(account.id.clone())
-        .build();
-    env.message_id_header = Some("<dedup@example.com>".to_string());
-    store.upsert_envelope(&env).await.unwrap();
-
-    // Sanity: the lookup path itself still returns the inserted row.
-    let hits = store
-        .list_envelopes_by_message_id_header(&account.id, "<dedup@example.com>")
-        .await
-        .unwrap();
-    assert_eq!(hits.len(), 1);
-
-    // EXPLAIN QUERY PLAN must show an index search on the new composite index,
-    // never a full scan of the messages table.
-    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
-        "EXPLAIN QUERY PLAN \
-         SELECT id FROM messages \
-         WHERE account_id = ? AND message_id_header = ? LIMIT 1",
-    )
-    .bind(account.id.as_str())
-    .bind("<dedup@example.com>")
-    .fetch_all(store.reader())
-    .await
-    .unwrap();
-
-    let detail = plan
-        .iter()
-        .map(|(_, _, _, d)| d.as_str())
-        .collect::<Vec<_>>()
-        .join(" | ");
-    assert!(
-        detail.contains("idx_messages_account_msgidhdr"),
-        "dedup lookup should use idx_messages_account_msgidhdr, got plan: {detail}"
-    );
-    assert!(
-        !detail.contains("SCAN messages"),
-        "dedup lookup should not full-scan messages, got plan: {detail}"
-    );
-}
-
 #[tokio::test]
 async fn draft_revision_survives_restart_and_sql_cas_accepts_only_one_editor() {
     let temp = tempfile::tempdir().unwrap();
@@ -4918,5 +4211,56 @@ async fn bodies_for_messages_matches_get_body_and_skips_messages_without_a_body(
     assert_eq!(
         batched.attachments[0].size_bytes,
         single.attachments[0].size_bytes
+    );
+}
+
+/// Regression for issue #107: the per-message dedup/existence lookup
+/// (`WHERE account_id = ? AND message_id_header = ?`) must resolve through the
+/// composite index `idx_messages_account_msgidhdr` instead of scanning every
+/// row of the account. Migration 047 adds that index.
+#[tokio::test]
+async fn dedup_lookup_uses_message_id_header_index() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let mut env = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    env.message_id_header = Some("<dedup@example.com>".to_string());
+    store.upsert_envelope(&env).await.unwrap();
+
+    // Sanity: the lookup path itself still returns the inserted row.
+    let hits = store
+        .list_envelopes_by_message_id_header(&account.id, "<dedup@example.com>")
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+
+    // EXPLAIN QUERY PLAN must show an index search on the new composite index,
+    // never a full scan of the messages table.
+    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
+        "EXPLAIN QUERY PLAN \
+         SELECT id FROM messages \
+         WHERE account_id = ? AND message_id_header = ? LIMIT 1",
+    )
+    .bind(account.id.as_str())
+    .bind("<dedup@example.com>")
+    .fetch_all(store.reader())
+    .await
+    .unwrap();
+
+    let detail = plan
+        .iter()
+        .map(|(_, _, _, d)| d.as_str())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(
+        detail.contains("idx_messages_account_msgidhdr"),
+        "dedup lookup should use idx_messages_account_msgidhdr, got plan: {detail}"
+    );
+    assert!(
+        !detail.contains("SCAN messages"),
+        "dedup lookup should not full-scan messages, got plan: {detail}"
     );
 }

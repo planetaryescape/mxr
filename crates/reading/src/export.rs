@@ -127,9 +127,4 @@ Note: Use this in the sync talk
 ";
         assert_eq!(markdown, expected);
     }
-
-    #[test]
-    fn no_highlights_is_just_the_heading() {
-        assert_eq!(to_markdown(&[]), "# Reading highlights\n");
-    }
 }

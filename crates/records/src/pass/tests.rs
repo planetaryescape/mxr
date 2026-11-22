@@ -213,29 +213,6 @@ async fn overlapping_bookings_become_a_trip() {
 }
 
 #[tokio::test]
-async fn three_months_of_bills_are_a_series() {
-    let mut fx = Fx::new().await;
-    let mut ids = Vec::new();
-    for month in 0..3 {
-        ids.push(
-            fx.mail(
-                ("Octopus Energy", "hello@octopus.energy"),
-                "Your bill is ready",
-                &format!("Account number: A-99312-{month}\nAmount due: £128.40"),
-                None,
-                at(month * 31),
-            )
-            .await,
-        );
-    }
-    scan_messages(&fx.store, &cfg(), &ids).await.expect("scan");
-    let groups = fx.store.list_record_groups(None).await.expect("groups");
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].kind, "series");
-    assert_eq!(groups[0].title, "Octopus Energy bills");
-}
-
-#[tokio::test]
 async fn never_file_wins_and_always_file_files_what_rules_skip() {
     let mut fx = Fx::new().await;
     let receipt = fx

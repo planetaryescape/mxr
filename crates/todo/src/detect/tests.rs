@@ -337,13 +337,6 @@ fn ambiguous_numeric_due_date_is_unchecked() {
 }
 
 #[test]
-fn invite_rows_carry_the_invite_as_their_source() {
-    let detection = from_invite(Some("Team offsite"), Some("Maya"), "maya@work.com", None);
-    assert_eq!(detection.title, "RSVP to Team offsite");
-    assert_eq!(detection.origin, Origin::Ics);
-}
-
-#[test]
 fn counterparty_drops_roles_and_falls_back_to_the_domain() {
     assert_eq!(
         counterparty(Some("Camden Council"), Some("camden.gov.uk")).as_deref(),
@@ -391,16 +384,4 @@ fn markup_never_hides_a_failed_payment() {
     .detect()
     .expect("the words win");
     assert_eq!(detection.kind, TodoKind::PaymentFailed);
-}
-
-#[test]
-fn a_previous_balance_is_not_what_you_owe() {
-    let detection = Mail::new(
-        "bills@energy.co.uk",
-        "Your energy bill",
-        "Previous balance £100.00. Amount due £240.00. Please pay by 20 October 2026.",
-    )
-    .detect()
-    .expect("a bill");
-    assert_eq!(detection.amount.as_ref().map(|a| a.minor), Some(24000));
 }

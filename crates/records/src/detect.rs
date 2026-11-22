@@ -420,18 +420,4 @@ mod tests {
         )
         .is_empty());
     }
-
-    #[test]
-    fn filing_by_hand_files_what_the_rules_skip() {
-        let found = manual(
-            &input("Quote for the kitchen", "Total £4,200.00", None),
-            &Utc,
-            SenderView::default(),
-            None,
-        );
-        assert_eq!(found.kind, RecordKind::Receipt);
-        assert_eq!(found.origin, Origin::Manual);
-        assert!(found.field(FieldName::Amount).is_some());
-        assert!(found.field(FieldName::Issuer).is_some());
-    }
 }

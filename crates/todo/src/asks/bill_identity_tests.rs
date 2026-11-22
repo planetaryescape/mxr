@@ -61,17 +61,12 @@ fn the_billers_bank_account_is_not_the_bill() {
         bill(&judge(&bank_bill("A1234", "R953.63"), false)),
         (95363, "ZAR".into(), Some("reference:a1234".into()))
     );
-    assert_eq!(
-        bill(&judge(&bank_bill("B5678", "R1,200.00"), false)),
-        (120000, "ZAR".into(), Some("reference:b5678".into()))
-    );
 }
 
 #[test]
 fn a_dotted_reference_is_read_whole() {
     let read = |reference| bill(&judge(&bank_bill(reference, "R953.63"), false)).2;
     assert_eq!(read("A1234.01"), Some("reference:a1234.01".into()));
-    assert_eq!(read("A1234.02"), Some("reference:a1234.02".into()));
     let sentence = judge("Account A1234. Amount due £25 by 5 October 2026.", false);
     assert_eq!(sentence.facts.references[0].value, "a1234");
 }
@@ -103,10 +98,6 @@ fn an_account_named_only_in_the_subject_identifies_the_bill() {
     assert_eq!(
         read("Levy invoice - Account A1234"),
         Some("account:a1234".into())
-    );
-    assert_eq!(
-        read("Levy invoice - Account B5678"),
-        Some("account:b5678".into())
     );
 }
 

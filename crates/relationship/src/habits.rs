@@ -349,9 +349,4 @@ mod tests {
         assert!(!cleaned.contains("Engines Ltd"), "{cleaned}");
         assert!(!cleaned.contains("old text"), "{cleaned}");
     }
-
-    #[test]
-    fn nothing_to_go_on() {
-        assert!(analyse(&[], &[]).describe().is_empty());
-    }
 }

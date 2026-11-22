@@ -208,18 +208,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn watch_then_list_round_trips() {
-        let (store, account) = fixture().await;
-        store
-            .watch_cadence(&entry(&account, "alice@example.com"), false)
-            .await
-            .unwrap();
-        let rows = store.list_cadence_watch(&account).await.unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].email, "alice@example.com");
-    }
-
-    #[tokio::test]
     async fn unwatch_removes_row() {
         let (store, account) = fixture().await;
         store

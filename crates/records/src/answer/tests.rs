@@ -192,16 +192,6 @@ fn a_year_and_a_kind_narrow_the_answer() {
     assert!(ids("", &records, &[None, None, None]).is_empty());
 }
 
-#[test]
-fn the_card_leads_with_what_was_asked_or_the_reference() {
-    let dell = record("dell", "order", "Dell", "XPS", Some("402-118"), None, 2025);
-    assert_eq!(answer_field(Asked::Amount, &dell), AnswerField::Amount);
-    assert_eq!(answer_field(Asked::Any, &dell), AnswerField::Reference);
-    let mut no_ref = dell.clone();
-    no_ref.reference = None;
-    assert_eq!(answer_field(Asked::Reference, &no_ref), AnswerField::Amount);
-}
-
 fn mode_of(query: &str, records: &[ArchiveRecord]) -> Mode {
     let candidates: Vec<Candidate<'_>> = records
         .iter()

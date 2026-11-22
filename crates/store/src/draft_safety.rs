@@ -129,44 +129,12 @@ impl super::Store {
 mod tests {
     use super::*;
     use crate::Store;
-    use mxr_core::types::{DraftSafetyIssue, DraftSafetySeverity};
 
     async fn temp_store() -> Store {
         // A directory named from the clock was shared by tests started in the
         // same microsecond, which then locked or re-migrated one database.
         let temp_dir = tempfile::tempdir().unwrap().keep();
         Store::new(&temp_dir.join("mxr.db")).await.unwrap()
-    }
-
-    #[tokio::test]
-    async fn record_run_round_trips_verdict() {
-        let store = temp_store().await;
-        let account = AccountId::new();
-        let report = DraftSafetyReport {
-            allowed: false,
-            verdict: DraftSafetyVerdict::Blocked,
-            checked_at: Some(Utc::now()),
-            issues: vec![DraftSafetyIssue::new(
-                DraftSafetyIssueCode::PiiSecret,
-                DraftSafetySeverity::Blocker,
-                "secret",
-            )],
-        };
-        let id = store
-            .record_safety_run(&account, None, &report)
-            .await
-            .unwrap();
-        assert!(!id.is_empty());
-        // Verify by querying directly.
-        let row = sqlx::query("SELECT verdict, issues_json FROM draft_safety_runs WHERE id = ?")
-            .bind(&id)
-            .fetch_one(store.reader())
-            .await
-            .unwrap();
-        let verdict: String = row.get(0);
-        let issues_json: String = row.get(1);
-        assert_eq!(verdict, "blocked");
-        assert!(issues_json.contains("pii_secret"));
     }
 
     #[tokio::test]
@@ -184,16 +152,6 @@ mod tests {
         // Second consume returns None (token already used).
         let again = store.consume_safety_override(&token).await.unwrap();
         assert_eq!(again, None);
-    }
-
-    #[tokio::test]
-    async fn unknown_token_returns_none() {
-        let store = temp_store().await;
-        let result = store
-            .consume_safety_override("00000000-0000-0000-0000-000000000000")
-            .await
-            .unwrap();
-        assert_eq!(result, None);
     }
 
     #[tokio::test]

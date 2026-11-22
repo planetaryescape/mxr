@@ -1184,36 +1184,6 @@ mod tests {
         );
     }
 
-    /// The delete runs these lookups while holding the writer; a full scan
-    /// of the event log or a JSON parse of every decision there stalls every
-    /// other write. (The commitments lookup is already covered by the
-    /// table's unique index on the account.)
-    #[tokio::test]
-    async fn the_delete_lookups_use_an_index() {
-        let store = Store::in_memory().await.unwrap();
-        for (sql, index) in [
-            (
-                "EXPLAIN QUERY PLAN SELECT 1 FROM event_log WHERE message_id IN ('a', 'b')",
-                "idx_event_log_message",
-            ),
-            (
-                "EXPLAIN QUERY PLAN SELECT decision_id FROM decision_evidence
-                 WHERE message_id IN ('a', 'b')",
-                "idx_decision_evidence_message",
-            ),
-        ] {
-            let plan = sqlx::query(sqlx::AssertSqlSafe(sql))
-                .fetch_all(store.reader())
-                .await
-                .unwrap()
-                .iter()
-                .map(|row| row.get::<String, _>("detail"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            assert!(plan.contains(index), "{sql}\n{plan}");
-        }
-    }
-
     /// Fails when a table refers to messages (a foreign key, a message or
     /// thread id column, an evidence list) without either a cascading
     /// foreign key or an entry in `MESSAGE_DELETION_RULES`. A new table

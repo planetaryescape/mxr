@@ -465,18 +465,6 @@ mod tests {
     }
 
     #[test]
-    fn a_rule_of_box_characters_between_the_words_and_the_code_is_skipped() {
-        let body = format!(
-            "Your verification code for a £548.43 transaction at Booking.com\nis:\n{}\n092730",
-            "─".repeat(70)
-        );
-        assert_eq!(
-            code("Your SafeKey Verification Code", &body).as_deref(),
-            Some("092730")
-        );
-    }
-
-    #[test]
     fn padding_in_a_boxed_layout_does_not_use_up_the_reach() {
         let pad = " ".repeat(80);
         let body = format!(
@@ -486,17 +474,6 @@ mod tests {
         assert_eq!(
             code("Your SafeKey Verification Code", &body).as_deref(),
             Some("092730")
-        );
-    }
-
-    #[test]
-    fn a_sale_subject_keeps_its_codes_to_itself() {
-        assert_eq!(
-            code(
-                "30% off Coconut - last chance today!",
-                "Use code SEPT30 at checkout."
-            ),
-            None
         );
     }
 

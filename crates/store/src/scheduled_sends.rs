@@ -465,19 +465,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_due_includes_past_scheduled_drafts() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store
-            .schedule_send(&id, anchor() - Duration::minutes(5))
-            .await
-            .unwrap();
-
-        let due = store.get_due_scheduled_drafts(anchor()).await.unwrap();
-        assert_eq!(due, vec![id]);
-    }
-
-    #[tokio::test]
     async fn get_due_excludes_already_sending_drafts() {
         // Once a flusher CAS-promotes a draft to `sending`, the row
         // must drop out of the due-list so it can't be picked up

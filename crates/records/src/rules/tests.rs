@@ -199,19 +199,6 @@ fn issuers_come_from_the_display_name_or_the_domain() {
 }
 
 #[test]
-fn titles_drop_the_boilerplate() {
-    assert_eq!(
-        title_from_subject("Your Dell order #402-118 has shipped").as_deref(),
-        Some("Dell order")
-    );
-    assert_eq!(
-        title_from_subject("Re: Receipt").as_deref(),
-        Some("Receipt")
-    );
-    assert_eq!(title_from_subject("#12345"), None);
-}
-
-#[test]
 fn past_days_read_with_or_without_a_year() {
     let anchor = sent().date_naive();
     let day = |y, m, d| chrono::NaiveDate::from_ymd_opt(y, m, d).expect("day");

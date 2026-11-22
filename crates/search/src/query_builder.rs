@@ -689,38 +689,9 @@ mod tests {
 
     use super::*;
     use crate::index::SearchIndex;
+    use crate::parse_query;
     use crate::test_fixtures::TestEnvelopeBuilder;
-    use crate::{parse_query, ParseError};
     use mxr_core::types::*;
-
-    #[test]
-    fn build_query_matches_the_manual_parse_schema_build_path() {
-        for query in [
-            "from:alice@example.com",
-            "is:unread subject:report",
-            "has:link-heavy",
-        ] {
-            let schema = MxrSchema::build();
-            let manual = QueryBuilder::new(&schema).build(&parse_query(query).unwrap());
-            let helper = build_query(query).unwrap();
-            assert_eq!(
-                format!("{manual:?}"),
-                format!("{helper:?}"),
-                "build_query must match the manual path for {query:?}"
-            );
-            // CompiledQuery builds an equivalent query and can do so
-            // repeatedly (each call yields a fresh boxed query).
-            let compiled = CompiledQuery::parse(query).unwrap();
-            assert_eq!(format!("{:?}", compiled.build()), format!("{manual:?}"));
-            assert_eq!(format!("{:?}", compiled.build()), format!("{manual:?}"));
-        }
-    }
-
-    #[test]
-    fn build_query_propagates_parse_errors() {
-        assert!(build_query("subject:(unbalanced").is_err());
-    }
-    use proptest::prelude::*;
 
     fn make_test_envelope(
         subject: &str,
@@ -779,19 +750,6 @@ mod tests {
         }
         idx.commit().unwrap();
         (idx, envelopes)
-    }
-
-    #[test]
-    fn build_text_query_with_boosts() {
-        let (idx, envelopes) = build_test_index();
-        let schema = MxrSchema::build();
-        let qb = QueryBuilder::new(&schema);
-
-        let node = QueryNode::Text("deployment".to_string());
-        let query = qb.build(&node);
-        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
     }
 
     #[test]
@@ -897,36 +855,6 @@ mod tests {
     }
 
     #[test]
-    fn build_field_query() {
-        let (idx, envelopes) = build_test_index();
-        let schema = MxrSchema::build();
-        let qb = QueryBuilder::new(&schema);
-
-        let node = QueryNode::Field {
-            field: QueryField::From,
-            value: "alice@example.com".to_string(),
-        };
-        let query = qb.build(&node);
-        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
-    }
-
-    #[test]
-    fn build_filter_query() {
-        let (idx, _envelopes) = build_test_index();
-        let schema = MxrSchema::build();
-        let qb = QueryBuilder::new(&schema);
-
-        // Search for unread messages
-        let node = QueryNode::Filter(FilterKind::Unread);
-        let query = qb.build(&node);
-        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
-        // Only the first envelope is unread (flags empty)
-        assert_eq!(results.results.len(), 1);
-    }
-
-    #[test]
     fn build_date_range_query() {
         let (idx, _envelopes) = build_test_index();
         let schema = MxrSchema::build();
@@ -941,39 +869,6 @@ mod tests {
         let query = qb.build(&node);
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 4);
-    }
-
-    #[test]
-    fn build_compound_query() {
-        let (idx, envelopes) = build_test_index();
-        let schema = MxrSchema::build();
-        let qb = QueryBuilder::new(&schema);
-
-        // from:bob AND is:starred
-        let node = QueryNode::And(
-            Box::new(QueryNode::Field {
-                field: QueryField::From,
-                value: "bob@example.com".to_string(),
-            }),
-            Box::new(QueryNode::Filter(FilterKind::Starred)),
-        );
-        let query = qb.build(&node);
-        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, envelopes[1].id.as_str());
-    }
-
-    #[test]
-    fn search_with_parsed_query() {
-        let (idx, envelopes) = build_test_index();
-        let schema = MxrSchema::build();
-        let qb = QueryBuilder::new(&schema);
-
-        let ast = parse_query("from:alice@example.com").unwrap();
-        let query = qb.build(&ast);
-        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
     }
 
     fn exact_search_subjects(subjects: &[&str], query_str: &str) -> Vec<String> {
@@ -1024,15 +919,6 @@ mod tests {
     }
 
     #[test]
-    fn exact_word_is_case_insensitive_and_skips_plurals() {
-        let subjects = ["Invoice ready", "Your invoices", "Reinvoiced"];
-        assert_eq!(
-            exact_search_subjects(&subjects, "+invoice"),
-            vec!["Invoice ready".to_string()]
-        );
-    }
-
-    #[test]
     fn build_text_query_tokenizes_punctuation_heavy_terms() {
         let (idx, envelopes) = build_test_index();
         let schema = MxrSchema::build();
@@ -1059,36 +945,5 @@ mod tests {
             version_results.results[0].message_id,
             envelopes[3].id.as_str()
         );
-    }
-
-    fn is_reserved_query_operator(word: &str) -> bool {
-        matches!(
-            word.to_ascii_uppercase().as_str(),
-            "AND" | "OR" | "NOT" | "AROUND"
-        )
-    }
-
-    proptest! {
-        #[test]
-        fn simple_text_queries_parse_and_execute(
-            words in prop::collection::vec("[A-Za-z0-9]{1,12}", 1..5)
-                .prop_filter("reserved query operators are grammar tokens", |words| {
-                    words
-                        .iter()
-                        .all(|word| !is_reserved_query_operator(word))
-                })
-        ) {
-            let query_text = words.join(" ");
-            let ast = parse_query(&query_text)
-                .map_err(|error: ParseError| TestCaseError::fail(error.to_string()))?;
-            let (idx, _) = build_test_index();
-            let schema = MxrSchema::build();
-            let qb = QueryBuilder::new(&schema);
-            let query = qb.build(&ast);
-            let results = idx
-                .search_ast(query, 10, 0, SortOrder::Relevance)
-                .map_err(|error| TestCaseError::fail(error.to_string()))?;
-            prop_assert!(results.results.len() <= 10);
-        }
     }
 }

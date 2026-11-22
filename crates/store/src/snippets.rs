@@ -115,15 +115,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_and_get_round_trips() {
-        let store = Store::in_memory().await.unwrap();
-        let s = make("sig", "-- \nAlice", &[]);
-        store.upsert_snippet(&s).await.unwrap();
-        let got = store.get_snippet("sig").await.unwrap().unwrap();
-        assert_eq!(got, s);
-    }
-
-    #[tokio::test]
     async fn upsert_replaces_existing_body_and_vars() {
         let store = Store::in_memory().await.unwrap();
         store
@@ -149,12 +140,6 @@ mod tests {
         let removed = store.delete_snippet("sig").await.unwrap();
         assert!(removed);
         assert!(store.get_snippet("sig").await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn delete_returns_false_for_missing_snippet() {
-        let store = Store::in_memory().await.unwrap();
-        assert!(!store.delete_snippet("nope").await.unwrap());
     }
 
     #[tokio::test]

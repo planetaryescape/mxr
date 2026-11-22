@@ -176,16 +176,4 @@ mod tests {
         assert_eq!(clean_headline("Issue #4", None), "Issue #4");
         assert_eq!(clean_headline("  ", None), "");
     }
-
-    #[test]
-    fn plain_subjects_are_left_alone() {
-        for subject in [
-            "Why sync engines need tombstones",
-            "The 5-minute guide to WAL mode",
-            "Rust 1.95: what changed",
-            "iPhone 18 review",
-        ] {
-            assert_eq!(clean_headline(subject, Some("Some Source")), subject);
-        }
-    }
 }

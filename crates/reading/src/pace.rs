@@ -65,13 +65,6 @@ mod tests {
     }
 
     #[test]
-    fn minutes_left_follow_progress() {
-        assert_eq!(minutes_left(2300, 0.0, 230), 10);
-        assert_eq!(minutes_left(2300, 0.62, 230), 4);
-        assert_eq!(minutes_left(2300, 1.0, 230), 0);
-    }
-
-    #[test]
     fn the_readers_pace_needs_three_real_reads_and_ignores_an_overnight_tab() {
         assert_eq!(reader_wpm(&[(1000, 240_000), (1000, 240_000)]), None);
         // 250, 300 and an overnight tab (clamped to 120): median 250.

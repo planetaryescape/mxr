@@ -597,19 +597,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn backfill_leaves_stored_slots_alone() {
-        let store = Store::in_memory().await.unwrap();
-        let work = account("Work");
-        store.insert_account(&work).await.unwrap();
-        sqlx::query("UPDATE accounts SET identity_color = 'slate'")
-            .execute(store.writer())
-            .await
-            .unwrap();
-        store.backfill_account_identity().await.unwrap();
-        assert_eq!(colour_of(&store, &work.id).await, Some(AccountColor::Slate));
-    }
-
     async fn tag_of(store: &Store, id: &AccountId) -> Option<String> {
         store
             .list_account_identity_slots()

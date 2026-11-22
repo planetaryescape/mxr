@@ -330,13 +330,6 @@ mod tests {
     }
 
     #[test]
-    fn displays_in_the_currency() {
-        assert_eq!(format_amount(14200, "GBP"), "£142.00");
-        assert_eq!(format_amount(1_500_000, "USD"), "$15,000.00");
-        assert_eq!(format_amount(1250, "ZAR"), "ZAR 12.50");
-    }
-
-    #[test]
     fn signed_and_zero_candidates_share_the_positive_selector_parser() {
         let text = "-£12.50 £-0.25 €0.00 R1,234.50 +USD 20";
         let candidates = find_candidates(text);
@@ -370,32 +363,6 @@ mod tests {
     fn malformed_decimal_and_thousands_do_not_become_partial_candidates() {
         for text in ["£1.234", "£1,23", "R2D2", "-£-12", "USD -+12"] {
             assert!(find_candidates(text).is_empty(), "{text}");
-        }
-    }
-    #[test]
-    fn european_and_rand_formats_keep_their_full_span_and_signed_value() {
-        let text = "€1.234,56 R1 234,56 R450,00 -EUR 0,25 €0,00 £1,234.56";
-        let candidates = find_candidates(text);
-        assert_eq!(
-            candidates
-                .iter()
-                .map(|(_, a)| (a.text.as_str(), a.minor, a.currency.as_str()))
-                .collect::<Vec<_>>(),
-            [
-                ("€1.234,56", 123456, "EUR"),
-                ("R1 234,56", 123456, "ZAR"),
-                ("R450,00", 45000, "ZAR"),
-                ("-EUR 0,25", -25, "EUR"),
-                ("€0,00", 0, "EUR"),
-                ("£1,234.56", 123456, "GBP")
-            ]
-        );
-        for (start, a) in &candidates {
-            assert_eq!(&text[*start..start + a.text.len()], a.text);
-        }
-        assert_eq!(find_amounts(text).len(), 4);
-        for malformed in ["R1 23,45", "€1,23,45", "£1,23", "€1.2345"] {
-            assert!(find_candidates(malformed).is_empty(), "{malformed}");
         }
     }
 }

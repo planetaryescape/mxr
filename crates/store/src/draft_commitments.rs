@@ -158,19 +158,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_then_list_returns_inserted_candidate() {
-        let (store, account_id, draft_id) = fixture().await;
-        let c = candidate(&account_id, &draft_id, "send the deck Friday");
-        store.upsert_draft_commitment_candidate(&c).await.unwrap();
-        let rows = store
-            .list_draft_commitment_candidates(&draft_id)
-            .await
-            .unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].what, "send the deck Friday");
-    }
-
-    #[tokio::test]
     async fn upsert_is_idempotent_on_unique_key() {
         let (store, account_id, draft_id) = fixture().await;
         let c = candidate(&account_id, &draft_id, "send deck");

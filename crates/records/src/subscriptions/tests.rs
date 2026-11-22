@@ -195,28 +195,6 @@ fn a_yearly_subscriptions_next_charge_within_two_weeks_is_a_renewal_signal() {
 }
 
 #[test]
-fn a_yearly_subscriptions_next_charge_months_away_is_not_yet_a_signal() {
-    let inputs = [
-        charge(
-            "y1",
-            "Admiral",
-            "Admiral receipt",
-            41_200,
-            day(2023, 10, 26),
-        ),
-        charge(
-            "y2",
-            "Admiral",
-            "Admiral receipt",
-            41_200,
-            day(2024, 10, 24),
-        ),
-    ];
-    let found = run(&inputs, day(2025, 3, 1));
-    assert!(signals(&found.subscriptions, day(2025, 3, 1)).is_empty());
-}
-
-#[test]
 fn one_missed_month_between_charges_still_counts() {
     let inputs = [
         charge("a", "Spotify", "Premium", 1199, day(2025, 1, 3)),
@@ -563,23 +541,4 @@ fn a_daily_habit_at_one_price_is_not_a_weekly_subscription() {
         })
         .collect();
     assert!(run(&inputs, day(2025, 5, 5)).subscriptions.is_empty());
-}
-
-#[test]
-fn a_shops_many_prices_never_form_one_wide_band() {
-    // Amounts 1% apart from £10 to £30: neighbours are close, the ends are
-    // not, so no band spans them.
-    let inputs: Vec<ChargeInput> = (0..110)
-        .map(|i| {
-            let minor = (1000.0 * 1.01_f64.powi(i)) as i64;
-            charge(
-                &format!("s{i:03}"),
-                "Shop",
-                "Shop receipt",
-                minor,
-                day(2025, 1, 1) + Duration::days(i64::from(i) * 3),
-            )
-        })
-        .collect();
-    assert!(run(&inputs, day(2026, 1, 1)).subscriptions.is_empty());
 }

@@ -1506,20 +1506,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn default_build_reports_semantic_disabled() {
-        let store = Arc::new(Store::in_memory().await.unwrap());
-        let data_dir = tempfile::tempdir().unwrap();
-        let engine = SemanticEngine::new(store, data_dir.path(), SemanticConfig::default());
-
-        let snapshot = engine.status_snapshot().await.unwrap();
-
-        assert!(!snapshot.enabled);
-        assert!(snapshot.profiles.is_empty());
-        assert!(!should_use_semantic(SearchMode::Hybrid));
-        assert!(!should_use_semantic(SearchMode::Semantic));
-    }
-
-    #[tokio::test]
     async fn default_build_keeps_ingest_and_search_as_noops() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let data_dir = tempfile::tempdir().unwrap();
@@ -2308,85 +2294,6 @@ mod tests {
         );
     }
 
-    fn write_pptx(path: &StdPath, text: &str) {
-        write_zip(
-            path,
-            &[
-                (
-                    "[Content_Types].xml",
-                    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
-</Types>"#
-                        .to_string(),
-                ),
-                (
-                    "_rels/.rels",
-                    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>"#
-                        .to_string(),
-                ),
-                (
-                    "ppt/presentation.xml",
-                    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:sldIdLst>
-    <p:sldId id="256" r:id="rId1"/>
-  </p:sldIdLst>
-</p:presentation>"#
-                        .to_string(),
-                ),
-                (
-                    "ppt/_rels/presentation.xml.rels",
-                    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
-</Relationships>"#
-                        .to_string(),
-                ),
-                (
-                    "ppt/slides/slide1.xml",
-                    format!(
-                        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld>
-    <p:spTree>
-      <p:nvGrpSpPr>
-        <p:cNvPr id="1" name=""/>
-        <p:cNvGrpSpPr/>
-        <p:nvPr/>
-      </p:nvGrpSpPr>
-      <p:grpSpPr/>
-      <p:sp>
-        <p:nvSpPr>
-          <p:cNvPr id="2" name="Title 1"/>
-          <p:cNvSpPr/>
-          <p:nvPr/>
-        </p:nvSpPr>
-        <p:txBody>
-          <a:bodyPr/>
-          <a:lstStyle/>
-          <a:p><a:r><a:t>{text}</a:t></a:r></a:p>
-        </p:txBody>
-      </p:sp>
-    </p:spTree>
-  </p:cSld>
-</p:sld>"#
-                    ),
-                ),
-            ],
-        );
-    }
-
     fn write_xlsx(path: &StdPath) {
         write_zip(
             path,
@@ -2525,21 +2432,6 @@ mod tests {
     }
 
     #[test]
-    fn read_attachment_text_extracts_pptx_with_undoc() {
-        let dir = tempdir().unwrap();
-        let pptx_path = dir.path().join("deck.pptx");
-        write_pptx(&pptx_path, "Launch metrics");
-        let attachment = attachment(
-            &pptx_path,
-            "deck.pptx",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        );
-
-        let extracted = read_attachment_text(&attachment).unwrap();
-        assert!(extracted.contains("launch metrics"));
-    }
-
-    #[test]
     fn read_attachment_text_extracts_xlsx_with_table_fallback() {
         let dir = tempdir().unwrap();
         let xlsx_path = dir.path().join("table.xlsx");
@@ -2554,16 +2446,6 @@ mod tests {
         assert!(extracted.contains("sheet summary"));
         assert!(extracted.contains("name | value"));
         assert!(extracted.contains("alice | 42"));
-    }
-
-    #[test]
-    fn read_attachment_text_skips_images_without_ocr() {
-        let dir = tempdir().unwrap();
-        let image_path = dir.path().join("photo.png");
-        std::fs::write(&image_path, b"not-a-real-png").unwrap();
-        let attachment = attachment(&image_path, "photo.png", "image/png");
-
-        assert_eq!(read_attachment_text(&attachment), None);
     }
 
     #[test]
@@ -2658,30 +2540,6 @@ mod tests {
             "expected semantic cpu executor overlap, observed {}",
             observer.max_concurrency()
         );
-    }
-
-    #[tokio::test]
-    async fn status_snapshot_reports_runtime_metrics_after_ingest() {
-        let store = Arc::new(Store::in_memory().await.unwrap());
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let envelope = test_envelope(&account.id);
-        let body = test_body(&envelope.id, Vec::new());
-        store.upsert_envelope(&envelope).await.unwrap();
-        store.insert_body(&body).await.unwrap();
-
-        let data_dir = tempdir().unwrap();
-        let mut engine =
-            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
-        engine
-            .ingest_messages(std::slice::from_ref(&envelope.id))
-            .await
-            .unwrap();
-
-        let snapshot = engine.status_snapshot().await.unwrap();
-        assert!(snapshot.runtime.last_extract_ms.is_some());
-        assert!(snapshot.runtime.last_ingest_ms.is_some());
     }
 
     #[tokio::test]

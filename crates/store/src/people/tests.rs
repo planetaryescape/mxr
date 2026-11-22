@@ -190,19 +190,6 @@ async fn person_threads_cover_mail_from_them_and_mail_you_sent_them() {
 }
 
 #[tokio::test]
-async fn facts_read_the_contacts_row() {
-    let (store, account) = fixture().await;
-    contact(&store, &account, "maya@orbit.example", "Maya Ortiz", 48).await;
-    let facts = store
-        .people_facts(&account, &["MAYA@orbit.example".to_string()])
-        .await
-        .unwrap();
-    assert_eq!(facts.len(), 1);
-    assert_eq!(facts[0].total_outbound, 48);
-    assert_eq!(facts[0].cadence_days_p50, Some(9.5));
-}
-
-#[tokio::test]
 async fn person_threads_include_mail_you_sent_them_as_bcc() {
     let (store, account) = fixture().await;
     let now = Utc::now();

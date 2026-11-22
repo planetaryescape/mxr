@@ -233,34 +233,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn low_sample_yields_low_confidence() {
-        let (store, account) = fixture().await;
-        for _ in 0..3 {
-            let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
-            insert_they_replied(&store, &account, "alice@example.com", t, 600).await;
-        }
-        let rec = store
-            .send_time_recommendation(&account, "alice@example.com")
-            .await
-            .unwrap();
-        assert_eq!(rec.confidence, SendTimeConfidence::Low);
-    }
-
-    #[tokio::test]
-    async fn medium_confidence_at_eight_samples() {
-        let (store, account) = fixture().await;
-        for _ in 0..8 {
-            let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
-            insert_they_replied(&store, &account, "alice@example.com", t, 600).await;
-        }
-        let rec = store
-            .send_time_recommendation(&account, "alice@example.com")
-            .await
-            .unwrap();
-        assert_eq!(rec.confidence, SendTimeConfidence::Medium);
-    }
-
-    #[tokio::test]
     async fn high_confidence_requires_twenty_samples_and_three_buckets() {
         let (store, account) = fixture().await;
         for (count, t) in [

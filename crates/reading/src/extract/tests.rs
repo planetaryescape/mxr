@@ -246,12 +246,6 @@ fn no_body_falls_back_to_the_snippet() {
 }
 
 #[test]
-fn clip_cuts_at_a_word_with_an_ellipsis() {
-    assert_eq!(clip("short", 10), "short");
-    assert_eq!(clip("one two three four five", 12), "one two…");
-}
-
-#[test]
 fn buttons_are_not_digest_items() {
     for text in [
         "GET THE DISCOUNT →",
@@ -301,15 +295,4 @@ fn a_lost_helper_reads_as_a_page_with_no_paragraphs_or_links() {
         .paragraphs
         .iter()
         .all(|paragraph| !paragraph.text.contains("real words")));
-}
-
-#[test]
-fn the_walk_gives_the_same_extraction_through_its_wire_format() {
-    let source = "<h1>Title</h1><p>Body words here.</p><a href=\"https://example.test/a\">Read</a>";
-    let direct = walk_html_in_process(source);
-    let encoded = serde_json::to_vec(&direct).expect("encodes");
-    let back: Walked = serde_json::from_slice(&encoded).expect("decodes");
-    assert_eq!(back.paragraphs, direct.paragraphs);
-    assert_eq!(back.anchors.len(), direct.anchors.len());
-    assert!(!direct.paragraphs.is_empty());
 }

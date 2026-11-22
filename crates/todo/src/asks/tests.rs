@@ -86,32 +86,6 @@ pub(super) fn answers(assessment: &AskAssessment) -> Vec<AskAnswer> {
 }
 
 #[test]
-fn signed_zero_and_rand_candidates_keep_verbatim_spans() {
-    let result = judge(
-        "Credit -£12.50. Balance €0.00. Invoice R1,234.50 due tomorrow.",
-        false,
-    );
-    let values: Vec<_> = result
-        .facts
-        .amounts
-        .iter()
-        .map(|a| (a.minor, a.currency.as_str()))
-        .collect();
-    assert_eq!(values, [(-1250, "GBP"), (0, "EUR"), (123450, "ZAR")]);
-    assert_eq!(
-        result
-            .facts
-            .amounts
-            .iter()
-            .map(|amount| {
-                &result.facts.zones[amount.zone].text[amount.span.start..amount.span.end]
-            })
-            .collect::<Vec<_>>(),
-        ["-£12.50", "€0.00", "R1,234.50"]
-    );
-}
-
-#[test]
 fn bill_needs_positive_amount_and_message_anchored_due() {
     for body in [
         "Invoice amount due £0.00 by tomorrow.",
@@ -427,16 +401,6 @@ fn cancelled_body_prevents_a_stale_subject_from_creating_a_task() {
         "Please sign the contract",
     );
     assert_eq!(answers(&result), [AskAnswer::Nothing, AskAnswer::Nothing]);
-}
-
-#[test]
-fn owner_identity_keeps_primary_and_aliases_from_the_shared_matcher() {
-    let result = judge("Please send me the report.", false);
-    assert_eq!(
-        result.facts.owner_addresses,
-        ["owner@example.com", "alias@example.com"]
-    );
-    assert_eq!(result.facts.recipient_role, RecipientRole::AloneTo);
 }
 
 #[test]

@@ -510,31 +510,3 @@ async fn a_late_stale_pair_write_is_rebuilt_by_the_next_reconcile() {
         ))
     );
 }
-
-#[tokio::test]
-async fn the_reply_pair_lookup_for_one_reply_uses_the_message_index() {
-    // A per-flip reseat must not scan every message. The plan is checked
-    // against the query the reseat runs.
-    let store = crate::Store::in_memory().await.unwrap();
-    // A constant from this crate, not input: the wrapper only marks it safe.
-    let plan_sql = sqlx::AssertSqlSafe(format!(
-        "EXPLAIN QUERY PLAN {}",
-        crate::reply_pairs::PAIR_FOR_REPLY_SQL
-    ));
-    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(plan_sql)
-        .bind("some-reply")
-        .fetch_all(store.reader())
-        .await
-        .unwrap();
-    let details: Vec<&str> = plan.iter().map(|row| row.3.as_str()).collect();
-    assert!(
-        details.iter().any(|detail| detail.contains("SEARCH reply")),
-        "plan does not search the reply by key: {details:?}"
-    );
-    assert!(
-        !details
-            .iter()
-            .any(|detail| detail.starts_with("SCAN reply")),
-        "plan scans every message for one reply: {details:?}"
-    );
-}

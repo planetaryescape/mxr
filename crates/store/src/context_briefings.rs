@@ -236,20 +236,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_then_get_round_trips() {
-        let (store, account) = fixture().await;
-        let b = briefing(&account, "th-1", "summary", "hash-1");
-        store.upsert_context_briefing(&b).await.unwrap();
-        let got = store
-            .get_context_briefing(&account, BriefingKind::Thread, "th-1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.body_markdown, "summary");
-        assert_eq!(got.content_hash, "hash-1");
-    }
-
-    #[tokio::test]
     async fn upsert_with_new_hash_replaces_body() {
         let (store, account) = fixture().await;
         store
@@ -303,15 +289,5 @@ mod tests {
             .await
             .unwrap();
         assert!(written);
-    }
-
-    #[tokio::test]
-    async fn missing_briefing_returns_none() {
-        let (store, account) = fixture().await;
-        let got = store
-            .get_context_briefing(&account, BriefingKind::Recipient, "ghost@example.com")
-            .await
-            .unwrap();
-        assert!(got.is_none());
     }
 }

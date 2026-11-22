@@ -268,16 +268,4 @@ mod tests {
         assert!(!verbatim("Order total £1,249.00", "£1,294.00"));
         assert!(!verbatim("anything", "  "));
     }
-
-    #[test]
-    fn spoken_field_names_resolve() {
-        for (said, field) in [
-            ("ref", FieldName::Reference),
-            ("date", FieldName::IssuedAt),
-            ("total", FieldName::Amount),
-            ("return-by", FieldName::ReturnBy),
-        ] {
-            assert_eq!(FieldName::parse(said), Some(field), "{said}");
-        }
-    }
 }

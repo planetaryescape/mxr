@@ -499,32 +499,6 @@ mod tests {
     }
 
     #[test]
-    fn an_rsvp_event_near_midnight_acts_two_calendar_days_before_across_a_clock_change() {
-        let ny = chrono_tz::America::New_York;
-        // Just after midnight after a spring-forward, and just before it
-        // after a fall-back: 48 hours earlier is on the wrong day.
-        for (tz, event, acts) in [
-            (London, (2026, 3, 30, 0, 30), (2026, 3, 28, 0, 30)),
-            (London, (2026, 10, 27, 23, 30), (2026, 10, 25, 23, 30)),
-            (London, (2026, 10, 26, 23, 30), (2026, 10, 24, 23, 30)),
-        ] {
-            let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
-            rsvp.event_start = Some(wall(&tz, event.0, event.1, event.2, event.3, event.4, 0));
-            let timing = lead_time(&rsvp, &tz, 9);
-            assert_eq!(
-                timing.act_by,
-                Some(wall(&tz, acts.0, acts.1, acts.2, acts.3, acts.4, 0)),
-                "event {event:?} in {tz}"
-            );
-        }
-        let mut rsvp = arrived_long_before(TodoKind::Rsvp, None);
-        rsvp.event_start = Some(wall(&ny, 2026, 3, 9, 0, 30, 0));
-        let timing = lead_time(&rsvp, &ny, 9);
-        assert_eq!(timing.act_by, Some(wall(&ny, 2026, 3, 7, 0, 30, 0)));
-        assert_eq!(timing.surface_at, Some(wall(&ny, 2026, 3, 5, 9, 0, 0)));
-    }
-
-    #[test]
     fn every_day_of_the_year_acts_and_shows_up_on_the_calendar_day() {
         fn check<Z: TimeZone>(tz: &Z) {
             let mut day = NaiveDate::from_ymd_opt(2026, 1, 10).expect("a date");

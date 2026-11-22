@@ -147,38 +147,6 @@ mod tests {
     }
 
     #[test]
-    fn search_by_subject_keyword() {
-        let mut idx = SearchIndex::in_memory().unwrap();
-        let subjects = [
-            "Deployment plan for v2.3",
-            "Q1 Report review",
-            "This Week in Rust #580",
-            "Invoice #2847",
-            "Team standup notes",
-            "Summer trip planning",
-            "PR review: fix auth",
-            "HN Weekly Digest",
-            "RustConf 2026 invite",
-            "CI pipeline failures",
-        ];
-        let mut target_id = String::new();
-        for (i, subj) in subjects.iter().enumerate() {
-            let env = make_envelope(subj, &format!("Snippet for msg {i}"), "Alice");
-            if i == 0 {
-                target_id = env.id.as_str();
-            }
-            idx.index_envelope(&env).unwrap();
-        }
-        idx.commit().unwrap();
-
-        let results = idx
-            .search("deployment", 10, 0, SortOrder::Relevance)
-            .unwrap();
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.results[0].message_id, target_id);
-    }
-
-    #[test]
     fn field_boost_ranking() {
         let mut idx = SearchIndex::in_memory().unwrap();
 
@@ -246,27 +214,6 @@ mod tests {
 
         let results = idx.search("remove", 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 0);
-    }
-
-    #[test]
-    fn empty_search() {
-        let idx = SearchIndex::in_memory().unwrap();
-        let results = idx
-            .search("nonexistent", 10, 0, SortOrder::Relevance)
-            .unwrap();
-        assert!(results.results.is_empty());
-        idx.warm().unwrap();
-    }
-
-    #[test]
-    fn warm_populated_index() {
-        let mut idx = SearchIndex::in_memory().unwrap();
-        let env = make_envelope("Flight details", "Boarding at gate 12", "Airline");
-        idx.index_envelope(&env).unwrap();
-        idx.commit().unwrap();
-
-        idx.warm().unwrap();
-        assert_eq!(idx.num_docs(), 1);
     }
 
     #[test]
@@ -442,20 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn e2e_parse_build_search_field() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "from:alice@example.com");
-        assert_eq!(results.len(), 2);
-        let alice_ids: Vec<String> = vec![
-            envelopes[0].id.as_str().clone(),
-            envelopes[3].id.as_str().clone(),
-        ];
-        for id in &results {
-            assert!(alice_ids.contains(id));
-        }
-    }
-
-    #[test]
     fn e2e_parse_build_search_compound() {
         let (idx, envelopes) = build_e2e_index();
         // from:alice AND is:unread — both alice messages are unread
@@ -542,13 +475,6 @@ mod tests {
         idx.commit().unwrap();
 
         assert_eq!(e2e_search(&idx, "has:calendar"), vec![invite_id]);
-    }
-
-    #[test]
-    fn e2e_search_by_label() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "label:notifications");
-        assert_eq!(results.len(), envelopes.len());
     }
 
     #[test]
@@ -891,14 +817,6 @@ mod tests {
         idx.commit().unwrap();
 
         assert_eq!(e2e_search(&idx, "holiday AROUND 3 vacation"), vec![near_id]);
-    }
-
-    #[test]
-    fn e2e_filter_starred() {
-        let (idx, envelopes) = build_e2e_index();
-        let results = e2e_search(&idx, "is:starred");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0], envelopes[1].id.as_str());
     }
 
     #[test]

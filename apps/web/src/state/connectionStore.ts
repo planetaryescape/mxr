@@ -1,9 +1,3 @@
-/*
- * WebSocket connection status, sync progress, semantic reindex progress.
- * Driven by the daemon event stream; consumed by the status bar and the
- * connection pill.
- */
-
 import { create } from "zustand";
 
 import type { ConnectionState } from "@/lib/ws";
@@ -24,9 +18,7 @@ export interface ConnectionStoreState {
   protocolCheckedAt?: number;
   protocolCheckError?: string;
   syncProgress?: SyncProgress;
-  /** Set by `lib/daemonAvailability` once a probe finds no daemon. */
   daemonDown: boolean;
-  /** When the daemon last answered a request, for "showing what was loaded at 21:04". */
   daemonLastAnsweredAt?: number;
   semanticReindexProgress?: { current: number; total: number };
   setState: (next: Partial<Omit<ConnectionStoreState, keyof Setters>>) => void;

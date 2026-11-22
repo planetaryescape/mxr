@@ -28,7 +28,6 @@ function ctx(): ActionContext {
   };
 }
 
-/** Watch every action the registry runs, and the events the dispatcher claims. */
 function install() {
   const ran: string[] = [];
   const stop = onActionInvoked((action) => ran.push(action.id));
@@ -63,14 +62,10 @@ afterEach(async () => {
 
 describe("the catalog is not on the first-paint path", () => {
   test("a key pressed before it lands runs nothing; the same key works after", async () => {
-    // The app's boot leaves the registry empty; the catalog arrives after the
-    // first paint and `scheduleActionCatalog` registers the actions.
     resetRegistry();
     expect(getRegistry().all()).toHaveLength(0);
     const app = install();
     try {
-      // "c" opens compose once the registry exists. Before that the press is
-      // left to the browser and claims nothing.
       expect(app.press("c")).toBe(true);
       expect(app.ran).toEqual([]);
 
@@ -85,8 +80,6 @@ describe("the catalog is not on the first-paint path", () => {
   });
 
   test("keys served before the catalog lands are the ones that run when it does", async () => {
-    // The order a returning app sees: the cached keys apply while the entry
-    // is evaluated, the catalog arrives after the first paint.
     resetDefinitionForTests();
     resetRegistry();
     expect(isDefinitionLoaded()).toBe(false);
@@ -96,15 +89,12 @@ describe("the catalog is not on the first-paint path", () => {
       remapped: ["shell.compose"],
     });
 
-    // Labels are right at once, from the small entry index.
     expect(definedShortcut("shell.compose")).toBe("%");
-    // Keys run nothing until the catalog lands.
     expect(getRegistry().all()).toHaveLength(0);
 
     await loadDefinition();
     reregisterCatalog();
 
-    // The person's key is the binding, and the definition's default is gone.
     expect(definedShortcut("shell.compose")).toBe("%");
     expect(
       getRegistry()

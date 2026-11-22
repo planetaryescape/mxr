@@ -1,9 +1,3 @@
-/*
- * Archive over the bridge. The daemon files the records, builds the
- * ledger's months, totals and facets, ranks answers and writes the CSV;
- * this file only moves them.
- */
-
 import { keepPreviousData, type Query, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -32,17 +26,10 @@ type Change = Extract<Schemas["ResponseData"], { kind: "RecordChange" }>;
 type Export = Extract<Schemas["ResponseData"], { kind: "RecordExport" }>;
 type Subscriptions = Extract<Schemas["ResponseData"], { kind: "RecordSubscriptions" }>;
 
-/** Every Archive query starts with this, so one invalidation refreshes them. */
 export const RECORDS_KEY = ["records"] as const;
 
-/** Where the account sits in a ledger or answer key, after `RECORDS_KEY` and the view. */
 const ACCOUNT_KEY_INDEX = RECORDS_KEY.length + 1;
 
-/**
- * Keeps the last result on screen while the next loads, but only within one
- * account: after a switch, the previous account's records must not show as
- * this account's while its own load.
- */
 function keepWithinAccount<T>(account: string) {
   return (
     previous: T | undefined,
@@ -50,7 +37,6 @@ function keepWithinAccount<T>(account: string) {
   ) => (previousQuery?.queryKey[ACCOUNT_KEY_INDEX] === account ? previous : undefined);
 }
 
-/** The ledger's filter as the bridge's query string. */
 export function ledgerQuery(
   account: string | null,
   filter: RecordFilter,
@@ -85,7 +71,6 @@ export async function fetchLedger(
   return answer.ledger;
 }
 
-/** The ledger for a filter: `limit` rows, newest first (the daemon's default is 200). */
 export function useLedger(filter: RecordFilter, limit?: number, enabled = true) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
@@ -94,7 +79,6 @@ export function useLedger(filter: RecordFilter, limit?: number, enabled = true) 
     enabled,
     placeholderData: keepWithinAccount<RecordLedger>(account ?? "all"),
     staleTime: 15_000,
-    // Records file in the background after sync and on the first run.
     refetchInterval: 30_000,
   });
 }
@@ -105,11 +89,6 @@ export async function fetchSubscriptions(account: string | null): Promise<Record
   return answer.subscriptions;
 }
 
-/**
- * Subscriptions: the daemon works them out from the records on each call,
- * so they follow a correction to a record without anything to invalidate
- * beyond `RECORDS_KEY`.
- */
 export function useSubscriptions(enabled = true) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
@@ -136,9 +115,7 @@ export function useRecord(id: string | null) {
   });
 }
 
-/** How much of a broad query's matches to bring: "Show all" and its page. */
 export interface AnswerListPage {
-  /** List every match, even when one answers the query. */
   list?: boolean;
   limit?: number;
 }
@@ -157,13 +134,6 @@ export async function fetchAnswer(
   return answer.answer;
 }
 
-/**
- * The answer box. While typing it matches record fields only; `fallback`
- * (on Enter) also asks `mxr ask` over all mail, which may call the model,
- * so it never runs per keystroke. A query that only names something comes
- * back as a list of every match; `page.list` asks for that list whatever
- * the query.
- */
 export function useAnswer(query: string, fallback = false, page: AnswerListPage = {}) {
   const account = useUiPrefs((s) => s.accountScope);
   const text = query.trim();

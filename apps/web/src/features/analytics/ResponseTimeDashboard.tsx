@@ -14,7 +14,6 @@ const DIRECTIONS: { id: ResponseDirection; label: string }[] = [
   { id: "i_replied", label: "My replies" },
 ];
 
-/** Upper bound 2^32-1 marks the open-ended last bucket. */
 const OPEN_ENDED = 4_294_967_295;
 
 function bucketLabel(upper: number, previous: number | null): string {
@@ -99,7 +98,6 @@ export function ResponseTimeDashboard({ range }: { range: AnalyticsRange }) {
   );
 }
 
-/** The daemon reports 0 (or null) until the business-hours backfill has run. */
 function businessHours(seconds: number | null | undefined): string {
   return seconds ? formatDuration(seconds) : "not computed yet";
 }

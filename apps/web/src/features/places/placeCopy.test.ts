@@ -98,7 +98,6 @@ describe("copy", () => {
     expect(sweepNote(preview())).toMatch(/^1 pinned message stays\. /);
     expect(sweepNote(preview({ pinned_excluded: 2 }))).toMatch(/^2 pinned messages stay\. /);
     expect(sweepNote(preview({ pinned_excluded: 0 }))).not.toMatch(/pinned/);
-    // Past what is on screen, the note says how far the sweep reaches.
     expect(sweepNote(preview({ count: 143 }), 20)).toMatch(
       /^Archives 143 messages, 20 shown here\. /,
     );
@@ -125,7 +124,6 @@ describe("kind menu", () => {
       null,
     ]);
     expect(new Set(KIND_OPTIONS.map((option) => option.key)).size).toBe(KIND_OPTIONS.length);
-    // The g letters, either case: u is Updates, where Paper trail goes.
     expect(kindOptionForKey("u")?.kind).toBe("paper_trail");
     expect(kindOptionForKey("M")?.kind).toBe("people");
     expect(kindOptionForKey("d")?.kind).toBe("screened_out");

@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** The events the web plays, in the words of the setting. */
 const EVENTS = [
   { key: "sent", label: "Send", description: "When a message goes out." },
   { key: "archived", label: "Archive", description: "Archive and sweep, once per action." },
@@ -41,16 +40,11 @@ const SOUND_OPTIONS: { value: ChimeSoundName; label: string }[] = [
   { value: "none", label: "None" },
 ];
 
-/** Volume saves after the slider rests, not on every step of a drag. */
 const VOLUME_SAVE_DELAY_MS = 300;
 
 export function SoundSection() {
   const queryClient = useQueryClient();
   const settings = useQuery(chimeSettingsQuery);
-  // Each change is a patch of the fields it touches, applied by the daemon
-  // to the setting as it is then. The screen shows every change at once;
-  // an answer only lands if no newer change has been made since, so a slow
-  // reply can never put an older value back.
   const latestChange = useRef(0);
   const save = useMutation({
     mutationFn: ({ patch }: { patch: ChimesPatch; change: number; before?: ChimeSettings }) =>
@@ -63,9 +57,6 @@ export function SoundSection() {
     },
     onError: (error, { change, before }) => {
       toast.error("Couldn't save the sound setting", { description: error.message });
-      // Put back what was shown before this change, unless a newer change
-      // will say, then ask the daemon. The put-back doesn't wait for the
-      // refetch, which pauses while the daemon is unreachable.
       if (change === latestChange.current) {
         if (before) queryClient.setQueryData(chimeSettingsQuery.queryKey, before);
         void queryClient.invalidateQueries({ queryKey: chimeSettingsQuery.queryKey });
@@ -73,8 +64,6 @@ export function SoundSection() {
     },
   });
   const update = (patch: ChimesPatch) => {
-    // Refused before the optimistic write, so the screen never shows a
-    // setting the daemon didn't take.
     if (refuseWhileDaemonDown("change the sound setting")) return;
     latestChange.current += 1;
     const before = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey);
@@ -191,7 +180,6 @@ export function SoundSection() {
   );
 }
 
-/** The patch's set fields only, so an absent field never blanks the cache. */
 function definedFields(patch: ChimesPatch): Partial<ChimeSettings> {
   return Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined && value !== null),

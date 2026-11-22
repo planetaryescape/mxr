@@ -1,9 +1,3 @@
-/*
- * Mail verbs, written once. The list and the reader each hand in a way to
- * get their current target plus what to do after a message leaves the
- * view; everything else (mutations, dialogs, compose, rails) is shared.
- */
-
 import { toast } from "sonner";
 
 import { cancelAutoReminder } from "@/features/compose/api";
@@ -31,18 +25,9 @@ import { ensureThread, type MailTarget } from "./target";
 
 export interface MailVerbHooks {
   getTarget: () => MailTarget | null;
-  /** Runs right after a verb that takes the target out of the view. */
   afterLeave?: (action: MailAction) => void;
-  /** The reader owns Archive's delayed list removal and navigation. */
   afterArchive?: (run: () => Promise<MailMutationOutcome>) => void;
-  /** Where replies open: inline under the thread, or an overlay. */
   composeSurface: "inline" | "overlay";
-  /**
-   * Let a view handle part of a mutation its own way (the desk: archive on
-   * a desk row is Done). Returns what is left for the normal path (null
-   * when the view takes all of it) and the view's own change, which runs
-   * with the rest, after any confirmation.
-   */
   intercept?: (action: MailAction, target: MailTarget) => InterceptedVerb;
 }
 
@@ -51,7 +36,6 @@ export interface InterceptedVerb {
   commit?: () => void;
 }
 
-/** Bulk trash/spam and very large batches confirm first; the rest undo. */
 const CONFIRM_THRESHOLD = 20;
 
 function needsConfirm(action: MailAction, target: MailTarget): boolean {
@@ -69,12 +53,6 @@ function single(target: MailTarget | null, what: string): MailTarget | null {
   return target;
 }
 
-/**
- * Star or unstar as the target shows. One conversation toggles; a
- * multi-selection always stars, as in the TUI. No preview, even when the
- * unstar reaches starred messages outside the list: it is one conversation,
- * not a batch, and `u` undoes it (the CLI's `--dry-run` previews batches).
- */
 export function toggleStar(target: MailTarget): void {
   if (target.conversations <= 1 && target.anyStarred) {
     void performMailAction("unstar", target.unstarIds);
@@ -87,7 +65,6 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
   const mutate = (action: MailAction) => () => {
     const requested = hooks.getTarget();
     if (!requested || requested.messageIds.length === 0) return;
-    // Before the view's own part (the desk's Done) and before it moves on.
     if (refuseMailActionWhileDaemonDown(action)) return;
     const { rest: target, commit } = hooks.intercept?.(action, requested) ?? { rest: requested };
     if (!target || target.messageIds.length === 0) {
@@ -114,7 +91,6 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     }
   };
 
-  /** `X` / `K`: the newest message of one conversation. */
   const moveToMode = (sender: boolean) => {
     const primary = single(hooks.getTarget(), "Move")?.primary;
     if (!primary) return;

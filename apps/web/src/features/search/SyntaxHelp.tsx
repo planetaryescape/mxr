@@ -1,5 +1,3 @@
-/* Popover listing the search operators. */
-
 import { HelpCircle } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";

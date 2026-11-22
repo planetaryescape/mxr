@@ -139,9 +139,6 @@ export function RecoveryNotice({ api = bridgeRecoveryApi }: { api?: RecoveryApi 
     },
   });
   const recovery = status.data;
-  // The "needs a protocol upgrade" card is for a daemon that answered with a
-  // mismatch. A stopped daemon is the offline banner's to say, and any other
-  // failed poll retries on its own every 15 seconds without a banner.
   const protocolFailure = isProtocolMismatch(status.error);
   if (
     !recovery?.restore_pending &&

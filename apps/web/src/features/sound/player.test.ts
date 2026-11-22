@@ -16,7 +16,6 @@ import { VOICES } from "./voices";
 
 type Call = [method: string, ...args: unknown[]];
 
-/** A fake AudioContext that records every scheduling call. */
 function fakeContext(state: AudioContextState = "running") {
   const calls: Call[] = [];
   const param = (name: string) => ({
@@ -76,7 +75,6 @@ describe("scheduleVoice", () => {
     const scheduled = scheduleVoice(context as unknown as SoundContext, VOICES.sent, 0.5, 10);
     expect(scheduled).toBe(VOICES.sent.length);
     const gains = calls.filter(([method]) => method === "gain.set" || method === "gain.ramp");
-    // Per partial: silent start, ramp up, ramp back down to silence.
     for (let index = 0; index < gains.length; index += 3) {
       const [set, up, down] = gains.slice(index, index + 3);
       expect(set).toEqual(["gain.set", 0.0001, expect.any(Number)]);
@@ -85,7 +83,6 @@ describe("scheduleVoice", () => {
       expect(up?.[1]).toBeLessThanOrEqual(0.2);
       expect(down).toEqual(["gain.ramp", 0.0001, expect.any(Number)]);
     }
-    // Never a linear ramp or a hard set to zero, which click.
     expect(calls.some(([method, value]) => method === "gain.set" && value === 0)).toBe(false);
   });
 

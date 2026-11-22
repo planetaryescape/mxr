@@ -31,17 +31,11 @@ function toRow(row: OwedReplyRow): MessageRowView {
 
 const LENS = { kind: "other" } as const;
 
-/**
- * The same count Now, Messages and the rail use: the people you write
- * with, then where the others who wrote to you are.
- */
 export function owedMeta(conversations: number, people?: OwedPeople | null): string | null {
   if (conversations === 0) return null;
   if (!people) return plural(conversations, "conversation");
   const who = plural(people.write_with, "person", "people");
   const others = people.others > 0 ? `, ${plural(people.others, "other")} in Messages` : "";
-  // The people are the daemon's whole count; the rows are capped. Never put
-  // the two side by side as if they were one count.
   if (conversations >= OWED_PAGE_LIMIT) {
     return `${who}, the ${OWED_PAGE_LIMIT} most overdue conversations shown${others}`;
   }
@@ -50,11 +44,6 @@ export function owedMeta(conversations: number, people?: OwedPeople | null): str
     : `${who} (${plural(conversations, "conversation")})${others}`;
 }
 
-/**
- * The desk's You owe lane in full: mail from people you're in conversation
- * with that you haven't answered, most overdue first by your usual pace
- * with that person (TUI Owed lens).
- */
 export function OwedRoute() {
   const account = useUiPrefs((s) => s.accountScope);
   const owed = useQuery({ queryKey: ["owed", account], queryFn: () => fetchOwedReplies(account) });

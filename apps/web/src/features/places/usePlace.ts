@@ -15,17 +15,12 @@ import { mergeBundles, messagesLeft, nextBundleOffset } from "./placePaging";
 
 const NO_PAGES: Record<string, SenderPages> = {};
 
-/** Further message pages asked for one sender, keyed by `bundleKey`. */
 interface SenderPages {
   accountId: string;
   senderEmail: string;
   pages: number;
 }
 
-/**
- * Module-level so its reference is stable: TanStack Query then reruns it
- * (and hands back a new object) only when a sender page changes.
- */
 function combineSenderPages(results: readonly { data?: PlaceResponse; isFetching: boolean }[]): {
   data: (PlaceResponse | undefined)[];
   fetching: boolean[];
@@ -36,12 +31,6 @@ function combineSenderPages(results: readonly { data?: PlaceResponse; isFetching
   };
 }
 
-/**
- * A place for the app's account scope, paged: bundles a page of senders at
- * a time, and each sender's messages `messagesPerBundle` at a time. Every
- * page lives under the `place` query family, so a mail mutation refreshes
- * them all and optimistic pin and move patches reach every copy.
- */
 export function usePlace(place: Place, messagesPerBundle: number) {
   const account = useUiPrefs((s) => s.accountScope);
   const scope = account ?? "all";
@@ -54,7 +43,6 @@ export function usePlace(place: Place, messagesPerBundle: number) {
     staleTime: 15_000,
   });
 
-  // Pages asked for belong to one account scope; a new scope starts over.
   const [asked, setAsked] = useState<{ scope: string; pages: Record<string, SenderPages> }>({
     scope,
     pages: {},
@@ -97,7 +85,6 @@ export function usePlace(place: Place, messagesPerBundle: number) {
     [extraPages.fetching, requests],
   );
 
-  /** Ask for the next page of these senders' messages. */
   const moreFrom = useCallback(
     (targets: readonly PlaceBundle[]) =>
       setAsked((state) => {

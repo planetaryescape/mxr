@@ -1,10 +1,3 @@
-/*
- * A toast never covers the lit row (D140). It sits in its corner unless the
- * lit row is under where it would draw, and then it takes the other corner.
- * The geometry is computed, not measured from the toast, so the choice is
- * made before the toast has been placed and never makes it jump.
- */
-
 export type ToastCorner = "top-right" | "bottom-right";
 
 interface Box {
@@ -14,16 +7,13 @@ interface Box {
   bottom: number;
 }
 
-/** Sonner's toast width, and the gutter the Toaster leaves at the viewport edge. */
 const TOAST_WIDTH = 356;
 const GUTTER = 16;
-/** A one-line toast with its Undo; a two-line one is taller, so leave room. */
 const TOAST_HEIGHT = 72;
 
 interface Viewport {
   width: number;
   height: number;
-  /** Distance from the corner's edge: below the top bar, above the status bar or tabs. */
   top: number;
   bottom: number;
 }
@@ -41,7 +31,6 @@ function toastBox(corner: ToastCorner, view: Viewport): Box {
 const overlaps = (a: Box, b: Box) =>
   a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 
-/** The corner to draw in: `preferred`, unless the lit row is under it and the other is clear. */
 export function cornerAvoiding(
   preferred: ToastCorner,
   litRow: Box | null,

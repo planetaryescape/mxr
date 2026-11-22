@@ -1,8 +1,3 @@
-/**
- * "Now showing": a one-time glow over the row or header a done just
- * opened, so the move is seen. The parent must be `relative`; key it on
- * the arrival so a second move glows again.
- */
 export function ArrivalGlow() {
   return (
     <span

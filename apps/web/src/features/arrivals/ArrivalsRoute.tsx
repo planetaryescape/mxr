@@ -17,11 +17,6 @@ import { openMovePicker } from "./moves";
 import { moveCommands } from "./moveSubjects";
 import type { ArrivalBucket, ArrivalItem } from "./types";
 
-/**
- * The emails behind one count of Now's arrivals line, newest first, in
- * the line's own window: exactly as many rows as the count. Each row says
- * where it went and why, and `X` / `P` move it or its sender.
- */
 export function ArrivalsRoute({
   bucket,
   since,
@@ -81,8 +76,6 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
     if (row && listRef.current?.contains(document.activeElement)) row.focus();
   }, [at]);
 
-  // The page's keys (j, k, Enter, X, P) come from the key definition, so
-  // the global keys keep working beside them and `u` undoes an `X` move.
   useShortcutScope("arrivals");
   useScopeController("arrivals", {
     down: () => setCursor(Math.min(items.length - 1, at + 1)),
@@ -147,7 +140,6 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
 }
 
 function threadPath(item: ArrivalItem): string {
-  // All mail holds an arrival wherever it went since.
   return `/m/archive/${encodeURIComponent(item.thread_id)}`;
 }
 

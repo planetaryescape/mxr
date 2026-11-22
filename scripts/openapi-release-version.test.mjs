@@ -9,8 +9,6 @@ import test from 'node:test';
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tool = resolve(process.env.RELEASE_PLEASE_DIR || join(repo, '.openapi/tooling/node_modules/release-please'));
 const requireTool = createRequire(join(tool, 'package.json'));
-// Load the package entry point first: importing Simple directly creates a
-// BaseStrategy/manifest/factory cycle in this release-please version.
 const { VERSION: toolVersion } = requireTool(tool);
 const { Simple } = requireTool('./build/src/strategies/simple.js');
 const { Version } = requireTool('./build/src/version.js');
@@ -18,8 +16,6 @@ const artifact = 'site/public/openapi.json';
 const script = join(repo, 'site/scripts/dump-openapi-spec.sh');
 
 test('real release-please extra-file updaters keep a version-only release fresh', async (t) => {
-  // The action's v5 lockfile bundles release-please 17.6.0. No GitHub client,
-  // token or network-backed SCM method is used by this offline release fixture.
   assert.equal(toolVersion, '17.6.0');
   const config = JSON.parse(readFileSync(join(repo, 'release-please-config.json'), 'utf8')).packages['.'];
   const original = new Map(['Cargo.toml', 'Cargo.lock', artifact].map((path) => [path, readFileSync(join(repo, path))]));
@@ -37,7 +33,6 @@ test('real release-please extra-file updaters keep a version-only release fresh'
   const candidate = await strategy.buildReleasePullRequest([], undefined, false, [], { newVersion: next });
   const changed = new Map();
   function restore() {
-    // Restore only this fixture's own writes; never discard an unexpected edit.
     for (const [path, written] of changed) {
       assert.deepEqual(readFileSync(join(repo, path)), written, `concurrent edit to ${path}; refusing to overwrite it`);
       writeFileSync(join(repo, path), original.get(path));

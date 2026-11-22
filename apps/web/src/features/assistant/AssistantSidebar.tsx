@@ -1,12 +1,3 @@
-/*
- * The assistant as a copy desk: talk to your mail. It reads, searches and
- * saves new drafts freely; every other change waits as a proof for your
- * signature unless the conversation is trusted, and every question waits
- * here too. Turns run in the daemon, so
- * closing the sidebar or reloading the page doesn't stop one.
- * Anatomy and voice: docs/blueprint/29-assistant-design.md.
- */
-
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, CircleDot, History as HistoryIcon, SquarePen, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -51,14 +42,12 @@ export function AssistantSidebar() {
   const viewContext = useViewContext();
   const [history, setHistory] = useState(false);
 
-  // A conversation deleted elsewhere: start fresh rather than show an error.
   useEffect(() => {
     if (conversation.isError && conversationId) showConversation(null);
   }, [conversation.isError, conversationId, showConversation]);
 
   const data = conversation.data;
   useLandChanges(data);
-  // The live line follows the conversation's own status, so it can't outlive the turn.
   const running = data?.status === "running" || send.isPending;
   const pending = data?.status === "awaiting_user" ? data.pending : [];
   const available = availability.data?.available ?? true;
@@ -228,12 +217,6 @@ function HeaderButton({
   );
 }
 
-/**
- * Trust, written out. A conversation that runs reversible changes without
- * asking says "trusted" in the header (a mode that changes who is
- * responsible must be visible, docs/blueprint/29), and the menu says what
- * that covers and turns it off.
- */
 function TrustMenu({
   conversation,
   onChange,
@@ -327,7 +310,6 @@ function Outcome({
   }
 }
 
-/** Keeps the newest message in view while the reader is at the bottom. */
 function ScrollToEnd({
   watch,
   className,

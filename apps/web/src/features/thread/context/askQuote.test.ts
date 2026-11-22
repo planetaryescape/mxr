@@ -33,7 +33,6 @@ describe("markQuoteInDocument", () => {
     expect(first?.tagName).toBe("MARK");
     const marks = root.querySelectorAll(`mark[${ASK_MARK_ATTRIBUTE}]`);
     expect(Array.from(marks, (mark) => mark.textContent).join("")).toBe(QUOTE);
-    // The markup around the quote survives.
     expect(root.querySelector("b")?.textContent).toBe("confirm");
 
     expect(markQuoteInDocument(root, "Rollout risk: watch latency.")).not.toBeNull();

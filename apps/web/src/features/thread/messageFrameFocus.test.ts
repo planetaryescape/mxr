@@ -15,7 +15,6 @@ function mountFrame(html: string) {
   return { pane, frame, inner };
 }
 
-/** What a click in the message does as far as the page can see. */
 function clickIntoFrame(frame: HTMLIFrameElement) {
   frame.focus();
   window.dispatchEvent(new FocusEvent("blur"));

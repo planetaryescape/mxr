@@ -2,7 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { getActiveQueryClient } from "@/lib/queryClient";
 
-/** Query families that show mail and must refresh after any mutation. */
 const MAIL_QUERY_ROOTS = new Set([
   "mailbox",
   "thread",
@@ -18,22 +17,15 @@ const MAIL_QUERY_ROOTS = new Set([
   "snoozed",
   "saved-search-counts",
   "now",
-  // Messages' people list and person pages: Not now, a mode move or an
-  // archive from Messages takes the person off the list.
   "messages-mode",
   "todos",
   "mode-membership",
   "reading",
   "arrivals",
   "arrival-modes",
-  // Updates is a briefing of mail: a sweep or let go must drop its lines.
   "updates",
 ]);
 
-/**
- * Refetch every mail view, active or cached. Resolves when the active ones
- * have the server's answer.
- */
 export async function invalidateMailQueries(qc: QueryClient | null = getActiveQueryClient()) {
   if (!qc) return;
   await qc.invalidateQueries({

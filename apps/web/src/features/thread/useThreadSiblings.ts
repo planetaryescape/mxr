@@ -1,5 +1,3 @@
-/* Moving between conversations in the list the reader was opened from. */
-
 import { useCallback, useMemo } from "react";
 
 import type { ReaderNav } from "@/features/mailbox/readerNav";
@@ -23,8 +21,6 @@ export function useThreadSiblings(threadId: string, nav: ReaderNav | null) {
     [threadId, nav, siblings],
   );
 
-  // After the conversation leaves the list: open the next one, like the
-  // TUI's archive-and-advance, or go back to the list at the end.
   const leave = useCallback(
     (direction: 1 | -1 = 1) => {
       const ids = siblings();

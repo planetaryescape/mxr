@@ -1,11 +1,3 @@
-/*
- * A time field that reads words ("fri 3", "tomorrow 9am", "in 2d") with the
- * daemon's parser and shows, before anything is saved, the exact local time
- * it resolved to. The part of the text that was understood is highlighted
- * in place, assumed parts of the answer are muted, and an ambiguous phrase
- * offers its readings as choices. The caller stores `choice.at` unchanged.
- */
-
 import { useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -19,11 +11,8 @@ import type { NaturalTimeState } from "./useNaturalTime";
 interface NaturalTimeInputProps {
   id: string;
   state: NaturalTimeState;
-  /** Called with the reading to store when the user presses Enter. Return
-   * the submission's promise so a second Enter waits for it to finish. */
   onCommit: (choice: TimeChoice) => void | Promise<void>;
   placeholder?: string;
-  /** Shown before any typing, e.g. 'Try "fri 3", "tomorrow 9am" or "in 2d".' */
   hint?: string;
   autoFocus?: boolean;
   disabled?: boolean;
@@ -31,7 +20,6 @@ interface NaturalTimeInputProps {
   className?: string;
 }
 
-// Shared by the input and its highlight layer so the two line up exactly.
 const FIELD_TEXT = "px-2 py-1 text-sm leading-5";
 
 export function NaturalTimeInput({
@@ -50,8 +38,6 @@ export function NaturalTimeInput({
   const { value, resolution, last, failure, pending, choiceIndex, selected } = state;
   const choices = resolution?.choices ?? [];
   const ambiguous = choices.length > 1;
-  // While the next answer loads, keep showing the last one (dimmed) rather
-  // than blanking the preview on every keystroke.
   const display = value.trim() ? last : null;
   const segments = highlightSegments(
     value,
@@ -59,7 +45,6 @@ export function NaturalTimeInput({
   );
   const shownChoice = selected ?? display?.resolution?.choices[0] ?? null;
 
-  // Keep the highlight layer scrolled with the field when text overflows.
   useLayoutEffect(syncScroll);
 
   function syncScroll() {
@@ -80,8 +65,6 @@ export function NaturalTimeInput({
 
   function onFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (isComposingKey(event)) return;
-    // A held Enter repeats; only a deliberate press may commit, so holding
-    // it can't reveal an ambiguous phrase's choices and then take one.
     if (event.key === "Enter" && event.repeat) {
       event.preventDefault();
       return;
@@ -102,8 +85,6 @@ export function NaturalTimeInput({
       event.preventDefault();
       focusChoice(event.currentTarget, moveChoice(forward ? 1 : -1));
     } else if (/^[1-9]$/.test(event.key) && Number(event.key) <= choices.length) {
-      // Digits pick a reading here; the surrounding dialog uses them for
-      // presets, so keep the key from reaching it.
       event.preventDefault();
       event.stopPropagation();
       state.setChoiceIndex(Number(event.key) - 1);
@@ -227,7 +208,6 @@ function focusChoice(group: HTMLElement, index: number) {
   group.querySelector<HTMLElement>(`[data-choice-index="${index}"]`)?.focus();
 }
 
-/** "Friday 3 October, 15:00 · in 6 days", with assumed parts muted. */
 function ResolutionLine({
   choice,
   message,

@@ -39,10 +39,6 @@ interface LetGoAnswer {
   };
 }
 
-/**
- * The demo's day of notifications is in, with the Google sign-in in
- * Needs a look (the first sync brings it).
- */
 async function waitForDigest(page: Page): Promise<DigestAnswer["digest"]> {
   let digest: DigestAnswer["digest"] | null = null;
   await expect
@@ -66,10 +62,7 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
 
   const full = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count;
   await openApp(page, "/updates");
-  // Cold startup also queues the desk and rail before this mode's read.
   await expect(page.getByTestId("update-line").first()).toBeVisible({ timeout: 30_000 });
-  // A peek crosses the bridge and persists exact row attention, without
-  // letting go. Reloading loses client state but keeps the row calm.
   const firstRow = page.locator('[data-testid="update-line"][data-unread="true"]').first();
   const rowId = await firstRow.getAttribute("data-line-id");
   const seen = page.waitForResponse(
@@ -104,15 +97,11 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   expect(result.message_count).toBe(preview.message_count);
   expect([...result.message_ids].sort()).toEqual([...preview.message_ids].sort());
   await expect(page.locator("[data-sonner-toast]").first()).toContainText(/^Let go of \d+/);
-  // Only parcels stay: a tracker leaves Updates when it ends, not on let go.
   await expect(
     page.locator("[data-testid='update-line']:not([data-source^='parcel:'])"),
   ).toHaveCount(0);
 
   await page.keyboard.press("u");
-  // Undo puts the messages back over about two seconds (the digest grows from
-  // a few to all of them), so wait for every one, not just the first, before
-  // asking the page: CI read it mid-restore and failed.
   await expect
     .poll(
       async () => (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count,

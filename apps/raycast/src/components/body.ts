@@ -7,11 +7,6 @@ import {
 import type { MessageBody } from "../bridge/mail";
 import { escapeLine } from "./markdown";
 
-// Mail bodies as Raycast markdown. Plain text goes through the web reader's
-// own split, so what folds (long quotes, signatures) folds the same way in
-// both clients; HTML-only mail is converted, without images, since Raycast
-// would fetch remote ones and so tell senders the mail was opened.
-
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
 turndown.remove(["style", "script", "head", "title"]);
 // `remove` loses to turndown's own image rule, so images get a rule of
@@ -27,10 +22,6 @@ turndown.addRule("no-remote-images", {
   },
 });
 
-/**
- * Sender-controlled header text (subject, names, file names) on one line,
- * escaped like body text so it can never become an image, link or heading.
- */
 export function inline(text: string): string {
   return escapeLine(text.replace(/\s+/g, " ").trim());
 }
@@ -53,7 +44,6 @@ function paragraphs(text: string): string {
     .join("\n\n");
 }
 
-/** Runs of `<br>` from HTML mail are paragraph breaks too, for the same reason. */
 function splitBreaks(markdown: string): string {
   return markdown.replace(/( {2}\n[ \t]*){2,}/g, "\n\n").replace(/\n{3,}/g, "\n\n");
 }
@@ -78,10 +68,8 @@ function plainText(text: string): string {
   return parts.filter((part) => part.trim()).join("\n\n");
 }
 
-/** Some senders (help desks) put their HTML in the plain-text part too. */
 const MARKUP = /<(br|p|div|h[1-6]|strong|table)\b[^>]*>/i;
 
-/** One message's body as markdown, or a note when there is none. */
 export function bodyMarkdown(body: MessageBody | undefined): string {
   const plain = body?.text_plain?.trim();
   if (plain && !(MARKUP.test(plain) && body?.text_html?.trim())) return plainText(plain);

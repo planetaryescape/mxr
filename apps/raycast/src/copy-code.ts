@@ -4,11 +4,6 @@ import { codeSender, getFreshCodes } from "./bridge/mail";
 import { message } from "./components/previewed";
 import { when } from "./components/time";
 
-/**
- * Copy the newest one-time code still in its window, with no window of its
- * own: bind it to a hotkey and paste. The clipboard entry is concealed, so
- * Raycast's clipboard history never keeps the code.
- */
 export default async function CopyLatestCode() {
   try {
     await showHUD("Refreshing mail…");

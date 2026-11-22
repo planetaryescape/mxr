@@ -1,10 +1,3 @@
-/*
- * What a hover card shows beyond what its chip already knows. Nothing loads
- * until the card is open (`open`), so a list of chips costs no requests. An
- * email reads `GetThreadPreviews` (no bodies); a person reads the page the
- * Messages mode already uses.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -26,7 +19,6 @@ export async function fetchThreadPreview(threadId: string): Promise<ThreadPrevie
   return answer.previews[0] ?? null;
 }
 
-/** A person's profile with no conversation: the card shows no message text, so none is fetched. */
 export async function fetchPersonProfile(
   account: string | null,
   person: string,

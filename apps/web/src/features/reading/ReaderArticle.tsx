@@ -20,37 +20,22 @@ function sanitizeFor(allowRemoteImages: boolean) {
   return (html: string) => sanitizeReaderHtml(html, { allowRemoteImages });
 }
 
-/** Whether sanitized markup would show the reader anything. */
 function hasVisibleContent(html: string): boolean {
   const body = new DOMParser().parseFromString(html, "text/html").body;
   return Boolean(body.textContent?.trim()) || body.querySelector("img, hr") !== null;
 }
 
-/**
- * The HTML to show for an issue or article, sanitized, or null when there is
- * none (the daemon sent no HTML, or nothing survived sanitizing) and the
- * reader should fall back to the plain paragraphs. The HTML is untrusted: it
- * goes through the reader sanitizer, and `allowRemoteImages` gates images the
- * way email does.
- */
 export function useReaderHtml(
   html: string | null | undefined,
   allowRemoteImages: boolean,
 ): string | null {
   return useMemo(() => {
-    // The bridge response is not validated at runtime; a non-string must not reach the sanitizer.
     if (typeof html !== "string" || !html.trim()) return null;
     const clean = sanitizeFor(allowRemoteImages)(html);
     return hasVisibleContent(clean) ? clean : null;
   }, [html, allowRemoteImages]);
 }
 
-/**
- * Sanitized article HTML, inline, in the reader's typography, with the quotes
- * in `marks` drawn over the text by matching them in the rendered article.
- * `html` should come from `useReaderHtml`; the renderer sanitizes it once more
- * because it trusts nothing but its `sanitize` prop.
- */
 export function ReaderArticle({
   html,
   paragraphs,
@@ -73,7 +58,6 @@ export function ReaderArticle({
       marks.map(({ quote, paragraph }) => ({
         text: quote,
         kind: "highlight",
-        // Absent, the package matches the whole article, as for older highlights.
         ...(typeof paragraph === "number" ? { paragraphIndex: paragraph } : {}),
       })),
     [marks],

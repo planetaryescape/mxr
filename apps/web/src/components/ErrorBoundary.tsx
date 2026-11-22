@@ -5,7 +5,6 @@ import { PageError } from "@/components/PageParts";
 interface Props {
   children: ReactNode;
   fallback?: (error: Error, reset: () => void) => ReactNode;
-  /** When this changes (e.g. the route path), a caught error is cleared. */
   resetKey?: string;
 }
 

@@ -1,11 +1,3 @@
-/*
- * The map of the app (docs/blueprint/26, D133): the places every width can
- * reach. The rail and the phone's More sheet both read these lists, so a
- * destination can't exist in one and be missing from the other. Everything
- * here is fixed data: the daemon being unreachable must not move or remove
- * an item. Only labels, saved searches and counts come from the daemon.
- */
-
 import {
   BarChart3,
   CalendarDays,
@@ -40,22 +32,15 @@ export type NavIcon = ComponentType<{ className?: string }>;
 export interface NavEntry {
   key: string;
   to: string;
-  /** Query the place is defined by (Messages, waiting on them). */
   search?: { turn: "theirs" } | { account?: string } | ArchiveSearch;
-  /** Says what a count covers when the page it opens shows less of it. */
   hint?: string;
   label: string;
   Icon: NavIcon;
-  /** Only work carries a count: Now, Messages, To do and the Screener's waiting senders. */
   count?: number;
-  /** A quiet count (what a mode holds), not work: muted, never a dot. */
   quietCount?: boolean;
-  /** "Early version: …": the mode is built on an existing view. */
   early?: string;
   shortcut?: string;
-  /** A label's own colour, a validated hex, for the square before its name. */
   color?: string;
-  /** The account a label belongs to; its chip shows when rows are marked (blueprint 33). */
   accountId?: string;
 }
 
@@ -119,7 +104,6 @@ export const MAIL_ENTRIES: NavEntry[] = [
   },
 ];
 
-/** Waiting on and the Screener lead the views: the two that wait on someone. */
 export const VIEW_ENTRIES: NavEntry[] = [
   {
     key: "waiting",
@@ -166,7 +150,6 @@ export const TOOL_ENTRIES: NavEntry[] = [
     to: "/search",
     label: "Search",
     Icon: Search,
-    // The digit that opened the page retired; / searches from anywhere.
     shortcut: definedShortcut("shell.search-palette"),
   },
   {
@@ -215,10 +198,6 @@ export const TOOL_ENTRIES: NavEntry[] = [
 
 const under = (base: string, path: string) => path === base || path.startsWith(`${base}/`);
 
-/**
- * Whether a nav entry is the page on screen. Messages and "Waiting on" share
- * a path, so the turn tells them apart.
- */
 export function isEntryActive(path: string, lane: unknown, entry: NavEntry): boolean {
   const base = entry.to;
   if (base === "/settings/all") return under("/settings", path);
@@ -232,15 +211,8 @@ export function isEntryActive(path: string, lane: unknown, entry: NavEntry): boo
 
 export type PhoneTab = "now" | "messages" | "todo" | "reading" | "more";
 
-/**
- * Which phone tab lights for a page. Exactly one, always: the four modes
- * that have a tab own their pages and conversations; every other page lives
- * in the More sheet, so More is lit there (D133).
- */
 export function phoneTabFor(path: string, lane?: unknown): PhoneTab {
   if (under("/now", path)) return "now";
-  // "Waiting on" is Messages' path with the turn flipped; it is a view in the
-  // sheet, so it lights More rather than the Messages tab.
   if (under("/messages", path)) return lane === "theirs" ? "more" : "messages";
   if (under("/todo", path)) return "todo";
   if (under("/reading", path)) return "reading";

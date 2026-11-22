@@ -10,19 +10,11 @@ import { highlightMatching, isOwnHighlight } from "./readingView";
 import { editHighlightNote, highlightSelection, removeHighlight } from "./readingVerbs";
 
 interface Picked {
-  /** The selected words, as the browser gives them. */
   text: string;
-  /** Where the selection is on screen. */
   rect: DOMRect;
-  /** The paragraph it starts in, for anchoring the highlight. */
   paragraph: number | null;
 }
 
-/**
- * The current text selection when it lies inside `containerRef`. A selection
- * in the highlights list, the header or anywhere else gives null, so the
- * toolbar only ever offers to highlight the article's own text.
- */
 function useSelectionIn(containerRef: RefObject<HTMLElement | null>, paused: boolean) {
   const [picked, setPicked] = useState<Picked | null>(null);
   const read = useCallback(() => {
@@ -45,10 +37,8 @@ function useSelectionIn(containerRef: RefObject<HTMLElement | null>, paused: boo
     });
   }, [containerRef]);
   useEffect(() => {
-    // While a note is typed the textarea takes the selection; the toolbar keeps the picked text.
     if (paused) return;
     document.addEventListener("selectionchange", read);
-    // The reader column scrolls, so the selection moves under the toolbar.
     window.addEventListener("scroll", read, true);
     window.addEventListener("resize", read);
     return () => {
@@ -73,12 +63,6 @@ function anchorStyle(rect: DOMRect): React.CSSProperties {
   };
 }
 
-/**
- * A small toolbar anchored to the selection. Selecting article text offers
- * Highlight and Highlight with note; selecting (or clicking) a saved
- * highlight offers its note and removal instead. A highlight made in
- * Marginalia is read-only here, and says where to change it.
- */
 export function HighlightToolbar({
   containerRef,
   itemKey,
@@ -103,7 +87,6 @@ export function HighlightToolbar({
       aria-label={existing ? "Highlight" : "Highlight the selection"}
       data-testid="highlight-toolbar"
       style={anchorStyle(target.rect)}
-      // A press must not clear the selection it acts on.
       onMouseDown={(event) => {
         if (!(event.target instanceof HTMLTextAreaElement)) event.preventDefault();
       }}
@@ -219,7 +202,6 @@ function ExistingControls({
   );
 }
 
-/** A note field: Enter saves, Shift+Enter breaks the line, Esc cancels. A blank note clears it. */
 export function NoteComposer({
   initial = "",
   onSave,
@@ -254,7 +236,6 @@ export function NoteComposer({
         data-testid="highlight-note-input"
         onChange={(event) => setNote(event.target.value)}
         onKeyDown={(event) => {
-          // The reader's single-letter keys must not fire while typing.
           event.stopPropagation();
           if (event.key === "Escape" && !isComposingKey(event)) onCancel();
           if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {

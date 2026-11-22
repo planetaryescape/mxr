@@ -1,8 +1,3 @@
-/*
- * Label chips for the reader: the label's own colour when it has one,
- * otherwise a stable colour from its name.
- */
-
 import type { CSSProperties } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,10 +18,6 @@ function labelDisplayColor(label: MessageLabelView): string | null {
   return labelColor(label.name, label.color);
 }
 
-/**
- * The colour a label shows as: its own when it is a valid hex, else one
- * derived from its name. Always a hex, so it is safe as a style value.
- */
 export function labelColor(name: string, color?: string | null): string {
   return normalizeHexColor(color) ?? fallbackLabelColor(name);
 }
@@ -37,8 +28,6 @@ function labelBadgeStyle(color?: string | null): CSSProperties | undefined {
   return {
     backgroundColor: hexToRgba(hex, 0.16),
     borderColor: hexToRgba(hex, 0.65),
-    // The raw label colour is often too light or dark for text on its own
-    // tint; pulling it toward the theme's text colour keeps it readable.
     color: `color-mix(in oklab, ${hex} 55%, var(--foreground))`,
   };
 }

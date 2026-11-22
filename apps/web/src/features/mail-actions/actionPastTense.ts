@@ -1,9 +1,3 @@
-/*
- * Past-tense wording for a mail action, used in progress and result toasts.
- * The words come from the verb table; only the ones that name a label are
- * built here.
- */
-
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
 import { VERB_FEEDBACK } from "./verbFeedback";
 
@@ -59,7 +53,6 @@ function failurePhrase(
   return template;
 }
 
-/** Nothing changed: "Couldn't archive 3 messages". */
 export function failureTitle(
   action: MailAction,
   payload: MailActionPayload | undefined,
@@ -68,7 +61,6 @@ export function failureTitle(
   return `Couldn't ${failurePhrase(action, payload, "base").replace("{}", object)}`;
 }
 
-/** Part changed: "Archived 2 of 3 messages; the rest failed". */
 export function partialFailureTitle(
   action: MailAction,
   payload: MailActionPayload | undefined,

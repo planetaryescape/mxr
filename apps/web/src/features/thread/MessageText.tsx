@@ -8,12 +8,6 @@ import { findQuote } from "./context/askQuote";
 import { LINK_MARK_ATTRIBUTE, sameLink } from "./linkHighlight";
 import { normalizeSegments, splitMessageText, type Segment } from "./textSegments";
 
-/**
- * A plain-text or reader-mode body: the new writing in full, quoted
- * history and signatures folded behind a control that says how much is
- * hidden. `showQuotes` / `showSignature` come from the reader toggles
- * (Q, S); each fold can also be opened on its own.
- */
 export function MessageText({
   text,
   showQuotes,
@@ -25,11 +19,8 @@ export function MessageText({
   text: string;
   showQuotes: boolean;
   showSignature: boolean;
-  /** The sender's exact text in monospace: folds, but no reflow or mark stripping. */
   plain?: boolean;
-  /** The ask's quote, marked where it appears. */
   highlight?: string;
-  /** A link a to-do is about, marked where it appears. */
   highlightLink?: string;
 }) {
   const segments = useMemo(() => normalizeSegments(splitMessageText(text)), [text]);
@@ -44,7 +35,6 @@ export function MessageText({
     >
       {segments.map((segment, index) => (
         <SegmentView
-          // Segments are derived from immutable text; position is identity.
           // oxlint-disable-next-line react/no-array-index-key
           key={index}
           segment={segment}
@@ -125,7 +115,6 @@ function SegmentView({
   );
 }
 
-/** "> " marks carry no meaning once the block is visually indented. */
 function stripQuoteMarks(text: string): string {
   return text
     .split("\n")

@@ -12,20 +12,11 @@ const MOVE_KEY = definedShortcut("modes.move");
 
 interface SenderAnswer {
   kind: SenderKind;
-  /** The capital that picks it in the `X` picker (either case in `P`'s), from the key definition. */
   key: string;
   label: string;
   Glyph: LucideIcon;
 }
 
-/**
- * A new sender's four answers, in fixed order so each key always means the
- * same thing (the daemon's own order puts the current mode first). They are
- * answered through the `X` picker, on the `g` letters' capitals, as every
- * picker letters these destinations (blueprint 35); `D` blocks. The glyphs
- * are the modes' own (docs/blueprint/27 "Iconography"); Block is the one
- * answer that isn't a mode.
- */
 export const NEW_SENDER_ANSWERS: readonly SenderAnswer[] = [
   {
     kind: "people",
@@ -53,10 +44,8 @@ export const NEW_SENDER_ANSWERS: readonly SenderAnswer[] = [
   },
 ];
 
-/** The status bar's wording for the lit new sender (docs/blueprint/27 "Rows"). */
 export const NEW_SENDER_NOTE = `New sender: ${MOVE_KEY} then ${NEW_SENDER_ANSWERS.map((c) => `${c.key} ${c.label}`).join(" · ")}`;
 
-/** Answer the question: the sender's kind, remembered for their future mail. Undo puts it back. */
 export function answerNewSender(
   question: ScreenerQuestion,
   label: string,
@@ -68,18 +57,12 @@ export function answerNewSender(
   );
 }
 
-/**
- * The lit new sender's choice, in place of the row's verbs: four mode-glyph
- * chips, their names and keys in the tooltips (D129). The keyboard answers
- * through `X` (the capitals) or `P`.
- */
 export function NewSenderChips({
   question,
   label,
   className,
 }: {
   question: ScreenerQuestion;
-  /** How the toast names the sender. */
   label: string;
   className?: string;
 }) {
@@ -97,7 +80,6 @@ export function NewSenderChips({
           title={`${name} (${MOVE_KEY} then ${key})`}
           aria-label={name}
           onClick={(event) => {
-            // The row under it also selects on click; the answer is its own act.
             event.stopPropagation();
             void answerNewSender(question, label, kind);
           }}

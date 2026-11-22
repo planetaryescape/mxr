@@ -4,9 +4,7 @@ import { ReadingReader } from "@/features/reading/ReadingReader";
 import { optionalEnum } from "@/lib/searchParams";
 
 export interface ReadingItemParams {
-  /** The issue as sent, or the linked article; omitted picks for the item. */
   as?: "issue" | "article";
-  /** Opened from the Highlights tab (`3`): start at the item's highlights. */
   at?: "highlights";
 }
 

@@ -19,7 +19,6 @@ vi.mock("sonner", () => ({
 }));
 
 // SAFETY: nowMoveSubject reads only the fields below; the rest of a Now row
-// is irrelevant to which email X moves.
 const person = {
   kind: "person",
   key: "person:t1",
@@ -49,7 +48,6 @@ describe("X and K on a row", () => {
       senderLabel: "Sam",
       here: "messages",
     });
-    // The Updates card is a digest, not one email.
     // SAFETY: an Updates card's contents are never read for a move.
     expect(nowMoveSubject({ kind: "updates", key: "updates" } as unknown as NowItem)).toBeNull();
   });

@@ -98,7 +98,6 @@ describe("ThreadPane", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText("Couldn't find this conversation")).toBeTruthy();
-    // A lookup that can't succeed offers the way out, never a retry.
     expect(screen.getByRole("link", { name: "Go to Inbox" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(mailbox.fetchThread).toHaveBeenCalledTimes(1);

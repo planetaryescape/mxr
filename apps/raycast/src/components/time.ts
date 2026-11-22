@@ -1,8 +1,5 @@
 import type { List } from "@raycast/api";
 
-// Raycast's `date` accessory only says "1d", "2w"; mail wants the time it
-// arrived. Formats follow the system locale and time zone.
-
 const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const dayMonth = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
@@ -19,11 +16,6 @@ function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-/**
- * "14:32" today, "Yesterday 14:32", "Tue 14:32" within the week,
- * "21 Oct 14:32" this year, "21 Oct 2025" before that. Works for dates
- * ahead too ("Tomorrow 09:00"), for what is coming up.
- */
 export function when(value: string | Date, now = new Date()): string {
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return "";
@@ -37,13 +29,11 @@ export function when(value: string | Date, now = new Date()): string {
   return dayMonthYear.format(date);
 }
 
-/** The full date, for a tooltip or a detail view. */
 export function fullDate(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   return Number.isNaN(date.getTime()) ? "" : full.format(date);
 }
 
-/** A list accessory with the arrival time; the tooltip adds `why` when given. */
 export function arrival(value: string, why?: string | null): List.Item.Accessory {
   const tooltip = fullDate(value);
   return { text: when(value), tooltip: why ? `${why}\n${tooltip}` : tooltip };

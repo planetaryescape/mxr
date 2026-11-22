@@ -1,19 +1,7 @@
-/*
- * Every verb's four parts (Saffer): what triggers it, what changes on
- * screen at once, what the toast says, the sound it makes and how it is
- * undone. One table, so a new verb can't ship without deciding each part,
- * and so the words and sounds live in one place: `actionPastTense` reads
- * the past tense from here and the sound player reads the sound.
- *
- * Undo replaces confirmation wherever the daemon can undo. The confirm
- * column says when a verb still asks first.
- */
-
 import type { SoundEvent } from "@/features/sound/player";
 
 import type { MailAction } from "./pendingMailOps";
 
-/** Verbs that aren't a `MailAction` (they have their own request). */
 export type OtherVerb =
   | "categories"
   | "reply-later"
@@ -43,57 +31,28 @@ export type OtherVerb =
 
 export type Verb = MailAction | OtherVerb;
 
-/**
- * Toast colours by type (sonner's rich colours over the theme tokens):
- * success for done, info for a neutral change you can undo (archive, move,
- * a handoff), warning for a partial failure, error for a failure.
- */
 export type ToastTone = "success" | "info" | "warning" | "error";
 
 export type UndoPath =
-  /** The daemon's undo for this mutation id (`u`, `z`, or the toast). */
   | "daemon-mutation"
-  /** Wake the snoozed messages. */
   | "wake"
-  /** The daemon's undo for every chunk of a background job. */
   | "daemon-job"
-  /** A request that reverses it (reply later off, restore to Waiting). */
   | "reverse-request"
-  /** The undo-send window: nothing leaves until it closes. */
   | "send-window"
-  /** Doing it again reverses it (pin). */
   | "toggle"
-  /** Can't be undone by mxr; the entry says why, and the verb confirms first. */
   | "none";
 
 interface VerbParts {
-  /** Registry actions that run it; each is a key, and a button where one shows. */
   actions: readonly string[];
-  /** Other ways in, in words (buttons, swipes, dialogs). */
   alsoFrom?: string;
-  /** What changes on screen before the daemon answers. */
   optimistic: string;
-  /** Past tense for the result toast: "Archived 3 messages". */
   pastTense: string;
-  /**
-   * How a failure names the verb, with `{}` where the object goes:
-   * "archive {}" reads "Couldn't archive 3 messages"; "Archived {}" reads
-   * "Archived 2 of 3 messages" when only part of it worked. Set for every
-   * `MailAction`; the object can sit mid-phrase ("move {} to Trash").
-   */
   failure?: { base: string; partial: string };
   sound: SoundEvent | null;
-  /** The toast's colour: done is success, a change with undo is info. */
   tone: ToastTone;
-  /** When it asks before acting. */
   confirm?: string;
 }
 
-/**
- * A verb either has a way back, or is marked irreversible with the reason
- * and always confirms first. `verbs.spec` runs the undo journey for the
- * first kind and the confirm journey for the second.
- */
 export type VerbFeedback =
   | (VerbParts & { undo: Exclude<UndoPath, "none">; irreversible?: never })
   | (VerbParts & { undo: "none"; irreversible: true; reason: string; confirm: string });
@@ -153,15 +112,11 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     failure: { base: "star {}", partial: "Starred {}" },
     tone: "info",
     sound: null,
-    // The daemon restores each message's own prior star, so starring a
-    // conversation with one starred message leaves that one starred.
     undo: "daemon-mutation",
   },
   unstar: {
     actions: ["mail.star"],
     alsoFrom: "row button, reader header",
-    // A conversation's unstar clears every star in it, including messages
-    // the list doesn't show, so the row and the action agree.
     optimistic: "The star empties at once.",
     pastTense: "Unstarred",
     failure: { base: "unstar {}", partial: "Unstarred {}" },
@@ -223,7 +178,6 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["mail.label"],
     alsoFrom: "the labels dialog",
     optimistic: "The chip goes; the rows leave that label's list.",
-    // With the label: "Removed Hiring from 3 messages".
     pastTense: "Removed",
     failure: { base: "remove the label from {}", partial: "Removed the label from {}" },
     tone: "info",
@@ -311,7 +265,6 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Always: it previews the daemon's dry run.",
   },
   "desk-done": {
-    // On the desk, archive is Done in every lane (see features/desk/deskDone).
     actions: ["mail.archive", "mail.read-archive", "focus.done"],
     alsoFrom: `the check on every desk row, ${SWIPE} (short right)`,
     optimistic: "The row leaves the desk at once; focus mode moves to the next conversation.",
@@ -321,20 +274,15 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "daemon-mutation",
   },
   wake: {
-    // The list's row action: Wake now on /snoozed. The reply queue's row
-    // action is its Done, which says "Out of the reply queue".
     actions: ["list.row-action"],
     alsoFrom: "the Wake now chip on a Snoozed row, Done on a reply-queue row",
     optimistic: "Nothing moves until the daemon answers; then the conversation leaves Snoozed.",
     pastTense: "Back in your inbox",
     tone: "success",
     sound: null,
-    // Not now (`b`) sets it again.
     undo: "reverse-request",
   },
   "mode-done": {
-    // Done here, per mode (features/modes/modeDone): other modes keep the
-    // thread, and the provider archive happens only when none does.
     actions: ["now.done", "messages.done"],
     alsoFrom: "the check on a Now row, Done here on a Messages person page",
     optimistic: "The row leaves this mode at once; the toast says where it still is.",
@@ -363,8 +311,6 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "toggle",
   },
   "todo-done": {
-    // From an email it is done in To do (`SetModeDone`): the daemon's toast
-    // says whether the email was archived, and its undo puts both back.
     actions: ["todo.done"],
     alsoFrom: "the check on a To do row, e on a Now row under Due soon",
     optimistic: "The row folds up and joins Done this week.",
@@ -484,12 +430,10 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
 };
 
-/** The toast colour a verb's result shows in. */
 export function toneFor(verb: Verb): ToastTone {
   return VERB_FEEDBACK[verb].tone;
 }
 
-/** The sound a mail action makes, once per action. */
 export function soundFor(verb: Verb): SoundEvent | null {
   return VERB_FEEDBACK[verb].sound;
 }

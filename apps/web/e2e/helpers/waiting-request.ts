@@ -24,7 +24,6 @@ async function waitingRows(page: Page): Promise<WaitingRow[]> {
   return desk.waiting.rows;
 }
 
-/** Current outgoing asks old enough to wait on, paired with mail that asks nothing. */
 export async function freshWaitingConversations(page: Page, count = 2): Promise<WaitingFixture> {
   const unique = `waiting-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const date = new Date(Date.now() - 48 * 3_600_000).toISOString();

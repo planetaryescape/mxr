@@ -33,7 +33,6 @@ describe("useLitReason", () => {
 
   test("a page unmounting never clears the reason another page has since set", () => {
     const first = render(<Page reason="Here because: Now" />);
-    // The next page mounts (and claims the bar) before the old one's cleanup runs.
     render(<Page reason="Here because: Messages" />);
     first.unmount();
     expect(useLitReasonStore.getState().reason).toBe("Here because: Messages");

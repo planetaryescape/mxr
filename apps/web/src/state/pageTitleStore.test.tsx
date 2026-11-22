@@ -13,7 +13,6 @@ function Publishes({ title }: { title: string | null }) {
 describe("usePublishPageTitle", () => {
   test("the outgoing page does not clear the title of the page that replaced it", () => {
     const view = render(<Publishes title="Now" />);
-    // Route change: the new page's effect runs after the old page's cleanup.
     view.rerender(<Publishes title="Messages" />);
     expect(usePageTitleStore.getState().title).toBe("Messages");
     view.unmount();

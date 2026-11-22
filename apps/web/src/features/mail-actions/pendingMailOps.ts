@@ -1,11 +1,3 @@
-/*
- * Optimistic mail state as data. Every in-flight mutation is a pending
- * operation; views render the server's rows with those operations projected
- * on top. A failed operation is simply removed, so it can't roll back a
- * later action's effect, and a refetch mid-flight can't make the row flicker
- * back: the projection re-applies to whatever the server returns.
- */
-
 import { useMemo } from "react";
 import { create } from "zustand";
 
@@ -28,15 +20,11 @@ export type MailAction =
   | "snooze";
 
 export interface MailActionPayload {
-  /** Target label for label-add, label-remove, move and route. */
   label?: string;
-  /** "labels": several changes in one request. */
   add?: string[];
   remove?: string[];
-  /** Route: queue label being cleared, and whether to archive. */
   fromQueueLabel?: string;
   archive?: boolean;
-  /** Snooze: the wake time as shown, "Friday 3 October, 15:00". */
   untilLabel?: string;
 }
 
@@ -47,11 +35,6 @@ export interface PendingMailOp {
   payload?: MailActionPayload;
 }
 
-/**
- * What a view is showing, so a projection only removes rows the action
- * really takes out of it. Archive leaves All Mail untouched; removing a
- * label only hides rows in that label's lens.
- */
 export type LensIdentity =
   | { kind: "inbox" }
   | { kind: "all_mail" }
@@ -60,12 +43,7 @@ export type LensIdentity =
   | { kind: "spam" }
   | { kind: "label"; labelName: string }
   | { kind: "search" }
-  /** The desk: anything that clears a conversation from the inbox clears it here. */
   | { kind: "desk" }
-  /**
-   * The desk's Waiting on: a thread you started has nothing in the inbox, so
-   * only snooze (and trash, spam) set it aside; archive is Done.
-   */
   | { kind: "desk-waiting" }
   | { kind: "other" };
 
@@ -81,7 +59,6 @@ export const usePendingMailOps = create<PendingMailOpsState>((set) => ({
   remove: (id) => set((state) => ({ ops: state.ops.filter((op) => op.id !== id) })),
 }));
 
-/** Every message a row stands for: all of a thread's messages, or itself. */
 export function rowMessageIds(row: Pick<MessageRowView, "id" | "message_ids">): string[] {
   return row.message_ids && row.message_ids.length > 0 ? row.message_ids : [row.id];
 }
@@ -94,7 +71,6 @@ function sameLabel(a: string, b: string): boolean {
   return a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
 }
 
-/** True when `op` takes the row out of the lens being shown. */
 export function removesFromLens(op: PendingMailOp, lens: LensIdentity): boolean {
   switch (op.action) {
     case "archive":
@@ -182,7 +158,6 @@ export function projectGroups(
     .filter((group) => group.rows.length > 0);
 }
 
-/** Server groups with every pending operation applied, for rendering. */
 export function useProjectedGroups(
   groups: MessageGroupView[] | undefined,
   lens: LensIdentity,
@@ -193,7 +168,6 @@ export function useProjectedGroups(
   return useMemo(() => projectGroups(groups ?? [], ops, lens), [groups, ops, lensKey]);
 }
 
-/** Thread messages with flag changes (star, read) applied. */
 export function useProjectedMessages(messages: MessageRowView[]): MessageRowView[] {
   const ops = usePendingMailOps((state) => state.ops);
   return useMemo(() => {

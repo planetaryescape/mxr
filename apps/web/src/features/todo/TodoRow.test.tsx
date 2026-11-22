@@ -158,7 +158,6 @@ describe("TodoRow", () => {
     const makeTodo = (id: string, resolutionId: string): Todo =>
       todoFixture({
         id,
-        // No source email: the one stubbed fetch is the preview's.
         thread_id: null,
         resolution: {
           id: resolutionId,

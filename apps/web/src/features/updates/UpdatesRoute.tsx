@@ -68,15 +68,8 @@ import {
   useUpdatesHidden,
 } from "./updatesVerbs";
 
-/** The line under the cursor and the open peek, kept while an email opens. */
 const UPDATES_LIST_SEARCH = ["row", "peek"] as const;
 
-/**
- * Updates: notifications as a briefing by source, gathered at fixed cuts
- * and let go in one key. Not a list of emails: each line is a source's
- * latest fact, sorted by what it asks of you, and the email is the last
- * resort (`o`).
- */
 export function UpdatesRoute() {
   const digest = useDigest();
   const threadIds = useCallback(() => {
@@ -97,7 +90,6 @@ export function UpdatesRoute() {
   );
 }
 
-/** Rows settle before their gists are asked for, so a quick tour asks for nothing. */
 const GIST_REQUEST_DELAY_MS = 150;
 
 const DEFAULT_SUBTITLE = "Notifications gathered twice a day. Read the digest, then let go.";
@@ -107,7 +99,6 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
   const phase = useDelayedPending(status.isLoading);
   const data = status.data;
   const subtitle = guide.data?.header ?? (phase === "ready" ? data?.header : undefined) ?? DEFAULT_SUBTITLE;
-  // Before the digest shows, the header is the title and subtitle alone.
   const plainHeader = <PageFrame title="Updates" purpose={subtitle} />;
   if (phase !== "ready") {
     return (
@@ -141,24 +132,17 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const params = useParams({ strict: false }) as { threadId?: string };
   const activePane = useMailboxPane((s) => s.activePane);
   const hidden = useUpdatesHidden((s) => s.hidden);
-  // Routine stays collapsed to its one line until opened, for this visit.
   const [routineOpen, setRoutineOpen] = useState(false);
-  // Both in the URL, so a copied link lands on the same line.
   const [cursorId, setCursorId] = useSearchParam("row");
-  // Space opens the peek under one line at a time; Escape closes it.
   const [peekId, setPeekId] = useSearchParam("peek");
   const [letGoOpen, setLetGoOpen] = useState(false);
-  // Only a pointer fades the lamp (D101): a key never animates.
   const via = useRef<LampVia>("key");
-  // `e`: the line whose source the open preview is for.
   const [letGoLineOf, setLetGoLineOf] = useState<UpdateLine | null>(null);
   const [tuning, setTuning] = useState<UpdateLine | null>(null);
   const { rows, bySection, routine } = useMemo(
     () => digestRows(digest, { routineOpen, hidden }),
     [digest, routineOpen, hidden],
   );
-  // Lines that show only their subject ask the daemon for the email's gist.
-  // Bumped only when every gist was dropped (missed events, a reconnect).
   const gistEpoch = useGistEpoch();
   const gistThreads = useMemo(() => rows.flatMap((row) => gistThread(row.line) ?? []), [rows]);
   useEffect(() => {
@@ -173,9 +157,6 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     rows.findIndex((row) => row.line.id === cursorId),
   );
   const current = rows[index]?.line;
-  // A peek belongs to its line: when a refetch, a let go or a tune takes the
-  // line away, the peek goes with it, and an undo does not bring it back open.
-  // A link to a routine line (or its peek) opens Routine first, once.
   const folded = useCallback(
     (id: string | null) =>
       id !== null && !routineOpen && digest.routine.some((line) => line.id === id),
@@ -196,12 +177,8 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
-  // Routine counts as lines even while it is collapsed.
   const hasLines = rows.length > 0 || routine.sources > 0;
-  // Updates is put to bed when the current digest is let go (docs/blueprint/27).
   const finished = useLowTide("updates", false, hasLines, { daily: true });
-  // One hint under the first suggested to-do, one under the first line,
-  // and the digest's let go under its button.
   const firstSuggestion = rows.find((row) => row.line.todo_suggestion && !row.line.in_todo)?.line;
   const firstLine = rows[0]?.line;
   const alone = rows.length === 1;
@@ -296,7 +273,6 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   const commitLetGoAll = (selectionToken: string) => {
     if (letGoLineOf) {
       void letGoSource(letGoLineOf, digest.cut.at, selectionToken);
-      // With an email open, done moves on: the next source's email opens.
       if (params.threadId) {
         const at = rows.findIndex((row) => row.line.id === letGoLineOf.id);
         const next = rows
@@ -318,7 +294,6 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     );
   };
 
-  // The peek's open id is read through a ref so the memoised rows keep one callback.
   const peekRef = useRef(peekId);
   peekRef.current = peekId;
   const togglePeek = useCallback(
@@ -331,9 +306,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     via.current = "key";
     setCursorId(next.line.id);
   };
-  // The status bar says why the lit line is here and which keys work on it.
   useLitReason(current?.why, null, current?.account_id);
-  // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   usePageKeys(
     current && (!params.threadId || activePane !== "reader")
       ? stripKeys("updates", current.code || latestCode ? [] : ["updates.copy-code"])
@@ -362,7 +335,6 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
-    // The lit line's code, else the newest one, which may be on no line yet.
     copyCode: current?.code
       ? () =>
           current.code &&
@@ -374,9 +346,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
         ? () => copyCode(latestCode.code, codeSender(latestCode))
         : undefined,
     peek: () => current && togglePeek(current),
-    // `K` stays "tune this source"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? updateMoveSubject(current) : null)).moveToMode,
-    // Escape closes an open peek first, then a hint.
     closeHint: () => {
       if (peekId !== null) setPeekId(null);
       else closeHint?.();
@@ -387,7 +357,6 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     const sectionRows = bySection[name];
     if (name === "routine") {
       if (routine.sources === 0) return null;
-      // Routine is one line until opened; once open it stays open for this visit.
       if (!routineOpen) {
         return (
           <button

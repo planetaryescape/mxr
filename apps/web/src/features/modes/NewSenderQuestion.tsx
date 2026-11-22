@@ -3,24 +3,13 @@ import { cn } from "@/lib/utils";
 
 import type { ScreenerQuestion } from "./membership";
 
-/**
- * A first-time person's one question, on their row where their mail landed
- * (D117): "New sender. Keep in Messages? [Messages] [Updates] [Reading]
- * [Block]". Answering is the sender's kind, remembered for their future
- * mail; Undo puts it back.
- */
 export function NewSenderQuestion({
   question,
   label,
   inOption = false,
 }: {
   question: ScreenerQuestion;
-  /** How the toast names the sender. */
   label: string;
-  /**
-   * Inside a listbox option, which can't hold buttons: the answers are
-   * pointer targets, and the keyboard answers with `K` (move sender).
-   */
   inOption?: boolean;
 }) {
   const Answer = inOption ? "span" : "button";
@@ -37,7 +26,6 @@ export function NewSenderQuestion({
           key={choice.kind}
           {...(inOption ? { "aria-hidden": true } : { type: "button" as const })}
           onClick={(event) => {
-            // The row under it opens on click; the answer is its own act.
             event.stopPropagation();
             void correctSender(
               { accountId: question.account_id, senderEmail: question.sender_email, label },

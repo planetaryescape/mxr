@@ -9,7 +9,6 @@ const ui = () => useAssistantUi.getState();
 describe("how the panel was opened", () => {
   const storage = privateStorage();
   beforeEach(() => {
-    // Node 26's inert localStorage leaves the store with no storage of its own.
     useAssistantUi.persist.setOptions({ storage: createJSONStorage(() => storage) });
     storage.clear();
     useAssistantUi.setState({ open: false, via: null });

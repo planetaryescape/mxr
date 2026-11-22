@@ -1,9 +1,3 @@
-/*
- * The sidebar's first section is the rail, in the daemon's order: Now, the
- * five modes, then Inbox (`GetRail`). Until the rail loads, the same
- * entries show without counts, so the sidebar never jumps.
- */
-
 import { Inbox, type LucideIcon } from "lucide-react";
 
 import { MODE_GLYPHS, type ModeGlyphId } from "@/components/ModeMark";
@@ -16,18 +10,13 @@ export interface RailNavEntry {
   label: string;
   Icon: LucideIcon;
   shortcut: string;
-  /** `home` (Now), `modes`, or `lens` (Inbox). */
   group: string;
   count?: number;
-  /** A badge counts work (Now); other counts are quiet. */
   badge: boolean;
-  /** "Early version: …", for the entry's marker and tooltip. */
   early?: string;
-  /** What the mode is for, for the tooltip. */
   header?: string;
 }
 
-/** The rail before the daemon answers: same order, keys and paths. */
 const FALLBACK: Pick<RailEntry, "id" | "name" | "key" | "group">[] = [
   { id: "now", name: "Now", key: definedShortcut("nav.now"), group: "home" },
   { id: "messages", name: "Messages", key: definedShortcut("nav.messages"), group: "modes" },

@@ -4,7 +4,6 @@ import { NowRoute } from "@/features/now/NowRoute";
 import { optionalString } from "@/lib/searchParams";
 
 export interface NowRouteParams {
-  /** The row under the cursor. */
   row?: string;
 }
 

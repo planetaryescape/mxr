@@ -1,10 +1,3 @@
-/*
- * Freshness words: when the newest mail came in and how sync is doing.
- * The same rules and words as the daemon's `freshness_copy`
- * (crates/protocol/src/types/freshness.rs), which the TUI and CLI use;
- * here so the ages tick in the browser between fetches.
- */
-
 import type { components } from "@/api/generated";
 import { formatTime } from "@/lib/format";
 
@@ -14,10 +7,8 @@ export type AccountFreshness = Schemas["AccountFreshnessData"];
 export type Arrival = Schemas["ArrivalData"];
 export type SyncHealth = Schemas["SyncHealthData"];
 
-/** Least worrying first: the "All accounts" scope shows the last one. */
 const SEVERITY: SyncHealth[] = ["ok", "syncing", "never", "stale", "paused", "failing"];
 
-/** "just now", "5m ago", "2h ago", "3d ago". */
 export function ago(at: string | Date, now: Date): string {
   const seconds = Math.max(0, Math.floor((now.getTime() - new Date(at).getTime()) / 1000));
   if (seconds < 60) return "just now";
@@ -26,12 +17,10 @@ export function ago(at: string | Date, now: Date): string {
   return `${Math.floor(seconds / 86_400)}d ago`;
 }
 
-/** "Latest mail 5m ago", or "No mail yet". */
 export function latestMail(newest: string | null | undefined, now: Date): string {
   return newest ? `Latest mail ${ago(newest, now)}` : "No mail yet";
 }
 
-/** `health` at `now`: a good sync that has aged past the limit is stale. */
 export function effectiveHealth(
   account: AccountFreshness,
   staleAfterSecs: number,
@@ -45,7 +34,6 @@ export function effectiveHealth(
   return account.health;
 }
 
-/** The account in the worst sync state at `now`: the scope's sync line. */
 export function worstAccount(data: Freshness, now: Date): AccountFreshness | undefined {
   let worst: AccountFreshness | undefined;
   let worstRank = -1;
@@ -59,21 +47,15 @@ export function worstAccount(data: Freshness, now: Date): AccountFreshness | und
   return worst;
 }
 
-/** Calm states need no attention; the rest are a warning. */
 export function isCalm(health: SyncHealth): boolean {
   return health === "ok" || health === "syncing";
 }
 
-/** The dot's colour on a phone, where the words don't fit. */
 export function healthTone(health: SyncHealth): "ok" | "warn" | "bad" {
   if (isCalm(health)) return "ok";
   return health === "failing" ? "bad" : "warn";
 }
 
-/**
- * When a failing account tries again: "retrying now" when its recorded
- * retry is due, or "retrying 9:50 AM" when one is scheduled.
- */
 function retrying(account: AccountFreshness, now: Date): string | null {
   const retryAt = account.last_sync_error?.retry_at;
   if (account.sync_in_progress) return "syncing now";
@@ -81,10 +63,6 @@ function retrying(account: AccountFreshness, now: Date): string | null {
   return retryAt ? `retrying ${formatTime(new Date(retryAt))}` : null;
 }
 
-/**
- * One account's sync line: "synced 2m ago", "mail@example.com paused: rate limited,
- * retrying 9:50 AM", "Last sync 2h ago".
- */
 export function syncLine(account: AccountFreshness, staleAfterSecs: number, now: Date): string {
   const lastOk = account.last_sync_ok_at ? ago(account.last_sync_ok_at, now) : null;
   const label = account.label;
@@ -117,7 +95,6 @@ export function syncLine(account: AccountFreshness, staleAfterSecs: number, now:
   }
 }
 
-/** Where an arrival went: "→ Updates · automated", "→ Inbox". */
 export function wentTo(arrival: Arrival): string {
   const mode = arrival.modes[0];
   if (mode) {
@@ -127,15 +104,10 @@ export function wentTo(arrival: Arrival): string {
   return arrival.in_inbox ? "→ Inbox" : "→ out of the inbox";
 }
 
-/** The name to show for a sender. */
 export function senderName(arrival: Arrival): string {
   return arrival.from.name?.trim() || arrival.from.email;
 }
 
-/**
- * An account's health in a few words, for a row or a menu: "Synced 2m
- * ago", "Can't sync, retrying 2:05 PM", "Signed out".
- */
 export function shortHealth(account: AccountFreshness, staleAfterSecs: number, now: Date): string {
   const lastOk = account.last_sync_ok_at ? ago(account.last_sync_ok_at, now) : null;
   const retry = retrying(account, now);
@@ -156,7 +128,6 @@ export function shortHealth(account: AccountFreshness, staleAfterSecs: number, n
   }
 }
 
-/** Why sync is failing, in plain words, for the account's Sync section. */
 export function plainReason(account: AccountFreshness, now: Date): string | null {
   const error = account.last_sync_error;
   if (!error) return null;
@@ -178,7 +149,6 @@ export function plainReason(account: AccountFreshness, now: Date): string | null
   }
 }
 
-/** The provider signed mxr out: the fix is to sign in again. */
 export function needsSignIn(account: AccountFreshness): boolean {
   return account.health === "failing" && account.last_sync_error?.kind === "auth";
 }

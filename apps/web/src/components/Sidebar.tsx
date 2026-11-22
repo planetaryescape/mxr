@@ -42,11 +42,6 @@ import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-/**
- * Screener, only while someone new waits for a decision. Same rule as the
- * desk's link: it opens the first account with senders waiting, and the
- * count is that account's, so the badge equals the page it opens.
- */
 export function screenerEntry(desk: Desk): NavEntry | null {
   const count = desk.elsewhere.screener;
   if (count <= 0) return null;
@@ -64,21 +59,12 @@ export function screenerEntry(desk: Desk): NavEntry | null {
   };
 }
 
-/** Where the sidebar's keyboard cursor can rest: a section header or an entry. */
 type SidebarStop =
   | { kind: "header"; section: NavSection }
   | { kind: "entry"; entry: NavEntry; section: NavSection };
 
-/** Sections whose entries open a mail list, so the keyboard follows. */
 const LIST_SECTIONS = new Set(["places", "saved", "mail", "views", "labels", "categories"]);
 
-/**
- * The map's sections, in order: the rail (Now, the five modes, Inbox), then
- * Mail, Views, Tools and Labels (D133). Mail, Views and Tools are fixed data
- * and never depend on the daemon answering; only the Screener's count, the
- * mode counts, labels and saved searches do. The rail and the phone's More
- * sheet both read this.
- */
 export function useNavSections(): NavSection[] {
   const archiveSearch = useArchiveResumeSearch();
   const shell = useShellQuery();
@@ -89,7 +75,6 @@ export function useNavSections(): NavSection[] {
     const labels = lenses.filter((lens) => lens.section === "labels");
     const categories = lenses.filter((lens) => lens.section === "categories");
     const saved = lenses.filter((lens) => lens.section === "saved");
-    // The rail, in the daemon's order: Now, the five modes, then Inbox.
     const places: NavEntry[] = railNavEntries(rail.data).map((entry) => ({
       key: entry.key,
       to: entry.to,
@@ -102,7 +87,6 @@ export function useNavSections(): NavSection[] {
       early: entry.early,
       hint: [entry.header, entry.early].filter(Boolean).join(" ") || undefined,
     }));
-    // The Screener's page is decision history; new senders are asked on their row.
     const screener = desk.data ? screenerEntry(desk.data) : null;
     const views = VIEW_ENTRIES.map((entry) =>
       entry.key === "screener" && screener ? screener : entry,
@@ -181,17 +165,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // The collapsed rail is the modes and Inbox only (D133): the rest is one
-  // click away in the More sheet, so the narrow rail stays a rail.
   const allSections = useNavSections();
   const sections = useMemo(
     () => (collapsed ? allSections.filter((section) => section.id === "places") : allSections),
     [allSections, collapsed],
   );
 
-  // Keyboard walks only what is visible: a foldable section's header is a
-  // stop (Enter folds it, blueprint 35), and a folded section adds nothing
-  // more.
   const visible = useMemo<SidebarStop[]>(
     () =>
       sections.flatMap((section) => {
@@ -225,8 +204,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       void navigate({ to: current.entry.to, search: current.entry.search });
       if (LIST_SECTIONS.has(current.section.id)) setActivePane("mailbox");
     },
-    // `{` and `}` jump between section headers; the rail has none, so `{`
-    // from the first header goes to the top.
     prevSection: () => {
       const at = clamp(focusIndex);
       const previous = visible.findLastIndex((stop, index) => stop.kind === "header" && index < at);
@@ -239,7 +216,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     },
   });
 
-  // Keep the keyboard cursor on the page the user is on when they arrive.
   useEffect(() => {
     if (sidebarFocused) return;
     const index = visible.findIndex(
@@ -248,8 +224,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     if (index >= 0 && index !== focusIndex) setFocusIndex(index);
   }, [focusIndex, lane, path, setFocusIndex, sidebarFocused, visible]);
 
-  // Follow the keyboard cursor, only when it moves: scrolling on every
-  // render would pull the list away from under a pointer mid-click.
   useEffect(() => {
     if (!sidebarFocused) return;
     const index = Math.max(0, Math.min(visibleCount - 1, focusIndex));
@@ -263,8 +237,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     <div
       className="flex h-full min-h-0 flex-col"
       onMouseDown={(event) => {
-        // The pressed item becomes the cursor before the pane takes the
-        // keyboard, so the cursor-follow scroll has nowhere else to go.
         const item = (event.target as Element).closest<HTMLElement>("[data-nav-index]");
         if (item) setFocusIndex(Number(item.dataset.navIndex));
         setActivePane("sidebar");
@@ -321,7 +293,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         index={index}
                         onActivate={() => {
                           setFocusIndex(index);
-                          // A clicked mailbox is where the keyboard goes next.
                           if (LIST_SECTIONS.has(section.id)) setActivePane("mailbox");
                         }}
                         collapsed={collapsed}
@@ -329,7 +300,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         focused={sidebarFocused && clamp(focusIndex) === index}
                       />
                     );
-                    // The rail's groups: Now, the modes, then Inbox (a lens).
                     return section.id === "places" &&
                       (entry.key === "messages" || entry.key === "inbox") ? (
                       <Fragment key={entry.key}>
@@ -353,7 +323,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       >
         <ThemePicker />
         {collapsed ? (
-          // The groups the narrow rail leaves out stay reachable on every width.
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -395,7 +364,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** The mark before a nav label: its icon, or a label's own colour as a square. */
 export function NavMark({ entry, className }: { entry: NavEntry; className?: string }) {
   if (entry.color) {
     return (
@@ -432,7 +400,6 @@ function SidebarLink({
     <Link
       to={entry.to}
       search={entry.search}
-      // The router would call Messages current on Waiting on; the nav decides.
       activeOptions={{ exact: true }}
       title={entry.hint}
       onClick={onActivate}
@@ -442,8 +409,6 @@ function SidebarLink({
       className={cn(
         "group relative flex h-8 items-center gap-2.5 px-2 text-sm",
         collapsed && "justify-center px-0",
-        // The rail is dimmer than the page (D133): labels in the second text
-        // tier, icons in the third; only the page you are on reaches the first.
         active
           ? "bg-ink-lamp font-medium text-text-1"
           : "text-text-2 hover:bg-ink-lamp/60 hover:text-text-1",

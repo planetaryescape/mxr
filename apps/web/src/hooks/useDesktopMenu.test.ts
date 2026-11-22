@@ -49,7 +49,6 @@ describe("desktop menu commands", () => {
     runMenuAction("mail.reply", registryWith(run), ctx(["list", "global"]), () => false);
     stop();
     expect(run).toHaveBeenCalledOnce();
-    // A menu run teaches the key, as a click does.
     expect(sources).toEqual(["pointer"]);
   });
 

@@ -55,7 +55,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-/** A key press on the page the user is on now. */
 function press() {
   act(() => {
     window.history.replaceState(null, "", pathname);
@@ -108,10 +107,8 @@ describe("useHint", () => {
 
     act(() => result.current.runway.dismiss());
     expect(result.current.runway.hint).toBeUndefined();
-    // No chained hint.
     expect(result.current.catchup.hint).toBeUndefined();
 
-    // Its own element needed again, later: now it may show.
     rerender({ catchupReady: false });
     rerender({ catchupReady: true });
     expect(result.current.catchup.hint?.id).toBe("todo.catchup");
@@ -147,7 +144,6 @@ describe("useHint", () => {
   });
 });
 
-/** The daemon's handoff copy, as markModeDone's default message reads it. */
 function handoff(done: readonly ModeDoneOutcome[]): string {
   return done[0]?.copy ?? "";
 }
@@ -160,7 +156,6 @@ describe("withDoneHereHint", () => {
     ];
     expect(withDoneHereHint(handoff)(done)).toBe("Done in Messages. About done_here.");
     expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/hints/done_here", expect.anything());
-    // Seen now, so later toasts are just the handoff.
     expect(withDoneHereHint(handoff)).toBe(handoff);
   });
 });

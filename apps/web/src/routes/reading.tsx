@@ -6,9 +6,7 @@ import { optionalEnum, optionalString } from "@/lib/searchParams";
 const READING_VIEWS = ["later"] as const;
 
 export interface ReadingRouteParams {
-  /** The Later shelf; omitted is the edition. */
   view?: (typeof READING_VIEWS)[number];
-  /** The entry under the cursor. */
   row?: string;
 }
 

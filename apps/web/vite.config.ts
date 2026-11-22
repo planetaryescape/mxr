@@ -14,15 +14,6 @@ import { mxrVersion } from "./scripts/mxr-version";
 import { keymapModules } from "./src/lib/actions/keymapPlugin";
 import { pwaOptions } from "./src/lib/pwaConfig";
 
-/**
- * Discover the bridge port the daemon last bound to.
- *
- * Precedence:
- *   1. `MXR_BRIDGE_URL` env override (full URL).
- *   2. `MXR_BRIDGE_PORT_PATH` or `MXR_CONFIG_DIR/bridge-port`.
- *   3. Platform-conventional config dirs for `MXR_INSTANCE` or dev `mxr-dev`.
- *   4. Built-in default: `127.0.0.1:42829`.
- */
 function configCandidates(): string[] {
   if (process.env.MXR_BRIDGE_PORT_PATH) return [process.env.MXR_BRIDGE_PORT_PATH];
   if (process.env.MXR_CONFIG_DIR) {
@@ -39,8 +30,6 @@ function configCandidates(): string[] {
   } else {
     candidates.push(join(home, ".config", instance, "bridge-port"));
   }
-  // Also check the cross-platform fallback so users with explicit
-  // `MXR_CONFIG_DIR` setups still work even if Vite missed the env.
   candidates.push(join(home, ".config", instance, "bridge-port"));
   return candidates;
 }
@@ -66,8 +55,6 @@ export default defineConfig({
     MXR_BUILD_VERSION: JSON.stringify(mxrVersion()),
   },
   plugins: [
-    // The generated keymap as two modules: a small index in the entry and the
-    // full catalog in a chunk loaded after the first paint.
     keymapModules(),
     TanStackRouterVite({
       target: "react",
@@ -92,23 +79,9 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       output: {
-        // Small shared modules would otherwise each become their own chunk.
-        // A route then pays a round trip per chunk: on Fast 4G at 150 ms RTT
-        // the Messages route pulled about thirty 1–7 kB files before it could
-        // paint (measured 2.07 s → 3.5 s after the entry ran). Rollup merges
-        // chunks under this size into the chunks that import them, which
-        // trades a little duplication for far fewer round trips.
         experimentalMinChunkSize: 25_000,
 
-        // Named vendor chunks are for libraries every route loads and that
-        // change on their own cadence. The compose editors are deliberately
-        // absent: giving @tiptap and @codemirror their own groups also pulled
-        // their whole dependency subtree into those groups, so a thread that
-        // only needed `linkifyjs` from it downloaded 590 kB of editor code.
-        // Let Rollup follow the import graph for anything lazy.
         manualChunks: (id) => {
-          // Its own chunk: the full key definition loads after the first
-          // paint, and nothing else should ride along with it.
           if (id.includes("virtual:mxr-action-catalog")) return "keymap-catalog";
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom"))

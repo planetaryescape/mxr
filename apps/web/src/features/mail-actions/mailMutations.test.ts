@@ -50,7 +50,6 @@ const toast = vi.hoisted(() => ({
 }));
 vi.mock("sonner", () => ({ toast }));
 
-/** The Undo button's label: the word plus its `u` key hint. */
 function isUndoLabel(label: ReactNode): boolean {
   return isValidElement(label) && label.type === UndoLabel;
 }
@@ -112,7 +111,6 @@ let qc: QueryClient;
 let refetch: ReturnType<typeof vi.fn<() => Promise<MailboxResponse>>>;
 let unsubscribe: () => void;
 
-/** What the inbox renders: the cached pages merged, with pending ops projected. */
 function renderedInbox() {
   const data = qc.getQueryData<InfiniteData<MailboxResponse>>(MAILBOX_KEY);
   const merged = mergeMailboxPages(data?.pages ?? [], "threads");
@@ -135,7 +133,6 @@ beforeEach(() => {
   });
   qc.setQueryData(SEARCH_KEY, { groups: [] });
   refetch = vi.fn<() => Promise<MailboxResponse>>(async () => page([row("a"), row("b")]));
-  // An on-screen mailbox: invalidation waits for this refetch.
   const observer = new InfiniteQueryObserver(qc, {
     queryKey: MAILBOX_KEY,
     queryFn: () => refetch(),
@@ -179,7 +176,6 @@ describe("performMailAction", () => {
     request.resolve(ok(2, "mut-1"));
     await first;
 
-    // Once the first settles, the message can be archived again.
     api.archiveMessages.mockResolvedValue(ok(1, "mut-2"));
     await expect(performMailAction("archive", ["a-1"])).resolves.toMatchObject({ ok: true });
     expect(api.archiveMessages).toHaveBeenCalledTimes(2);
@@ -194,11 +190,9 @@ describe("performMailAction", () => {
 
     await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // Do not expose an undo until the cache shows the archived row is gone.
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.info).not.toHaveBeenCalled();
     expect(useUndo.getState().lastMutationId).toBeNull();
-    // Archive uses the confirmed receipt, so only the server refetch removes the row.
     expect(usePendingMailOps.getState().ops).toHaveLength(0);
     expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
 
@@ -269,7 +263,6 @@ describe("performMailAction", () => {
     expect(outcome.ok).toBe(false);
     expect(outcome.response?.result?.succeeded).toBe(2);
     expect(toast.success).not.toHaveBeenCalled();
-    // Part done is a warning, not an error.
     expect(toast.error).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith(
       "Archived 2 of 3 messages; the rest failed",
@@ -278,7 +271,6 @@ describe("performMailAction", () => {
       }),
     );
     expect(usePendingMailOps.getState().ops).toEqual([]);
-    // The daemon kept no undo for it: none is offered.
     expect(useUndo.getState().lastUndo).toBeNull();
   });
 
@@ -399,7 +391,6 @@ describe("undo", () => {
     api.undoMutation.mockResolvedValue({ ok: true });
     await performMailAction("archive", ["a-1", "a-2"]);
     expect(qc.getQueryState(SEARCH_KEY)?.isInvalidated).toBe(true);
-    // Reset so we can see the undo invalidate it again.
     qc.setQueryData(SEARCH_KEY, { groups: [] });
     expect(qc.getQueryState(SEARCH_KEY)?.isInvalidated).toBe(false);
 
@@ -432,7 +423,6 @@ describe("undo", () => {
     await done;
     await expect(undone).resolves.toBe(true);
     expect(api.undoMutation).toHaveBeenCalledWith("mut-early");
-    // Spent: a second u has nothing left to undo.
     expect(useUndo.getState().lastUndo).toBeNull();
   });
 

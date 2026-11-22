@@ -1,9 +1,3 @@
-/*
- * Apply-now for the rule builder: parses the rule's action string into the
- * mailbox mutations the web can run, and runs them in order on the exact
- * message ids the preview listed.
- */
-
 import {
   archiveMessages,
   markReadMessages,

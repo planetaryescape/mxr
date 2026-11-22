@@ -28,7 +28,6 @@ export function fetchRuleForm(rule: string) {
   );
 }
 
-/** One rule run on one message (`mxr_store::row_to_rule_log_json`). */
 export interface RuleHistoryEntry {
   rule_id: string;
   rule_name: string;
@@ -39,7 +38,6 @@ export interface RuleHistoryEntry {
   error?: string | null;
 }
 
-/** `mxr_rules::DryRunResult`: one entry per rule, with the messages it would touch. */
 export interface RuleDryRunResult {
   rule_id: string;
   rule_name: string;

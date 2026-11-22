@@ -76,7 +76,6 @@ test("sorting draft preview, apply and a preserved personal correction share dae
   } finally {
     if (correctionId) await bridge(page, `/api/v1/mail/moves/${correctionId}/undo`, {});
     if (ruleId) await bridge(page, "/api/v1/platform/rules/delete", { rule: ruleId });
-    // Historical sorting remains by design; archive only this test's mail.
     await archiveViaBridge(page, [message]);
   }
 });

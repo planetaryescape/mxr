@@ -14,7 +14,6 @@ export interface AccountConfig {
 
 export interface AccountAddress {
   email: string;
-  /** Matches the daemon wire field (`core::AccountAddress.is_primary`). */
   is_primary?: boolean;
   created_at?: string;
 }
@@ -232,11 +231,6 @@ export interface AccountIdentityInput {
   tag?: string;
 }
 
-/**
- * The daemon validates the slot and the tag, and refuses a tag another account
- * holds. A refusal is a 200 with `result.ok` false, as the sibling account
- * routes answer; callers must check `ok`.
- */
 export function setAccountIdentity(key: string, identity: AccountIdentityInput) {
   return apiFetch<{
     kind: "AccountOperation";

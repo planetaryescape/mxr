@@ -1,10 +1,3 @@
-/*
- * Reading's verbs: later, let go, fetch the linked article, highlight and
- * the sender's own layout. Each refreshes the edition when it lands; let
- * go is the modes' done, so its toast names where the item went and `u`
- * undoes it through the daemon.
- */
-
 import { toast } from "sonner";
 
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
@@ -37,7 +30,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** What the reader and toasts say about a fetch. */
 export function fetchedLine(fetch: ReadingFetch): string {
   if (fetch.error) return fetch.error;
   if (fetch.cached) return "Saved earlier; nothing was contacted.";
@@ -45,10 +37,6 @@ export function fetchedLine(fetch: ReadingFetch): string {
   return hosts.length > 0 ? `Fetched from ${hosts.join(", ")}.` : "Saved from the demo's copy.";
 }
 
-/**
- * `L`: fetch the linked article. Contacts the link's site, so the toast
- * names it before anything is sent.
- */
 export async function fetchLinked(
   itemKey: string,
   domain: string | null | undefined,
@@ -76,10 +64,6 @@ export async function fetchLinked(
   }
 }
 
-/**
- * `b`: put an item on Later, then save its article so it reads offline. A
- * link's article is fetched at once, naming the site in the toast.
- */
 export async function putOnLater(
   itemKey: string,
   article?: { domain?: string | null; tracked?: boolean; cached?: boolean },
@@ -126,7 +110,6 @@ export async function putOnLater(
   }
 }
 
-/** Take items off Later, or answer "Still want it?" with keep (`later`). */
 export async function answerLater(itemKey: string, keep: boolean): Promise<void> {
   if (refuseWhileDaemonDown(keep ? "keep it" : "take it off Later")) return;
   try {
@@ -138,18 +121,12 @@ export async function answerLater(itemKey: string, keep: boolean): Promise<void>
   }
 }
 
-/** `e`: let go of the issue in Reading (its links on Later stay). */
 export async function letGo(threadIds: readonly string[]): Promise<boolean> {
   const done = await markModeDone("reading", threadIds, { onUndone: () => void refreshReading() });
   await refreshReading();
   return done;
 }
 
-/**
- * `"`: save the selected passage. With nothing selected, `top` is the
- * paragraph at the top of the reader, so the key works without a mouse;
- * the toast names it, since nothing on screen was picked by hand.
- */
 export async function highlightSelection(
   selection: string,
   itemKey: string,
@@ -183,10 +160,6 @@ export async function highlightSelection(
   }
 }
 
-/**
- * Changes a highlight (note or removal) and offers the daemon's undo, which
- * puts the old note or the whole highlight back.
- */
 async function changeHighlight(
   itemKey: string,
   message: string,
@@ -225,7 +198,6 @@ async function changeHighlight(
   }
 }
 
-/** Replaces a highlight's note; a blank note clears it. */
 export function editHighlightNote(itemKey: string, id: string, note: string) {
   return changeHighlight(itemKey, note.trim() ? "Note saved" : "Note cleared", () =>
     updateHighlightNote(id, note),
@@ -236,7 +208,6 @@ export function removeHighlight(itemKey: string, id: string) {
   return changeHighlight(itemKey, "Highlight removed", () => removeHighlightRequest(id));
 }
 
-/** `R`: remember the sender's own layout for this source. */
 export async function rememberLayout(
   accountId: string,
   senderEmail: string,
@@ -251,7 +222,6 @@ export async function rememberLayout(
   }
 }
 
-/** "Not interested in these offers": never offer to unsubscribe from it again. */
 export async function dismissUnsubscribeOffer(accountId: string, senderEmail: string) {
   try {
     await setSource({ accountId, senderEmail, dismissUnsubscribeOffer: true });
@@ -261,11 +231,6 @@ export async function dismissUnsubscribeOffer(accountId: string, senderEmail: st
   }
 }
 
-/**
- * Only web addresses are opened. The daemon already refuses read URLs off
- * the connected site; this keeps a `javascript:` URL from ever reaching
- * an about:blank tab, which shares mxr's origin.
- */
 export function isWebUrl(url: string): boolean {
   try {
     const { protocol } = new URL(url);
@@ -275,7 +240,6 @@ export function isWebUrl(url: string): boolean {
   }
 }
 
-/** Opens a page in a new tab that can't reach back into mxr. */
 function openTab(url: string): void {
   if (!isWebUrl(url)) {
     toast.error("Marginalia gave an address mxr won't open");
@@ -285,12 +249,6 @@ function openTab(url: string): void {
   if (!tab) toast.message("Your browser blocked the new tab", { description: url });
 }
 
-/**
- * `M`: open the item in Marginalia, sending it first if it hasn't been.
- * Sending gives the email's text to Marginalia, so it only happens on
- * this key or button. The tab opens on the keypress, before the send
- * finishes, so the browser doesn't block it.
- */
 export async function openInMarginalia(
   itemKey: string,
   sentUrl: string | null | undefined,
@@ -330,12 +288,9 @@ export async function openInMarginalia(
   }
 }
 
-/** Reads back the item's Marginalia highlights, quietly, when it opens. */
 export async function refreshMarginaliaHighlights(itemKey: string): Promise<void> {
   try {
     const sync = await syncMarginaliaHighlights(itemKey);
     if (sync.added + sync.removed + sync.forgotten > 0) await refreshReading();
-  } catch {
-    // Offline or Marginalia unavailable: the saved highlights still show.
-  }
+  } catch {}
 }

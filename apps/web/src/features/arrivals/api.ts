@@ -1,9 +1,3 @@
-/*
- * Sorting shows its work (D119) over the bridge: Now's arrivals line, the
- * emails behind each count, Inbox's mode chips, moving an email or its
- * sender, and undo. The daemon owns the window, the counts and every word.
- */
-
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useRef } from "react";
 
@@ -27,7 +21,6 @@ import type {
 export const ARRIVALS_KEY = ["arrivals"] as const;
 export const ARRIVAL_MODES_KEY = ["arrival-modes"] as const;
 
-/** The most emails one chip request may name (the daemon's cap). */
 export const ARRIVAL_MODES_MAX = 200;
 
 export async function fetchArrivals(
@@ -38,19 +31,12 @@ export async function fetchArrivals(
   const params = new URLSearchParams();
   if (account) params.set("account", account);
   if (markSeen) params.set("mark_seen", "true");
-  // The visit already open keeps the window it opened with.
   else if (since) params.set("since", since);
   const query = params.size > 0 ? `?${params}` : "";
   const answer = await apiFetch<ArrivalsResponse>(`/api/v1/mail/arrivals${query}`);
   return answer.arrivals;
 }
 
-/**
- * The line on Now. The first fetch of each visit starts the visit
- * (`mark_seen`), so the window runs from the visit before; refetches while
- * Now stays open name that window back to the daemon (`since`) and so never
- * move it.
- */
 export function useArrivalsQuery() {
   const account = useUiPrefs((s) => s.accountScope);
   const visiting = useRef(true);
@@ -65,7 +51,6 @@ export function useArrivalsQuery() {
       if (markSeen || held === undefined) openVisit.current = { account, since: arrivals.since };
       return arrivals;
     },
-    // Every mount is a visit, so it always asks.
     refetchOnMount: "always",
     staleTime: 15_000,
     refetchInterval: 60_000,
@@ -102,7 +87,6 @@ export function useArrivalList(params: ArrivalListParams) {
   });
 }
 
-/** Where each email went, in request order; the daemon leaves out mail older than the ledger. */
 export async function fetchArrivalModes(messageIds: readonly string[]): Promise<ArrivalItem[]> {
   const chunks: string[][] = [];
   for (let at = 0; at < messageIds.length; at += ARRIVAL_MODES_MAX) {
@@ -119,13 +103,7 @@ export async function fetchArrivalModes(messageIds: readonly string[]): Promise<
   return answers.flatMap((answer) => answer.items);
 }
 
-/** Inbox chips for the rows on screen, keyed by message id. */
 export function useArrivalModes(messageIds: readonly string[]) {
-  // messageIds is stable across renders that don't change the visible
-  // range (MailboxList memoizes it); without this, the list's host
-  // component re-renders on every keystroke (cursor moves, stars,
-  // archives), and a fresh array here would make TanStack Query re-hash
-  // the key every time instead of only when the ids actually change.
   const sorted = useMemo(() => [...new Set(messageIds)].toSorted(), [messageIds]);
   return useQuery({
     queryKey: [...ARRIVAL_MODES_KEY, sorted],

@@ -17,7 +17,6 @@ export function readE2EState(): E2EState {
 
 export const bridgeAuth = () => ({ authorization: `Bearer ${readE2EState().token}` });
 
-/** Call the bridge directly (GET, or POST with `body`) and return its JSON. */
 export async function bridge<T>(page: Page, path: string, body?: unknown): Promise<T> {
   const url = `${readE2EState().bridgeUrl}${path}`;
   const response = body

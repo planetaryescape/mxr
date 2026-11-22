@@ -1,11 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Keep in sync with scripts/e2e-server.mjs, which reads the same variable.
 const appUrl = `http://127.0.0.1:${process.env.MXR_E2E_APP_PORT ?? "5173"}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  // The speed gate runs against a production build: playwright.perf.config.ts.
   testIgnore: ["**/speed.spec.ts"],
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
@@ -15,9 +13,6 @@ export default defineConfig({
     : "list",
   use: {
     baseURL: appUrl,
-    // The theme follows the OS until one is picked; the suite was written
-    // against the dark default, so the browser reports a dark scheme.
-    // MXR_E2E_SCHEME=light runs the whole suite in the light theme.
     colorScheme: process.env.MXR_E2E_SCHEME === "light" ? "light" : "dark",
     trace: "on-first-retry",
   },
@@ -44,8 +39,6 @@ export default defineConfig({
     url: appUrl,
     reuseExistingServer: false,
     timeout: 120_000,
-    // e2e-server runs the daemon and Vite in their own process groups, which
-    // Playwright's default group SIGKILL never reaches; SIGTERM lets it stop them.
     gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
   },
 });

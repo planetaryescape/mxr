@@ -1,8 +1,3 @@
-/*
- * Diagnostics overview: daemon status, per-account sync health, feature
- * health and the doctor report, read from the admin endpoints.
- */
-
 import type { UseQueryResult } from "@tanstack/react-query";
 
 import { DiagnosticValue } from "./DiagnosticValue";

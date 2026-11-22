@@ -28,7 +28,6 @@ describe("blocked content", () => {
     expect(blockedSentence(content, false)).toBe(
       "Blocked 3 trackers and 3 remote images from Mailchimp, Mailtrack and 3 more.",
     );
-    // Allowing images leaves the trackers blocked, and names only their sources.
     expect(blockedSentence(content, true)).toBe(
       "Blocked 3 trackers from Mailchimp, Mailtrack and 1 more.",
     );

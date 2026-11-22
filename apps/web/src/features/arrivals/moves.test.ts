@@ -65,7 +65,6 @@ describe("moving an email", () => {
     await vi.waitFor(() =>
       expect(toastMock.success).toHaveBeenLastCalledWith("Moved back to Updates."),
     );
-    // Undone: the slot is empty, so a second u reaches nothing older.
     expect(useUndo.getState().lastUndo).toBeNull();
     expect(useSenderAsk.getState().pending).toBeNull();
   });

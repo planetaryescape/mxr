@@ -55,8 +55,6 @@ test("continuations reflect scope precedence and omit unavailable and retired ke
 test("places and modes come before tools and saved searches, and an alias shares its action's row", () => {
   const registry = new ActionRegistry();
   const base = { group: "Navigate", run: vi.fn<() => void>() } as const;
-  // Registry order: tools and saved searches first, To do last, as the
-  // feature modules happen to define them.
   registry.define({ ...base, id: "nav.analytics", label: "Analytics", shortcut: "g A" });
   registry.define({ ...base, id: "nav.saved-search-1", label: "Saved search 1", shortcut: "g 1" });
   registry.define({ ...base, id: "nav.trash", label: "Trash", shortcut: "g #" });

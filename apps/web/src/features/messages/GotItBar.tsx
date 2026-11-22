@@ -6,10 +6,6 @@ import { KeyChip } from "@/components/KeyChip";
 import { countdownLabel } from "./messagesView";
 import type { PendingAck } from "./useGotIt";
 
-/**
- * Got it's preview: the exact text that will be sent, who it goes to, a
- * visible countdown and undo. Nothing leaves until the countdown ends.
- */
 export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () => void }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

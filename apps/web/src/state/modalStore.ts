@@ -1,19 +1,12 @@
-/*
- * Modal / right-rail / command-palette open state.
- * Independent of TanStack Router so we can keep these ephemeral.
- */
-
 import { create } from "zustand";
 
 export interface ModalState {
   commandPaletteOpen: boolean;
-  /** "lens" opens the palette as a label / saved-search jumper (`g l`). */
   commandPaletteMode: "all" | "lens";
   searchPaletteOpen: boolean;
   composeLauncherOpen: boolean;
   rightRail: { kind: string; payload?: unknown } | null;
   helpOpen: boolean;
-  /** The More sheet: Mail, Views, Tools and Labels, for the phone tab and the narrow rail. */
   moreSheetOpen: boolean;
   setMoreSheetOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;

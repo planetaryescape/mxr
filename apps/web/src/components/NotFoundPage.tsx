@@ -4,11 +4,6 @@ import { Page } from "@/components/Page";
 import { PageEmpty } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 
-/**
- * Rendered inside the shell for any URL no route matches (TanStack's own
- * default is an unstyled "Not Found" in the corner). Shows the path so a
- * stale bookmark is recognisable, and offers the two places people go.
- */
 export function NotFoundPage() {
   const path = useRouterState({ select: (state) => state.location.pathname });
   return (

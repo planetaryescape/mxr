@@ -1,10 +1,3 @@
-/*
- * A stand-in for the editors in the compose tests: a controlled textarea that
- * takes focus when asked, and reports its selection the way the Markdown
- * editor does (null when empty). The real editors need a layout engine jsdom
- * does not have.
- */
-
 import { useEffect, useRef } from "react";
 
 export interface EditorStubProps {

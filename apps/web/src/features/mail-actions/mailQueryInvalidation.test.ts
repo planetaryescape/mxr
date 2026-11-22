@@ -48,7 +48,6 @@ describe("invalidateMailQueries", () => {
     expect(qc.getQueryState([...MESSAGES_KEY, "person", "all", "jon", null])?.isInvalidated).toBe(
       true,
     );
-    // Not a view of mail: left alone.
     expect(qc.getQueryState(["accounts"])?.isInvalidated).toBe(false);
   });
 });

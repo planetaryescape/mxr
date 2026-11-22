@@ -1,9 +1,3 @@
-/*
- * Signature picker (cmd+shift+G): Command list over saved signatures
- * (/api/v1/mail/signatures). Selecting one appends a `--` signature block
- * to the message body.
- */
-
 import { PenLine } from "lucide-react";
 
 import {

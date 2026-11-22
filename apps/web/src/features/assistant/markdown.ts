@@ -1,11 +1,3 @@
-/*
- * The assistant's replies are light markdown. They are model text built
- * from other people's email, so the HTML is sanitized, nothing remote
- * loads (no images: a tracking pixel would tell a sender you looked),
- * web links open outside the app without a referrer, and addresses stay
- * plain text. Links to an email or a person (`mxr:`) open in the app.
- */
-
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
@@ -41,13 +33,10 @@ const SANITIZE = {
   ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|mxr:)/i,
 };
 
-/** Marks a link the transcript opens with the router instead of the browser. */
 export const APP_LINK_ATTRIBUTE = "data-app-link";
-/** The thread or person id an app link names, for the chip to look itself up. */
 export const APP_LINK_ID_ATTRIBUTE = "data-app-link-id";
 
 let hooked = false;
-// DOMPurify hooks are global; this is set for the one synchronous sanitize call.
 let appLinks = false;
 
 function hookLinks(): void {
@@ -55,15 +44,11 @@ function hookLinks(): void {
   hooked = true;
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     if (node.tagName !== "A") return;
-    // Only this hook marks an app link, after it has checked the mxr: link.
-    // Markers the model wrote itself would draw an outside link as an email.
     node.removeAttribute(APP_LINK_ATTRIBUTE);
     node.removeAttribute(APP_LINK_ID_ATTRIBUTE);
     const href = node.getAttribute("href") ?? "";
     const toText = () =>
       node.replaceWith(node.ownerDocument.createTextNode(node.textContent ?? ""));
-    // An address the model mentions stays text: a mailto link would open
-    // another mail app from inside this one.
     if (href.toLowerCase().startsWith("mailto:")) {
       toText();
       return;
@@ -75,7 +60,6 @@ function hookLinks(): void {
         return;
       }
       node.setAttribute("href", linkHref(link));
-      // The value says what it links, so the reply can draw a person and an email differently.
       node.setAttribute(APP_LINK_ATTRIBUTE, link.kind);
       node.setAttribute(
         APP_LINK_ID_ATTRIBUTE,
@@ -88,17 +72,11 @@ function hookLinks(): void {
   });
 }
 
-/**
- * Reply markdown as safe HTML. `appLinks` only for a stored reply: the
- * daemon has checked its links against what the tools returned. A reply
- * still being written shows its links as words.
- */
 export function renderMarkdown(text: string, { appLinks: inApp = false } = {}): string {
   hookLinks();
   const html = marked.parse(text, { async: false, gfm: true, breaks: true });
   appLinks = inApp;
   try {
-    // ADD_ATTR keeps the marker the hook sets after the allow-list ran.
     return DOMPurify.sanitize(html, {
       ...SANITIZE,
       ADD_ATTR: [APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE],

@@ -1,9 +1,3 @@
-/*
- * Pure draft-model helpers for a compose session: the in-memory draft shape,
- * its save fingerprint, local validation, and address parsing. No React, no
- * network, so every piece is directly testable.
- */
-
 import type {
   ComposeFrontmatter,
   ComposeDraftIntent,
@@ -21,13 +15,11 @@ export interface ComposeDraftState {
   draftId?: string;
   revision?: number | null;
   draftPath: string;
-  /** Keeps queued saves ordered when a conflict moves this editor to a recovery file. */
   recoverySourcePath?: string;
   preservedRecoveryPath?: string;
   rawContent: string;
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
-  /** Ranges of the body the model wrote and the user has not edited since. */
   modelSpans?: readonly ModelSpan[];
   issues: ComposeIssue[];
   accountId: string;
@@ -42,23 +34,14 @@ export interface ComposeIntent {
   title: string;
   kind: ComposeSessionKind;
   messageId?: string;
-  /** Keeps a Messages reply in its own conversation slot when the route changes. */
   contextThreadId?: string;
-  /** Names a docked reply's source without changing its canonical draft key. */
   contextTitle?: string;
-  /** Required when `kind` is `invite_reply`. */
   inviteAction?: InviteReplyAction;
   draftId?: string;
   prefillTo?: string;
   prefillSubject?: string;
-  /** Text to start the body with (an AI draft), above any quoted history. */
   prefillBody?: string;
-  /** Open the help line ("Draft for me") already (the reader's "Draft in your voice"). */
   openAssist?: boolean;
-  /**
-   * Quiet chrome (focus mode): From, To and Subject fold into one line and
-   * the editor's status row becomes one word.
-   */
   quiet?: boolean;
 }
 
@@ -67,7 +50,6 @@ export interface ComposeSaveSnapshot {
   draftId?: string;
   revision?: number | null;
   draftPath: string;
-  /** Keeps queued saves ordered when a conflict moves this editor to a recovery file. */
   recoverySourcePath?: string;
   accountId: string;
   fingerprint: string;
@@ -196,7 +178,6 @@ export function splitAddresses(value: string): string[] {
     .filter(Boolean);
 }
 
-/** "Name <a@b>" or "a@b", in the daemon's address shape. */
 export function addressList(value: string): { name: string | null; email: string }[] {
   return splitAddresses(value).map((entry) => {
     const match = entry.match(/^(.*?)\s*<([^>]+)>$/);

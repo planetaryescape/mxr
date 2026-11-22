@@ -1,9 +1,3 @@
-/*
- * What the keys in a place do, shared by Reading and Paper trail: pin,
- * sweep, move the sender, unsubscribe. Each opens the same dialog or runs
- * the same request whichever view asked.
- */
-
 import { toast } from "sonner";
 
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -23,7 +17,6 @@ import {
 import { bundleSender } from "./placeCopy";
 import { mapPlaceData } from "./placePaging";
 
-/** Flip the pinned flag in every cached copy of the place. */
 function patchPinned(messageId: string, pinned: boolean) {
   getActiveQueryClient()?.setQueriesData({ queryKey: ["place"] }, (data: unknown) =>
     mapPlaceData(data, (page) => ({
@@ -42,7 +35,6 @@ function patchPinned(messageId: string, pinned: boolean) {
   );
 }
 
-/** Pin or unpin at once; the daemon confirms, a failure puts it back. */
 export async function togglePin(message: PlaceMessage): Promise<void> {
   const pinned = !message.pinned;
   patchPinned(message.message_id, pinned);
@@ -59,10 +51,6 @@ export async function togglePin(message: PlaceMessage): Promise<void> {
   }
 }
 
-/**
- * Open the sweep preview. `shownHere` is how many of the messages it covers
- * are on screen, so the dialog can say how many more it reaches.
- */
 export function openSweep(
   place: Place,
   accountId: string | null,
@@ -89,7 +77,6 @@ export function openMoveSender(bundle: PlaceBundle): void {
   });
 }
 
-/** A place message as a mail row, for dialogs built around rows. */
 export function placeMessageRow(bundle: PlaceBundle, message: PlaceMessage): MessageRowView {
   return {
     id: message.message_id,
@@ -118,7 +105,6 @@ export function openUnsubscribe(bundle: PlaceBundle, message: PlaceMessage): voi
   });
 }
 
-/** The kind menu for the sender of a message the daemon has classified. */
 export function openMoveSenderForKind(kind: MessageKindResponse, senderLabel: string): void {
   openMailDialog({
     kind: "sender-kind",
@@ -129,7 +115,6 @@ export function openMoveSenderForKind(kind: MessageKindResponse, senderLabel: st
   });
 }
 
-/** From the reader: ask the daemon about the message, then offer the menu. */
 export async function openMoveSenderFor(messageId: string, senderLabel: string): Promise<void> {
   const query = messageKindQuery(messageId);
   try {

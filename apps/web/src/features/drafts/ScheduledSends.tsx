@@ -1,9 +1,3 @@
-/*
- * "Scheduled": drafts waiting to send at a set time, soonest first. Only
- * shown when something is scheduled. Cancelling keeps the draft, so it is
- * reversible by scheduling again and needs no confirmation.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Clock } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +23,6 @@ function recipients(send: ScheduledSend): string {
   return all.map((address) => address.name || address.email).join(", ");
 }
 
-/** An older bridge without the endpoint answers 404 or 405: nothing to show. */
 function isMissingEndpoint(error: Error): boolean {
   return "status" in error && (error.status === 404 || error.status === 405);
 }

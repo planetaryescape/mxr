@@ -16,7 +16,6 @@ import { formatRelative, plural } from "@/lib/format";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-/** System mailboxes that are pages of their own, not label lenses. */
 const PAGE_MAILBOXES: Record<string, string> = {
   snoozed: "/snoozed",
   drafts: "/drafts",
@@ -24,7 +23,6 @@ const PAGE_MAILBOXES: Record<string, string> = {
   subscriptions: "/subscriptions",
 };
 
-/** A mailbox lens (system mailbox, label or saved search) with its reader. */
 export function MailView({ route }: { route: LensRoute }) {
   const shell = useShellQuery();
   const lenses = useMemo(() => lensesFromShell(shell.data), [shell.data]);
@@ -96,10 +94,7 @@ function LensView({ lens }: { lens: MailLens }) {
       loadingMore={mailbox.isFetchingNextPage}
       onLoadMore={() => void mailbox.fetchNextPage()}
       queueLabel={lens.section === "labels" ? lens.labelName : undefined}
-      // Triage lists get gist lines: the inbox and label queues, not Sent,
-      // Trash or Spam, where the model would be spent on nothing to decide.
       rowGists={lens.key === "inbox" || lens.section === "labels"}
-      // Inbox is the everything view: each row names the mode it went to.
       modeChips={lens.key === "inbox"}
       empty={<EmptyLens lens={lens} />}
       purpose={lensPurpose(lens)}
@@ -110,9 +105,6 @@ function LensView({ lens }: { lens: MailLens }) {
           </p>
         ) : undefined
       }
-      // One persistent control: which grouping is on. The list refreshes
-      // itself from daemon events; Sync now lives in the status bar and the
-      // palette (docs/web-app-controls.md).
       overflow={[
         {
           label: listMode === "threads" ? "Show single messages" : "Group into conversations",
@@ -124,7 +116,6 @@ function LensView({ lens }: { lens: MailLens }) {
   );
 }
 
-/** What each list is for, in a line; a label or saved search says what it gathers. */
 const SYSTEM_PURPOSE = new Map([
   ["inbox", "Everything that arrived. Each row names the mode it went to."],
   ["starred", "Messages you starred."],
@@ -142,12 +133,6 @@ function lensPurpose(lens: MailLens): string {
   return SYSTEM_PURPOSE.get(lens.key) ?? "Mail in this place.";
 }
 
-/**
- * One unit, the one the reader's "2 of 49" counts: conversations. The daemon
- * counts messages, so in the threaded view the header counts the loaded
- * conversations (with a "+" while more are still to load); single-message
- * view says messages. No unread count: a pile's size is not work.
- */
 function countLine(
   groups: readonly { rows: readonly unknown[] }[],
   hasMore: boolean,

@@ -1,5 +1,3 @@
-/* Fixtures for the arrivals tests: the daemon's words, as it sends them. */
-
 import type { Arrivals, MoveOutcome, NotSure } from "./types";
 
 export function arrivals(overrides: Partial<Arrivals> = {}): Arrivals {

@@ -1,9 +1,3 @@
-/*
- * Which mail dialog is open and for what target. One host (MailDialogs)
- * renders them, so the list, the reader and the palette open identical
- * dialogs instead of each owning a copy.
- */
-
 import { create } from "zustand";
 
 import type { MoveSubject } from "@/features/arrivals/moves";
@@ -16,12 +10,9 @@ import type { MailAction } from "./pendingMailOps";
 import type { MailTarget } from "./target";
 
 export type MailDialog =
-  /** Not now on mail (`b`): Later is the untimed reply later, a time snoozes. */
   | { kind: "snooze"; target: MailTarget; onDone?: () => void; onLater?: () => void }
-  /** Not now anywhere else: the place says what Later and a time do there. */
   | { kind: "not-now"; picker: NotNowPicker }
   | {
-      /** Reply later at a time (`b`); on Waiting on, back if nobody replies. */
       kind: "reply-later";
       target: MailTarget;
       waiting: boolean;
@@ -31,45 +22,32 @@ export type MailDialog =
   | {
       kind: "move";
       target: MailTarget;
-      /** Set to route out of a queue label instead of a plain move. */
       route?: { fromQueueLabel: string };
       onDone?: () => void;
     }
   | { kind: "unsubscribe"; target: MailTarget; onDone?: () => void }
   | { kind: "links"; target: MailTarget }
   | {
-      /** Preview a sweep from the daemon's dry run, then archive. */
       kind: "sweep";
       scope: SweepScope;
-      /** Names the bundle in the title when sweeping one sender. */
       senderLabel?: string;
-      /** Of what the sweep covers, how many messages are on screen. */
       shownHere?: number;
     }
   | {
-      /** Move a sender to a kind, remembered for their future mail. */
       kind: "sender-kind";
       accountId: string;
       senderEmail: string;
       senderLabel: string;
       current?: MailKind;
     }
-  /** Move one email (`X`) or its sender's mail (`P`) to a mode. */
   | { kind: "move-to-mode"; subject: MoveSubject; sender: boolean }
-  /** To do: show a row on your own day (`b`). */
   | { kind: "todo-schedule"; todo: Todo }
-  /** To do: correct a row's fields (`,`). */
   | { kind: "todo-edit"; todo: Todo }
   | { kind: "todo-correct"; todo: Todo }
-  /** Make a to-do from a conversation (`t`). */
   | { kind: "todo-make"; messageId: string; suggestion: string; subject?: string }
-  /** Archive: fix or confirm a record's fields (`,`). */
   | { kind: "record-edit"; record: RecordData }
-  /** Archive: preview the export of the records in view, then download it (Export in the palette). */
   | { kind: "record-export"; account: string | null; filter: RecordFilter }
-  /** Pass a conversation to another mode (the palette): this phase, file it in Archive. */
   | { kind: "pass-to-mode"; messageId: string; subject?: string }
-  /** To do's catch-up: preview letting go of every row, then do exactly that. */
   | { kind: "todo-let-go-all"; account: string | null }
   | {
       kind: "confirm";

@@ -1,9 +1,3 @@
-/*
- * Inline (`cid:`) images in HTML mail. The daemon materializes each part;
- * the bridge serves its bytes; here they become data: URIs, which the
- * sanitizer allows for images, so the sandboxed frame can show them.
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
@@ -29,12 +23,6 @@ function toDataUri(blob: Blob): Promise<string> {
   });
 }
 
-/**
- * Point each `cid:` image at its loaded data: URI. One that isn't loaded
- * (still loading, or the message has no such part) loses its `src` and
- * shows its alt text: the frame can't fetch `cid:` and the page's CSP
- * would log every attempt.
- */
 export function replaceImageSources(html: string, replacements: Map<string, string>): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
@@ -47,7 +35,6 @@ export function replaceImageSources(html: string, replacements: Map<string, stri
   return doc.body.innerHTML;
 }
 
-/** The HTML with every loadable inline image resolved to a data: URI. */
 export function useInlineImages(messageId: string | undefined, html: string | null): string | null {
   const sources = useMemo(() => (html ? inlineImageSources(html) : []), [html]);
   const images = useQuery({
@@ -64,7 +51,6 @@ export function useInlineImages(messageId: string | undefined, html: string | nu
           return [source, await toDataUri(blob)] as const;
         }),
       );
-      // A part that fails to load stays a broken image; the rest still show.
       return new Map(
         settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
       );

@@ -67,7 +67,6 @@ describe("bootstrapFromHash", () => {
 
     expect(confirm).not.toHaveBeenCalled();
     expect(getToken()).toBe("abc");
-    // The router's entry index survives the scrub (else "back" leaves the app).
     expect(window.history.state).toEqual({ __TSR_index: 0 });
   });
 });

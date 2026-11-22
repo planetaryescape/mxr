@@ -5,7 +5,6 @@ import { getRegistry } from "@/lib/actions";
 import { verb } from "./actionPastTense";
 import { VERB_FEEDBACK } from "./verbFeedback";
 
-/** Registry actions that change mail or a place: each must be a verb's trigger. */
 const STATE_CHANGING = [
   "mail.archive",
   "mail.read-archive",
@@ -53,8 +52,6 @@ describe("verb feedback table", () => {
 
   it("covers every state-changing action in the registry", () => {
     expect(STATE_CHANGING.filter((id) => !triggers.has(id))).toEqual([]);
-    // Anything else that runs a mail command is either listed above or
-    // doesn't change mail (export, briefing, links…).
     const readOnly = new Set([
       "mail.export",
       "mail.briefing",

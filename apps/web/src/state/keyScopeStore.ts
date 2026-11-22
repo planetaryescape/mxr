@@ -1,23 +1,13 @@
-/*
- * Active shortcut-scope stack plus the pending multi-key prefix indicator.
- * Views push their scope on mount (useShortcutScope); the keymap reads the
- * top of the stack at dispatch time. Page components surface their pending
- * sequence prefix ("g", "*") here so the status bar can show it.
- */
-
 import { create } from "zustand";
 
 import type { ActionScope } from "@/lib/actions/types";
 
-/** How long "g U is not a shortcut" stays in the status bar. */
 export const DEAD_END_NOTICE_MS = 2000;
 
 export interface KeyScopeState {
   stack: ActionScope[];
   pendingPrefix: string | null;
-  /** A prefix and key that completed nothing ("g U"), shown briefly. */
   deadEnd: string | null;
-  /** A key that moved away: the action's label and its key now, shown briefly. */
   moved: { label: string; key: string | null } | null;
   pushScope: (scope: ActionScope) => void;
   popScope: (scope: ActionScope) => void;
@@ -54,7 +44,6 @@ export const useKeyScope = create<KeyScopeState>((set, get) => ({
   showMoved: (label, key) => {
     clearTimeout(movedTimer);
     set({ moved: { label, key } });
-    // Long enough to read a sentence, unlike the two-second dead end.
     movedTimer = setTimeout(() => set({ moved: null }), DEAD_END_NOTICE_MS * 2);
   },
 }));

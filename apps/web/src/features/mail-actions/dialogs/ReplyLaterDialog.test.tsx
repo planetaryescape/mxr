@@ -25,7 +25,6 @@ vi.mock("@/features/time/api", async (importOriginal) => {
   };
 });
 
-// Only the fields the dialog reads; a full MessageRowView adds nothing here.
 const target = {
   messageIds: ["msg-1", "msg-2"],
   rows: [],
@@ -62,7 +61,6 @@ describe("ReplyLaterDialog", () => {
     await waitFor(() => expect(api.deferThreads).toHaveBeenCalledTimes(1));
     const [threads, choice] = api.deferThreads.mock.calls[0] ?? [];
     expect(threads).toEqual(["thread-1"]);
-    // An instant, not the words, so the daemon stores what was shown.
     expect(new Date(choice?.at ?? "").getTime() - Date.now()).toBeGreaterThan(47 * 3_600_000);
     expect(onClose).toHaveBeenCalled();
     expect(api.setReplyLater).not.toHaveBeenCalled();

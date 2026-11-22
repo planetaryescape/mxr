@@ -29,7 +29,6 @@ const GROUPS: { id: StorageGroupBy; label: string }[] = [
   { id: "label", label: "Label" },
 ];
 
-/** TUI drill-down: sender and label map to operators; MIME types are not indexed. */
 function drillQuery(groupBy: StorageGroupBy, key: string): string {
   if (groupBy === "sender") return `from:${searchValue(key)}`;
   if (groupBy === "label") return `label:${searchValue(key)}`;

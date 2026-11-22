@@ -67,7 +67,6 @@ const ACTION_PRESETS = [
   "spam",
 ];
 
-/** A message the rule would touch; the same ids Apply now acts on. */
 interface PreviewMatch {
   message_id: string;
   from: string;
@@ -144,8 +143,6 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
       ),
     retry: false,
   });
-  // The daemon's dry run evaluates the saved rule. While the condition is
-  // unsaved (new rule, or edited), preview with the same query as a search.
   const usesSavedRule = !isNew && condition === saved.condition.trim();
 
   const preview = useQuery({

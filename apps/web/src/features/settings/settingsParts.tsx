@@ -1,8 +1,3 @@
-/*
- * Rows every settings section is built from: a label with its explanation
- * on the left, the control on the right, separated by rules.
- */
-
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -126,7 +121,6 @@ export function Field({
   );
 }
 
-/** Trash icon button that asks before deleting. */
 export function ConfirmDelete({
   what,
   description,

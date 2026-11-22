@@ -19,11 +19,6 @@ import { invalidateMailQueries, performUndo } from "../mailMutations";
 import type { MailTarget } from "../target";
 import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/**
- * TUI `D`: unsubscribe only (Enter or u), or unsubscribe and archive
- * everything from the sender (a). The archive count comes from a dry run
- * of the same daemon request, so the number shown is the number archived.
- */
 export function UnsubscribeDialog({
   target,
   onDone,
@@ -90,7 +85,6 @@ export function UnsubscribeDialog({
       <DialogContent
         className="max-w-md"
         onKeyDown={(event) => {
-          // Enter on a focused option is that option's click, not a shortcut.
           if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
           if (pressedOverlayKey(event, "unsubscribe.confirm")) {
             event.preventDefault();
@@ -99,7 +93,6 @@ export function UnsubscribeDialog({
             event.preventDefault();
             if (!preview.isLoading) unsubscribeAndArchive();
           } else if (pressedOverlayKey(event, "overlay.no")) {
-            // n is Esc, as in the TUI (blueprint 35).
             event.preventDefault();
             onClose();
           } else if (announceMovedOverlayKey(event, "unsubscribe")) {
@@ -158,7 +151,6 @@ export function UnsubscribeDialog({
   );
 }
 
-/** The daemon's UnsubscribeMethod, externally tagged: "None" or { Kind: {...} }. */
 function describeMethod(method: unknown): string | null {
   if (!method || method === "None") return null;
   if (typeof method !== "object") return null;

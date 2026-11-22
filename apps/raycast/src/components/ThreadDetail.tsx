@@ -11,16 +11,12 @@ import { fullDate } from "./time";
 import { useWebBase } from "./web";
 import { keyFor } from "./keys";
 
-/** As the web reader does when it has focus: read once it has been open this long. */
 const READ_AFTER_MS = 600;
 
 interface Props {
   threadId: string;
-  /** Path of this conversation in the web app. */
   webPath: string;
-  /** The message a reply answers, when the list knows it; else the newest. */
   replyTo?: { messageId: string; to: string };
-  /** Reload the list the reader was opened from, once its read state changed. */
   onChange?: () => void;
 }
 
@@ -30,7 +26,6 @@ function people(addresses: Address[] | undefined): string {
 
 function markdown(data: Thread): string {
   const bodies = new Map(data.bodies.map((body) => [body.message_id, body]));
-  // Newest first: the message you opened it for is at the top.
   const messages = [...data.messages].reverse().map((entry) => {
     const to = people(entry.to);
     const cc = people(entry.cc);
@@ -48,7 +43,6 @@ function markdown(data: Thread): string {
   return [`# ${inline(data.thread.subject) || "(no subject)"}`, ...messages].join("\n\n---\n\n");
 }
 
-/** The side panel: which account, its labels and what came with it. */
 function Panel({ data, account }: { data: Thread; account?: AccountTag }) {
   const labels = threadLabels(data);
   const attachments = threadAttachments(data);
@@ -82,12 +76,10 @@ function Panel({ data, account }: { data: Thread; account?: AccountTag }) {
   );
 }
 
-/** Read a conversation in Raycast, newest message first. */
 export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
   const webBase = useWebBase();
   const accounts = useAccountBadge(undefined);
   const { data, isLoading, error } = useCachedPromise(getThread, [threadId]);
-  // A sign-in email's code, while it still works, as the first action.
   const { data: codes } = useCachedPromise(() => getCodes(undefined, 10), [], {
     onError: () => undefined,
   });
@@ -110,7 +102,6 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
         );
     }, READ_AFTER_MS);
     return () => clearTimeout(timer);
-    // Once per opening, when the thread first arrives.
   }, [data?.thread.id]);
 
   const account = accounts.tagOf(data?.thread.account_id);
@@ -204,7 +195,6 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
   );
 }
 
-/** "Read" for a list row: the conversation in Raycast, as the default action. */
 export function ReadAction({ title = "Read", ...props }: Props & { title?: string }) {
   return <Action.Push title={title} icon={Icon.Eye} target={<ThreadDetail {...props} />} />;
 }

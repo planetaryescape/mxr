@@ -1,9 +1,3 @@
-/*
- * ActionContext: what the palette, help and key dispatcher need to decide
- * which actions apply. One builder serves both the React hook and the
- * dispatcher's snapshot at keypress time.
- */
-
 import { useRouterState } from "@tanstack/react-router";
 import { useMemo } from "react";
 
@@ -45,7 +39,6 @@ function cachedAccountCount(): number {
   return data?.accounts?.length ?? 0;
 }
 
-/** Context at this instant, for code outside React (the key dispatcher). */
 export function snapshotActionContext(): ActionContext {
   return buildActionContext({
     path: typeof window === "undefined" ? "/" : window.location.pathname,

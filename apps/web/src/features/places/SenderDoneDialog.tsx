@@ -18,15 +18,9 @@ export interface SenderDone {
   mode: Extract<DoneMode, "updates" | "reading">;
   accountId: string;
   senderEmail: string;
-  /** How the dialog names the sender. */
   label: string;
 }
 
-/**
- * Done here for everything one sender has in a mode: the daemon resolves
- * the threads (not just the ones loaded on screen) and its dry run gives
- * the count, so what you confirm is what runs.
- */
 export function SenderDoneDialog({ target, onClose }: { target: SenderDone; onClose: () => void }) {
   const sender = { account_id: target.accountId, sender_email: target.senderEmail };
   const preview = useQuery({

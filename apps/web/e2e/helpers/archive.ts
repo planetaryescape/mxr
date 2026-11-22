@@ -8,7 +8,6 @@ import { bridge } from "./state";
 export type ArchiveOperation = components["schemas"]["ArchiveOperationData"];
 type Workspace = components["schemas"]["ArchiveWorkspaceData"];
 
-/** Exercise a second client's recoverable Archive path: review, submit, then query to a terminal receipt. */
 export async function archiveViaBridge(
   page: Page,
   messageIds: string[],
@@ -34,10 +33,8 @@ export async function archiveViaBridge(
     { identity, review_id: reviewed.review_id, mutation },
   );
   for (let attempt = 0; operation.running && attempt < 300; attempt += 1) {
-    // Polls are sequential because each query observes one durable operation identity.
     // oxlint-disable-next-line no-await-in-loop
     await new Promise((resolve) => setTimeout(resolve, 100));
-    // The API keeps the operation identity stable while the worker finishes.
     // oxlint-disable-next-line no-await-in-loop
     ({ operation } = await bridge<{ kind: string; operation: ArchiveOperation }>(
       page,

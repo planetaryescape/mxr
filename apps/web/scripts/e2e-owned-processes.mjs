@@ -48,7 +48,6 @@ async function stopRecord(record) {
   const current = identity(record.pid);
   if (current !== null && current !== record.identity)
     throw new Error("Owned PID was reused; refusing to signal it");
-  // Each child was spawned as its own group leader; include npm/sh workers.
   try {
     process.kill(-record.pid, "SIGTERM");
   } catch (error) {

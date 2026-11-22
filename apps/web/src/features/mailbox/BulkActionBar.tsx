@@ -41,10 +41,6 @@ const BUTTONS: BulkButton[] = [
   { command: "trash", label: "Trash", keys: "#", Icon: Trash2 },
 ];
 
-/**
- * Selection bar. Buttons run the same verbs as the keys (and so the same
- * confirmation and undo), against exactly the selected rows.
- */
 export function BulkActionBar({
   rows,
   getTarget,

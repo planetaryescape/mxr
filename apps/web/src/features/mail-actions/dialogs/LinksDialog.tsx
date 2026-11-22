@@ -27,7 +27,6 @@ export interface ExtractedLink {
 
 const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
-/** Every distinct http(s)/mailto link in the bodies, HTML anchors first. */
 export function extractLinks(bodies: MessageBodyView[]): ExtractedLink[] {
   const seen = new Map<string, ExtractedLink>();
   const add = (href: string, text: string) => {
@@ -64,7 +63,6 @@ function openLink(link: ExtractedLink | undefined) {
 export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: () => void }) {
   const thread = useQuery({
     queryKey: ["thread", target.threadId],
-    // Same key the reader uses, so an open thread is already cached.
     queryFn: () => fetchThread(target.threadId ?? ""),
     enabled: Boolean(target.threadId),
   });

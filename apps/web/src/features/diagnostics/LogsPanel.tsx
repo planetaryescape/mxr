@@ -20,8 +20,6 @@ interface LogRow {
 }
 
 function parseLine(line: string): LogRow {
-  // tracing-subscriber JSON file appender emits:
-  //   {"timestamp":"…","level":"INFO","fields":{"message":"…"},…}
   if (line.startsWith("{")) {
     try {
       const obj = JSON.parse(line) as Record<string, unknown>;
@@ -32,9 +30,7 @@ function parseLine(line: string): LogRow {
         fields && typeof fields.message === "string" ? fields.message : undefined;
       const topMessage = typeof obj.message === "string" ? obj.message : undefined;
       return { raw: line, timestamp, level, message: fieldMessage ?? topMessage ?? line };
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
   return { raw: line };
 }

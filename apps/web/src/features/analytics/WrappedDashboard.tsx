@@ -209,7 +209,6 @@ function WrappedSections({ summary }: { summary: WrappedSummary }) {
   );
 }
 
-/** One fact per screen; arrow keys or the buttons move between them. */
 function WrappedStory({ summary }: { summary: WrappedSummary }) {
   const tiles = storyTiles(summary);
   const [index, setIndex] = useState(0);
@@ -223,8 +222,6 @@ function WrappedStory({ summary }: { summary: WrappedSummary }) {
       aria-roledescription="slide show"
       aria-label="Wrapped story"
       tabIndex={0}
-      // Local arrow keys while the story has focus; preventDefault keeps
-      // the app dispatcher from also treating them as list motion.
       onKeyDown={(event) => {
         if (event.key === "ArrowRight" || event.key === "ArrowDown") {
           event.preventDefault();
@@ -331,11 +328,6 @@ function windowLabel(summary: WrappedSummary): string {
   return `${shortDate(summary.window_start)} to ${shortDate(summary.window_end)}`;
 }
 
-/**
- * Plain-text summary for pasting into chat or notes. The old button
- * claimed "Share as image" but copied text; an honest text copy is the
- * useful thing here, and it avoids a second canvas renderer to maintain.
- */
 export function wrappedSummaryText(summary: WrappedSummary): string {
   const lines = [`mxr wrapped: ${windowLabel(summary)}`];
   for (const tile of storyTiles(summary)) {

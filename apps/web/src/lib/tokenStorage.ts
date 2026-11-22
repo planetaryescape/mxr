@@ -1,14 +1,5 @@
 import { clearOfflineMail } from "@/pwa/offlineReads";
 
-/*
- * Bridge bearer-token storage.
- *
- * Bootstrap precedence on first load:
- *   1. URL fragment `#token=...` (remote/manual launch only)
- *   2. localStorage `mxr.bridgeToken`
- *   3. nothing — UI surfaces a paste-token settings panel after first 401
- */
-
 const STORAGE_KEY = "mxr.bridgeToken";
 const REMOTE_URL_KEY = "mxr.bridgeUrl";
 
@@ -30,9 +21,6 @@ export function bootstrapFromHash(
     remoteOrigin !== window.location.origin &&
     remoteOrigin !== safeStorage()?.getItem(REMOTE_URL_KEY);
 
-  // Any page can link here with #remote=…; pointing the app at another
-  // bridge takes the user's explicit consent, and the local token never
-  // travels to it (a remote link brings its own token, or none).
   if (switchesOrigin && remoteOrigin && confirmRemote(remoteOrigin)) {
     safeStorage()?.setItem(REMOTE_URL_KEY, remoteOrigin);
     if (token) setToken(token);
@@ -41,9 +29,6 @@ export function bootstrapFromHash(
     setToken(token);
   }
   if (token || remote) {
-    // Scrub the hash so the token isn't shoulder-surfed or copied into
-    // bookmarks. Keep the history state: the router keeps its entry index
-    // there, and losing it makes a first page think it can go back.
     const cleaned = window.location.pathname + window.location.search;
     window.history.replaceState(window.history.state, document.title, cleaned);
   }
@@ -51,7 +36,6 @@ export function bootstrapFromHash(
 
 function parseOrigin(remote: string): string | null {
   try {
-    // remote may arrive URL-encoded or as a bare host
     const normalized = remote.startsWith("http") ? remote : `https://${remote}`;
     return new URL(normalized).origin;
   } catch {
@@ -77,11 +61,6 @@ export function getToken(): string | undefined {
 
 const tokenListeners = new Set<(token: string) => void>();
 
-/**
- * Hear about a newly stored token. The event socket starts before the
- * loopback handshake finishes on a first visit, so it listens here to
- * connect as soon as the token lands instead of waiting for a refocus.
- */
 export function onTokenChange(listener: (token: string) => void): () => void {
   tokenListeners.add(listener);
   return () => tokenListeners.delete(listener);
@@ -104,9 +83,6 @@ export function clearToken(): void {
 }
 
 export function getBridgeBaseUrl(): string {
-  // In dev, Vite proxies /api → daemon; same-origin works. In prod the SPA is
-  // served from the daemon itself so same-origin also works. Remote-host mode
-  // sets a different origin via URL fragment on first load.
   if (typeof window === "undefined") return "";
   const storage = safeStorage();
   const remote = storage?.getItem(REMOTE_URL_KEY) ?? null;

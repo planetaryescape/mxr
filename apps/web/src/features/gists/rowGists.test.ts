@@ -69,10 +69,8 @@ describe("row gists", () => {
     });
     expect(getRowGist("a")).toBeUndefined();
 
-    // Scrolling back and forth asks for nothing new for a minute.
     await requestRowGists(["a", "b"], 30_000);
     expect(apiFetch).toHaveBeenCalledTimes(1);
-    // After that, the rows still without a gist are asked about again.
     apiFetch.mockResolvedValue(answer([]));
     await requestRowGists(["a", "b"], 62_000);
     expect(apiFetch.mock.calls[1]?.[1]).toMatchObject({ body: { thread_ids: ["a"] } });
@@ -83,7 +81,6 @@ describe("row gists", () => {
     await requestRowGists(["a"], 1_000);
     emit({ type: "ThreadGistReady", gist: gist("a", null) } as unknown as DaemonEvent);
     expect(getRowGist("a")?.ask).toBeNull();
-    // A new message in the conversation retires its gist.
     emit({ type: "NewMessages", envelopes: [{ thread_id: "a" }] } as unknown as DaemonEvent);
     expect(getRowGist("a")).toBeUndefined();
   });
@@ -129,7 +126,6 @@ describe("row gists", () => {
       }),
     );
     const pending = requestRowGists(["a"], 1_000);
-    // A new message lands in the conversation while the request is out.
     emit({
       type: "NewMessages",
       envelopes: [{ thread_id: "a" }],
@@ -138,7 +134,6 @@ describe("row gists", () => {
     held.resolve?.(answer([gist("a")]));
     await pending;
     expect(getRowGist("a")).toBeUndefined();
-    // The row asks again at once, and this answer is kept.
     apiFetch.mockResolvedValue(answer([gist("a")]));
     await requestRowGists(["a"], 1_500);
     expect(getRowGist("a")).toBeDefined();
@@ -151,8 +146,6 @@ describe("row gists", () => {
     resetRowGistsForTest();
     apiFetch.mockResolvedValue(answer([], "available"));
     const ids = Array.from({ length: STATE_CAP + 100 }, (_, index) => `r${index}`);
-    // Sequential on purpose: the cap evicts the oldest asked-about rows, so
-    // the batches must land in order.
     await ids.reduce<Promise<void>>(
       (chain, _id, index) =>
         index % 100 === 0
@@ -161,14 +154,11 @@ describe("row gists", () => {
       Promise.resolve(),
     );
     apiFetch.mockClear();
-    // The oldest asked-about rows were forgotten, so they are asked again.
     await requestRowGists(["r0", `r${STATE_CAP + 99}`], 2_000);
     expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ body: { thread_ids: ["r0"] } });
   });
   test("Updates asks for automated mail too, and a people-only ask earlier does not count", async () => {
     apiFetch.mockResolvedValue(answer([], "available"));
-    // An inbox list asked about this thread a moment ago and the daemon
-    // skipped it as not from a person.
     await requestRowGists(["a"], 1_000);
     await requestRowGists(["a"], 2_000, { automated: true });
     expect(apiFetch).toHaveBeenCalledTimes(2);
@@ -180,7 +170,6 @@ describe("row gists", () => {
       method: "POST",
       body: { thread_ids: ["a"], generate: true, automated: true },
     });
-    // Each kind of ask is remembered on its own.
     await requestRowGists(["a"], 3_000, { automated: true });
     expect(apiFetch).toHaveBeenCalledTimes(2);
   });
@@ -193,7 +182,6 @@ describe("row gists", () => {
       toRowGist({ ...gist("a"), ask: { summary: { trim: 1 }, quote: null } } as never)?.ask,
     ).toBeNull();
     expect(toRowGist({ ...gist("a"), newest_message_id: { x: 1 } } as never)?.newest).toBeNull();
-    // A thread called after an Object prototype member is just a thread.
     for (const id of ["__proto__", "constructor", "toString"]) {
       expect(getRowGist(id)).toBeUndefined();
       putGist(gist(id));

@@ -11,7 +11,6 @@ import { OpenDot, Provenance } from "./RecordParts";
 import { splitLive, subscriptionAmountUnchecked, whenLabel } from "./subscriptionRows";
 import { SectionHeading } from "@/components/SectionHeading";
 
-/** One subscription: what, amount, how often, the next charge and status. */
 const SubscriptionRow = memo(function SubscriptionRow({
   subscription,
   index,
@@ -76,10 +75,6 @@ const SubscriptionRow = memo(function SubscriptionRow({
   );
 });
 
-/**
- * The Subscriptions view: what live subscriptions cost per currency, what
- * changed, then one row per subscription, live before ended.
- */
 export function SubscriptionsList({
   data,
   cursorId,
@@ -145,10 +140,6 @@ export function SubscriptionsList({
   );
 }
 
-/**
- * A subscription's card: its fields with where they came from, the price
- * changes, and every charge, newest first.
- */
 export function SubscriptionCard({
   subscription,
   onCopyAmount,

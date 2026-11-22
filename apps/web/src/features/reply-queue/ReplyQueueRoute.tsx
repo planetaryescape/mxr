@@ -34,7 +34,6 @@ function toRow(message: ReplyQueueMessage): MessageRowView {
 
 const LENS = { kind: "other" } as const;
 
-/** Messages flagged reply-later (TUI `b`), oldest obligations first. */
 export function ReplyQueueRoute() {
   const queue = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
   const rows = (queue.data?.messages ?? []).map(toRow);
@@ -42,7 +41,6 @@ export function ReplyQueueRoute() {
     rows.length > 0 ? [{ id: "queue", label: "Waiting on your reply", rows }] : [],
     LENS,
   );
-  // Clearing the queue here (Done, archive) earns the small low tide, once.
   const lowTide = useLowTide(
     "reply_queue",
     queue.isLoading || queue.isError,

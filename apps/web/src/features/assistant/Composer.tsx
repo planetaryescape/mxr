@@ -1,10 +1,3 @@
-/*
- * Where you write to the assistant. Enter sends, Shift+Enter adds a line,
- * Esc leaves the field (to a waiting proof, if there is one, so its keys
- * can answer). The model and where it runs sit under the field, once, and
- * open the model choices.
- */
-
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { ASSISTANT_SHORTCUT } from "./actions";
@@ -33,7 +26,6 @@ export function Composer({
 
   useEffect(() => {
     if (focusRequest === 0) return;
-    // After the pane's open transition has placed it.
     const frame = requestAnimationFrame(() => input.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [focusRequest]);
@@ -60,13 +52,11 @@ export function Composer({
         disabled={disabled}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
-          // Enter sends; Shift+Enter adds a line.
           if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
             event.preventDefault();
             submit();
           }
           if (event.key === "Escape") {
-            // A waiting proof takes the keyboard, so `y` and `n` can answer it.
             const card = waiting
               ? document.querySelector<HTMLElement>(`[${PENDING_CARD_ATTRIBUTE}]`)
               : null;

@@ -79,11 +79,9 @@ describe("NaturalTimeInput", () => {
     fireEvent.change(field, { target: { value: "in 2 hours" } });
     await waitFor(() => expect(pending.has("in 2 hours")).toBe(true));
 
-    // The newer answer lands first, then the stale one.
     await act(async () => pending.get("in 2 hours")?.(fakeResolvedTime("in 2 hours")));
     await act(async () => pending.get("in 3 days")?.(fakeResolvedTime("in 3 days")));
 
-    // react-query notifies on its own tick, so wait for the paint.
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
     expect(screen.getByRole("status")).not.toHaveTextContent(/days/);
     fireEvent.keyDown(field, { key: "Enter" });
@@ -119,7 +117,6 @@ describe("NaturalTimeInput fast Enter", () => {
     fireEvent.change(field, { target: { value: "tomorrow 9am" } });
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/09:00/));
 
-    // Change the text and press Enter at once, inside the debounce window.
     fireEvent.change(field, { target: { value: "in 2 hours" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
@@ -144,7 +141,6 @@ describe("NaturalTimeInput fast Enter", () => {
     fireEvent.change(field, { target: { value: "fri 3" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
-    // The readings appear, and nothing is stored until the user confirms.
     const chips = await screen.findAllByRole("radio");
     expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
       expect.stringMatching(/15:00$/),
@@ -167,7 +163,6 @@ describe("NaturalTimeInput fast Enter", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     await screen.findAllByRole("radio");
 
-    // The key stays down: the browser sends repeats, which must not commit.
     for (let index = 0; index < 5; index += 1) {
       fireEvent.keyDown(field, { key: "Enter", repeat: true });
     }
@@ -175,7 +170,6 @@ describe("NaturalTimeInput fast Enter", () => {
     await act(async () => {});
     expect(onCommit).not.toHaveBeenCalled();
 
-    // A deliberate second press commits the selected reading.
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
     expect(onCommit.mock.calls[0]?.[0].label).toBe("15:00");

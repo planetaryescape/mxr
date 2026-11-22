@@ -1,11 +1,3 @@
-/*
- * Calendar RSVP with a short hold, like the TUI's pending invite send: no
- * email leaves until the window closes, and Undo inside the window cancels
- * it. The hold lives at module level so navigating away doesn't drop a
- * response the user already chose, and the toast switches to "Sending" the
- * moment the request starts so Undo can never claim to cancel a sent reply.
- */
-
 import { toast } from "sonner";
 import { create } from "zustand";
 
@@ -29,7 +21,6 @@ interface PendingRsvp {
 }
 
 interface InviteRsvpState {
-  /** messageId → action, while held or sending. */
   pending: Record<string, InviteAction>;
   sending: Record<string, boolean>;
 }

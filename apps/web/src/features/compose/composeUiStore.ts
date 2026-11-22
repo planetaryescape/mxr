@@ -1,12 +1,3 @@
-/*
- * Where the composer is hosted: inline at the bottom of the open thread,
- * as an overlay sheet, or fullscreen. ComposeHost (mounted once in
- * AppShell) is the only compose surface: it owns the session for whichever
- * intent is open, so switching surfaces never unmounts the editor or loses
- * the draft buffer. The /compose/new and /compose/$draftId routes are deep
- * links that open this host (see intentFromComposeLocation).
- */
-
 import { create } from "zustand";
 
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
@@ -15,17 +6,10 @@ import type { ComposeIntent } from "./useComposeSession";
 
 export type ComposeSurface = "inline" | "overlay" | "fullscreen";
 
-/**
- * What a view hosting the inline composer (focus mode) can ask of the open
- * session without owning it: the keys work from outside the editor too.
- */
 export interface ComposeCommands {
-  /** The intent these commands act on, so a stale page can't send another. */
   intentKey: string;
   send: () => void;
-  /** Open "send and remind me if nobody replies" with its time field. */
   sendAndRemind: () => void;
-  /** Open Draft for me and ask for a draft in the user's voice. */
   draftForMe: () => void;
 }
 
@@ -47,8 +31,6 @@ export const useComposeUi = create<ComposeUiState>((set, get) => ({
     intent,
     surface = intent.kind === "reply" || intent.kind === "reply_all" ? "inline" : "overlay",
   ) => {
-    // A draft is a file the daemon writes; without it the composer could
-    // only spin. One already open stays usable.
     if (get().intent?.key !== intent.key && refuseWhileDaemonDown("open the composer")) return;
     set({ intent, surface });
   },
@@ -57,13 +39,10 @@ export const useComposeUi = create<ComposeUiState>((set, get) => ({
   setCommands: (commands) => set({ commands }),
 }));
 
-/** Intent for a brand-new message (the global `c` shortcut). */
 export function newMessageIntent(): ComposeIntent {
   return { key: `compose:new:${crypto.randomUUID()}`, title: "New message", kind: "new" };
 }
 
-/** New message with optional To / Subject prefill (compose launcher, deep
- * links). Each invocation starts a fresh draft, like `c`. */
 export function prefilledMessageIntent(to?: string, subject?: string): ComposeIntent {
   const prefillTo = to?.trim() || undefined;
   const prefillSubject = subject?.trim() || undefined;
@@ -76,7 +55,6 @@ export function prefilledMessageIntent(to?: string, subject?: string): ComposeIn
   };
 }
 
-/** Intent for editing a stored mxr draft. */
 export function draftIntent(draftId: string): ComposeIntent {
   return { key: `draft:${draftId}`, title: "Saved draft", kind: "new", draftId };
 }
@@ -87,8 +65,6 @@ const inviteReplyTitles: Record<InviteReplyAction, string> = {
   decline: "Decline with comment",
 };
 
-/** Intent for answering a calendar invite with a written comment. The
- * bridge prefills the reply and attaches the iCal REPLY on send. */
 export function inviteReplyIntent(messageId: string, action: InviteReplyAction): ComposeIntent {
   return {
     key: `compose:invite_reply:${action}:${messageId}`,
@@ -99,10 +75,6 @@ export function inviteReplyIntent(messageId: string, action: InviteReplyAction):
   };
 }
 
-/**
- * Intent for a `/compose/new?...` or `/compose/$draftId` deep link, so those
- * URLs open the same host as every other compose entry point.
- */
 export function intentFromComposeLocation(
   pathname: string,
   search: Record<string, unknown>,
@@ -124,10 +96,6 @@ export function intentFromComposeLocation(
   );
 }
 
-/**
- * A reply that starts from an AI draft. Its own session key, so it never
- * resumes an earlier reply session that lacks the draft.
- */
 export function replyWithBodyIntent(messageId: string, body: string): ComposeIntent {
   return {
     ...replyIntent(messageId, "single"),
@@ -136,7 +104,6 @@ export function replyWithBodyIntent(messageId: string, body: string): ComposeInt
   };
 }
 
-/** Intent for reply/reply-all/forward on a thread's primary message. */
 export function replyIntent(messageId: string, mode: "single" | "all" | "forward"): ComposeIntent {
   const kind: ComposeKind = mode === "forward" ? "forward" : mode === "all" ? "reply_all" : "reply";
   const title =

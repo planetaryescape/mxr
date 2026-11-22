@@ -7,7 +7,6 @@ function blocked(): never {
   throw new Error("blocked");
 }
 
-/** A working Storage: some Node versions ship an inert global one. */
 function memoryStorage(): Pick<Storage, "getItem" | "setItem" | "clear"> {
   const items = new Map<string, string>();
   return {

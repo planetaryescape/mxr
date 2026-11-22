@@ -14,7 +14,6 @@ import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 import { keyFor } from "./components/keys";
 
-/** The ring on a part-read item; getProgressIcon writes this straight into an SVG. */
 const PROGRESS_BLUE = "#3b82f6";
 
 export default function Reading() {

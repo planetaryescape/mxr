@@ -13,10 +13,6 @@ import {
   type DraftSource,
 } from "./draftProvenanceFormat";
 
-/**
- * The quiet line under an AI draft saying where it came from, with the
- * messages it was written from one click away.
- */
 export function DraftProvenanceLine({
   provenance,
   className,

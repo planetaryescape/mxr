@@ -1,14 +1,6 @@
-/*
- * Paging a place: bundles come a page at a time (offset over senders), and
- * a sender's messages can extend a page at a time (`message_offset`). These
- * helpers put the pages back together; they are pure so the rules are
- * tested directly.
- */
-
 import type { PlaceBundle, PlaceMessage, PlaceResponse } from "./api";
 import { bundleKey } from "./placeCopy";
 
-/** The offset of the next page of bundles, or undefined when all are here. */
 export function nextBundleOffset(pages: readonly PlaceResponse[]): number | undefined {
   const last = pages.at(-1);
   if (!last) return 0;
@@ -16,12 +8,6 @@ export function nextBundleOffset(pages: readonly PlaceResponse[]): number | unde
   return last.bundles.length > 0 && loaded < last.total_bundles ? loaded : undefined;
 }
 
-/**
- * Every loaded bundle once, in page order, with any further pages of its
- * messages appended. Paging by offset can repeat a bundle when the place
- * changes between pages; the first copy wins. Messages repeat the same
- * way and are kept once.
- */
 export function mergeBundles(
   pages: readonly PlaceResponse[],
   more: ReadonlyMap<string, readonly PlaceMessage[]> = new Map(),
@@ -49,7 +35,6 @@ export function mergeBundles(
   return bundles;
 }
 
-/** Messages of the bundle the daemon has not sent yet. */
 export function messagesLeft(bundle: Pick<PlaceBundle, "message_count" | "messages">): number {
   return Math.max(0, bundle.message_count - bundle.messages.length);
 }
@@ -70,10 +55,6 @@ function isPaged(value: unknown): value is { pages: unknown[] } {
   );
 }
 
-/**
- * Apply `update` to cached place data, whether the cache holds one response
- * (a sender's page) or pages of them (the paged bundle list).
- */
 export function mapPlaceData(
   data: unknown,
   update: (page: PlaceResponse) => PlaceResponse,

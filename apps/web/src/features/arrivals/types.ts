@@ -1,14 +1,8 @@
 import type { components } from "@/api/generated";
 import { optionLetter } from "@/lib/keys/overlayKeys";
 
-/*
- * Arrival view fields from crates/protocol/src/types/arrivals.rs.
- * The shared classification report uses its generated OpenAPI type.
- */
-
 export type ModeId = "messages" | "todo" | "updates" | "reading" | "archive";
 
-/** Where an arrival is counted, in the line's order. */
 export const ARRIVAL_BUCKETS = [
   "messages",
   "todo",
@@ -26,14 +20,12 @@ export type ArrivalBucket = (typeof ARRIVAL_BUCKETS)[number];
 export interface ArrivalCount {
   bucket: ArrivalBucket;
   count: number;
-  /** "8 Messages". */
   label: string;
 }
 
 export interface MoveChoice {
   mode: ModeId;
   label: string;
-  /** "m", "x", "u", "r", "e". */
   key: string;
 }
 
@@ -80,7 +72,6 @@ export interface ArrivalItem {
   arrived_in: ArrivalBucket;
   bucket: ArrivalBucket;
   reason?: string | null;
-  /** "→ Updates · automated sender". */
   chip: string;
   moved?: boolean;
   not_sure?: boolean;
@@ -119,7 +110,6 @@ export type ArrivalModesResponse = { kind: "ArrivalModes"; items: ArrivalItem[] 
 export type MessageMovedResponse = { kind: "MessageMoved"; outcome: MoveOutcome };
 export type MoveUndoneResponse = { kind: "MoveUndone"; correction_id: number; copy: string };
 
-/** Picker keys: a mode's `g` letter, from the key definition. Capitals set the sender's mode. */
 export const MOVE_KEYS: Readonly<Record<string, ModeId>> = Object.fromEntries(
   (
     [
@@ -132,7 +122,6 @@ export const MOVE_KEYS: Readonly<Record<string, ModeId>> = Object.fromEntries(
   ).map(([mode, id]) => [optionLetter(id), mode]),
 );
 
-/** The mode a picker key names, if any (own keys only, never `toString`). */
 export function modeForKey(key: string): ModeId | undefined {
   return Object.hasOwn(MOVE_KEYS, key) ? MOVE_KEYS[key] : undefined;
 }
@@ -145,5 +134,4 @@ export const MODE_NAMES = {
   archive: "Archive",
 } as const satisfies Record<ModeId, string>;
 
-/** Modes a sender's mail can be sent to; To do and Archive take one email. */
 export const SENDER_MODES: readonly ModeId[] = ["messages", "updates", "reading"];

@@ -1,22 +1,13 @@
-/*
- * Where an AI draft came from, in words: how many of your emails shaped the
- * voice, whether your history was used, and where each source opens. The
- * model and where it ran are the ModelMark's job. The CLI and TUI word the
- * line the same way (`DraftProvenanceData::summary_line` in mxr-protocol).
- */
-
 import type { components } from "@/api/generated";
 import { firstName } from "@/features/thread/context/contextFormat";
 
 export type DraftProvenance = components["schemas"]["DraftProvenanceData"];
 export type DraftSource = components["schemas"]["DraftSourceData"];
 
-/** "Maya" from "Maya Chen"; the address when there's no name. */
 export function shortPerson(source: DraftSource): string {
   return firstName({ display_name: source.person_name ?? null, email: source.person });
 }
 
-/** What the draft was written from, after the model: "used 5 of your emails to Maya · history used". */
 export function draftProvenanceDetail(provenance: DraftProvenance): string {
   const parts: string[] = [];
   const examples = provenance.voice_examples ?? [];
@@ -48,16 +39,11 @@ export function draftProvenanceDetail(provenance: DraftProvenance): string {
   return parts.join(" · ");
 }
 
-/** "Your email to Maya" / "Maya" / "You", for one source in the list. */
 export function draftSourceLabel(source: DraftSource, kind: "voice" | "conversation"): string {
   if (kind === "voice") return `Your email to ${shortPerson(source)}`;
   return source.from_me ? "You" : shortPerson(source);
 }
 
-/**
- * The reader route that opens the cited message: your own emails from Sent,
- * anyone else's from All Mail, with the message expanded and in view.
- */
 export function draftSourceRoute(source: DraftSource) {
   return {
     to: "/m/$mailbox/$threadId",

@@ -1,10 +1,3 @@
-/*
- * ActionRegistry: the single table behind the palette, the key dispatcher
- * and help. Define-time validation rejects duplicate ids and a chord bound
- * twice in one scope, and a chord that is a prefix of another chord in the
- * same scope (which would make the shorter one unreachable).
- */
-
 import { hasCommand, runCommand } from "@/lib/keys/controllers";
 import { parseChord } from "@/lib/keys/chord";
 
@@ -14,20 +7,15 @@ export interface Binding {
   chord: ShortcutChord;
   scope: ActionScope;
   action: Action;
-  /** Bound from `retiredAliases`: works, but is not advertised. */
   retired: boolean;
-  /** Bound from `macAliases`: live on macOS only. */
   macOnly: boolean;
-  /** Bound from `movedAliases`: announces where the action went, runs nothing. */
   moved: boolean;
-  /** For a moved key: the key its notice names, when not the action's own. */
   movedTo?: ShortcutChord;
 }
 
 export class ActionRegistry {
   #actions: Action[] = [];
   #ids = new Set<string>();
-  /** "<scope>|<chord>" → binding. */
   #bindings = new Map<string, Binding>();
 
   define(action: Action): void {
@@ -58,7 +46,6 @@ export class ActionRegistry {
         }
       }
     }
-    // A palette-only action can still announce the key it used to have.
     for (const { chord, scopes, to } of action.movedAliases ?? []) {
       for (const scope of scopes) {
         const key = `${scope}|${normalize(chord)}`;
@@ -88,11 +75,6 @@ export class ActionRegistry {
     for (const action of actions) this.define(action);
   }
 
-  /**
-   * Swap every action for `actions`, as one step: a set that fails
-   * validation throws and leaves the registry as it was. Holders of this
-   * registry (the key dispatcher) see the new keys at once.
-   */
   replaceAll(actions: Action[]): void {
     const next = new ActionRegistry();
     next.defineMany(actions);
@@ -113,16 +95,10 @@ export class ActionRegistry {
     return [...this.#bindings.values()];
   }
 
-  /**
-   * The action a chord triggers given the active scopes (innermost first).
-   * Scoped bindings only count when their controller implements the
-   * command, so an unmounted view can't swallow a key.
-   */
   resolve(chord: ShortcutChord, scopes: ActionScope[], mac = true): Binding | undefined {
     const normalized = normalize(chord);
     for (const scope of scopes) {
       const binding = this.#bindings.get(`${scope}|${normalized}`);
-      // A moved key always answers, so pressing it can say where it went.
       if (
         binding &&
         (mac || !binding.macOnly) &&
@@ -134,7 +110,6 @@ export class ActionRegistry {
     return undefined;
   }
 
-  /** True when some live binding continues the typed sequence. */
   hasContinuation(prefix: ShortcutChord, scopes: ActionScope[], mac = true): boolean {
     const start = `${normalize(prefix)} `;
     for (const binding of this.#bindings.values()) {
@@ -146,7 +121,6 @@ export class ActionRegistry {
     return false;
   }
 
-  /** Actions the palette and help can offer in this context. */
   getVisibleActions(ctx: ActionContext): Action[] {
     return this.#actions.filter((action) => isAvailable(action, ctx));
   }
@@ -182,20 +156,12 @@ function normalize(chord: ShortcutChord): string {
   return parseChord(chord).join(" ");
 }
 
-/**
- * The panes drawn beside each pane, as in the TUI: the sidebar, the mail
- * list and the reader sit side by side, so `x` in the reader selects in the
- * list and `F` in the list widens the reader (blueprint 35, rule 8). A key
- * bound in a pane that has no such command runs on the action's own pane
- * (its first scope) when that pane is beside it and mounted.
- */
 const BESIDE: Partial<Record<ActionScope, readonly ActionScope[]>> = {
   reader: ["list"],
   sidebar: ["list", "reader"],
   list: ["reader"],
 };
 
-/** The controller scope a command action bound in `scope` runs on, if any. */
 function runsOn(action: CommandAction, scope: ActionScope): ActionScope | undefined {
   if (hasCommand(scope, action.command)) return scope;
   const home = scopesOf(action)[0];
@@ -208,7 +174,6 @@ function isRunnableIn(action: Action, scope: ActionScope): boolean {
   return runsOn(action, scope) !== undefined;
 }
 
-/** The scope a command action would run in, or undefined if none is live. */
 export function commandScope(action: Action, ctx: ActionContext): ActionScope | undefined {
   if (action.command === undefined) return undefined;
   const allowed = scopesOf(action);
@@ -227,23 +192,17 @@ export function isAvailable(action: Action, ctx: ActionContext): boolean {
   return allowed.includes("global") || allowed.some((scope) => ctx.scopes.includes(scope));
 }
 
-/** Where an action was run from: a key, the palette, or a pointer. */
 export type InvocationSource = "key" | "palette" | "pointer";
 
 type InvocationListener = (action: Action, source: InvocationSource) => void;
 
 const invocationListeners = new Set<InvocationListener>();
 
-/**
- * Hear every action run through `invokeAction`, with where it came from
- * ("Next time" teaches keys after a palette or pointer run). Returns a cleanup.
- */
 export function onActionInvoked(listener: InvocationListener): () => void {
   invocationListeners.add(listener);
   return () => invocationListeners.delete(listener);
 }
 
-/** Run an action from any surface (key, palette, button). */
 export function invokeAction(action: Action, ctx: ActionContext, source: InvocationSource): void {
   if (action.command !== undefined) {
     const scope = commandScope(action, ctx);
@@ -262,7 +221,6 @@ export function getRegistry(): ActionRegistry {
   return singleton;
 }
 
-/** Test-only: reset the module-level registry between specs. */
 export function resetRegistry(): void {
   singleton = null;
 }

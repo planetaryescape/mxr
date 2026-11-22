@@ -10,10 +10,6 @@ import { keyFor } from "./keys";
 import { message } from "./previewed";
 import { fullDate } from "./time";
 
-/**
- * The reading pane beside a list, remembered per command. While it shows,
- * rows drop their accessories and the pane carries that detail instead.
- */
 export function usePane(command: string) {
   const [showing, setShowing] = useCachedState<boolean>(`pane:${command}`, false);
   const [selected, setSelected] = useState<string>();
@@ -21,14 +17,12 @@ export function usePane(command: string) {
     showing,
     selected,
     toggle: () => setShowing((was) => !was),
-    /** For `List`'s `onSelectionChange`. */
     select: (id: string | null) => setSelected(id ?? undefined),
   };
 }
 
 export type Pane = ReturnType<typeof usePane>;
 
-/** Show or hide the pane, on the same key in every list. */
 export function PaneAction({ pane }: { pane: Pane }) {
   return (
     <Action
@@ -42,12 +36,10 @@ export function PaneAction({ pane }: { pane: Pane }) {
 
 const SEARCH_ROW = "search-";
 
-/** The list item id of an All Mail row. */
 export function searchRowId(threadId: string): string {
   return `${SEARCH_ROW}${threadId}`;
 }
 
-/** The conversation behind an All Mail row's id, or nothing for a mode's own row. */
 export function searchRowThread(id: string | undefined): string | undefined {
   return id?.startsWith(SEARCH_ROW) ? id.slice(SEARCH_ROW.length) : undefined;
 }
@@ -58,22 +50,14 @@ export interface Preview {
   error?: Error;
 }
 
-/**
- * The conversation behind the selected row, fetched only while the pane shows
- * and only for that row. This only reads: it never calls `setRead`, so looking
- * at mail here leaves it unread. Nothing is cached, so moving down a list does
- * not copy each message body into Raycast's storage.
- */
 export function usePreview(threadId: string | undefined): Preview {
   const { data, isLoading, error } = usePromise(
     async (id: string) => ({ id, thread: await getThread(id) }),
     [threadId ?? ""],
-    // The pane says what went wrong, so a failure needs no toast as well.
     { execute: Boolean(threadId), onError: () => undefined },
   );
   if (!threadId) return { loading: false };
   return {
-    // The last row's conversation stays in `data` while this one loads.
     thread: data?.id === threadId ? data.thread : undefined,
     loading: isLoading,
     error: isLoading ? undefined : error,
@@ -87,15 +71,11 @@ interface MailPaneProps {
   date?: string | null;
   account?: AccountTag;
   unread?: boolean;
-  /** What the selected row's fetch has so far; other rows have none. */
   preview?: Preview;
-  /** Shown until the conversation arrives. */
   fallback?: string | null;
-  /** Extra lines for this kind of row, after From and the date. */
   children?: ReactNode;
 }
 
-/** A mail row's pane: its newest message, and who, when and where. */
 export function MailPane({
   subject,
   fromName,

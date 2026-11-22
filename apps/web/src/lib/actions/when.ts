@@ -1,7 +1,3 @@
-/*
- * Composable predicates for action `when` clauses. Pure functions, no state.
- */
-
 import type { MailPane } from "@/state/mailboxPaneStore";
 
 import type { ActionPredicate } from "./types";
@@ -22,10 +18,6 @@ export function withFocusedThread(): ActionPredicate {
   return (ctx) => ctx.hasFocusedThread;
 }
 
-/**
- * Mirrors the TUI screener constraint at `crates/tui/src/app/mailbox_actions.rs:394`:
- * "Screener: open an inbox first so we know which account."
- */
 export function firstAccountOnly(): ActionPredicate {
   return (ctx) => ctx.accountCount === 1;
 }

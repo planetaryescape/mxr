@@ -22,16 +22,8 @@ import type { NotNowPicker } from "../notNow";
 import { definedKeys } from "@/lib/actions/definition";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/** Marks the options ArrowUp and ArrowDown step through. */
 const OPTION = "data-not-now-option";
 
-/**
- * Not now (`b`, D173): "Later (no time)" first, then the daemon's snooze
- * presets on 1-9, then a typed time the daemon resolves live ("fri 3", "in
- * 2d"). Later starts highlighted, so `b` then Enter is the untimed choice;
- * the arrows move the highlight and Enter runs it. Letters type the time.
- * Every time stores the exact instant the dialog showed, not the words.
- */
 export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClose: () => void }) {
   const time = useNaturalTime({ enabled: true });
   const customRef = useRef<HTMLInputElement>(null);
@@ -45,8 +37,6 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
   const choices = (presets.data?.presets ?? []).filter(isDisplayablePreset);
   const presetKeys = definedKeys("not-now.preset");
 
-  // With no Later, the first preset is the highlighted option once it loads,
-  // unless focus already moved somewhere of its own.
   const hasChoices = choices.length > 0;
   useEffect(() => {
     if (picker.later || !hasChoices) return;
@@ -59,7 +49,6 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
     time.reset();
   }
 
-  /** `label` is the time as shown, so the toast names what was stored. */
   async function setAt(until: string, label: string) {
     const value = until.trim();
     if (!value) return;
@@ -67,7 +56,6 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
     await picker.at(value, label);
   }
 
-  /** One at a time: a second key or click while the dialog closes can't act again. */
   function runLater() {
     const later = picker.later;
     if (!later) return;
@@ -87,7 +75,6 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
     return setAt(choice.at, describeChoice(choice));
   }
 
-  /** ArrowUp/ArrowDown (and Ctrl+P/Ctrl+N) step the highlight through the options. */
   function step(delta: 1 | -1) {
     const options = [...(contentRef.current?.querySelectorAll<HTMLElement>(`[${OPTION}]`) ?? [])];
     if (options.length === 0) return;
@@ -101,12 +88,7 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
       <DialogContent
         ref={contentRef}
         data-testid="not-now-dialog"
-        // Holding focus itself is a keyboard detail, not a place to ring.
-        // minmax(0, 1fr): a long truncated subject must not widen the grid
-        // past the dialog and push the button out of view.
         className="max-w-md grid-cols-[minmax(0,1fr)] outline-none"
-        // Later takes focus, so Enter is the untimed choice; with no Later
-        // the dialog holds focus until the presets load, so 1 picks one.
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           (laterRef.current ?? (event.currentTarget as HTMLElement | null))?.focus();
@@ -127,7 +109,6 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
             if (preset) void pickPreset(preset);
             return;
           }
-          // Any other typing is a time: send it to the field.
           if (event.key.length === 1 && event.key !== " ") customRef.current?.focus();
         }}
       >
@@ -236,12 +217,10 @@ function presetWhen(preset: SnoozePreset): string | undefined {
   return preset.description ?? (wake ? formatLongDate(wake) : undefined);
 }
 
-/** The instant the row showed, so what the user saw is what is stored. */
 function presetUntil(preset: SnoozePreset): string {
   return preset.wakeAt ?? preset.wake_at ?? presetValue(preset);
 }
 
-/** "Tonight" is meaningless after tonight has passed. */
 function isDisplayablePreset(preset: SnoozePreset): boolean {
   if (!presetValue(preset)) return false;
   if (presetLabel(preset).trim().toLowerCase() !== "tonight") return true;

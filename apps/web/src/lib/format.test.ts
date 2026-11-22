@@ -2,10 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import { formatReceived, formatTime, formatTimeIn, formatWhen, initials } from "./format";
 
-// Fixed zone so midnight and day boundaries land where the tests say.
 process.env.TZ = "Europe/London";
 
-// Saturday 26 September 2026, 15:00 local time.
 const NOW = new Date(2026, 8, 26, 15, 0, 0);
 const at = (...parts: [number, number, number, number?, number?, number?]) => new Date(...parts);
 const weekday = (date: Date) => date.toLocaleDateString(undefined, { weekday: "short" });
@@ -157,7 +155,6 @@ describe("formatTime: hours padded in 24-hour locales, bare in 12-hour ones", ()
   });
 
   test("en-US is 12-hour: 12:08 AM and 1:08 PM", () => {
-    // Intl may put a narrow no-break space before AM or PM; \s covers it.
     expect(formatTimeIn("en-US", eight)).toMatch(/^12:08\sAM$/);
     expect(formatTimeIn("en-US", afternoon)).toMatch(/^1:08\sPM$/);
   });

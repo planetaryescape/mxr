@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 export type ModeGlyphId = "now" | "messages" | "todo" | "updates" | "reading" | "archive" | "inbox";
 
-/** One glyph per mode, the same in the rail, a row's marks and toasts (docs/blueprint/27 "Iconography"). */
 export const MODE_GLYPHS = {
   now: Sun,
   messages: MessagesSquare,
@@ -34,12 +33,6 @@ const MODE_NAMES = {
   inbox: "Inbox",
 } satisfies Record<ModeGlyphId, string>;
 
-/**
- * "This item is also in that mode": a 14px glyph in the faint text tier, with
- * the daemon's detail ("In To do: Sign the lease, act by Mon") as its tooltip
- * and accessible name. Native `title`, not a Radix tooltip, because a list
- * draws one per row.
- */
 export function ModeMark({
   mode,
   detail,
@@ -65,7 +58,6 @@ export function ModeMark({
   );
 }
 
-/** The marks for the modes that hold an item besides the one on screen. */
 export function ModeMarks({
   modes,
   className,
@@ -83,7 +75,6 @@ export function ModeMarks({
   );
 }
 
-/** The `new` mark: a sender mxr hasn't placed yet. Cue colour, meta type. */
 export function NewMark({ className }: { className?: string }) {
   return (
     <span data-testid="new-mark" className={cn("type-meta shrink-0 text-cue", className)}>

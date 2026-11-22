@@ -35,21 +35,10 @@ import { plural } from "@/lib/format";
 import { useKeyScope } from "@/state/keyScopeStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-/**
- * The desk: what needs you, not what arrived. Lanes come from the daemon
- * (`GetDesk`); the list, cursor, verbs and undo are the shared mail list's,
- * so `h`, `#` and `u` behave here exactly as in the inbox. `e` is Done:
- * put the conversation away (see deskDone). With a `lane`, the same page
- * shows that one lane in full.
- */
 export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "messages" }) {
   const account = useUiPrefs((s) => s.accountScope);
-  // Messages is an early version built on the desk: the same lanes, at its
-  // own URL, with `e` as done in Messages (`SetModeDone`).
   const messages = mode === "messages";
   const basePath = messages ? "/messages" : "/desk";
-  // A lane's page starts with the first rows of each lane and can ask for
-  // the whole lane; the choice resets when the lane changes.
   const [wholeLane, setWholeLane] = useState<DeskLaneKind | null>(null);
   const desk = useDeskQuery(lane && wholeLane === lane ? DESK_FULL_LANE_LIMIT : DESK_LANE_LIMIT);
   const ops = usePendingMailOps((s) => s.ops);
@@ -66,24 +55,15 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     () => deskGroups(desk.data, ops, lane, hidden, basePath),
     [basePath, desk.data, hidden, ops, lane],
   );
-  // "Also in To do: …" and a new sender's question on each row (Messages).
   const memberships = useThreadModesMap(messages ? [...byThread.keys()] : []).data;
-  // Only the whole desk has a low tide; a lane's page is just a list.
   const hasWork = groups.some((group) => group.rows.length > 0);
   const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork, { daily: true });
 
-  // The desk's rows by conversation, for the verbs below. They read it
-  // through a ref so their identity never changes and the list's rows stay
-  // memoized.
   const rowsByThread = useRef(byThread);
   useEffect(() => {
     rowsByThread.current = byThread;
   }, [byThread]);
 
-  // On the desk, archive is Done: nothing for me to do here, put it away.
-  // It covers the list, the selection and the reader opened from the desk.
-  // In Messages, done is done in Messages, except a promise under Due,
-  // which the desk's Done resolves.
   const putAway = useCallback(
     (rows: DeskRowData[]) => {
       const viaDesk = messages ? rows.filter((row) => row.lane === "due") : rows;
@@ -125,9 +105,6 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     [putAway],
   );
 
-  // A short swipe right is Done, like `e`, in every lane; a long one
-  // trashes, except on Waiting rows where there is nothing of yours to
-  // trash. It runs through the archive verb, which the desk makes Done.
   const swipeActions = useCallback(
     (row: MessageRowView): SwipeMap =>
       index.get(row.id)?.lane === "waiting"
@@ -136,15 +113,11 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     [index],
   );
 
-  // A model is configured and the daemon can use it: rows reserve a line
-  // for their gist. Read here, once for the page; each row subscribes to
-  // its own gist.
   const gistModel = useGistModel();
   const gistLine = useLlmStatus().enabled && gistModel !== "disabled" && gistModel !== "blocked";
   const renderRow = useCallback(
     (row: MessageRowView, state: RowRenderState) => {
       const source = index.get(row.id);
-      // Spread, not an object prop: the row stays memoized across renders.
       return source ? (
         <DeskRow
           row={row}
@@ -159,8 +132,6 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     [doneRow, gistLine, index, memberships],
   );
 
-  // `w` was Done here too until it became Wake (blueprint 35); it says
-  // Done is `e` until the move in the key definition expires.
   const announceDoneMoved = useCallback(() => {
     const moved = movedOverlayKey("desk", "w");
     if (moved) useKeyScope.getState().showMoved("Done", moved.keys?.[0] ?? null);
@@ -223,7 +194,6 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
   );
 }
 
-/** The greeting, whose counts double as links to each lane in full. */
 function deskHeading(desk: Desk, basePath: string) {
   const headline = deskHeadline(desk);
   const content = (
@@ -253,7 +223,6 @@ function deskHeading(desk: Desk, basePath: string) {
   return { content, purpose: headline.sub };
 }
 
-/** Everything that is not work, as one quiet line of links. */
 function Elsewhere({ counts }: { counts: DeskElsewhere }) {
   const links = elsewhereLinks(counts);
   if (links.length === 0) return null;
@@ -325,7 +294,6 @@ function ClearDesk({
   );
 }
 
-/** "Next thing due: Mon, notes to nora@…" when a promise of yours is open. */
 function NextDue() {
   const next = useNextPromise();
   if (!next) return null;

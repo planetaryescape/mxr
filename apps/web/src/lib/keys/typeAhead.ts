@@ -1,11 +1,3 @@
-/*
- * A palette opened from a key takes a frame or two to mount and focus its
- * field, and people type straight on ("⌘K settings"). Keys typed in that
- * gap land on the page and are lost (the dispatcher is suspended while the
- * palette is open). Hold them, then type them into the first text field
- * that takes focus.
- */
-
 const HOLD_MS = 1500;
 
 function isTextField(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
@@ -15,7 +7,6 @@ function isTextField(target: EventTarget | null): target is HTMLInputElement | H
   );
 }
 
-/** Insert text the way typing would, so React and cmdk see an input event. */
 function typeInto(field: HTMLInputElement | HTMLTextAreaElement, text: string): void {
   const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement;
   const setValue = Object.getOwnPropertyDescriptor(proto.prototype, "value")?.set;
@@ -28,8 +19,6 @@ let release: (() => void) | null = null;
 export function holdTypeAhead(target: Window = window): void {
   release?.();
   let held = "";
-  // "⌘K arch⏎" typed in one go: Enter must pick from the filtered list,
-  // not reach the page (or an unfiltered palette) ahead of the letters.
   let enterHeld = false;
   const onKeyDown = (event: KeyboardEvent) => {
     if (isTextField(event.target)) {
@@ -52,7 +41,6 @@ export function holdTypeAhead(target: Window = window): void {
     const enter = enterHeld;
     stop();
     if (text) typeInto(field, text);
-    // Let the list filter on the typed text before choosing from it.
     if (enter) {
       setTimeout(() =>
         field.dispatchEvent(

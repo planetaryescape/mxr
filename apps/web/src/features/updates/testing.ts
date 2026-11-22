@@ -1,5 +1,3 @@
-/* Fixtures for Updates' tests, shaped like the daemon's digest. */
-
 import type { UpdateLine, UpdatesDigest } from "./api";
 
 export function lineFixture(overrides: Partial<UpdateLine> = {}): UpdateLine {

@@ -1,11 +1,3 @@
-/*
- * The wire: one line per step in the daemon's words, a verb that changes
- * tense when the step ends. While a turn runs the lines show under your
- * message; when it ends they fold to one line that always opens, and every
- * step opens to what it found. The exact call is one more click, under
- * "Details" (docs/blueprint/29 "Steps are wire lines").
- */
-
 import { useState } from "react";
 import { assistantToast } from "./assistantToast";
 import type { AssistantStepRows } from "./api";
@@ -68,7 +60,6 @@ export function Steps({
   );
 }
 
-/** "3 steps · 14 found · 1 change waiting", with failures in danger. */
 function FoldedLine({ items, onOpen }: { items: ToolCallItem[]; onOpen: () => void }) {
   const sum = foldSummary(items);
   return (
@@ -88,7 +79,6 @@ function FoldedLine({ items, onOpen }: { items: ToolCallItem[]; onOpen: () => vo
   );
 }
 
-/** The id a mail change can be undone with, from its step's result. */
 export function mutationIdOf(item: ToolCallItem): string | null {
   if (item.state !== "approved" && item.state !== "auto_approved") return null;
   const match = /"mutation_id"\s*:\s*"([^"]+)"/.exec(item.result ?? "");
@@ -107,7 +97,6 @@ function Step({ item, conversationId }: { item: ToolCallItem; conversationId: st
         <button
           type="button"
           aria-expanded={open}
-          // The model's own reason stays as the tooltip; the daemon's words are the title.
           title={item.reason || undefined}
           onClick={() => setOpen((value) => !value)}
           className={cn(
@@ -167,7 +156,6 @@ function UndoStep({ mutationId }: { mutationId: string }) {
 
 type Readout = NonNullable<ToolCallItem["readout"]>;
 
-/** What a step found, then the exact call under "Details". */
 function StepDetails({ item, conversationId }: { item: ToolCallItem; conversationId: string }) {
   return (
     <div className="mt-1 mb-2 ml-5 space-y-2">
@@ -214,7 +202,6 @@ function ReadoutView({
   );
 }
 
-/** The exact call and the start of its result, for when the words aren't enough. */
 function Details({ item }: { item: ToolCallItem }) {
   const [open, setOpen] = useState(false);
   if (!item.result && !item.arguments) return null;

@@ -28,7 +28,6 @@ test("keyboard-only triage: open, archive-and-advance, find it in All Mail, undo
   await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
   const archivedName = stableRowName((await rowById(page, first!).getAttribute("aria-label"))!);
 
-  // Archive reviews first and submits exactly what the daemon reviewed.
   const reviewResponse = page.waitForResponse((response) =>
     response.url().endsWith("/archive-operations/preview"),
   );
@@ -54,7 +53,6 @@ test("keyboard-only triage: open, archive-and-advance, find it in All Mail, undo
     reviewed.operation.items.map((item) => item.message_id),
   );
 
-  // The reader advances after the Archive operation completes.
   await expect(page).not.toHaveURL(openedUrl);
   await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
   await expect(rowById(page, first!)).toHaveCount(0);
@@ -62,7 +60,6 @@ test("keyboard-only triage: open, archive-and-advance, find it in All Mail, undo
 
   await pressSequence(page, "g", "a");
   await expect(page).toHaveURL(/\/m\/archive$/);
-  // All Mail titles a conversation by its latest message, which may be a "Re:".
   await expect(
     mailList(page)
       .getByRole("option", { name: conversationPattern(archivedName) })

@@ -34,7 +34,6 @@ describe("refocusPaneAfter", () => {
     const reader = document.querySelector<HTMLElement>("article")!;
     reader.focus();
 
-    // The reader closes: its pane leaves the page with focus inside.
     await refocusPaneAfter(Promise.resolve().then(() => reader.remove()));
 
     expect(document.activeElement).toBe(document.querySelector("[data-mode-pane]"));

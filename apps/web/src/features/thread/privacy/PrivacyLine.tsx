@@ -1,9 +1,3 @@
-/*
- * One quiet line under a message header saying what the reader blocked and
- * from whom, with the way to load the images. Nothing when nothing was
- * blocked.
- */
-
 import { ShieldCheck } from "lucide-react";
 import { useMemo } from "react";
 
@@ -24,7 +18,6 @@ export function PrivacyLine({
   onShowImages: () => void;
   senderEmail: string | null;
   onAlwaysAllowSender: (email: string) => void;
-  /** The shortcut shown beside "Show images"; null where that key does something else. */
   showImagesKey?: string | null;
 }) {
   const content = useMemo(() => analyzeBlockedContent(html), [html]);

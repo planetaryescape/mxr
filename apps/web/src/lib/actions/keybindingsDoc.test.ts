@@ -21,7 +21,6 @@ describe("web keybindings reference", () => {
     const doc = readFileSync(DOC, "utf8");
     const start = doc.indexOf(START);
     const end = doc.indexOf(END);
-    // A missing marker means the generated section was deleted from keybindings.md.
     expect(start).toBeGreaterThan(-1);
     const generated = renderKeybindingsMarkdown();
     const current = doc.slice(start + START.length, end).trim();

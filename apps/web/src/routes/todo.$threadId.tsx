@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ThreadPane } from "@/features/thread/ThreadPane";
 
-/** Opened from a row: the link it is about, to mark in its email. */
 export interface TodoThreadSearch {
   link?: string;
   mid?: string;

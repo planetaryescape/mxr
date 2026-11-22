@@ -1,17 +1,3 @@
-//! The app menu, built from the key definition (`crates/keymap/keymap.toml`,
-//! blueprint 35, D169) so its commands are the web app's actions.
-//!
-//! A command's title is its action's label and its id is the action id.
-//! Choosing it sends the id to the web app, which runs it through the action
-//! registry as a key press would (`apps/web/src/hooks/useDesktopMenu.ts`).
-//! macOS App Shortcuts rebinds a menu command by its title, so titles stay
-//! the definition's labels and never carry a key.
-//!
-//! Only commands whose key is already a modifier chord get an accelerator.
-//! A menu can't take a bare letter or a `g` sequence, and giving every verb
-//! Command plus its letter would take keys the web composer and text fields
-//! need (⌘B bold, ⌘Z undo typing). The single keys keep working in the page.
-
 use serde::Deserialize;
 use std::sync::OnceLock;
 use tauri::menu::{Menu, MenuItem, Submenu, SubmenuBuilder, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
@@ -19,7 +5,6 @@ use tauri::{AppHandle, Runtime, Url};
 
 const DEFINITION: &str = include_str!("../../../../crates/keymap/keymap.toml");
 
-/// The Message menu: the mail verbs, grouped as Mail and Gmail group them.
 const MESSAGE: &[&[&str]] = &[
     &["mail.reply", "mail.reply-all", "mail.forward"],
     &["mail.archive", "mail.snooze", "modes.move", "mail.move"],
@@ -27,14 +12,11 @@ const MESSAGE: &[&[&str]] = &[
     &["mail.trash"],
 ];
 
-/// The View menu's commands: ways in to the rest of the app.
 const VIEW: &[&[&str]] = &[
     &["shell.command-palette", "assistant.toggle"],
     &["shell.help"],
 ];
 
-/// Command-key chords the standard menus or macOS already own (the
-/// blueprint's ⌘W, ⌘N, ⌘Q and ⌘, plus the Edit, Hide and Minimize keys).
 const RESERVED: &[&str] = &["a", "c", "v", "x", "z", "w", "n", "q", ",", "h", "m"];
 
 #[derive(Debug, Deserialize)]
@@ -64,7 +46,6 @@ impl DefinedAction {
         self.scopes.is_empty() || self.scopes.iter().any(|scope| scope == "global")
     }
 
-    /// The key after `g` when this action's primary key goes somewhere.
     fn place_key(&self) -> Option<&str> {
         self.keys.first()?.strip_prefix("g ")
     }
@@ -96,7 +77,6 @@ pub struct Command {
     pub accelerator: Option<String>,
 }
 
-/// A menu of commands, split into groups by separators.
 #[derive(Debug)]
 pub struct Section {
     pub title: &'static str,
@@ -128,9 +108,6 @@ fn listed(groups: &[&[&str]]) -> Vec<Vec<Command>> {
         .collect()
 }
 
-/// Go is every place `g` reaches from anywhere, in the definition's order:
-/// mail places and modes, then the tools behind a capital (D166). The saved
-/// searches' digits and `g g` (top of the list) aren't places.
 fn go() -> Vec<Vec<Command>> {
     let places = || {
         definition()
@@ -153,7 +130,6 @@ fn go() -> Vec<Vec<Command>> {
     ]
 }
 
-/// The menus built from the definition, in menu-bar order.
 pub fn sections() -> &'static [Section] {
     static SECTIONS: OnceLock<Vec<Section>> = OnceLock::new();
     SECTIONS.get_or_init(|| {
@@ -174,7 +150,6 @@ pub fn sections() -> &'static [Section] {
     })
 }
 
-/// True for a menu id that names a web action.
 pub fn is_command(id: &str) -> bool {
     sections()
         .iter()
@@ -206,7 +181,6 @@ fn submenu<R: Runtime>(app: &AppHandle<R>, section: &Section) -> tauri::Result<S
             )?);
         }
     }
-    // macOS adds Enter Full Screen to a View menu; keep it where it expects.
     #[cfg(target_os = "macos")]
     if section.title == "View" {
         builder = builder.separator().fullscreen();
@@ -214,8 +188,6 @@ fn submenu<R: Runtime>(app: &AppHandle<R>, section: &Section) -> tauri::Result<S
     builder.build()
 }
 
-/// The standard App, File, Edit, Window and Help menus around the
-/// definition's View, Go and Message, as Tauri's default menu lays them out.
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let menu = Menu::new(app)?;
     #[cfg(target_os = "macos")]
@@ -280,12 +252,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Ok(menu)
 }
 
-/// Script that runs a menu command in the web app. The app sets
-/// `mxrMenuReady` once it listens; until then, or on the down page, the
-/// command does nothing rather than navigate away from what is open.
 pub fn menu_action_script(bridge: &Url, id: &str) -> Option<String> {
     let origin = bridge.origin().ascii_serialization();
-    // JSON strings are valid JS string literals, so neither value can break out.
     let origin = serde_json::to_string(&origin).ok()?;
     let id = serde_json::to_string(id).ok()?;
     Some(format!(
@@ -317,8 +285,6 @@ mod tests {
             .collect()
     }
 
-    /// The listed menus can't drift from the definition: an id that was
-    /// renamed or lost its web handler would drop out of its menu silently.
     #[test]
     fn every_listed_command_is_a_web_action() {
         for ids in MESSAGE.iter().chain(VIEW) {

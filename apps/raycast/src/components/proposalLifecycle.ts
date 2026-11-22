@@ -22,7 +22,6 @@ export function shouldDiscardReply(handedOver: boolean, proofOpen: boolean): boo
   return !handedOver && !proofOpen;
 }
 
-/** Owns one in-flight UI operation; an old completion cannot release a new one. */
 export class OwnedRequestGate {
   private generation = 0;
   private active?: number;

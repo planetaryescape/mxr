@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-/**
- * Generates per-command Markdown pages for the mxr CLI reference,
- * driven by the captured `--help` snapshots in
- * `crates/daemon/tests/integration/snapshots/integration__cli_help__*.snap`.
- *
- * Output: site/src/content/docs/reference/cli/<command>.md (+ index.md).
- * Each page is structured: synopsis, description, arguments, options,
- * subcommands. Sub-subcommands (e.g. `accounts add`) become `### add`
- * sections under the parent page.
- *
- * Run as a `prebuild` step. Idempotent and pure: deletes the output
- * directory and rewrites it from scratch each invocation.
- */
 
 import { existsSync, readFileSync, readdirSync, realpathSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -25,7 +12,6 @@ const PREFIX = 'integration__cli_help__cli_help_';
 const SAVED_DRAFT_OWNER_GUIDANCE = 'For a saved draft, preview it with `mxr send DRAFT_ID --dry-run --format json`, then send with `--expected-revision REVISION_FROM_PREVIEW`, `--operation-id OPERATION_ID_FROM_PREVIEW` and `--expected-workspace \'<OWNER_JSON_FROM_PREVIEW>\'`. Use that same quoted owner for `mxr send-outcome` and for scheduling with `--at TIME`.';
 
 const COMMAND_EXAMPLES = {
-  // Shared with the clap-only example test; existing examples stay inline.
   ...JSON.parse(readFileSync(new URL('./cli-reference-examples.json', import.meta.url), 'utf8')),
   serve: {
     use: 'Preview and manage the local private HTTPS host, its owned user service, pairing approvals and registered clients. Host commands use the explicit local profile. Setup, start, stop, approval and revocation preview before --confirm; compare the full pairing challenge and requested grants before approving.',
@@ -756,9 +742,7 @@ export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) 
   const rootParsed = parseHelpText(rootBody);
   const rootCommands = parseSubcommandBlock(rootParsed.sections.Commands || '');
 
-  // Usage supplies canonical spelling even for legacy snapshot filenames such
-  // as daemon_dial_stdio, or snapshots captured through a command alias.
-  const groups = new Map(); // commandName -> { own?: parsed, subs: { name, parsed }[] }
+  const groups = new Map();
 
   for (const file of files) {
     if (file === rootFile) continue;
@@ -779,9 +763,6 @@ export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) 
     }
   }
 
-  // Validate the whole visible tree before touching the last generated output.
-  // Commands sections contain canonical visible children; clap's generated
-  // `help` command has no application reference page or dedicated snapshot.
   function requireHelp(parsed, path) {
     for (const child of parseSubcommandBlock(parsed.sections.Commands || '')) {
       if (child.name === 'help') continue;
@@ -799,8 +780,6 @@ export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) 
   if (!rootParsed.usage) throw new Error('cli_help_root.snap has no Usage line.');
   requireHelp(rootParsed, []);
 
-  // Wipe and recreate the output directory, but preserve handwritten
-  // sibling pages like `concepts.md` that aren't covered by snapshots.
   const PRESERVE = new Set(['concepts.md']);
   mkdirSync(outDir, { recursive: true });
   for (const f of readdirSync(outDir)) {
@@ -808,7 +787,6 @@ export function generateReference(snapshotDir = SNAPSHOT_DIR, outDir = OUT_DIR) 
     rmSync(join(outDir, f), { recursive: true, force: true });
   }
 
-  // ------- Emit per-command pages -------
   const commandsForIndex = [];
 
   for (const cmd of rootCommands) {
@@ -840,12 +818,11 @@ description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
 
     md += `\n## See also\n\n- [CLI overview](/reference/cli/): full command index\n- [Concepts](/reference/cli/concepts/): query operators, search modes, JSON shapes\n- [Automation contract](/guides/automation-contract/): which commands support \`--format json\`, \`--dry-run\`, stdin\n`;
 
-    const slug = cmd.name; // already in hyphenated form from root parse
+    const slug = cmd.name;
     writeFileSync(join(outDir, `${slug}.md`), md);
     commandsForIndex.push({ name: cmd.name, summary });
   }
 
-  // ------- Index page -------
   const groupsByLetter = new Map();
   for (const c of commandsForIndex) {
     const letter = c.name[0].toUpperCase();

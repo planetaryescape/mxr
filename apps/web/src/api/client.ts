@@ -1,16 +1,3 @@
-/*
- * Typed HTTP client over openapi-fetch with auth middleware that pulls
- * the bearer token from localStorage. Surfaces a `client` for queries
- * and an `apiFetch` raw helper for endpoints that aren't yet typed by
- * the generated OpenAPI surface.
- *
- * Same-machine bootstrap: when no token is present, or when a request
- * returns 401, we transparently retry once via `tryLocalHandshake()`
- * (see `@/lib/localHandshake`). On loopback with `[bridge].auto_local_token`
- * enabled (default), this means the SPA self-authenticates without ever
- * showing the paste-token panel.
- */
-
 import {
   assertTarget,
   assertWorkspaceBinding,
@@ -35,13 +22,6 @@ export class UnauthorizedError extends Error {
   }
 }
 
-/**
- * A non-2xx bridge response. The bridge answers failures with a JSON body
- * carrying a human `error` string, sometimes a machine-readable `code`, and
- * sometimes extra fields a caller can act on. Unwrapping it here means callers
- * render the daemon's own sentence instead of `502 Bad Gateway: {"error":…}`,
- * and can branch on `code` rather than matching message text.
- */
 export class BridgeRequestError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -56,13 +36,6 @@ export class BridgeRequestError extends Error {
   }
 }
 
-/**
- * No answer from mxr's daemon: the bridge is down with it, or up but unable
- * to reach its socket, or a proxy in front of it gave up. The current step
- * has no usable response. Compose operations may have persisted
- * locally before a later step lost its connection; callers must inspect
- * confirmed acceptance evidence on the cause.
- */
 export class DaemonUnavailableError extends Error {
   constructor(options?: { cause?: unknown }) {
     super("Couldn't reach mxr's daemon. It may be stopped or restarting.", options);
@@ -73,11 +46,6 @@ export class DaemonUnavailableError extends Error {
 type ReachabilityListener = (reachable: boolean) => void;
 const reachabilityListeners = new Set<ReachabilityListener>();
 
-/**
- * Hear whether each bridge request reached the daemon. `lib/daemonAvailability`
- * turns this into the app's one "is the daemon up" state; it lives here as a
- * listener so the client doesn't import the state it feeds.
- */
 export function onDaemonReachability(listener: ReachabilityListener): () => void {
   reachabilityListeners.add(listener);
   return () => reachabilityListeners.delete(listener);
@@ -100,11 +68,9 @@ async function sendToBridge(
     res = await fetch(`${target}${path}`, init);
   } catch (error) {
     if (init.signal?.aborted || error instanceof WorkspaceConflictError) throw error;
-    // fetch only rejects when no response came back at all.
     reportReachability(false);
     throw new DaemonUnavailableError({ cause: error });
   }
-  // A marked tailnet denial is a network boundary, not a permission verdict.
   if (
     res.headers.get(OFFLINE_HEADER) === "1" ||
     res.headers.get("x-mxr-tailnet-required") === "1"
@@ -114,11 +80,6 @@ async function sendToBridge(
   return res;
 }
 
-/**
- * `connect` is the bridge unable to reach the daemon's socket. An empty 5xx
- * never comes from the bridge, which always says what failed; it is the dev
- * proxy (or another in front of the bridge) finding nothing to talk to.
- */
 async function failureFrom(res: Response): Promise<Error> {
   const text = await res.text().catch(() => "");
   const failure = bridgeRequestError(res.status, res.statusText, text);
@@ -266,7 +227,6 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
   return result;
 }
 
-/** Like `apiFetch`, for endpoints that return bytes (inline images). */
 export async function apiFetchBlob(
   path: string,
   opts: { signal?: AbortSignal } = {},

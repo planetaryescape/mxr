@@ -101,7 +101,6 @@ describe("Topbar route changes", () => {
       </QueryClientProvider>,
     );
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    // Before the page publishes, the slug is the fallback.
     await waitFor(() => expect(breadcrumb).toHaveTextContent("SettingsLLM"));
 
     act(() => usePageTitleStore.getState().setTitle("Language model"));

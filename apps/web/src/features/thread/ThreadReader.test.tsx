@@ -128,7 +128,6 @@ describe("ThreadReader", () => {
       limit: 50,
     });
 
-    // The prepended page adds 300px above the reader.
     height = 1300;
     await act(async () => {
       resolveEarlier?.({

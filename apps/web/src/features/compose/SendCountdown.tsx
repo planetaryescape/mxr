@@ -1,10 +1,3 @@
-/*
- * The undo-send toast's live parts: seconds left (tabular, so the digits
- * don't jiggle) and a thin bar that drains over the window. The bar is a
- * transform animation started once; the number ticks from the deadline, so
- * a slow frame never makes it drift from the real send time.
- */
-
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -36,8 +29,6 @@ export function SendCountdownBar({ seconds }: { seconds: number }) {
   );
 }
 
-/** The undo-send toast: live seconds, the draining bar, Undo. Returns the
- * toast id so the send can dismiss it the moment it fires. */
 export function showSendCountdown({
   seconds,
   summary,

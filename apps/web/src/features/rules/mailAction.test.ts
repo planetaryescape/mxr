@@ -2,9 +2,6 @@
 
 import { describe, expect, test } from "vitest";
 
-// We import via a small re-export to avoid pulling React into a unit test.
-// The parser lives inline in RuleEditorRoute today; mirror its contract here.
-
 type SupportedRuleAction =
   | { kind: "archive" }
   | { kind: "trash" }

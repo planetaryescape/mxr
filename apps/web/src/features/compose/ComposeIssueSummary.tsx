@@ -1,9 +1,3 @@
-/*
- * One compact line of compose validation, shown next to the send bar.
- * Blocking issues (send refused) and warnings (send allowed) stay visually
- * distinct: different icon, colour and lead-in.
- */
-
 import { AlertTriangle, CircleX } from "lucide-react";
 
 import type { ComposeIssue } from "./api";

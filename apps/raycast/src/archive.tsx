@@ -12,7 +12,6 @@ import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 import { keyFor } from "./components/keys";
 
-/** What a record is, at a glance. */
 const KIND_ICONS = {
   receipt: Icon.Receipt,
   order: Icon.Box,

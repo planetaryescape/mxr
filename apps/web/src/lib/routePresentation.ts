@@ -49,7 +49,6 @@ const SETTINGS_TITLES: Record<string, string> = {
   voice: "Voice settings",
 };
 
-/** Titles stay at the page level so mail subjects and sender names stay private. */
 export function routeTitleForPath(pathname: string): string {
   const [section, subsection] = pathname.split("/").filter(Boolean);
   if (!section) return "Now";

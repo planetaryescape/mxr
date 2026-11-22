@@ -3,27 +3,17 @@ import { undoMutation } from "../bridge/modes";
 import { keyFor } from "./keys";
 
 export interface Previewed<R> {
-  /** Confirm-dialog title, e.g. "Done here?" */
   title: string;
-  /** Button that commits. */
   confirm: string;
-  /** The dry run: the same selection the real change will act on. */
   preview: () => Promise<R>;
   commit: () => Promise<R>;
-  /** What the daemon says the change will do, for the dialog. */
   describe: (preview: R) => string;
-  /** Items the daemon reports it could not change (HTTP 200 is not every
-   * item succeeding). */
   failures?: (result: R) => string[];
-  /** The undo handle of a committed change, when the daemon kept one. */
   undoId?: (result: R) => string | null | undefined;
-  /** Toast title once it is done. */
   done: string;
-  /** Refresh the list after the change, or after an undo. */
   refresh: () => void;
 }
 
-/** Preview a change, ask, commit, then offer Undo: the daemon's preview path. */
 export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
   const toast = await showToast({ style: Toast.Style.Animated, title: "Checking…" });
   try {
@@ -73,7 +63,6 @@ export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
   }
 }
 
-/** Per-item errors from the daemon's outcome lists. */
 export function itemErrors(items: { error?: string | null }[]): string[] {
   return items.flatMap((item) => (item.error ? [item.error] : []));
 }

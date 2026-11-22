@@ -10,7 +10,6 @@ import { longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
 import { SectionHeading } from "@/components/SectionHeading";
 import { StatusDot } from "@/components/StatusDot";
 
-/** An unchecked money or date field: an open dot, never red. */
 export function OpenDot({ label = "unchecked" }: { label?: string }) {
   return (
     <StatusDot
@@ -24,7 +23,6 @@ export function OpenDot({ label = "unchecked" }: { label?: string }) {
   );
 }
 
-/** "from schema.org markup · checked", with the words it was read from on hover. */
 export function Provenance({ field }: { field: RecordField }) {
   const evidence = field.evidence && field.evidence !== field.value ? field.evidence : null;
   return (
@@ -38,11 +36,6 @@ export function Provenance({ field }: { field: RecordField }) {
   );
 }
 
-/**
- * One ledger line on `Row` (D129): the amount leads, as the fields you came
- * for are the amount and who it was with; the date and a PDF mark sit in the
- * trail. Whether the amount is unchecked is said in the card, per field.
- */
 export const LedgerRow = memo(function LedgerRow({
   record,
   index,
@@ -57,7 +50,6 @@ export const LedgerRow = memo(function LedgerRow({
   index: number;
   lit: boolean;
   via: LampVia;
-  /** The best match of a listed query. */
   best?: boolean;
   onSelect: (record: RecordData) => void;
   onOpen: (record: RecordData) => void;
@@ -125,7 +117,6 @@ export const LedgerRow = memo(function LedgerRow({
   );
 });
 
-/** The card's field order: what you came for first, then the dates. */
 const CARD_ORDER = [
   "reference",
   "amount",
@@ -159,10 +150,6 @@ function CardLine({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/**
- * The record card: every field with where it came from, its documents and
- * the emails it was built from. The email is evidence, one key away.
- */
 export function RecordCard({
   record,
   onCopy,
@@ -291,11 +278,6 @@ export function RecordCard({
   );
 }
 
-/**
- * The answer card: the field the query asked for, where it came from, and
- * the document and email one key away. When no record matches, the
- * daemon's fallback says so before showing what it found in all mail.
- */
 export function AnswerCard({
   answer,
   onCopy,
@@ -307,7 +289,6 @@ export function AnswerCard({
   onCopy: (text: string) => void;
   onOpenDocument: (record: RecordData) => void;
   onOpenEmail: (record: RecordData) => void;
-  /** List every match in place of the ledger. */
   onShowAll: () => void;
 }) {
   const card = answer.answer;
@@ -412,11 +393,6 @@ export function AnswerCard({
   );
 }
 
-/**
- * Over a listed query's matches: what they are, how many, what they add
- * up to and when, the issuer's page when they share one, and the way back
- * to the whole ledger.
- */
 export function MatchesHeader({
   list,
   onClear,

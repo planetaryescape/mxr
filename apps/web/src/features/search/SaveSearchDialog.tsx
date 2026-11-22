@@ -1,5 +1,3 @@
-/* Name-and-save dialog for the current search query. */
-
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";

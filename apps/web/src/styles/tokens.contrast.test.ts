@@ -5,12 +5,6 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "vitest";
 
-/*
- * docs/blueprint/27: "Faint is the floor for any text: every tier passes
- * 4.5:1 on room, desk and lamp." This reads the role values out of
- * themes.generated.css, so editing a theme without checking contrast fails here.
- */
-
 const css = readFileSync(fileURLToPath(new URL("./themes.generated.css", import.meta.url)), "utf8");
 
 const THEMES = {
@@ -38,7 +32,6 @@ const linear = (channel: number) =>
   channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 
-/** Linear sRGB from a hex, hsl() or oklch() colour as written in tokens.css. */
 function toLinearRgb(value: string): [number, number, number] {
   const hex = /^#([0-9a-f]{6})$/i.exec(value);
   if (hex?.[1]) {

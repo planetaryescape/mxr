@@ -1,10 +1,3 @@
-/*
- * The eight account colour slots (docs/blueprint/33). The daemon sends the
- * name, never a hex value, and each client maps it to its own theme. This
- * module has no dependencies so the app can import it without the theme
- * generator, which only the build uses.
- */
-
 export const ACCOUNT_SLOTS = [
   "sky",
   "amber",

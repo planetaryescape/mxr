@@ -55,8 +55,6 @@ export function ComposeTopBar({
   onFromChange,
 }: ComposeTopBarProps) {
   return (
-    // The host's chrome already names the draft ("Reply all"); this row
-    // is the From line, aligned with To and Subject below it.
     <header className="shrink-0 border-b border-border" aria-label={title}>
       <div className="mx-auto flex h-11 w-full max-w-[860px] items-center gap-3 px-5">
         <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">From</span>
@@ -127,7 +125,6 @@ export function FromControl({
   fromAddress: string;
   onFromChange: (email: string) => void;
 }) {
-  // The From line always names the account: one account or several, with one address or aliases (docs/blueprint/33).
   const identities = useAccountIdentities();
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
@@ -135,7 +132,6 @@ export function FromControl({
   const sole = accounts.length === 1 ? selected : undefined;
   const soleChip = sole ? identities.byId.get(sole.account_id) : undefined;
 
-  // Single account, single address: nothing to choose, so the address shows beside the account.
   if (sole && !hasAliases) {
     const senderAddress = fromAddress || sole.email;
     return (

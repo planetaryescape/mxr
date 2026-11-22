@@ -33,7 +33,6 @@ describe("shortcutSections", () => {
     expect(titles[0]).toBe("Mail list (this view)");
     expect(titles[1]).toBe("Mail actions");
     expect(titles.slice(2, 5)).toEqual(["Everywhere", "Search", "Go to"]);
-    // Other panes follow for discovery, without the "this view" tag.
     expect(titles).toContain("Reader");
     expect(titles.indexOf("Reader")).toBeGreaterThan(titles.indexOf("Go to"));
   });
@@ -44,11 +43,9 @@ describe("shortcutSections", () => {
     const now = sections.find((section) => section.id === "now")!;
 
     expect(titles[0]).toBe("Now (this view)");
-    // b and X work in Now; help said nothing of them there.
     expect(now.hints.map((item) => item.id)).toEqual(
       expect.arrayContaining(["mail.snooze", "modes.move"]),
     );
-    // Mail actions' e is Archive; in Now e is Done, so they come after Go to.
     expect(titles.indexOf("Mail actions")).toBeGreaterThan(titles.indexOf("Go to"));
   });
 

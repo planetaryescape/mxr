@@ -8,7 +8,6 @@ interface QueryClientOptions {
 
 let activeClient: QueryClient | null = null;
 
-/** Set by App.tsx (and tests) so action-registry runners can read cache state. */
 export function setActiveQueryClient(client: QueryClient): void {
   activeClient = client;
 }
@@ -17,12 +16,6 @@ export function getActiveQueryClient(): QueryClient | null {
   return activeClient;
 }
 
-/**
- * Retry what can change on its own (the daemon restarting, a timeout, a
- * 5xx), not answers that won't: a missing or malformed resource (4xx other
- * than 408 and 429) or an expired token. Retrying a not-found thread only
- * delayed its error by seconds.
- */
 export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
   if (err instanceof UnauthorizedError) return false;
   if (err instanceof BridgeRequestError && err.code === "offline_not_cached") return false;
@@ -47,7 +40,6 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     }),
     defaultOptions: {
       queries: {
-        // The first read must reach the service worker even without a network.
         networkMode: "offlineFirst",
         staleTime: 30_000,
         gcTime: 5 * 60_000,
@@ -56,9 +48,6 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
       },
       mutations: {
         retry: false,
-        // While the daemon is down React Query counts as offline, and its
-        // default would park mutations and replay them on reconnect: a
-        // hidden queue. Fail at once instead; callers say what can't run.
         networkMode: "always",
       },
     },

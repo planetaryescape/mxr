@@ -1,11 +1,3 @@
-/*
- * Reply where reading ends: a quiet field after the last message. Clicking
- * or focusing it opens the inline composer in its place (the same command
- * as `r`); reply all and forward sit below it with their keys, and "Draft
- * in your voice" opens the reply with the composer's "Draft for me". Hidden
- * while the inline composer is open, since the composer is then right here.
- */
-
 import { PenLine } from "lucide-react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -19,10 +11,8 @@ export function ReplyField({
   canReplyAll,
   onDraftInVoice,
 }: {
-  /** Who a reply goes to, e.g. "Maya". */
   name: string | null;
   canReplyAll: boolean;
-  /** Opens the reply with "Draft for me" expanded; only when a model is configured. */
   onDraftInVoice?: () => void;
 }) {
   const composing = useComposeUi((s) => s.intent !== null && s.surface === "inline");

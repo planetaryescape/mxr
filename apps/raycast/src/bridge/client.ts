@@ -3,9 +3,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** The daemon's default bridge port, used when it has not written its port file. */
 const DEFAULT_PORT = 42829;
-/** A first build of a mode view takes about a second on a large mailbox. */
 const TIMEOUT_MS = 20_000;
 
 interface Preferences {
@@ -36,25 +34,17 @@ async function readTrimmed(path: string): Promise<string | undefined> {
   }
 }
 
-/** Where the daemon's bridge listens, from the port file it writes on start. */
 export async function bridgeBase(): Promise<string> {
   const port = Number(await readTrimmed(join(dataDirectory(), "bridge-port")));
   return `http://127.0.0.1:${Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT}`;
 }
 
-/** The web app on the same port, by the name the daemon prints for it. */
 export async function webBase(): Promise<string> {
   return (await bridgeBase()).replace("127.0.0.1", "mxr.localhost");
 }
 
 let cachedToken: string | undefined;
 
-/**
- * The bridge token: the cached one, else the daemon's token file. After a
- * 401, `rejected` is the token that failed, so a rotated file is reread
- * first and the loopback handshake (which a daemon may turn off) is the
- * fallback, as it is for the web app.
- */
 async function token(base: string, rejected?: string): Promise<string> {
   if (cachedToken && cachedToken !== rejected) return cachedToken;
   const fromFile = await readTrimmed(join(dataDirectory(), "bridge-token"));
@@ -89,7 +79,6 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-/** Call the daemon's HTTP bridge and return its JSON body. */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const base = await bridgeBase();
   const attempt = async (bearer: string) =>

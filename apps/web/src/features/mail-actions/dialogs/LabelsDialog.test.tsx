@@ -89,7 +89,6 @@ function renderDialog() {
   );
 }
 
-/** "all", "some" or "none", as the checkbox glyph shows it. */
 async function presence(name: string) {
   const option = await screen.findByRole("option", { name: new RegExp(`^${name}`) });
   if (option.querySelector(".lucide-check")) return "all";
@@ -102,7 +101,6 @@ async function toggle(name: string) {
 }
 
 beforeEach(() => {
-  // cmdk measures its list and scrolls the active item into view.
   vi.stubGlobal(
     "ResizeObserver",
     class {

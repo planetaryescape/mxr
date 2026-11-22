@@ -74,7 +74,6 @@ function renderRoute(ids: string[]) {
 }
 
 beforeEach(() => {
-  // cmdk measures its list and scrolls the active item into view.
   vi.stubGlobal(
     "ResizeObserver",
     class {

@@ -1,9 +1,3 @@
-/*
- * Right-rail "Ask your archive": a question in, an answer with the
- * messages it came from out. Without a language model the daemon returns
- * the retrieved evidence instead of a written answer, and this says so.
- */
-
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
@@ -28,9 +22,6 @@ export function AskArchivePanel() {
   const askHeld = useHeldPending(ask.isPending);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Opened from the command palette, whose dialog hands focus back to its
-  // trigger as it closes, after this mounts. Take focus again once that
-  // settles so typing lands in the question, not on the page's keys.
   useEffect(() => {
     inputRef.current?.focus();
     const timer = setTimeout(() => {
@@ -55,7 +46,6 @@ export function AskArchivePanel() {
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
-            // Enter asks; Shift+Enter adds a line.
             if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
               event.preventDefault();
               submit();

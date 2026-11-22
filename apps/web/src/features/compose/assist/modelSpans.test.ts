@@ -4,7 +4,7 @@ import { addedSpans, carryModelSpans, keptRuns, mapModelSpans } from "./modelSpa
 
 describe("mapModelSpans", () => {
   const before = "Hi Pat,\n\nFriday works.\n\n-- \nBK";
-  const span = { start: 9, end: 20 }; // "Friday works"
+  const span = { start: 9, end: 20 };
 
   test("a span survives an edit that happens after it, and shifts past an edit before it", () => {
     const after = before.replace("-- \nBK", "-- \nBrian");
@@ -33,7 +33,6 @@ describe("addedSpans", () => {
   });
 
   test("a run past the inserted text is clipped to it", () => {
-    // The proof ends in a newline, which the insert drops.
     const pieces = [{ kind: "added" as const, text: "Hi\n", gap: null }];
     expect(addedSpans(pieces, 10, "Hi".length)).toEqual([{ start: 10, end: 12 }]);
   });
@@ -41,7 +40,6 @@ describe("addedSpans", () => {
 
 describe("carryModelSpans", () => {
   test("a span over kept text moves with it and keeps its mark", () => {
-    // Body "Friday works." with a signature below; the proof adds a greeting.
     const kept = keptRuns(
       [
         { kind: "added", text: "Hi Pat,\n\n" },

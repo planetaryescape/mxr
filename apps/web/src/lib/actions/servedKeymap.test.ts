@@ -117,7 +117,6 @@ describe("the keymap is not on the first-paint path", () => {
   });
 
   it("a later answer updates the registry and bumps the store's version", async () => {
-    // The app has painted with the defaults: the request lands afterwards.
     expect(boundTo("list", "e")).toBe("mail.archive");
     const before = useKeymapStore.getState().version;
     apiFetch.mockResolvedValue({

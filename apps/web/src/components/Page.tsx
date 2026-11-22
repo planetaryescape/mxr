@@ -9,13 +9,6 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { definedShortcut } from "@/lib/actions/definition";
 
-/**
- * Layout for every non-mail page (analytics, rules, accounts, settings,
- * diagnostics…): the page frame, one scroll container and one reading
- * width. Mail lists use ListWithReader instead. The header slots are
- * PageFrame's; `toolbar` is for the filters and pickers that used to crowd
- * the header and now sit at the top of the content.
- */
 export function Page({
   title,
   description,
@@ -30,17 +23,13 @@ export function Page({
   className,
 }: {
   title: string;
-  /** The frame's purpose line. */
   description?: ReactNode;
   eyebrow?: ReactNode;
   primary?: ReactNode;
   overflow?: readonly PageAction[];
-  /** Tabs or filters that belong to the header. */
   tabs?: ReactNode;
   freshness?: ReactNode;
-  /** Pickers and filters, at the top of the content. */
   toolbar?: ReactNode;
-  /** "default" 72rem, "narrow" 44rem for forms, "full" for dashboards. */
   width?: "narrow" | "default" | "full";
   children: ReactNode;
   className?: string;
@@ -97,7 +86,6 @@ export function Page({
   );
 }
 
-/** A titled block within a page, ruled rather than boxed (DESIGN.md: no cards). */
 export function PageSection({
   title,
   description,
@@ -127,7 +115,6 @@ export function PageSection({
   );
 }
 
-/** The look of one tab: Body, a signal underline when it is the page you are on. */
 export function pageTabClass(active: boolean): string {
   return cn(
     "type-body inline-flex h-8 shrink-0 items-center border-b-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal",
@@ -137,7 +124,6 @@ export function pageTabClass(active: boolean): string {
   );
 }
 
-/** Tab strip for page headers: real tabs semantics, a signal underline on the active tab. */
 export function PageTabs<T extends string>({
   value,
   tabs,

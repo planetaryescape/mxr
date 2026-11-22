@@ -45,7 +45,6 @@ interface SectionDef {
   description: string;
   icon: ComponentType<{ className?: string }>;
   render: () => ReactNode;
-  /** Old ids that still land here (palette actions, bookmarks). */
   aliases?: string[];
 }
 
@@ -153,13 +152,10 @@ function findSection(id: string): SectionDef | undefined {
   return SECTIONS.find((section) => section.id === id || section.aliases?.includes(id));
 }
 
-/** The phone's index: the list that drills into a section. Wide screens never show it. */
 export const SETTINGS_INDEX = "all";
 
 export function SettingsRoute() {
   const { section: requested } = useParams({ from: "/settings/$section" });
-  // md is where the sections become the page's tabs; below it they are a list
-  // that drills in. The app's rail is the only left navigation either way.
   const narrow = useMediaQuery("(max-width: 767px)");
   const section = findSection(requested);
 
@@ -198,11 +194,6 @@ export function SettingsRoute() {
   );
 }
 
-/**
- * Wide screens: the sections are the page's tabs, the selected one with the
- * underline. Thirteen tabs outrun the column at laptop widths, so the strip
- * scrolls, keeps the current tab in view and fades the edge it runs off.
- */
 function SectionTabs({ current }: { current: string }) {
   const strip = useRef<HTMLUListElement>(null);
   const tabs = useScrollFade<HTMLElement>();
@@ -251,7 +242,6 @@ function BackToIndex() {
   );
 }
 
-/** Phones: one list of sections; each drills in and the eyebrow comes back. */
 function SectionIndex() {
   return (
     <Page title="Settings" description="Pick a section." width="narrow" className="px-0">

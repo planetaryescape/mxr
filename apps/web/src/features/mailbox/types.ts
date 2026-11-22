@@ -19,20 +19,10 @@ export interface MessageRowView {
   unread: boolean;
   starred: boolean;
   has_attachments: boolean;
-  /// Tri-state link-density classification computed at sync time. Drives the
-  /// `🔗` indicator next to the subject. Absent for older payloads — treat as
-  /// `"none"` when missing.
   link_density?: "none" | "some" | "heavy";
   message_count?: number | null;
-  /** Thread rows: every message in the thread, so actions cover the whole
-   * conversation. Absent on message rows. */
   message_ids?: string[] | null;
-  /**
-   * Thread rows: every starred message of the conversation, in the list or
-   * not (a starred reply in Sent). The row is starred when any is.
-   */
   starred_message_ids?: string[] | null;
-  /** Thread rows: up to five participants. */
   participants?: AddressView[] | null;
   attachment_id?: string | null;
   attachment_filename?: string | null;
@@ -54,11 +44,8 @@ export interface MessageGroupView {
   id: string;
   label: string;
   rows: MessageRowView[];
-  /** Shown beside the label when the group is a sample of something bigger. */
   count?: number;
-  /** Where the rest of the group lives, when only some rows are shown. */
   more?: { label: string; href: string };
-  /** A way to work through the whole group, e.g. in focus mode. */
   action?: { label: string; href: string; keys?: string };
 }
 
@@ -82,7 +69,6 @@ export interface SidebarItem {
   total?: number;
   active?: boolean;
   lens?: SidebarLens;
-  /** A user label's account, sent when the view mixes accounts. */
   accountId?: string | null;
 }
 
@@ -104,11 +90,9 @@ export interface ShellResponse {
   sidebar?: { sections?: SidebarSection[] };
 }
 
-/** Present only when the daemon answered from SQLite because its index was down. */
 export interface SearchDegraded {
   reason: "index_stopped" | "index_rebuilding";
   searched_fields: string[];
-  /** The one line to show above the results, as the daemon words it. */
   notice: string;
 }
 
@@ -120,7 +104,6 @@ export interface MailboxResponse extends ShellResponse {
     has_more?: boolean;
     next_offset?: number | null;
     groups: MessageGroupView[];
-    /** Set when a saved-search or subscription lens was answered from the limited search. */
     degraded?: SearchDegraded;
   };
 }
@@ -210,8 +193,6 @@ export interface ThreadView {
   id: string;
   latest_date: string;
   message_count: number;
-  /** Every message in the conversation, oldest first. Actions cover these
-   * even when the reader has only loaded a page. */
   message_ids?: string[];
   participants: AddressView[];
   snippet: string;
@@ -233,16 +214,10 @@ export interface ThreadResponse {
   summary?: ThreadSummaryViewData | null;
   reader_mode?: string | null;
   right_rail?: { title?: string; items?: string[] };
-  /** Every message in the conversation, windowed or not. */
   total_messages?: number;
-  /** Older messages sit before `messages[0]`. */
   has_earlier?: boolean;
-  /** Cursor for the next older page: `messages[0].id`. */
   earlier_before?: string | null;
-  /** Newer messages sit after `messages.at(-1)`. Only a deep link to an old
-   * message opens with this true. */
   has_later?: boolean;
-  /** Cursor for the next newer page: `messages.at(-1).id`. */
   later_after?: string | null;
 }
 
@@ -262,7 +237,6 @@ export interface MutationResult {
   failed: number;
   accounts?: AccountMutationResult[];
   mutation_id?: string;
-  /** Batch jobs: one undo id per daemon chunk. */
   undo_ids?: string[];
 }
 

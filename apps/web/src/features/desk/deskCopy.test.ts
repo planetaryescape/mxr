@@ -5,7 +5,6 @@ import { formatTime } from "@/lib/format";
 
 import { deskHeadline, rowAge, rowPerson, } from "./deskCopy";
 
-// Saturday 26 September 2026, 10:00 local time.
 const NOW = new Date(2026, 8, 26, 10, 0, 0);
 
 function lane(total: number): DeskLane {
@@ -61,7 +60,6 @@ describe("desk headline", () => {
     );
     expect(clear.counts).toEqual([]);
     expect(clear.calm).toBe("Nothing needs you right now.");
-    // The clock follows the viewer's locale (18:40 or 6:40 PM).
     expect(clear.sub).toBe(
       `Nothing new from people since yesterday ${formatTime(lastFromPeople)}.`,
     );

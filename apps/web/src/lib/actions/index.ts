@@ -1,8 +1,3 @@
-/*
- * Public surface of the action registry. Importing this module registers
- * the catalog as a side effect.
- */
-
 import "./catalog";
 
 export { buildActionContext, snapshotActionContext, useActionContext } from "./context";

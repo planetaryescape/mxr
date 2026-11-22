@@ -1,22 +1,3 @@
-/*
- * The person's keys from the daemon (`GET /api/v1/platform/keymap`,
- * blueprint chapter 35): a `keys.toml` remap or the single-key switch
- * applies in the web app as in the TUI.
- *
- * Nothing waits for this request before the first paint. The last answer is
- * cached per bridge, so a returning app has the person's keys before its
- * first render; the request then refreshes that cache in the background and
- * `useKeymapStore` re-renders every view that reads keys from the registry.
- * On a first visit, or whenever the daemon can't answer, the generated
- * definition's keys stand.
- *
- * The cache is read from module evaluation: the small key index answers the
- * synchronous key reads that modules building labels once (`navMap`,
- * `sidebarRail`) make while `@/App` is imported. The entry module imports
- * this module first for that reason. The full catalog — the registry the
- * dispatcher needs — arrives after the first paint (`scheduleActionCatalog`).
- */
-
 import { apiFetch } from "@/api/client";
 import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 import { useKeymapStore } from "@/state/keymapStore";
@@ -24,11 +5,6 @@ import { useKeymapStore } from "@/state/keymapStore";
 import { reregisterCatalog } from "./catalog";
 import { isDefinitionLoaded, loadDefinition, setServedKeys, type ServedKeymap } from "./definition";
 
-/**
- * Rebuild the registry with these keys, and note the switch. Until the
- * catalog has loaded there is no registry to rebuild: the index already has
- * the keys, and `bootActionCatalog` registers them when the catalog lands.
- */
 export function applyServedKeymap(keymap: ServedKeymap): void {
   setServedKeys(keymap);
   reregisterKeys();
@@ -39,11 +15,6 @@ export function applyServedKeymap(keymap: ServedKeymap): void {
   });
 }
 
-/**
- * Rebuild the live registry, or wait for the catalog. Keys this build's
- * registry rejects (a daemon from another release) must not take the
- * keyboard away: the defaults still work.
- */
 function reregisterKeys(): void {
   if (!isDefinitionLoaded()) return;
   try {
@@ -55,32 +26,22 @@ function reregisterKeys(): void {
   }
 }
 
-/** `true` while the catalog is on its way (the registry is empty). */
 export function isKeyCatalogLoaded(): boolean {
   return isDefinitionLoaded();
 }
 
-/**
- * Fetch the full definition after the first paint and build the registry.
- * The entry carries only the small key index, so this is what makes keys
- * run; the first screen has already painted by then.
- */
 export async function bootActionCatalog(): Promise<void> {
   await loadDefinition();
   reregisterKeys();
-  // The strip, the palette and help read the registry; the bump re-renders them.
   useKeymapStore.getState().markCatalogLoaded();
 }
 
-/** Cache key: one bridge's `keys.toml`, so two daemons can't share keys. */
 const CACHE_PREFIX = "mxr.servedKeymap.v1:";
-/** A served keymap is ~184 kB; anything past this is not one we wrote. */
 const CACHE_MAX_CHARS = 1_000_000;
 const MAX_ACTIONS = 2_000;
 const MAX_KEYS = 32;
 const MAX_CHORD_LENGTH = 64;
 const MAX_ID_LENGTH = 120;
-/** Ids that would poison an object built from the payload, were one ever built. */
 const UNSAFE_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const ACTION_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/;
 
@@ -102,12 +63,6 @@ function stringArray(value: unknown, max: number, maxLength: number): string[] |
   return out;
 }
 
-/**
- * The served keymap in a cached record, rebuilt field by field. Whatever the
- * browser holds is untrusted (another script on the origin, a hand-edited
- * value): an entry that isn't the shape the daemon serves is dropped, never
- * passed through.
- */
 export function parseCachedKeymap(raw: string | null): ServedKeymap | null {
   if (!raw || raw.length > CACHE_MAX_CHARS) return null;
   let record: unknown;
@@ -171,23 +126,18 @@ function storage(): Storage | null {
   try {
     return window.localStorage ?? null;
   } catch {
-    // Private mode, or storage disabled: the defaults stand until the daemon answers.
     return null;
   }
 }
 
-/** Note this answer for the next boot. A full or disabled storage is not an error. */
 function cacheKeymap(keymap: ServedKeymap): void {
   const key = cacheKey();
   if (!key) return;
   try {
     storage()?.setItem(key, JSON.stringify({ savedAt: new Date().toISOString(), keymap }));
-  } catch {
-    // Quota, or storage disabled: this boot still has the keys from the daemon.
-  }
+  } catch {}
 }
 
-/** The last keymap this bridge served, if there is one. */
 export function readCachedKeymap(): ServedKeymap | null {
   const key = cacheKey();
   if (!key) return null;
@@ -198,10 +148,6 @@ export function readCachedKeymap(): ServedKeymap | null {
   }
 }
 
-/**
- * Put the cached keys in place before the first render, so a returning app
- * shows the person's keys rather than the definition's defaults.
- */
 export function applyCachedKeymap(): boolean {
   const keymap = readCachedKeymap();
   if (!keymap) return false;
@@ -209,16 +155,10 @@ export function applyCachedKeymap(): boolean {
   return true;
 }
 
-// Read and applied on import, ahead of `@/App` (see the module comment).
 applyCachedKeymap();
 
 let booted: Promise<void> | null = null;
 
-/**
- * Build the registry after the first contentful paint, the way the keymap
- * request waits too (#932). The first screen's labels already come from the
- * index, so nothing it needs is held back; keys go live as it arrives.
- */
 export function scheduleActionCatalog(): Promise<void> {
   booted ??= new Promise<void>((resolve) => {
     let started = false;
@@ -228,7 +168,6 @@ export function scheduleActionCatalog(): Promise<void> {
       const load = () => {
         bootActionCatalog()
           .catch((error) => {
-            // No catalog, no keys: the rest of the app stays usable.
             console.error("mxr: the action catalog did not load", error);
           })
           .finally(resolve);
@@ -246,7 +185,6 @@ export function scheduleActionCatalog(): Promise<void> {
         start();
       });
       painted.observe({ type: "paint", buffered: true });
-      // A browser that never reports the paint still asks.
       setTimeout(() => {
         painted.disconnect();
         start();
@@ -258,11 +196,6 @@ export function scheduleActionCatalog(): Promise<void> {
   return booted;
 }
 
-/**
- * Ask the daemon for the person's keys and apply them when they arrive. The
- * app has already painted by then; the store's version makes every view that
- * reads keys recompute, and the registry makes the new chords live at once.
- */
 export async function loadServedKeymap(timeoutMs = 8000): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
@@ -278,7 +211,6 @@ export async function loadServedKeymap(timeoutMs = 8000): Promise<void> {
       cacheKeymap(response.keymap);
     }
   } catch {
-    // No daemon yet, or no token: the cached or definition's keys stand.
   } finally {
     clearTimeout(timer);
   }

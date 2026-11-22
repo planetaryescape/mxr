@@ -28,12 +28,6 @@ const AlertDialogOverlay = React.forwardRef<
 ));
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
-/**
- * A yes-or-no confirm's keys (blueprint 35's overlay grammar): `y` does what
- * the action button names and `n` is Esc. Enter and Tab stay the buttons'
- * own, so a confirm that opens on its cancel button destroys nothing on a
- * bare Enter.
- */
 function answerYesOrNo(event: React.KeyboardEvent<HTMLDivElement>) {
   const target = event.target;
   if (
@@ -47,7 +41,6 @@ function answerYesOrNo(event: React.KeyboardEvent<HTMLDivElement>) {
   const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>(
     yes ? "[data-alert-action]:not(:disabled)" : "[data-alert-cancel]",
   );
-  // Two actions would make `y` ambiguous.
   if (buttons.length !== 1) return;
   event.preventDefault();
   buttons[0]?.click();
@@ -56,7 +49,6 @@ function answerYesOrNo(event: React.KeyboardEvent<HTMLDivElement>) {
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> & {
-    /** Answer to `y` and `n` (a yes-or-no confirm). */
     yesNo?: boolean;
   }
 >(({ className, onCloseAutoFocus, onKeyDown, yesNo, ...props }, ref) => (
@@ -71,7 +63,6 @@ const AlertDialogContent = React.forwardRef<
       onCloseAutoFocus={(event) => {
         onCloseAutoFocus?.(event);
         if (event.defaultPrevented) return;
-        // Opened from a shortcut (send confirm, discard) there is no trigger to return to.
         requestAnimationFrame(() => {
           if (document.activeElement === document.body) focusActivePane();
         });

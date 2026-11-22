@@ -16,7 +16,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }));
 
 function headings(): string[] {
-  // Section headings; the dialog title is a heading too.
   return screen
     .getAllByRole("heading", { level: 2 })
     .map((heading) => heading.textContent ?? "")
@@ -62,7 +61,6 @@ describe("HelpDialog", () => {
       "Search",
       "Go to",
     ]);
-    // In Mail actions, and under Sidebar, where x selects too.
     expect(screen.getAllByText("Select and move down")[0]).toBeVisible();
     expect(screen.getByText("Go to Inbox")).toBeVisible();
     expect(screen.getByText("Keyboard help")).toBeVisible();
@@ -86,7 +84,6 @@ describe("HelpDialog", () => {
     filter("g i");
     expect(screen.getByText("Go to Inbox")).toBeVisible();
 
-    // TUI-parity remarks live in the docs, not in the sheet.
     filter("gmail muscle memory");
     expect(screen.getByText("No matching shortcuts.")).toBeVisible();
   });

@@ -4,19 +4,6 @@ import * as ResizablePrimitive from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
 
-/*
- * shadcn's Resizable over react-resizable-panels v4 (Group, Panel,
- * Separator). The handle is a 1px rule with an 8px hit strip and a grip
- * that shows on hover, drag and keyboard focus. The library owns pointer,
- * keyboard (arrows, Home, End, Enter) and double-click-to-reset.
- */
-
-/*
- * The library sets `touch-action: pan-y` inline on groups and panels, and
- * touch-action intersects down the tree, so every split would switch off
- * pinch-zoom for everything inside it. Handles keep `none`, which is what
- * a touch drag needs. Horizontal splits only: a vertical one needs pan-x.
- */
 const KEEP_PINCH_ZOOM = "[touch-action:pan-y_pinch-zoom]!";
 
 function ResizablePanelGroup({ className, ...props }: ResizablePrimitive.GroupProps) {
@@ -41,14 +28,6 @@ function ResizablePanel({ className, ...props }: ResizablePrimitive.PanelProps) 
   );
 }
 
-/*
- * While a handle is hovered or dragged (the library's own state, tracked
- * over its hit strip), the page shows col-resize everywhere, so the cursor
- * holds while the pointer runs ahead of the handle. The flag lives on
- * <html> and changes only with that state: a `:root:has(...)` selector
- * would be rechecked on every DOM change, and opening a conversation took
- * twice as long with one.
- */
 function useResizeCursor(handle: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const element = handle.current;
@@ -81,9 +60,6 @@ function ResizableHandle({
       data-slot="resizable-handle"
       elementRef={handle}
       className={cn(
-        // -mr-px: the rule overlays the next pane instead of taking a pixel
-        // of the row, so the panes' widths add up to the group's (the
-        // library sizes panes against their sum).
         "group/handle relative z-10 -mr-px flex w-px cursor-col-resize items-center justify-center bg-border outline-none",
         "after:absolute after:inset-y-0 after:left-1/2 after:w-2 after:-translate-x-1/2",
         "focus-visible:ring-2 focus-visible:ring-ring",

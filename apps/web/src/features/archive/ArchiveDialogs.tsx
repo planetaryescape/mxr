@@ -35,7 +35,6 @@ function useDebouncedValue(value: string, ms: number): string {
   return debounced;
 }
 
-/** Fields a person can fix, in card order. */
 const FIXABLE = [
   "issuer",
   "title",
@@ -60,11 +59,6 @@ const FIELD_LABELS: Record<(typeof FIXABLE)[number], string> = {
   kind: "Kind",
 };
 
-/**
- * `,`: fix a field, confirm one, or mark the whole card checked. A fix is
- * yours from then on and wins over every re-run; renaming the issuer can
- * apply to every record from the sender.
- */
 export function RecordEditDialog({ record, onClose }: { record: RecordData; onClose: () => void }) {
   const current = (field: string) =>
     field === "kind"
@@ -78,8 +72,6 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
   const existing = (record.fields ?? []).find((candidate) => candidate.field === field);
   const changed = value.trim() !== current(field).trim() && value.trim() !== "";
   const typed = useDebouncedValue(value.trim(), 300);
-  // The daemon's dry run of the fix: what the field reads as once saved,
-  // or why it can't be read ("Give the currency too").
   const preview = useQuery({
     queryKey: ["record-edit-preview", record.id, field, typed, toSender],
     queryFn: () =>
@@ -209,10 +201,6 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
   );
 }
 
-/**
- * Export (the palette): what an export of the records in view holds, from the daemon's dry
- * run, before the CSV is written. The export reads the same rows.
- */
 export function ExportDialog({
   account,
   filter,
@@ -294,11 +282,6 @@ export function ExportDialog({
   );
 }
 
-/**
- * Pass to a mode (the palette) on a conversation. This phase's one choice
- * is Archive, which shows the card filing would make (the daemon's dry
- * run); Enter files exactly that.
- */
 export function PassToModeDialog({
   messageId,
   subject,

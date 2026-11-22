@@ -4,10 +4,6 @@ import type { LucideIcon } from "lucide-react";
 import { MODE_GLYPHS } from "@/components/ModeMark";
 import { PageFrame } from "@/components/PageFrame";
 
-/**
- * Find, a short list of three places (Archive, Updates, Inbox). The phone's
- * More sheet lists them too; search is the top bar's one field.
- */
 export function FindRoute() {
   return (
     <section aria-label="Find" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">

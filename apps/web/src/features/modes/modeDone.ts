@@ -1,12 +1,3 @@
-/*
- * Done here, per mode (`SetModeDone`): the thread leaves this mode until a
- * new message arrives, other modes keep it, and the provider archive
- * happens only when no mode holds it any more. The toast is the daemon's
- * handoff copy ("Done in Messages. Still in To do (due Mon).", "Done.
- * Archived in Gmail."), so it always says where the item went, and `u` or
- * the toast's Undo puts everything back through the daemon's undo.
- */
-
 import { toast } from "sonner";
 import { create } from "zustand";
 
@@ -29,10 +20,8 @@ type Schemas = components["schemas"];
 export type ModeDoneOutcome = Schemas["ModeDoneOutcomeData"];
 type ModeDoneResponse = Extract<Schemas["ResponseData"], { kind: "ModeDone" }>;
 
-/** Modes that have a done: Archive keeps its records. */
 export type DoneMode = Exclude<ModeKind, "archive">;
 
-/** Threads hidden while their done is in flight, per mode. */
 export type HiddenByMode = Record<DoneMode, ReadonlySet<string>>;
 
 export const NONE_HIDDEN: HiddenByMode = {
@@ -44,11 +33,6 @@ export const NONE_HIDDEN: HiddenByMode = {
 
 interface ModeDoneState {
   hidden: HiddenByMode;
-  /**
-   * Hidden threads whose row folds away rather than vanishing (a pointer, or
-   * the first key of a burst). A row asks `folding`; it asks `settle` when
-   * its fold ends, and drops out.
-   */
   folding: HiddenByMode;
   hide: (mode: DoneMode, threadIds: readonly string[]) => void;
   show: (mode: DoneMode, threadIds: readonly string[]) => void;
@@ -78,7 +62,6 @@ export const useModeDone = create<ModeDoneState>((set) => ({
     set((s) => ({
       hidden: { ...s.hidden, [mode]: new Set([...s.hidden[mode], ...threadIds]) },
     })),
-  // Unchanged state when none of them were hidden, so nothing re-renders.
   show: (mode, threadIds) =>
     set((s) =>
       threadIds.some((id) => s.hidden[mode].has(id))
@@ -92,11 +75,8 @@ export const useModeDone = create<ModeDoneState>((set) => ({
     ),
 }));
 
-/** Who a done covers besides its threads: named to-dos, or a sender's threads. */
 export interface DoneScope {
-  /** To do: tick off only these rows. */
   todoIds?: readonly string[];
-  /** Updates or Reading: every thread of this sender's, resolved by the daemon. */
   sender?: { account_id: string; sender_email: string };
 }
 
@@ -117,10 +97,6 @@ export function doneModeRequest(
   });
 }
 
-/**
- * Hand the claimed undo slot to `reverse`, when there is one: the slot
- * otherwise empties when the claim settles.
- */
 function keepUndo(
   reverse: (() => Promise<boolean>) | null,
   claim: () => Promise<boolean>,
@@ -137,10 +113,6 @@ function keepUndo(
   return undo;
 }
 
-/**
- * What the toast says. One thread: the daemon's copy. Several: how many,
- * then the first thread's copy when they all went the same way.
- */
 export function doneToast(done: readonly ModeDoneOutcome[]): string {
   const [first] = done;
   if (!first) return "";
@@ -151,24 +123,14 @@ export function doneToast(done: readonly ModeDoneOutcome[]): string {
 }
 
 export interface ModeDoneOptions extends DoneScope {
-  /** Runs after an undo of this done succeeded. */
   onUndone?: () => void;
-  /** How it was asked for: a pointer, or a key. Rows fold for a pointer and the first key of a burst. */
   via?: LeaveVia;
-  /** The toast, when the verb has its own words (letting go of a digest). */
   message?: (done: readonly ModeDoneOutcome[]) => string;
 }
 
-// Named rows can share an email. Guard their identities, not the thread,
-// so a repeated activation cannot replace the first request's Undo.
 const pendingTodoIds = new Set<string>();
 const pendingThreads = new Map<string, number>();
 
-/**
- * Done here for these threads. Resolves true when every one was done; one
- * that couldn't be keeps its row (the refetch brings it back), and doing it
- * again retries it.
- */
 export async function markModeDone(
   mode: DoneMode,
   threadIds: readonly string[],
@@ -178,8 +140,6 @@ export async function markModeDone(
   if ((unique.length === 0 && !options.sender) || refuseWhileDaemonDown("mark it done")) {
     return false;
   }
-  // A second press while the first is on its way: one request, one toast.
-  // Named to-dos are their own rows, so another one on the thread still goes.
   const inFlight = useModeDone.getState().hidden[mode];
   if (!options.todoIds?.length && unique.length > 0 && unique.every((id) => inFlight.has(id))) {
     return false;
@@ -195,7 +155,6 @@ export async function markModeDone(
   }
   useModeDone.getState().hide(mode, unique);
   if (options.via && foldsFor(options.via)) useModeDone.getState().fold(mode, unique);
-  // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
     const result = await doneModeRequest(
@@ -210,8 +169,6 @@ export async function markModeDone(
     const reverse = mutationId
       ? async () => {
           const undone = await performUndo(mutationId);
-          // The undo puts to-dos and done marks back too, which the mail
-          // refresh alone doesn't cover.
           await refreshModes();
           if (undone) options.onUndone?.();
           return undone;
@@ -232,9 +189,6 @@ export async function markModeDone(
       );
       if (result.undo_unavailable) toast.warning("Done, but its undo couldn't be saved");
     } else {
-      // Nothing was done, but something may have changed part way (read,
-      // not archived): the daemon kept an undo for it, so `u` and the
-      // failure toast reach it.
       claim.settle(keepUndo(reverse, claim.run, mutationId));
     }
     if (failed.length > 0) {
@@ -271,10 +225,6 @@ export async function markModeDone(
   }
 }
 
-/**
- * Every view a done can change: mail lists, Now, membership, To do,
- * Messages and the rail. The rail polls on its own otherwise, so ordinary mail verbs leave it.
- */
 export async function refreshModes(): Promise<void> {
   const qc = getActiveQueryClient();
   await Promise.all([

@@ -94,7 +94,6 @@ describe("account sync health", () => {
       expect.objectContaining({ id: "sync-health-acct-1" }),
     );
 
-    // Another failed retry: still failing, nothing new to say.
     query.data = reply({
       ...offline,
       last_sync_error: { ...offline.last_sync_error!, consecutive_failures: 3 },

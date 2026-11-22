@@ -19,7 +19,6 @@ import { useCatchupQuery, useExpiredQuery, type Todo, type TodoRunway } from "./
 import { openCount, rowParty } from "./todoRows";
 import { decideCatchup, restoreTodos, useTodoHidden } from "./todoVerbs";
 
-/** To do's tabs, `1` `2` `3`, from the catch-up and the Expired list. */
 const todoTabs = {
   runway: () => getRuntimeNavigate().navigate("/todo"),
   catchup: () => getRuntimeNavigate().navigate("/todo?view=catchup"),
@@ -55,7 +54,6 @@ function BackLink() {
   );
 }
 
-/** A catch-up or Expired row: what it is, who for, and its dates. */
 function PlainRow({
   todo,
   index,
@@ -103,12 +101,6 @@ function PlainRow({
   );
 }
 
-/**
- * The first run's one-time catch-up. The summary says what the first run
- * found; each row from before mxr sorted your mail is kept (it joins the
- * runway) or let go (it joins the Expired list), and "Let go of all"
- * previews the daemon's dry run first.
- */
 export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) {
   const account = useUiPrefs((s) => s.accountScope);
   const catchup = useCatchupQuery();
@@ -226,7 +218,6 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
   );
 }
 
-/** Rows that expired or were let go, newest first, each one key from restore. */
 export function TodoExpiredView() {
   const expired = useExpiredQuery();
   const hidden = useTodoHidden((s) => s.hidden);

@@ -1,6 +1,3 @@
-/* Relationship section of the sender panel: summary, style, drift and open
- * commitments with inline resolve. */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";

@@ -1,7 +1,3 @@
-/*
- * Rule + account creation palette actions.
- */
-
 import { Plus } from "lucide-react";
 
 import type { ActionBehavior } from "@/lib/actions/types";

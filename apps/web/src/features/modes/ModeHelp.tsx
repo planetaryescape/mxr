@@ -2,7 +2,6 @@ import type { ActionScope } from "@/lib/actions/types";
 
 import { useModeGuide, type ModeId } from "./api";
 
-/** The mode whose keys are live, from the scopes its views push. */
 export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
   if (scopes.includes("now")) return "now";
   if (scopes.includes("messages")) return "messages";
@@ -14,10 +13,6 @@ export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
     : null;
 }
 
-/**
- * What `?` leads with in a mode: its purpose, once, and how it works. The
- * keys follow in the sheet's own list, so they aren't repeated here.
- */
 export function ModeHelp({ mode }: { mode: ModeId }) {
   const guide = useModeGuide(mode).data;
   if (!guide) return null;

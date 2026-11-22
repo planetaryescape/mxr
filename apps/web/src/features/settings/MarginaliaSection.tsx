@@ -1,10 +1,3 @@
-/*
- * Marginalia, the reading app Reading items open in with M. Connecting
- * saves its address in config and the personal token in the daemon's
- * secrets file; the token is checked with Marginalia first and never
- * comes back to this page.
- */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -37,7 +30,6 @@ export function MarginaliaSection() {
       toast.success(next.connected ? "Marginalia connected" : "Marginalia disconnected");
     },
     onError: (error) => {
-      // The token never stays in the page once it has been sent.
       setToken("");
       toast.error("Couldn't connect Marginalia", { description: errorText(error) });
     },

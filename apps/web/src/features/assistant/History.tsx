@@ -1,11 +1,3 @@
-/*
- * Past conversations, as the shared Row: the title, where it stands, the
- * time, and a mark for one waiting on you. Its keys are the definition's
- * `assistant-history` overlay, as in the TUI: j and k move, Enter opens,
- * Esc or q goes back, and # asks the daemon what would go (a dry run), then
- * y deletes and n, Esc or a bare Enter keeps it.
- */
-
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { assistantToast } from "./assistantToast";
@@ -85,9 +77,6 @@ export function History({
         }
         onBareKey((key, keyEvent) => {
           if (confirming) {
-            // Enter on a focused button keeps its own meaning; with no
-            // option lit, a bare Enter keeps the conversation, as the TUI's
-            // confirm opens on Keep (blueprint 35, "Destroy"). y deletes.
             const onButton = keyEvent.target !== keyEvent.currentTarget;
             if (definedKeys("overlay.yes").includes(key)) void remove(confirming.conversation_id);
             else if (definedKeys("overlay.no").includes(key) || (key === "Enter" && !onButton)) {

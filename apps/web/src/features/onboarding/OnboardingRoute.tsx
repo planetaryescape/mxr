@@ -51,9 +51,6 @@ export function OnboardingRoute() {
     queryKey: ["auth-session", sessionId],
     queryFn: () => fetchAuthSession(sessionId ?? ""),
     enabled: Boolean(sessionId),
-    // Stop polling once the daemon reaches a terminal state — authorized,
-    // failed, or cancelled — mirroring the TUI's spawn_outlook_auth_session
-    // loop. Use the daemon-supplied poll interval when present.
     refetchInterval: (query) => {
       const state = query.state.data?.session.state;
       if (state && isTerminalAuthState(state)) return false;
@@ -103,7 +100,6 @@ export function OnboardingRoute() {
 
   const session = authSession.data?.session;
   const providerLabel = providerTiles.find((tile) => tile.id === provider)?.label ?? provider;
-  // Device flow surfaces a verification_uri; loopback surfaces auth_url.
   const signInUrl = session?.verification_uri ?? session?.auth_url;
   const authStatus = describeAuthSession(session, providerLabel);
 
@@ -427,10 +423,6 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
   );
 }
 
-/**
- * Sync progress arrives over the event socket. Until the first progress
- * event the sync has not started, so this never claims "Ready" early.
- */
 function FirstSync({
   sync,
   onOpenNow,
@@ -500,8 +492,6 @@ const providerTiles = [
   },
 ];
 
-// The label must name its input, or a screen reader announces "edit text"
-// with no hint of which field it is.
 function Text({
   label,
   value,

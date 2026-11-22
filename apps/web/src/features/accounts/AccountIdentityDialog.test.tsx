@@ -68,7 +68,6 @@ function refused(detail: string) {
 
 describe("AccountIdentityDialog", () => {
   test("shows the daemon's refusal inline and keeps the chosen colour", async () => {
-    // The daemon's refusal is a normal response with ok false, not a rejected request.
     accountsApi.setAccountIdentity.mockResolvedValue(refused("tag W is already held by Work"));
     renderDialog();
     fireEvent.click(screen.getByRole("radio", { name: /^sky/ }));

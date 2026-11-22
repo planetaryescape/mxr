@@ -5,7 +5,6 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-// Each account's ledger and answer, keyed by the account in the request.
 const apiFetch = vi.fn<(path: string) => Promise<unknown>>();
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -18,7 +17,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
 }
 
-/** Resolves when told to, so a test can look while a request is in flight. */
 function deferred<T>() {
   const handle: { resolve: (value: T) => void } = { resolve: () => undefined };
   const promise = new Promise<T>((done) => {

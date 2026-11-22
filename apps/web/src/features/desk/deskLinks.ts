@@ -9,20 +9,12 @@ interface LinkBase {
   suffix?: string;
 }
 
-/** Each destination with exactly the params or search it takes. */
 export type ElsewhereLink = LinkBase &
   (
     | { to: "/reading" | "/updates" | "/deliveries" | "/invites" }
     | { to: "/screener"; search: { account?: string } }
   );
 
-/**
- * The everything-else links. Each page reads the app's account scope, as
- * the desk does, so a count and the page it opens are the same account's.
- * Screener shows one account at a time, so its link names the account.
- * Reading and Paper trail counts cover the last week and are never unread
- * counts: they say how much arrived, not how much is owed.
- */
 export function elsewhereLinks(counts: DeskElsewhere): ElsewhereLink[] {
   const links: ElsewhereLink[] = [
     {
@@ -46,7 +38,6 @@ export function elsewhereLinks(counts: DeskElsewhere): ElsewhereLink[] {
       label: "Screener",
       count: counts.screener,
       to: "/screener",
-      // An all-accounts desk sums every queue; open one that has senders.
       search: { account: counts.screener_account ?? undefined },
     },
   ];

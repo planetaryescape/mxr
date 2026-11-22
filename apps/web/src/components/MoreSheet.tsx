@@ -10,16 +10,8 @@ import { overlayMotion, scrimMotion } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
-/** The modes that have a phone tab of their own; the sheet lists the rest. */
 const HAS_TAB = new Set(["now", "messages", "todo", "reading"]);
 
-/**
- * The More sheet: every destination the phone's four tabs leave out
- * (Updates, Archive, Inbox, then Mail, Views, Tools and Labels), on the
- * overlay ink over a scrim (D133). The narrow rail opens the same sheet, so
- * no width has an unreachable page. A Radix dialog, so focus is trapped,
- * Esc closes it and the page's keys stay under it while it is open.
- */
 export function MoreSheet() {
   const open = useModals((s) => s.moreSheetOpen);
   const setOpen = useModals((s) => s.setMoreSheetOpen);
@@ -29,9 +21,6 @@ export function MoreSheet() {
     select: (s) => ("turn" in s.location.search ? s.location.search.turn : undefined),
   });
 
-  // Any navigation, from a link here or from outside (back, a key), closes the
-  // sheet. Subscribing at the start of a navigation, not watching the path,
-  // means a sheet opened while a route is still settling isn't closed by it.
   const router = useRouter();
   useEffect(() => router.subscribe("onBeforeNavigate", () => setOpen(false)), [router, setOpen]);
 
@@ -48,7 +37,6 @@ export function MoreSheet() {
           data-testid="more-sheet"
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
-            // Back to whatever opened it: the More tab or the rail's button.
             const trigger = [...document.querySelectorAll<HTMLElement>("[data-more-trigger]")].find(
               (node) => node.offsetParent !== null,
             );
@@ -122,7 +110,6 @@ function SheetLink({
     <Link
       to={entry.to}
       search={entry.search}
-      // The router would call Messages current on Waiting on; the nav decides.
       activeOptions={{ exact: true }}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}

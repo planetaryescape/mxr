@@ -77,7 +77,6 @@ function edition(items: unknown[]): ReadingEdition {
 const withWork = edition([issue]);
 const cleared = edition([]);
 
-/** One visit to Reading: it mounts with `data`, and `show` moves it to the next edition. */
 function visit(data: ReadingEdition) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(EDITION_KEY("all"), data);
@@ -92,7 +91,6 @@ function visit(data: ReadingEdition) {
   };
 }
 
-/** Lets the edition's query update and the scene's effects run before the test reads the sound. */
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 
 const sounds = () => vi.mocked(playSound).mock.calls.filter(([e]) => e === "low_tide").length;

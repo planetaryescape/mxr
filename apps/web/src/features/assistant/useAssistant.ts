@@ -1,10 +1,3 @@
-/*
- * The assistant's data: availability, conversations, and the live state
- * of a running turn. The daemon runs turns in the background and says
- * what changed with `AssistantUpdated` events; the conversation is
- * refetched on each, so the transcript is always the daemon's own.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -42,7 +35,6 @@ export function useAvailability() {
   });
 }
 
-/** The picker's choices. A daemon from before the picker answers 404: no picker then. */
 export function useModels() {
   return useQuery({
     queryKey: assistantKeys.models,
@@ -52,7 +44,6 @@ export function useModels() {
   });
 }
 
-/** Sets the assistant's model; the mark and the next reply's provenance follow the daemon's answer. */
 export function usePickModel() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -60,8 +51,6 @@ export function usePickModel() {
     onSuccess: (models) => {
       queryClient.setQueryData(assistantKeys.models, models);
       void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
-      // An open Settings > LLM form holds the old assistant model and saves
-      // its whole overrides map; it must show the new one before it can.
       void queryClient.invalidateQueries({ queryKey: ["llm-config"] });
       void queryClient.invalidateQueries({ queryKey: ["llm-status"] });
     },
@@ -86,14 +75,9 @@ export function useConversation(id: string | null) {
   });
 }
 
-/**
- * Keeps the open conversation in step with the daemon and returns what the
- * running turn is doing now, with when it started.
- */
 export function useLiveTurn(conversationId: string | null): {
   progress: AssistantProgress | null;
   startedAt: number | null;
-  /** The reply so far while the model writes it. */
   writing: string | null;
 } {
   const queryClient = useQueryClient();
@@ -108,7 +92,6 @@ export function useLiveTurn(conversationId: string | null): {
     (event: DaemonEvent) => {
       if (event.type !== "AssistantUpdated") return;
       const update = event as Extract<DaemonEvent, { type: "AssistantUpdated" }>;
-      // Text being written changes nothing stored: no refetch for it.
       if (update.progress?.kind !== "writing") {
         void queryClient.invalidateQueries({
           queryKey: assistantKeys.conversation(update.conversation_id),
@@ -138,8 +121,6 @@ export function useLiveTurn(conversationId: string | null): {
             writing: progress.text,
           };
         }
-        // Anything else means the written reply was stored (or a new step
-        // began): the stored conversation shows it from here.
         return {
           id: conversationId,
           progress: progress ?? (same ? current.progress : null),
@@ -161,7 +142,6 @@ export function useLiveTurn(conversationId: string | null): {
     : { progress: null, startedAt: null, writing: null };
 }
 
-/** What the user has open, so "this thread" and "these" mean something. */
 export function useViewContext(): () => AssistantViewContext {
   const path = useRouterState({ select: (state) => state.location.pathname });
   const search = useRouterState({ select: (state) => state.location.search });
@@ -209,12 +189,6 @@ export function useAssistantActions() {
   return { send, answer, stop, trust };
 }
 
-/**
- * When a change the assistant makes lands (a proof applied, or a trusted
- * conversation's step ran), the rows it changed in the page beside wear the
- * landing mark. Changes already applied when a conversation is first shown
- * are history and don't land again.
- */
 export function useLandChanges(conversation: AssistantConversation | undefined): void {
   const seen = useRef<{ id: string | null; calls: Set<string> }>({ id: null, calls: new Set() });
   useEffect(() => {
@@ -231,8 +205,6 @@ export function useLandChanges(conversation: AssistantConversation | undefined):
     if (fresh.length === 0) return;
     for (const item of fresh) seen.current.calls.add(item.call_id);
     useLanding.getState().land(fresh.flatMap(changedIds));
-    // The lists catch up once the mark has been seen.
-    // Not cleared on re-run: a refetch of the conversation must not cancel it.
     window.setTimeout(() => void invalidateMailQueries(), LANDING_MS);
   }, [conversation]);
 }

@@ -1,12 +1,3 @@
-/*
- * Shared action registry types. Pure types, no React imports.
- *
- * Every keyboard binding in the app is an Action: global navigation, mail
- * verbs, and list/reader motion alike. The command palette, the key
- * dispatcher, the help dialog and the keybindings settings page all read
- * this one table, so a key cannot do one thing while help says another.
- */
-
 import type { ComponentType } from "react";
 
 import type { MailPane } from "@/state/mailboxPaneStore";
@@ -28,15 +19,8 @@ export type ActionGroup =
   | "Select"
   | "Read";
 
-/** Chord grammar from `lib/keys/chord.ts`, e.g. "g i", "?", "Mod+k". */
 export type ShortcutChord = string;
 
-/**
- * Where a binding is live. "global" fires anywhere outside text fields.
- * The others fire while the matching view is mounted and focused: it
- * pushes its scope (`useShortcutScope`) and registers a controller
- * (`useScopeController`) that implements the action's `command`.
- */
 export type ActionScope =
   | "global"
   | "sidebar"
@@ -55,15 +39,12 @@ export type ActionScope =
   | "archive"
   | "reading"
   | "reading-reader"
-  // Never pushed: compose owns the keyboard and runs these chords itself
-  // (`composeShortcuts.ts`), reading them from the definition by id.
   | "compose"
   | "arrivals";
 
 export interface ActionContext {
   path: string;
   activePane: MailPane;
-  /** Active scopes, innermost first, always ending in "global". */
   scopes: ActionScope[];
   selectionCount: number;
   accountCount: number;
@@ -80,56 +61,27 @@ type IconComponent = ComponentType<{ className?: string }>;
 interface ActionBase {
   id: string;
   label: string;
-  /** A few words for the status bar and key hints, when `label` is long. */
   shortLabel?: string;
   description?: string;
   group: ActionGroup;
   icon?: IconComponent;
   shortcut?: ShortcutChord;
-  /** More chords bound to the same action in the same scopes. */
   aliases?: ShortcutChord[];
-  /**
-   * Chords bound on macOS only, where Ctrl is not the browser's modifier.
-   * Elsewhere the same keys are Find or Print, so they are neither bound
-   * nor shown.
-   */
   macAliases?: ShortcutChord[];
-  /**
-   * Retired chords that still work for a release so muscle memory has
-   * time to move. Bound, but never shown in help, hints or the docs.
-   */
   retiredAliases?: ShortcutChord[];
-  /**
-   * Keys this action had until a recent release, by scope. Pressing one
-   * says where the action went and runs nothing (blueprint 35, D171).
-   * `to` is the key to name instead when the action has no key left.
-   */
   movedAliases?: { chord: ShortcutChord; scopes: ActionScope[]; to?: ShortcutChord }[];
-  /** Listed in the palette but never bound to a key. */
   paletteOnly?: boolean;
-  /** Scopes the binding is live in; defaults to ["global"]. */
   scopes?: ActionScope[];
-  /** Hide from the palette (motion keys are noise there). */
   hideInPalette?: boolean;
-  /**
-   * Set when the web binding deliberately differs from the TUI's live key
-   * (browser conventions, or the TUI key being unreachable). Shown in help.
-   */
   tuiNote?: string;
   when?: ActionPredicate;
 }
 
-/** A self-contained action: `run` does the work. */
 export interface RunAction extends ActionBase {
   run: ActionRunner;
   command?: undefined;
 }
 
-/**
- * A scoped action: `command` names a method on the active scope's
- * controller, so "e" archives the focused row in the list and the open
- * thread in the reader.
- */
 export interface CommandAction extends ActionBase {
   command: string;
   run?: undefined;
@@ -137,11 +89,6 @@ export interface CommandAction extends ActionBase {
 
 export type Action = RunAction | CommandAction;
 
-/**
- * What a feature module declares: the action's behaviour. Its label, keys,
- * scopes and the rest come from mxr's key definition
- * (`crates/keymap/keymap.toml`, merged in by `fromDefinition`).
- */
 export type ActionBehavior =
   | Pick<RunAction, "id" | "run" | "command" | "when" | "icon">
   | Pick<CommandAction, "id" | "run" | "command" | "when" | "icon">;

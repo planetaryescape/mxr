@@ -30,7 +30,6 @@ describe("holdTypeAhead", () => {
 
     expect(field.value).toBe("se");
     expect(inputEvents).toBe(1);
-    // Held keys never reached the page's shortcuts (e would archive).
     expect(pageSaw).toBe("");
     window.removeEventListener("keydown", onPage);
   });
@@ -55,7 +54,6 @@ describe("holdTypeAhead", () => {
     field.focus();
     press("x");
     expect(field.value).toBe("");
-    // A later key on the page is the page's again.
     let pageSaw = "";
     const onPage = (event: KeyboardEvent) => (pageSaw += event.key);
     window.addEventListener("keydown", onPage);

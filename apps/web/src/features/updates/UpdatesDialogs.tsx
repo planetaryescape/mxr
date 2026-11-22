@@ -25,11 +25,6 @@ import { letGoRequest, type UpdateLine, type UpdateSetting } from "./api";
 import { displaySourceName, SETTING_LABEL, SETTINGS } from "./digestView";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/**
- * Let go of a digest: the daemon's dry run of exactly the cut, then the
- * same selection for real (its token makes the run refuse if the cut
- * changed meanwhile). What stays in To do is named before you confirm.
- */
 export function LetGoAllDialog({
   open,
   onOpenChange,
@@ -41,9 +36,7 @@ export function LetGoAllDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   account: string | null;
-  /** The cut the digest showed. */
   cut: string;
-  /** `e`: only this line's source, in its account. */
   source?: UpdateLine | null;
   onConfirm: (selectionToken: string) => void;
 }) {
@@ -62,7 +55,6 @@ export function LetGoAllDialog({
         data-testid="updates-let-go-dialog"
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
-          // A preview's yes or no, as in the TUI (blueprint 35).
           if (pressedOverlayKey(event, "overlay.yes") && result && result.message_count > 0) {
             event.preventDefault();
             onOpenChange(false);
@@ -91,7 +83,6 @@ export function LetGoAllDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           {result && result.message_count > 0 ? (
-            // A preview's Enter commits what it shows (blueprint 35).
             <AlertDialogAction
               autoFocus
               data-testid="updates-let-go-confirm"
@@ -109,7 +100,6 @@ export function LetGoAllDialog({
   );
 }
 
-/** `K`: how this source reaches you. One choice, applied at once, with undo. */
 export function TuneDialog({
   line,
   onOpenChange,

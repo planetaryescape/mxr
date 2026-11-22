@@ -52,7 +52,6 @@ describe("desk groups", () => {
       href: "/focus?lane=owed&from=%2Fdesk",
       keys: "g F",
     });
-    // Rows act on the whole conversation.
     expect(owed.rows[0]).toMatchObject({ kind: "thread", message_ids: ["o0-0", "o0"] });
     expect(index.get("d0")?.commitment_id).toBe("c1");
   });
@@ -78,8 +77,6 @@ describe("desk groups", () => {
       { id: "op", action: "snooze", messageIds: new Set(["w0-0", "w0"]) },
     ]);
     expect(snoozed.groups.find((group) => group.id === "waiting")).toBeUndefined();
-    // A move does not take a thread you started off Waiting on in the daemon,
-    // so the desk does not pretend it did.
     const moved = deskGroups(withWaiting, [
       { id: "op", action: "move", messageIds: new Set(["w0-0", "w0"]), payload: { label: "x" } },
     ]);

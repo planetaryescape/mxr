@@ -94,8 +94,6 @@ describe("ScreenerRoute", () => {
   });
 
   beforeEach(() => {
-    // The app's one key dispatcher: screener keys reach the view through
-    // the registry's "screener" scope, not a listener of its own.
     uninstall = installKeyDispatcher(window, {
       registry: getRegistry(),
       context: snapshotActionContext,

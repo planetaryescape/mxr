@@ -1,14 +1,3 @@
-/*
- * The freshness indicator: "Latest mail 5m ago · synced 1m ago" in the
- * status bar on every page, so checking that new mail is reaching you
- * never needs a trip to the inbox. A failing or stale sync replaces the
- * sync words with a warning that links to the sync details. Clicking the
- * mail time opens the last arrivals and where each one went.
- *
- * On a phone it is just "5m ago" and a dot coloured by sync health, with
- * the same popover on tap.
- */
-
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -45,17 +34,13 @@ const DOT_TONE = {
   bad: "bg-destructive",
 } as const;
 
-/** The scope's sync health and words at the clock's time. */
 interface SyncState {
   health: SyncHealth;
   line: string;
-  /** The account the line is about: where its details live. */
   account?: AccountFreshness;
 }
 
 function useSyncState(data: Freshness | undefined): SyncState {
-  // Which account is worst, and its words, change together with its health,
-  // so this one label drives the re-render and the rest is read at render.
   useClockLabel((now) => {
     const worst = data ? worstAccount(data, now) : undefined;
     return worst && data
@@ -72,14 +57,12 @@ function useSyncState(data: Freshness | undefined): SyncState {
   };
 }
 
-/** The account's own page holds its sync details; Diagnostics when unknown. */
 function syncDetailsLink(sync: SyncState) {
   return sync.account
     ? ({ to: "/accounts/$key", params: { key: sync.account.account_id } } as const)
     : ({ to: "/diagnostics" } as const);
 }
 
-/** "9:42 AM" today, "Mon, Oct 5, 2026, 9:42 AM" before. */
 function absolute(value: string): string {
   const date = new Date(value);
   return startOfDay(date) === startOfDay(new Date()) ? formatTime(date) : formatLongDate(date);
@@ -92,14 +75,8 @@ export function FreshnessIndicator({
   leading,
 }: {
   compact?: boolean;
-  /**
-   * Why the lit row is here (the page's `useLitReason`). It takes the sync
-   * words' place beside a short freshness: "4m ago · Here because: ...".
-   * A failing sync keeps its warning; health outranks a reason.
-   */
   reason?: string | null;
   note?: string | null;
-  /** Drawn before the reason, such as the lit row's account chip. */
   leading?: ReactNode;
 }) {
   const { data } = useFreshnessQuery();
@@ -147,7 +124,6 @@ export function FreshnessIndicator({
     <span
       className={cn(
         "inline-flex max-w-[60vw] items-center gap-1.5",
-        // Shrinks first when the keys need room: the reason ends in an ellipsis before any key drops.
         compact ? "min-w-0 shrink-0" : "min-w-[9rem] shrink-[1000]",
       )}
       data-testid="freshness"

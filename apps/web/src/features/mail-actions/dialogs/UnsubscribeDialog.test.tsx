@@ -147,7 +147,6 @@ describe("UnsubscribeDialog", () => {
     press("u");
 
     expect(api.unsubscribeFromSender).toHaveBeenCalledWith({ messageId: "msg-9", archive: false });
-    // Only the dry run ever went to the purge endpoint.
     expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
     expect(onDone).not.toHaveBeenCalled();
     await vi.waitFor(() =>
@@ -196,14 +195,12 @@ describe("UnsubscribeDialog", () => {
     );
   });
 
-  // Enter on a focused option must run that option, not the Enter shortcut.
   test("Enter on the focused archive button archives", async () => {
     api.unsubscribeAndClearSender.mockResolvedValue(preview());
     renderDialog();
     const archive = await screen.findByRole("button", { name: /Unsubscribe and archive 12/ });
     archive.focus();
 
-    // A browser clicks a focused button on Enter unless keydown was cancelled.
     if (fireEvent.keyDown(archive, { key: "Enter" })) fireEvent.click(archive);
 
     expect(api.unsubscribeFromSender).not.toHaveBeenCalled();

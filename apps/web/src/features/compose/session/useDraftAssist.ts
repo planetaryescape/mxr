@@ -1,10 +1,3 @@
-/*
- * "Draft for me" in the compose session: one help line that sends the text
- * the user wrote to the daemon, and a proof that comes back as versions.
- * Nothing is written over the user's text until a proof is accepted, and
- * accepting is undone in one step until the text changes again.
- */
-
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   useEffect,
@@ -52,16 +45,12 @@ interface DraftAssistInput {
   setDirty: Dispatch<SetStateAction<boolean>>;
 }
 
-/** One answer from the daemon, with what it was asked about. */
 export interface AssistVersion {
   proposal: ComposeAssistProposal;
-  /** The text region the proof was made from; a mismatch makes it stale. */
   sentText: string;
   action: ComposeAssistAction;
   instruction: string;
-  /** Model to keep when this proof is retried or revised. */
   model?: string;
-  /** Original selection in UTF-8 bytes, so a revision uses the same region. */
   selection?: { start: number; end: number };
 }
 
@@ -71,7 +60,6 @@ interface RevisionBaseline {
   selection?: AssistVersion["selection"];
 }
 
-/** What accepting replaced, so ⌘Z can put it back in one step. */
 interface AcceptUndo {
   before: string;
   beforeSpans: readonly ModelSpan[] | undefined;
@@ -86,7 +74,6 @@ interface ProofState {
 
 const EMPTY_PROOF: ProofState = { versions: [], index: 0, open: false };
 
-/** A selection in the body, in UTF-16 units as the editor reports it. */
 export interface BodySelection {
   from: number;
   to: number;
@@ -101,12 +88,6 @@ const NO_ADJUST: ComposeAssistAdjust = {
 
 const REPLY_OR_FORWARD = new Set(["reply", "reply_all", "forward"]);
 
-/**
- * What the help is about. A reply or forward names its message. A saved reply
- * or forward reopened from Drafts has no message in the session, so the daemon
- * resolves it from the copy it holds. Everything else is a new message sent
- * with its live recipients and subject, because a saved copy can be stale.
- */
 function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
   if (intent.messageId) {
     if (intent.kind === "forward") {
@@ -126,8 +107,6 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
       all: storedReplyMode ? storedReplyMode === "reply_all" : intent.kind === "reply_all",
     };
   }
-  // A reply or forward reopened from Drafts has no message in the session: the
-  // daemon resolves its conversation from the stored reply headers.
   if (
     draft.draftId &&
     draft.revision != null &&
@@ -136,8 +115,6 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
   ) {
     return { kind: "stored", draft_id: draft.draftId };
   }
-  // A new message is always sent with its live recipients and subject. A saved
-  // copy holds the values from its last save, which may be older than these.
   return {
     kind: "new",
     account_id: draft.accountId,
@@ -146,10 +123,6 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
   };
 }
 
-/**
- * The editor's selection as a range inside the text region, or null when
- * the selection is empty or lies in the prefix or signature.
- */
 export function selectedRegionRange(
   region: TextRegion | null,
   selection: BodySelection | null,
@@ -175,18 +148,13 @@ function helpStateOf(
 
 export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAssistInput) {
   const [helpOpen, setHelpOpen] = useState(intent.openAssist === true);
-  // Bumped by ⌘J and by opening the help line, so the line takes focus each time.
   const [focusNonce, setFocusNonce] = useState(intent.openAssist === true ? 1 : 0);
   const [instruction, setInstruction] = useState("");
   const [adjust, setAdjust] = useState<ComposeAssistAdjust>(NO_ADJUST);
   const [selection, setSelection] = useState<BodySelection | null>(null);
-  // One state object: the proof's versions, which one is showing, and
-  // whether the proof is on screen. Updated only through pure updaters.
   const [proof, setProof] = useState<ProofState>(EMPTY_PROOF);
   const { versions, index: versionIndex, open: proofOpen } = proof;
   const [undo, setUndo] = useState<AcceptUndo | null>(null);
-  // Bumped when the proof closes, so the editor takes focus back: the proof
-  // had it, and once it is gone the next keystroke would go nowhere.
   const [editorFocusNonce, setEditorFocusNonce] = useState(0);
   const answersMessage = Boolean(intent.messageId);
   const [model, setModel] = useState<string | undefined>();
@@ -203,8 +171,6 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     setModel(undefined);
   }, [intent.key]);
 
-  // The text region is split once per render; handlers split the live draft
-  // when they run, so a keystroke between renders is never missed.
   const rendered = draftRef.current;
   const region = rendered ? splitTextRegion(rendered.bodyMarkdown) : null;
   const helpState = helpStateOf(region, selection, answersMessage);
@@ -306,8 +272,6 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     revision?: RevisionBaseline,
     modelSelection?: { model: string | undefined },
   ) {
-    // A ref, not `ask.isPending`: two presses before the next render both see
-    // "idle" in the closure, and only the ref is set synchronously.
     if (inFlight.current) return;
     inFlight.current = true;
     ask.mutate(
@@ -316,12 +280,10 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     );
   }
 
-  /** ↵ in the help line: finish, edit the selection, or write. */
   function submit() {
     run(helpAction(helpStateNow()), instruction);
   }
 
-  /** The Polish word: the one action that may change the user's words. */
   function polish() {
     run("polish", "");
   }
@@ -335,11 +297,6 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     setHelpOpen(false);
   }
 
-  /**
-   * A note revises the displayed proposal against the text and selection it
-   * was made from. With no note, a stale proof runs again against live text;
-   * an unchanged proof repeats its own request.
-   */
   function again(note?: string) {
     if (!version) return;
     const trimmed = note?.trim() ?? "";
@@ -387,8 +344,6 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     const { body, textStart } = joinTextRegion(live, version.proposal.text);
     const inserted = version.proposal.text.trimEnd().length;
     const previous = current.modelSpans ?? NO_SPANS;
-    // The proof's own changes say exactly which characters survived. Only when
-    // they do not spell both texts is the whole-body diff used instead.
     const kept = keptRuns(version.proposal.changes, live.text, version.proposal.text);
     const spans = kept
       ? carryModelSpans(
@@ -416,13 +371,11 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     setEditorFocusNonce((nonce) => nonce + 1);
   }
 
-  /** Esc: the user's text stays as it was; the proof goes. */
   function keepMine() {
     setProof(EMPTY_PROOF);
     setEditorFocusNonce((nonce) => nonce + 1);
   }
 
-  /** ⌘Z after an accept, while the text is still the accepted text. */
   function undoAccept(): boolean {
     const current = draftRef.current;
     if (!undo || !current || current.bodyMarkdown !== undo.after) return false;

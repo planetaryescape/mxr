@@ -7,7 +7,6 @@ export type AnalyticsRange = "7d" | "30d" | "90d" | "1y";
 export type StorageGroupBy = "sender" | "mimetype" | "label";
 export type ResponseDirection = "they_replied" | "i_replied";
 
-/** Row shapes come from the daemon's OpenAPI schema so they cannot drift. */
 export interface StorageBucket {
   key: string;
   bytes: number;
@@ -120,7 +119,6 @@ function accountQuery(accountId: string | null): string {
   return accountId ? `?account=${encodeURIComponent(accountId)}` : "";
 }
 
-/** Watched contacts past their usual cadence (TUI "Cadence drift"). */
 export function fetchCadenceDrift(accountId: string | null) {
   return apiFetch<{ rows: CadenceDriftRow[] }>(
     `/api/v1/platform/analytics/cadence-drift${accountQuery(accountId)}`,

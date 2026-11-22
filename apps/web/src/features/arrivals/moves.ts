@@ -1,11 +1,3 @@
-/*
- * Moving mail between modes (D119): `X` moves one email, `P` sends
- * everything from its sender. The daemon stores each as a correction and
- * tells every client (`ModesChanged`); this file runs the request, shows
- * the toast with Undo and "Always for this sender?", and keeps `u` on the
- * newest move like any other mail change.
- */
-
 import { createElement } from "react";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -23,35 +15,21 @@ import { moveMessage, undoMove, type MoveRequest } from "./api";
 import type { ModeId, MoveOutcome } from "./types";
 import { hintSeen, markHintSeen } from "./useTrustHint";
 
-/** What a picker moves: one email, named for the dialog's title. */
 export interface MoveSubject {
   messageId: string;
-  /** "Q4 plan" or the sender, for the title. */
   label: string;
-  /** Who sent it, for the sender picker's title. */
   senderLabel?: string;
-  /**
-   * The Not-sure question this email is: the picker answers it, starting on
-   * where it is now. `answer` sends the move as that answer.
-   */
   notSure?: { mode: ModeId; answer: (mode: ModeId, sender: boolean) => void };
-  /** The mode it is in now, as the view it was opened from shows it: marked "here now". */
   here?: ModeId;
-  /**
-   * A first-time sender's question on this row: the picker's capitals (or
-   * `P`'s picker) answer it with the sender's kind, as its digits did.
-   */
   newSender?: { question: ScreenerQuestion; label: string };
 }
 
-/** Open the destination picker: this email (`X`) or its sender (`P`). */
 export function openMovePicker(subject: MoveSubject, sender = false): void {
   if (refuseWhileDaemonDown(sender ? "move the sender" : "move it")) return;
   openMailDialog({ kind: "move-to-mode", subject, sender });
 }
 
 interface SenderAskState {
-  /** The move whose toast asks "Always for this sender?", while it shows. */
   pending: MoveOutcome | null;
   set: (pending: MoveOutcome | null) => void;
 }
@@ -63,10 +41,6 @@ export const useSenderAsk = create<SenderAskState>((set) => ({
 
 const toastId = (outcome: MoveOutcome) => `move-${outcome.message_id}`;
 
-/**
- * `P` while a move's toast asks: answer it for that email's sender. False
- * when no toast is asking, so `P` opens the sender picker instead.
- */
 export function answerPendingSenderAsk(): boolean {
   const pending = useSenderAsk.getState().pending;
   if (!pending) return false;
@@ -74,17 +48,12 @@ export function answerPendingSenderAsk(): boolean {
   return true;
 }
 
-/** Send every email from the moved email's sender to the same mode. */
 export async function alwaysForSender(outcome: MoveOutcome): Promise<MoveOutcome | null> {
   useSenderAsk.getState().set(null);
   toast.dismiss(toastId(outcome));
   return performMove({ messageId: outcome.message_id, mode: outcome.to, sender: true });
 }
 
-/**
- * Run a move and announce it. Holds the undo slot from the key press, so
- * `u` pressed before the daemon answers still undoes this move.
- */
 export async function performMove(
   request: MoveRequest,
   options: { askInToast?: boolean } = {},
@@ -93,7 +62,6 @@ export async function performMove(
   const claim = claimUndo();
   try {
     const outcome = await moveMessage(request);
-    // A Not-sure answer asks about the sender on its own row instead.
     const shown = options.askInToast === false ? { ...outcome, ask_sender: null } : outcome;
     claim.settle(announceMove(shown, claim.run));
     return outcome;
@@ -108,7 +76,6 @@ export async function performMove(
   }
 }
 
-/** Put a move back; the daemon says where it went. */
 export async function reverseMove(correctionId: number): Promise<boolean> {
   try {
     const copy = await undoMove(correctionId);
@@ -124,7 +91,6 @@ export async function reverseMove(correctionId: number): Promise<boolean> {
   }
 }
 
-/** The toast for a move; returns its undo for the claimed slot. */
 export function announceMove(
   outcome: MoveOutcome,
   claim: () => Promise<boolean>,

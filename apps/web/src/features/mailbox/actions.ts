@@ -1,9 +1,3 @@
-/*
- * Mail palette actions without a single-key binding: routing out of a
- * queue label, draft assist, expert finder and manual sync. Keyed mail
- * verbs live in features/mail-actions/verbActions.ts.
- */
-
 import { PenLine, RefreshCw, Route as RouteIcon, UserSearch } from "lucide-react";
 import { toast } from "sonner";
 

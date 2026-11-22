@@ -1,8 +1,3 @@
-/*
- * The local profile of how you write (formality, sentence length), built
- * from your sent mail. Draft assist uses it to match your voice.
- */
-
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";

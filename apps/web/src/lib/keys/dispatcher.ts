@@ -1,9 +1,3 @@
-/*
- * The one keydown listener. Resolves typed sequences against the action
- * registry using the active scopes, so a key fires exactly one action and
- * multi-key chords ("g i", "* a") work in every view.
- */
-
 import { definedKeys } from "@/lib/actions/definition";
 import type { ActionRegistry, Binding } from "@/lib/actions/registry";
 import { invokeAction } from "@/lib/actions/registry";
@@ -15,16 +9,8 @@ import { isCharacterKey } from "@/state/keymapStore";
 import { isComposingKey } from "./composition";
 import { focusActivePane } from "./focusPane";
 
-// Leave time to read the continuation guide; fast typists never wait on it.
 export const SEQUENCE_TIMEOUT_MS = 4000;
 
-/**
- * The only actions a held key repeats: moving and scrolling. Everything
- * else (archive, trash, send, snooze, star, sweep, done…) runs once per
- * press, however long the key is held, so a held `e` can't empty a list.
- * Listed by id rather than derived, so a new action never starts
- * repeating by accident.
- */
 export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "list.down",
   "list.up",
@@ -63,32 +49,16 @@ export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
 export interface DispatcherOptions {
   registry: ActionRegistry;
   context: () => ActionContext;
-  /** Reports the pending sequence prefix ("g", "*") for the status bar. */
   onPendingChange?: (prefix: string | null) => void;
-  /** Reports a prefix and a key that complete nothing ("g U"), for the status bar. */
   onDeadEnd?: (sequence: string) => void;
-  /**
-   * A key that moved away in a recent release: say where its action went,
-   * naming `key`, its new key (null when it has none).
-   */
   onMoved?: (action: Action, key: string | null) => void;
-  /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
-  /**
-   * True while single-character shortcuts are off (`single_keys = false`
-   * in keys.toml, WCAG 2.1.4): a character on its own runs nothing and is
-   * left to the browser. Modifier chords and named keys still dispatch.
-   */
   singleKeysOff?: () => boolean;
   mac?: boolean;
 }
 
 export function installKeyDispatcher(target: Window, options: DispatcherOptions): () => void {
   const mac = options.mac ?? isMacPlatform();
-  // Off macOS, Ctrl is the Mod key, so a keypress parses as "Mod+d". TUI
-  // chords written as "Ctrl+d" must still match there.
-  // Browser essentials (Find, Print, Save, tabs) are never taken for a Ctrl
-  // chord: on Windows and Linux they are the same keys.
   const spellings = (chord: string): string[] =>
     mac || !chord.includes("Mod+") || BROWSER_RESERVED.has(chord)
       ? [chord]
@@ -117,7 +87,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     setPending([]);
   };
 
-  /** Run a binding, or announce it when its key moved away. */
   const fire = (binding: Binding, ctx: ActionContext) => {
     if (binding.moved) {
       options.onMoved?.(binding.action, binding.movedTo ?? binding.action.shortcut ?? null);
@@ -139,11 +108,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
       clear();
-      // `q` closes a dialog where nothing is typed, as Esc does (blueprint
-      // 35's overlay grammar, `overlay.close` in the key definition). A
-      // dialog that gives `q` a meaning of its own prevents the default first.
-      // An open dialog is what suspends the page's keys, so this runs while
-      // suspended: it only ever closes the dialog the key was typed in.
       const closes = token !== "Escape" && definedKeys("overlay.close").includes(token);
       if (closes && closesOnQ(event.target)) {
         event.preventDefault();
@@ -152,9 +116,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
         );
         return;
       }
-      // A global modifier chord (⌘K) is never text input, so it works from
-      // a search box or a dialog that is still animating closed. Editing
-      // chords stay with the field.
       const global =
         isModifierChord(token) && !EDITING_CHORDS.has(token)
           ? registry.resolve(token, ["global"])
@@ -163,14 +124,10 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       event.preventDefault();
       if (event.repeat) return;
       clear();
-      // A moved chord only says where its action went, from a field too.
       fire(global, options.context());
       return;
     }
     if (activatesNativeControl(event.target, token)) return;
-    // Esc steps back out of the tabs and filters `g f` focused, to the pane
-    // whose keys they sit above; left there, Enter toggled a filter instead
-    // of opening the lit row. The next Esc is the page's own.
     if (token === "Escape" && buffer.length === 0 && inChoiceControls(event.target)) {
       event.preventDefault();
       focusActivePane();
@@ -186,9 +143,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     const continues = registry.hasContinuation(chord, scopes);
 
     if (event.repeat) {
-      // A held key: only movement repeats, and a repeat never starts or
-      // extends a chord. Anything the key would do is still claimed, so the
-      // browser doesn't act on it either.
       if (exact || continues) event.preventDefault();
       if (exact && !exact.moved && !continues && REPEATABLE_ACTION_IDS.has(exact.action.id)) {
         invokeAction(exact.action, ctx, "key");
@@ -206,7 +160,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       event.preventDefault();
       if (timer !== null) clearTimeout(timer);
       setPending(sequence);
-      // A chord that is complete but also a prefix waits, then runs.
       deferred = exact ? () => run(scopes, chord, options.context()) : null;
       timer = setTimeout(() => {
         const pendingRun = deferred;
@@ -216,15 +169,12 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       return;
     }
     if (buffer.length > 0) {
-      // Escape only cancels a pending prefix, as in vim.
       if (token === "Escape") {
         event.preventDefault();
         clear();
         return;
       }
       clear();
-      // A modifier chord is never a mistyped second key: ⌘K after a stray
-      // "g" still opens the palette.
       if (isModifierChord(token)) {
         const single = registry.resolve(token, scopes);
         if (single && !registry.hasContinuation(token, scopes)) {
@@ -233,8 +183,6 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
         }
         return;
       }
-      // Dead end: cancel and say so. Running the key on its own turned a
-      // mistyped "g U" into marking mail unread.
       event.preventDefault();
       options.onDeadEnd?.(chord);
     }
@@ -271,7 +219,6 @@ function isModifierChord(token: KeyToken): boolean {
   return /^(Mod|Ctrl|Alt|Meta)\+/.test(token);
 }
 
-/** Chords a text field or editor owns; never stolen for app actions. */
 const EDITING_CHORDS = new Set([
   "Mod+a",
   "Mod+c",
@@ -293,7 +240,6 @@ const EDITING_CHORDS = new Set([
   "Ctrl+w",
   "Ctrl+d",
   "Ctrl+h",
-  // macOS Emacs-style cursor keys in every text field.
   "Ctrl+p",
   "Ctrl+n",
   "Ctrl+b",
@@ -324,12 +270,9 @@ export function ownsKeyboard(target: EventTarget | null): boolean {
   );
 }
 
-/** True inside an open dialog, away from any field or list that takes letters. */
 function closesOnQ(target: EventTarget | null): target is Element {
   if (!(target instanceof Element)) return false;
   if (target instanceof HTMLElement && target.isContentEditable) return false;
-  // The composer is a dialog too, but `q` on its toolbar is not a way out of
-  // a half-written message.
   if (
     target.closest(
       'input, textarea, select, [contenteditable="true"], [cmdk-root], [role="menu"], [data-compose-surface]',
@@ -343,7 +286,6 @@ function closesOnQ(target: EventTarget | null): target is Element {
   );
 }
 
-/** A tab strip, segmented choice or filter bar on the page (not in a dialog). */
 function inChoiceControls(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return (
@@ -352,7 +294,6 @@ function inChoiceControls(target: EventTarget | null): boolean {
   );
 }
 
-/** Enter/Space on a focused button, link or checkbox keeps its native meaning. */
 function activatesNativeControl(target: EventTarget | null, token: KeyToken): boolean {
   if (token !== "Enter" && token !== "Space") return false;
   if (!(target instanceof Element)) return false;

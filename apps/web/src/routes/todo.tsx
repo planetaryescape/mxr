@@ -6,11 +6,8 @@ import { optionalEnum, optionalString } from "@/lib/searchParams";
 const TODO_VIEWS = ["catchup", "expired"] as const;
 
 export interface TodoRouteParams {
-  /** The one-time catch-up, or the Expired list; omitted is the runway. */
   view?: (typeof TODO_VIEWS)[number];
-  /** The to-do under the cursor. */
   row?: string;
-  /** The to-do whose source details are unfolded. */
   source?: string;
 }
 

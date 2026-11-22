@@ -83,8 +83,6 @@ export function CategoriesDialog({
       : undefined);
   const categories = useQuery({
     queryKey: [...shellKey, "personal-categories", accountId ?? "all"],
-    // The account scopes counts and the category lens. The local catalog is
-    // profile-wide, including categories not yet assigned in this account.
     queryFn: () => fetchCategories(accountId),
   });
   const categoryIds = categories.data?.map((category) => category.id) ?? [];
@@ -170,7 +168,6 @@ export function CategoriesDialog({
     try {
       const result = await applyCategoryMembership(assignmentPreview.preview_token);
       if (result.added + result.removed === 0 && !result.mutation_id) {
-        // A stale preview can become a no-op; keep the previous action undoable.
         if (useUndo.getState().lastUndo === claim.run) {
           useUndo.setState({
             lastUndo: previousUndo.lastUndo,
@@ -319,7 +316,6 @@ export function CategoriesDialog({
                         aria-label={`Manage ${category.name}`}
                         className="grid size-7 place-items-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                         onKeyDown={(event) => {
-                          // cmdk owns Enter on its items; let this button activate itself.
                           if (event.key === "Enter" || event.key === " ") event.stopPropagation();
                         }}
                         onClick={(event) => {

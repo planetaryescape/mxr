@@ -13,12 +13,6 @@ const SIZES = {
 
 type AvatarSize = keyof typeof SIZES;
 
-/**
- * A sender's initials on their stable hue. Inbox, Messages and the thread
- * all draw it here, so one sender wears one colour everywhere. `lg` is the
- * Messages row and the thread card; `md` is a mail row; `sm` sits inside a
- * recipient chip; `xs` (16px) sits in a line of text, like a person chip in the assistant's reply. Round shapes are for people and dots only (D127).
- */
 export function Avatar({
   name,
   size = "md",
@@ -43,7 +37,6 @@ export function Avatar({
   );
 }
 
-/** The neutral avatar for a group, which has no one sender to colour. */
 export function AvatarGlyph({
   size = "md",
   children,
@@ -67,7 +60,6 @@ export function AvatarGlyph({
   );
 }
 
-/** The placeholder for an avatar while its row loads. */
 export function AvatarSkeleton({
   size = "md",
   className,

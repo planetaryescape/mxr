@@ -1,27 +1,12 @@
-/*
- * What a To do row shows and what Enter does, as plain data so it can be
- * tested without the DOM. The daemon owns the words (title, when label,
- * why line, the button's label); this decides which of them a row uses.
- */
-
 import { firstName } from "@/features/thread/context/contextFormat";
 
 import type { Todo, TodoField, TodoRunway } from "./api";
 
-/**
- * What Enter (and the row's one button) does. Nothing on a to-do opens an
- * outside link: a row about a link opens its email in mxr with that link
- * marked, so you read it in context before you choose to follow it.
- */
 export type PrimaryAction =
-  /** Open the email with the link the row is about marked. */
   | { kind: "email"; label: string; url: string; domain?: string; messageId?: string }
-  /** A promise you made: reply in the conversation. */
   | { kind: "reply"; label: string; messageId: string }
-  /** Nothing to point at: open the conversation. */
   | { kind: "open"; label: string };
 
-/** The row's one action, labelled with its verb: "Open email to pay". */
 export function primaryAction(todo: Todo): PrimaryAction | null {
   const action = todo.action;
   if (action) {
@@ -47,7 +32,6 @@ export function primaryAction(todo: Todo): PrimaryAction | null {
   return { kind: "open", label: todo.kind === "rsvp" ? "Open the invite" : "Open email" };
 }
 
-/** Who the row is for: "you promised Priya" on a promise, else the counterparty. */
 export function rowParty(todo: Todo): string | null {
   return todo.person_label ?? todo.counterparty ?? null;
 }
@@ -62,11 +46,6 @@ const SHORT_DATE_YEAR = new Intl.DateTimeFormat(undefined, {
 
 const midnight = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-/**
- * "today", "yesterday", "Mon" within the week, else "12 Oct": when the email
- * arrived. Another year keeps its year ("12 Oct 2025") so an old row cannot
- * read as a recent one.
- */
 export function arrivedDay(arrived: Date, now: Date): string {
   const days = Math.round((midnight(now).getTime() - midnight(arrived).getTime()) / 86_400_000);
   if (days <= 0) return "today";
@@ -77,15 +56,6 @@ export function arrivedDay(arrived: Date, now: Date): string {
     : SHORT_DATE_YEAR.format(arrived);
 }
 
-/**
- * The row's one secondary line: who, when its email arrived, when it left the
- * inbox again (an archive made outside mxr), then anything that may change
- * the row ("Frank Billing · arrived Mon · left the inbox today · a later
- * email may change this"). The verb names the date: "arrived" is the email,
- * "left the inbox" is a location, while the row's window ("act by Fri", "due
- * Fri") is the deadline. A promise is from you, not an email. A notice never
- * takes the arrival's place: how recent the ask is stays visible on every row.
- */
 export function rowSecondary(todo: Todo, now: Date): string | null {
   const who = rowParty(todo);
   const arrival =
@@ -106,7 +76,6 @@ export function rowSecondary(todo: Todo, now: Date): string | null {
   return [who, arrival, filed, notice].filter(Boolean).join(" · ") || null;
 }
 
-/** Due or to act by today or earlier: the one place the cue colour belongs on a date. */
 export function dueByToday(todo: Todo, now: Date): boolean {
   if (todo.overdue) return true;
   const times = [todo.due_at, todo.act_by_at]
@@ -131,7 +100,6 @@ const FIELD_LABELS: Record<string, string> = {
   event_start: "Event",
 };
 
-/** Fields in the order the provenance list shows them. */
 const FIELD_ORDER = Object.keys(FIELD_LABELS);
 
 export function fieldLabel(field: string): string {
@@ -146,10 +114,6 @@ export function orderedFields(fields: readonly TodoField[]): TodoField[] {
   return fields.toSorted((a, b) => rank(a.field) - rank(b.field));
 }
 
-/**
- * The chip's short form: the main source ("schema.org", "a rule", "you")
- * and how many fields still need a check (an open dot each).
- */
 export function provenanceSummary(fields: readonly TodoField[]): {
   source: string;
   unchecked: number;
@@ -177,18 +141,12 @@ const SOURCE_SHORT: Record<string, string> = {
 
 export type Band = "now" | "coming" | "whenever" | "done";
 
-/** One row the cursor can rest on, in screen order. */
 export interface RunwayItem {
   todo: Todo;
   band: Band;
-  /** The week or "Later" heading it sits under in Coming up. */
   group?: string;
 }
 
-/**
- * The runway's rows in screen order: Now, Coming up by week then Later,
- * and Whenever and Done this week only while they are opened.
- */
 export function runwayItems(
   runway: TodoRunway,
   open: { whenever: boolean; done: boolean },
@@ -206,7 +164,6 @@ export function runwayItems(
   return items;
 }
 
-/** Rows on the runway that still need doing, for "has items" checks. */
 export function openCount(runway: TodoRunway): number {
   return (
     runway.now.length +
@@ -216,7 +173,6 @@ export function openCount(runway: TodoRunway): number {
   );
 }
 
-/** Where the row's link goes, said before Enter: "The link goes to camden.gov.uk." */
 export function linkLine(todo: Todo): string | null {
   const domain = todo.action?.domain;
   return domain ? `The link in the email goes to ${domain}.` : null;

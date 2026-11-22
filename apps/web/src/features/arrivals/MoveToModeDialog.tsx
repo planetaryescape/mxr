@@ -17,20 +17,14 @@ import { MODE_NAMES, modeForKey, MOVE_KEYS, SENDER_MODES, type ModeId } from "./
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 import { definedKeys } from "@/lib/actions/definition";
 
-/** Marks the options j, k and the arrows step through. */
 const OPTION = "data-move-option";
 
-/**
- * The modes a sender's mail can go to, with their keys' ids in the key
- * definition: a capital in `X`'s picker, either case in `P`'s.
- */
 const SENDER_CHOICES = [
   ["messages", "move-picker.sender-messages", "move-picker-sender.messages"],
   ["updates", "move-picker.sender-updates", "move-picker-sender.updates"],
   ["reading", "move-picker.sender-reading", "move-picker-sender.reading"],
 ] as const satisfies readonly (readonly [ModeId, string, string])[];
 
-/** What one key press in the picker asks for, or nothing. */
 export function pickerChoice(
   key: string,
   sender: boolean,
@@ -45,24 +39,11 @@ export function pickerChoice(
   return mode ? { mode, sender: false } : null;
 }
 
-/**
- * A new sender's answer a key picks: the capitals (`M`, `U`, `R`, `D`), or
- * either case in the sender picker.
- */
 export function newSenderChoice(key: string, sender: boolean): SenderKind | null {
   if (key.length !== 1 || (!sender && key === key.toLowerCase())) return null;
   return NEW_SENDER_ANSWERS.find((answer) => answer.key === key.toUpperCase())?.kind ?? null;
 }
 
-/**
- * "Move to…" (`X`, blueprint 35): one key per mode, printed on each option.
- * A letter moves this email; its capital, or `P`'s picker, sends everything
- * from the sender, which only Messages, Updates and Reading can take. On a
- * Not-sure question the picker is the answer, starting on where it is now
- * (keeping it there answers too); on a new sender's row the capitals answer
- * that sender's question, with `D` to block. j, k and the arrows move the
- * highlight; Enter runs it; Esc closes and changes nothing.
- */
 export function MoveToModeDialog({
   subject,
   sender,
@@ -87,15 +68,12 @@ export function MoveToModeDialog({
     onClose();
     void answerNewSender(newSender.question, newSender.label, kind);
   };
-  // The sender picker on a new sender's row is that sender's question.
   const emailModes = sender
     ? newSender
       ? []
       : Object.entries(MOVE_KEYS).filter(([, mode]) => SENDER_MODES.includes(mode))
     : Object.entries(MOVE_KEYS);
   const who = subject.senderLabel ?? newSender?.label ?? "this sender";
-  // A Not-sure answer starts on where it is now, since keeping it there
-  // answers too; an ordinary move only marks it.
   const start = subject.notSure?.mode;
   const here = start ?? subject.here;
 
@@ -138,8 +116,6 @@ export function MoveToModeDialog({
         ref={contentRef}
         className="max-w-sm"
         data-testid="move-to-mode-dialog"
-        // The highlight starts on where a Not-sure email is now, else the
-        // first option, so Enter always runs what is lit.
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const options = contentRef.current?.querySelectorAll<HTMLElement>(`[${OPTION}]`);
@@ -192,7 +168,6 @@ export function MoveToModeDialog({
           </ul>
         ) : null}
         {!sender && !newSender ? (
-          // The capitals, printed on their own options like the TUI's.
           <section aria-label={`Everything from ${who}`} className="grid gap-1">
             <h3 className="px-3 text-2xs text-muted-foreground">Everything from {who}</h3>
             <ul className="grid gap-1">

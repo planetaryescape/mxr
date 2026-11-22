@@ -1,11 +1,3 @@
-/*
- * Every key, grouped by where it works, and the person's own keys. A change
- * goes to `keys.toml` through the daemon (`POST /api/v1/platform/keymap`),
- * so the TUI uses it from its next start. A new key is checked as it is
- * typed (a dry run that names any action already on it); Save stays off
- * until the check passes. Blueprint chapter 35, D170.
- */
-
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -31,10 +23,8 @@ import { isCharacterKey, useKeymapStore } from "@/state/keymapStore";
 
 import { updateKeys, type KeysChange, type KeysUpdate } from "./keysApi";
 
-/** How long typing rests before the new keys are checked. */
 const CHECK_DELAY_MS = 300;
 
-/** "x, g x" → ["x", "g x"]: keys are comma-separated, since a sequence has spaces. */
 export function parseKeyList(text: string): string[] {
   return text
     .split(",")
@@ -58,11 +48,8 @@ export function KeybindingsSection() {
   const singleKeys = useKeymapStore((state) => state.singleKeys);
   const remapped = useKeymapStore((state) => state.remapped);
   const problems = useKeymapStore((state) => state.problems);
-  // Re-render when the person's keys change; the registry is rebuilt then.
   useKeymapStore((state) => state.version);
   const [editing, setEditing] = useState<string | null>(null);
-  // An action the person left without a key is in no key list, so it gets
-  // its own section: that is where its keys come back.
   const keylessHints: ShortcutHint[] = remapped.flatMap((id) => {
     const action = getRegistry().get(id);
     return action && chordsOf(action).length === 0
@@ -77,7 +64,6 @@ export function KeybindingsSection() {
         ]
       : [];
   });
-  // Every section, whatever view is active: this page is the reference.
   const keySections: ShortcutSection[] = [
     ...(keylessHints.length > 0
       ? [{ id: "keyless", title: "Yours, without a key", hints: keylessHints }]
@@ -185,8 +171,6 @@ export function KeybindingsSection() {
                         onClose={() => {
                           const opener = `${section.id}:${hint.id}`;
                           setEditing(null);
-                          // Back to the pencil that opened the editor, not the top of
-                          // the page: the next key to change is usually nearby.
                           requestAnimationFrame(() =>
                             document
                               .querySelector<HTMLElement>(
@@ -256,7 +240,6 @@ function KeyEditor({
     <form
       className="mt-2 space-y-2 rounded-md border border-border p-3"
       onKeyDown={(event) => {
-        // Esc cancels, as everywhere else; nothing typed here is saved.
         if (event.key !== "Escape" || isComposingKey(event.nativeEvent)) return;
         event.preventDefault();
         onClose();

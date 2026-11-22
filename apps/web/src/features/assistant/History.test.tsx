@@ -25,7 +25,6 @@ function summary(id: string, title: string): AssistantSummary {
   };
 }
 
-/** The delete calls made, as their dry_run flags. */
 const deletes = () =>
   apiFetch.mock.calls
     .filter(([path]) => path.endsWith("/delete"))
@@ -113,7 +112,6 @@ describe("History", () => {
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "Escape" });
     expect(screen.queryByText(/^Delete "Receipts"/)).not.toBeInTheDocument();
-    // Esc backed out of the question, not out of the history.
     expect(onClose).not.toHaveBeenCalled();
     expect(deletes().every((call) => call.dryRun)).toBe(true);
 

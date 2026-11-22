@@ -22,7 +22,6 @@ function fetchHeaders(messageId: string) {
   );
 }
 
-/** Headers repeat (Received:), so each row gets a stable position key. */
 function numbered(headers: [string, string][]) {
   const seen = new Map<string, number>();
   return headers.map(([name, value]) => {
@@ -32,7 +31,6 @@ function numbered(headers: [string, string][]) {
   });
 }
 
-/** Raw RFC 5322 headers for one message (CLI `mxr cat --view headers`). */
 export function HeadersDialog({ messageId, onClose }: { messageId: string; onClose: () => void }) {
   const headers = useQuery({
     queryKey: ["message-headers", messageId],

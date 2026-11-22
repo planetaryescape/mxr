@@ -1,8 +1,3 @@
-/*
- * Settings sub-page navigation. Each action lands on a settings section and
- * shows up in the palette under the "Settings" group.
- */
-
 import { Palette as PaletteIcon } from "lucide-react";
 
 import { useModals } from "@/state/modalStore";

@@ -34,7 +34,6 @@ export function StatusBar() {
   const ctx = useActionContext();
   const pageKeys = usePageKeysStore((s) => s.ids);
   const fallback = useActionPrimaryHints(ctx, 5);
-  // A page that named its verbs (`usePageKeys`) owns the strip; the rest get the registry's live keys.
   const hints = pageKeys.length > 0 ? pageKeyHints(pageKeys, ctx) : fallback;
   const reason = useLitReasonStore((s) => s.reason);
   const note = useLitReasonStore((s) => s.note);
@@ -42,8 +41,6 @@ export function StatusBar() {
   const accounts = useAccountIdentities();
   const litIdentity =
     reason && litAccountId && accounts.marksShown ? accounts.byId.get(litAccountId) : undefined;
-  // The status bar is mounted on every page, so it owns the one live
-  // subscription; the phone's topbar indicator reads the same query.
   useFreshnessLive();
   useSyncHealthToasts();
 
@@ -137,17 +134,9 @@ export function StatusBar() {
   );
 }
 
-/**
- * The page's verbs. Each is nowrap and the row wraps inside a one-line box,
- * so whatever doesn't fit drops whole from the end and no word is cut. The
- * one case wrapping can't cover is a box narrower than the first verb: then
- * the whole strip steps aside. A resize observer decides that, and the state
- * changes only when the width crosses it, so a resize re-renders nothing else.
- */
 function KeyStrip({ hints }: { hints: readonly ShortcutHint[] }) {
   const box = useRef<HTMLUListElement>(null);
   const [fits, setFits] = useState(true);
-  // `hints` is a new array each render; the effect follows what it names, not its identity.
   const signature = hints.map((hint) => hint.id).join("\u0000");
   useLayoutEffect(() => {
     const node = box.current;

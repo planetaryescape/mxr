@@ -1,10 +1,3 @@
-/*
- * Focus mode's state: the queue (see focusQueue), which conversation's
- * reply is open, and what happens when a reply is sent, undone or fails.
- * A reply counts as done when its undo window opens, so the next one
- * comes up at once; undo (or a failed send) puts it back in front.
- */
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef } from "react";
 
@@ -31,7 +24,6 @@ export function focusReplyIntent(item: FocusItem): ComposeIntent {
   return { ...replyIntent(item.messageId, "single"), quiet: true };
 }
 
-/** Account ids a scope covers: that account, or every enabled one. */
 export function useScopeAccountIds(scope: string | null) {
   const accounts = useQuery({
     queryKey: ["accounts"],
@@ -45,12 +37,6 @@ export function useScopeAccountIds(scope: string | null) {
   return { ids };
 }
 
-/**
- * Everyone you owe, as the desk's You owe lane decides it: people only,
- * in the inbox, people you have written to, with the screener, snoozes and
- * the account scope applied by the daemon. The whole lane, the way the
- * desk's "Show all" asks for it.
- */
 function useOwedLane(scope: string | null) {
   const desk = useQuery({
     queryKey: deskKey(scope, DESK_FULL_LANE_LIMIT),
@@ -60,9 +46,7 @@ function useOwedLane(scope: string | null) {
   const lane = desk.data?.owed;
   return {
     rows: lane?.rows ?? NO_ROWS,
-    /** Owed conversations beyond what the lane returned. */
     more: lane ? Math.max(0, lane.total - lane.rows.length) : 0,
-    /** People who wrote to you and wait in Messages, not here. */
     others: desk.data?.people?.others ?? 0,
     pending: desk.isPending,
     error: desk.error,
@@ -72,14 +56,9 @@ function useOwedLane(scope: string | null) {
 
 const NO_ROWS: readonly DeskRow[] = [];
 
-/**
- * `start`: the conversation a link named, put on screen once it is in the
- * queue; when it isn't (replied to since), the queue starts as usual.
- */
 export function useFocusSession(lane?: "owed", start?: string) {
   const account = useUiPrefs((s) => s.accountScope);
   const owed = useOwedLane(account);
-  // The desk's You owe lane is owed replies only.
   const withReplyLater = lane !== "owed";
   const replyLater = useQuery({
     queryKey: ["reply-queue"],
@@ -89,8 +68,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
   const replyLaterPending = withReplyLater && replyLater.isPending;
   const [session, dispatch] = useReducer(focusReducer, emptyFocusSession);
 
-  // Start with whichever source answers first and add the other when it
-  // does, so a slow or failed source never holds up the rest.
   const anySettled = !owed.pending || !replyLaterPending;
   const gathering = owed.pending || replyLaterPending;
   useEffect(() => {
@@ -120,8 +97,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
   const currentId = session.queue[0];
   const current = currentId ? session.items[currentId] : undefined;
 
-  // Which conversation each reply intent belongs to, for send events that
-  // arrive after its composer has closed.
   const intentThreads = useRef(new Map<string, string>());
   const sendsInFlight = useRef(0);
   useEffect(
@@ -148,7 +123,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
     [],
   );
 
-  // A reply in its undo window lives only in this tab: warn before closing.
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (sendsInFlight.current > 0) event.preventDefault();
@@ -157,10 +131,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
-  // The reply for the conversation on screen, inline in focus mode's slot.
-  // With nobody on screen (the finish), the reply it opened closes, as on
-  // leaving (the draft is saved): its slot is gone, and ComposeHost would
-  // float it over the finish instead.
   useEffect(() => {
     if (!current) {
       const open = useComposeUi.getState().intent;
@@ -173,7 +143,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
     useComposeUi.getState().openCompose(intent, "inline");
   }, [current]);
 
-  // Leaving focus mode closes the reply it opened (the draft is saved).
   useEffect(
     () => () => {
       const open = useComposeUi.getState().intent;
@@ -182,7 +151,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
     [],
   );
 
-  // The next conversation is usually a keypress away: have it ready.
   const queryClient = useQueryClient();
   const nextId = session.queue[1];
   useEffect(() => {
@@ -197,18 +165,12 @@ export function useFocusSession(lane?: "owed", start?: string) {
   return {
     current,
     progress: focusProgress(session),
-    // Nothing to show yet, or nothing so far while a source is still out:
-    // never call it finished before everyone is known.
     loading: !session.loaded || (session.queue.length === 0 && gathering),
     gathering,
     error: owed.error ?? (withReplyLater ? replyLater.error : null) ?? null,
-    /** Owed conversations the lane didn't return (it is capped). */
     more: owed.more,
     others: owed.others,
-    /** Conversations skipped when nothing else was left. */
     deferred: session.deferred.length,
-    /** Ask again; after a capped lane, the ones you replied to have
-     * dropped out, so asking again brings the rest. */
     refetch: () => {
       void owed.refetch();
       if (withReplyLater) void replyLater.refetch();
@@ -216,7 +178,6 @@ export function useFocusSession(lane?: "owed", start?: string) {
     revisit: () => dispatch({ kind: "revisit" }),
     skip: () => dispatch({ kind: "skip" }),
     markHandled: (threadId: string) => dispatch({ kind: "handled", threadId }),
-    /** Back in front: its Done was undone or failed. */
     restore: (threadId: string) => dispatch({ kind: "restore", threadId }),
     reopenReply: () => {
       if (current) useComposeUi.getState().openCompose(focusReplyIntent(current), "inline");

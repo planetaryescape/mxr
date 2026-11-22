@@ -1,11 +1,5 @@
 import { assertWorkspaceBinding } from "@/lib/workspaceOwner";
 import { prepareReviewedSend, retainSendReference } from "@/features/drafts/sendOutcomes";
-/*
- * Send pipeline for a compose session: validate → save → safety check →
- * (confirm dialog when the report has issues) → deferred dispatch with an
- * undo window. Also owns send-later scheduling, which shares the same
- * validate-and-save front half.
- */
 
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import type { useNavigate } from "@tanstack/react-router";
@@ -46,12 +40,8 @@ import {
 import { emitSendEvent } from "./sendEvents";
 
 export interface ComposeSessionOptions {
-  /** Called after a successful send instead of the default
-   * navigate-to-Sent (surface hosts close in place). */
   onSent?: () => void;
-  /** Called after a successful discard instead of navigating to inbox. */
   onDiscarded?: () => void;
-  /** Called by `requestClose` once pending edits are saved. */
   onClose?: () => void;
 }
 
@@ -65,10 +55,7 @@ interface ComposeSendInput {
   saveCurrentDraft: () => Promise<ComposeSession | undefined>;
   isCurrentDraftSaved: (current: ComposeDraftState) => boolean;
   markSessionFinished: () => void;
-  /** Called on every Send / Send later press, before validation. */
   markSendAttempted: () => void;
-  /** Called when local validation blocks the attempt; the issues are shown
-   * inline, so this only moves focus to help fix them. */
   onValidationBlocked: () => void;
 }
 
@@ -93,26 +80,12 @@ export function useComposeSend({
   const [safetyReport, setSafetyReport] = useState<DraftSafetyReport | null>(null);
   const [safetyCheckError, setSafetyCheckError] = useState<string | null>(null);
   const [checkingSafety, setCheckingSafety] = useState(false);
-  // Set per send pipeline run (cmd+shift+Enter); consumed at dispatch time so
-  // the safety-dialog detour keeps the archive intent and a cancelled undo
-  // window drops it.
   const archiveAfterSendRef = useRef(false);
-  // Same lifecycle for "send and remind me": set per run, consumed at
-  // dispatch, dropped by a cancelled undo window.
   const remindAfterSendRef = useRef<{ at: Date; label: string } | null>(null);
   const [remindDialogOpen, setRemindDialogOpen] = useState(false);
-  // One send per session at a time. Held from the first Send press through
-  // save, safety check, the confirm dialog and the undo window until the
-  // send settles or is cancelled. A ref, not state: two presses in the same
-  // tick must both see it.
   const sendLockRef = useRef(false);
   const [sendLocked, setSendLocked] = useState(false);
-  // Every undo-window cancel still open for this session. The lock means
-  // there should only ever be one, but cancel clears them all regardless.
   const pendingCancelsRef = useRef(new Set<() => void>());
-  // Fingerprint of the draft the current safety report was computed for;
-  // an edit made from the confirm dialog (adding a suggested Cc) means the
-  // report is stale and has to be re-run before anything is sent.
   const checkedFingerprintRef = useRef<string | null>(null);
 
   const sendSession = useMutation({
@@ -172,8 +145,6 @@ export function useComposeSend({
           }
         },
       );
-      // A later autosave can make the coordinator's UI result stale even
-      // though the scheduling request succeeded.
       if (!scheduledId) throw new Error("Scheduling returned no draft identity");
       return scheduledId;
     },
@@ -183,8 +154,6 @@ export function useComposeSend({
     startSendPipeline(false);
   }
 
-  /** cmd+shift+Enter: send, then archive the source conversation (replies
-   * only — a new message has no source to archive). */
   function requestSendAndArchive() {
     startSendPipeline(true);
   }
@@ -201,8 +170,6 @@ export function useComposeSend({
     setSendLocked(false);
   }
 
-  /** Send, then ask the daemon to remind the user if nobody replies by
-   * `at` (TUI parity: `n` in the send-confirm modal). */
   function requestSendAndRemind(at: Date, label: string) {
     setRemindDialogOpen(false);
     startSendPipeline(false, { at, label });
@@ -214,7 +181,6 @@ export function useComposeSend({
   ) {
     const current = draftRef.current;
     if (!current) return;
-    // Refuse before validation so a second press never re-runs anything.
     if (sendLockRef.current) return;
     if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) return;
     markSendAttempted();
@@ -228,8 +194,6 @@ export function useComposeSend({
     void runSendPipeline();
   }
 
-  /** Save → safety check → clean drafts dispatch straight away; reports
-   * with issues (or a failed check) open the confirm dialog instead. */
   async function runSendPipeline() {
     await saveCurrentDraft().catch((error: Error) => {
       toast.error("Save before send failed", { description: error.message });
@@ -264,7 +228,6 @@ export function useComposeSend({
       setSafetyReport(report);
       setSendConfirmOpen(true);
     } catch (error) {
-      // Fail closed into the dialog, not into a silent send.
       setSafetyReport(null);
       setSafetyCheckError(errorMessage(error));
       setSendConfirmOpen(true);
@@ -286,10 +249,6 @@ export function useComposeSend({
     setSendLaterOpen(true);
   }
 
-  /** Save → store as a local draft → schedule. Closes the composer like a
-   * send; the daemon dispatches the stored draft at `at`. Takes the send
-   * lock before the first await: a second Enter or click during the save
-   * would otherwise schedule a second copy under a new draft id. */
   async function scheduleSend(at: Date, label?: string) {
     if (refuseWhileDaemonDown("schedule a send", KEPT_WHILE_DOWN)) return;
     if (!acquireSendLock()) return;
@@ -326,8 +285,6 @@ export function useComposeSend({
     setSendLaterOpen(false);
     markSessionFinished();
     forgetActiveDraft(intent.key, current?.binding);
-    // The exact time, so the user sees what was stored whichever way it
-    // was picked.
     toast.success(label ? `Send scheduled for ${label}` : "Send scheduled", {
       duration: 10_000,
       action: {
@@ -356,8 +313,6 @@ export function useComposeSend({
     }
   }
 
-  /** Dialog-facing open setter: closing without confirming abandons this
-   * send attempt, so the lock is released for the next one. */
   const setSendConfirmOpenFromUi: Dispatch<SetStateAction<boolean>> = (value) => {
     const next = typeof value === "function" ? value(sendConfirmOpen) : value;
     setSendConfirmOpen(next);
@@ -368,8 +323,6 @@ export function useComposeSend({
     }
   };
 
-  /** Confirm from the safety dialog. A blocked report only sends when the
-   * user explicitly overrode it, using the report's override token. */
   async function confirmSend(override: boolean) {
     const blocked = Boolean(safetyReport && !safetyReport.allowed);
     const overrideToken =
@@ -377,23 +330,18 @@ export function useComposeSend({
         ? (safetyReport?.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
         : undefined;
     if (blocked && !overrideToken) return;
-    // The dialog can outlive the daemon: confirming it is a new send step.
     if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) return;
     setSendConfirmOpen(false);
     setSafetyReport(null);
     setSafetyCheckError(null);
     const current = draftRef.current;
     if (current && draftFingerprint(current) !== checkedFingerprintRef.current) {
-      // Still holding the send lock: re-save and re-check the edited draft.
       void runSendPipeline();
       return;
     }
     dispatchSend(overrideToken);
   }
 
-  /** Deferred dispatch with a configurable undo window. The pending window
-   * counts as unsaved work so beforeunload warns — closing the tab here
-   * would silently drop the send. Cancellable via the toast or global z. */
   function dispatchSend(overrideToken?: string) {
     const current = draftRef.current;
     if (!current || refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
@@ -420,14 +368,8 @@ export function useComposeSend({
     archiveAfterSendRef.current = false;
     const remind = remindAfterSendRef.current;
     remindAfterSendRef.current = null;
-    // One id per dispatched send, so a promise answered in its undo window
-    // is kept for this message and dropped if this send is undone.
     const sendEvent = { intentKey: intent.key, sendId: `${intent.key}@${Date.now()}` };
 
-    // Only the send itself can fail a send. Everything after it (reminder,
-    // archive, closing the composer) reports its own trouble: letting it
-    // reach the failure path would put a sent reply back and invite a
-    // second send.
     const afterSend = async (response: Awaited<ReturnType<typeof sendComposeSession>>) => {
       if (!sendReference.binding)
         throw new Error("Send owner is missing; retain this outcome for explicit recovery");
@@ -508,8 +450,6 @@ export function useComposeSend({
 
     setPendingSends((count) => count + 1);
     emitSendEvent({ kind: "queued", ...sendEvent });
-    // Checked once the send is committed, so it has the undo window to
-    // answer and a cancelled confirm dialog never asks a model. Never awaited.
     void detectComposePromises(draftPath, accountId)
       .then((detection) => offerPromises(sendEvent.sendId, detection))
       .catch(() => undefined);
@@ -543,10 +483,7 @@ export function useComposeSend({
       if (cancelled) return;
       pendingCancelsRef.current.delete(cancelThis);
       useUndo.getState().clearPendingSendCancel(cancel);
-      // Hovering pauses a toast's own clock; the send doesn't wait for it.
       toast.dismiss(toastId);
-      // Down when the window closes: the send is cancelled, not held for
-      // later. Sending after the daemon returns needs a new press.
       if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
         setPendingSends((count) => Math.max(0, count - 1));
         releaseSendLock();
@@ -565,8 +502,6 @@ export function useComposeSend({
     requestSendAndRemind,
     sendConfirmOpen,
     setSendConfirmOpen: setSendConfirmOpenFromUi,
-    /** True from the first Send press until that send settles or is
-     * cancelled, including the whole undo window. */
     sendLocked,
     sendLaterOpen,
     setSendLaterOpen,
@@ -588,7 +523,6 @@ function hasBlockingIssues(draft: ComposeDraftState): boolean {
   return localComposeIssues(draft).some((issue) => issue.severity === "error");
 }
 
-/** "To ada@x.com and 2 more, from me@y.com. Press z to cancel." */
 function sendSummary(draft: ComposeDraftState): string {
   const recipients = splitAddresses(
     `${draft.frontmatter.to},${draft.frontmatter.cc},${draft.frontmatter.bcc}`,

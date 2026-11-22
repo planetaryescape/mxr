@@ -97,7 +97,6 @@ describe("Not sure", () => {
       method: "POST",
       body: { mode: "messages", sender: false, dry_run: false, source: "not_sure" },
     });
-    // The answered question leaves at once, and with it the hint.
     expect(screen.getAllByTestId("not-sure-row")).toHaveLength(1);
     expect(screen.queryByTestId("not-sure-hint")).toBeNull();
 
@@ -107,7 +106,6 @@ describe("Not sure", () => {
       kind: "MessageMoved",
       outcome: outcome({ to: "messages", sender: true, ask_sender: null }),
     });
-    // Enter is yes, as y is, in every yes/no question (blueprint 35).
     fireEvent.keyDown(ask, { key: "Enter" });
     expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/mail/messages/msg-1/move", {
       method: "POST",
@@ -158,7 +156,6 @@ describe("Not sure", () => {
       items: [{ thread_id: "thread-1", mode: "updates", provider: "Gmail", copy: "Done." }],
     });
     fireEvent.keyDown(row, { key: "e" });
-    // Done where it is for now; only an answer settles the question.
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/modes/updates/done", {
       method: "POST",
       body: { thread_ids: ["thread-1"], dry_run: false },
@@ -176,7 +173,6 @@ describe("Not sure", () => {
     expect(dialog?.kind).toBe("move-to-mode");
     if (dialog?.kind !== "move-to-mode") return;
     expect(dialog.subject.messageId).toBe("msg-1");
-    // The picker's answer is the question's: sent with `source: "not_sure"`.
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "todo" }) });
     dialog.subject.notSure?.answer("todo", false);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/messages/msg-1/move", {
@@ -218,7 +214,6 @@ describe("Not sure: failures and the last answer", () => {
     fireEvent.click(screen.getByTestId("not-sure-messages"));
     fireEvent.click(screen.getByTestId("arrivals-summary"));
     expect(screen.getByTestId("arrivals")).not.toHaveAttribute("open");
-    // The answer refreshes the line: no questions left.
     view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);
     const ask = await screen.findByTestId("not-sure-sender-ask");
     expect(ask).toHaveTextContent("Always for Maya Ortiz?");
@@ -236,10 +231,8 @@ describe("Not sure: failures and the last answer", () => {
     openSortingDetails();
     fireEvent.click(screen.getByTestId("not-sure-messages"));
     expect(screen.queryByTestId("not-sure-row")).toBeNull();
-    // The answer refreshes the line without it, then Undo lists it again.
     view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    // Let the move settle (its toast, then the refresh) before Undo.
     await new Promise((resolve) => setTimeout(resolve, 20));
     view.rerender(<ArrivalsView arrivals={one()} nowWaiting />);
     expect(await screen.findByTestId("not-sure-row")).toBeVisible();

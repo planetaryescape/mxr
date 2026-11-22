@@ -1,5 +1,3 @@
-// Previous web client contract at f1e19fba2055fa96bbaf73ce35a6bd8354cd4870.
-// This test-only snapshot proves an old client rejects the category protocol.
 export interface BridgeHealthResponseV4 {
   status?: string;
   service?: string;

@@ -1,8 +1,3 @@
-/*
- * How mail opens and reads: layout, the default body view, list grouping,
- * HTML canvas, and the senders whose remote images always load.
- */
-
 import { X } from "lucide-react";
 
 import { DENSITIES } from "./AppearanceSection";

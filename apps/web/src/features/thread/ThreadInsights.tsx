@@ -1,8 +1,3 @@
-/*
- * The AI overview (`y`) shown above a thread. It comes from the daemon; the
- * reader only formats it.
- */
-
 import { ChevronDown, FileText, RefreshCw } from "lucide-react";
 
 import { ModelMark } from "@/components/ModelMark";

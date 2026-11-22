@@ -16,7 +16,6 @@ export type AssistantProgress = Schemas["AssistantProgressData"];
 export type AssistantViewContext = Schemas["AssistantViewContextData"];
 export type AssistantCallState = Schemas["AssistantCallStateData"];
 export type AssistantDelete = Schemas["AssistantDeleteData"];
-/** Every row one step's result lists; `total` can exceed `listed`. */
 export type AssistantStepRows = {
   rows: Schemas["AssistantReadoutRowData"][];
   listed: number;
@@ -43,7 +42,6 @@ export async function fetchModels(): Promise<AssistantModels> {
   return response.models;
 }
 
-/** Refused with the daemon's sentence when the model can't be used yet. */
 export async function setModel(model: string): Promise<AssistantModels> {
   const response = await apiFetch<{ change: { models: AssistantModels } }>(`${BASE}/model`, {
     method: "POST",
@@ -66,7 +64,6 @@ export async function fetchConversation(id: string): Promise<AssistantConversati
   return response.conversation;
 }
 
-/** `seq` is the seq of the assistant message that declared the call: call ids repeat. */
 export async function fetchStepRows(
   conversationId: string,
   callId: string,
@@ -126,7 +123,6 @@ export async function setAutoApprove(
   return response.conversation;
 }
 
-/** With `dryRun`, says what would go (the title and message count) and deletes nothing. */
 export async function deleteConversation(
   conversationId: string,
   { dryRun = false }: { dryRun?: boolean } = {},

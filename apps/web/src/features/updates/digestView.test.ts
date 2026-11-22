@@ -22,7 +22,6 @@ describe("source names read as names", () => {
     expect(displaySourceName("dhl")).toBe("DHL");
     expect(displaySourceName("plausible")).toBe("Plausible");
     expect(displaySourceName("linear")).toBe("Linear");
-    // Four letters exactly is still an acronym; five is a word.
     expect(displaySourceName("dell")).toBe("DELL");
     expect(displaySourceName("strav")).toBe("Strav");
   });
@@ -35,7 +34,6 @@ describe("the digest's layout", () => {
     const collapsed = digestRows(digest, { routineOpen: false });
     expect(collapsed.rows.map((row) => row.section)).toEqual(["needs_a_look", "changed"]);
     expect(collapsed.rows.map((row) => row.index)).toEqual([0, 1]);
-    // Six sources holding 1 to 6 messages.
     expect(collapsed.routine).toEqual({ sources: 6, messages: 21 });
 
     const open = digestRows(digest, { routineOpen: true });
@@ -104,11 +102,9 @@ describe("a row's facts", () => {
       });
     expect(trackLabel(parcel(1))).toBe("Shipped · next: out for delivery");
     expect(trackLabel(parcel(0))).toBe("Ordered · next: shipped");
-    // At the last step the fact already says it arrived.
     expect(trackLabel(parcel(3))).toBeNull();
     expect(trackLabel(parcel(null))).toBeNull();
     expect(trackLabel(parcel(undefined))).toBeNull();
-    // A step the daemon sent outside the track shows nothing rather than a wrong one.
     expect(trackLabel(parcel(9))).toBeNull();
     expect(trackLabel(parcel(-1))).toBeNull();
     expect(trackLabel(parcel(1.5))).toBeNull();
@@ -121,7 +117,6 @@ describe("a row's facts", () => {
       sender_email: "no-reply@accounts.google.com",
     });
     expect(splitSourceName(google)).toEqual({ name: "Google", host: "accounts.google.com" });
-    // A casing difference in the daemon's copy still splits; a mismatched host does not.
     expect(
       splitSourceName(
         lineFixture({
@@ -187,7 +182,6 @@ describe("a row's facts", () => {
     const noDelta = { ...everything, in_todo: null, todo_suggestion: null, delta: null };
     expect(trailingItem(noDelta)).toEqual({ kind: "amount", text: "£4.20" });
     expect(trailingItem({ ...noDelta, numbers: [] })).toEqual({ kind: "count", text: "5 emails" });
-    // A count is a routine thing and a single message needs no count.
     expect(trailingItem({ ...noDelta, numbers: [], count: 1 })).toBeNull();
     expect(trailingItem({ ...noDelta, numbers: [], section: "changed" })).toBeNull();
   });

@@ -1,11 +1,3 @@
-/*
- * The live line: one line above the composer that says what the desk is
- * doing now, rewritten in place, with the seconds the turn has taken and
- * Stop. It exists only while a turn runs, so it can't go stale: the
- * sidebar mounts it from the conversation's own status. A step that runs
- * long names the model, so a slow local one doesn't look stuck.
- */
-
 import { useEffect, useRef, useState } from "react";
 
 import type { AssistantProgress } from "./api";
@@ -59,7 +51,6 @@ function useNow(): number {
   return now;
 }
 
-/** Whole seconds since the phrase last changed: the time on this step. */
 function useStepSeconds(phrase: string, now: number): number {
   const since = useRef({ phrase, at: now });
   if (since.current.phrase !== phrase) since.current = { phrase, at: now };

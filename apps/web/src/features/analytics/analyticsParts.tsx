@@ -1,28 +1,20 @@
-/*
- * Pieces every analytics dashboard shares: drill-down navigation (the TUI
- * drills every row into a search), the ranked bar list, and duration text.
- */
-
 import { useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { Segmented as SharedSegmented } from "@/components/Segmented";
 import { cn } from "@/lib/utils";
 
-/** Open a search for `q`, the way the TUI's analytics drill-down does. */
 export function useDrillToSearch(): (q: string) => void {
   const navigate = useNavigate();
   return (q: string) => void navigate({ to: "/search", search: { q } });
 }
 
-/** Open a conversation. All Mail holds every thread, whatever its labels. */
 export function useOpenThread(): (threadId: string) => void {
   const navigate = useNavigate();
   return (threadId: string) =>
     void navigate({ to: "/m/$mailbox/$threadId", params: { mailbox: "archive", threadId } });
 }
 
-/** Quote a search operator value when it has spaces. */
 export function searchValue(value: string): string {
   return /\s/.test(value) ? `"${value.replace(/"/g, "")}"` : value;
 }
@@ -31,19 +23,11 @@ export interface BarRow {
   id: string;
   label: string;
   value: number;
-  /** Formatted value shown at the row end. */
   display: string;
-  /** Mono meta after the label (count, share). */
   meta?: string;
   onSelect?: () => void;
 }
 
-/**
- * A ranked horizontal bar list. Chosen over a column chart because the
- * rows are long categorical labels (senders, MIME types, buckets) that a
- * column chart can only show on hover; here every label is readable and
- * each row is a keyboard-reachable drill-down.
- */
 export function BarList({
   rows,
   label,
@@ -100,7 +84,6 @@ export function BarList({
   );
 }
 
-/** Big-number figure for a dashboard headline (one per section, not a grid). */
 export function Figure({
   label,
   value,
@@ -121,7 +104,6 @@ export function Figure({
   );
 }
 
-/** "45s", "12m", "3.5h", "2.1d" for reply latencies. */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "n/a";
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -135,7 +117,6 @@ export function formatDays(days: number): string {
   return `${rounded.toLocaleString()}d`;
 }
 
-/** A small single-choice segmented control for dashboard options: the app's one Segmented. */
 export function Segmented<T extends string>({
   value,
   options,

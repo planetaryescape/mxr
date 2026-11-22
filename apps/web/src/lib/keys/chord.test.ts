@@ -8,17 +8,14 @@ function key(init: KeyboardEventInit): KeyboardEvent {
 
 describe("tokenFromEvent", () => {
   test("tells ? and / apart by the character typed, not the physical key", () => {
-    // US layout: Shift+Slash types "?".
     expect(tokenFromEvent(key({ key: "?", code: "Slash", shiftKey: true }), false)).toBe("?");
     expect(tokenFromEvent(key({ key: "/", code: "Slash" }), false)).toBe("/");
-    // A layout where "/" itself needs Shift still means "/".
     expect(tokenFromEvent(key({ key: "/", code: "Digit7", shiftKey: true }), false)).toBe("/");
   });
 
   test("Mod is Cmd on macOS and Ctrl elsewhere", () => {
     expect(tokenFromEvent(key({ key: "k", metaKey: true }), true)).toBe("Mod+k");
     expect(tokenFromEvent(key({ key: "k", ctrlKey: true }), false)).toBe("Mod+k");
-    // Cmd on a non-Mac keyboard is not Mod.
     expect(tokenFromEvent(key({ key: "k", metaKey: true }), false)).toBe("Meta+k");
   });
 
@@ -40,7 +37,6 @@ describe("tokenFromEvent", () => {
   });
 
   test("a character typed with Option on macOS is the character, with no Alt", () => {
-    // UK Mac: Option-3 types "#". German Mac: Option-5 and Option-8 type "[" and "{".
     expect(tokenFromEvent(key({ key: "#", code: "Digit3", altKey: true }), true)).toBe("#");
     expect(tokenFromEvent(key({ key: "[", code: "Digit5", altKey: true }), true)).toBe("[");
     expect(

@@ -41,7 +41,6 @@ export function readSendReferences(): SendReference[] {
     return [];
   }
 }
-/** Retain the query identity before the HTTP request can have effects. */
 export function retainSendReference(reference: SendReference): void {
   const references = readSendReferences().filter(
     (r) =>
@@ -93,7 +92,6 @@ export function recoverSendOutcome(
   );
 }
 
-/** Called only by a deliberate Send press. Unknown acceptance never mints an attempt. */
 export function operationAfterReview(defaultOperation: string, prior: SendOutcome | null): string {
   if (!prior) return defaultOperation;
   if (prior.state === "waiting")

@@ -133,7 +133,6 @@ describe("installKeyDispatcher", () => {
     const unread = runAction("unread", "U");
     registry.defineMany([inbox.action, unread.action]);
 
-    // A mistyped "g U" must not mark mail unread.
     expect(press({ key: "g" })).toBe(false);
     expect(press({ key: "U", shiftKey: true })).toBe(false);
 

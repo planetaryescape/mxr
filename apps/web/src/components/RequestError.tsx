@@ -1,34 +1,18 @@
 import { getToken } from "@/lib/tokenStorage";
 import { BridgeRequestError, DaemonUnavailableError, UnauthorizedError } from "@/api/client";
 
-/**
- * The one fix a failure offers. "retry" appears only for failures a second
- * attempt can change; a lookup that can't succeed (a bad id) offers the way
- * out instead (docs/blueprint/27 "States").
- */
 export type ErrorFix = "retry" | "inbox" | "start" | "update" | "token" | "none";
 
 export interface ErrorExplanation {
-  /** What happened, in plain words. */
   heading: string;
-  /** What still works. */
   body: string;
   fix: ErrorFix;
-  /** True for the safe sentence given to an error nobody mapped; a caller may name what failed instead. */
   generic: boolean;
-  /** The raw error, for the "Details" disclosure. */
   technical: string;
 }
 
 const NO_DETAIL = "No additional detail was provided.";
 
-/**
- * Turn what the bridge returned into sentences. `subject` names what was being
- * asked for ("this conversation"); giving one marks a lookup, whose bad or
- * unknown id offers the way out instead of a retry. A page's own name goes in
- * `PageError`'s `title`. Unknown errors get the generic sentence, and their raw
- * text goes under Details.
- */
 export function explainError(error: unknown, subject?: string): ErrorExplanation {
   const technical = error instanceof Error && error.message ? error.message : NO_DETAIL;
   const generic = (): ErrorExplanation => ({
@@ -96,7 +80,6 @@ export function explainError(error: unknown, subject?: string): ErrorExplanation
     };
   }
   if (status === 400 || code === "bad_request") {
-    // Asking again would send the same request.
     return {
       ...generic(),
       body: "mxr couldn't use that request. Nothing was changed, and everything else works.",

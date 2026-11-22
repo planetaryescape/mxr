@@ -56,7 +56,6 @@ const PAGE_TITLES: Record<string, string> = {
   compose: "Compose",
 };
 
-/** Pages whose second path segment is an open conversation. */
 const THREAD_PLACES = new Set([
   "search",
   "desk",
@@ -68,7 +67,6 @@ const THREAD_PLACES = new Set([
 ]);
 
 function threadIdInPath(parts: string[]): string | undefined {
-  // /reading/item/<key> is a Reading item, not a conversation.
   if (parts[0] === "reading" && parts[1] === "item") return undefined;
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];
   if (THREAD_PLACES.has(parts[0] ?? "")) return parts[1];
@@ -77,18 +75,13 @@ function threadIdInPath(parts: string[]): string | undefined {
 
 function useBreadcrumb(path: string, search: string): Crumb[] {
   const shell = useShellQuery();
-  // Every real route is a child of the root, so a root-only match list means
-  // no route matched and the path is just noise in the crumb.
   const unmatched = useRouterState({ select: (s) => s.matches.length <= 1 });
-  // The page's own title names a second-level page ("Language model", not
-  // its URL slug "llm"); the slug is only the fallback before it publishes.
   const pageTitle = usePageTitleStore((s) => s.title);
   const parts = path
     .split("/")
     .filter(Boolean)
     .map((part) => decodeURIComponent(part));
   const openThreadId = threadIdInPath(parts);
-  // Passive observer: the reader fetches; the crumb updates when it lands.
   const thread = useQuery({
     queryKey: ["thread", openThreadId ?? ""],
     queryFn: () => fetchThread(openThreadId ?? ""),
@@ -125,7 +118,6 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     if (parts[0] === "reading" && parts[1] === "item") crumbs.push({ label: "Reader" });
     return crumbs;
   }
-  // The phone's settings list is the Settings page itself, not a section of it.
   if (parts[0] === "settings" && parts[1] === "all") return [{ label: "Settings" }];
   if (parts.length > 1 && parts[0] !== "sender") {
     return [{ label: title, to: `/${parts[0]}` }, { label: pageTitle ?? humanize(parts[1] ?? "") }];
@@ -134,7 +126,6 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
   return [{ label: title }];
 }
 
-// Path segments that are acronyms, not words ("llm" → "LLM", not "Llm").
 const ACRONYMS = new Set(["llm", "mcp", "api", "imap", "smtp", "ai"]);
 
 function humanize(value: string): string {
@@ -145,7 +136,6 @@ function humanize(value: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** Phones: no status bar (matches app.css). */
 const PHONE_QUERY = "(max-width: 639px)";
 
 export function Topbar() {
@@ -153,7 +143,6 @@ export function Topbar() {
   const setSearchOpen = useModals((state) => state.setSearchPaletteOpen);
   const setHelpOpen = useModals((state) => state.setHelpOpen);
   const crumbs = useBreadcrumb(location.pathname, location.searchStr ?? "");
-  // A lone crumb that is the page's own h1 would say the title twice.
   const pageTitle = usePageTitleStore((s) => s.title);
   const repeatsTitle = crumbs.length === 1 && crumbs[0]?.label === pageTitle;
   const visible = repeatsTitle ? [] : crumbs;
@@ -164,20 +153,16 @@ export function Topbar() {
     refetchOnWindowFocus: false,
   });
   const isDemo = Boolean((status as { is_demo?: boolean } | undefined)?.is_demo);
-  // Phones hide the status bar, so the freshness indicator moves up here.
   const phone = useMediaQuery(PHONE_QUERY);
 
   return (
     <div className="flex w-full min-w-0 items-center gap-3">
       <nav
         aria-label="Breadcrumb"
-        // A phone's page frame carries the title; a trail squeezed to a lone chevron is noise.
         className="flex min-w-0 flex-1 items-center gap-1 text-sm max-sm:flex-none max-sm:[&>span:not([data-demo])]:hidden"
       >
         {visible.map((crumb, index) => {
           const last = index === visible.length - 1;
-          // Only the last crumb gives way on a narrow bar: a parent crumb
-          // that shrinks slides under its neighbour instead of truncating.
           const fit = last ? "min-w-0" : "max-w-[40%] shrink-0";
           return (
             // oxlint-disable-next-line react/no-array-index-key -- crumbs are positional
@@ -221,8 +206,6 @@ export function Topbar() {
       <Button
         type="button"
         variant="outline"
-        // min-w-0 lets search give way on a phone; without it the label's
-        // width pushed Compose past the right edge at 390px.
         className="h-8 w-[min(360px,34vw)] min-w-0 shrink justify-start max-sm:w-auto max-sm:flex-1 gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
         onClick={() => setSearchOpen(true)}
         aria-label="Search mail"

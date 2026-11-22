@@ -10,14 +10,6 @@ import { ACCOUNT_SLOTS } from "./accountSlots";
 import { generateIncreased, generateRoles } from "./themeGenerator";
 import { renderThemesCss, THEMES } from "./themes";
 
-/*
- * Spike S3 (docs/blueprint/31, D139): the generator, given Midnight's three
- * inputs, reproduces today's hand-tuned Midnight within ΔE OK 2. Midnight's
- * values as committed before the generator existed are frozen below; they
- * are the reference, so retuning a rule that drifts Midnight fails here.
- */
-
-/** Midnight in `tokens.css` at 1e0bbc3c5, every var() and color-mix() resolved. */
 const MIDNIGHT_BEFORE: Record<string, string> = {
   "ink-room": "#080f17",
   "ink-desk": "#0d161f",
@@ -95,7 +87,6 @@ const MIDNIGHT_BEFORE: Record<string, string> = {
 const MAX_DELTA = 2;
 const deltaOk = differenceEuclidean("oklab");
 
-/** Resolve `var(--x)` through the same theme, so aliases compare as colours. */
 function resolve(roles: Map<string, string>, name: string): string {
   const value = roles.get(name);
   if (value === undefined) throw new Error(`no role --${name}`);
@@ -109,7 +100,6 @@ function colour(css: string) {
   return parsed;
 }
 
-/** A translucent colour is compared as it lands on the desk. */
 function onDesk(css: string, desk: string) {
   const c = colour(css);
   return (c.alpha ?? 1) < 1 ? blend([colour(desk), c], "normal") : c;

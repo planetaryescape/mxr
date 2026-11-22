@@ -6,13 +6,10 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { cornerAvoiding, type ToastCorner } from "./toastPlacement";
 
-/** D140: a toast goes after 5 seconds, 8 when it carries an Undo. The independent keyboard undo stays live. */
 export const TOAST_DURATION_MS = 5_000;
 export const UNDO_TOAST_DURATION_MS = 8_000;
 
-/* Keep quiet feedback below Search and Compose in the app header. */
 const BELOW_TOPBAR = "calc(var(--shell-topbar-h) + 0.75rem)";
-/* Keep normal-mail feedback above the bottom status and mobile tabs. */
 const ABOVE_STATUSBAR = "calc(var(--shell-statusbar-h) + 0.75rem)";
 const ABOVE_MOBILE_TABS = "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)";
 
@@ -23,10 +20,8 @@ const ICONS = {
   error: <CircleX className="size-4" aria-hidden />,
 };
 
-/** `lib/actions/keyHints.ts` shows its tip under this id. */
 const KEY_HINT_ID = "key-hint";
 
-/** Sonner switches to its mobile layout at this width. */
 const MOBILE_WIDTH = 600;
 
 function pxVar(name: string, fallback: number): number {
@@ -34,23 +29,15 @@ function pxVar(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-/** The lit row's box, if a row is lit. */
 function litRowBox(): DOMRect | null {
   return document.querySelector<HTMLElement>('[data-lit="true"]')?.getBoundingClientRect() ?? null;
 }
 
-/**
- * One toast at a time: a new one replaces the one before (the activity log
- * keeps them all), and it takes the corner that leaves the lit row clear.
- */
 function useOneAtATime(preferred: ToastCorner): ToastCorner {
-  // The key hint is a tip with its own spot at the bottom centre, never a result: it stays
-  // beside the Undo toast of the action it teaches.
   const toasts = useSonner().toasts.filter((item) => item.id !== KEY_HINT_ID);
   const [corner, setCorner] = useState(preferred);
   const newest = toasts[0]?.id;
   useEffect(() => {
-    // Sonner lists the newest first.
     for (const older of toasts.slice(1)) toast.dismiss(older.id);
   }, [toasts]);
   useEffect(() => {
@@ -79,12 +66,10 @@ export function Toaster({ position: preferred = "bottom-right" }: { position?: T
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => (container.current ? pauseOnFocus(container.current) : undefined), []);
   return (
-    // `contents`: the wrapper only gives the focus listener a root.
     <div ref={container} className="contents">
       <SonnerToaster
         theme={resolved}
         position={position}
-        // Rich colours only paint warning and error; app.css gives success and info the overlay surface (D140).
         richColors
         offset={position === "top-right" ? { top: BELOW_TOPBAR } : { bottom: ABOVE_STATUSBAR }}
         mobileOffset={
@@ -106,11 +91,6 @@ export function Toaster({ position: preferred = "bottom-right" }: { position?: T
   );
 }
 
-/**
- * Sonner's region is polite. An error says itself again here, assertively,
- * so a screen reader hears it at once rather than after whatever it is
- * reading.
- */
 function AssertiveErrors() {
   const { toasts } = useSonner();
   const latest = toasts.find((item) => item.type === "error");
@@ -122,19 +102,12 @@ function AssertiveErrors() {
   );
 }
 
-/** The toast stack holding `target`, if it is in one. */
 function stack(target: EventTarget | null): HTMLElement | null {
   return target instanceof HTMLElement
     ? target.closest<HTMLElement>("[data-sonner-toaster]")
     : null;
 }
 
-/**
- * Sonner pauses a toast's timer while the pointer is over the stack but not
- * while keyboard focus is in it. Focus entering the stack sends the same
- * mouse event sonner listens for, and leaving sends the mouse-out, so
- * someone tabbing to Undo has the time they need.
- */
 function pauseOnFocus(root: HTMLElement): () => void {
   const onFocusIn = (event: FocusEvent) => {
     stack(event.target)?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
@@ -152,7 +125,6 @@ function pauseOnFocus(root: HTMLElement): () => void {
   };
 }
 
-/** The Undo button's label, with the key that does the same. */
 export function UndoLabel() {
   return (
     <span className="inline-flex items-center gap-1.5">

@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// npm audit has no way to accept a single advisory, so a gate that must stay
-// strict for everything else needs a small allowlist. Each entry names the
-// advisory, why it does not apply here, and a date after which it fails again.
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 

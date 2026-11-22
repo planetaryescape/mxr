@@ -51,8 +51,6 @@ let uninstall: () => void = () => {};
 
 describe("ArrivalsRoute keys", () => {
   beforeEach(() => {
-    // The app's one dispatcher: arrival keys reach the page through the
-    // registry's "arrivals" scope, not a listener on the rows.
     uninstall = installKeyDispatcher(window, {
       registry: getRegistry(),
       context: snapshotActionContext,

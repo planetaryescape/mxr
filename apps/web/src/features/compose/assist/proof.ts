@@ -1,13 +1,3 @@
-/*
- * A proof as the page draws it: the daemon's change list cut into runs that
- * say what each run of words is. Kept words are the user's own; added words
- * came from the model; removed words are struck. Gaps are the `[[?: …]]`
- * spots the user still has to fill, and their identity comes from the
- * proposal's byte ranges, not from the runs: a word diff can split one gap
- * across several runs. Gap offsets are UTF-8 bytes into the proposed text, like
- * every other offset on this contract.
- */
-
 import type { ComposeAssistChange, ComposeAssistGap } from "./types";
 
 export type ProofRunKind = "kept" | "added" | "removed";
@@ -15,7 +5,6 @@ export type ProofRunKind = "kept" | "added" | "removed";
 export interface ProofRun {
   kind: ProofRunKind;
   text: string;
-  /** Index into `proposal.gaps` when the run lies inside a gap, else null. */
   gap: number | null;
 }
 
@@ -38,7 +27,6 @@ export function proofRuns(
     const end = offset + bytes.length;
     offset = end;
 
-    // Cut the run at every gap edge, so each part is wholly inside a gap or out.
     const cuts = new Set<number>([start, end]);
     for (const gap of gaps) {
       if (gap.start > start && gap.start < end) cuts.add(gap.start);
@@ -61,11 +49,6 @@ export function proofRuns(
   return attachRemovedToGaps(runs);
 }
 
-/**
- * A removed run has no place in the proposed text. It belongs to a gap when
- * the gap's runs on both sides of it are the same gap, so the struck words
- * sit inside the gap's span rather than splitting it.
- */
 function attachRemovedToGaps(runs: ProofRun[]): ProofRun[] {
   return runs.map((run, index) => {
     if (run.kind !== "removed") return run;
@@ -77,7 +60,6 @@ function attachRemovedToGaps(runs: ProofRun[]): ProofRun[] {
   });
 }
 
-/** The proposed text the runs spell, which must equal `proposal.text`. */
 export function runsText(runs: readonly ProofRun[]): string {
   return runs
     .filter((run) => run.kind !== "removed")

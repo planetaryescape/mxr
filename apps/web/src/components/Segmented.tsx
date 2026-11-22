@@ -2,12 +2,6 @@ import { cn } from "@/lib/utils";
 import { KeyChip } from "@/components/KeyChip";
 import { choiceIndex } from "@/lib/keys/choiceNavigation";
 
-/**
- * The one either-or control (docs/blueprint/27 "Buttons and controls"): a
- * square group, the selected segment in `--signal-soft` with primary text.
- * Every two-or-more-way choice shows which option is selected. Arrow keys move
- * between segments, as a radio group does.
- */
 export function Segmented({
   label,
   value,
@@ -21,7 +15,6 @@ export function Segmented({
   options: readonly (readonly [id: string, text: string])[];
   onChange: (value: string) => void;
   className?: string;
-  /** Existing direct shortcuts, shown beside the choices they operate. */
   keys?: Readonly<Record<string, string>>;
 }) {
   return (

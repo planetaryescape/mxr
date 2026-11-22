@@ -88,7 +88,6 @@ describe("done here's fold follows how it was asked for", () => {
       during = useModeDone.getState().folding.messages.has("t3");
       return Promise.resolve(answer);
     });
-    // The first key of a burst folds; the second, straight after, does not.
     await markModeDone("messages", ["t3"], { via: "key" });
     fetchMock.mockImplementationOnce(() => {
       during = useModeDone.getState().folding.messages.has("t3");

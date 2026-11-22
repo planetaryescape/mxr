@@ -16,17 +16,9 @@ export interface AccountIdentity {
 }
 
 export interface AccountIdentities {
-  /** Keyed by account id, never by position: the daemon's list order is not stable. */
   byId: ReadonlyMap<string, AccountIdentity>;
-  /** Every account, identity or not, for the names and addresses that always show. */
   accountsById: ReadonlyMap<string, RuntimeAccount>;
-  /** More than one enabled account. Places that always show the account draw its chip only then. */
   several: boolean;
-  /**
-   * Rows wear their account's mark when the view mixes accounts: more than one
-   * enabled account, no single account chosen (docs/blueprint/33). An older
-   * daemon sends no identities, so nothing is marked.
-   */
   marksShown: boolean;
 }
 
@@ -39,11 +31,6 @@ const NONE: AccountIdentities = {
 
 const AccountIdentitiesContext = createContext<AccountIdentities>(NONE);
 
-/**
- * One accounts query for the whole app, so each row reads a context value
- * instead of running its own query. Mounted once at the root; a save that
- * invalidates ["accounts"] refreshes every mark with it.
- */
 export function AccountIdentitiesProvider({ children }: { children: ReactNode }) {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const scoped = useUiPrefs((s) => s.accountScope !== null);
@@ -58,10 +45,6 @@ export function useAccountIdentities(): AccountIdentities {
   return useContext(AccountIdentitiesContext);
 }
 
-/**
- * The mark a row for this account wears, when the view mixes accounts. Rows
- * and their accessible names read it, so a name is spoken only where its chip shows.
- */
 export function useRowAccountMark(
   accountId: string | null | undefined,
 ): AccountIdentity | undefined {
@@ -69,7 +52,6 @@ export function useRowAccountMark(
   return marksShown && accountId ? byId.get(accountId) : undefined;
 }
 
-/** The derived view of an accounts list. `scoped` is true when the app shows one account. */
 export function identitiesFrom(
   list: readonly RuntimeAccount[],
   scoped: boolean,
@@ -86,7 +68,6 @@ export function identitiesFrom(
       email: account.email,
       tag:
         typeof identity.tag === "string" && identity.tag ? identity.tag : account.name.slice(0, 1),
-      // An unknown slot from a newer or buggy daemon falls back to slate, never a crash.
       slot: isAccountSlot(identity.color) ? identity.color : "slate",
     });
   }

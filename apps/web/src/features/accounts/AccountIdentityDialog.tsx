@@ -23,11 +23,6 @@ import { setAccountIdentity } from "./api";
 
 const TAG_PATTERN = /^[A-Z0-9]{1,3}$/;
 
-/**
- * Sets an account's colour and tag through the daemon, which validates both and
- * refuses a tag another account holds. A refusal stays in the dialog so the
- * user can pick another tag without losing the colour they chose.
- */
 export function AccountIdentityDialog({
   account,
   identities,
@@ -40,7 +35,6 @@ export function AccountIdentityDialog({
   return (
     <Dialog open={account !== null} onOpenChange={(open) => !open && onClose()}>
       {account ? (
-        // Remounted per account so the fields start from that account's values.
         <IdentityForm
           key={account.account_id}
           account={account}
@@ -75,7 +69,6 @@ function IdentityForm({
   const save = useMutation({
     mutationFn: () => setAccountIdentity(account.key ?? "", { color, tag }),
     onSuccess: ({ result }) => {
-      // The daemon answers a refused change as a normal response, so `ok` decides.
       if (!result.ok) {
         setRefusal(result.save?.detail || result.summary);
         return;

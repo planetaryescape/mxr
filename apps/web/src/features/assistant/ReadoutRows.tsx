@@ -1,10 +1,3 @@
-/*
- * The emails and people a step found or a reply names, drawn as the app's
- * own compact rows: avatar, subject or name, one line under it. Each opens
- * beside the assistant. The text is mail and model text, so it is only ever
- * set as text.
- */
-
 import { Paperclip } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -22,21 +15,10 @@ import type { AssistantItem, AssistantStepRows } from "./api";
 type ReplyItem = Extract<AssistantItem, { kind: "assistant" }>;
 export type ReadoutRow = NonNullable<ReplyItem["rows"]>[number];
 
-/** Compact rhythm inside the panel (docs/blueprint/29 "The copy"). */
 const COMPACT = { "--row-height": "44px" } as React.CSSProperties;
 
 type Rest = "closed" | "loading" | "open" | "failed";
 
-/**
- * A step's rows. When the step found more than these, "and N more" opens
- * every row the step's result lists; the first click fetches them. Without
- * `loadRest` the count stays plain text.
- *
- * The button is the same element in every state, so keyboard focus stays on
- * it while the rest loads and when it collapses. A response that arrives
- * after unmount is dropped, so a step that was swapped out never shows rows
- * fetched for it.
- */
 export function ReadoutRows({
   rows,
   more = 0,
@@ -44,7 +26,6 @@ export function ReadoutRows({
   loadRest,
 }: {
   rows: ReadoutRow[];
-  /** How many the step found beyond these. */
   more?: number;
   label: string;
   loadRest?: () => Promise<AssistantStepRows>;
@@ -52,7 +33,6 @@ export function ReadoutRows({
   const [rest, setRest] = useState<Rest>("closed");
   const [all, setAll] = useState<AssistantStepRows | null>(null);
   const mounted = useRef(false);
-  // Each click that starts a fetch takes a number; only the latest may land.
   const request = useRef(0);
   useEffect(() => {
     mounted.current = true;
@@ -63,8 +43,6 @@ export function ReadoutRows({
   }, []);
   const open = rest === "open" && all !== null;
   const shown = open && all ? all.rows : rows;
-  // One lookup for every email row shown. Rows from before the daemon sent
-  // the email fields draw as they did and ask for nothing.
   const threadIds = useMemo(
     () =>
       shown.flatMap((row) =>
@@ -138,7 +116,6 @@ export function ReadoutRows({
   );
 }
 
-/** Whether the daemon sent the email fields; older rows carry only `detail`. */
 function isRich(row: ReadoutRow) {
   return Boolean(row.sender || row.snippet || row.at != null || row.attachment || row.unread);
 }
@@ -148,7 +125,6 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
   const thread = link?.kind === "thread";
   const rich = isRich(row);
   const mark = useRowAccountMark(row.account_id);
-  // A thread row's title is the subject and its detail the sender; a person's is the other way round.
   const who = thread ? (row.sender ?? row.detail ?? row.title) : row.title;
   const under = [row.sender, row.snippet].filter(Boolean).join(" · ") || row.detail;
   const Glyph = thread && rich ? threadGlyph(link.thread_id, modes) : null;

@@ -9,7 +9,6 @@ import { LANDING_MS, useLanding } from "@/state/landingStore";
 
 import { Row, RowVerb } from "./Row";
 
-/** Two enabled accounts with identities: the view mixes accounts unless scoped. */
 const ACCOUNTS: RuntimeAccount[] = [
   {
     account_id: "work",

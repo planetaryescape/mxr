@@ -13,7 +13,6 @@ import {
 } from "./alert-dialog";
 
 function Harness() {
-  // Opened by a shortcut: no trigger for Radix to hand focus back to.
   const [open, setOpen] = useState(true);
   return (
     <>

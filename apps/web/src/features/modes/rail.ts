@@ -1,10 +1,3 @@
-/*
- * The rail over the bridge (`GetRail`): Now, the five modes and Inbox in
- * order with their keys, counts and early-version notes, plus the pages
- * under More. The sidebar and the phone tabs read it, so both follow the
- * daemon's order and words.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -17,7 +10,6 @@ export type RailEntry = Schemas["RailEntryData"];
 export type RailLink = Schemas["RailLinkData"];
 type RailResponse = Extract<Schemas["ResponseData"], { kind: "Rail" }>;
 
-/** Where each rail entry opens in the web app. */
 export const RAIL_PATHS: Record<string, string> = {
   now: "/now",
   messages: "/messages",
@@ -44,11 +36,6 @@ export function useRailQuery() {
   });
 }
 
-/**
- * The number a rail entry shows. Now's badge counts work; To do and
- * Messages show a quiet count of what they hold. Updates and Reading show
- * none, since nothing there is owed (blueprint 22, the rail).
- */
 export function railCount(entry: RailEntry): { value: number; badge: boolean } | null {
   if (entry.badge != null && entry.badge > 0) return { value: entry.badge, badge: true };
   if ((entry.id === "todo" || entry.id === "messages") && entry.count != null && entry.count > 0) {

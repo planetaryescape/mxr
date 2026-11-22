@@ -1,8 +1,3 @@
-//! Finds `mxr` and opens its selected local or paired remote web app.
-//!
-//! The shell owns no daemon logic: `mxr web --session-json --no-open` starts or
-//! reuses the managed bridge or issues a one-time remote browser code.
-
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -11,11 +6,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tauri::Url;
 
-/// How long `mxr web` gets to print a URL. A cold start spawns the bridge, so
-/// this is generous; the CLI's own start timeout is 5s.
 pub const LAUNCH_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Why the web app could not be opened. Shown on the down page by name.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum LaunchError {
     Missing,
@@ -33,9 +25,6 @@ impl LaunchError {
     }
 }
 
-/// Where to look for `mxr`. A GUI app launched from Finder gets a minimal
-/// PATH without Homebrew, so the usual install locations are appended after
-/// whatever PATH the process did get (an explicit PATH entry wins).
 pub fn candidate_dirs(path_env: Option<OsString>, home: Option<&Path>) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = path_env
         .map(|path| std::env::split_paths(&path).collect())
@@ -63,7 +52,6 @@ fn is_executable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// The code is held only until the selected page can exchange it for its cookie.
 #[derive(PartialEq, Eq)]
 pub struct LaunchTarget {
     pub url: Url,
@@ -137,7 +125,6 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<LaunchTarget, LaunchError> {
         .args(["web", "--session-json", "--no-open"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        // stderr can carry the URL too; it is dropped, never logged.
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| LaunchError::Failed)?;
@@ -147,8 +134,6 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<LaunchTarget, LaunchError> {
     std::thread::spawn(move || {
         let mut out = String::new();
         let mut reader = BufReader::new(stdout.take(4097));
-        // The URL is a single line; stop at the first so a lingering child
-        // holding the pipe open cannot stall us.
         let _ = reader.read_line(&mut out);
         let _ = tx.send((out.len() <= 4096).then_some(out));
     });
@@ -167,7 +152,6 @@ fn run_web(mxr: &Path, timeout: Duration) -> Result<LaunchTarget, LaunchError> {
         return Err(LaunchError::Failed);
     };
 
-    // Let the command finish so a non-zero exit is reported as a failure.
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => break,

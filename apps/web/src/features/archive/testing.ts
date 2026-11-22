@@ -1,5 +1,3 @@
-/* Records shaped like the daemon's, for Archive's unit tests. */
-
 import type {
   RecordAnswer,
   RecordAnswerList,
@@ -119,7 +117,6 @@ export function answerFixture(overrides: Partial<RecordAnswer> = {}): RecordAnsw
   };
 }
 
-/** "anthropic": three invoices from one issuer, listed, the April one best. */
 export function listFixture(overrides: Partial<RecordAnswerList> = {}): RecordAnswerList {
   const invoice = (id: string, date: string, display: string) =>
     recordFixture({

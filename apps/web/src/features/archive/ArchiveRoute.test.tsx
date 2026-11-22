@@ -27,7 +27,6 @@ const mocks = vi.hoisted(() => ({
       },
     };
   })(),
-  // The URL's search params: Archive keeps its ledger state there.
   url: (() => {
     let search: Record<string, unknown> = {};
     const listeners = new Set<() => void>();
@@ -170,7 +169,6 @@ describe("Archive actions while subscriptions are displayed", () => {
 
     render(<ArchiveRoute />);
     fireEvent.click(screen.getByRole("radio", { name: "Subscriptions" }));
-    // In the URL, so a copied link opens Subscriptions too.
     expect(mocks.url.get()).toEqual(expect.objectContaining({ section: "subscriptions" }));
     expect((await screen.findAllByTestId("subscription-row"))[0]).toHaveTextContent("Netflix");
     expect(screen.getByRole("radio", { name: "Subscriptions" })).toHaveAttribute(
@@ -227,7 +225,6 @@ describe("Esc on Archive's matches", () => {
     act(() => getController("archive")?.close?.());
 
     expect(ask).toHaveValue("");
-    // A j typed next must move the list, not type into the box.
     expect(document.activeElement).not.toBe(ask);
   });
 });

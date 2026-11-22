@@ -1,17 +1,10 @@
-/*
- * Focus & reply keys. `g F` opens it from anywhere. Inside, the keys act
- * on the conversation on screen; the reply's own ⌘Enter sends and moves on.
- */
-
 import { Target } from "lucide-react";
 
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import type { ActionBehavior } from "@/lib/actions/types";
 
-/** Where focus mode returns to on Esc: the page it was opened from. */
 export function focusPath(from = window.location.pathname + window.location.search): string {
   if (from.startsWith("/focus")) return "/focus";
-  // From the desk, focus works through its You owe lane.
   const lane = from.startsWith("/desk") ? "lane=owed&" : "";
   return `/focus?${lane}from=${encodeURIComponent(from)}`;
 }

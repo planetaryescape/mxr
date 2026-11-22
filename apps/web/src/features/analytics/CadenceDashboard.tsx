@@ -19,11 +19,6 @@ import { formatWhen, formatRelative } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useHeldPending } from "@/hooks/useDelayedPending";
 
-/**
- * TUI "Cadence drift": contacts you watch, flagged when they have been
- * quiet longer than their usual rhythm. Scoped to the sidebar's account
- * (the bridge falls back to the default account).
- */
 export function CadenceDashboard() {
   const qc = useQueryClient();
   const drill = useDrillToSearch();

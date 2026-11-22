@@ -64,7 +64,6 @@ export function TokenSection() {
             saving = true;
             setToken(candidate);
             if (getToken() !== candidate) throw new Error("Browser storage unavailable");
-            // A fresh page drops failed queries and the stale expired-token URL.
             form.submit();
           }
         } catch {

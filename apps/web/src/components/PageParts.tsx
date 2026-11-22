@@ -1,9 +1,3 @@
-/*
- * Building blocks shared by every page: the empty, loading and error states,
- * ruled rows and a small inline notice. Pages compose these so every page
- * loads, fails and says it has nothing the same way.
- */
-
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -17,11 +11,6 @@ import { copyCommand, START_COMMAND, UPDATE_COMMAND } from "@/lib/copyCommand";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { cn } from "@/lib/utils";
 
-/*
- * The three page states (docs/blueprint/27 "States", D131). `framed` is for a
- * page whose content sits directly under its PageFrame, so the state lines up
- * with the title; inside `Page` or a section the column already does that.
- */
 function StateColumn({
   framed,
   className,
@@ -44,7 +33,6 @@ function StateColumn({
   );
 }
 
-/** A skeleton that has not been wanted for this long is never drawn. */
 const SKELETON_DELAY_MS = 150;
 
 function useAfterDelay(delayMs: number): boolean {
@@ -69,14 +57,6 @@ function Bar({ className, delay }: { className: string; delay: number }) {
   );
 }
 
-/**
- * A simple list's rows with bars where the words go. Modes with summaries,
- * bands or multiple panes use their own layouts from the Skeleton primitives.
- * Drawn only once a load has taken 150ms; a page that answers
- * from cache never flashes one. A page that already waits on its own timer
- * (`useDelayedPending`, which also holds a skeleton long enough not to
- * flicker) passes `shown` instead.
- */
 export function PageSkeleton({
   rows = 8,
   label = "Loading",
@@ -86,7 +66,6 @@ export function PageSkeleton({
 }: {
   rows?: number;
   label?: string;
-  /** What the real rows lead with: a person's avatar, or nothing. */
   lead?: "avatar" | "none";
   shown?: boolean;
   framed?: boolean;
@@ -128,8 +107,6 @@ export function PageSkeleton({
 }
 
 function ErrorAction({ fix, onRetry }: { fix: ErrorFix; onRetry?: () => void }) {
-  // The banner under the top bar already offers the start command while mxr is
-  // down; a second button on the page says the same thing twice.
   const daemonDown = useDaemonDown();
   switch (fix) {
     case "retry":
@@ -172,11 +149,6 @@ function ErrorAction({ fix, onRetry }: { fix: ErrorFix; onRetry?: () => void }) 
   }
 }
 
-/**
- * What happened in plain words, what still works, and the one fix that can
- * work. The raw error is under Details. `title` names what failed when the
- * error itself is one nobody mapped; a mapped error says its own sentence.
- */
 export function PageError({
   title,
   error,
@@ -187,7 +159,6 @@ export function PageError({
   title?: string;
   error: unknown;
   onRetry?: () => void;
-  /** What was being asked for ("this conversation"), for a lookup that can't succeed. */
   subject?: string;
   framed?: boolean;
 }) {
@@ -214,10 +185,6 @@ export function PageError({
   );
 }
 
-/**
- * Nothing here, said once: what isn't here, the next useful place, and the
- * action that fills it if there is one. No icon, except a mode's own glyph.
- */
 export function PageEmpty({
   title,
   body,
@@ -230,7 +197,6 @@ export function PageEmpty({
   body?: ReactNode;
   action?: ReactNode;
   glyph?: ModeGlyphId;
-  /** A finishing scene drawn above the words (the low tide). It belongs to the page, not to this state. */
   moment?: ReactNode;
   framed?: boolean;
 }) {
@@ -246,7 +212,6 @@ export function PageEmpty({
   );
 }
 
-/** A list of ruled rows (DESIGN.md: rules, not cards). */
 export function RuledList({
   children,
   label,
@@ -263,10 +228,6 @@ export function RuledList({
   );
 }
 
-/**
- * One ruled row: a title line, a mono meta line, and trailing actions.
- * `onOpen` makes the text a button so the row is keyboard reachable.
- */
 export function RuledRow({
   title,
   meta,
@@ -280,12 +241,10 @@ export function RuledRow({
 }: {
   title: ReactNode;
   meta?: ReactNode;
-  /** Right-aligned value (size, count, date). */
   aside?: ReactNode;
   actions?: ReactNode;
   onOpen?: () => void;
   openLabel?: string;
-  /** Keyboard cursor on this row. */
   current?: boolean;
   className?: string;
   children?: ReactNode;
@@ -300,7 +259,6 @@ export function RuledRow({
     <li
       aria-current={current ? "true" : undefined}
       className={cn(
-        // The lamp, not a tint: the current row is the one lit thing (D124).
         "group relative flex items-center gap-3 px-3 py-2.5",
         current ? "bg-ink-lamp" : "hover:bg-ink-lamp/50",
         className,
@@ -325,7 +283,6 @@ export function RuledRow({
   );
 }
 
-/** Label/value pairs in two ruled columns (status panels, account details). */
 export function FactList({
   facts,
   columns = 2,
@@ -350,7 +307,6 @@ export function FactList({
   );
 }
 
-/** Explanatory prose under a section title; not an alert box. */
 export function PageNote({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <p className={cn("mb-3 max-w-[65ch] text-xs text-muted-foreground", className)}>{children}</p>

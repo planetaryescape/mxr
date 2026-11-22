@@ -35,8 +35,6 @@ describe("htmlDraftRefusal", () => {
 describe("HtmlDraftNotice preview", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
-    // MessageBody schedules iframe measurements after load; these preview
-    // fixtures must not leave them running after jsdom is torn down.
     cleanup();
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -46,8 +44,6 @@ describe("HtmlDraftNotice preview", () => {
 
     const sandbox = frame.getAttribute("sandbox");
     expect(sandbox).not.toBeNull();
-    // Scripts and form submission must stay off: the same posture the thread
-    // reader uses for untrusted mail.
     expect(sandbox).not.toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-forms");
     expect(frame.getAttribute("srcdoc")).toContain("Ship on Friday.");
@@ -60,9 +56,6 @@ describe("HtmlDraftNotice preview", () => {
 
     const srcDoc = frame.getAttribute("srcdoc") ?? "";
     expect(srcDoc).toContain("hello");
-    // Nothing in the document may still name a remote URL in an attribute the
-    // browser fetches. (DOMPurify parks the original in `data-original-src`,
-    // which is inert until the reader explicitly unblocks images.)
     const preview = new DOMParser().parseFromString(srcDoc, "text/html");
     const fetched = [...preview.querySelectorAll("[src], [srcset], [href], [background]")].filter(
       (node) =>

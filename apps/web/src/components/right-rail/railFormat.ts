@@ -1,5 +1,3 @@
-/* Display formatting shared by the right-rail panels. */
-
 export function styleSummary(score: number): string {
   if (score >= 0.68) return `formal (${score.toFixed(2)})`;
   if (score <= 0.38) return `casual (${score.toFixed(2)})`;

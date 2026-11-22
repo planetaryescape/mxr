@@ -2,10 +2,6 @@ import type { AccountIdentity } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import type { AccountSlot } from "@/styles/accountSlots";
 
-/*
- * Spelled out per slot so Tailwind sees each class. The palette is for
- * accounts only (docs/blueprint/33): nothing else in the app uses these.
- */
 const SLOT_CLASS: Record<AccountSlot, string> = {
   sky: "bg-account-sky text-account-sky-ink",
   amber: "bg-account-amber text-account-amber-ink",
@@ -19,11 +15,6 @@ const SLOT_CLASS: Record<AccountSlot, string> = {
 
 export type AccountMarkSize = "row" | "header";
 
-/**
- * The account's chip: its tag on its colour. The accessible name is the
- * account's name, so a screen reader hears "Work" where a sighted reader sees
- * `W`. The tooltip gives the address too.
- */
 export function AccountMark({
   identity,
   size = "row",
@@ -62,7 +53,6 @@ export const SWATCH_CLASS: Record<AccountSlot, string> = {
   slate: "bg-account-slate",
 };
 
-/** The accounts' colours side by side: "All accounts" in the switcher. Decorative; each account's name is on its own row. */
 export function AccountStrip({
   items,
 }: {

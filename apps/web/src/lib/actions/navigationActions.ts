@@ -1,8 +1,3 @@
-/*
- * Global navigation and shell actions. Their chords, and why each is what
- * it is, live in crates/keymap/keymap.toml.
- */
-
 import {
   Activity,
   Archive,

@@ -116,7 +116,6 @@ test("a person with an unsent reply shows Draft: in the accent and the reply in 
   expect(line).toHaveAttribute("data-kind", "draft");
   expect(line).toHaveTextContent("Draft: Friday works, I'll bring the numbers");
   expect(line).not.toHaveTextContent("pat wrote last");
-  // The label is a word, so the mark doesn't rest on colour; the colour is the accent token.
   const label = within(line).getByText("Draft:");
   expect(label).toHaveClass("text-signal");
 

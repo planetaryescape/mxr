@@ -13,13 +13,6 @@ import { MessageInfoDialog } from "./MessageInfoDialog";
 import type { Conversation as ConversationData, ConversationMessage } from "./api";
 import { letterLead, paragraphBlocks, splitAsk } from "./messagesView";
 
-/**
- * One topic as a conversation of new texts: each message a ruled section in
- * the reading voice, the sender and time in meta above it (docs/blueprint/28
- * "Messages"). A long message opens on its first paragraph, or the one holding
- * the ask; the quoted history is folded to one line, and the message as sent
- * is one key away. `data-layout` still carries the daemon's length call.
- */
 export function ConversationView({
   conversation,
   asSent,
@@ -27,10 +20,8 @@ export function ConversationView({
   disclosuresEnabled = true,
 }: {
   conversation: ConversationData;
-  /** The message shown as sent, if any. */
   asSent: string | null;
   onToggleAsSent: (messageId: string) => void;
-  /** False while the selected page is placeholder data for another topic/account. */
   disclosuresEnabled?: boolean;
 }) {
   return (
@@ -117,8 +108,6 @@ function MessageItem({
           senderEmail={message.from.email}
         />
       ) : message.only_quoted ? (
-        // Nothing new in it: the placeholder says so, and the message as
-        // sent (the marker below, or v) is how to read it.
         <p data-testid="only-quoted" className="type-body italic text-text-3">
           {message.text}
         </p>
@@ -192,7 +181,6 @@ function MessageItem({
   );
 }
 
-/** The message as it arrived: its HTML, else its plain text. */
 function AsSent({
   threadId,
   messageId,

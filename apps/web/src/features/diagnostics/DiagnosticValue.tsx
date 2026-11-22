@@ -1,8 +1,3 @@
-/*
- * Generic renderer for daemon diagnostic payloads whose shape varies by
- * version: objects become key/value rows, arrays become ruled lists.
- */
-
 export function DiagnosticValue({ value }: { value: unknown }) {
   if (value === null || value === undefined) {
     return (

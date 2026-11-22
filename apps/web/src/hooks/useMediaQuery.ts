@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-/** Live `matchMedia` result; false where matchMedia is unavailable. */
 export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
     (onChange) => {
@@ -15,9 +14,6 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
-/** Below this width the sidebar shows icons only (matches app.css). */
 export const NARROW_SHELL_QUERY = "(max-width: 1279px)";
-/** Below this width list and reader never share the screen. */
 export const SINGLE_PANE_QUERY = "(max-width: 1023px)";
-/** Phone widths: below Tailwind's `sm` breakpoint. */
 export const PHONE_QUERY = "(max-width: 639px)";

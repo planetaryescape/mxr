@@ -1,10 +1,3 @@
-/*
- * Now's keys, from blueprint 22's key table and the daemon's Now guide.
- * The mounted Now page registers what each command does
- * (`useScopeController("now", …)`). Acting on a row does it in that row's
- * own mode: `e` is done here, through `SetModeDone`.
- */
-
 import { Check, Forward, Reply, ReplyAll } from "lucide-react";
 
 import { newSenderActions } from "@/features/modes/newSenderActions";
@@ -22,6 +15,5 @@ export const nowActions: ActionBehavior[] = [
   { id: "now.open-email", command: "openEmail" },
   { id: "now.let-go-digest", command: "letGoDigest" },
   { id: "now.close-hint", command: "closeHint" },
-  // Last, so the status strip (first five live keys) keeps the page's own verbs.
   ...newSenderActions("now"),
 ];

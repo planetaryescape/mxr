@@ -57,7 +57,6 @@ const SOURCES: ClientKind[] = [
 const TIERS: ActivityTier[] = ["important", "standard", "ephemeral"];
 
 interface ActivityBrowserProps {
-  /** When true, the embedding surface (diagnostics) owns the page header. */
   embedded?: boolean;
 }
 
@@ -104,7 +103,6 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
     refetchOnWindowFocus: false,
   });
 
-  // Pause and Resume are one control: the log's newest marker says which applies.
   const marker = useQuery({
     queryKey: ["activity", "marker"],
     queryFn: () => fetchActivityList({ action: ["activity.paused", "activity.resumed"], limit: 1 }),

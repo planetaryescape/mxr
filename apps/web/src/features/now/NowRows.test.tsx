@@ -52,7 +52,6 @@ function state(index: number) {
   };
 }
 
-/** Only the fields the Now rows read; the cast stands in for the full daemon payload. */
 function deskRow(account_id: string, counterparty_name: string): Schemas["DeskRowData"] {
   return {
     account_id,

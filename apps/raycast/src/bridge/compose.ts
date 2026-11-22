@@ -11,9 +11,6 @@ import type {
   ComposeModelCatalogue,
 } from "./types";
 
-// Compose sessions are private daemon work, bound to the archive workspace
-// they were opened in; every call carries that binding, as the web app does.
-
 export type ReplyKind = "reply" | "reply_all";
 
 export interface ReplyDraft {
@@ -40,7 +37,6 @@ function owned<T>(path: string, body: unknown, binding: Workspace): Promise<T> {
   return request<T>(path, { body, headers: { "x-mxr-workspace": JSON.stringify(binding) } });
 }
 
-/** Open a reply to `messageId` with recipients, subject and threading headers filled in; the body starts empty, as in the web composer. */
 export async function startReply(messageId: string, kind: ReplyKind): Promise<ReplyDraft> {
   const binding = await workspace();
   const { session } = await owned<{ session: ComposeSession }>(
@@ -51,7 +47,6 @@ export async function startReply(messageId: string, kind: ReplyKind): Promise<Re
   return { session, workspace: binding };
 }
 
-/** Ask the daemon for a proof against the exact text in this unsaved reply. */
 export async function assistReply(
   draft: ReplyDraft,
   messageId: string,
@@ -80,7 +75,6 @@ export async function assistReply(
   return proposal;
 }
 
-/** Write the body the user typed into the draft and return the new revision. */
 export async function writeBody(draft: ReplyDraft, body: string): Promise<ReplyDraft> {
   const { frontmatter } = draft.session;
   const { session } = await owned<{ session: ComposeSession }>(
@@ -102,7 +96,6 @@ export async function writeBody(draft: ReplyDraft, body: string): Promise<ReplyD
   return { ...draft, session };
 }
 
-/** The send preview: the same checks the daemon enforces when it sends. */
 export async function checkSafety(draft: ReplyDraft): Promise<SafetyReport> {
   const { report } = await owned<{ report: SafetyReport }>(
     "/api/v1/mail/compose/session/safety-check",
@@ -130,11 +123,6 @@ export async function sendReply(draft: ReplyDraft, overrideToken?: string): Prom
   );
 }
 
-/**
- * Hand the reply to the daemon to send at `sendAt`. The daemon owns the
- * delay, so the undo window survives Raycast closing. Returns the stored
- * draft's id, which cancels it.
- */
 export async function scheduleReply(draft: ReplyDraft, sendAt: Date): Promise<string> {
   const result = await owned<{ draft_id?: string }>(
     "/api/v1/mail/compose/session/schedule",
@@ -150,17 +138,12 @@ export async function scheduleReply(draft: ReplyDraft, sendAt: Date): Promise<st
   return result.draft_id;
 }
 
-/** Stop a scheduled reply; it stays in mxr as a draft. */
 export async function cancelScheduled(draftId: string): Promise<void> {
   await request(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
     method: "DELETE",
   });
 }
 
-/**
- * Store the reply as a local mxr draft so the web composer can pick it up
- * where Raycast left off. Not pushed to the provider's drafts.
- */
 export async function saveForWeb(draft: ReplyDraft): Promise<string> {
   const result = await owned<{ draft_id?: string }>(
     "/api/v1/mail/compose/session/save",
@@ -177,7 +160,6 @@ export async function saveForWeb(draft: ReplyDraft): Promise<string> {
   return result.draft_id;
 }
 
-/** Throw the draft away, so an abandoned reply leaves nothing behind. */
 export async function discardReply(draft: ReplyDraft): Promise<void> {
   await owned(
     "/api/v1/mail/compose/session/discard",
@@ -186,7 +168,6 @@ export async function discardReply(draft: ReplyDraft): Promise<void> {
   );
 }
 
-/** A suggested body in the user's own voice; nothing is saved. */
 export async function suggestBody(threadId: string, instruction: string): Promise<string> {
   const suggestion = await request<Reply<"DraftSuggestion">>("/api/v1/mail/drafts/compose", {
     body: { instruction, thread_id: threadId },

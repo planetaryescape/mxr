@@ -1,15 +1,3 @@
-/*
- * Daemon event types for the WebSocket stream.
- *
- * The bridge sends events typed as `IpcPayload::Event(DaemonEvent)`. We
- * keep a hand-rolled mirror here because the OpenAPI generator does not
- * surface the WebSocket message shape — only the HTTP envelope.
- *
- * Source: crates/protocol/src/types.rs (DaemonEvent enum). Update this
- * file when new variants land. If a variant name drifts, the discriminator
- * branches in `useDaemonEvents` will simply not fire — no runtime errors.
- */
-
 import type { components } from "./generated";
 
 export type DaemonEvent =
@@ -20,18 +8,14 @@ export type DaemonEvent =
       type: "NewMessages";
       event?: "NewMessages";
       envelopes: Array<Record<string, unknown>>;
-      /** Messages that arrived; `envelopes` is capped and may be a sample. */
       total?: number;
     }
   | { type: "MessageUnsnoozed"; event?: "MessageUnsnoozed"; message_id: string }
   | { type: "ReminderTriggered"; event?: "ReminderTriggered"; sent_message_id: string }
   | { type: "ReplyLaterReturned"; event?: "ReplyLaterReturned"; message_id: string }
   | { type: "LabelCountsUpdated"; event?: "LabelCountsUpdated"; counts: unknown[] }
-  /** An email or sender was moved (or a move undone), or new arrivals were placed. */
   | { type: "ModesChanged"; event?: "ModesChanged"; account_id?: string | null }
-  /** An account's addresses changed (alias added or removed, or the primary moved). */
   | { type: "AccountAddressesChanged"; event?: "AccountAddressesChanged"; account_id: string }
-  /** The contacts table was rebuilt; analytics and contacts views refetch. */
   | { type: "ContactsRefreshed"; event?: "ContactsRefreshed" }
   | {
       type: "OperationStarted";
@@ -86,7 +70,6 @@ export type DaemonEvent =
   | {
       type: "ThreadGistReady";
       event?: "ThreadGistReady";
-      /** `ThreadGistData`, always `status: "ready"`. */
       gist: components["schemas"]["ThreadGistData"];
     }
   | {

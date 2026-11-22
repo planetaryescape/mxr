@@ -32,7 +32,6 @@ describe("the move picker's keys", () => {
     expect(pickerChoice("x", false)).toEqual({ mode: "todo", sender: false });
     expect(pickerChoice("e", false)).toEqual({ mode: "archive", sender: false });
     expect(pickerChoice("R", false)).toEqual({ mode: "reading", sender: true });
-    // A sender's mail can't all go to To do or Archive.
     expect(pickerChoice("X", false)).toBeNull();
     expect(pickerChoice("e", true)).toBeNull();
     expect(pickerChoice("m", true)).toEqual({ mode: "messages", sender: true });
@@ -48,7 +47,6 @@ describe("the move picker's keys", () => {
         onClose={onClose}
       />,
     );
-    // Five letters for this email, then the three capitals for the sender.
     expect(
       screen.getAllByRole("button", { name: /Messages|To do|Updates|Reading|Archive/ }),
     ).toHaveLength(8);
@@ -101,7 +99,6 @@ describe("the move picker's keys", () => {
     expect(newSenderChoice("M", false)).toBe("people");
     expect(newSenderChoice("U", false)).toBe("paper_trail");
     expect(newSenderChoice("D", false)).toBe("screened_out");
-    // Lowercase still moves the email in X's picker; P's picker takes either case.
     expect(newSenderChoice("m", false)).toBeNull();
     expect(newSenderChoice("d", true)).toBe("screened_out");
 

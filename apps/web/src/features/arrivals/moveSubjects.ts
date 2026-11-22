@@ -1,9 +1,3 @@
-/*
- * `X` and `P` on a mode's rows: the email each row stands for. Now's
- * Updates card is a digest of many emails, so it has none to move; a
- * sender's bundle in a place stands for its newest email.
- */
-
 import type { PlaceBundle, PlaceMessage } from "@/features/places/api";
 import type { NowItem } from "@/features/now/nowItems";
 import { bundleSender } from "@/features/places/placeCopy";
@@ -59,7 +53,6 @@ export function placeMoveSubject(bundle: PlaceBundle, message?: PlaceMessage): M
   };
 }
 
-/** An Updates line stands for its newest email; `P` stays "tune this source". */
 export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
   const messageId = line.latest_message_id ?? line.fact_message_id;
   if (!messageId) return null;
@@ -67,7 +60,6 @@ export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
   return { messageId, label, senderLabel: label, here: "updates" };
 }
 
-/** A Reading item, or the issue a digest link came from. */
 export function readingMoveSubject(entry: EditionEntry): MoveSubject | null {
   const item = entry.kind === "item" ? entry.item : entry.parent;
   return {
@@ -78,7 +70,6 @@ export function readingMoveSubject(entry: EditionEntry): MoveSubject | null {
   };
 }
 
-/** The controller commands a view registers for `X` and `P`. */
 export function moveCommands(subject: () => MoveSubject | null) {
   const open = (sender: boolean) => {
     const found = subject();

@@ -1,10 +1,7 @@
-// The same generated contract the web app uses, so both clients move with
-// the daemon's OpenAPI spec. Type-only: nothing from the web app is bundled.
 import type { components } from "../../../web/src/api/generated";
 
 export type Schemas = components["schemas"];
 type ResponseData = Schemas["ResponseData"];
-/** One `ResponseData` variant by its `kind` tag. */
 export type Reply<K extends ResponseData["kind"]> = Extract<ResponseData, { kind: K }>;
 
 export type NowData = Schemas["NowData"];

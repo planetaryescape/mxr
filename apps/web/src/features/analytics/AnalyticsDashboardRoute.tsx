@@ -33,7 +33,6 @@ type DashboardId =
   | "search-groups"
   | "wrapped";
 
-/** Every TUI analytics view, in the TUI's order. `ranged` shows the range picker. */
 const DASHBOARDS: { id: DashboardId; label: string; description: string; ranged: boolean }[] = [
   {
     id: "storage",

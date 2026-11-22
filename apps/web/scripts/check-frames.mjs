@@ -1,24 +1,9 @@
 #!/usr/bin/env node
-/*
- * Frame rule (docs/blueprint/27, D128): every page wears the one page frame,
- * and a frame has at most one primary action. This flags:
- *   - a route whose component never reaches `<PageFrame>` (directly, or through
- *     `<Page>` / `<ListWithReader>`, which render it), looking through its
- *     imports from features/ up to MAX_DEPTH files deep;
- *   - a `primary` slot that holds more than one action (a fragment of buttons).
- *
- * Routes with no component of their own (redirects, `() => null`) are skipped.
- * EXEMPT lists the rest that legitimately have no page, each with its reason.
- *
- * Run directly, it checks src and exits 1 with file:line for each finding.
- * check-frames.test.mjs feeds it in-memory files.
- */
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/** Relative to src/. */
 export const EXEMPT = new Map([
   ["routes/__root.tsx", "the shell, which wraps every page"],
   ["routes/analytics.tsx", "layout route: an Outlet for the dashboard pages"],
@@ -26,19 +11,16 @@ export const EXEMPT = new Map([
   ["routes/compose.$draftId.tsx", "deep link: opens the compose sheet and leaves"],
 ]);
 
-/** Components that render the frame for their caller. */
 const FRAME_TAGS = ["PageFrame", "Page", "ListWithReader"];
 const FRAME_TAG = new RegExp(`<(?:${FRAME_TAGS.join("|")})(?=[\\s/>])`);
 const MAX_DEPTH = 4;
 
-/** Comments name the tags they mention; blank them, keeping line numbers. */
 function withoutComments(text) {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, " "))
     .replace(/(^|\s)\/\/.*$/gm, "$1");
 }
 
-/** `import x from "path"` / `import { a } from "path"` specifiers that are not type-only. */
 export function importsOf(text) {
   const found = [];
   for (const match of withoutComments(text).matchAll(
@@ -49,16 +31,10 @@ export function importsOf(text) {
   return found;
 }
 
-/** The identifier a route file names as its `component`, or null for a redirect or inline one. */
 export function routeComponent(text) {
   return /component:\s*([A-Za-z_$][\w$]*)\s*[,}\n]/.exec(withoutComments(text))?.[1] ?? null;
 }
 
-/**
- * Whether `file` renders the frame. `files` maps a path (relative to src/)
- * to its text; `resolve(from, specifier)` turns an import into such a path
- * (or null when it isn't a source file).
- */
 export function rendersFrame(file, files, resolve, depth = MAX_DEPTH, seen = new Set()) {
   if (seen.has(file)) return false;
   seen.add(file);
@@ -73,7 +49,6 @@ export function rendersFrame(file, files, resolve, depth = MAX_DEPTH, seen = new
   return false;
 }
 
-/** Findings for one route file: `{ line, message }`. */
 export function checkRoute(file, files, resolve) {
   const text = files.get(file) ?? "";
   const name = routeComponent(text);
@@ -92,7 +67,6 @@ export function checkRoute(file, files, resolve) {
   ];
 }
 
-/** The balanced `{...}` expression starting at `open` (the index of its `{`), or null. */
 function braced(text, open) {
   let depth = 0;
   let quote = null;
@@ -112,7 +86,6 @@ function braced(text, open) {
 
 const ACTION = /<(?:Button|Link|a)(?=[\s/>])/g;
 
-/** Findings for the `primary` slots in one TSX source: more than one action in it. */
 export function checkPrimary(text) {
   const source = withoutComments(text);
   const findings = [];
@@ -120,8 +93,6 @@ export function checkPrimary(text) {
     const expression = braced(source, match.index + match[0].length - 1);
     if (expression === null) continue;
     const body = expression.trim().replace(/^\(\s*/, "");
-    // A ternary or `&&` renders one of its branches; only a fragment or an
-    // array puts several actions in the slot at once.
     const several = /^(?:<>|<Fragment[\s>]|\[)/.test(body) && (body.match(ACTION)?.length ?? 0) > 1;
     if (several) {
       findings.push({
@@ -141,7 +112,6 @@ function* files(dir) {
   }
 }
 
-/** Resolve `@/x` and relative imports to a path relative to src/, or null. */
 export function makeResolver(exists) {
   return (from, specifier) => {
     let base;

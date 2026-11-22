@@ -1,14 +1,7 @@
-/*
- * Archive's ledger state in the URL: the filter, the section, the question
- * asked and the selected row, so a copied link reopens the same view. The
- * route's validateSearch runs in the entry chunk, so this imports types only.
- */
-
 import { optionalEnum, optionalString } from "@/lib/searchParams";
 
 import type { RecordFilter, RecordKind } from "./api";
 
-/** The kinds the bridge accepts; a facet value outside them is skipped. */
 export const KNOWN_KINDS: readonly RecordKind[] = [
   "receipt",
   "order",
@@ -22,13 +15,9 @@ export const KNOWN_KINDS: readonly RecordKind[] = [
 ];
 
 export interface ArchiveSearch {
-  /** The record under the cursor. */
   record?: string;
-  /** Subscriptions instead of the ledger. */
   section?: "subscriptions";
-  /** The subscription under the cursor. */
   sub?: string;
-  /** The question in the answer box. */
   q?: string;
   year?: number;
   issuer?: string;
@@ -36,7 +25,6 @@ export interface ArchiveSearch {
   checked?: boolean;
   pdf?: boolean;
   group?: string;
-  /** Amounts in minor units. */
   min?: number;
   max?: number;
 }
@@ -64,7 +52,6 @@ export function parseArchiveSearch(search: Record<string, unknown>): ArchiveSear
   };
 }
 
-/** The ledger filter a URL names. */
 export function filterFromSearch(search: ArchiveSearch): RecordFilter {
   const filter: RecordFilter = {
     year: search.year,
@@ -81,7 +68,6 @@ export function filterFromSearch(search: ArchiveSearch): RecordFilter {
   ) as RecordFilter;
 }
 
-/** A filter as URL params; every filter key is present, so it replaces the last one. */
 export function searchFromFilter(filter: RecordFilter): ArchiveSearch {
   return {
     year: filter.year ?? undefined,

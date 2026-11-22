@@ -3,7 +3,6 @@ import { describe, expect, test } from "vitest";
 import { phoneTabFor, type PhoneTab } from "./navMap";
 
 describe("phone tabs", () => {
-  // One row per route in src/routes: the lit tab always matches the page.
   const CASES: [string, PhoneTab, unknown?][] = [
     ["/now", "now"],
     ["/messages", "messages"],

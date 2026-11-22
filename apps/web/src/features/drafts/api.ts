@@ -13,7 +13,6 @@ export interface DraftSummary {
   attachment_count: number;
   content_kind: "markdown" | "html" | string;
   inline_asset_count: number;
-  /** Set when the draft is scheduled to send. */
   send_at?: string | null;
 }
 
@@ -34,8 +33,6 @@ export function deleteDraft(draft: DraftSummary): Promise<{ ok: boolean }> {
   );
 }
 
-/** A stored draft stuck in `sending` (the send never confirmed). Raw daemon
- * `Draft` shape: the bridge passes the IPC response through. */
 export interface OrphanedDraft {
   id: string;
   account_id: string;
@@ -49,7 +46,6 @@ export async function fetchOrphanedDrafts(): Promise<OrphanedDraft[]> {
   return response.drafts ?? [];
 }
 
-/** Legacy endpoint: uncertain submissions remain blocked. */
 export function resetOrphanedDraft(draftId: string): Promise<{ kind: "Ack" }> {
   return apiFetch<{ kind: "Ack" }>(
     `/api/v1/mail/drafts/${encodeURIComponent(draftId)}/reset-orphan`,
@@ -82,7 +78,6 @@ export function sendStoredDraft(
   );
 }
 
-/** A pending scheduled send (`GET /api/v1/mail/scheduled-sends`), soonest first. */
 export interface ScheduledSend {
   draft_id: string;
   account_id: string;
@@ -103,7 +98,6 @@ export async function fetchScheduledSends(account: string | null): Promise<Sched
   return response.sends ?? [];
 }
 
-/** Cancel the scheduled send; the draft itself is kept. */
 export function cancelScheduledSend(draftId: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
     method: "DELETE",

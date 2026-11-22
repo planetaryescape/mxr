@@ -1,10 +1,3 @@
-/*
- * Explicit save actions for a compose session: save locally, copy to the
- * provider as a server draft, and refresh from the file on disk. These are
- * fired from shortcuts, menus and editor ex commands that never await them,
- * so they report failures themselves and never reject.
- */
-
 import { useMutation } from "@tanstack/react-query";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { toast } from "sonner";

@@ -65,19 +65,15 @@ import { CARD_PANE_SIZE } from "./archiveLayout";
 
 const PAGE = 200;
 const SUBSCRIPTIONS_SEGMENT = "subscriptions";
-/** The kind filter and the subscriptions view are one either-or choice. */
 const KIND_SEGMENTS: [string, string][] = [
   ...KIND_CHIPS.map((chip): [string, string] => [chip.id, chip.label]),
   [SUBSCRIPTIONS_SEGMENT, "Subscriptions"],
 ];
 const openDocumentFor = (record: RecordData) => void openDocument(record);
-/** The ledger of records, or the subscriptions found in them. */
 type ArchiveSection = "ledger" | "subscriptions";
 
-/** Coming-up kinds that are about a subscription, not a dated record. */
 const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge", "renewal_approaching"]);
 
-/** Every ledger param stays while a record's email opens beside it. */
 const ARCHIVE_LIST_SEARCH: readonly (keyof ArchiveSearch)[] = [
   "record",
   "section",
@@ -93,12 +89,6 @@ const ARCHIVE_LIST_SEARCH: readonly (keyof ArchiveSearch)[] = [
   "max",
 ];
 
-/**
- * Archive: a filing cabinet you ask questions of. The answer box is the
- * default focus; below it, a ledger of records by month with counts and
- * totals, newest first, and the selected record's card beside it. A row
- * is a record (an order's three emails are one row), never an email.
- */
 export function ArchiveRoute() {
   const ids = useRef<string[]>([]);
   const threadIds = useCallback(() => ids.current, []);
@@ -125,12 +115,8 @@ function useDebounced(value: string, ms: number): string {
 
 function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const account = useUiPrefs((s) => s.accountScope);
-  // The filter, section and question live in the URL, so a copied link
-  // reopens the same view.
   const search = useSearch({ from: "/archive" });
   const replaceSearch = useReplaceSearch();
-  // Keyed on the filter's value: a new search object with the same filter
-  // keeps the same ledger query.
   const filterKey = JSON.stringify(filterFromSearch(search));
   const filter = useMemo(() => JSON.parse(filterKey) as RecordFilter, [filterKey]);
   const section: ArchiveSection = search.section ?? "ledger";
@@ -146,22 +132,17 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const [query, setQuery] = useState(search.q ?? "");
   const asked = useDebounced(query, 250);
   const askedText = asked.trim();
-  // The URL takes the question once typing settles, not every keystroke.
   useEffect(() => replaceSearch({ q: askedText || undefined }), [askedText, replaceSearch]);
-  // "Show all" and "Show more" belong to the query they were pressed on: a
-  // new query decides for itself between an answer and a list.
   const [showAllFor, setShowAllFor] = useState<string | null>(null);
   const [listPage, setListPage] = useState({ query: "", limit: PAGE });
   const typed = useAnswer(asked, false, {
     list: showAllFor === askedText,
     limit: listPage.query === askedText ? listPage.limit : PAGE,
   });
-  // Enter on a query no record matches searches all mail, once.
   const [searched, setSearched] = useState("");
   const searchingAll = searched !== "" && searched === askedText && !typed.data?.answer;
   const all = useAnswer(searchingAll ? searched : "", true);
   const answer = searchingAll ? all : typed;
-  // Cleared in the box: the answer goes at once, not after the debounce.
   const shownAnswer = query.trim() && askedText ? (answer.data ?? typed.data) : undefined;
   const list = answerList(shownAnswer);
   const records = useMemo(() => list?.records ?? ledger.data?.records ?? [], [list, ledger.data]);
@@ -196,7 +177,6 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
           query={query}
           setQuery={(next) => {
             setQuery(next);
-            // Leaving the query behind drops its "Show all".
             if (next.trim() !== showAllFor) setShowAllFor(null);
           }}
           answer={shownAnswer}
@@ -216,7 +196,6 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   );
 }
 
-/** The mode's name, its job in one line, and how many records it holds. */
 function ArchiveHeader({ ledger, guide }: { ledger?: RecordLedger; guide?: ModeGuide }) {
   return (
     <>
@@ -257,9 +236,7 @@ interface LedgerProps {
   setQuery: (query: string) => void;
   answer?: RecordAnswer;
   answerPending: boolean;
-  /** Enter on a query no record matches: search all mail. */
   onSearchAll: () => void;
-  /** List every match of the query on screen. */
   onShowAll: () => void;
   onMore: () => void;
   onMoreMatches: () => void;
@@ -290,15 +267,11 @@ function Ledger({
   const listRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
   const kindStrip = useScrollFade<HTMLDivElement>();
-  // A listed query's matches stand in for the ledger's rows.
   const list = answerList(answer);
   const records = list?.records ?? ledger.records;
   const months = list?.months ?? ledger.months;
   const [cursorId, setCursorId] = useSearchParam("record");
-  // Only a pointer fades the lamp (D101): a key must feel instant.
   const via = useRef<LampVia>("key");
-  // While an answer is on screen and the cursor hasn't moved, y, Enter and
-  // o act on the answer's record.
   const [onAnswer, setOnAnswer] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
   const [facetsOpen, setFacetsOpen] = useState(false);
@@ -315,7 +288,6 @@ function Ledger({
   );
   const cardRecord = full.data && full.data.id === current?.id ? full.data : current;
   const subscriptions = useSubscriptions(showingSubscriptions);
-  // The daemon sends live ones before ended ones, the order they are drawn.
   const subscriptionRows = useMemo(
     () => subscriptions.data?.subscriptions ?? [],
     [subscriptions.data],
@@ -333,11 +305,8 @@ function Ledger({
     active: Boolean(showSideCard) || showSideSubscription,
   });
 
-  // A card takes the keys; a list puts the cursor on its best match. Only a
-  // new list moves the cursor: a refetch or "Show more" leaves it.
   const bestId = list?.top_record_id ?? null;
   const listQuery = list ? answer?.query : undefined;
-  // A link's own record wins over the best match of the link's own question.
   const linkedRecord = useRef({ id: cursorId, query: query.trim() });
   const listed = useRef(records);
   listed.current = records;
@@ -363,7 +332,6 @@ function Ledger({
       ?.scrollIntoView({ block: "nearest" });
   }, [index, subscriptionIndex, showingSubscriptions]);
 
-  // One hint under the first record row, one under the first answer.
   const answerHint = useHint("archive", "archive.answer", { ready: Boolean(answer?.answer) });
   const recordHint = useHint("archive", "archive.record", {
     ready: records.length > 0 && !answer?.answer,
@@ -379,7 +347,6 @@ function Ledger({
     },
     [setCursorId],
   );
-  // A click on a row: the lamp fades to it. Keys go through `select` and stay instant.
   const selectByPointer = useCallback(
     (record: RecordData) => {
       via.current = "pointer";
@@ -461,7 +428,6 @@ function Ledger({
     return true;
   };
 
-  // The lit record's reason goes to the status bar; the row never grows a line.
   useLitReason(
     showingSubscriptions ? subscription?.why : current?.why,
     null,
@@ -536,8 +502,6 @@ function Ledger({
     close: () => {
       if (cardOpen) setCardOpen(false);
       else if (closeHint) closeHint();
-      // Esc clears the search and stays on the list, so j and k keep moving
-      // records; only the Clear button puts the cursor back in the box.
       else if (list) setQuery("");
       else if (showingSubscriptions) setSection("ledger");
       else if (filter.issuer) setFilter({ ...filter, issuer: undefined });
@@ -644,7 +608,6 @@ function Ledger({
                   return;
                 }
                 inputRef.current?.blur();
-                // A list's cursor is already on its best match.
                 if (!list) setOnAnswer(true);
               }}
             >
@@ -707,7 +670,6 @@ function Ledger({
                             type="button"
                             className="min-h-8 text-left text-foreground hover:underline"
                             onClick={() => {
-                              // A subscription's price change or missed charge opens it.
                               if (SUBSCRIPTION_SIGNALS.has(moment.kind) && moment.group_id) {
                                 setSection("subscriptions");
                                 setSubscriptionId(moment.group_id);
@@ -933,7 +895,6 @@ function Ledger({
   );
 }
 
-/** What narrows the ledger now, each one click from cleared. */
 function ActiveFilters({
   filter,
   setFilter,

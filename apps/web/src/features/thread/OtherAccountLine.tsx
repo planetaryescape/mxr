@@ -2,12 +2,6 @@ import { AccountMark } from "@/components/AccountMark";
 import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-/**
- * The account line for a conversation (docs/blueprint/33): the chip, then
- * "In Work · address". It always shows, for one account or many, because the
- * account a message came to is never left to guesswork. When the app is scoped
- * to another account, it also says the conversation is not the one being viewed.
- */
 export function OtherAccountLine({ accountId }: { accountId: string }) {
   const scope = useUiPrefs((s) => s.accountScope);
   const accounts = useAccountIdentities();

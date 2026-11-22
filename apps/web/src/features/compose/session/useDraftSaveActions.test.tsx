@@ -132,7 +132,7 @@ test("an explicit provider save adopts its canonical token before a queued autos
     server = hook.result.current.handleServerSaveClick();
   });
   await waitFor(() => expect(api.saveComposeSession).toHaveBeenCalledTimes(1));
-  expect(api.updateComposeSession).not.toHaveBeenCalled(); // Restored fingerprint makes the initial flush a no-op.
+  expect(api.updateComposeSession).not.toHaveBeenCalled();
   act(() =>
     hook.result.current.setDraft((draft) =>
       draft ? { ...draft, bodyMarkdown: "latest text" } : draft,

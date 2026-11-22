@@ -25,7 +25,6 @@ describe("Archive's ledger", () => {
       ["2025 · March", ["dell", "octopus"]],
       ["2025 · February", ["feb"]],
     ]);
-    // The header's count is the month's, even when this page holds two of three.
     expect(groups[0]?.month?.count).toBe(3);
   });
 
@@ -56,7 +55,6 @@ describe("Archive's ledger", () => {
   test("only a list-mode answer replaces the ledger's rows", () => {
     const list = listFixture();
     expect(answerList(answerFixture({ mode: "list", list }))).toBe(list);
-    // An answer carries no list; an older daemon sends no mode at all.
     expect(answerList(answerFixture())).toBeNull();
     expect(answerList(answerFixture({ mode: undefined, list }))).toBeNull();
     expect(answerList(undefined)).toBeNull();

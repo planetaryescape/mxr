@@ -26,7 +26,6 @@ describe("the arrivals line", () => {
       "Clear. All 50 emails since 08:12 are accounted for.",
     );
     expect(shownLine(arrivals(), true)).toMatch(/^Since 08:12: 50 arrived/);
-    // Still sorting: the daemon sends no clear line, so the counts stay.
     expect(shownLine(arrivals({ clear_line: null }), false)).toMatch(/^Since/);
   });
 

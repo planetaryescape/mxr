@@ -1,13 +1,7 @@
-/*
- * An empty conversation: what the desk is for, and three things to start
- * with, the current page's first. No illustration, no robot.
- */
-
 import { useRouterState } from "@tanstack/react-router";
 
 import { Row } from "@/components/Row";
 
-/** The suggestions for the page the person is on, then the general ones. */
 export function suggestionsFor(view: string): string[] {
   const here: Record<string, string> = {
     now: "What needs me today?",

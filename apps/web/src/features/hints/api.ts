@@ -1,10 +1,3 @@
-/*
- * Hint seen state (D118, amended 2026-10-07). The copy and the seen flags
- * ride on each mode's guide (`GetModeGuide`); dismissing posts
- * `SetHintSeen`, which the daemon keeps per profile so the TUI and every
- * other client stop showing it too.
- */
-
 import type { QueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -17,10 +10,6 @@ export type Hint = Schemas["HintData"];
 type ModeGuides = Extract<Schemas["ResponseData"], { kind: "ModeGuides" }>;
 type HintSeen = Extract<Schemas["ResponseData"], { kind: "HintSeen" }>;
 
-/**
- * Mark an action's "Next time" hint seen (D171). True only for the request
- * that marked it, so one client names the key once per profile.
- */
 export async function postNextTimeSeen(actionId: string): Promise<boolean> {
   const answer = await apiFetch<HintSeen>(
     `/api/v1/mail/hints/${encodeURIComponent(`next-time.${actionId}`)}`,
@@ -35,7 +24,6 @@ function cachedGuides(qc: QueryClient): [readonly unknown[], ModeGuide][] {
     .filter((entry): entry is [readonly unknown[], ModeGuide] => entry[1] !== undefined);
 }
 
-/** A hint from whichever cached guide carries it. */
 export function cachedHint(id: string): Hint | undefined {
   const qc = getActiveQueryClient();
   if (!qc) return undefined;
@@ -46,7 +34,6 @@ export function cachedHint(id: string): Hint | undefined {
   return undefined;
 }
 
-/** Mark a hint seen (or not) in every cached guide that carries it. */
 function writeSeen(qc: QueryClient, id: string, seen: boolean): void {
   for (const [key, guide] of cachedGuides(qc)) {
     const at = guide.hints.findIndex((hint) => hint.id === id);
@@ -58,11 +45,6 @@ function writeSeen(qc: QueryClient, id: string, seen: boolean): void {
   }
 }
 
-/**
- * Dismiss a hint in every client. The cache flips first so it leaves at
- * once; a failed write flips it back, and the hint shows again at its next
- * need, which is the safer miss.
- */
 export async function postHintSeen(id: string): Promise<void> {
   const qc = getActiveQueryClient();
   if (qc) writeSeen(qc, id, true);
@@ -72,8 +54,6 @@ export async function postHintSeen(id: string): Promise<void> {
       body: { seen: true },
     });
     if (!qc) return;
-    // Only guides this client holds: the daemon may answer for a mode the
-    // web app has no page for yet.
     for (const [key, cached] of cachedGuides(qc)) {
       const fresh = answer.guides.find((guide) => guide.mode === cached.mode);
       if (fresh) qc.setQueryData(key, fresh);

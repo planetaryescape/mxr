@@ -1,15 +1,9 @@
-/*
- * Reading what the assistant sends: the messages and draft a preview names.
- * A change's title and warning come from the daemon (docs/blueprint/29).
- */
-
 type Json = Record<string, unknown>;
 
 function asObject(value: unknown): Json {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : {};
 }
 
-/** A tool name as words: `mxr_list_messages` reads "List messages". */
 export function toolWords(tool: string): string {
   const words = tool.replace(/^mxr_/, "").replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -22,10 +16,6 @@ export interface PreviewMessage {
   date?: string;
 }
 
-/**
- * The messages a preview names, wherever the tool put them: the first list
- * of objects with a subject, a few levels down.
- */
 export function previewMessages(preview: unknown): PreviewMessage[] {
   const list = findSubjectList(preview, 0);
   if (!list) return [];
@@ -58,7 +48,6 @@ function findSubjectList(value: unknown, depth: number): unknown[] | null {
   return null;
 }
 
-/** A draft a preview shows (sending one previews it whole). */
 export function previewDraft(
   preview: unknown,
 ): { to: string; subject: string; body: string } | null {

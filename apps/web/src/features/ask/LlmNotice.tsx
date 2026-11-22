@@ -1,10 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Info } from "lucide-react";
 
-/**
- * Shown when the daemon has no language model: what is on screen is the
- * archive's raw evidence, and this says how to get the written version.
- */
 export function LlmNotice({ children }: { children: string }) {
   return (
     <p className="flex gap-1.5 text-xs text-muted-foreground">

@@ -23,11 +23,6 @@ import { performMailAction } from "../mailMutations";
 import { describeTarget } from "../mailVerbs";
 import type { MailTarget } from "../target";
 
-/**
- * Pick one destination label. A plain move takes the mail out of where it
- * is (TUI `v`); a route also clears the current queue label, marks it read
- * and archives it (TUI "Route To Label"). Route sends the real label name.
- */
 export function MoveDialog({
   target,
   route,
@@ -48,8 +43,6 @@ export function MoveDialog({
     [route?.fromQueueLabel, shell.data],
   );
 
-  // A batch route is previewed first: the daemon's dry run over the same
-  // message ids says what will change before anything does.
   const [confirming, setConfirming] = useState<string | null>(null);
   const previewNeeded = Boolean(route) && target.messageIds.length > 1;
 
@@ -151,7 +144,6 @@ function RoutePreview({
       <DialogContent
         className="max-w-md"
         onEscapeKeyDown={(event) => {
-          // Escape steps back to the label list, not out of the dialog.
           event.preventDefault();
           onBack();
         }}

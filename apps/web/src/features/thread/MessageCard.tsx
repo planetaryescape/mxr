@@ -46,22 +46,14 @@ export interface MessageCardProps {
   showQuotes: boolean;
   showSignature: boolean;
   remoteAllowedForThread: boolean;
-  /** The ask's verified quote, when this message makes the ask. */
   askQuote?: string;
-  /** A link a to-do is about, marked in this message's body. */
   highlightLink?: string;
   onToggle: () => void;
   onAllowRemote: () => void;
-  /** Switch the reader to the formatted view (to show loaded images). */
   onShowFormatted: () => void;
   onShowHeaders: () => void;
 }
 
-/**
- * One message in a conversation. Collapsed, it is a single line (sender,
- * snippet, date); expanded, it shows the full header, the invite card if
- * any, the body in the chosen view, and attachments.
- */
 export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function MessageCard(
   {
     message,
@@ -228,10 +220,6 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
   );
 });
 
-/**
- * A message's body in the chosen view, with its privacy line. Shared by the
- * reader and Reading's feed, where each issue is already open.
- */
 export function MessageContent({
   message,
   body,

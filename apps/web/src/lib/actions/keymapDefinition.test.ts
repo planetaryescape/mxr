@@ -1,13 +1,5 @@
 /* @vitest-environment node */
 
-/*
- * The web registry against mxr's one key definition (`crates/keymap/keymap.toml`,
- * blueprint chapter 35). `keymap.generated.json` is written from it by
- * `UPDATE_KEYMAP=1 cargo test -p mxr-keymap`, and the registry is built from
- * that file (`fromDefinition`), so this guards the merge: every web action in
- * the definition has a behaviour, and nothing is lost or changed on the way.
- */
-
 import { describe, expect, test } from "vitest";
 
 import "./catalog";
@@ -15,14 +7,10 @@ import { isOverlayKey, MXR_VERSION, withoutExpiredMoves, type DefinedAction } fr
 import keymap from "./keymap.generated.json";
 import { getRegistry } from "./registry";
 
-// An overlay's keys are read by the overlay, never registered. A move this
-// version has reached the `until` of is no binding either (D171).
 const defined = withoutExpiredMoves(keymap.action as DefinedAction[], MXR_VERSION).filter(
   (action) => (!action.clients || action.clients.includes("web")) && !isOverlayKey(action),
 );
 
-// The TUI's place view and the screens that still read their own keys have
-// no web scope; Not-sure rows and the desk announce their moved keys by hand.
 const TUI_ONLY_CONTEXTS = new Set([
   "place",
   "rules",
@@ -46,7 +34,6 @@ function definedBindings(): string[] {
       }
     }
     for (const { key, contexts } of action.moved ?? []) {
-      // A move lists TUI contexts too; the TUI's place view has no web scope.
       for (const scope of contexts.filter((context) => !TUI_ONLY_CONTEXTS.has(context))) {
         bindings.push(`${scope}|${key}|${action.id}|moved`);
       }

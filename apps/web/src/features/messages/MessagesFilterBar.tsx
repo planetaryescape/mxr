@@ -1,10 +1,3 @@
-/*
- * The filter line above the people list: one turn choice and two toggles
- * (blueprint 36, "Messages filters are one segmented control and two
- * toggles"). The header counts never change with it. The line says how many
- * rows the filter kept, and Clear filters only shows while a filter is on.
- */
-
 import { Segmented } from "@/components/Segmented";
 import { KeyChip } from "@/components/KeyChip";
 import { definedShortcut } from "@/lib/actions/definition";
@@ -20,7 +13,6 @@ import {
 
 const FILTER_BAR = '[data-testid="messages-filters"]';
 
-/** `g f` lands here, on the segment that is selected. */
 export function focusFilterBar(): void {
   document.querySelector<HTMLElement>(`${FILTER_BAR} [role="radio"][tabindex="0"]`)?.focus();
 }
@@ -31,11 +23,6 @@ export function MessagesFilterBar({
   onChange,
 }: {
   filter: MessagesFilter;
-  /**
-   * Rows the filter kept (in every band) and every row in Messages. Null while
-   * the answer for this filter is still loading, so the line never describes
-   * the previous filter.
-   */
   counts: { matched: number; total: number } | null;
   onChange: (next: MessagesFilter) => void;
 }) {

@@ -1,15 +1,8 @@
-/*
- * Global UI prefs — theme, density, sidebar collapsed state, compose editor
- * choice. Persisted to localStorage and hydrated synchronously in main.tsx
- * before render so the theme doesn't flash.
- */
-
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
 export type Theme = "midnight" | "light" | "eclipse" | "paper" | "system";
 export type Density = "compact" | "regular" | "comfortable";
-/** "system" follows the OS reduced-motion preference. */
 export type MotionPref = "system" | "reduced" | "full";
 export type ContrastPref = "system" | "standard" | "increased";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
@@ -21,12 +14,9 @@ export interface EmailHtmlSenderOverride {
 }
 export type ReaderLayout = "split" | "full";
 export type ReaderView = "formatted" | "reader" | "plain";
-/** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
-/** Where `/` lands: what needs you, or what arrived. */
 export type HomeView = "now" | "inbox";
 
-/** How the Reading reader draws an article: the reader theme, typeface, size and line spacing. */
 export type ReaderTheme = "auto" | "paper" | "sepia" | "snow" | "dusk" | "night" | "ink";
 export type ReaderTypeface = "serif" | "book" | "sans" | "legible";
 export type ReaderSpacing = "snug" | "even" | "airy";
@@ -34,7 +24,6 @@ export type ReaderSpacing = "snug" | "even" | "airy";
 export interface ReadingDisplay {
   theme: ReaderTheme;
   typeface: ReaderTypeface;
-  /** Pixels; the reader's own control offers 14–28 and anything else falls back. */
   size: number;
   spacing: ReaderSpacing;
 }
@@ -58,16 +47,6 @@ const READER_THEMES: readonly ReaderTheme[] = [
 const READER_TYPEFACES: readonly ReaderTypeface[] = ["serif", "book", "sans", "legible"];
 const READER_SPACING: readonly ReaderSpacing[] = ["snug", "even", "airy"];
 
-/**
- * Stored prefs may be hand-edited or from another version; repair them field
- * by field.
- *
- * This mirrors `parseReaderSettings` from `@planetaryescape/reader` for the
- * four fields the app stores, on purpose: importing that package here also
- * pulls zod into the entry chunk, which every screen downloads before it can
- * paint. `uiPrefsStore.test.ts` checks the two agree field by field, so a
- * change in the package's schema fails here instead of drifting.
- */
 export function readReadingDisplay(value: unknown): ReadingDisplay {
   const saved = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const field = (key: keyof ReadingDisplay) => (saved as Record<string, unknown>)[key];
@@ -107,17 +86,11 @@ export interface UiPrefsState {
   notifyAllNewMail: boolean;
   vipAllowlist: string[];
   undoSendSeconds: UndoSendSeconds;
-  /** Account the mail views are scoped to; null shows every account. */
   accountScope: string | null;
-  /** Sidebar sections the user folded. */
   collapsedSections: string[];
-  /** Group the list by conversation (TUI thread mode) or show messages. */
   listMode: "threads" | "messages";
-  /** Body view the reader opens with: sanitized HTML, cleaned text, or raw text. */
   readerView: ReaderView;
-  /** Senders whose remote images load without asking. */
   remoteImageSenders: string[];
-  /** Reading reader appearance; a client preference like the theme, not daemon state. */
   readingDisplay: ReadingDisplay;
   setReadingDisplay: (patch: Partial<ReadingDisplay>) => void;
   setHome: (home: HomeView) => void;
@@ -150,14 +123,11 @@ export const useUiPrefs = create<UiPrefsState>()(
   persist(
     (set) => ({
       home: "now",
-      // Follow the OS appearance until someone picks a theme.
       theme: "system",
       density: "regular",
       motion: "system",
       contrast: "system",
       sidebarCollapsed: false,
-      // Locked product decision (docs/web-app.md): CodeMirror + vim is the
-      // default. Only the default changes; a persisted choice is kept as is.
       composeEditor: "codemirror-vim",
       composeEditorByDraft: {},
       emailHtmlTheme: "auto",
@@ -168,7 +138,6 @@ export const useUiPrefs = create<UiPrefsState>()(
       vipAllowlist: [],
       undoSendSeconds: 10,
       accountScope: null,
-      // The rail leads with the modes and Inbox; its groups start folded.
       collapsedSections: ["mail", "views", "tools", "labels"],
       listMode: "threads",
       readerView: "formatted",
@@ -256,22 +225,11 @@ export const useUiPrefs = create<UiPrefsState>()(
       storage: createJSONStorage(() => uiPrefsStorage()),
       version: 7,
       merge: (persisted, current) => mergeUiPrefs(persisted, current),
-      // persist merges what migrate returns over the defaults, so a partial
-      // state is what it expects at runtime; its type says the whole store.
       migrate: (persisted, version) => migrateUiPrefs(persisted, version) as UiPrefsState,
     },
   ),
 );
 
-/**
- * v3 folds the sidebar's new "More" and "Labels" groups for people who
- * already had saved prefs, so the sidebar opens on places for everyone.
- * v4: Now replaced the desk as the front page, so a saved "desk" home is
- * Now. v5 adds sender-specific HTML canvas preferences; previous explicit
- * Dark and Original choices stay as they were. v6 adds system/default/increased
- * contrast, defaulting existing users to system. v7 splits the rail's "More"
- * into Mail and Views: a folded More folds both.
- */
 export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
   let state: Partial<UiPrefsState> =
     persisted && typeof persisted === "object" ? (persisted as Partial<UiPrefsState>) : {};
@@ -283,7 +241,6 @@ export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiP
   if (version < 6) state = { ...state, contrast: "system" };
   if (version < 7 && Array.isArray(state.collapsedSections)) {
     const sections = state.collapsedSections;
-    // A folded More folds both of its successors; an open one leaves them open.
     if (sections.includes("more")) {
       state = {
         ...state,
@@ -380,9 +337,7 @@ const memoryPrefsStorage = new Map<string, string>();
 function uiPrefsStorage(): StateStorage {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-  } catch {
-    // Some test/webview environments expose `window` but disable localStorage.
-  }
+  } catch {}
   return {
     getItem: (name) => memoryPrefsStorage.get(name) ?? null,
     setItem: (name, value) => {
@@ -405,14 +360,12 @@ export function applyThemeAttribute(theme: Theme): void {
   if (typeof document === "undefined") return;
   const resolved = resolveTheme(theme);
   document.documentElement.setAttribute("data-theme", resolved);
-  // `dark:` utilities key off the scheme, so custom dark themes get them too.
   document.documentElement.setAttribute(
     "data-scheme",
     LIGHT_THEMES.has(resolved) ? "light" : "dark",
   );
 }
 
-/** Re-resolve the "system" theme when the OS appearance changes. */
 export function watchSystemTheme(): () => void {
   if (typeof window === "undefined" || !window.matchMedia) return () => {};
   const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -437,7 +390,6 @@ export function applyContrastAttribute(contrast: ContrastPref): void {
   document.documentElement.setAttribute("data-contrast", resolveContrast(contrast));
 }
 
-/** Re-resolve system contrast when the OS preference changes. */
 export function watchSystemContrast(): () => void {
   if (typeof window === "undefined" || !window.matchMedia) return () => {};
   const media = window.matchMedia(MORE_CONTRAST_QUERY);
@@ -462,13 +414,11 @@ export function resolveMotion(motion: MotionPref): "reduced" | "full" {
   return window.matchMedia(REDUCED_MOTION_QUERY).matches ? "reduced" : "full";
 }
 
-/** `data-motion` drives the reduced-motion policy in base.css. */
 export function applyMotionAttribute(motion: MotionPref): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-motion", resolveMotion(motion));
 }
 
-/** Re-resolve "system" motion when the OS preference changes. */
 export function watchSystemMotion(): () => void {
   if (typeof window === "undefined" || !window.matchMedia) return () => {};
   const media = window.matchMedia(REDUCED_MOTION_QUERY);

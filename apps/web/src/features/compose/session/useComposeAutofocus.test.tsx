@@ -12,7 +12,6 @@ const reply = {
 const nextFrame = () =>
   act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
-/** The lazily loaded editor arriving: the body CodeMirror renders. */
 function mountEditor(): HTMLElement {
   const surface = document.createElement("div");
   surface.setAttribute("data-compose-surface", "");
@@ -32,13 +31,11 @@ describe("useComposeAutofocus", () => {
   it("focuses a reply's body once its lazily loaded editor mounts", async () => {
     renderHook(() => useComposeAutofocus("/drafts/r.md", reply, createRef()));
     await nextFrame();
-    // The editor's chunk is still loading: nothing to focus yet.
     expect(document.activeElement).toBe(document.body);
 
     const body = mountEditor();
     await act(async () => {});
 
-    // r then typing must write the reply, not run the page's shortcuts.
     expect(document.activeElement).toBe(body);
   });
 

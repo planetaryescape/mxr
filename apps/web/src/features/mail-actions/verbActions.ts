@@ -1,8 +1,3 @@
-/*
- * Mail verbs on the keyboard, bound in both the list and the reader; each
- * view's controller decides what "the target" is.
- */
-
 import {
   Archive,
   ArrowRightCircle,

@@ -1,10 +1,3 @@
-/*
- * A question the assistant needs answered, on the overlay surface: the
- * question in Heading, the options as rows with a radio or checkbox mark,
- * number keys, "Something else" as a row in the same list, and Skip quiet.
- * Once answered it collapses into your quoted reply in the transcript.
- */
-
 import { Circle, CircleCheck, Square, SquareCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
@@ -17,7 +10,6 @@ import { definedKeys } from "@/lib/actions/definition";
 import { isComposingKey } from "@/lib/keys/composition";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/** An answer being written: what is chosen and what is typed. */
 interface Draft {
   selected: string[];
   other: string;
@@ -32,7 +24,6 @@ export interface Option {
   recommended: boolean;
 }
 
-/** The model marks its pick the way Claude Code does, "(Recommended)" at the end of a label; it goes first. */
 export function orderedOptions(question: AssistantQuestion): Option[] {
   const options = (question.options ?? []).map((option) => {
     const recommended = /\s*\(recommended\)\s*$/i.test(option.label);
@@ -77,7 +68,6 @@ export function QuestionCard({
   const skip = () => {
     if (!busy) onDecide({ call_id: item.call_id, decision: "reject" });
   };
-  // Number keys answer the first question not yet answered.
   const active = Math.max(
     0,
     answers.findIndex((answer) => answer.selected.length === 0 && answer.other.trim() === ""),
@@ -103,7 +93,6 @@ export function QuestionCard({
           return true;
         }
         if (pressedOverlayKey(event, "assistant.own-answer") && question.allow_other) {
-          // The fields are one per question, in order.
           const field = event.currentTarget.querySelectorAll("fieldset").item(active);
           field?.querySelector<HTMLInputElement>('input[aria-label="Something else"]')?.focus();
           return true;
@@ -112,8 +101,6 @@ export function QuestionCard({
           skip();
           return true;
         }
-        // Esc and q close without deciding (the overlay grammar): the card
-        // lets go of the keys and the question keeps waiting.
         if (pressedOverlayKey(event, "assistant.leave-question")) {
           if (event.currentTarget instanceof HTMLElement) event.currentTarget.blur();
           return true;
@@ -163,7 +150,6 @@ function choose(question: AssistantQuestion, answer: Draft, label: string): Draf
     : chosen
       ? []
       : [label];
-  // A single answer is either an option or typed text, not both.
   return {
     selected,
     other: question.multi_select || selected.length === 0 ? answer.other : "",

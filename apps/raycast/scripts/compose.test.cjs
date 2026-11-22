@@ -231,7 +231,6 @@ test("closing a proof releases retry, permits a new request, and ignores the sta
     .finally(() => gate.finish(oldRequest));
   assert.equal(gate.isRunning, true);
 
-  // Escape/Keep Mine closes the proof and releases the retry's UI guard.
   gate.cancel();
   assert.equal(gate.isRunning, false);
   const newRequest = gate.begin();

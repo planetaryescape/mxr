@@ -2,7 +2,6 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 import { openApp } from "./state";
 
-/** The mail list: a listbox whose cursor is `aria-activedescendant`. */
 export function mailList(page: Page): Locator {
   return page.getByTestId("mailbox-list");
 }
@@ -11,7 +10,6 @@ export function mailRows(page: Page): Locator {
   return mailList(page).getByRole("option");
 }
 
-/** The reader pane for the open conversation. */
 export function reader(page: Page): Locator {
   return page.getByRole("article", { name: /^Conversation:/ });
 }
@@ -20,13 +18,11 @@ export function threadMessages(page: Page): Locator {
   return reader(page).getByTestId("thread-message");
 }
 
-/** Open a list route and wait until its rows have painted. */
 export async function openList(page: Page, path: string): Promise<void> {
   await openApp(page, path);
   await expect(mailRows(page).first()).toBeVisible();
 }
 
-/** DOM id of the row under the keyboard cursor. */
 export async function cursorRowId(page: Page): Promise<string> {
   const id = await mailList(page).getAttribute("aria-activedescendant");
   if (!id) throw new Error("mail list has no active descendant");
@@ -37,7 +33,6 @@ export async function expectCursorOn(page: Page, rowId: string): Promise<void> {
   await expect(mailList(page)).toHaveAttribute("aria-activedescendant", rowId);
 }
 
-/** DOM ids of the rows currently rendered (the list is virtualized). */
 export async function renderedRowIds(page: Page): Promise<string[]> {
   return mailRows(page).evaluateAll((nodes) => nodes.map((node) => node.id));
 }
@@ -46,10 +41,6 @@ export function rowById(page: Page, rowId: string): Locator {
   return page.locator(`[id="${rowId}"]`);
 }
 
-/**
- * The part of a row's accessible name that survives read/star changes:
- * "Unread., Starred., Maya, Alex, Subject, …" becomes "Maya, Alex, Subject".
- */
 export function stableRowName(ariaLabel: string): string {
   const parts = ariaLabel.split(", ").filter((part) => part !== "Unread." && part !== "Starred.");
   return parts
@@ -58,7 +49,6 @@ export function stableRowName(ariaLabel: string): string {
     .join(", ");
 }
 
-/** The read and star states a row's accessible name opens with ("Unread.", "Starred."). */
 export function rowStates(label: string): string[] {
   return label.split(", ").filter((part) => part === "Unread." || part === "Starred.");
 }
@@ -67,7 +57,6 @@ export async function rowLabel(page: Page, rowId: string): Promise<string> {
   return (await rowById(page, rowId).getAttribute("aria-label")) ?? "";
 }
 
-/** Move the cursor down to the first row whose accessible name passes `test`. */
 export async function cursorTo(page: Page, test: (label: string) => boolean): Promise<string> {
   for (let step = 0; step < 25; step += 1) {
     const id = await cursorRowId(page);
@@ -77,7 +66,6 @@ export async function cursorTo(page: Page, test: (label: string) => boolean): Pr
   throw new Error("no matching row in the first rows");
 }
 
-/** Press keys one after another, as a person typing a chord would. */
 export async function pressSequence(page: Page, ...keys: string[]): Promise<void> {
   for (const key of keys) await page.keyboard.press(key);
 }
@@ -103,7 +91,6 @@ export async function modKey(page: Page): Promise<"Meta" | "Control"> {
  */
 export async function animationsSettled(page: Page): Promise<void> {
   await page.evaluate(() =>
-    // An infinite animation (a spinner) never finishes, so it is left out.
     Promise.all(
       document
         .getAnimations()

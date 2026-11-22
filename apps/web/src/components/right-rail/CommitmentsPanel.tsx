@@ -1,5 +1,3 @@
-/* Open commitments list with resolve. */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";

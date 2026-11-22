@@ -37,49 +37,26 @@ import { usePageKeys } from "@/state/pageKeysStore";
 
 export interface MailboxListProps {
   groups: MessageGroupView[];
-  /** Selection is cleared when this changes (lens, query, account). */
   scopeKey: string;
   activeThreadId?: string;
-  /** While a thread is open, moving the cursor opens the next one (TUI three-pane). */
   previewOnFocus?: boolean;
   onOpenRow: (row: MessageRowView, options: { focusReader: boolean }) => void;
   onCloseThread?: () => void;
   hasMore?: boolean;
-  /** Open the list's quick filter (TUI Ctrl-f). */
   onFilter?: () => void;
   loadingMore?: boolean;
   onLoadMore?: () => void;
-  /** Lists of aggregates that aren't mutable messages: navigation only. */
   readOnly?: boolean;
-  /** The list's own verb for a row (wake, done): `w`, or a click on the row's chip. */
   rowAction?: RowAction;
-  /**
-   * What `w` does on a list with no row action of its own: the desk says
-   * where its old `w` went.
-   */
   onRowActionKey?: () => void;
-  /** Current queue label, enabling "Route out of this queue". */
   queueLabel?: string;
   empty: ReactNode;
   label: string;
-  /**
-   * Draw rows another way (the desk). The renderer owns the row element and
-   * must keep its `id`, `role="option"` and `aria-selected` so the listbox
-   * cursor and the verbs work unchanged.
-   */
   renderRow?: (row: MessageRowView, state: RowRenderState) => ReactNode;
-  /** Group headers as airy section titles rather than ruled table headers. */
   airyHeaders?: boolean;
-  /** Handle part of a verb this list's own way (see `MailVerbHooks.intercept`). */
   interceptVerb?: MailVerbHooks["intercept"];
-  /** What a touch swipe does on a row, when it differs from archive, trash, snooze. */
   swipeActions?: (row: MessageRowView) => SwipeMap;
-  /**
-   * Ask the daemon for each visible conversation's gist (what it is about,
-   * what it asks), shown in place of the snippet as each one lands.
-   */
   rowGists?: boolean;
-  /** Name the mode each row's email went to (Inbox, D119). */
   modeChips?: boolean;
 }
 
@@ -88,9 +65,7 @@ export interface RowRenderState {
   focused: boolean;
   open: boolean;
   selected: boolean;
-  /** 1-based place among the rows (group headers don't count), for aria-posinset. */
   position: number;
-  /** All the rows, not the window's, for aria-setsize. */
   setSize: number;
   onOpen: (row: MessageRowView) => void;
 }
@@ -101,7 +76,6 @@ export type FlatItem =
 
 const DEFAULT_SWIPE: SwipeMap = { right: "archive", rightLong: "trash", left: "snooze" };
 
-/** The registry action each row button stands for, for key hints. */
 const QUICK_ACTION_IDS: Record<RowQuickAction, (row: MessageRowView) => string> = {
   archive: () => "mail.archive",
   trash: () => "mail.trash",
@@ -123,19 +97,11 @@ function domId(row: MessageRowView): string {
   return `mail-row-${rowKey(row)}`;
 }
 
-// The row-height tokens (--row-height-*): a lit row never changes height.
 const ROW_ESTIMATE = { compact: 44, regular: 52, comfortable: 60 } as const;
 
-/** Rows past the bottom of the screen whose gists are asked for too. */
 const GIST_LOOKAHEAD = 10;
-/** Wait for scrolling to settle before asking for gists. */
 const GIST_REQUEST_DELAY_MS = 150;
 
-/**
- * Thread ids for the gist request, in the order they should be written:
- * the visible rows top to bottom, then the rows just below, then those
- * just above.
- */
 export function gistOrder(
   flat: readonly FlatItem[],
   visible: { startIndex: number; endIndex: number },
@@ -187,7 +153,6 @@ export function MailboxList({
   const setSelectionScope = useSelection((s) => s.setScope);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const lastIndexRef = useRef(0);
-  // Only a pointer fades the lamp (D101): j and k must feel instant.
   const viaRef = useRef<LampVia>("key");
   const [visualAnchor, setVisualAnchor] = useState<string | null>(null);
 
@@ -211,9 +176,6 @@ export function MailboxList({
   useEffect(() => setSelectionScope(scopeKey), [scopeKey, setSelectionScope]);
   useEffect(() => setVisualAnchor(null), [scopeKey]);
 
-  // Resolve the cursor. When the focused row disappears (archived,
-  // filtered) the cursor stays at the same position, so the next
-  // conversation comes up under it, the way the TUI behaves.
   const focusedIndex = (() => {
     if (rows.length === 0) return -1;
     const index = focusedId ? rowIndexById.get(focusedId) : undefined;
@@ -226,10 +188,6 @@ export function MailboxList({
     if (focusedRow && rowKey(focusedRow) !== focusedId) setFocusedId(rowKey(focusedRow));
   }, [focusedId, focusedIndex, focusedRow]);
 
-  // Follow the reader: opening a thread elsewhere puts the cursor on it.
-  // Only when the cursor is on another conversation: in message mode a
-  // thread has several rows, and snapping back to its first row would trap
-  // j on the second.
   const focusedThreadId = focusedRow?.thread_id;
   useEffect(() => {
     if (!activeThreadId || focusedThreadId === activeThreadId) return;
@@ -237,9 +195,6 @@ export function MailboxList({
     if (row) setFocusedId(rowKey(row));
   }, [activeThreadId, focusedThreadId, rows]);
 
-  // Stable per list: the virtualizer recomputes every item's position
-  // whenever `getItemKey` changes identity. An inline function did that on
-  // every scroll frame, 5,000 keys at a time on a long list.
   const getItemKey = useCallback(
     (index: number) => {
       const item = flat[index];
@@ -265,14 +220,9 @@ export function MailboxList({
     virtualizer.measure();
   }, [density, virtualizer]);
 
-  // Gists for what is on screen, once scrolling settles. Keyed on the
-  // visible range, not on every scroll frame; the store skips rows it has
-  // already asked about (and asks nothing while the daemon has no model),
-  // and each row subscribes to its own line.
   const visibleStart = virtualizer.range?.startIndex ?? 0;
   const visibleEnd = virtualizer.range?.endIndex ?? -1;
   const overscanStart = virtualItems[0]?.index ?? 0;
-  // Bumped only when every gist was dropped (missed events, a reconnect).
   const gistEpoch = useGistEpoch();
   useEffect(() => {
     if (!rowGists || visibleEnd < 0) return;
@@ -284,7 +234,6 @@ export function MailboxList({
     return () => window.clearTimeout(handle);
   }, [flat, gistEpoch, overscanStart, rowGists, visibleEnd, visibleStart]);
 
-  // Inbox's mode chips, for the rows on screen: one request per range.
   const chipIds = useMemo(
     () =>
       modeChips
@@ -301,10 +250,6 @@ export function MailboxList({
     if (last.index >= flat.length - 10) onLoadMore();
   }, [flat.length, hasMore, loadingMore, onLoadMore, virtualItems]);
 
-  // Opening or closing the reader changes the list's width, rows reflow
-  // and re-measure, and the virtualizer's offsets shift. Keep the cursor
-  // row where it was on screen so returning from the reader lands the user
-  // exactly where they left.
   const focusedDomIdRef = useRef<string | null>(null);
   focusedDomIdRef.current = focusedRow ? domId(focusedRow) : null;
   const anchorRef = useRef<{ id: string; top: number } | null>(null);
@@ -331,7 +276,6 @@ export function MailboxList({
       const anchor = anchorRef.current;
       if (!anchor) return;
       cancelAnimationFrame(settling);
-      // Rows re-measure over the next frames; put the row back each time.
       let frames = 0;
       const settle = () => {
         const row = document.getElementById(anchor.id);
@@ -372,7 +316,6 @@ export function MailboxList({
   const listFocused = activePane === "mailbox";
   useShortcutScope("list", listFocused);
 
-  // DOM focus follows the logical pane so screen readers and Tab agree.
   useEffect(() => {
     if (!listFocused) return;
     const active = document.activeElement;
@@ -395,8 +338,6 @@ export function MailboxList({
       setFocusedId(rowKey(next));
       scrollToRow(next, align);
       if (visualAnchor) {
-        // If the anchor row left the list, restart the range at the cursor
-        // rather than selecting everything from the top.
         const a = rowIndexById.get(visualAnchor) ?? rowIndexById.get(rowKey(next)) ?? 0;
         const b = rowIndexById.get(rowKey(next)) ?? 0;
         const [start, end] = a < b ? [a, b] : [b, a];
@@ -449,7 +390,6 @@ export function MailboxList({
     intercept: interceptVerb,
   });
 
-  // The status strip: motion, open and the verbs the lit row shows.
   usePageKeys(
     readOnly
       ? stripKeys("list.read-only", rowAction ? [] : ["list.row-action"])
@@ -547,15 +487,10 @@ export function MailboxList({
     }
   }, []);
 
-  // Read the rows through a ref so this callback keeps its identity when a
-  // row leaves the list: a new identity re-renders every memoized row, which
-  // is most of the cost of a keypress that archives.
   const rowsRef = useRef({ rows, rowIndexById });
   useLayoutEffect(() => {
     rowsRef.current = { rows, rowIndexById };
   }, [rowIndexById, rows]);
-  // Touch swipe acts on the row under the finger, through the same verbs
-  // (and so the same intercepts, confirmation and undo) as the keys.
   const swipeLayerRef = useRef<SwipeLayerHandle>(null);
   useRowSwipe(
     scrollRef,
@@ -726,7 +661,6 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
         </span>
       ) : null}
       {action ? (
-        // Mouse-only like `more`; its key (shown) works from anywhere.
         <span
           aria-hidden
           data-testid={`group-action-${group.id}`}
@@ -737,8 +671,6 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
         </span>
       ) : null}
       {more ? (
-        // Mouse-only, like the row chips: the listbox cannot hold links. The
-        // same lane is reachable from the page header and the sidebar.
         <span
           aria-hidden
           onClick={() => void navigate({ href: more.href })}

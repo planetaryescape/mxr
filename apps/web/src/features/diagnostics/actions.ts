@@ -1,11 +1,3 @@
-/*
- * Semantic + diagnostics actions for the command palette.
- *
- * "Enable" vs "Disable" is two actions disambiguated by a cache-reading
- * predicate; per the plan, the bridge has no separate disable route — both
- * call `setSemanticEnabled(bool)` (crates/web/src/routes_v6.rs:721).
- */
-
 import { Shield } from "lucide-react";
 import { toast } from "sonner";
 

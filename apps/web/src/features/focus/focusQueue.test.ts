@@ -152,7 +152,6 @@ describe("focusReducer", () => {
     expect(skipped.queue).toEqual([]);
     expect(skipped.deferred).toEqual(["b"]);
     expect(focusProgress(skipped)).toEqual({ position: 2, total: 2, done: 1 });
-    // A refetch that still lists it doesn't bring it back unasked.
     const synced = focusReducer(skipped, { kind: "sync", items: [item("b")] });
     expect(synced.queue).toEqual([]);
     expect(focusReducer(synced, { kind: "revisit" }).queue).toEqual(["b"]);

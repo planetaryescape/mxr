@@ -11,7 +11,6 @@ interface ArchiveNavigation {
   remember: (account: string | null, search: ArchiveSearch) => void;
 }
 
-/** Tab-local navigation memory, not a persisted history of questions. */
 export const useArchiveNavigation = create<ArchiveNavigation>((set) => ({
   searches: {},
   remember: (account, search) =>
@@ -22,7 +21,6 @@ export const useArchiveNavigation = create<ArchiveNavigation>((set) => ({
     }),
 }));
 
-/** Shared by the sidebar and phone's More sheet; explicit URLs still win. */
 export function useArchiveResumeSearch(): ArchiveSearch | undefined {
   const account = useUiPrefs((state) => state.accountScope);
   const location = useRouterState({ select: (state) => state.location });
@@ -32,8 +30,6 @@ export function useArchiveResumeSearch(): ArchiveSearch | undefined {
   useEffect(() => {
     if (location.pathname === "/archive" || location.pathname.startsWith("/archive/")) {
       const currentSearch = JSON.stringify(location.search);
-      // An account switch alone does not make the old URL that account's
-      // saved lookup. A subsequent search/navigation can replace it.
       if (account !== recorded.current.account && currentSearch === recorded.current.search) return;
       recorded.current = { account, search: currentSearch };
       remember(account, parseArchiveSearch(location.search));

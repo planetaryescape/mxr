@@ -1,5 +1,3 @@
-/* Thread or recipient briefing with its cited sources. */
-
 import { Badge } from "@/components/ui/badge";
 import { extractBriefing } from "./railPayloads";
 import { formatDate, formatShortDate } from "./railFormat";

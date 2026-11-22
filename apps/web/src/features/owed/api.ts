@@ -1,13 +1,10 @@
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
 
-/** One reply you owe: the daemon's `OwedReplyRowData`. */
 export type OwedReplyRow = components["schemas"]["OwedReplyRowData"];
 
-/** Conversations the page loads at most. */
 export const OWED_PAGE_LIMIT = 200;
 
-/** The daemon's people split: `write_with` is who these rows are with. */
 export type OwedPeople = components["schemas"]["PeopleSplitData"];
 
 export function fetchOwedReplies(

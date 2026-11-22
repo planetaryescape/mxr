@@ -4,12 +4,6 @@ import { cn } from "@/lib/utils";
 
 import type { Hint } from "./api";
 
-/**
- * A hint at its element: one sentence under the thing it explains, with a
- * small caret pointing up at it. It sits in the flow rather than floating,
- * so it never covers the row it describes or the one under it. Fades in;
- * reduced motion drops the slide (base.css zeroes tw-animate's offsets).
- */
 export function AnchoredHint({
   hint,
   onDismiss,

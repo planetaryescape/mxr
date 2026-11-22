@@ -63,10 +63,6 @@ interface ThreadHeaderProps {
   position: { index: number; total: number } | null;
 }
 
-/**
- * Subject, labels and a short action bar. Every button runs the reader's key
- * command, so clicking and typing always do the same thing.
- */
 export function ThreadHeader({
   data,
   labels,
@@ -190,7 +186,6 @@ function ViewSwitch({ view }: { view: ReaderView }) {
         formatted: definedShortcut("reader.view-html"),
         reader: definedShortcut("reader.view-reader"),
       }}
-      // Choosing the current view is a no-op; the key commands toggle.
       onChange={(id) => {
         const option = VIEWS.find((candidate) => candidate.id === id);
         if (option && view !== option.id) runPointerCommand("reader", option.command);

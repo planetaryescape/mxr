@@ -11,8 +11,6 @@ interface ArrivalsSearch {
 }
 
 export const Route = createFileRoute("/arrivals")({
-  // The line's counts link here with their window, so the list holds
-  // exactly as many emails as the count said.
   validateSearch: (search: Record<string, unknown>): ArrivalsSearch => ({
     bucket: optionalEnum(search.bucket, ARRIVAL_BUCKETS),
     since: optionalString(search.since),

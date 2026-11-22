@@ -23,7 +23,6 @@ const TURN_CHOICES: [MessagesFilter["turn"], string][] = [
   ["theirs", "Waiting on Them"],
 ];
 
-/** "Your Turn · Unread": the words for the filters that are on, or nothing. */
 function filterLabel(filter: MessagesFilter): string | undefined {
   const parts = [
     TURN_CHOICES.find(([turn]) => turn === filter.turn && turn !== undefined)?.[1] ?? "",
@@ -39,7 +38,6 @@ function rowId(band: string, row: MessagesRow): string {
 
 export default function Messages() {
   const [account, setAccount] = useState<string>();
-  // Reopening Messages starts with attention, never a remembered history view.
   const [filter, setFilter] = useState<MessagesFilter>({});
   const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account, filter], {
     keepPreviousData: false,
@@ -50,7 +48,6 @@ export default function Messages() {
   const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
   const pane = usePane("messages");
-  // The pane reads each person's most pressing topic.
   const bands: [string, MessagesRow[] | undefined][] = [
     ["turn", data?.your_turn],
     ["pinned", data?.pinned],
@@ -78,7 +75,6 @@ export default function Messages() {
       ),
     );
 
-  // ⌘F in every row's panel: the choices, with a check on the ones in force.
   const filterMenu = (
     <ActionPanel.Submenu title="Filter" icon={Icon.Filter} shortcut={keyFor("messages.filter")}>
       {TURN_CHOICES.map(([turn, title]) => (
@@ -103,8 +99,6 @@ export default function Messages() {
     </ActionPanel.Submenu>
   );
 
-  // The local search can hide every loaded row; the Filter menu must stay
-  // reachable then, since it is the only action left on the screen.
   const hiddenByText =
     data !== undefined &&
     (data.matched ?? data.row_count) > 0 &&

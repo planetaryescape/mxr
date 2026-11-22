@@ -1,10 +1,3 @@
-/*
- * Mail lenses: the shell's sidebar items turned into one typed list with a
- * URL, fetch parameters and an identity for optimistic projection. The
- * sidebar, the mailbox query, `g 1`-`g 9` and the palette all resolve
- * lenses here, so a label's URL slug and its real name never get mixed up.
- */
-
 import type { LensIdentity } from "@/features/mail-actions/pendingMailOps";
 
 import type { MailboxLensParams } from "./api";
@@ -17,7 +10,6 @@ export type LensRoute =
   | { kind: "saved"; slug: string };
 
 export interface MailLens {
-  /** Stable key: "inbox", "label:work", "saved:follow-ups". */
   key: string;
   label: string;
   path: string;
@@ -26,18 +18,12 @@ export interface MailLens {
   total: number;
   params: MailboxLensParams;
   identity: LensIdentity;
-  /** Real label name for label lenses (moves, routes, projections). */
   labelName?: string;
-  /**
-   * The account a label belongs to, when the sidebar lists labels of every
-   * account. The list opens that label in its own account.
-   */
   accountId?: string;
 }
 
 const SYSTEM_ORDER = ["inbox", "starred", "sent", "drafts", "archive", "spam", "trash"];
 
-/** Same rule as the bridge: letters and digits in any script survive. */
 export function slugify(value: string): string {
   return value
     .trim()
@@ -91,7 +77,6 @@ function lensFromItem(sectionId: string, item: SidebarItem): MailLens | null {
   const counts = { unread: item.unread ?? 0, total: item.total ?? 0 };
   if (!lens) return null;
   if (sectionId === "system" || lens.kind === "inbox" || lens.kind === "all_mail") {
-    // Subscriptions has its own page with unsubscribe actions.
     if (lens.kind === "subscription") return null;
     const slug = systemSlug(item);
     const params: MailboxLensParams =
@@ -152,18 +137,12 @@ function lensFromItem(sectionId: string, item: SidebarItem): MailLens | null {
   return null;
 }
 
-/** Gmail system labels arrive upper-case ("SENT"); show them as words. */
 function displaySystemName(name: string, slug: string): string {
   if (slug === "archive") return "All Mail";
   if (name !== name.toUpperCase()) return name;
   return name.charAt(0) + name.slice(1).toLowerCase();
 }
 
-/**
- * The lens a route names, or null when the shell has no such lens (a
- * deleted label, a typo'd URL). Callers show that honestly rather than
- * falling back to some other mailbox.
- */
 export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | null {
   if (route.kind === "system") {
     const slug = route.mailbox === "all-mail" ? "archive" : route.mailbox;
@@ -173,7 +152,6 @@ export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | nu
     );
   }
   if (route.kind === "label") {
-    // Older bridges kept dash runs ("a---b"); bookmarks from then still work.
     const target = decodeURIComponent(route.name).replace(/-{2,}/g, "-");
     return (
       lenses.find(
@@ -199,7 +177,6 @@ export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | nu
   );
 }
 
-/** Inbox works before the shell has loaded (first paint, empty accounts). */
 export const INBOX_FALLBACK: MailLens = {
   key: "inbox",
   label: "Inbox",

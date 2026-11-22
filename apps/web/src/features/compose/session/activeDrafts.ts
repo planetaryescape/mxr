@@ -1,9 +1,3 @@
-/*
- * Reload survival: which compose file each intent was editing, kept in
- * localStorage so reopening the same intent resumes the draft instead of
- * starting a fresh session.
- */
-
 import {
   restoreComposeSession,
   startComposeSession,
@@ -89,7 +83,6 @@ export async function loadInitialComposeSession(
               },
               snapshot.accountId,
             );
-            // The bridge checked exact source references before relocating the owned copies.
             const sameText =
               draftFingerprint({
                 ...refreshedDraft,
@@ -113,9 +106,7 @@ export async function loadInitialComposeSession(
               };
             }
           }
-        } catch {
-          // The local snapshot remains available if its original owner cannot be reached.
-        }
+        } catch {}
       }
       const snapshot = settled.snapshot ?? original;
       if (snapshot.binding) rememberComposeBinding(snapshot.draftPath, snapshot.binding);
@@ -190,9 +181,7 @@ function findActiveDraftByCanonicalId(
       )
         return entry;
     }
-  } catch {
-    // A malformed or unreadable journal stays untouched; the resolved canonical file is safe.
-  }
+  } catch {}
   return undefined;
 }
 

@@ -12,7 +12,6 @@ import {
   type Todo,
 } from "./api";
 
-/** An explicit link: preview the outgoing context before enabling ongoing sync. */
 export function MicrosoftTodoAction({ todo }: { todo: Todo }) {
   const status = useMicrosoftTodoStatus();
   const client = useQueryClient();
@@ -58,8 +57,6 @@ export function MicrosoftTodoAction({ todo }: { todo: Todo }) {
           ? cause.message
           : "Could not reach Microsoft To Do. Refresh the link status before trying again.",
       );
-      // A lost answer is not permission to create again. Read the durable
-      // daemon receipt before enabling another attempt.
       await client.invalidateQueries({ queryKey: ["microsoft-todo", "link", todo.id] });
     } finally {
       inFlight.current = false;

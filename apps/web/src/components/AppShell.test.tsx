@@ -98,8 +98,6 @@ describe("AppShell with no account", () => {
   test("drops the rail, top bar and status bar, leaving only the route", async () => {
     renderShell(<AppShell />);
 
-    // The shell renders before the accounts answer, so wait for the frame to
-    // drop its chrome rather than checking once.
     await waitFor(() => expect(screen.queryByTestId("topbar")).toBeNull());
     expect(screen.getByTestId("route-content")).toBeVisible();
     expect(screen.queryByTestId("statusbar")).toBeNull();

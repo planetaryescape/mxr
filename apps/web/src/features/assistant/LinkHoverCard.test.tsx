@@ -32,7 +32,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   apiFetch,
 }));
 
-// The narrow-screen drawer, with the real sidebar swapped for a reply.
 vi.mock("@/hooks/useMediaQuery", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useMediaQuery")>()),
   useMediaQuery: () => true,
@@ -75,7 +74,6 @@ const page = {
 };
 
 let previewBody: unknown;
-/** The bridge, by path: membership for the glyphs, previews and a person's page for the cards. */
 function answer(path: string) {
   if (path.endsWith("/modes/membership")) {
     return Promise.resolve({
@@ -119,10 +117,8 @@ function reply(text = "See [Q1 report](mxr:thread/t-1234567).") {
   );
 }
 
-/** Time passes for the hover card's timers and for the query that follows. */
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
-/** A pointer event with a type, as the browser would send it. */
 function pointer(
   el: HTMLElement,
   kind: "Over" | "Out" | "Down" | "Up" | "Cancel",
@@ -133,7 +129,6 @@ function pointer(
   fireEvent(el, event);
 }
 
-/** React turns a `pointerover` from outside the element into `onPointerEnter`. */
 function pointerEnter(chip: HTMLElement, pointerType: string) {
   const event = createEvent.pointerOver(chip);
   Object.defineProperty(event, "pointerType", { value: pointerType });
@@ -172,7 +167,6 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
     expect(fetched("/threads/previews")).toHaveLength(0);
 
-    // The card opens before any data: the chip's own subject, no spinner.
     await act(() => vi.advanceTimersByTimeAsync(1));
     const card = screen.getByTestId("link-hover-card");
     expect(card).toHaveTextContent("Q1 report");
@@ -225,7 +219,6 @@ describe("the hover card on an email or person chip", () => {
     await wait(450);
     const card = screen.getByTestId("link-hover-card");
     expect(card).toHaveTextContent("Diana Lee");
-    // A profile read: the bridge is told to leave the conversation out.
     expect(fetched("/people/page")).toHaveLength(1);
     expect(fetched("/people/page")[0]?.[0]).toContain("conversation=false");
     await wait(10);
@@ -235,7 +228,6 @@ describe("the hover card on an email or person chip", () => {
     expect(fetched("/threads/previews")).toHaveLength(0);
   });
 
-  /** What a browser does on a click while hovering: press, focus, release, click. */
   function clickWithFocus(chip: HTMLElement) {
     fireEvent.pointerDown(chip);
     act(() => chip.focus());
@@ -243,7 +235,6 @@ describe("the hover card on an email or person chip", () => {
     fireEvent.click(chip);
   }
 
-  /** Time passes and no card appears and nothing is fetched. */
   const never = async () => {
     await wait(1500);
     return [screen.queryByTestId("link-hover-card"), fetched("/threads/previews")] as const;
@@ -262,7 +253,6 @@ describe("the hover card on an email or person chip", () => {
     expect(card).toBeNull();
     expect(calls).toHaveLength(0);
 
-    // Coming back is a fresh hover.
     act(() => chip.blur());
     pointerEnter(chip, "mouse");
     await wait(450);
@@ -347,7 +337,6 @@ describe("the hover card on an email or person chip", () => {
     });
     useAssistantUi.setState({ open: true });
     render(<AssistantSplit>{null}</AssistantSplit>);
-    // The sidebar is lazy: let its import settle.
     await wait(100);
     const chip = screen.getByRole("link", { name: "Q1 report" });
     act(() => chip.focus());
@@ -359,7 +348,6 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
     expect(useAssistantUi.getState().open).toBe(true);
 
-    // With no card open, Escape still closes the drawer.
     fireEvent.keyDown(chip, { key: "Escape" });
     expect(useAssistantUi.getState().open).toBe(false);
   });

@@ -1,11 +1,3 @@
-/*
- * "You promised: send the deck. Remind me Friday 2 October, 09:00?" Offered
- * beside a send, never in its way: the message goes out on its own undo
- * window whatever the answer, and an answer given early is kept once it has
- * gone. The time is the parser's reading of the words in the message and
- * can be changed in words before it is kept.
- */
-
 import { BellRing, X } from "lucide-react";
 import { useState } from "react";
 
@@ -21,9 +13,6 @@ export function PromiseTray() {
   const offers = usePromiseOffers((state) => state.offers);
   if (offers.length === 0) return null;
   return (
-    // Bottom-left of the content, just past the sidebar (never over it),
-    // clear of the reply's Send button and of the send countdown in the
-    // bottom-right corner.
     <section
       aria-label="Promises in what you sent"
       data-testid="promise-tray"

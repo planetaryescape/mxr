@@ -1,11 +1,3 @@
-/*
- * `/compose/new?...` and `/compose/$draftId` are deep links, not a second
- * composer. They open the one compose surface (ComposeHost, mounted in
- * AppShell) with the matching intent, then step off the compose URL: back
- * to where the user came from inside the app, or to the inbox for a link
- * opened from outside.
- */
-
 import { useCanGoBack, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
@@ -17,8 +9,6 @@ export function ComposeRoute() {
   const router = useRouter();
   const canGoBack = useCanGoBack();
   const openCompose = useComposeUi((state) => state.openCompose);
-  // Opening is a one-shot side effect of arriving on the URL; the ref also
-  // absorbs StrictMode's dev double-invoke.
   const handledRef = useRef(false);
 
   useEffect(() => {

@@ -116,8 +116,6 @@ export class WebRequestCoordinator {
     }
   }
 
-  /** Resolves once every save already queued for `key` has settled, so a
-   * reader of the same draft never sees it from before those saves. */
   async settleCompose(key: string): Promise<void> {
     await this.compose.get(key)?.tail;
   }

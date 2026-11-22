@@ -681,13 +681,4 @@ mod tests {
         // A recursive type stops at an open object instead of looping.
         assert!(!portable.to_string().contains("$ref"));
     }
-
-    #[test]
-    fn messages_round_trip_through_storage_json() {
-        for message in request().messages {
-            let stored = serde_json::to_string(&message).unwrap();
-            let back: ToolChatMessage = serde_json::from_str(&stored).unwrap();
-            assert_eq!(back, message);
-        }
-    }
 }

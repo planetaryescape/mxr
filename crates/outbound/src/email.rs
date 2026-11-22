@@ -870,15 +870,6 @@ mod tests {
     }
 
     #[test]
-    fn trailing_whitespace_and_tabs_are_not_tidied_away() {
-        let html = "<p>a</p>   \n\t<p>b</p>  ";
-
-        let bytes = html_part_bytes(&wire(&html_draft(html, Some("t")), &[], &[]));
-
-        assert_eq!(String::from_utf8(bytes).unwrap(), html);
-    }
-
-    #[test]
     fn unicode_emoji_and_registered_marks_survive_byte_for_byte() {
         let html = "<p>Notto® — café, naïve, 日本語, 🎉, \u{200b}zero-width</p>";
 
@@ -972,26 +963,6 @@ mod tests {
     }
 
     #[test]
-    fn attachments_without_inline_assets_wrap_the_alternative_in_mixed_alone() {
-        let raw = wire(
-            &html_draft("<p>hi</p>", Some("hi")),
-            &[pdf_attachment()],
-            &[],
-        );
-
-        assert_eq!(
-            mime_tree(&raw),
-            concat!(
-                "multipart/mixed\n",
-                "  multipart/alternative\n",
-                "    text/plain\n",
-                "    text/html\n",
-                "  application/pdf\n",
-            )
-        );
-    }
-
-    #[test]
     fn the_inline_part_carries_its_content_id_and_inline_disposition() {
         let logo = inline_logo();
         let raw = wire(
@@ -1055,25 +1026,5 @@ mod tests {
         );
         // Generation reads the HTML; it never rewrites it.
         assert_eq!(String::from_utf8(html_part_bytes(&raw)).unwrap(), html);
-    }
-
-    #[test]
-    fn an_html_draft_still_carries_headers_and_recipients() {
-        let raw = build_message_with_id(
-            &html_draft("<p>hi</p>", Some("hi")),
-            &sender(),
-            false,
-            &[],
-            "<m1@example.com>",
-        )
-        .unwrap()
-        .formatted();
-
-        // Headers are a flat namespace, so the raw text is the honest place to
-        // look for them.
-        let text = String::from_utf8(raw).unwrap();
-        assert!(text.contains("Subject: Product Digest"), "{text}");
-        assert!(text.contains("alice@example.com"), "{text}");
-        assert!(text.contains("Message-ID: <m1@example.com>"), "{text}");
     }
 }

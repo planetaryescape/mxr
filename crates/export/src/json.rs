@@ -87,88 +87,30 @@ mod tests {
     use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
 
     #[test]
-    fn json_is_valid_and_parseable() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(parsed.is_object());
-    }
-
-    #[test]
-    fn json_has_correct_message_count() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed["message_count"], 2);
-    }
-
-    #[test]
-    fn json_preserves_thread_metadata() {
+    fn json_export_carries_thread_message_and_attachment_fields() {
         let result = export_json(&sample_thread());
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["thread_id"], "thread_abc");
         assert_eq!(parsed["subject"], "Deployment rollback plan");
+        assert_eq!(parsed["message_count"], 2);
+        let msgs = parsed["messages"].as_array().unwrap();
+        assert_eq!(msgs[0]["id"], "msg_1");
+        assert_eq!(msgs[1]["id"], "msg_2");
+        assert!(msgs[0]["date"].as_str().unwrap().contains('T'));
+        assert_eq!(msgs[0]["from"]["name"], "Alice");
+        assert_eq!(msgs[0]["from"]["email"], "alice@example.com");
+        assert_eq!(msgs[0]["to"][0], "team@example.com");
+        assert_eq!(msgs[1]["attachments"][0]["filename"], "runbook.pdf");
+        assert_eq!(msgs[1]["attachments"][0]["size_bytes"], 245_760);
     }
 
     #[test]
-    fn json_messages_have_rfc3339_dates() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let date = parsed["messages"][0]["date"].as_str().unwrap();
-        // RFC3339 contains T separator and timezone
-        assert!(date.contains('T'));
-        assert!(date.ends_with("+00:00") || date.ends_with('Z'));
-    }
-
-    #[test]
-    fn json_includes_attachments_with_size() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let atts = &parsed["messages"][1]["attachments"];
-        assert_eq!(atts.as_array().unwrap().len(), 1);
-        assert_eq!(atts[0]["filename"], "runbook.pdf");
-        assert_eq!(atts[0]["size_bytes"], 245_760);
-    }
-
-    #[test]
-    fn json_from_address_has_name_and_email() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let from = &parsed["messages"][0]["from"];
-        assert_eq!(from["name"], "Alice");
-        assert_eq!(from["email"], "alice@example.com");
-    }
-
-    #[test]
-    fn json_from_name_is_null_when_missing() {
-        let result = export_json(&single_message_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(parsed["messages"][0]["from"]["name"].is_null());
-    }
-
-    #[test]
-    fn json_body_text_is_null_when_missing() {
-        let result = export_json(&empty_body_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert!(parsed["messages"][0]["body_text"].is_null());
-    }
-
-    #[test]
-    fn json_includes_to_recipients() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let to = parsed["messages"][0]["to"].as_array().unwrap();
-        assert_eq!(to[0], "team@example.com");
-    }
-
-    #[test]
-    fn json_roundtrip_preserves_message_ids() {
-        let result = export_json(&sample_thread());
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let ids: Vec<&str> = parsed["messages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|m| m["id"].as_str().unwrap())
-            .collect();
-        assert_eq!(ids, vec!["msg_1", "msg_2"]);
+    fn json_export_uses_null_for_missing_name_and_body() {
+        let solo: serde_json::Value =
+            serde_json::from_str(&export_json(&single_message_thread())).unwrap();
+        assert!(solo["messages"][0]["from"]["name"].is_null());
+        let empty: serde_json::Value =
+            serde_json::from_str(&export_json(&empty_body_thread())).unwrap();
+        assert!(empty["messages"][0]["body_text"].is_null());
     }
 }

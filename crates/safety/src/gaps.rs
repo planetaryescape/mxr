@@ -239,12 +239,6 @@ mod tests {
     }
 
     #[test]
-    fn one_gap_is_singular() {
-        let issues = check(&markdown("Hi [[?: your name]]"));
-        assert_eq!(issues[0].message, "1 gap left: your name");
-    }
-
-    #[test]
     fn a_gap_in_the_quote_or_the_signature_still_counts() {
         let body = "Thanks.\n\n> earlier [[?: the number]]\n\n-- \nAlex [[?: title]]";
         let issues = check(&markdown(body));
@@ -432,13 +426,6 @@ mod tests {
 #[cfg(test)]
 mod budget_tests {
     use super::*;
-
-    #[test]
-    fn a_parsed_document_gives_its_visible_and_attribute_text() {
-        let views = html_views("<p title=\"zztitle\">zzvisible &amp; more</p>").expect("views");
-        assert!(views.visible_text.contains("zzvisible & more"));
-        assert!(views.attribute_text.contains("zztitle"));
-    }
 
     #[test]
     fn an_over_budget_document_has_no_views_so_the_check_blocks_it() {

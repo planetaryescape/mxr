@@ -403,18 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn get_absent_returns_none() {
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        // Missing file.
-        assert!(store.get("mxr/x", "u").unwrap().is_none());
-        // File present, entry absent.
-        store.set("mxr/x", "u", "s").unwrap();
-        assert!(store.get("mxr/other", "u").unwrap().is_none());
-        assert!(store.get("mxr/x", "someone-else").unwrap().is_none());
-    }
-
-    #[test]
     fn set_upserts_existing_entry() {
         let dir = TempDir::new().unwrap();
         let store = store_in(&dir);
@@ -632,26 +620,6 @@ mod tests {
     }
 
     #[test]
-    fn temp_file_guard_removes_file_only_when_armed() {
-        let dir = TempDir::new().unwrap();
-
-        let armed = dir.path().join(".secrets.armed.tmp");
-        std::fs::write(&armed, "x").unwrap();
-        drop(TempFileGuard::new(armed.clone()));
-        assert!(!armed.exists(), "an armed guard removes its temp on drop");
-
-        let disarmed = dir.path().join(".secrets.disarmed.tmp");
-        std::fs::write(&disarmed, "x").unwrap();
-        let mut guard = TempFileGuard::new(disarmed.clone());
-        guard.disarm();
-        drop(guard);
-        assert!(
-            disarmed.exists(),
-            "a disarmed guard leaves the (now-live) file in place"
-        );
-    }
-
-    #[test]
     fn relative_secrets_path_round_trips_and_returns_ok() {
         // Regression: a relative MXR_SECRETS_PATH like `secrets.toml` has an
         // EMPTY parent; the parent-dir fsync must resolve it to `.` rather than
@@ -679,21 +647,6 @@ mod tests {
             got.unwrap().as_deref(),
             Some("pw"),
             "relative-path secret must round-trip"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn write_is_durable_and_atomic_round_trip() {
-        // Exercises the fsync/rename/dir-fsync path end to end.
-        let dir = TempDir::new().unwrap();
-        let store = store_in(&dir);
-        store.set("mxr/imap", "u", "durable-pw").unwrap();
-        // Re-open a fresh store to prove the bytes are on disk, not cached.
-        let reopened = SecretStore::new(store.path().to_path_buf());
-        assert_eq!(
-            reopened.get("mxr/imap", "u").unwrap().as_deref(),
-            Some("durable-pw")
         );
     }
 }

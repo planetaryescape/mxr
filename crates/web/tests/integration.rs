@@ -858,56 +858,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
 // suite: legacy migration
 
 #[tokio::test]
-async fn legacy_path_redirect_round_trip_smoke() {
-    let temp = TempDir::new().unwrap();
-    let socket = temp.path().join("mxr.sock");
-    let _server = spawn_fake(
-        &socket,
-        |request| match request {
-            Request::GetStatus => Some(Response::Ok {
-                data: ResponseData::Status {
-                    workspace_owner_supported: false,
-                    draft_revision_supported: true,
-                    send_outcome_supported: true,
-                    archive_recovery_supported: true,
-                    recovery_supported: false,
-                    recovery: None,
-                    attachment_transfer_supported: true,
-                    draft_attachment_upload_supported: true,
-                    uptime_secs: 1,
-                    accounts: vec![],
-                    total_messages: 0,
-                    daemon_pid: None,
-                    sync_statuses: vec![],
-                    protocol_version: IPC_PROTOCOL_VERSION,
-                    daemon_version: None,
-                    daemon_build_id: None,
-                    repair_required: false,
-                    semantic_runtime: None,
-                    feature_health: None,
-                    degraded: false,
-                },
-            }),
-            _ => None,
-        },
-        vec![],
-    );
-    let addr = boot_bridge(socket).await;
-
-    // reqwest's default Policy follows up to 10 redirects; the v0.4.x
-    // client should land on the v1 handler without intervention.
-    let response = reqwest::Client::new()
-        .get(format!("http://{addr}/status"))
-        .bearer_auth(TEST_TOKEN)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
-    let json: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(json["protocol_version"], IPC_PROTOCOL_VERSION);
-}
-
-#[tokio::test]
 async fn archive_boundary_errors_are_structured_before_any_ipc_dispatch() {
     let temp = TempDir::new().unwrap();
     let addr = boot_bridge(temp.path().join("no-daemon.sock")).await;

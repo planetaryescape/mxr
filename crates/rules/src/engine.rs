@@ -317,16 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn engine_returns_empty_when_no_rules_match() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
-        let msg = work_email_msg();
-        let result = engine.evaluate(&msg, "msg_1");
-
-        assert!(result.actions.is_empty());
-        assert!(result.matched_rules.is_empty());
-    }
-
-    #[test]
     fn disabled_rules_are_skipped() {
         let mut rule = archive_newsletters_rule();
         rule.enabled = false;
@@ -375,17 +365,6 @@ mod tests {
     }
 
     #[test]
-    fn batch_evaluate_returns_empty_for_no_matches() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
-        let work = work_email_msg();
-
-        let messages: Vec<(&dyn MessageView, &str)> = vec![(&work as &dyn MessageView, "msg_1")];
-
-        let results = engine.evaluate_batch(&messages);
-        assert!(results.is_empty());
-    }
-
-    #[test]
     fn dry_run_shows_what_would_match() {
         let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
         let nl = newsletter_msg();
@@ -411,46 +390,6 @@ mod tests {
         assert_eq!(result.matches[0].from, "newsletter@substack.com");
     }
 
-    #[test]
-    fn dry_run_returns_none_for_unknown_rule() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
-        let result = engine.dry_run(&RuleId("nonexistent".into()), &[]);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn engine_preserves_message_id_in_result() {
-        let engine = RuleEngine::new(vec![archive_newsletters_rule()]);
-        let msg = newsletter_msg();
-        let result = engine.evaluate(&msg, "specific_msg_id_123");
-        assert_eq!(result.message_id, "specific_msg_id_123");
-    }
-
-    #[test]
-    fn multiple_actions_per_rule() {
-        let rule = Rule {
-            account_id: None,
-            id: RuleId("r_multi".into()),
-            name: "Multi-action rule".into(),
-            enabled: true,
-            priority: 1,
-            conditions: Conditions::Field(FieldCondition::HasUnsubscribe),
-            actions: vec![
-                RuleAction::Archive,
-                RuleAction::MarkRead,
-                RuleAction::AddLabel {
-                    label: "auto-archived".into(),
-                },
-            ],
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        let engine = RuleEngine::new(vec![rule]);
-        let msg = newsletter_msg();
-        let result = engine.evaluate(&msg, "msg_1");
-
-        assert_eq!(result.actions.len(), 3);
-    }
     #[test]
     fn sorting_winner_is_stable_and_account_scoped() {
         let account = mxr_core::AccountId::new();

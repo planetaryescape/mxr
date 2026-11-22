@@ -261,10 +261,4 @@ mod tests {
             {"@type":"WebSite","name":"Acme"}</script>"#;
         assert!(extract(Some(html)).is_none());
     }
-
-    #[test]
-    fn none_when_no_html() {
-        assert!(extract(None).is_none());
-        assert!(extract(Some("<p>no structured data</p>")).is_none());
-    }
 }

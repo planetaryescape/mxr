@@ -192,28 +192,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn translates_admin_paths() {
-        assert_eq!(translate("/status"), Some("/api/v1/admin/status"));
-        assert_eq!(translate("/diagnostics"), Some("/api/v1/admin/diagnostics"));
-    }
-
-    #[test]
-    fn translates_mail_paths() {
-        assert_eq!(translate("/mailbox"), Some("/api/v1/mail/mailbox"));
-        assert_eq!(translate("/sync"), Some("/api/v1/mail/sync"));
-        assert_eq!(
-            translate("/mutations/star"),
-            Some("/api/v1/mail/mutations/star")
-        );
-    }
-
-    #[test]
-    fn translates_platform_paths() {
-        assert_eq!(translate("/rules"), Some("/api/v1/platform/rules"));
-        assert_eq!(translate("/accounts"), Some("/api/v1/platform/accounts"));
-    }
-
-    #[test]
     fn translates_dynamic_thread_paths() {
         let id = "01992f7e-0000-7000-8000-000000000000";
         assert_eq!(

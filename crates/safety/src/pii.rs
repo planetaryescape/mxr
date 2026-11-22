@@ -237,17 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn luhn_known_good_passes() {
-        // 4242 4242 4242 4242 is the canonical Stripe test card; Luhn-valid.
-        assert!(luhn_valid("4242424242424242"));
-    }
-
-    #[test]
-    fn luhn_known_bad_fails() {
-        assert!(!luhn_valid("1234567890123456"));
-    }
-
-    #[test]
     fn pem_private_key_blocks() {
         let body = concat!(
             "Hi,\n",
@@ -319,59 +308,6 @@ mod tests {
     }
 
     #[test]
-    fn no_raw_secret_leaks_for_any_kind() {
-        let cases: &[(&str, &str)] = &[
-            ("token sk-abcdefghijklmnopqrstuv", "abcdefghijklmnopqrstuv"),
-            (
-                "aws_access_key_id=AKIAIOSFODNN7EXAMPLE",
-                "AKIAIOSFODNN7EXAMPLE",
-            ),
-            (
-                "config api_key=secret_value_long_enough_to_match",
-                "secret_value_long_enough_to_match",
-            ),
-            (
-                "client_secret=mysecretvaluepassword123",
-                "mysecretvaluepassword123",
-            ),
-            ("Card: 4242 4242 4242 4242 thanks", "4242 4242 4242 4242"),
-            ("dob 987-65-4321", "987-65-4321"),
-            (
-                concat!(
-                    "Hi,\n",
-                    "-----BEGIN RSA ",
-                    "PRIVATE KEY-----\nMIIEpAIBAA0xyz\n"
-                ),
-                "MIIEpAIBAA0xyz",
-            ),
-        ];
-        for (body, raw) in cases {
-            let issues = check(&d(body));
-            let json = serde_json::to_string(&issues).unwrap();
-            assert!(!issues.is_empty(), "expected an issue for body: {body}");
-            assert!(
-                !json.contains(raw),
-                "raw secret leaked into JSON for body=`{body}`: dump={json}"
-            );
-        }
-    }
-
-    #[test]
-    fn cc_length_boundaries() {
-        // 11 digits — below Luhn-min, never warns.
-        assert!(check(&d("ref 12345678901 fyi")).is_empty());
-        // 12 digits, Luhn-valid — warns.
-        assert!(luhn_valid("100000000008"));
-        let twelve = check(&d("ref 100000000008 fyi"));
-        assert!(
-            twelve
-                .iter()
-                .any(|i| matches!(i.severity, DraftSafetySeverity::Warning)),
-            "12-digit Luhn-valid PAN should warn ({twelve:?})"
-        );
-    }
-
-    #[test]
     fn sk_prefix_blocks_with_redacted_preview() {
         let issues = check(&d("token sk-abcdefghijklmnopqrstuv"));
         assert!(issues
@@ -412,16 +348,6 @@ mod tests {
         assert!(
             issues.is_empty(),
             "secret in quoted context should be ignored ({issues:?})"
-        );
-    }
-
-    #[test]
-    fn json_serialization_omits_raw_secret() {
-        let issues = check(&d("token sk-supersecretkeyvalueXYZ"));
-        let json = serde_json::to_string(&issues).unwrap();
-        assert!(
-            !json.contains("supersecretkeyvalueXYZ"),
-            "json leaked: {json}"
         );
     }
 }

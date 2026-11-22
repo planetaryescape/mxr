@@ -210,17 +210,16 @@ pub fn generate_fixtures(
                 from_name,
                 from_email,
                 subject: if i == 0 {
-                "Q1 Report review"
-            } else {
-                "Re: Q1 Report review"
-            },
+                    "Q1 Report review"
+                } else {
+                    "Re: Q1 Report review"
+                },
                 snippet: &format!("Q1 report snippet part {}", i + 1),
                 body_text: &format!("Q1 report body text section {}. Revenue up 12% QoQ.", i + 1),
                 date: now - Duration::days(5) + Duration::hours(i as i64 * 3),
                 flags: MessageFlags::READ,
                 has_attachments: i == 0,
-                unsubscribe:
-            UnsubscribeMethod::None,
+                unsubscribe: UnsubscribeMethod::None,
             },
         );
     }

@@ -162,7 +162,6 @@ impl async_imap::Authenticator for AnonymousAuthenticator {
     }
 }
 
-
 /// SASL XOAUTH2 authenticator for OAuth2-based IMAP login (RFC 7628 / Google protocol).
 /// Used by Outlook/Exchange and Gmail IMAP when authenticating with OAuth2 tokens.
 pub struct XOAuth2Authenticator {
@@ -260,7 +259,6 @@ impl XOAuth2ImapSessionFactory {
         Ok(Box::new(RealImapSession { session }))
     }
 }
-
 
 /// Production session factory that connects via TLS to an IMAP server.
 pub struct RealImapSessionFactory {
@@ -1102,7 +1100,6 @@ impl ImapSession for RealImapSession {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 pub mod mock {

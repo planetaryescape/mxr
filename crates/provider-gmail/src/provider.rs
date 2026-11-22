@@ -2283,7 +2283,6 @@ END:VCALENDAR\r\n";
         }
     }
 
-
     fn reply_draft(in_reply_to: &str, thread_id: Option<&str>) -> Draft {
         Draft {
             revision: Some(1),

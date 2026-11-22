@@ -95,7 +95,6 @@ fn is_mapped_loopback(v6: Ipv6Addr) -> bool {
     v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
 }
 
-
 /// SHA-256 of a server's leaf certificate (DER).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CertFingerprint([u8; 32]);
@@ -175,7 +174,6 @@ enum Verify {
     InspectOnly,
 }
 
-
 /// Either a TLS stream or, for loopback bridges, the bare socket.
 pub(crate) enum ImapStream {
     Plain(TcpStream),
@@ -237,7 +235,6 @@ pub(crate) enum Greeting {
     Ready,
     PreAuth,
 }
-
 
 /// Open a connection that is secured per the account config and positioned
 /// right after the server greeting, ready for LOGIN / AUTHENTICATE.
@@ -408,7 +405,6 @@ async fn answers_in_plaintext(host: &str, port: u16) -> bool {
     matches!(read, Ok(Ok(()))) && &head == b"* OK"
 }
 
-
 /// Run the plaintext half of STARTTLS and hand back the socket, ready for the
 /// TLS handshake. Refuses (never falls back to plaintext) when the greeting is
 /// not a plain OK, the server does not advertise STARTTLS, or it rejects it.
@@ -506,7 +502,6 @@ fn advertises_starttls(untagged: &[String]) -> bool {
             && tokens.any(|t| t.eq_ignore_ascii_case("STARTTLS"))
     })
 }
-
 
 /// Connect the way the account would and report the SHA-256 of the server's
 /// leaf certificate, trusted or not, so a user can copy it into

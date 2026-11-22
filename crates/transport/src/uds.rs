@@ -232,8 +232,7 @@ fn remove_socket_if_owned(path: &Path, owned: (u64, u64, i64, i64)) {
                 "leaving IPC socket in place: the path was re-bound by a successor daemon"
             );
         }
-        None => {
-        }
+        None => {}
     }
 }
 

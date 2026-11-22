@@ -2084,7 +2084,6 @@ mod tests {
             .into_mailboxes()
     }
 
-
     #[tokio::test]
     async fn sync_labels_returns_mapped_folders() {
         let factory = MockImapSessionFactory::new(
@@ -2180,7 +2179,6 @@ mod tests {
         assert_eq!(labels[0].unread_count, 7);
         assert_eq!(labels[0].total_count, 12);
     }
-
 
     #[tokio::test]
     async fn initial_sync_isolates_malformed_fetch_literals() {
@@ -2463,7 +2461,6 @@ mod tests {
         assert_eq!(overlap.max_active_fetches.load(Ordering::SeqCst), 1);
     }
 
-
     #[tokio::test]
     async fn gmail_delta_without_all_mail_cursor_starts_canonical_backfill() {
         let mut archived_only = make_fetched_message(50, "Archived upgrade", "alice@example.com");
@@ -2573,7 +2570,6 @@ mod tests {
 
     #[tokio::test]
     async fn delta_sync_uid_validity_changed_falls_back_to_initial() {
-
         let msg = make_fetched_message(1, "After reset", "alice@example.com");
 
         let factory = MockImapSessionFactory::new(
@@ -2838,7 +2834,6 @@ mod tests {
             .any(|command| command.contains("CHANGEDSINCE 10")));
     }
 
-
     #[tokio::test]
     async fn set_read_sends_correct_flags() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
@@ -3077,7 +3072,6 @@ mod tests {
         assert!(err.to_string().contains("system folders"));
     }
 
-
     #[tokio::test]
     async fn fetch_attachment_extracts_bytes() {
         let raw = concat!(
@@ -3124,7 +3118,6 @@ mod tests {
         assert!(!bytes.is_empty());
     }
 
-
     #[test]
     fn is_backfill_cursor_is_true_only_for_the_generic_in_progress_cursor() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
@@ -3164,7 +3157,6 @@ mod tests {
             Err(mxr_core::MxrError::SyncCursorExpired { .. })
         ));
     }
-
 
     #[tokio::test]
     async fn full_sync_flow_initial_then_delta_then_fetch_and_mutate() {
@@ -3282,7 +3274,6 @@ mod tests {
             .expect("watcher task must not panic");
         assert!(result.is_ok(), "next_event must return Ok on trigger");
     }
-
 
     #[tokio::test]
     async fn delta_sync_detects_deletes_on_condstore_only_server() {
@@ -3546,7 +3537,6 @@ mod tests {
             "cursor uid_next must floor to the failed UID (5), not advance to 7"
         );
     }
-
 
     #[tokio::test]
     async fn append_sent_returns_mailbox_uid_when_server_reports_appenduid() {

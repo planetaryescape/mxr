@@ -100,7 +100,6 @@ fn starttls_is_detected_in_capability_lines() {
     assert!(!advertises_starttls(&lines("* OK STARTTLS later\r\n")));
 }
 
-
 struct TestCert {
     acceptor: async_native_tls::TlsAcceptor,
     fingerprint: CertFingerprint,

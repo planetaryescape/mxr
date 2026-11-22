@@ -220,7 +220,6 @@ impl ImapCursor {
     }
 }
 
-
 enum LegacyOutcome {
     Initial,
     Cursor(LegacyImap),

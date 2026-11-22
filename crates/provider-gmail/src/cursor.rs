@@ -122,7 +122,6 @@ fn truncate_token(token: &str) -> String {
     }
 }
 
-
 enum LegacyOutcome {
     Initial,
     Cursor(LegacyGmailVariant),

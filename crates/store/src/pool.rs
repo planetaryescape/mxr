@@ -2382,4 +2382,81 @@ pub(crate) mod tests {
         assert_eq!(role("user"), None);
         assert_eq!(role("gesendet"), None);
     }
+
+    #[tokio::test]
+    async fn an_in_memory_store_has_the_schema_migrations_produce() {
+        let temp = tempdir().unwrap();
+        let migrated = Store::new(&temp.path().join("fresh.db")).await.unwrap();
+        let copied = Store::in_memory().await.unwrap();
+
+        assert_eq!(
+            schema_of(copied.writer()).await,
+            schema_of(migrated.writer()).await
+        );
+        let versions = "SELECT version FROM schema_migrations ORDER BY version";
+        let copied_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(copied.writer())
+            .await
+            .unwrap();
+        let migrated_versions: Vec<(i64,)> = sqlx::query_as(versions)
+            .fetch_all(migrated.writer())
+            .await
+            .unwrap();
+        assert_eq!(copied_versions, migrated_versions);
+        let (foreign_keys,): (i64,) = sqlx::query_as("PRAGMA foreign_keys")
+            .fetch_one(copied.writer())
+            .await
+            .unwrap();
+        assert_eq!(foreign_keys, 1);
+    }
+
+    #[tokio::test]
+    async fn fresh_store_records_all_migration_versions() {
+        let store = Store::in_memory().await.unwrap();
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT version, name FROM schema_migrations ORDER BY version")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), super::MIGRATIONS.len());
+        for (i, (version, name)) in rows.iter().enumerate() {
+            let expected = &super::MIGRATIONS[i];
+            assert_eq!(*version, expected.version as i64);
+            assert_eq!(name, expected.name);
+        }
+    }
+
+    #[tokio::test]
+    async fn migration_034_recovers_when_original_was_dropped_before_schema_stamp() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("decision-log-dropped-crash.db");
+        let (decision_id, decision) =
+            seed_decision_log_migration_034_crash_state(&db_path, true).await;
+
+        let store = Store::new(&db_path)
+            .await
+            .expect("migration 034 should recover by promoting decision_log_v2");
+
+        let row: (String,) = sqlx::query_as("SELECT decision FROM decision_log WHERE id = ?")
+            .bind(&decision_id)
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        assert_eq!(row.0, decision);
+        assert!(
+            !test_table_exists(store.reader(), "decision_log_v2").await,
+            "recovery must not leave the temp table after promotion"
+        );
+        assert!(store.is_migration_applied(34).await.unwrap());
+    }
+
+    async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
+        sqlx::query_as(
+            "SELECT type, name, sql FROM sqlite_schema \
+             WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
+    }
 }

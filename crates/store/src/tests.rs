@@ -16,6 +16,98 @@ fn test_envelope(account_id: &AccountId) -> Envelope {
 }
 
 #[tokio::test]
+async fn mutation_dedup_finds_a_receipt_from_before_the_account_was_in_the_key() {
+    let store = Store::in_memory().await.unwrap();
+    let (first, second) = (test_account(), test_account());
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO mutation_dedup_log
+         (mutation_id, provider_message_id, account_id, applied_at, expires_at)
+         VALUES ('legacy-mut', 'INBOX:42', ?, 100, 9999999999)",
+    )
+    .bind(first.id.as_str())
+    .execute(store.writer())
+    .await
+    .unwrap();
+
+    assert!(store
+        .was_mutation_applied("legacy-mut", &first.id, "INBOX:42")
+        .await
+        .unwrap());
+    assert!(
+        !store
+            .was_mutation_applied("legacy-mut", &second.id, "INBOX:42")
+            .await
+            .unwrap(),
+        "an old receipt belongs to the account on its row"
+    );
+    assert!(!store
+        .was_mutation_applied("legacy-mut", &first.id, "INBOX:43")
+        .await
+        .unwrap());
+}
+
+#[tokio::test]
+async fn mutation_dedup_is_keyed_by_account() {
+    let store = Store::in_memory().await.unwrap();
+    let (first, second) = (test_account(), test_account());
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &first.id, 100)
+        .await
+        .unwrap();
+    assert!(store
+        .was_mutation_applied("mut-1", &first.id, "INBOX:42")
+        .await
+        .unwrap());
+    assert!(!store
+        .was_mutation_applied("mut-1", &second.id, "INBOX:42")
+        .await
+        .unwrap());
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &second.id, 100)
+        .await
+        .unwrap();
+    assert_eq!(store.count_mutation_dedup_rows().await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn delete_undo_entry_is_exact_and_idempotent() {
+    use crate::undo::{UndoEntry, UndoableMutationKind};
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    for id in ["mut-a", "mut-b"] {
+        store
+            .write_undo_entry(&UndoEntry {
+                mutation_id: id.into(),
+                kind: UndoableMutationKind::Trash,
+                snapshots: Vec::new(),
+                desk: None,
+                applied_at: 1,
+                expires_at: 61,
+            })
+            .await
+            .unwrap();
+    }
+
+    store.delete_undo_entry("mut-a").await.unwrap();
+    store.delete_undo_entry("mut-a").await.unwrap();
+
+    assert!(store.read_undo_entry("mut-a").await.unwrap().is_none());
+    assert!(
+        store.read_undo_entry("mut-b").await.unwrap().is_some(),
+        "delete must not touch other rows"
+    );
+}
+
+#[tokio::test]
 async fn delete_account_cascades_owned_messages() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

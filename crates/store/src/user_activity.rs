@@ -960,4 +960,39 @@ mod tests {
             .unwrap();
         assert!(next > kept, "ids keep counting up after the rebuild");
     }
+
+    #[tokio::test]
+    async fn redact_by_filter_targets_only_matching_rows() {
+        let store = fresh_store().await;
+        store
+            .record_activity_batch(&[
+                ins(100, "mail.read", Tier::Important, "tui", None, None, None),
+                ins(
+                    200,
+                    "mail.archive",
+                    Tier::Important,
+                    "tui",
+                    None,
+                    None,
+                    None,
+                ),
+                ins(300, "search.run", Tier::Standard, "tui", None, None, None),
+            ])
+            .await
+            .unwrap();
+
+        let filter = ActivityFilter {
+            action_prefix: Some("mail.".into()),
+            ..ActivityFilter::default()
+        };
+        let n = store.redact_activity_by_filter(&filter).await.unwrap();
+        assert_eq!(n, 2);
+
+        let remaining = store
+            .list_activity(&ActivityFilter::default(), 10, None)
+            .await
+            .unwrap();
+        assert_eq!(remaining.rows.len(), 1);
+        assert_eq!(remaining.rows[0].action, "search.run");
+    }
 }

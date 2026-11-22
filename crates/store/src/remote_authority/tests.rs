@@ -15,6 +15,97 @@ async fn start(store: &crate::Store, now: i64) -> PendingPairing {
         .unwrap()
 }
 #[tokio::test]
+async fn workflow_grants_are_approved_persisted_and_cannot_escalate_an_existing_pairing() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let (mail, cleanup, mv, cv) = secrets();
+    let grants = vec![
+        RemoteCapability::MailRead,
+        RemoteCapability::MailTriage,
+        RemoteCapability::MailAi,
+    ];
+    let pairing = store
+        .start_remote_pairing("workflow client", &grants, &mv, &cv, 100)
+        .await
+        .unwrap();
+    assert_eq!(pairing.capabilities, grants);
+    let preview = store
+        .approve_remote_pairing(&pairing.request_id, true, 101)
+        .await
+        .unwrap();
+    assert_eq!(preview.capabilities, grants);
+    assert!(!preview.approved);
+    assert!(store
+        .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, 102)
+        .await
+        .is_err());
+    for changed in [
+        vec![RemoteCapability::MailRead, RemoteCapability::MailTriage],
+        vec![
+            RemoteCapability::MailRead,
+            RemoteCapability::MailTriage,
+            RemoteCapability::MailAi,
+            RemoteCapability::MailSend,
+        ],
+        vec![
+            RemoteCapability::MailRead,
+            RemoteCapability::MailAi,
+            RemoteCapability::MailAi,
+        ],
+        vec![RemoteCapability::MailAi],
+    ] {
+        assert!(store
+            .start_remote_pairing("workflow client", &changed, &mv, &cv, 103)
+            .await
+            .is_err());
+    }
+    store
+        .approve_remote_pairing(&pairing.request_id, false, 104)
+        .await
+        .unwrap();
+    let client = store
+        .claim_remote_pairing(&pairing.request_id, &mail, &cleanup, 105)
+        .await
+        .unwrap();
+    assert_eq!(client.capabilities, grants);
+    assert_eq!(
+        store
+            .authenticate_remote_client(&client.client_id, &mail, 106)
+            .await
+            .unwrap()
+            .capabilities,
+        grants
+    );
+    store
+        .revoke_remote_client(&client.client_id, false, 107)
+        .await
+        .unwrap();
+    assert!(store
+        .authenticate_remote_client(&client.client_id, &mail, 108)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn lost_start_ack_reuses_pairing_and_retirement_prevents_stale_start() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let pending = start(&store, 100).await;
+    assert_eq!(pending, start(&store, 101).await);
+    let (mail, cleanup, mv, cv) = secrets();
+    assert!(store.abandon_remote_pairing(&mail, 101).await.is_err());
+    store.abandon_remote_pairing(&cleanup, 102).await.unwrap();
+    store.abandon_remote_pairing(&cleanup, 103).await.unwrap();
+    assert!(store
+        .approve_remote_pairing(&pending.request_id, false, 103)
+        .await
+        .is_err());
+    assert!(store
+        .start_remote_pairing("fixture", &[RemoteCapability::MailRead], &mv, &cv, 104)
+        .await
+        .is_err());
+    assert!(store.remote_clients().await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn claims_serialize_retry_and_cleanup_never_authorizes_mail() {
     let store = crate::Store::in_memory().await.unwrap();
     let p = start(&store, 100).await;

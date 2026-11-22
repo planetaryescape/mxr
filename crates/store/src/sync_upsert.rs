@@ -483,4 +483,40 @@ mod tests {
             .expect("body");
         assert_eq!(body.attachments.len(), 1);
     }
+
+    #[tokio::test]
+    async fn batch_sync_records_inbox_departures_without_inventing_historical_archives() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        let inbox = label(&account, "INBOX");
+        store.upsert_label(&inbox).await.unwrap();
+        let mut page = [
+            upsert(&account, 1, vec![inbox.id.clone()]),
+            upsert(&account, 2, vec![]),
+        ];
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let ids: Vec<_> = page.iter().map(|item| item.envelope.id.clone()).collect();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+        page[0].label_ids.clear();
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        let filed = store
+            .externally_filed_messages(Some(&account.id), &ids)
+            .await
+            .unwrap();
+        assert_eq!(filed.len(), 1);
+        assert!(filed.contains_key(&ids[0]));
+        assert!(!filed.contains_key(&ids[1]));
+        page[0].label_ids.push(inbox.id);
+        store.apply_sync_upserts(&mut page).await.unwrap();
+        assert!(store
+            .externally_filed_messages(None, &ids)
+            .await
+            .unwrap()
+            .is_empty());
+    }
 }

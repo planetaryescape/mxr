@@ -67,6 +67,59 @@ impl Fx {
 }
 
 #[tokio::test]
+async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
+    let fx = Fx::new().await;
+    let issue = fx.issue("p1", "news@platform.example", at(0)).await;
+    fx.store
+        .replace_reading_items(&issue, &[fx.item(&issue, 0, "Issue")])
+        .await
+        .expect("items");
+    let own = highlight(&fx, &issue, "own", "mxr");
+    fx.store.insert_reading_highlight(&own).await.expect("own");
+    let sent = ReadingMarginaliaRow {
+        message_id: issue.clone(),
+        idx: 0,
+        account_id: fx.account.clone(),
+        article_id: "k57".into(),
+        read_url: "https://reader.example.com/read/k57".into(),
+        view: "issue".into(),
+        sent_at: at(2),
+        highlights_synced_at: None,
+    };
+    fx.store.upsert_reading_marginalia(&sent).await.unwrap();
+    let remote = MarginaliaHighlightIn {
+        origin_id: "a".into(),
+        quote: "one".into(),
+        paragraph: None,
+        created_at: at(3),
+    };
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(4))
+        .await
+        .unwrap();
+
+    fx.store.remove_reading_highlight("own").await.unwrap();
+    fx.store
+        .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
+        .await
+        .unwrap();
+    let rows = fx
+        .store
+        .reading_highlights_for_message(&issue)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].origin, "marginalia");
+    assert_eq!(
+        fx.store
+            .remove_reading_highlight(&rows[0].id)
+            .await
+            .unwrap(),
+        HighlightEdit::ReadOnly("marginalia".into())
+    );
+}
+
+#[tokio::test]
 async fn items_are_replaced_per_message_and_go_with_it() {
     let fx = Fx::new().await;
     let issue = fx.issue("p1", "news@platform.example", at(0)).await;

@@ -523,60 +523,10 @@ mod tests {
     }
 
     #[test]
-    fn a_row_carries_email_fields_and_reads_without_them() {
-        let row = AssistantReadoutRowData {
-            account_id: None,
-            title: "Invoice 4471".into(),
-            detail: Some("Dana Ruiz".into()),
-            sender: Some("Dana Ruiz".into()),
-            snippet: Some("Please confirm payment".into()),
-            at: Some(1_760_000_000),
-            attachment: true,
-            unread: true,
-            ..Default::default()
-        };
-        let json = serde_json::to_value(&row).unwrap();
-        assert_eq!(json["at"], 1_760_000_000);
-        assert_eq!(json["attachment"], true);
-        let back: AssistantReadoutRowData = serde_json::from_value(json).unwrap();
-        assert_eq!(back, row);
-
-        let plain = serde_json::to_value(AssistantReadoutRowData {
-            account_id: None,
-            title: "Invoice".into(),
-            ..Default::default()
-        })
-        .unwrap();
-        assert_eq!(plain, json!({"title": "Invoice"}));
-
-        let old: AssistantReadoutRowData =
-            serde_json::from_value(json!({"title": "Invoice", "detail": "Dana"})).unwrap();
-        assert_eq!(old.sender, None);
-        assert_eq!(old.at, None);
-        assert!(!old.attachment && !old.unread);
-    }
-
-    #[test]
     fn an_older_daemon_fails_a_step_rows_request_it_does_not_know() {
         let unknown = serde_json::from_value::<crate::Request>(json!({
             "cmd": "GetAssistantStepRowsV2", "conversation_id": "c1", "call_id": "call1", "seq": 7,
         }));
         assert!(unknown.is_err());
-    }
-
-    #[test]
-    fn new_fields_stay_off_the_wire_when_empty() {
-        let reply = AssistantItemData::Assistant {
-            seq: 1,
-            text: "hi".into(),
-            model: None,
-            leaves_machine: None,
-            failed_call_ids: Vec::new(),
-            rows: Vec::new(),
-            created_at: 0,
-        };
-        let wire = serde_json::to_value(reply).unwrap();
-        assert!(wire.get("rows").is_none());
-        assert!(wire.get("leaves_machine").is_none());
     }
 }

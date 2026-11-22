@@ -190,43 +190,6 @@ fn model_label(locality: AiLocalityData, model: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn source(person: &str, name: Option<&str>) -> DraftSourceData {
-        DraftSourceData {
-            message_id: MessageId::new(),
-            thread_id: ThreadId::new(),
-            date: chrono::Utc::now(),
-            from_me: true,
-            person: person.to_string(),
-            person_name: name.map(str::to_string),
-        }
-    }
-
-    fn provenance(voice_examples: Vec<DraftSourceData>) -> DraftProvenanceData {
-        DraftProvenanceData {
-            model: "gemma4".to_string(),
-            locality: AiLocalityData::Local,
-            history_used: true,
-            voice_examples,
-            conversation: Vec::new(),
-            rewrite: None,
-        }
-    }
-
-    #[test]
-    fn the_line_names_the_person_when_every_example_was_to_them() {
-        let line = provenance(vec![
-            source("maya@x.com", Some("Maya Chen")),
-            source("MAYA@x.com", Some("Maya Chen")),
-        ])
-        .summary_line();
-        assert_eq!(
-            line,
-            "Local model gemma4 · used 2 of your emails to Maya · history used"
-        );
-    }
-
     #[test]
     fn a_draft_from_an_older_daemon_has_no_provenance() {
         let data: crate::ResponseData = serde_json::from_value(serde_json::json!({

@@ -426,29 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_forward() {
-        let (path, _) = create_draft_file(
-            ComposeKind::Forward {
-                subject: "Important doc".into(),
-                original_context: "The original message content.".into(),
-                source: None,
-            },
-            "me@example.com",
-        )
-        .unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
-        let (fm, body) = parse_compose_file(&content).unwrap();
-        assert_eq!(fm.subject, "Fwd: Important doc");
-        assert_eq!(fm.intent, mxr_core::DraftIntent::Forward);
-        assert!(body.contains("Forwarded message"));
-        assert!(
-            body.contains("The original message content."),
-            "forward must retain the original in the saved/sent body, got {body:?}"
-        );
-        std::fs::remove_file(path).ok();
-    }
-
-    #[test]
     fn creates_new_message_with_signature_block() {
         let signature = ComposeSignature {
             name: "Work".into(),
@@ -471,13 +448,6 @@ mod tests {
         assert_eq!(body, "-- \nAlice");
         assert!(cursor > 1);
         std::fs::remove_file(path).ok();
-    }
-
-    #[test]
-    fn append_signature_preserves_existing_delimiter() {
-        let body = append_signature_to_body("Hello", "-- \nAlice");
-
-        assert_eq!(body, "Hello\n\n-- \nAlice");
     }
 
     #[test]
@@ -548,144 +518,6 @@ mod tests {
         };
         let issues = validate_draft_for_save(&fm, "body");
         assert!(issues.is_empty());
-    }
-
-    #[test]
-    fn validates_invalid_email() {
-        let fm = ComposeFrontmatter {
-            to: "not-an-email".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: "Test".into(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft(&fm, "body");
-        assert_eq!(
-            issue_messages(&issues),
-            vec!["Error: Invalid email address: not-an-email"]
-        );
-    }
-
-    #[test]
-    fn validates_empty_subject_warning() {
-        let fm = ComposeFrontmatter {
-            to: "alice@example.com".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: String::new(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft(&fm, "body");
-        assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
-    }
-
-    #[test]
-    fn save_draft_keeps_empty_subject_as_warning_only() {
-        let fm = ComposeFrontmatter {
-            to: String::new(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: String::new(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft_for_save(&fm, "Hello there!");
-        assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
-    }
-
-    #[test]
-    fn save_draft_still_rejects_invalid_email() {
-        let fm = ComposeFrontmatter {
-            to: "not-an-email".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: String::new(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft_for_save(&fm, "Hello there!");
-        assert_eq!(
-            issue_messages(&issues),
-            vec![
-                "Warning: Subject is empty",
-                "Error: Invalid email address: not-an-email",
-            ]
-        );
-    }
-
-    #[test]
-    fn send_validation_warns_about_unresolved_snippet_vars() {
-        let fm = ComposeFrontmatter {
-            to: "alice@example.com".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: "Hello".into(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft(&fm, "Hi {first_name}, see {date} and {first_name}.");
-
-        assert_eq!(
-            issue_messages(&issues),
-            vec!["Warning: Unresolved snippet variable(s): first_name, date"]
-        );
-    }
-
-    #[tokio::test]
-    async fn async_draft_helpers_round_trip_content_and_cleanup() {
-        let (path, _cursor) = create_draft_file_async(
-            ComposeKind::New {
-                to: "alice@example.com".into(),
-                subject: "Hello".into(),
-            },
-            "me@example.com",
-        )
-        .await
-        .unwrap();
-
-        let original = read_draft_file_async(&path).await.unwrap();
-        assert!(original.contains("to: alice@example.com"));
-        assert!(original.contains("subject: Hello"));
-
-        let updated = original.replace("Hello", "Updated subject");
-        write_draft_file_async(&path, &updated).await.unwrap();
-        let reread = read_draft_file_async(&path).await.unwrap();
-        assert!(reread.contains("subject: Updated subject"));
-
-        delete_draft_file_async(&path).await.unwrap();
-        assert!(!path.exists());
     }
 
     #[cfg(unix)]

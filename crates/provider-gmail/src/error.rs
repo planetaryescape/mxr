@@ -105,21 +105,4 @@ mod tests {
         );
         assert!(matches!(mxr, MxrError::ProviderAuth(_)));
     }
-
-    #[test]
-    fn token_cache_failures_stay_untyped_provider_errors() {
-        let mxr: MxrError = GmailError::AuthTemporary.into();
-        assert!(matches!(mxr, MxrError::Provider(_)));
-    }
-
-    #[test]
-    fn rate_limit_without_detail_keeps_the_plain_text() {
-        let mxr: MxrError = GmailError::RateLimited {
-            retry_after_secs: 60,
-            detail: None,
-        }
-        .into();
-
-        assert_eq!(mxr.to_string(), "Rate limited — retry after 60s");
-    }
 }

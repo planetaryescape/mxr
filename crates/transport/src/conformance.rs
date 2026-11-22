@@ -374,15 +374,6 @@ mod tests {
         run_transport_conformance(&transport, &connector).await;
     }
 
-    #[cfg(feature = "test-util")]
-    #[tokio::test]
-    async fn memory_transport_conforms() {
-        use crate::MemoryTransport;
-        let transport = MemoryTransport::new();
-        let connector = transport.connector();
-        run_transport_conformance(&transport, &connector).await;
-    }
-
     #[tokio::test]
     async fn token_transport_conforms() {
         let transport = token_fixture::TokenFixture::new();

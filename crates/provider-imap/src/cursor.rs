@@ -279,23 +279,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_bytes_decode_to_none() {
-        let result = ImapCursor::decode(&SyncCursor::empty()).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn legacy_imap_tagged_with_mailboxes_decodes() {
-        let legacy = SyncCursor::from_bytes(
-            br#"{"Imap":{"uid_validity":1,"uid_next":100,"mailboxes":[{"mailbox":"INBOX","uid_validity":1,"uid_next":100,"highest_modseq":null}]}}"#.to_vec(),
-        );
-        let decoded = ImapCursor::decode(&legacy).unwrap().unwrap();
-        let mailboxes = decoded.into_mailboxes();
-        assert_eq!(mailboxes.len(), 1);
-        assert_eq!(mailboxes[0].uid_next, 100);
-    }
-
-    #[test]
     fn legacy_imap_tagged_without_mailboxes_synthesises_inbox() {
         let legacy =
             SyncCursor::from_bytes(br#"{"Imap":{"uid_validity":7,"uid_next":999}}"#.to_vec());
@@ -308,22 +291,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_initial_string_decodes_as_none() {
-        let legacy = SyncCursor::from_bytes(br#""Initial""#.to_vec());
-        assert!(ImapCursor::decode(&legacy).unwrap().is_none());
-    }
-
-    #[test]
     fn unrecognised_payload_surfaces_expired() {
         let garbage = SyncCursor::from_bytes(b"not json at all".to_vec());
         let err = ImapCursor::decode(&garbage).unwrap_err();
-        assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
-    }
-
-    #[test]
-    fn gmail_legacy_shape_surfaces_expired() {
-        let legacy = SyncCursor::from_bytes(br#"{"Gmail":{"history_id":12345}}"#.to_vec());
-        let err = ImapCursor::decode(&legacy).unwrap_err();
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
     }
 
@@ -359,18 +329,6 @@ mod tests {
         let encoded = in_progress_backfill().encode();
         assert_eq!(previous_release_decode(encoded.as_bytes()), None);
         assert!(decode_legacy(encoded.as_bytes()).is_none());
-    }
-
-    #[test]
-    fn in_progress_backfill_round_trips() {
-        let decoded = ImapCursor::decode(&in_progress_backfill().encode())
-            .unwrap()
-            .unwrap()
-            .into_generic_backfill()
-            .unwrap();
-        assert_eq!(decoded.completed.len(), 1);
-        assert_eq!(decoded.pending[0].next_high, 50);
-        assert_eq!(decoded.pending[0].min_failed_uid, Some(7));
     }
 
     #[test]

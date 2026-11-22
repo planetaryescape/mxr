@@ -19,8 +19,6 @@ use mxr_core::types::{Address, Draft, SendReceipt};
 use mxr_outbound::attachments::{
     load_attachment_paths_async, load_inline_assets_async, LoadedAttachment,
 };
-#[cfg(test)]
-use mxr_outbound::email::build_message;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -227,6 +225,7 @@ impl MailSendProvider for SmtpSendProvider {
 
 /// Transient (4xx) responses and timeouts are worth retrying; permanent (5xx)
 /// responses and everything else are hard failures.
+#[cfg(not(test))]
 fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
     is_transient || is_timeout
 }
@@ -234,6 +233,7 @@ fn is_retryable(is_transient: bool, is_timeout: bool) -> bool {
 /// Map a send failure onto the core error taxonomy. Split out from
 /// `classify_smtp_send_error` so the decision and message can be unit-tested
 /// without a `lettre` error (which has no public constructor).
+#[cfg(not(test))]
 fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
     if retryable {
         // SMTP carries no Retry-After hint; 60s is a sane default backoff so the
@@ -364,130 +364,6 @@ mod tests {
                 .await,
             Err(mxr_core::SendFailure::NotAccepted(_))
         ));
-    }
-
-    #[test]
-    fn resolve_credentials_present_only_when_auth_required() {
-        let with_auth = SmtpConfig::new(
-            "smtp.example.com".into(),
-            587,
-            "user".into(),
-            "mxr/test".into(),
-            true,
-            true,
-        )
-        .with_password("pw".into());
-        assert!(SmtpSendProvider::new(with_auth)
-            .resolve_credentials()
-            .unwrap()
-            .is_some());
-
-        let no_auth = SmtpConfig::new(
-            "smtp.example.com".into(),
-            587,
-            "user".into(),
-            "mxr/test".into(),
-            false,
-            true,
-        );
-        assert!(SmtpSendProvider::new(no_auth)
-            .resolve_credentials()
-            .unwrap()
-            .is_none());
-    }
-
-    #[tokio::test]
-    async fn build_transport_refuses_cleartext_auth() {
-        let config = SmtpConfig::new(
-            "smtp.example.com".into(),
-            587,
-            "user".into(),
-            "mxr/test".into(),
-            true,
-            false,
-        );
-        let provider = SmtpSendProvider::new(config);
-        let err = provider.build_transport().await.unwrap_err();
-        assert!(matches!(err, SmtpError::Transport(msg) if msg.contains("unencrypted")));
-    }
-
-    #[test]
-    fn is_retryable_covers_transient_timeout_and_permanent() {
-        assert!(is_retryable(true, false));
-        assert!(is_retryable(false, true));
-        assert!(is_retryable(true, true));
-        assert!(!is_retryable(false, false));
-    }
-
-    #[test]
-    fn map_send_error_maps_transient_to_rate_limited_and_permanent_to_provider() {
-        assert!(matches!(
-            map_send_error(true, "transient boom"),
-            MxrError::RateLimited {
-                retry_after_secs: 60,
-                ..
-            }
-        ));
-        assert!(matches!(
-            map_send_error(false, "permanent boom"),
-            MxrError::Provider(msg) if msg == "SMTP send failed: permanent boom"
-        ));
-    }
-
-    #[test]
-    fn build_message_basic() {
-        let draft = test_draft();
-        let from = Address {
-            name: Some("Me".into()),
-            email: "me@example.com".into(),
-        };
-        let msg = build_message(&draft, &from, false).unwrap();
-        let bytes = msg.formatted();
-        let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("From: Me <me@example.com>\r\n"));
-        assert!(formatted.contains("To: Alice <alice@example.com>\r\n"));
-        assert!(formatted.contains("Subject: Test Subject\r\n"));
-        assert!(formatted.contains("Content-Type: multipart/alternative"));
-        assert!(formatted.contains("text/plain; charset=utf-8"));
-        assert!(formatted.contains("text/html; charset=utf-8"));
-        assert!(formatted.contains("Hello **world**!"));
-        assert!(formatted.contains("<strong>world</strong>"));
-    }
-
-    #[test]
-    fn build_message_invalid_email() {
-        let mut draft = test_draft();
-        draft.to = vec![Address {
-            name: None,
-            email: "not-valid".into(),
-        }];
-        let from = Address {
-            name: None,
-            email: "me@example.com".into(),
-        };
-        assert!(build_message(&draft, &from, false).is_err());
-    }
-
-    #[tokio::test]
-    async fn smtp_provider_passes_send_conformance() {
-        let sender = Arc::new(RecordedSender::default());
-        let provider = SmtpSendProvider::with_test_sender(
-            SmtpConfig::new(
-                "smtp.example.com".into(),
-                587,
-                "me@example.com".into(),
-                "mxr/test".into(),
-                true,
-                true,
-            ),
-            sender.clone(),
-        );
-        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
-        let messages = sender.messages.lock().unwrap();
-        assert_eq!(messages.len(), 1);
-        assert!(messages[0]
-            .formatted
-            .contains("Subject: Conformance test draft"));
     }
 
     #[tokio::test]

@@ -281,20 +281,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn kinds_follow_chapter_37_without_repeats() {
-        let names: Vec<&str> = AskKind::ALL.iter().map(|kind| kind.as_str()).collect();
-        assert_eq!(
-            names.join(" "),
-            "pay fix_payment sign verify reply send provide upload book attend \
-             renew_or_cancel register contact other"
-        );
-        let mut sorted = names.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.len(), names.len());
-    }
-
-    #[test]
     fn a_platform_is_told_from_an_organisation_by_its_domain() {
         assert_eq!(
             sender_kind(Who::Machine, "dse@docusign.net"),

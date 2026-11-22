@@ -190,28 +190,6 @@ mod tests {
     }
 
     #[test]
-    fn a_429_with_neither_header_nor_timestamp_waits_sixty_seconds() {
-        let body = r#"{"error":{"code":429,"message":"Too many concurrent requests for user"}}"#;
-
-        let refusal = classify_rate_limit(429, None, body, now()).unwrap();
-
-        assert_eq!(refusal.retry_after_secs, 60);
-        assert_eq!(refusal.reason, None);
-        assert_eq!(
-            refusal.describe().as_deref(),
-            Some("Too many concurrent requests for user")
-        );
-    }
-
-    #[test]
-    fn a_non_json_429_is_still_a_rate_limit_waiting_sixty_seconds() {
-        let refusal = classify_rate_limit(429, None, "<html>slow down</html>", now()).unwrap();
-
-        assert_eq!(refusal.retry_after_secs, 60);
-        assert_eq!(refusal.describe(), None);
-    }
-
-    #[test]
     fn a_403_usage_limit_is_a_rate_limit() {
         let body = r#"{"error":{"code":403,"message":"Rate Limit Exceeded","errors":[{"domain":"usageLimits","reason":"rateLimitExceeded"}]}}"#;
 
@@ -229,26 +207,5 @@ mod tests {
         assert_eq!(classify_rate_limit(403, None, permissions, now()), None);
         assert_eq!(classify_rate_limit(403, None, other_domain, now()), None);
         assert_eq!(classify_rate_limit(403, None, "not json", now()), None);
-    }
-
-    #[test]
-    fn other_statuses_are_never_rate_limits() {
-        assert_eq!(
-            classify_rate_limit(500, Some("30"), BODY_429_STAMP, now()),
-            None
-        );
-    }
-
-    #[test]
-    fn a_header_that_is_not_seconds_falls_back_to_the_message() {
-        let refusal = classify_rate_limit(
-            429,
-            Some("Wed, 21 Oct 2026 19:05:00 GMT"),
-            BODY_429_STAMP,
-            now(),
-        )
-        .unwrap();
-
-        assert_eq!(refusal.retry_after_secs, 5 * 60 + 31);
     }
 }

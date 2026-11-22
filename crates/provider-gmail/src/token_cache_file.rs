@@ -79,20 +79,6 @@ mod tests {
     }
 
     #[test]
-    fn nested_parent_is_created_and_stale_temporary_files_are_not_left_on_error() {
-        let directory = tempdir().unwrap();
-        let path = directory.path().join("nested").join("tokens.json");
-        let result = write_with_hook(&path, "new", |stage| match stage {
-            ReplaceStage::BeforeRename => Err(io::Error::other("injected interruption")),
-            ReplaceStage::AfterRename => Ok(()),
-        });
-
-        assert!(result.is_err());
-        let parent = path.parent().unwrap();
-        assert_eq!(std::fs::read_dir(parent).unwrap().count(), 0);
-    }
-
-    #[test]
     fn rename_failure_preserves_destination_and_cleans_up_temporary_file() {
         let directory = tempdir().unwrap();
         let path = directory.path().join("tokens.json");

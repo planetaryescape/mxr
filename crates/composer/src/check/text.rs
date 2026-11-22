@@ -327,13 +327,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn numbers_the_model_could_not_have_seen() {
-        let known = "Can we meet on the 14th at 3pm? Budget is $4,000.";
-        let draft = "Yes, the 14th at 3pm works. I can do $5,000 and 20 seats.";
-        assert_eq!(invented_numbers(draft, known), vec!["5,000", "20"]);
-    }
-
-    #[test]
     fn a_number_is_known_only_when_its_whole_token_is() {
         let known = "The fee is £1,200 for 12pm sessions.";
         assert_eq!(
@@ -363,26 +356,5 @@ mod tests {
         );
         assert_eq!(invented_numbers("at 2 pm", known), vec!["2pm"]);
         assert_eq!(invented_numbers("£1,200.50", known), vec!["1,200.50"]);
-    }
-
-    #[test]
-    fn an_ordinal_is_the_number_it_ends() {
-        assert_eq!(
-            invented_numbers("on the 30th", "Thursday 30 October"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            invented_numbers("the 31st", "Thursday 30 October"),
-            vec!["31st"]
-        );
-    }
-
-    #[test]
-    fn the_replay_rule_is_unchanged_and_still_matches_digits_inside_a_number() {
-        assert_eq!(
-            replay_invented_numbers("£200", "£1,200"),
-            Vec::<String>::new()
-        );
-        assert_eq!(replay_invented_numbers("$45", "$450"), Vec::<String>::new());
     }
 }

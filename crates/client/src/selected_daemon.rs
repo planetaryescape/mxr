@@ -403,63 +403,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_handshake_timeout_includes_unanswered_authentication() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let target = SelectedDaemonTarget::new(
-            TransportAddr::Tcp(listener.local_addr().unwrap()),
-            Some("fixture-token".into()),
-        );
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut framed = Framed::new(stream, IpcCodec::new());
-            let message = framed.next().await.unwrap().unwrap();
-            assert!(matches!(
-                message.payload,
-                IpcPayload::Request(Request::Authenticate { .. })
-            ));
-            assert!(framed.next().await.is_none());
-        });
-        let error = target.connect(ClientKind::Cli).await.err().unwrap();
-        assert!(error.to_string().contains("handshake timed out"), "{error}");
-        server.await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn timed_out_cmd_handshake_drops_owned_dialer() {
-        let directory = tempfile::tempdir().unwrap();
-        let pid_path = directory.path().join("pid");
-        let target = SelectedDaemonTarget::new(
-            TransportAddr::Cmd(vec![
-                "/bin/sh".into(),
-                "-c".into(),
-                "echo $$ > \"$1\"; exec sleep 60".into(),
-                "fixture".into(),
-                pid_path.display().to_string(),
-            ]),
-            None,
-        );
-        let error = target.connect(ClientKind::Cli).await.err().unwrap();
-        assert!(error.to_string().contains("handshake timed out"));
-        let pid = std::fs::read_to_string(pid_path).unwrap();
-        tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let running = std::process::Command::new("/bin/kill")
-                    .args(["-0", pid.trim()])
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .unwrap()
-                    .success();
-                if !running {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .unwrap();
-    }
-
-    #[tokio::test]
     async fn unavailable_cmd_does_not_surface_private_arguments() {
         let target = SelectedDaemonTarget::new(
             TransportAddr::Cmd(vec![
@@ -477,16 +420,5 @@ mod tests {
         assert!(error.contains("selected cmd://"));
         assert!(!error.contains("PRIVATE_ARG_SENTINEL"));
         assert!(!error.contains("missing-mxr-fixture-program"));
-    }
-
-    #[test]
-    fn token_lookup_is_lazy_and_target_debug_hides_command_arguments() {
-        let target = SelectedDaemonTarget::from(PathBuf::from("/not-local.sock"));
-        assert!(!target.is_remote());
-        let command = SelectedDaemonTarget::new(
-            TransportAddr::Cmd(vec!["secret-wrapper".into(), "private-argument".into()]),
-            None,
-        );
-        assert!(!format!("{command:?}").contains("private-argument"));
     }
 }

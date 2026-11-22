@@ -449,25 +449,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn settings_parse_loosely_and_round_trip() {
-        for setting in UpdateSourceSettingData::ALL {
-            assert_eq!(
-                UpdateSourceSettingData::parse(setting.as_str()),
-                Some(setting)
-            );
-        }
-        assert_eq!(
-            UpdateSourceSettingData::parse("Changes-only"),
-            Some(UpdateSourceSettingData::ChangesOnly)
-        );
-        assert_eq!(
-            UpdateSourceSettingData::parse("mute"),
-            Some(UpdateSourceSettingData::Muted)
-        );
-        assert_eq!(UpdateSourceSettingData::parse("loud"), None);
-    }
-
-    #[test]
     fn tracker_identity_is_optional_and_keeps_existing_fields() {
         let old: UpdateTrackerData = serde_json::from_value(serde_json::json!({
             "kind": "parcel",

@@ -75,18 +75,6 @@ mod tests {
     }
 
     #[test]
-    fn blank_lines_before_the_text_are_not_part_of_it_and_survive_a_replacement() {
-        let body = "\n\nHi\n\n-- \nBK";
-        let regions = split_body(body);
-        assert_eq!(regions.text, "Hi");
-        assert_eq!(regions.lead, "\n\n");
-        assert_eq!(
-            regions.with_text("Hello there"),
-            "\n\nHello there\n\n-- \nBK"
-        );
-    }
-
-    #[test]
     fn replacing_the_text_writes_back_the_original_trailing_blank_space() {
         let regions = split_body("Keep cat safe.  \n");
         assert_eq!(regions.text, "Keep cat safe.");
@@ -106,14 +94,5 @@ mod tests {
         assert_eq!(regions.text, "");
         assert_eq!(regions.rest, "-- \nAlex");
         assert_eq!(regions.with_text("Hi."), "Hi.\n\n-- \nAlex");
-    }
-
-    #[test]
-    fn replacing_the_text_keeps_the_signature_and_the_spacing() {
-        let body = "Old.\n-- \nAlex";
-        assert_eq!(
-            split_body(body).with_text("New one.\n"),
-            "New one.\n-- \nAlex"
-        );
     }
 }

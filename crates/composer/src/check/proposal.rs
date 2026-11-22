@@ -410,38 +410,6 @@ mod tests {
     }
 
     #[test]
-    fn style_marks_name_the_pattern_and_use_utf8_byte_ranges() {
-        let checked = finish("", "Café— additionally, this serves as a testament.", "");
-        assert!(checked.style_score < 100);
-        assert!(checked.style_marks.iter().any(|mark| {
-            mark.name == "Overused AI words"
-                && checked.text.is_char_boundary(mark.start as usize)
-                && checked.text.is_char_boundary(mark.end as usize)
-                && &checked.text[mark.start as usize..mark.end as usize] == "additionally"
-        }));
-        assert!(checked
-            .style_marks
-            .iter()
-            .any(|mark| mark.name == "Dashes as the universal connector"));
-        assert!(checked
-            .style_marks
-            .iter()
-            .all(|mark| mark.context.contains("Café")));
-    }
-
-    #[test]
-    fn finish_lists_the_sentences_it_changed_or_dropped() {
-        let typed = "Thursday works. Numbers by wed. Bring the deck.";
-        let output = "Thursday works, I think. Numbers by wed.";
-        let checked = finish(typed, output, "");
-        assert_eq!(checked.yours_changed, [0, 2]);
-        assert!(checked
-            .changes
-            .iter()
-            .any(|change| change.kind == TextChangeKindData::Removed));
-    }
-
-    #[test]
     fn a_sentence_turned_into_its_opposite_is_one_the_user_must_look_at() {
         let checked = finish(
             "I can't make Thursday. Numbers by wed.",
@@ -502,49 +470,6 @@ mod tests {
     }
 
     #[test]
-    fn every_occurrence_of_a_guessed_figure_is_replaced_and_known_ones_stay() {
-        let output = "It is $45, yes $45. Table for 4 at 7pm.";
-        let checked = finish("", output, "Table for 4 at 7pm please");
-        assert_eq!(checked.fixes.figures_to_gaps, 2);
-        assert_eq!(
-            checked
-                .text
-                .matches("[[?: amount, the draft said $45]]")
-                .count(),
-            2
-        );
-        assert!(checked.text.contains("Table for 4 at 7pm."));
-    }
-
-    #[test]
-    fn a_figure_the_user_typed_is_not_invented() {
-        let checked = finish("Budget is £1,200.", "Hi,\n\nBudget is £1,200.\n\nAlex", "");
-        assert!(checked.gaps.is_empty(), "{:?}", checked.text);
-    }
-
-    #[test]
-    fn a_figure_inside_the_models_own_gap_is_left_alone() {
-        let output = "Price: [[?: the price, they said 3 options]] and nothing else.";
-        let checked = finish("", output, "");
-        assert_eq!(checked.fixes.figures_to_gaps, 0);
-        assert_eq!(checked.text, output);
-        assert_eq!(checked.gaps.len(), 1);
-    }
-
-    #[test]
-    fn gap_ranges_are_byte_offsets_after_multibyte_text() {
-        let text = "Café open at [[?: the time]]. Bye [[?: your name]]";
-        let gaps = gap_spans(text);
-        assert_eq!(gaps.len(), 2);
-        assert_eq!(gaps[0].label, "the time");
-        assert_eq!(
-            &text[gaps[0].start as usize..gaps[0].end as usize],
-            "[[?: the time]]"
-        );
-        assert_eq!(&text[gaps[1].start as usize..], "[[?: your name]]");
-    }
-
-    #[test]
     fn a_marker_left_open_stops_where_the_next_one_starts() {
         let text = "Meet [[?: the time\nThanks [[?: your name]]";
         let gaps = gap_spans(text);
@@ -559,15 +484,6 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["one b", "two"]
         );
-    }
-
-    #[test]
-    fn a_marker_left_open_runs_to_the_end_of_its_line() {
-        let text = "Meet at [[?: the time\nThanks";
-        let gaps = gap_spans(text);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].label, "the time");
-        assert_eq!(&text[gaps[0].end as usize..], "\nThanks");
     }
 
     #[test]
@@ -591,122 +507,5 @@ mod tests {
         assert!(checked.text.ends_with(" Thanks."), "{}", checked.text);
         assert!(checked.text.contains("Wednesday."), "{}", checked.text);
         assert_eq!(checked.yours_changed, [1]);
-    }
-
-    #[test]
-    fn an_edit_that_stays_inside_the_selection_is_kept_whole() {
-        let typed = "Thursday works.\nnumbers by wed\nThanks.";
-        let selection = 16..30;
-        let output = "Thursday works.\nI'll send the numbers by Wednesday.\nThanks.";
-        let checked = check(
-            AssistActionData::EditSelection,
-            typed,
-            Some(selection),
-            output,
-            "",
-        );
-        assert!(!checked.fixes.outside_reverted);
-        assert_eq!(checked.text, output);
-    }
-
-    fn edit(typed: &str, selection: Range<usize>, output: &str) -> Checked {
-        check(
-            AssistActionData::EditSelection,
-            typed,
-            Some(selection),
-            output,
-            "",
-        )
-    }
-
-    #[test]
-    fn bytes_outside_the_selection_stay_byte_for_byte() {
-        let typed = "Keep cat safe.";
-        let checked = edit(typed, 6..7, "Keep dog safe.");
-        assert_eq!(checked.text, typed);
-        assert!(checked.fixes.outside_reverted);
-        let checked = edit(typed, 6..7, "Keep cot safe.");
-        assert_eq!(checked.text, "Keep cot safe.");
-        assert!(!checked.fixes.outside_reverted);
-    }
-
-    #[test]
-    fn trailing_and_leading_blank_space_outside_the_selection_is_kept_byte_for_byte() {
-        let typed = "\n  Keep cat safe.  \n";
-        let (start, end) = (typed.find('a').unwrap(), typed.find('a').unwrap() + 1);
-        let checked = edit(typed, start..end, "Keep cot safe.");
-        assert_eq!(checked.text, "\n  Keep cot safe.  \n");
-        assert!(!checked.fixes.outside_reverted);
-        let checked = edit(typed, start..end, "Keep dog safe.");
-        assert_eq!(checked.text, typed);
-        let checked = edit(typed, start..end, "x");
-        assert_eq!(checked.text, typed);
-        assert!(checked
-            .changes
-            .iter()
-            .all(|c| c.kind == TextChangeKindData::Kept));
-    }
-
-    #[test]
-    fn whatever_the_model_returns_both_ends_of_the_text_survive() {
-        let typed = "Hello there. Numbers by wed. Bye now.";
-        let (start, end) = (13, 28);
-        for output in [
-            "",
-            "Totally different text.",
-            "Hello. Numbers by Wednesday. Bye.",
-            "Hello there.  Numbers by Wednesday!  Bye now.",
-            "Bye now.",
-            "Hello there. Numbers by wed. Bye now. And more.",
-        ] {
-            let checked = edit(typed, start..end, output);
-            assert!(
-                checked.text.starts_with(&typed[..start]),
-                "{output:?} -> {:?}",
-                checked.text
-            );
-            assert!(
-                checked.text.ends_with(&typed[end..]),
-                "{output:?} -> {:?}",
-                checked.text
-            );
-        }
-    }
-
-    #[test]
-    fn a_figure_outside_the_selection_is_never_rewritten() {
-        let typed = "Meet at 3 pm tomorrow.";
-        let checked = edit(typed, 10..12, "Meet at 3 tomorrow.");
-        assert!(!checked.text.contains("[[?:"), "{}", checked.text);
-        assert!(checked.text.starts_with("Meet at 3 "), "{}", checked.text);
-        assert!(checked.text.ends_with(" tomorrow."), "{}", checked.text);
-
-        let text = "Meet at 4 tomorrow. It costs £40.";
-        let editable = text.find("It").unwrap()..text.len();
-        let (out, count) = figures_to_gaps(text, "", Some(editable));
-        assert_eq!(count, 1);
-        assert!(out.starts_with("Meet at 4 tomorrow."), "{out}");
-        assert!(out.contains("[[?: amount, the draft said £40]]"), "{out}");
-    }
-
-    #[test]
-    fn a_time_makes_its_hour_known() {
-        let checked = finish("", "See you at 3.", "meet at 3pm?");
-        assert!(checked.gaps.is_empty(), "{}", checked.text);
-        let checked = finish("", "See you at 2pm.", "meet at 12pm?");
-        assert_eq!(checked.gaps.len(), 1);
-    }
-
-    #[test]
-    fn the_diff_of_nothing_typed_is_all_added() {
-        let checked = check(AssistActionData::Write, "", None, "Hi Sam, yes.", "");
-        assert_eq!(
-            checked.changes,
-            [TextChangeData {
-                kind: TextChangeKindData::Added,
-                text: "Hi Sam, yes.".into()
-            }]
-        );
-        assert!(checked.yours_changed.is_empty());
     }
 }

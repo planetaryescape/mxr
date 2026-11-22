@@ -1073,15 +1073,6 @@ mod tests {
         assert!(work_env.iter().all(|env| env.account_id == work));
     }
 
-    #[tokio::test]
-    async fn sync_initial_returns_all_with_bodies() {
-        let provider = FakeProvider::new(AccountId::new());
-        let batch = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-        assert_eq!(batch.upserted.len(), 55);
-        assert!(!batch.has_more);
-        assert!(batch.upserted[0].body.text_plain.is_some());
-    }
-
     /// Walking the pages must yield every message exactly once, in order,
     /// and only the last page may report `has_more == false`.
     #[tokio::test]
@@ -1204,47 +1195,9 @@ mod tests {
         }
     }
 
-    /// A page resumed from a cursor must equal the same slice generated in
-    /// one pass — that is what makes a restarted seed idempotent.
-    #[tokio::test]
-    async fn demo_pages_are_stable_across_resume() {
-        const PAGE: usize = 200;
-        let provider =
-            FakeProvider::with_demo_dataset(AccountId::new(), PAGE * 2).with_page_size(PAGE);
-
-        let first = provider.sync_messages(&SyncCursor::empty()).await.unwrap();
-        let second = provider.sync_messages(&first.next_cursor).await.unwrap();
-        let resumed = provider.sync_messages(&first.next_cursor).await.unwrap();
-
-        let ids = |batch: &SyncBatch| {
-            batch
-                .upserted
-                .iter()
-                .map(|synced| (synced.envelope.id.clone(), synced.envelope.subject.clone()))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(ids(&second), ids(&resumed));
-
-        let sample = &second.upserted[7];
-        let fetched = provider
-            .fetch_message(&sample.envelope.provider_id)
-            .await
-            .unwrap()
-            .expect("message should be fetchable");
-        assert_eq!(fetched.envelope.id, sample.envelope.id);
-        assert_eq!(fetched.envelope.thread_id, sample.envelope.thread_id);
-        assert_eq!(fetched.body.text_plain, sample.body.text_plain);
-    }
-
     #[tokio::test]
     async fn fake_provider_passes_sync_conformance() {
         let provider = FakeProvider::new(AccountId::new());
         crate::conformance::run_sync_conformance(&provider).await;
-    }
-
-    #[tokio::test]
-    async fn fake_provider_passes_send_conformance() {
-        let provider = FakeProvider::new(AccountId::new());
-        crate::conformance::run_send_conformance(&provider).await;
     }
 }

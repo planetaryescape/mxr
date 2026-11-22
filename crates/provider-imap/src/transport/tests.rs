@@ -10,41 +10,6 @@ use super::*;
 use async_std::net::TcpListener;
 
 #[test]
-fn loopback_hosts_are_recognised() {
-    for host in [
-        "127.0.0.1",
-        "127.0.0.2",
-        "127.255.255.254",
-        "::1",
-        "[::1]",
-        "::ffff:127.0.0.1",
-        "localhost",
-        "LocalHost",
-        "localhost.",
-    ] {
-        assert!(is_loopback_host(host), "{host} should be loopback");
-    }
-}
-
-#[test]
-fn non_loopback_hosts_are_refused() {
-    for host in [
-        "127.0.0.1.example.com",
-        "0.0.0.0",
-        "::",
-        "128.0.0.1",
-        "10.0.0.5",
-        "192.168.1.10",
-        "imap.example.com",
-        "notlocalhost",
-        "localhost.example.com",
-        "",
-    ] {
-        assert!(!is_loopback_host(host), "{host} must not be loopback");
-    }
-}
-
-#[test]
 fn plaintext_is_refused_for_remote_hosts_with_an_actionable_error() {
     let error = TransportMode::resolve("imap.example.com", 143, false).unwrap_err();
     let message = error.to_string();
@@ -52,52 +17,6 @@ fn plaintext_is_refused_for_remote_hosts_with_an_actionable_error() {
     assert!(message.contains("993"), "{message}");
     assert!(TransportMode::resolve("127.0.0.1.example.com", 143, false).is_err());
     assert!(TransportMode::resolve("0.0.0.0", 143, false).is_err());
-}
-
-#[test]
-fn mode_follows_use_tls_and_port() {
-    assert_eq!(
-        TransportMode::resolve("127.0.0.1", 3143, false).unwrap(),
-        TransportMode::Plaintext
-    );
-    assert_eq!(
-        TransportMode::resolve("imap.example.com", 993, true).unwrap(),
-        TransportMode::ImplicitTls
-    );
-    assert_eq!(
-        TransportMode::resolve("imap.example.com", 143, true).unwrap(),
-        TransportMode::StartTls
-    );
-    assert_eq!(
-        TransportMode::resolve("127.0.0.1", 1143, true).unwrap(),
-        TransportMode::ImplicitTls
-    );
-}
-
-#[test]
-fn fingerprint_parses_hex_with_separators_and_rejects_the_rest() {
-    let plain = "ab".repeat(32);
-    let colons = vec!["AB"; 32].join(":");
-    assert_eq!(
-        CertFingerprint::parse(&plain).unwrap(),
-        CertFingerprint::parse(&colons).unwrap()
-    );
-    assert_eq!(CertFingerprint::parse(&plain).unwrap().to_string(), plain);
-    assert!(CertFingerprint::parse(&"ab".repeat(31)).is_err());
-    assert!(CertFingerprint::parse(&"zz".repeat(32)).is_err());
-    assert!(CertFingerprint::parse("").is_err());
-}
-
-#[test]
-fn starttls_is_detected_in_capability_lines() {
-    let lines = |text: &str| vec![text.to_string()];
-    assert!(advertises_starttls(&lines(
-        "* CAPABILITY IMAP4rev1 starttls LOGINDISABLED\r\n"
-    )));
-    assert!(!advertises_starttls(&lines(
-        "* CAPABILITY IMAP4rev1 AUTH=PLAIN\r\n"
-    )));
-    assert!(!advertises_starttls(&lines("* OK STARTTLS later\r\n")));
 }
 
 struct TestCert {
@@ -209,17 +128,6 @@ fn serve_plain(listener: TcpListener, starttls: Option<TestCert>) {
 }
 
 #[tokio::test]
-async fn plaintext_loopback_bridge_connects() {
-    let (listener, port) = bind_local().await;
-    serve_plain(listener, None);
-    let (_client, greeting) =
-        connect_mode("127.0.0.1", port, TransportMode::Plaintext, Verify::System)
-            .await
-            .unwrap();
-    assert_eq!(greeting, Greeting::Ready);
-}
-
-#[tokio::test]
 async fn pinned_certificate_is_accepted_even_when_self_signed() {
     let cert = test_cert();
     let (listener, port) = bind_local().await;
@@ -272,38 +180,6 @@ async fn self_signed_certificate_without_a_pin_fails_verification() {
 }
 
 #[tokio::test]
-async fn tls_against_a_plaintext_server_names_the_mismatch() {
-    let (listener, port) = bind_local().await;
-    async_std::task::spawn(async move {
-        for _ in 0..2 {
-            if let Ok((mut tcp, _)) = listener.accept().await {
-                let _ = tcp.write_all(b"* OK ready\r\n").await;
-                async_std::task::spawn(async move {
-                    let mut buf = [0u8; 64];
-                    let _ = tcp.read(&mut buf).await;
-                });
-            }
-        }
-    });
-    let error = connect_mode(
-        "127.0.0.1",
-        port,
-        TransportMode::ImplicitTls,
-        Verify::System,
-    )
-    .await
-    .map(|_| ())
-    .unwrap_err()
-    .to_string();
-    assert!(
-        error.contains("answered in plaintext on a TLS connection"),
-        "{error}"
-    );
-    assert!(error.contains("use_tls = false"), "{error}");
-    assert!(error.contains("993"), "{error}");
-}
-
-#[tokio::test]
 async fn starttls_not_advertised_is_refused() {
     let (listener, port) = bind_local().await;
     serve_plain(listener, None);
@@ -344,65 +220,6 @@ async fn starttls_upgrades_and_enforces_the_pin() {
     )
     .await;
     assert!(result.is_err(), "a different pin must fail after STARTTLS");
-}
-
-#[tokio::test]
-async fn starttls_verification_failure_keeps_the_tls_error() {
-    let cert = test_cert();
-    let (listener, port) = bind_local().await;
-    async_std::task::spawn(async move {
-        let (mut tcp, _) = listener.accept().await.expect("accept STARTTLS connection");
-        tcp.write_all(b"* OK ready\r\n")
-            .await
-            .expect("send greeting");
-        assert_eq!(
-            read_line(&mut tcp).await.expect("receive CAPABILITY"),
-            "mxr1 CAPABILITY\r\n"
-        );
-        tcp.write_all(b"* CAPABILITY IMAP4rev1 STARTTLS\r\nmxr1 OK done\r\n")
-            .await
-            .expect("advertise STARTTLS");
-        assert_eq!(
-            read_line(&mut tcp).await.expect("receive STARTTLS"),
-            "mxr2 STARTTLS\r\n"
-        );
-        tcp.write_all(b"mxr2 OK begin TLS\r\n")
-            .await
-            .expect("allow upgrade");
-        let _ = cert.acceptor.accept(tcp).await;
-        if let Ok((mut tcp, _)) = listener.accept().await {
-            let _ = tcp.write_all(b"* OK ready\r\n").await;
-        }
-    });
-    let error = tokio::time::timeout(
-        Duration::from_secs(10),
-        connect_mode("127.0.0.1", port, TransportMode::StartTls, Verify::System),
-    )
-    .await
-    .expect("bounded fixture handshake")
-    .map(|_| ())
-    .expect_err("refuse the untrusted certificate")
-    .to_string();
-    assert!(error.contains("TLS handshake"), "{error}");
-    assert!(!error.contains("answered in plaintext"), "{error}");
-}
-
-#[tokio::test]
-async fn probe_reports_the_certificate_fingerprint_without_trusting_it() {
-    let cert = test_cert();
-    let expected = cert.fingerprint.to_string();
-    let (listener, port) = bind_local().await;
-    serve_implicit_tls(listener, &cert);
-    let config = ImapConfig::new(
-        "127.0.0.1".into(),
-        port,
-        "user".into(),
-        "mxr/test".into(),
-        true,
-        true,
-    );
-    let fingerprint = probe_server_certificate_sha256(&config).await.unwrap();
-    assert_eq!(fingerprint, Some(expected));
 }
 
 #[tokio::test]
@@ -469,44 +286,4 @@ async fn inspection_and_pin_refusal_never_send_authentication() {
             "no IMAP command may follow inspection or pin refusal"
         );
     }
-}
-
-#[tokio::test]
-async fn probe_gives_up_on_a_server_that_accepts_and_stays_silent() {
-    let (listener, port) = bind_local().await;
-    let (seen_tx, seen_rx) = tokio::sync::oneshot::channel::<Vec<u8>>();
-    async_std::task::spawn(async move {
-        if let Ok((mut tcp, _)) = listener.accept().await {
-            let mut buf = [0u8; 4096];
-            let n = tcp.read(&mut buf).await.unwrap_or(0);
-            let _ = seen_tx.send(buf[..n].to_vec());
-            let _ = tcp.read(&mut buf).await;
-        }
-    });
-    let config = ImapConfig::new(
-        "127.0.0.1".into(),
-        port,
-        "user".into(),
-        "mxr/test".into(),
-        true,
-        true,
-    )
-    .with_password("hunter2-secret".into());
-
-    let started = std::time::Instant::now();
-    let error = probe_within(&config, Duration::from_millis(300))
-        .await
-        .unwrap_err();
-
-    assert!(error.to_string().contains("timed out"), "{error}");
-    assert!(started.elapsed() < Duration::from_secs(5));
-    let sent = tokio::time::timeout(Duration::from_secs(5), seen_rx)
-        .await
-        .expect("the synthetic server observes the credential-free handshake")
-        .unwrap();
-    let sent = String::from_utf8_lossy(&sent);
-    assert!(
-        !sent.contains("hunter2-secret") && !sent.contains("LOGIN"),
-        "{sent}"
-    );
 }

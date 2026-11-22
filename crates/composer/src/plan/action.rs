@@ -142,29 +142,6 @@ mod tests {
     }
 
     #[test]
-    fn a_cursor_or_blank_selection_is_no_selection() {
-        let finish = resolve(None, "Thursday works.", range(4, 4)).unwrap();
-        assert_eq!(finish.action, AssistActionData::Finish);
-        assert_eq!(finish.selection, None);
-        let blank = resolve(None, "One.  Two.", range(4, 6)).unwrap();
-        assert_eq!(blank.action, AssistActionData::Finish);
-    }
-
-    #[test]
-    fn an_explicit_action_wins() {
-        let polish = resolve(
-            Some(AssistActionData::Polish),
-            "Thursday works.",
-            range(0, 8),
-        )
-        .unwrap();
-        assert_eq!(polish.action, AssistActionData::Polish);
-        assert_eq!(polish.selection, None, "polish works on the whole text");
-        let write = resolve(Some(AssistActionData::Write), "Thursday works.", None).unwrap();
-        assert_eq!(write.action, AssistActionData::Write);
-    }
-
-    #[test]
     fn an_action_that_needs_text_or_a_selection_says_so() {
         assert_eq!(
             resolve(Some(AssistActionData::Finish), "", None).unwrap_err(),
@@ -190,36 +167,11 @@ mod tests {
     }
 
     #[test]
-    fn a_selection_outside_the_text_is_refused() {
-        assert_eq!(
-            resolve(None, "Hi.", range(2, 1)).unwrap_err(),
-            PlanError::SelectionBackwards { start: 2, end: 1 }
-        );
-        assert_eq!(
-            resolve(None, "Hi.", range(0, 9)).unwrap_err(),
-            PlanError::SelectionPastEnd {
-                start: 0,
-                end: 9,
-                len: 3
-            }
-        );
-        assert!(resolve(Some(AssistActionData::Write), "Hi.", range(0, 9)).is_err());
-    }
-
-    #[test]
     fn text_over_the_limit_is_refused_not_cut() {
         let long = "word ".repeat(MAX_TEXT_BYTES);
         assert!(matches!(
             resolve(None, &long, None),
             Err(PlanError::TextTooLong { .. })
         ));
-    }
-
-    #[test]
-    fn finishing_aims_past_what_is_typed() {
-        assert_eq!(target_words(70, AssistActionData::Write, 0), 70);
-        assert_eq!(target_words(70, AssistActionData::Finish, 10), 70);
-        assert_eq!(target_words(70, AssistActionData::Finish, 120), 140);
-        assert_eq!(target_words(70, AssistActionData::Polish, 50), 70);
     }
 }

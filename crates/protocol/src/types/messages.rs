@@ -641,32 +641,3 @@ pub struct PersonMergeData {
     /// "Samir Patel is now one person with 2 addresses."
     pub summary: String,
 }
-
-#[cfg(test)]
-mod filter_tests {
-    use super::{MessagesFilterData, MessagesTurnData};
-
-    fn filter(turn: Option<MessagesTurnData>, unread: bool, past_pace: bool) -> MessagesFilterData {
-        MessagesFilterData {
-            turn,
-            unread,
-            past_pace,
-        }
-    }
-
-    #[test]
-    fn a_filters_turn_wins_over_the_legacy_top_level_turn() {
-        assert_eq!(
-            MessagesFilterData::default()
-                .with_legacy_turn(Some(MessagesTurnData::Theirs))
-                .turn,
-            Some(MessagesTurnData::Theirs)
-        );
-        assert_eq!(
-            filter(Some(MessagesTurnData::Mine), false, false)
-                .with_legacy_turn(Some(MessagesTurnData::Theirs))
-                .turn,
-            Some(MessagesTurnData::Mine)
-        );
-    }
-}

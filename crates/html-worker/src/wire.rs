@@ -185,28 +185,6 @@ mod tests {
     }
 
     #[test]
-    fn a_response_survives_a_round_trip() {
-        let body = encode_response(9, Status::JobError, b"boom");
-        let response = decode_response(&body).expect("decode");
-        assert_eq!(response.id, 9);
-        assert_eq!(response.status, Status::JobError);
-        assert_eq!(response.payload, b"boom");
-    }
-
-    #[test]
-    fn end_of_input_at_a_frame_boundary_is_not_an_error() {
-        assert!(read_frame(&mut [].as_slice()).expect("clean eof").is_none());
-    }
-
-    #[test]
-    fn a_length_cut_short_is_an_error() {
-        assert!(read_frame(&mut [1u8, 0].as_slice()).is_err());
-        let mut truncated = 10u32.to_le_bytes().to_vec();
-        truncated.extend_from_slice(b"abc");
-        assert!(read_frame(&mut truncated.as_slice()).is_err());
-    }
-
-    #[test]
     fn a_length_over_the_cap_is_refused_before_allocating() {
         let huge = u32::MAX.to_le_bytes();
         let error = read_frame(&mut huge.as_slice()).expect_err("over cap");

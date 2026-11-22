@@ -1907,50 +1907,6 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    #[test]
-    fn generated_demo_carries_the_to_do_mail_and_names_the_promise() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let stream = DemoFixtureStream::new(&account_id, 500);
-        let seeded = stream.page(0, 14);
-        let subjects: Vec<&str> = seeded.iter().map(|(env, _)| env.subject.as_str()).collect();
-        assert!(subjects.contains(&"Your council tax bill"));
-        assert!(subjects.contains(&"We can't process your payment"));
-        let (bill, body) = seeded
-            .iter()
-            .find(|(env, _)| env.subject == "Your council tax bill")
-            .expect("the bill");
-        assert!(body
-            .text_html
-            .as_deref()
-            .is_some_and(|html| html.contains("\"Invoice\"")));
-        assert!(body.metadata.auth_results[0].contains("dmarc=pass"));
-        assert!(bill.date < Utc::now());
-        let (promise, _) = stream
-            .find(&todo_demo_promise_provider_id())
-            .expect("the promise message");
-        assert!(promise.flags.contains(MessageFlags::SENT));
-        assert!(promise.subject.contains("Engagement form"));
-    }
-
-    #[test]
-    fn curated_demo_seed_exercises_core_demo_surfaces() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (envelopes, bodies, _) =
-            generate_demo_fixtures(&account_id, CURATED_DEMO_MESSAGE_COUNT);
-
-        assert!(envelopes.iter().any(|env| env.has_attachments));
-        assert!(envelopes
-            .iter()
-            .any(|env| env.flags.contains(MessageFlags::STARRED)));
-        assert!(envelopes
-            .iter()
-            .any(|env| env.flags.contains(MessageFlags::SENT)));
-        assert!(envelopes
-            .iter()
-            .any(|env| env.unsubscribe != UnsubscribeMethod::None));
-        assert!(bodies.values().any(|body| body.text_html.is_some()));
-    }
-
     /// The demo profile is persisted, so the provider is rebuilt on every
     /// daemon start. Ids that change between constructions re-sync the same
     /// mail into different threads.

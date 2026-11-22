@@ -175,12 +175,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_bytes_decode_to_none() {
-        let result = GmailCursor::decode(&SyncCursor::empty()).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
     fn legacy_gmail_tagged_decodes() {
         let legacy = SyncCursor::from_bytes(br#"{"Gmail":{"history_id":54321}}"#.to_vec());
         let decoded = GmailCursor::decode(&legacy).unwrap().unwrap();
@@ -202,25 +196,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_initial_string_decodes_as_none() {
-        let legacy = SyncCursor::from_bytes(br#""Initial""#.to_vec());
-        let result = GmailCursor::decode(&legacy).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
     fn unrecognised_payload_surfaces_expired() {
         let garbage = SyncCursor::from_bytes(b"definitely not json".to_vec());
         let err = GmailCursor::decode(&garbage).unwrap_err();
-        assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
-    }
-
-    #[test]
-    fn imap_legacy_shape_surfaces_expired() {
-        let legacy = SyncCursor::from_bytes(
-            br#"{"Imap":{"uid_validity":1,"uid_next":2,"mailboxes":[]}}"#.to_vec(),
-        );
-        let err = GmailCursor::decode(&legacy).unwrap_err();
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
     }
 }

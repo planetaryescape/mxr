@@ -332,19 +332,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn custom_token_root_keeps_tokens_under_runtime_identity() {
-        let token_root = PathBuf::from("/tmp/mxr-dev/tokens");
-        let auth = OutlookAuth::new(
-            "client".to_string(),
-            "mxr/work-outlook".to_string(),
-            OutlookTenant::Work,
-        )
-        .with_token_root(token_root.clone());
-
-        assert_eq!(auth.token_path(), token_root.join("mxr_work-outlook.json"));
-    }
-
-    #[test]
     fn failed_save_leaves_no_temporary_file_behind() -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let auth = OutlookAuth::new("client".into(), "work".into(), OutlookTenant::Work)

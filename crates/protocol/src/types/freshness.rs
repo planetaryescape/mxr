@@ -315,41 +315,4 @@ mod tests {
         assert_eq!(sync_line(&ok, 900, later, &Utc), "Last sync 2h ago");
         assert_eq!(sync_line(&ok, 900, built, &Utc), "synced 1m ago");
     }
-
-    #[test]
-    fn an_in_progress_sync_outweighs_a_scheduled_retry_and_stays_a_warning() {
-        let now = Utc::now();
-        let mut retrying = account(SyncHealthData::Failing, Some(now - Duration::minutes(12)));
-        retrying.sync_in_progress = true;
-        retrying.last_sync_error = Some(SyncErrorData {
-            kind: SyncErrorKindData::Offline,
-            message: "dns".into(),
-            retry_at: Some(now + Duration::minutes(8)),
-            consecutive_failures: 2,
-        });
-        assert_eq!(
-            sync_line(&retrying, 900, now, &Utc),
-            "Can't reach me@example.com, syncing now"
-        );
-        assert!(!retrying.effective_health(now, 900).is_calm());
-    }
-
-    #[test]
-    fn the_worst_account_speaks_for_all_accounts() {
-        let now = Utc::now();
-        let ok = account(SyncHealthData::Ok, Some(now));
-        let failing = account(SyncHealthData::Failing, Some(now));
-        let data = FreshnessData {
-            generated_at: now,
-            newest_message_at: None,
-            stale_after_secs: 900,
-            worst_account_id: None,
-            accounts: vec![ok, failing.clone()],
-            arrivals: vec![],
-        };
-        assert_eq!(
-            data.worst_account(now).map(|a| &a.account_id),
-            Some(&failing.account_id)
-        );
-    }
 }

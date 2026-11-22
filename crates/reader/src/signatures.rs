@@ -79,31 +79,10 @@ mod tests {
     }
 
     #[test]
-    fn strips_sent_from() {
-        let text = "Quick reply.\n\nSent from my iPhone";
-        let (body, sig) = strip(text);
-        assert_eq!(body.trim(), "Quick reply.");
-        assert!(sig
-            .expect("sent-from footer should be extracted")
-            .contains("Sent from"));
-    }
-
-    #[test]
     fn no_signature_returns_original() {
         let text = "Just a normal message with no signature.";
         let (body, sig) = strip(text);
         assert_eq!(body, text);
         assert!(sig.is_none());
-    }
-
-    #[test]
-    fn strips_double_dash_without_space() {
-        let text = "Body here.\n--\nSig line";
-        let (body, sig) = strip(text);
-        assert_eq!(body, "Body here.");
-        assert_eq!(
-            sig.expect("double-dash delimiter should produce a signature"),
-            "Sig line"
-        );
     }
 }

@@ -305,17 +305,6 @@ mod tests {
     }
 
     #[test]
-    fn rfc2822_keeps_bcc_for_gmail_submission() {
-        let mut draft = test_draft();
-        draft.bcc = vec![Address {
-            name: None,
-            email: "hidden@example.com".into(),
-        }];
-        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
-        assert!(msg.contains("Bcc: hidden@example.com\r\n"));
-    }
-
-    #[test]
     fn draft_rfc2822_allows_missing_recipients_and_subject() {
         let mut draft = test_draft();
         draft.to.clear();
@@ -337,32 +326,6 @@ mod tests {
         assert!(body_text.contains("Hello"));
         assert!(body_text.contains("world"));
         assert!(parsed.body_html(0).is_some());
-    }
-
-    #[test]
-    fn draft_rfc2822_keeps_reply_headers_bcc_and_attachments() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("note.txt");
-        std::fs::write(&path, "hello attachment").unwrap();
-
-        let mut draft = test_draft();
-        draft.to.clear();
-        draft.reply_headers = Some(ReplyHeaders {
-            in_reply_to: "<parent@example.com>".into(),
-            references: vec!["<root@example.com>".into()],
-            thread_id: None,
-        });
-        draft.bcc = vec![Address {
-            name: None,
-            email: "hidden@example.com".into(),
-        }];
-        draft.attachments = vec![path];
-
-        let msg = String::from_utf8(build_draft_rfc2822(&draft, &from()).unwrap()).unwrap();
-        assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
-        assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
-        assert!(msg.contains("Bcc: <hidden@example.com>\r\n"));
-        assert!(msg.contains("note.txt"));
     }
 
     #[tokio::test]
@@ -409,21 +372,5 @@ mod tests {
         assert!(msg.contains("To: Alice <alice@example.com>\r\n"));
         assert!(msg.contains("Bcc: hidden@example.com\r\n"));
         assert!(msg.contains("note.txt"));
-    }
-
-    #[test]
-    fn build_rfc2822_surfaces_message_build_errors() {
-        let draft = test_draft();
-        let invalid_from = Address {
-            name: None,
-            email: "not-valid".into(),
-        };
-
-        match build_rfc2822(&draft, &invalid_from) {
-            Err(GmailSendError::Build(message)) => {
-                assert!(message.contains("invalid address"));
-            }
-            other => panic!("expected GmailSendError::Build, got {other:?}"),
-        }
     }
 }

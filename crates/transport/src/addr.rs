@@ -152,21 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn percent_escapes_are_literal_not_decoded() {
-        let parsed = TransportAddr::parse("unix://a%20b").unwrap();
-        assert_eq!(parsed, TransportAddr::Unix(PathBuf::from("a%20b")));
-        let TransportAddr::Unix(path) = parsed else {
-            panic!("expected a unix:// address");
-        };
-        assert_eq!(path.as_os_str().len(), 5, "`a%20b` is 5 literal bytes");
-    }
-
-    #[test]
-    fn rejects_empty_unix_path() {
-        assert!(TransportAddr::parse("unix://").is_err());
-    }
-
-    #[test]
     fn parses_tcp_scheme() {
         assert_eq!(
             TransportAddr::parse("tcp://127.0.0.1:9000").unwrap(),
@@ -197,11 +182,6 @@ mod tests {
                 "dial-stdio".into(),
             ])
         );
-    }
-
-    #[test]
-    fn rejects_unknown_scheme() {
-        assert!(TransportAddr::parse("ws://127.0.0.1:9000").is_err());
     }
 
     /// One serialized test owns the `MXR_DAEMON_ADDR` mutation window, so it

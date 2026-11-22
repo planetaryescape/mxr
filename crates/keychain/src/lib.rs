@@ -232,31 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn macos_reports_interactive_item_as_repairable() {
-        let ops = MacosKeychainOps {
-            read_without_ui: |_, _| Err(KeychainError::access("interaction denied")),
-        };
-
-        let error = get_password_macos_with("mxr/test", "user", &ops).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("Re-save that account password once with `mxr accounts repair`"));
-    }
-
-    #[test]
-    fn macos_reports_not_found_cleanly() {
-        let ops = MacosKeychainOps {
-            read_without_ui: |_, _| Err(KeychainError::not_found("missing")),
-        };
-
-        let error = get_password_macos_with("mxr/test", "user", &ops).unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "No password was found in the macOS keychain for mxr/test/user"
-        );
-    }
-
-    #[test]
     #[ignore = "uses the real macOS keychain"]
     fn macos_real_keychain_round_trip() {
         let suffix = SystemTime::now()

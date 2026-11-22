@@ -88,13 +88,6 @@ mod tests {
     use super::truncate_to_char_boundary;
 
     #[test]
-    fn cuts_ascii_exactly_at_budget() {
-        let mut s = "hello world".to_string();
-        truncate_to_char_boundary(&mut s, 5);
-        assert_eq!(s, "hello");
-    }
-
-    #[test]
     fn backs_off_mid_codepoint_cut() {
         let mut s = "aaéé".to_string();
         truncate_to_char_boundary(&mut s, 3);

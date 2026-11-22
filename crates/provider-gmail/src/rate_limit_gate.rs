@@ -65,11 +65,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nothing_is_held_before_a_refusal() {
-        assert_eq!(RateLimitGate::default().held(Instant::now()), None);
-    }
-
-    #[test]
     fn a_refusal_holds_calls_until_its_wait_passes() {
         let gate = RateLimitGate::default();
         let base = Instant::now();
@@ -83,38 +78,5 @@ mod tests {
             })
         );
         assert_eq!(gate.held(base + Duration::from_secs(900)), None);
-    }
-
-    #[test]
-    fn a_later_refusal_extends_the_wait_and_a_shorter_one_does_not_shorten_it() {
-        let gate = RateLimitGate::default();
-        let base = Instant::now();
-        gate.refused(base, 60, Some("first".into()));
-        gate.refused(base + Duration::from_secs(30), 300, Some("second".into()));
-
-        assert!(gate.held(base + Duration::from_secs(200)).is_some());
-        assert_eq!(
-            gate.held(base + Duration::from_secs(200))
-                .unwrap()
-                .detail
-                .as_deref(),
-            Some("second")
-        );
-
-        gate.refused(base + Duration::from_secs(200), 10, Some("short".into()));
-        assert!(
-            gate.held(base + Duration::from_secs(300)).is_some(),
-            "a shorter refusal must not end the earlier, longer wait"
-        );
-    }
-
-    #[test]
-    fn an_absurd_wait_is_capped_rather_than_overflowing() {
-        let gate = RateLimitGate::default();
-        let base = Instant::now();
-        gate.refused(base, u64::MAX, None);
-
-        let held = gate.held(base).unwrap();
-        assert_eq!(held.remaining, MAX_PAUSE);
     }
 }

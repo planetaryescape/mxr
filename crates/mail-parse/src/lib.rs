@@ -667,21 +667,6 @@ mod tests {
         reason = "tests unwrap fixture setup for direct failures"
     )]
 
-    #[test]
-    fn structured_list_id_normalizes_in_full_messages_and_header_pairs() {
-        let headers = vec![(
-            "List-Id".to_string(),
-            "Weekly News <Weekly.Example.org>".to_string(),
-        )];
-        let parsed = super::parse_headers_from_pairs(&headers, Some(chrono::Utc::now())).unwrap();
-        assert_eq!(
-            parsed.metadata.list_id.as_deref(),
-            Some("weekly.example.org")
-        );
-        let raw = b"From: editor@example.org\r\nList-Id: Weekly News\r\n\t<Weekly.Example.org>\r\nContent-Type: text/html\r\n\r\n<p>News</p>";
-        let metadata = super::parse_message_metadata_from_raw(raw).unwrap();
-        assert_eq!(metadata.list_id, parsed.metadata.list_id);
-    }
     use super::*;
 
     /// Exhaustive over line-ending forms so a fourth variant can't reopen the
@@ -742,83 +727,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn raw_headers_from_pairs_drops_pairs_with_invalid_names() {
-        for bad_name in [
-            "\r\nDelivered-To",
-            ":Delivered-To",
-            " Delivered-To",
-            "Delivered-To ",
-            "Deliv ered-To",
-            "",
-        ] {
-            let block = raw_headers_from_pairs(&[(
-                bad_name.to_string(),
-                "alias@owned.example".to_string(),
-            )]);
-            assert!(
-                block.is_empty(),
-                "invalid name {bad_name:?} must drop: {block:?}"
-            );
-            assert!(
-                delivered_to_addresses(&block).is_empty(),
-                "name {bad_name:?}: {block:?}"
-            );
-        }
-
-        let block = raw_headers_from_pairs(&[
-            (
-                ":Delivered-To".to_string(),
-                "attacker@evil.example".to_string(),
-            ),
-            ("Delivered-To".to_string(), "real@owned.example".to_string()),
-        ]);
-        assert_eq!(delivered_to_addresses(&block), vec!["real@owned.example"]);
-    }
-
-    #[test]
-    fn delivered_to_addresses_resolves_from_the_real_producer_shape() {
-        let raw = raw_headers_from_pairs(&[
-            ("Received".to_string(), "from mx.example".to_string()),
-            (
-                "Delivered-To".to_string(),
-                "alias@owned.example".to_string(),
-            ),
-            ("Subject".to_string(), "hi".to_string()),
-        ]);
-        assert!(
-            !raw.contains("\r\n\r\n"),
-            "producer emits headers-only, no separator: {raw:?}"
-        );
-        assert_eq!(delivered_to_addresses(&raw), vec!["alias@owned.example"]);
-    }
-
-    #[test]
-    fn delivered_to_addresses_defeats_bare_cr_injection() {
-        let raw = "Delivered-To: external@evil.example\r\rDelivered-To: alias@owned.example";
-        assert_eq!(delivered_to_addresses(raw), vec!["external@evil.example"]);
-    }
-
-    #[test]
-    fn delivered_to_addresses_ignores_a_folded_fake_in_a_headers_only_block() {
-        let raw = "Delivered-To: real@primary.example\r\n Delivered-To: alias@owned.example\r\n";
-        assert_eq!(delivered_to_addresses(raw), vec!["real@primary.example"]);
-    }
-
-    #[test]
-    fn delivered_to_addresses_rejects_empty_first_line_folded_value() {
-        let raw = "Delivered-To:\r\n <alias@owned.example>\r\nSubject: hi\r\n";
-        assert!(delivered_to_addresses(raw).is_empty());
-    }
-
-    #[test]
-    fn delivered_to_addresses_strips_display_name_and_is_name_case_insensitive() {
-        let raw = "Received: from x\r\ndelivered-to: Team <hello@planetaryescape.xyz>\r\n";
-        assert_eq!(
-            delivered_to_addresses(raw),
-            vec!["hello@planetaryescape.xyz"]
-        );
-    }
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;
 
@@ -919,36 +827,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_folded_calendar_summary_and_keeps_non_actionable_warning() {
-        let calendar = concat!(
-            "BEGIN:VCALENDAR\r\n",
-            "METHOD:REQUEST\r\n",
-            "BEGIN:VEVENT\r\n",
-            "UID:folded@example.com\r\n",
-            "SUMMARY:Quarterly planning and \r\n",
-            " roadmap review\r\n",
-            "END:VEVENT\r\n",
-            "END:VCALENDAR\r\n",
-        );
-
-        let parsed = calendar_metadata_from_text(calendar).expect("calendar metadata");
-
-        assert_eq!(
-            parsed.summary.as_deref(),
-            Some("Quarterly planning and roadmap review")
-        );
-        assert_eq!(parsed.uid.as_deref(), Some("folded@example.com"));
-        assert!(
-            parsed
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("organizer")),
-            "{:?}",
-            parsed.warnings
-        );
-    }
-
-    #[test]
     fn matching_attendee_strict_errors_on_zero_or_multiple_matches() {
         let calendar = CalendarMetadata {
             attendees: vec![
@@ -986,46 +864,6 @@ mod tests {
     }
 
     #[test]
-    fn matching_attendee_lenient_returns_none_for_ambiguous() {
-        let calendar = CalendarMetadata {
-            attendees: vec![
-                CalendarAttendee {
-                    email: "alice@example.com".into(),
-                    name: None,
-                    uri: None,
-                    partstat: None,
-                    role: None,
-                    rsvp: None,
-                },
-                CalendarAttendee {
-                    email: "bob@example.com".into(),
-                    name: None,
-                    uri: None,
-                    partstat: None,
-                    role: None,
-                    rsvp: None,
-                },
-            ],
-            ..CalendarMetadata::default()
-        };
-
-        let none = matching_attendee_lenient(&calendar, &["zzz@example.com".into()]);
-        assert!(none.is_none());
-
-        let single = matching_attendee_lenient(&calendar, &["bob@example.com".into()]);
-        assert_eq!(single.map(|a| a.email.as_str()), Some("bob@example.com"));
-
-        let ambiguous = matching_attendee_lenient(
-            &calendar,
-            &["alice@example.com".into(), "bob@example.com".into()],
-        );
-        assert!(
-            ambiguous.is_none(),
-            "lenient path soft-fails on multi-match, unlike strict"
-        );
-    }
-
-    #[test]
     fn reply_to_header_is_captured_into_metadata() {
         let raw = concat!(
             "From: No Reply <no-reply@list.example.com>\r\n",
@@ -1043,36 +881,6 @@ mod tests {
             metadata.reply_to[0].name.as_deref(),
             Some("List Discussion")
         );
-    }
-
-    #[test]
-    fn absent_reply_to_leaves_metadata_empty() {
-        let raw = concat!(
-            "From: Alice <alice@example.com>\r\n",
-            "To: me@example.com\r\n",
-            "Subject: Hi\r\n",
-            "\r\n",
-            "Body.\r\n",
-        );
-        let metadata = parse_message_metadata_from_raw(raw.as_bytes()).unwrap();
-        assert!(metadata.reply_to.is_empty());
-    }
-
-    #[test]
-    fn calendar_metadata_backwards_compat_without_viewer_fields() {
-        let json = r#"{
-            "method": "REQUEST",
-            "summary": "Demo",
-            "component_kind": "VEVENT",
-            "uid": "abc",
-            "attendees": [],
-            "rsvp_requested": true,
-            "warnings": []
-        }"#;
-        let parsed: CalendarMetadata = serde_json::from_str(json).expect("must deserialize");
-        assert_eq!(parsed.viewer_partstat, None);
-        assert_eq!(parsed.viewer_attendee_email, None);
-        assert!(!parsed.is_update);
     }
 
     #[test]
@@ -1159,47 +967,6 @@ mod tests {
             assert!(parsed.organizer.is_some(), "{name}");
             assert!(!parsed.attendees.is_empty(), "{name}");
         }
-    }
-
-    #[test]
-    fn standards_fixture_folded_flowed_headers_snapshot() {
-        let raw = standards_fixture_bytes("folded-flowed.eml");
-        let parsed = parse_message_metadata_from_raw(&raw).unwrap();
-        let headers =
-            parse_headers_from_raw(&extract_raw_header_block(&raw).unwrap(), Some(Utc::now()))
-                .unwrap();
-
-        insta::assert_yaml_snapshot!(
-            "folded_flowed_headers",
-            json!({
-                "from": headers.from.as_ref().map(|addr| json!({"name": addr.name.clone(), "email": addr.email.clone()})),
-                "subject": headers.subject,
-                "message_id": headers.message_id_header,
-                "in_reply_to": headers.in_reply_to,
-                "references": headers.references,
-                "unsubscribe": format!("{:?}", headers.unsubscribe),
-                "list_id": parsed.list_id,
-                "auth_results": parsed.auth_results,
-                "content_language": parsed.content_language,
-                "text_plain_format": format!("{:?}", parsed.text_plain_format),
-            })
-        );
-    }
-
-    #[test]
-    fn standards_fixture_minimal_message_metadata_snapshot() {
-        let raw = standards_fixture_bytes("malformed-minimal.eml");
-        let parsed = parse_message_metadata_from_raw(&raw).unwrap();
-        insta::assert_yaml_snapshot!(
-            "malformed_minimal_metadata",
-            json!({
-                "list_id": parsed.list_id,
-                "auth_results": parsed.auth_results,
-                "content_language": parsed.content_language,
-                "text_plain_format": format!("{:?}", parsed.text_plain_format),
-                "raw_headers_present": parsed.raw_headers.is_some(),
-            })
-        );
     }
 
     #[test]

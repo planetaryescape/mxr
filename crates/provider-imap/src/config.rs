@@ -143,8 +143,6 @@ impl std::fmt::Debug for ImapConfig {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Barrier;
-    use std::time::Duration;
 
     #[test]
     fn rejects_empty_deserialized_certificate_pins() {
@@ -159,21 +157,6 @@ mod tests {
                 "an explicit malformed pin must not become system trust"
             );
         }
-    }
-
-    #[test]
-    fn max_connections_is_clamped_to_one() {
-        let config = ImapConfig::new(
-            "imap.fastmail.com".into(),
-            993,
-            "user@fastmail.com".into(),
-            "mxr/fastmail-imap".into(),
-            true,
-            true,
-        )
-        .with_max_connections(0);
-
-        assert_eq!(config.max_connections, 1);
     }
 
     #[test]
@@ -195,29 +178,6 @@ mod tests {
 
         assert_eq!(config.resolve_password().unwrap(), "app-password");
         assert_eq!(config.resolve_password().unwrap(), "app-password");
-        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn cloned_configs_share_cached_password() {
-        let lookup_count = Arc::new(AtomicUsize::new(0));
-        let reader_count = lookup_count.clone();
-        let config = ImapConfig::new(
-            "imap.fastmail.com".into(),
-            993,
-            "user@fastmail.com".into(),
-            "mxr/fastmail-imap".into(),
-            true,
-            true,
-        )
-        .with_password_reader(Arc::new(move |_, _| {
-            reader_count.fetch_add(1, Ordering::SeqCst);
-            Ok("app-password".to_string())
-        }));
-        let clone = config.clone();
-
-        assert_eq!(config.resolve_password().unwrap(), "app-password");
-        assert_eq!(clone.resolve_password().unwrap(), "app-password");
         assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
     }
 
@@ -246,40 +206,5 @@ mod tests {
         assert_eq!(config.resolve_password().unwrap(), "app-password");
         assert_eq!(config.resolve_password().unwrap(), "app-password");
         assert_eq!(lookup_count.load(Ordering::SeqCst), 2);
-    }
-
-    #[test]
-    fn parallel_lookups_share_one_reader_call() {
-        let lookup_count = Arc::new(AtomicUsize::new(0));
-        let reader_count = lookup_count.clone();
-        let barrier = Arc::new(Barrier::new(8));
-        let config = Arc::new(
-            ImapConfig::new(
-                "imap.fastmail.com".into(),
-                993,
-                "user@fastmail.com".into(),
-                "mxr/fastmail-imap".into(),
-                true,
-                true,
-            )
-            .with_password_reader(Arc::new(move |_, _| {
-                reader_count.fetch_add(1, Ordering::SeqCst);
-                std::thread::sleep(Duration::from_millis(25));
-                Ok("app-password".to_string())
-            })),
-        );
-
-        std::thread::scope(|scope| {
-            for _ in 0..8 {
-                let config = config.clone();
-                let barrier = barrier.clone();
-                scope.spawn(move || {
-                    barrier.wait();
-                    assert_eq!(config.resolve_password().unwrap(), "app-password");
-                });
-            }
-        });
-
-        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
     }
 }

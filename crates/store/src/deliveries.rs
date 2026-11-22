@@ -275,6 +275,8 @@ impl super::Store {
         filter: DeliveryListFilter,
     ) -> Result<Vec<Delivery>, sqlx::Error> {
         let started_at = std::time::Instant::now();
+        // Each arm uses the same projection; only the predicate/order differs,
+        // which `query!` requires as distinct literals.
         let rows = match filter {
             DeliveryListFilter::Active => sqlx::query!(
                 r#"SELECT id as "id!", account_id as "account_id!",

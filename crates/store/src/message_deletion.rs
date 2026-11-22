@@ -199,6 +199,8 @@ impl super::Store {
             .await?;
         }
         for (_, email) in &counterparties {
+            // Lowercased as recipient briefings key it; SQL `lower()` folds
+            // ASCII only.
             sqlx::query("INSERT OR IGNORE INTO temp.mxr_deleting_people (email) VALUES (?)")
                 .bind(email.to_lowercase())
                 .execute(&mut *tx)

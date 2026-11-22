@@ -102,8 +102,6 @@ pub use mutation_snapshot::{
 pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
-#[cfg(test)]
-pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 pub(crate) use reading_actions::READING_MODE;
 pub(crate) use records_actions::ARCHIVE_MODE;
 pub use row_gists::{RowGist, RowGistState, RowGists};

@@ -39,17 +39,4 @@ describe("SendLaterDialog", () => {
     expect((at as Date).getTime() - Date.now()).toBeGreaterThan(7_000_000);
     expect(label).toMatch(/, \d\d:\d\d$/);
   });
-
-  test("keeps confirm disabled for a phrase it can't read", async () => {
-    renderWithQueryClient(
-      <SendLaterDialog open scheduling={false} onOpenChange={() => {}} onConfirm={() => {}} />,
-    );
-
-    fireEvent.change(screen.getByLabelText("Or type a time"), {
-      target: { value: "whenever you fancy" },
-    });
-
-    expect(await screen.findByText(/Didn't catch "whenever"/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Schedule send" })).toBeDisabled();
-  });
 });

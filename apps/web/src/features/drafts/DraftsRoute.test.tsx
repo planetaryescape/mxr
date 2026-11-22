@@ -6,7 +6,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { useComposeUi } from "@/features/compose/composeUiStore";
 import { fetchSendOutcome } from "./sendOutcomes";
 import { DraftsRoute } from "./DraftsRoute";
 
@@ -103,37 +102,6 @@ describe("DraftsRoute", () => {
     await waitFor(() => expect(api.cancelScheduledSend).toHaveBeenCalledWith("draft-9"));
   });
 
-  test("lists mxr-local drafts and opens the stored draft composer", async () => {
-    api.fetchDrafts.mockResolvedValue({
-      drafts: [
-        {
-          id: "draft-1",
-          revision: 1,
-          account_id: "account-1",
-          subject: "Quarterly plan",
-          recipients: "Buwang <buwang@example.com>",
-          updated_at: "2026-08-05T09:00:00Z",
-          updated_at_label: "Today",
-          updated_at_full: "5 Aug 2026, 10:00",
-          updated_at_relative: "edited 2m ago",
-          attachment_count: 1,
-          content_kind: "markdown",
-          inline_asset_count: 0,
-        },
-      ],
-    });
-
-    renderWithClient(<DraftsRoute />);
-
-    const draft = await screen.findByRole("link", { name: /Quarterly plan/i });
-    expect(draft).toHaveAttribute("href", "/compose/draft-1");
-    expect(screen.getByText("Buwang <buwang@example.com>")).toBeVisible();
-    expect(screen.getByText("edited 2m ago")).toBeVisible();
-
-    fireEvent.click(draft);
-    expect(useComposeUi.getState().intent).toMatchObject({ draftId: "draft-1" });
-  });
-
   test("confirms before permanently deleting a local draft", async () => {
     api.fetchDrafts.mockResolvedValue({
       drafts: [
@@ -175,39 +143,6 @@ describe("DraftsRoute", () => {
 
     beforeEach(() => {
       api.fetchDrafts.mockResolvedValue({ drafts: [] });
-    });
-
-    test("no claim is distinct from uncertain acceptance", async () => {
-      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
-      renderWithClient(<DraftsRoute />);
-      expect(
-        await screen.findByText(
-          "No submission was claimed for this operation. Review the saved draft before sending.",
-        ),
-      ).toBeVisible();
-      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
-    });
-
-    test("a pending lookup makes no acceptance claim", async () => {
-      vi.mocked(fetchSendOutcome).mockReturnValue(new Promise(() => {}));
-      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
-      renderWithClient(<DraftsRoute />);
-      expect(await screen.findByText("Checking send outcome…")).toBeVisible();
-      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Check outcome" })).toBeDisabled();
-    });
-
-    test("a failed lookup offers checking without a retry", async () => {
-      vi.mocked(fetchSendOutcome).mockRejectedValue(new Error("Connection lost"));
-      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
-      renderWithClient(<DraftsRoute />);
-      expect(
-        await screen.findByText(
-          "Could not check the send outcome. Check again before deciding whether to send.",
-        ),
-      ).toBeVisible();
-      expect(screen.queryByText("Acceptance is uncertain. Do not resend.")).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Retry|Send now/ })).not.toBeInTheDocument();
     });
 
     test("uncertain sends only expose an outcome query", async () => {

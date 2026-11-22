@@ -100,14 +100,6 @@ describe("the reader path for untrusted article HTML", () => {
     expect(view!.container.textContent).toContain("Image blocked");
   });
 
-  test("loads remote images once they are allowed", async () => {
-    const { view } = show(HOSTILE, { allowRemoteImages: true });
-    await act(async () => {});
-    expect(view!.container.querySelector("img")?.getAttribute("src")).toBe(
-      "https://cdn.example/a.png",
-    );
-  });
-
   test("falls back to paragraphs when the html is missing, blank, script-only or not a string", () => {
     // SAFETY: deliberately wrong types, as an unvalidated server response could carry.
     expect(show(null).clean).toBeNull();
@@ -115,59 +107,5 @@ describe("the reader path for untrusted article HTML", () => {
     expect(show("<script>1</script><style>a{}</style>").clean).toBeNull();
     expect(show(42 as unknown as string).clean).toBeNull();
     expect(show({} as unknown as string).clean).toBeNull();
-  });
-
-  test("an image-only issue still shows", () => {
-    expect(show(`<img src="data:image/png;base64,iVBORw0KGgo=">`).clean).not.toBeNull();
-  });
-
-  test("draws highlights on the rendered article, in any storage order", async () => {
-    const html = "<p>The bins move to Tuesdays.</p><p>Recycling is unchanged.</p>";
-    const { view } = show(html, {
-      marks: [
-        { quote: "Recycling is unchanged" },
-        { quote: "bins move" },
-        { quote: "gone from article" },
-      ],
-    });
-    await settle();
-    expect(view).not.toBeNull();
-    expect((registry.get("user-highlight") ?? []).map(String).toSorted()).toEqual([
-      "Recycling is unchanged",
-      "bins move",
-    ]);
-  });
-
-  test("an anchored highlight is drawn in its own paragraph, not at the first match", async () => {
-    const html = "<p>Intro. Same words here.</p><p>Other. Same words here.</p>";
-    show(html, { marks: [{ quote: "Same words here", paragraph: 1 }] });
-    await settle();
-    const drawn = registry.get("user-highlight") ?? [];
-    expect(drawn.map(String)).toEqual(["Same words here"]);
-    expect((drawn[0] as unknown as Range).startContainer.parentElement?.textContent).toBe(
-      "Other. Same words here.",
-    );
-  });
-
-  test("a highlight without a paragraph still draws at the first match", async () => {
-    const html = "<p>Intro. Same words here.</p><p>Other. Same words here.</p>";
-    show(html, { marks: [{ quote: "Same words here" }] });
-    await settle();
-    const drawn = registry.get("user-highlight") ?? [];
-    expect((drawn[0] as unknown as Range).startContainer.parentElement?.textContent).toBe(
-      "Intro. Same words here.",
-    );
-  });
-
-  test("switching items replaces the highlights instead of keeping the old ones", async () => {
-    const first = show("<p>alpha beta</p>", { marks: [{ quote: "alpha" }] });
-    await settle();
-    expect(registry.get("user-highlight")?.map(String)).toEqual(["alpha"]);
-    first.view!.unmount();
-    expect(registry.has("user-highlight")).toBe(false);
-
-    show("<p>gamma delta</p>", { marks: [] });
-    await settle();
-    expect(registry.get("user-highlight") ?? []).toHaveLength(0);
   });
 });

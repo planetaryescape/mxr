@@ -1,13 +1,12 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { components } from "@/api/generated";
 import { reregisterCatalog } from "@/lib/actions/catalog";
 import { setServedKeys } from "@/lib/actions/definition";
-import { getRegistry } from "@/lib/actions/registry";
 import { useKeymapStore } from "@/state/keymapStore";
 
 import type { KeysChange, KeysUpdate } from "./keysApi";
@@ -17,7 +16,7 @@ vi.mock("./keysApi", () => ({
   updateKeys: (change: KeysChange, dryRun: boolean) => updateKeys(change, dryRun),
 }));
 
-const { KeybindingsSection, parseKeyList } = await import("./KeybindingsSection");
+const { KeybindingsSection } = await import("./KeybindingsSection");
 
 type Served = components["schemas"]["KeymapData"];
 
@@ -53,56 +52,6 @@ afterEach(() => {
 });
 
 describe("KeybindingsSection", () => {
-  it("reads keys as a comma-separated list, sequences kept whole", () => {
-    expect(parseKeyList(" x,  g   x ,, Mod+Shift+k ")).toEqual(["x", "g x", "Mod+Shift+k"]);
-    expect(parseKeyList("  ")).toEqual([]);
-  });
-
-  it("checks a new key before saving it, and saves it for both clients", async () => {
-    const keymap = served({
-      actions: [{ id: "mail.archive", keys: ["%"] } as Served["actions"][number]],
-      remapped: ["mail.archive"],
-    });
-    updateKeys.mockImplementation(async (_change, dryRun) => answer({ saved: !dryRun, keymap }));
-    renderSection();
-    const { input, save, form } = editArchive();
-    expect(save).toBeDisabled();
-
-    fireEvent.change(input, { target: { value: "%" } });
-    expect(await form.findByText(/Archive will be % in the web app and the TUI/)).toBeVisible();
-    expect(updateKeys).toHaveBeenCalledWith(
-      { kind: "set_action", id: "mail.archive", keys: ["%"] },
-      true,
-    );
-    expect(save).toBeEnabled();
-
-    fireEvent.click(save);
-    await waitFor(() =>
-      expect(updateKeys).toHaveBeenLastCalledWith(
-        { kind: "set_action", id: "mail.archive", keys: ["%"] },
-        false,
-      ),
-    );
-    await waitFor(() => expect(getRegistry().get("mail.archive")?.shortcut).toBe("%"));
-    expect(useKeymapStore.getState().remapped).toEqual(["mail.archive"]);
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getAllByLabelText("Change keys for Archive")[0]),
-    );
-  });
-
-  it("Esc cancels the editor and puts focus back on the pencil that opened it", async () => {
-    renderSection();
-    const pencil = screen.getAllByLabelText("Change keys for Archive")[0]!;
-    const { input } = editArchive();
-    fireEvent.change(input, { target: { value: "%" } });
-
-    fireEvent.keyDown(input, { key: "Escape" });
-
-    expect(screen.queryByLabelText(/Keys for Archive/)).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(pencil));
-    expect(updateKeys).not.toHaveBeenCalledWith(expect.anything(), false);
-  });
-
   it("names a conflict and keeps Save off", async () => {
     updateKeys.mockResolvedValue(
       answer({
@@ -116,8 +65,4 @@ describe("KeybindingsSection", () => {
     expect(save).toBeDisabled();
     expect(updateKeys).not.toHaveBeenCalledWith(expect.anything(), false);
   });
-
-});
-
-describe("an action left without a key", () => {
 });

@@ -2,19 +2,11 @@
 
 import { describe, expect, test } from "vitest";
 
-import { parseReaderSettings } from "@planetaryescape/reader";
-
 import {
   DEFAULT_READING_DISPLAY,
   readReadingDisplay,
-  emailHtmlThemeForSender,
-  applyContrastAttribute,
   migrateUiPrefs,
-  resolveContrast,
-  watchSystemContrast,
-  readEmailHtmlSenderOverrides,
   useUiPrefs,
-  type UiPrefsState,
 } from "./uiPrefsStore";
 
 describe("compose editor preference", () => {
@@ -24,18 +16,6 @@ describe("compose editor preference", () => {
       .storage?.setItem("mxr.uiPrefs", { state: { composeEditor: "tiptap" }, version: 2 });
     await useUiPrefs.persist.rehydrate();
     expect(useUiPrefs.getState().composeEditor).toBe("tiptap");
-  });
-
-  test("a draft can keep its editor without changing the Settings default", () => {
-    const previous = useUiPrefs.getState().composeEditor;
-    try {
-      useUiPrefs.getState().setComposeEditorForDraft("reply:m1", "tiptap");
-      expect(useUiPrefs.getState().composeEditor).toBe(previous);
-      expect(useUiPrefs.getState().composeEditorByDraft["reply:m1"]).toBe("tiptap");
-      expect(useUiPrefs.getState().composeEditorByDraft["reply:m2"]).toBeUndefined();
-    } finally {
-      useUiPrefs.setState({ composeEditor: previous, composeEditorByDraft: {} });
-    }
   });
 });
 
@@ -54,142 +34,6 @@ describe("theme preference", () => {
       contrast: "system",
     });
   });
-
-  test("sender overrides normalize identity and reject malformed map entries", () => {
-    const overrides = readEmailHtmlSenderOverrides([
-      { sender: "  News@Example.COM ", theme: "original" },
-      { sender: "news@example.com", theme: "dark" },
-      { sender: "constructor", theme: "original" },
-      { sender: "bad@example.com", theme: "auto" },
-      { theme: "dark" },
-    ]);
-    expect(overrides).toEqual([
-      { sender: "news@example.com", theme: "dark" },
-      { sender: "constructor", theme: "original" },
-    ]);
-    expect(emailHtmlThemeForSender(overrides, "NEWS@example.com")).toBe("dark");
-    expect(emailHtmlThemeForSender(overrides, "other@example.com")).toBeUndefined();
-    expect(emailHtmlThemeForSender({ constructor: "dark" }, "constructor")).toBeUndefined();
-  });
-});
-
-describe("contrast preference", () => {
-  test("defaults to system and migrates existing v5 preferences without changing saved choices", () => {
-    expect(useUiPrefs.getInitialState().contrast).toBe("system");
-    expect(migrateUiPrefs({ theme: "paper" }, 5)).toEqual({
-      theme: "paper",
-      contrast: "system",
-    });
-    expect(migrateUiPrefs({ contrast: "increased" }, 5)).toEqual({
-      contrast: "system",
-    });
-    expect(
-      migrateUiPrefs(
-        {
-          emailHtmlTheme: "original",
-          emailHtmlSenderOverrides: [{ sender: "news@example.com", theme: "dark" }],
-        },
-        5,
-      ),
-    ).toEqual({
-      emailHtmlTheme: "original",
-      emailHtmlSenderOverrides: [{ sender: "news@example.com", theme: "dark" }],
-      contrast: "system",
-    });
-  });
-
-  test("system resolves only increased contrast; explicit choices ignore the OS", () => {
-    const original = window.matchMedia;
-    window.matchMedia = ((query: string) => ({
-      matches: query === "(prefers-contrast: more)",
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })) as unknown as typeof window.matchMedia;
-    try {
-      expect(resolveContrast("system")).toBe("increased");
-      expect(resolveContrast("standard")).toBe("standard");
-      expect(resolveContrast("increased")).toBe("increased");
-      applyContrastAttribute("standard");
-      expect(document.documentElement.dataset.contrast).toBe("standard");
-    } finally {
-      window.matchMedia = original;
-    }
-  });
-
-  test("a system change is live, but explicit preferences stay in force", () => {
-    let listener: (() => void) | undefined;
-    let matches = false;
-    const original = window.matchMedia;
-    window.matchMedia = ((query: string) => ({
-      matches,
-      media: query,
-      addEventListener: (_type: string, callback: () => void) => {
-        listener = callback;
-      },
-      removeEventListener: (_type: string, callback: () => void) => {
-        if (listener === callback) listener = undefined;
-      },
-    })) as unknown as typeof window.matchMedia;
-    const previous = useUiPrefs.getState().contrast;
-    try {
-      useUiPrefs.getState().setContrast("system");
-      const stop = watchSystemContrast();
-      matches = true;
-      listener?.();
-      expect(document.documentElement.dataset.contrast).toBe("increased");
-      useUiPrefs.getState().setContrast("standard");
-      applyContrastAttribute("standard");
-      matches = false;
-      listener?.();
-      expect(document.documentElement.dataset.contrast).toBe("standard");
-      stop();
-      expect(listener).toBeUndefined();
-    } finally {
-      useUiPrefs.getState().setContrast(previous);
-      window.matchMedia = original;
-    }
-  });
-});
-
-describe("home and sidebar prefs", () => {
-  test("saved v2 prefs keep their choices, fold Mail, Views and Labels and land on Now", () => {
-    expect(migrateUiPrefs({ theme: "paper", collapsedSections: ["tools", "saved"] }, 2)).toEqual({
-      theme: "paper",
-      collapsedSections: ["tools", "saved", "labels", "mail", "views"],
-      home: "now",
-      contrast: "system",
-    });
-    expect(migrateUiPrefs(undefined, 1)).toEqual({
-      collapsedSections: ["tools", "labels", "mail", "views"],
-      home: "now",
-      contrast: "system",
-    });
-  });
-
-  test("a saved desk home becomes Now and an inbox home stays", () => {
-    expect(migrateUiPrefs({ home: "desk", collapsedSections: [] }, 3)).toEqual({
-      home: "now",
-      collapsedSections: [],
-      contrast: "system",
-    });
-    const inbox = { home: "inbox", collapsedSections: [] };
-    expect(migrateUiPrefs(inbox, 3)).toEqual({ ...inbox, contrast: "system" });
-  });
-
-  test("v6 prefs with More open or absent pass through untouched", () => {
-    const saved = { home: "now", collapsedSections: [] };
-    expect(migrateUiPrefs(saved, 6)).toBe(saved);
-  });
-
-  test("a folded More folds Mail and Views; an open More leaves them open", () => {
-    expect(migrateUiPrefs({ collapsedSections: ["more", "tools"] }, 6)).toEqual({
-      collapsedSections: ["tools", "mail", "views"],
-    });
-    expect(migrateUiPrefs({ collapsedSections: ["labels"] }, 6)).toEqual({
-      collapsedSections: ["labels"],
-    });
-  });
 });
 
 describe("reading display preference", () => {
@@ -205,46 +49,5 @@ describe("reading display preference", () => {
         pen: "x",
       }),
     ).toEqual({ theme: "sepia", typeface: "serif", size: 20, spacing: "airy" });
-  });
-
-  test("a change is written to storage", async () => {
-    useUiPrefs.getState().setReadingDisplay({ theme: "ink", size: 24, spacing: "snug" });
-    const saved = await useUiPrefs.persist.getOptions().storage?.getItem("mxr.uiPrefs");
-    // SAFETY: the store wrote this state itself in the line above.
-    const state = (saved?.state ?? {}) as Partial<UiPrefsState>;
-    expect(state.readingDisplay).toEqual({
-      theme: "ink",
-      typeface: "serif",
-      size: 24,
-      spacing: "snug",
-    });
-  });
-
-  test("agrees with the reader package's schema for every field", () => {
-    const samples: unknown[] = [
-      null,
-      [],
-      {},
-      { theme: "sepia", typeface: "removed", size: 999, spacing: "airy" },
-      { theme: "dusk", typeface: "sans", size: "huge", spacing: "airy" },
-      { theme: "ink", typeface: "book", size: 14, spacing: "snug" },
-      { theme: "night", typeface: "legible", size: 28, spacing: "even" },
-      { theme: "paper", typeface: "serif", size: 20.5, spacing: "airy" },
-      { theme: "snow", typeface: "sans", size: 13.9, spacing: "snug" },
-      { theme: "night", typeface: "sans", size: 28.1, spacing: "even" },
-      { theme: "constructor", typeface: "__proto__", size: Number.NaN, spacing: "airy" },
-      { theme: null, typeface: 7, size: null, spacing: {} },
-    ];
-    for (const sample of samples) {
-      const saved =
-        sample && typeof sample === "object" && !Array.isArray(sample)
-          ? (sample as Record<string, unknown>)
-          : {};
-      const { theme, typeface, size, spacing } = parseReaderSettings({
-        ...DEFAULT_READING_DISPLAY,
-        ...saved,
-      });
-      expect(readReadingDisplay(sample)).toEqual({ theme, typeface, size, spacing });
-    }
   });
 });

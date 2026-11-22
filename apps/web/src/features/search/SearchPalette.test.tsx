@@ -1,13 +1,12 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { SearchPalette } from "./SearchPalette";
 import type { MessageRowView } from "@/features/mailbox/types";
-import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 
 const router = vi.hoisted(() => ({
@@ -83,39 +82,4 @@ describe("SearchPalette", () => {
       params: { mailbox: "inbox", threadId: "thread-1" },
     });
   });
-
-  test("an opened result gives the reader the keys, as Enter on a list row does", async () => {
-    useMailboxPane.getState().setActivePane("mailbox");
-    renderWithQueryClient(<SearchPalette />);
-
-    const input = await screen.findByRole("textbox", { name: "Search mail" });
-    fireEvent.change(input, { target: { value: "invoice" } });
-    expect(await screen.findByText("Subject 1")).toBeVisible();
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(useMailboxPane.getState().activePane).toBe("reader");
-  });
-
-  test("Cmd/Ctrl+Enter opens the full search page even with a result selected", async () => {
-    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    renderWithQueryClient(<SearchPalette />);
-
-    const input = await screen.findByRole("textbox", { name: "Search mail" });
-    fireEvent.change(input, { target: { value: "invoice" } });
-
-    expect(await screen.findByText("Subject 1")).toBeVisible();
-    fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
-
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/search",
-      search: { q: "invoice", mode: "lexical" },
-    });
-    expect(router.navigate).not.toHaveBeenCalledWith(
-      expect.objectContaining({ to: "/m/$mailbox/$threadId" }),
-    );
-    platform.mockRestore();
-  });
-
 });

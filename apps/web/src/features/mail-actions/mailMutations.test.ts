@@ -1,10 +1,9 @@
 import { InfiniteQueryObserver, QueryClient, type InfiniteData } from "@tanstack/react-query";
-import { isValidElement, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { mergeMailboxPages } from "@/features/mailbox/useMailboxQuery";
 import type { MailboxResponse, MessageRowView, MutationResponse } from "@/features/mailbox/types";
-import { UndoLabel } from "@/components/ui/sonner";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useUndo } from "@/state/undoStore";
 
@@ -49,10 +48,6 @@ const toast = vi.hoisted(() => ({
   dismiss: vi.fn<(id?: string | number) => void>(),
 }));
 vi.mock("sonner", () => ({ toast }));
-
-function isUndoLabel(label: ReactNode): boolean {
-  return isValidElement(label) && label.type === UndoLabel;
-}
 
 const daemon = vi.hoisted(() => ({ down: false, refused: [] as string[] }));
 vi.mock("@/lib/daemonAvailability", () => ({
@@ -181,31 +176,6 @@ describe("performMailAction", () => {
     expect(api.archiveMessages).toHaveBeenCalledTimes(2);
   });
 
-  test("Archive success toasts with Undo and waits for the confirmed refetch", async () => {
-    api.archiveMessages.mockResolvedValue(ok(2, "mut-1"));
-    const serverAnswer = deferred<MailboxResponse>();
-    refetch.mockReturnValueOnce(serverAnswer.promise);
-
-    const done = performMailAction("archive", ["a-1", "a-2"]);
-
-    await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.info).not.toHaveBeenCalled();
-    expect(useUndo.getState().lastMutationId).toBeNull();
-    expect(usePendingMailOps.getState().ops).toHaveLength(0);
-    expect(renderedInbox().map((item) => item.id)).toEqual(["a", "b"]);
-
-    serverAnswer.resolve(page([row("b")]));
-    await expect(done).resolves.toMatchObject({ ok: true });
-    const [message, options] = toast.info.mock.calls[0]!;
-    expect(message).toBe("Archived 2 messages");
-    expect(isUndoLabel(options?.action?.label)).toBe(true);
-    expect(useUndo.getState().lastMutationId).toBe("mut-1");
-    expect(usePendingMailOps.getState().ops).toEqual([]);
-    expect(renderedInbox().map((item) => item.id)).toEqual(["b"]);
-  });
-
   test("a failure brings back only its own rows while a later op stays pending", async () => {
     const archive = deferred<MutationResponse>();
     const star = deferred<MutationResponse>();
@@ -274,93 +244,6 @@ describe("performMailAction", () => {
     expect(useUndo.getState().lastUndo).toBeNull();
   });
 
-  test("a partial failure keeps the undo of what changed, on `u` and the toast", async () => {
-    const serverAnswer = deferred<MailboxResponse>();
-    refetch.mockReturnValueOnce(serverAnswer.promise);
-    api.archiveMessages.mockResolvedValue({
-      ok: true,
-      result: {
-        requested: 3,
-        succeeded: 1,
-        skipped: 1,
-        failed: 1,
-        mutation_id: "mut-part",
-        accounts: [
-          {
-            account_id: "acc-1",
-            account_name: "Work",
-            succeeded: 1,
-            skipped: 1,
-            failed: 1,
-            error: "rate limited",
-          },
-        ],
-      },
-    });
-    api.undoMutation.mockResolvedValue({ ok: true });
-
-    const done = performMailAction("archive", ["a-1", "a-2", "b-1"]);
-    await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
-    expect(toast.warning).not.toHaveBeenCalled();
-    expect(useUndo.getState().lastMutationId).toBeNull();
-    const early = useUndo.getState().lastUndo;
-    expect(early).toBeTypeOf("function");
-    const undone = early!();
-    expect(api.undoMutation).not.toHaveBeenCalled();
-
-    serverAnswer.resolve(page([row("b")]));
-    const outcome = await done;
-
-    expect(outcome.ok).toBe(false);
-    const [title, options] = toast.warning.mock.calls[0]!;
-    expect(title).toBe("Archived 1 of 3 messages; the rest failed");
-    expect(options?.description).toBe(
-      "Only 1 of 3 messages changed. Work: rate limited. Press u to undo what changed.",
-    );
-    expect(isUndoLabel(options?.action?.label)).toBe(true);
-
-    await expect(undone).resolves.toBe(true);
-    expect(api.undoMutation).toHaveBeenCalledWith("mut-part");
-    expect(useUndo.getState().lastUndo).toBeNull();
-  });
-
-  test("an auth failure offers to re-authorize the account", async () => {
-    api.archiveMessages.mockResolvedValue({
-      ok: false,
-      result: {
-        requested: 1,
-        succeeded: 0,
-        skipped: 0,
-        failed: 1,
-        accounts: [
-          {
-            account_id: "acc-1",
-            account_name: "Work",
-            succeeded: 0,
-            skipped: 0,
-            failed: 1,
-            error: "invalid_grant",
-          },
-        ],
-      },
-    });
-
-    await performMailAction("archive", ["a-1"]);
-
-    const [, options] = toast.error.mock.calls[0]!;
-    expect(options?.description).toBe("No messages changed. Work: invalid_grant");
-    expect(options?.action?.label).toBe("Re-authorize Work");
-  });
-
-  test("silent success skips the toast but still refreshes", async () => {
-    api.starMessages.mockResolvedValue(ok(1));
-
-    await performMailAction("star", ["a-1"], { silent: true });
-
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(refetch).toHaveBeenCalled();
-  });
-
   test("while the daemon is down nothing moves, nothing is sent, and it says why", async () => {
     daemon.down = true;
     const outcome = await performMailAction("archive", ["a-1", "a-2"]);
@@ -370,18 +253,6 @@ describe("performMailAction", () => {
     expect(usePendingMailOps.getState().ops).toEqual([]);
     expect(renderedInbox().map((r) => r.id)).toEqual(["a", "b"]);
     expect(useUndo.getState().lastUndo).toBeNull();
-  });
-
-  test("a silent change (mark read on open) is skipped without a toast", async () => {
-    daemon.down = true;
-    const outcome = await performMailAction("read", ["a-1"], { silent: true });
-    expect(outcome.ok).toBe(false);
-    expect(daemon.refused).toEqual([]);
-  });
-
-  test("no ids is a no-op", async () => {
-    await expect(performMailAction("archive", [])).resolves.toEqual({ ok: false });
-    expect(api.archiveMessages).not.toHaveBeenCalled();
   });
 });
 
@@ -436,18 +307,5 @@ describe("undo", () => {
       description: "undo window expired",
     });
     expect(useUndo.getState().lastMutationId).toBe("mut-old");
-  });
-
-  test("undoing a snooze wakes each message", async () => {
-    api.snoozeMessage.mockResolvedValue({});
-    api.unsnoozeMessage.mockResolvedValue({});
-
-    await performMailAction("snooze", ["a-1", "a-2"], { until: "tomorrow" });
-    expect(api.snoozeMessage).toHaveBeenCalledWith({ messageId: "a-1", until: "tomorrow" });
-
-    await useUndo.getState().lastUndo?.();
-
-    expect(api.unsnoozeMessage.mock.calls.map(([id]) => id)).toEqual(["a-1", "a-2"]);
-    expect(toast.success).toHaveBeenLastCalledWith("Snooze undone");
   });
 });

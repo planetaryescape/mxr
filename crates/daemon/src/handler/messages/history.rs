@@ -5,13 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Default)]
 pub(crate) struct HistoryCache(parking_lot::Mutex<HashMap<AccountId, CachedHistory>>);
 
-#[cfg(test)]
-impl HistoryCache {
-    pub(crate) fn clear(&self) {
-        self.0.lock().clear();
-    }
-}
-
 struct CachedHistory {
     token: mxr_store::ConversationHistoryToken,
     context: String,

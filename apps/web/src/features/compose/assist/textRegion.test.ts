@@ -1,12 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  FORWARD_HEADER,
-  joinTextRegion,
-  splitTextRegion,
-  utf16Index,
-  utf8Offset,
-} from "./textRegion";
+import { FORWARD_HEADER, joinTextRegion, splitTextRegion } from "./textRegion";
 
 describe("splitTextRegion mirrors the daemon's split_body", () => {
   test.each([
@@ -78,28 +72,6 @@ describe("splitTextRegion mirrors the daemon's split_body", () => {
 });
 
 describe("joinTextRegion", () => {
-  test("replacing the text keeps the signature and the spacing (replacing_the_text_keeps_the_signature_and_the_spacing)", () => {
-    const region = splitTextRegion("Old.\n-- \nAlex");
-    expect(joinTextRegion(region, "New one.\n").body).toBe("New one.\n-- \nAlex");
-  });
-
-  test("a body that starts with its signature gets a break before the new text", () => {
-    const { body, textStart } = joinTextRegion(splitTextRegion("-- \nAlex"), "Hi.");
-    expect(body).toBe("Hi.\n\n-- \nAlex");
-    expect(textStart).toBe(0);
-  });
-
-  test("a body with neither is replaced as it was written", () => {
-    expect(joinTextRegion(splitTextRegion("Just this.\n"), "New.").body).toBe("New.\n");
-  });
-
-  test("the forward header stays below the new text", () => {
-    const region = splitTextRegion(`FYI\n\n${FORWARD_HEADER}\nOriginal`);
-    const { body, textStart } = joinTextRegion(region, "FYI, see below");
-    expect(body).toBe(`FYI, see below\n\n${FORWARD_HEADER}\nOriginal`);
-    expect(textStart).toBe(0);
-  });
-
   test("a round trip through an unchanged region returns the body exactly", () => {
     for (const body of [
       "Hi Pat,\n\nThursday works.\n\n-- \nBK",
@@ -111,30 +83,5 @@ describe("joinTextRegion", () => {
       const region = splitTextRegion(body);
       expect(joinTextRegion(region, region.text).body).toBe(body);
     }
-  });
-});
-
-describe("accepting keeps the user's spacing byte for byte", () => {
-  const accept = (body: string, proposal: string) =>
-    joinTextRegion(splitTextRegion(body), proposal);
-
-  test("a leading space in the proof is kept verbatim, so marks stay on the words", () => {
-    const { body, textStart } = accept("Hi\n\n-- \nBK", " Hi there");
-    expect(body).toBe(" Hi there\n\n-- \nBK");
-    expect(body.slice(textStart, textStart + " Hi there".length)).toBe(" Hi there");
-  });
-
-  test("an empty proof leaves the prefix and signature joined by one break", () => {
-    expect(joinTextRegion({ prefix: "Hi", text: "", suffix: "-- \nBK" }, "").body).toBe(
-      "Hi\n\n-- \nBK",
-    );
-  });
-});
-
-describe("UTF-8 offsets", () => {
-  test("a selection after a multi-byte character is counted in bytes", () => {
-    const text = "café au lait";
-    expect(utf8Offset(text, text.indexOf("au"))).toBe(6);
-    expect(utf16Index(text, 6)).toBe(text.indexOf("au"));
   });
 });

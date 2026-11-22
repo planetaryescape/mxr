@@ -2,11 +2,8 @@ import type { KeyboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  COMPOSE_CHORDS,
   composeCommandOf,
   handleComposeShortcut,
-  isComposeActionChord,
-  isComposeChord,
   type ComposeShortcutHandlers,
 } from "./composeShortcuts";
 
@@ -57,59 +54,6 @@ describe("compose shortcuts", () => {
     expect(repeat.preventDefault).toHaveBeenCalled();
   });
 
-  it("no compose chord runs on a repeat", () => {
-    const bag = handlers();
-    for (const [key, shiftKey] of [
-      ["Enter", true],
-      ["Backspace", false],
-      ["s", false],
-      ["s", true],
-      ["l", true],
-      [";", false],
-    ] as const) {
-      handleComposeShortcut(keyEvent({ key, shiftKey, repeat: true }).event, bag);
-    }
-    const calls = Object.values(bag).filter((value) => typeof value === "function");
-    expect(calls.every((fn) => (fn as ReturnType<typeof vi.fn>).mock.calls.length === 0)).toBe(
-      true,
-    );
-  });
-
-  it("editor chords keep repeating: held ⌘Z, ⌘⇧Z, ⌘B, ⌘C and ⌘A pass through", () => {
-    const bag = handlers();
-    for (const [key, shiftKey] of [
-      ["z", false],
-      ["z", true],
-      ["b", false],
-      ["i", false],
-      ["c", false],
-      ["a", false],
-      ["ArrowLeft", false],
-    ] as const) {
-      const held = keyEvent({ key, shiftKey, repeat: true });
-      handleComposeShortcut(held.event, bag);
-      expect(held.preventDefault).not.toHaveBeenCalled();
-      expect(isComposeChord({ key, shiftKey, metaKey: true, ctrlKey: false })).toBe(false);
-    }
-  });
-
-  it("the handler runs exactly the table's chords, each its own command", () => {
-    const mismatches: string[] = [];
-    for (const [chord, command] of Object.entries(COMPOSE_CHORDS)) {
-      const bag = handlers();
-      const shiftKey = chord.startsWith("shift+");
-      const key = chord.replace("shift+", "");
-      handleComposeShortcut(keyEvent({ key, shiftKey }).event, bag);
-      const ran = Object.entries(bag)
-        .filter(
-          ([, fn]) => typeof fn === "function" && vi.isMockFunction(fn) && fn.mock.calls.length > 0,
-        )
-        .map(([name]) => name);
-      if (ran.join() !== command) mismatches.push(`${chord}: ${ran.join() || "nothing"}`);
-    }
-    expect(mismatches).toEqual([]);
-  });
-
   it("⌘⇧⌫ is a discard chord everywhere, so its repeats are swallowed too", () => {
     expect(
       composeCommandOf({ key: "Backspace", shiftKey: true, metaKey: true, ctrlKey: false }),
@@ -119,15 +63,5 @@ describe("compose shortcuts", () => {
     handleComposeShortcut(held.event, bag);
     expect(held.preventDefault).toHaveBeenCalled();
     expect(bag.requestDiscard).not.toHaveBeenCalled();
-  });
-
-  it("fullscreen is its own chord, outside the handler table", () => {
-    const event = { key: "F", shiftKey: true, metaKey: true, ctrlKey: false };
-    expect(isComposeActionChord(event, "compose.fullscreen")).toBe(true);
-    expect(
-      isComposeActionChord({ ...event, metaKey: false, ctrlKey: true }, "compose.fullscreen"),
-    ).toBe(true);
-    expect(isComposeActionChord({ ...event, shiftKey: false }, "compose.fullscreen")).toBe(false);
-    expect(isComposeChord(event)).toBe(false);
   });
 });

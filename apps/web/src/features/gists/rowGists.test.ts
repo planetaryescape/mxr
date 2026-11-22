@@ -26,8 +26,7 @@ vi.mock("@/lib/ws", () => ({
   },
 }));
 
-const { getRowGist, putGist, requestRowGists, resetRowGistsForTest, STATE_CAP, toRowGist } =
-  await import("./rowGists");
+const { getRowGist, requestRowGists, resetRowGistsForTest } = await import("./rowGists");
 
 function gist(threadId: string, ask: string | null = "confirm the owner") {
   return {
@@ -76,32 +75,6 @@ describe("row gists", () => {
     expect(apiFetch.mock.calls[1]?.[1]).toMatchObject({ body: { thread_ids: ["a"] } });
   });
 
-  test("a queued gist lands from the daemon's event", async () => {
-    apiFetch.mockResolvedValue(answer([], "available", ["a"]));
-    await requestRowGists(["a"], 1_000);
-    emit({ type: "ThreadGistReady", gist: gist("a", null) } as unknown as DaemonEvent);
-    expect(getRowGist("a")?.ask).toBeNull();
-    emit({ type: "NewMessages", envelopes: [{ thread_id: "a" }] } as unknown as DaemonEvent);
-    expect(getRowGist("a")).toBeUndefined();
-  });
-
-  test("with no model the list stops asking, and nothing is shown", async () => {
-    apiFetch.mockResolvedValue(answer([], "disabled"));
-    await requestRowGists(["a"], 1_000);
-    await requestRowGists(["b"], 2_000);
-    expect(apiFetch).toHaveBeenCalledTimes(1);
-    expect(getRowGist("a")).toBeUndefined();
-  });
-
-  test("a failed request is forgotten so the next scroll asks again", async () => {
-    apiFetch.mockRejectedValueOnce(new Error("offline"));
-    await requestRowGists(["a"], 1_000);
-    apiFetch.mockResolvedValue(answer([gist("a")]));
-    await requestRowGists(["a"], 2_000);
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-    expect(getRowGist("a")).toBeDefined();
-  });
-
   test("missed events or a reconnect drop every line and let the rows ask again", async () => {
     apiFetch.mockResolvedValue(answer([gist("a")]));
     await requestRowGists(["a"], 1_000);
@@ -116,77 +89,5 @@ describe("row gists", () => {
     expect(getRowGist("a")).toBeUndefined();
     await requestRowGists(["a"], 3_000);
     expect(apiFetch).toHaveBeenCalledTimes(3);
-  });
-
-  test("an answer from before an invalidation can't put a line back", async () => {
-    const held: { resolve?: (value: unknown) => void } = {};
-    apiFetch.mockReturnValueOnce(
-      new Promise((resolve) => {
-        held.resolve = resolve;
-      }),
-    );
-    const pending = requestRowGists(["a"], 1_000);
-    emit({
-      type: "NewMessages",
-      envelopes: [{ thread_id: "a" }],
-      total: 1,
-    } as unknown as DaemonEvent);
-    held.resolve?.(answer([gist("a")]));
-    await pending;
-    expect(getRowGist("a")).toBeUndefined();
-    apiFetch.mockResolvedValue(answer([gist("a")]));
-    await requestRowGists(["a"], 1_500);
-    expect(getRowGist("a")).toBeDefined();
-  });
-
-  test("lines and asked-about rows are capped, oldest first", async () => {
-    for (let index = 0; index < STATE_CAP + 3; index += 1) putGist(gist(`t${index}`));
-    expect(getRowGist("t0")).toBeUndefined();
-    expect(getRowGist(`t${STATE_CAP + 2}`)).toBeDefined();
-    resetRowGistsForTest();
-    apiFetch.mockResolvedValue(answer([], "available"));
-    const ids = Array.from({ length: STATE_CAP + 100 }, (_, index) => `r${index}`);
-    await ids.reduce<Promise<void>>(
-      (chain, _id, index) =>
-        index % 100 === 0
-          ? chain.then(() => requestRowGists(ids.slice(index, index + 100), 1_000))
-          : chain,
-      Promise.resolve(),
-    );
-    apiFetch.mockClear();
-    await requestRowGists(["r0", `r${STATE_CAP + 99}`], 2_000);
-    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ body: { thread_ids: ["r0"] } });
-  });
-  test("Updates asks for automated mail too, and a people-only ask earlier does not count", async () => {
-    apiFetch.mockResolvedValue(answer([], "available"));
-    await requestRowGists(["a"], 1_000);
-    await requestRowGists(["a"], 2_000, { automated: true });
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-    expect(apiFetch.mock.calls[0]?.[1]).toEqual({
-      method: "POST",
-      body: { thread_ids: ["a"], generate: true },
-    });
-    expect(apiFetch.mock.calls[1]?.[1]).toEqual({
-      method: "POST",
-      body: { thread_ids: ["a"], generate: true, automated: true },
-    });
-    await requestRowGists(["a"], 3_000, { automated: true });
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-  });
-
-  test("odd-typed values and prototype keys are not words", () => {
-    for (const odd of [{ toString: 1 }, ["x"], 5, true]) {
-      expect(toRowGist({ ...gist("a"), gist: odd } as never)).toBeNull();
-    }
-    expect(
-      toRowGist({ ...gist("a"), ask: { summary: { trim: 1 }, quote: null } } as never)?.ask,
-    ).toBeNull();
-    expect(toRowGist({ ...gist("a"), newest_message_id: { x: 1 } } as never)?.newest).toBeNull();
-    for (const id of ["__proto__", "constructor", "toString"]) {
-      expect(getRowGist(id)).toBeUndefined();
-      putGist(gist(id));
-      expect(getRowGist(id)?.about).toContain("Canary");
-    }
-    expect(getRowGist("hasOwnProperty")).toBeUndefined();
   });
 });

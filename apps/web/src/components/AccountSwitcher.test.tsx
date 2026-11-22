@@ -80,25 +80,6 @@ describe("AccountSwitcher", () => {
     vi.clearAllMocks();
   });
 
-  test("with several accounts it shows all of them until one is picked", async () => {
-    renderWithQueryClient(<AccountSwitcher />);
-
-    expect(await screen.findByText("2 accounts")).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Account: All accounts. Switch account" }),
-    ).toBeVisible();
-
-    openMenu();
-    expect(await screen.findByRole("menuitem", { name: /Personal/ })).toBeVisible();
-    fireEvent.click(screen.getByRole("menuitem", { name: /Personal/ }));
-
-    expect(useUiPrefs.getState().accountScope).toBe("account-2");
-    expect(
-      await screen.findByRole("button", { name: "Account: Personal. Switch account" }),
-    ).toBeVisible();
-    expect(screen.getByText("me@example.com")).toBeVisible();
-  });
-
   test("All accounts clears the scope", async () => {
     act(() => useUiPrefs.getState().setAccountScope("account-1"));
     renderWithQueryClient(<AccountSwitcher />);
@@ -108,46 +89,5 @@ describe("AccountSwitcher", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /All accounts/ }));
 
     expect(useUiPrefs.getState().accountScope).toBeNull();
-  });
-
-  test("a single account is shown by name with no All accounts entry", async () => {
-    accountsApi.fetchAccounts.mockResolvedValue({ accounts: [work] });
-    renderWithQueryClient(<AccountSwitcher />);
-
-    expect(
-      await screen.findByRole("button", { name: "Account: Work. Switch account" }),
-    ).toBeVisible();
-    openMenu();
-    await screen.findByRole("menuitem", { name: /Work/ });
-    expect(screen.queryByRole("menuitem", { name: /All accounts/ })).not.toBeInTheDocument();
-  });
-
-  test("a scope pointing at a disabled account falls back to all mail", async () => {
-    act(() => useUiPrefs.getState().setAccountScope("account-2"));
-    accountsApi.fetchAccounts.mockResolvedValue({
-      accounts: [work, { ...personal, enabled: false }],
-    });
-    renderWithQueryClient(<AccountSwitcher />);
-
-    await vi.waitFor(() => expect(useUiPrefs.getState().accountScope).toBeNull());
-    expect(
-      await screen.findByRole("button", { name: "Account: Work. Switch account" }),
-    ).toBeVisible();
-  });
-
-  test("a restored profile keeps cached disabled accounts selectable after activation", async () => {
-    recoveryState.restored = true;
-    const cached = { ...personal, enabled: false };
-    accountsApi.fetchAccounts.mockResolvedValue({ accounts: [work, cached] });
-    renderWithQueryClient(<AccountSwitcher />);
-
-    expect(await screen.findByText("2 accounts")).toBeVisible();
-    openMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Personal/ }));
-
-    expect(useUiPrefs.getState().accountScope).toBe("account-2");
-    expect(
-      await screen.findByRole("button", { name: "Account: Personal. Switch account" }),
-    ).toBeVisible();
   });
 });

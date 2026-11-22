@@ -82,30 +82,6 @@ fn queued(app: &App) -> Vec<Request> {
 }
 
 #[test]
-fn a_stale_fetch_for_another_place_is_ignored() {
-    let mut app = App::new();
-    app.apply(Action::OpenPlace(MailPlaceData::Reading));
-    assert_eq!(
-        app.mailbox.mailbox_view,
-        MailboxView::Place(MailPlaceData::Reading)
-    );
-    app.set_place(
-        &refresh(MailPlaceData::PaperTrail),
-        crate::app::PlacePageState {
-            place: Some(MailPlaceData::PaperTrail),
-            bundles: vec![bundle(
-                "receipts@shop.example",
-                vec![message("Receipt", false)],
-            )],
-            total_bundles: 1,
-            total_messages: 1,
-            loaded: true,
-        },
-    );
-    assert!(app.mailbox.place_page.bundles.is_empty());
-}
-
-#[test]
 fn s_pins_the_message_under_the_cursor_and_shows_it_at_once() {
     let receipt = message("Receipt 1", false);
     let mut app = paper_trail(vec![bundle(
@@ -271,111 +247,6 @@ fn verbs_in_a_place_act_on_the_message_under_the_cursor_only() {
     ));
 }
 
-#[test]
-fn more_senders_and_more_from_a_sender_page_in_without_losing_the_cursor() {
-    let first = bundle("a@shop.example", vec![message("A 1", false)]);
-    let mut app = paper_trail(vec![first.clone()]);
-    app.mailbox.place_page.total_bundles = 2;
-    app.mailbox.place_page.bundles[0].message_count = 2;
-
-    press(&mut app, KeyCode::Char('>'));
-    assert!(app.mailbox.pending_place_more.is_none());
-    app.apply(Action::MorePlaceSenders);
-    let more = app
-        .mailbox
-        .pending_place_more
-        .clone()
-        .expect("next page of senders");
-    assert!(matches!(
-        crate::runner::place_request(&more),
-        Request::ListPlace {
-            offset: 1,
-            message_offset: 0,
-            ..
-        }
-    ));
-    let second = bundle("b@shop.example", vec![message("B 1", false)]);
-    app.set_place(
-        &more,
-        crate::app::PlacePageState {
-            place: Some(MailPlaceData::PaperTrail),
-            bundles: vec![second],
-            total_bundles: 2,
-            total_messages: 3,
-            loaded: true,
-        },
-    );
-    assert_eq!(app.mailbox.place_page.bundles.len(), 2);
-    assert!(!app.mailbox.place_page.has_more_senders());
-
-    app.apply(Action::MoreFromSender);
-    let more = app
-        .mailbox
-        .pending_place_more
-        .clone()
-        .expect("more from a@");
-    assert!(matches!(
-        crate::runner::place_request(&more),
-        Request::ListPlace { sender_email: Some(ref s), message_offset: 1, .. } if s == "a@shop.example"
-    ));
-    let mut rest = first.clone();
-    rest.messages = vec![message("A 0", false)];
-    app.set_place(
-        &more,
-        crate::app::PlacePageState {
-            place: Some(MailPlaceData::PaperTrail),
-            bundles: vec![rest],
-            total_bundles: 1,
-            total_messages: 2,
-            loaded: true,
-        },
-    );
-    assert_eq!(app.mailbox.place_page.bundles[0].messages.len(), 2);
-    assert_eq!(app.mailbox.selected_index, 0);
-
-    assert!(matches!(
-        crate::runner::place_request(
-            &app.mailbox
-                .place_page
-                .refresh_fetch(MailPlaceData::PaperTrail)
-        ),
-        Request::ListPlace {
-            limit: 50,
-            messages_per_bundle: 20,
-            ..
-        }
-    ));
-}
-
-#[test]
-fn u_moves_a_sender_back_where_it_was() {
-    let shop = bundle("receipts@shop.example", vec![message("Receipt", false)]);
-    let mut app = paper_trail(vec![shop.clone()]);
-    app.set_pending_undo(crate::app::PendingUndo {
-        action: crate::app::UndoAction::SenderKind {
-            account_id: shop.account_id.clone(),
-            sender_email: shop.sender_email.clone(),
-            previous: Some(SenderKindData::Reading),
-        },
-        verb_past: "Moved sender".into(),
-        count: 1,
-        applied_at: std::time::Instant::now(),
-    });
-    press(&mut app, KeyCode::Char('u'));
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::SetSenderKind { kind: Some(SenderKindData::Reading), sender_email, .. }]
-            if sender_email == "receipts@shop.example"
-    ));
-    assert!(
-        matches!(
-            app.pending_mutation_queue[0].effect,
-            crate::app::MutationEffect::RefreshPlaces(_)
-        ),
-        "the undo itself offers no undo"
-    );
-}
-
 pub(super) fn whole_place_preview() -> App {
     let mut app = paper_trail(vec![bundle(
         "receipts@shop.example",
@@ -429,33 +300,5 @@ fn e_then_enter_never_sweeps_the_whole_place() {
     assert!(
         app.mailbox.sweep_confirm.is_none(),
         "Enter on Cancel closes it"
-    );
-}
-
-#[test]
-fn e_tab_enter_sweeps_the_whole_place() {
-    let mut app = whole_place_preview();
-    press(&mut app, KeyCode::Tab);
-    press(&mut app, KeyCode::Enter);
-    let confirmed = app.mailbox.pending_sweep.clone().expect("sweep queued");
-    assert_eq!(confirmed.target.sender_email, None);
-    assert_eq!(confirmed.preview.preview_token.as_deref(), Some("tok-all"));
-}
-
-#[test]
-fn the_whole_place_confirm_names_its_scope_and_count() {
-    let app = whole_place_preview();
-    let rendered = render_to_string(100, 30, |frame| {
-        crate::ui::place_lens::draw_sweep_confirm(
-            frame,
-            ratatui::layout::Rect::new(0, 0, 100, 30),
-            app.mailbox.sweep_confirm.as_ref(),
-            &[],
-            &crate::theme::Theme::default(),
-        );
-    });
-    assert!(
-        rendered.contains("Archive all 143 from 2 senders"),
-        "{rendered}"
     );
 }

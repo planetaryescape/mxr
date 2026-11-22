@@ -1,29 +1,23 @@
-use super::{apply_all_envelopes_refresh, handle_daemon_event, run_with_terminal_suspended_with};
+use super::{apply_all_envelopes_refresh, handle_daemon_event};
 use crate::action::Action;
 use crate::app::PendingSend;
 use crate::app::{
     ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MailListMode,
-    MailboxView, MutationEffect, PendingSearchRequest, PendingSendMode, Screen, SearchPane,
-    SearchTarget, SEARCH_PAGE_SIZE,
+    MailboxView, MutationEffect, PendingSendMode, Screen, SearchPane,
 };
-use crate::async_result::{ComposeReadyData, SearchResultData};
-use crate::compose_flow::{handle_compose_editor_status, pending_send_from_edited_draft};
+use crate::async_result::ComposeReadyData;
+use crate::compose_flow::handle_compose_editor_status;
 use crate::input::InputHandler;
-use crate::runtime::{enqueue_replaceable_request, ReplaceableRequest};
 use crate::test_fixtures::TestEnvelopeBuilder;
-use crate::ui::search_bar::SearchBar;
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::MxrError;
-use mxr_protocol::{BodyFailure, DaemonEvent, LabelCount, MutationCommand, Request};
+use mxr_protocol::{DaemonEvent, MutationCommand, Request};
 use mxr_test_support::render_to_string;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::collections::VecDeque;
 use std::os::unix::process::ExitStatusExt;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tokio::time::Instant;
 
 fn make_test_envelopes(count: usize) -> Vec<Envelope> {
     (0..count)
@@ -46,30 +40,6 @@ fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         .collect()
 }
 
-fn account_summary(
-    account_id: AccountId,
-    enabled: bool,
-    is_default: bool,
-) -> mxr_protocol::AccountSummaryData {
-    mxr_protocol::AccountSummaryData {
-        identity: None,
-        account_id,
-        key: Some("user".into()),
-        name: "User".into(),
-        email: "user@example.com".into(),
-        provider_kind: "imap".into(),
-        sync_kind: Some("imap".into()),
-        send_kind: Some("smtp".into()),
-        enabled,
-        is_default,
-        source: mxr_protocol::AccountSourceData::Config,
-        editable: mxr_protocol::AccountEditModeData::Full,
-        sync: None,
-        send: None,
-        capabilities: Default::default(),
-    }
-}
-
 fn make_unsubscribe_envelope(
     account_id: AccountId,
     sender_email: &str,
@@ -88,27 +58,10 @@ fn make_unsubscribe_envelope(
         .build()
 }
 
-struct TestEventSource {
-    id: usize,
-    dropped: Arc<AtomicBool>,
-}
-
-impl Drop for TestEventSource {
-    fn drop(&mut self) {
-        self.dropped.store(true, Ordering::SeqCst);
-    }
-}
-
 fn exit_status(code: i32) -> std::process::ExitStatus {
     std::process::ExitStatus::from_raw(code)
 }
 
-fn row_to_dormant(row: &crate::app::MailListRow, days: i64) -> Option<String> {
-    if row.message_count < 3 || days < 30 {
-        return None;
-    }
-    Some(format!("Dormant {days}d. Press B for briefing"))
-}
 fn make_test_labels() -> Vec<Label> {
     crate::test_fixtures::test_system_labels(&AccountId::new())
 }

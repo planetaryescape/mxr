@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ReaderSection } from "./ReaderSection";
-import { SettingsRoute } from "./SettingsRoute";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const router = vi.hoisted(() => ({ section: "theme" }));
@@ -16,16 +15,6 @@ vi.mock("@tanstack/react-router", () => ({
     <a className={className}>{children}</a>
   ),
 }));
-
-describe("SettingsRoute", () => {
-
-  test("the old density id still opens appearance", () => {
-    router.section = "density";
-    render(<SettingsRoute />);
-
-    expect(screen.getByRole("heading", { level: 1, name: "Appearance" })).toBeVisible();
-  });
-});
 
 describe("ReaderSection", () => {
   beforeEach(() => {

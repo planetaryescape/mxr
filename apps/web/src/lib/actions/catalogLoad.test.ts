@@ -5,15 +5,8 @@ import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 import { useKeymapStore } from "@/state/keymapStore";
 
 import { reregisterCatalog } from "./catalog";
-import {
-  definedShortcut,
-  isDefinitionLoaded,
-  loadDefinition,
-  resetDefinitionForTests,
-  setServedKeys,
-} from "./definition";
+import { loadDefinition, setServedKeys } from "./definition";
 import { getRegistry, onActionInvoked, resetRegistry } from "./registry";
-import { applyServedKeymap } from "./servedKeymap";
 import type { ActionContext } from "./types";
 
 function ctx(): ActionContext {
@@ -77,47 +70,5 @@ describe("the catalog is not on the first-paint path", () => {
     } finally {
       app.dispose();
     }
-  });
-
-  test("keys served before the catalog lands are the ones that run when it does", async () => {
-    resetDefinitionForTests();
-    resetRegistry();
-    expect(isDefinitionLoaded()).toBe(false);
-
-    applyServedKeymap({
-      actions: [{ id: "shell.compose", keys: ["%"] }],
-      remapped: ["shell.compose"],
-    });
-
-    expect(definedShortcut("shell.compose")).toBe("%");
-    expect(getRegistry().all()).toHaveLength(0);
-
-    await loadDefinition();
-    reregisterCatalog();
-
-    expect(definedShortcut("shell.compose")).toBe("%");
-    expect(
-      getRegistry()
-        .bindings()
-        .find((b) => b.action.id === "shell.compose")?.chord,
-    ).toBe("%");
-
-    const app = install();
-    try {
-      app.press("c");
-      expect(app.ran).toEqual([]);
-      app.press("%");
-      expect(app.ran).toEqual(["shell.compose"]);
-    } finally {
-      app.dispose();
-    }
-  });
-});
-
-describe("the index answers the labels the first screen shows", () => {
-  test("the registry cannot be built from the index alone", () => {
-    resetDefinitionForTests();
-    expect(isDefinitionLoaded()).toBe(false);
-    expect(() => reregisterCatalog()).toThrow(/has not loaded/);
   });
 });

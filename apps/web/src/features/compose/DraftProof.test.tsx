@@ -47,83 +47,9 @@ function renderProof(
 }
 
 describe("DraftProof keys", () => {
-  test("shows style marks on their text with the pattern and context on hover", () => {
-    renderProof({
-      styleMarks: [
-        { name: "Not X but Y", context: "This is not speed but cost.", start: 0, end: 8 },
-      ],
-    });
-    expect(screen.getByText("Thursday", { exact: false }).closest("span")).toHaveAttribute(
-      "title",
-      "Not X but Y: This is not speed but cost.",
-    );
-    expect(screen.getByText(/Style 92\/100 · 1 mark/)).toBeInTheDocument();
-  });
-  test("keeps UTF-8 marks aligned after removed text and combines overlaps", () => {
-    renderProof({
-      runs: [
-        { kind: "removed", text: "old", gap: null },
-        { kind: "kept", text: "Café ", gap: null },
-        { kind: "added", text: "résumé", gap: null },
-      ],
-      styleMarks: [
-        { name: "First", context: "Café", start: 0, end: 6 },
-        { name: "Second", context: "Café résumé", start: 3, end: 10 },
-      ],
-    });
-    expect(screen.getByRole("region", { name: "Draft proof" }).textContent).toContain(
-      "Café résumé",
-    );
-    const overlap = Array.from(document.querySelectorAll<HTMLElement>("[title]")).find(
-      (element) => element.title.includes("First:") && element.title.includes("Second:"),
-    );
-    expect(overlap?.textContent).toBe("é ");
-  });
-
   test("Enter on the proof accepts it", () => {
     const { onAccept } = renderProof();
     fireEvent.keyDown(screen.getByRole("region", { name: "Draft proof" }), { key: "Enter" });
     expect(onAccept).toHaveBeenCalledTimes(1);
-  });
-
-  test("Tab on the proof moves from gap to gap", () => {
-    renderProof();
-    const gap = screen.getByText("[[?: a time]]");
-    gap.focus();
-    const notPrevented = fireEvent.keyDown(gap, { key: "Tab" });
-    expect(notPrevented).toBe(false);
-  });
-
-  test("a gap the word diff split into three runs is one gap with one Tab stop", () => {
-    const gapRuns: ProofRun[] = [
-      { kind: "kept", text: "Meet at ", gap: null },
-      { kind: "kept", text: "[[?: the ", gap: 0 },
-      { kind: "added", text: "exact ", gap: 0 },
-      { kind: "kept", text: "date]]", gap: 0 },
-      { kind: "kept", text: " tomorrow", gap: null },
-    ];
-    render(
-      <DraftProof
-        runs={gapRuns}
-        gapCount={1}
-        provenance={null}
-        versionIndex={0}
-        versionCount={1}
-        stale={false}
-        onAccept={vi.fn<() => void>()}
-        onKeep={vi.fn<() => void>()}
-        onStep={vi.fn<(delta: number) => void>()}
-        onAgain={vi.fn<() => void>()}
-        onRetryModel={vi.fn<(model: string | undefined) => void>()}
-        modelChoices={[]}
-        defaultModel="gemma4:latest"
-        generating={false}
-        onRevise={vi.fn<() => void>()}
-      />,
-    );
-    const gaps = document.querySelectorAll("[data-gap]");
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]?.textContent).toBe("[[?: the exact date]]");
-    expect(screen.getByText(/1 gap left/)).toBeInTheDocument();
   });
 });

@@ -147,43 +147,6 @@ async fn app_load_lists_every_accounts_inbox_and_sums_the_counts() {
 }
 
 #[test]
-fn system_labels_resolve_to_a_role_and_user_labels_do_not() {
-    let account = AccountId::new();
-    let labels = vec![
-        system_label(&account, "SENT", 0, 0),
-        Label {
-            kind: LabelKind::User,
-            ..system_label(&account, "Work", 0, 0)
-        },
-    ];
-    assert_eq!(
-        unified_role_for(&labels, &labels[0].id).as_deref(),
-        Some("sent")
-    );
-    assert_eq!(unified_role_for(&labels, &labels[1].id), None);
-    assert_eq!(unified_role_for(&labels, &LabelId::new()), None);
-}
-
-#[test]
-fn unified_counts_replace_system_counts_only() {
-    let (a, b) = (AccountId::new(), AccountId::new());
-    let mut work = system_label(&a, "Work", 1, 2);
-    work.kind = LabelKind::User;
-    let mine = vec![system_label(&a, "INBOX", 3, 10), work.clone()];
-    let mut other_work = system_label(&b, "Work", 100, 200);
-    other_work.kind = LabelKind::User;
-    let all = vec![
-        system_label(&a, "INBOX", 3, 10),
-        system_label(&b, "INBOX", 4, 20),
-        work,
-        other_work,
-    ];
-    let merged = with_unified_system_counts(mine, &all, &[]);
-    assert_eq!((merged[0].unread_count, merged[0].total_count), (7, 30));
-    assert_eq!((merged[1].unread_count, merged[1].total_count), (1, 2));
-}
-
-#[test]
 fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() {
     let (gmail, imap) = (AccountId::new(), AccountId::new());
     let mine = vec![

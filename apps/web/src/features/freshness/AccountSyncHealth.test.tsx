@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 
-import { fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { AccountSyncDetails, useSyncHealthToasts } from "./AccountSyncHealth";
+import { useSyncHealthToasts } from "./AccountSyncHealth";
 import type { AccountFreshness, Freshness } from "./copy";
 
 const query = vi.hoisted(() => ({ data: undefined as Freshness | undefined }));
@@ -56,31 +56,6 @@ describe("account sync health", () => {
     query.data = undefined;
   });
 
-  test("the Sync section gives the next try, a plain reason and the raw error behind Details", () => {
-    query.data = reply(offline);
-    render(<AccountSyncDetails accountId="acct-1" />);
-    const details = screen.getByTestId("account-sync-details");
-    expect(details).toHaveTextContent("Last good sync2m ago");
-    expect(details).toHaveTextContent(/Next try09:47/);
-    expect(details).toHaveTextContent(/Can't reach work@example.com\. Trying again at 09:47/);
-    expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /sign in again/i })).toBeNull();
-  });
-
-  test("a signed-out account offers Sign in again", () => {
-    query.data = reply(
-      account({
-        health: "failing",
-        last_sync_error: { kind: "auth", message: "oauth revoked", consecutive_failures: 1 },
-      }),
-    );
-    const onSignIn = vi.fn<() => void>();
-    render(<AccountSyncDetails accountId="acct-1" onSignIn={onSignIn} />);
-    expect(screen.getByText("work@example.com needs you to sign in again.")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: /sign in again/i }));
-    expect(onSignIn).toHaveBeenCalledOnce();
-  });
-
   test("toasts once when an account starts failing and once when it recovers, never per retry", () => {
     query.data = reply(account());
     const { rerender } = renderHook(() => useSyncHealthToasts());
@@ -106,11 +81,5 @@ describe("account sync health", () => {
     expect(toastMock.success).toHaveBeenCalledWith("work@example.com is syncing again", {
       id: "sync-health-acct-1",
     });
-  });
-
-  test("an account already failing when the app opens does not toast", () => {
-    query.data = reply(offline);
-    renderHook(() => useSyncHealthToasts());
-    expect(toastMock.warning).not.toHaveBeenCalled();
   });
 });

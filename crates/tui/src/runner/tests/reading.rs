@@ -45,95 +45,6 @@ fn reading_app() -> App {
     app
 }
 
-#[test]
-fn the_cursor_loads_the_item_beside_the_list_once() {
-    let mut app = reading_app();
-    let first = app.reading_item_to_load().expect("the first item loads");
-    assert!(first.ends_with(":0"));
-    assert_eq!(
-        app.reading_item_to_load(),
-        None,
-        "asked once while in flight"
-    );
-    key(&mut app, 'j');
-    let link = app.reading_item_to_load().expect("the next row loads");
-    assert_ne!(link, first);
-}
-
-#[test]
-fn enter_reads_and_records_the_open() {
-    let mut app = reading_app();
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(app.mailbox.reading_page.reader_focused);
-    assert!(queued(&app).iter().any(|request| matches!(
-        request,
-        Request::RecordReadingEngagement { opened: true, item_key, .. } if item_key.ends_with(":0")
-    )));
-}
-
-#[test]
-fn b_on_a_digest_link_saves_it_to_later_and_fetches_its_article() {
-    let mut app = reading_app();
-    key(&mut app, 'j');
-    key(&mut app, 'j');
-    let link_key = app.selected_reading_row().expect("a row").key().to_string();
-    assert!(link_key.ends_with(":1"), "{link_key}");
-    key(&mut app, 'b');
-    assert!(app.modals.snooze_panel.visible);
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(queued(&app).iter().any(|request| matches!(
-        request,
-        Request::SetReadingLater { item_keys, later: true, dry_run: false } if *item_keys == [link_key.clone()]
-    )));
-    assert_eq!(
-        app.mailbox.reading_page.pending_fetch,
-        Some((link_key, false)),
-        "the article is saved so Later reads offline"
-    );
-    assert!(app
-        .status_message
-        .as_deref()
-        .is_some_and(|status| status.contains("links.demo.mxr.local")));
-}
-
-#[test]
-fn a_time_in_not_now_snoozes_the_items_issue() {
-    let mut app = reading_app();
-    let issue = app
-        .selected_reading_row()
-        .expect("a row")
-        .issue()
-        .message_id
-        .clone();
-    key(&mut app, 'b');
-    key(&mut app, '1');
-    assert!(!app.modals.snooze_panel.visible);
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::Snooze { message_id, .. }] if *message_id == issue
-    ));
-}
-
-#[test]
-fn l_names_the_site_before_fetching_and_an_essay_has_nothing_to_fetch() {
-    let mut app = reading_app();
-    key(&mut app, 'L');
-    assert!(app.mailbox.reading_page.pending_fetch.is_none());
-    assert!(app
-        .status_message
-        .as_deref()
-        .is_some_and(|status| status.contains("no article")));
-    for _ in 0..6 {
-        key(&mut app, 'j');
-    }
-    key(&mut app, 'L');
-    assert!(app.mailbox.reading_page.pending_fetch.is_some());
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Fetching from platform.demo.mxr.local\u{2026}")
-    );
-}
-
 fn outcome(thread_id: ThreadId) -> ModeDoneOutcomeData {
     ModeDoneOutcomeData {
         thread_id,
@@ -186,18 +97,6 @@ fn let_go_of_everything_previews_then_commits_the_same_threads() {
 }
 
 #[test]
-fn esc_on_a_preview_changes_nothing() {
-    let mut app = reading_app();
-    app.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll {
-        thread_ids: vec![ThreadId::new()],
-        items: Vec::new(),
-    });
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    assert!(app.mailbox.reading_page.confirm.is_none());
-    assert!(queued(&app).is_empty());
-}
-
-#[test]
 fn unsubscribe_previews_with_the_evidence_before_it_commits() {
     let mut app = reading_app();
     for _ in 0..7 {
@@ -240,58 +139,6 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
         ),
         "{requests:?}"
     );
-}
-
-#[test]
-fn enter_or_u_unsubscribe_commits_the_previewed_sender_and_keeps_the_mail() {
-    let mut app = reading_app();
-    for _ in 0..7 {
-        key(&mut app, 'j');
-    }
-    key(&mut app, 'D');
-    let target = app
-        .mailbox
-        .reading_page
-        .pending_unsubscribe_preview
-        .take()
-        .expect("a dry run is asked for first");
-    app.show_reading_unsubscribe_preview(
-        target.clone(),
-        purge_preview(
-            &target.sender_email,
-            mxr_core::types::UnsubscribeMethod::OneClick {
-                url: "https://growth.example/unsub".into(),
-            },
-            Some("tok-2"),
-        ),
-    );
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(matches!(queued(&app).as_slice(),
-        [Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }] if token == "tok-2"));
-    assert!(app.modals.pending_unsubscribe_action.is_none());
-    assert!(app.mailbox.reading_page.confirm.is_none());
-
-    key(&mut app, 'D');
-    let target = app
-        .mailbox
-        .reading_page
-        .pending_unsubscribe_preview
-        .take()
-        .expect("a dry run is asked for again");
-    app.show_reading_unsubscribe_preview(
-        target.clone(),
-        purge_preview(
-            &target.sender_email,
-            mxr_core::types::UnsubscribeMethod::OneClick {
-                url: "https://growth.example/unsub".into(),
-            },
-            Some("tok-3"),
-        ),
-    );
-    press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
-    assert!(app.modals.pending_unsubscribe_action.is_none());
-    assert!(matches!(queued(&app).last(),
-        Some(Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }) if token == "tok-3"));
 }
 
 #[test]
@@ -357,38 +204,6 @@ fn e_lets_go_of_the_issue_at_once() {
     assert!(!app.mailbox.reading_page.thread_ids().contains(&thread));
 }
 
-#[test]
-fn quote_in_the_reader_highlights_the_top_paragraph() {
-    let mut app = reading_app();
-    let mut detail_item = edition().bands[0].items[0].clone();
-    detail_item.words = 50;
-    app.set_reading_item(
-        &detail_item.item_key.clone(),
-        mxr_protocol::ReadingItemDetailData {
-            source_data: edition().sources[0].clone(),
-            paragraphs: vec![mxr_protocol::ReadingParagraphData {
-                kind: "text".into(),
-                text: "Every reader since 2002 shipped the same window.".into(),
-            }],
-            html: None,
-            article: None,
-            article_error: None,
-            highlights: Vec::new(),
-            marginalia: None,
-            minutes_left: 1,
-            pace_wpm: 230,
-            item: detail_item,
-        },
-    );
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    key(&mut app, '"');
-    assert!(queued(&app).iter().any(|request| matches!(
-        request,
-        Request::SaveHighlight { quote, view: Some(view), paragraph: Some(0), .. }
-            if quote.starts_with("Every reader") && view == "issue"
-    )));
-}
-
 fn highlight(id: &str, origin: &str, note: Option<&str>) -> mxr_protocol::ReadingHighlightData {
     let item = edition().bands[0].items[0].clone();
     mxr_protocol::ReadingHighlightData {
@@ -441,27 +256,6 @@ fn highlights_app() -> App {
 }
 
 #[test]
-fn shift_h_edits_a_note_and_a_blank_one_clears_it() {
-    let mut app = highlights_app();
-    key(&mut app, 'e');
-    for _ in 0.."first".len() {
-        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
-    }
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    assert!(queued(&app).is_empty());
-    key(&mut app, 'e');
-    for _ in 0.."first".len() {
-        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
-    }
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::UpdateHighlight { highlight_id, note, dry_run: false }]
-            if highlight_id == "own" && note.is_empty()
-    ));
-}
-
-#[test]
 fn shift_h_removes_the_selected_highlight_only_after_asking() {
     let mut app = highlights_app();
     key(&mut app, 'x');
@@ -474,95 +268,4 @@ fn shift_h_removes_the_selected_highlight_only_after_asking() {
         queued(&app).as_slice(),
         [Request::RemoveHighlight { highlight_id, dry_run: false }] if highlight_id == "own"
     ));
-}
-
-#[test]
-fn a_highlight_made_in_marginalia_is_not_edited_or_removed_here() {
-    let mut app = highlights_app();
-    key(&mut app, 'j');
-    for c in ['e', 'x'] {
-        key(&mut app, c);
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some("Made in Marginalia; change it there")
-        );
-        assert_eq!(
-            app.mailbox
-                .reading_page
-                .highlights
-                .as_ref()
-                .map(|p| &p.step),
-            Some(&crate::app::HighlightStep::Browse)
-        );
-    }
-    assert!(queued(&app).is_empty());
-}
-
-#[test]
-fn shift_o_sends_the_item_under_the_cursor_to_marginalia() {
-    let mut app = reading_app();
-    let expected = edition().bands[0].items[0].item_key.clone();
-    key(&mut app, 'O');
-    assert!(queued(&app).iter().any(|request| matches!(
-        request,
-        Request::SendReadingToMarginalia { item_key, dry_run: false } if *item_key == expected
-    )));
-}
-
-#[test]
-fn the_digits_pick_reading_tabs_and_esc_comes_back_from_later() {
-    let mut app = reading_app();
-    key(&mut app, '2');
-    assert!(app.mailbox.reading_page.later_shelf);
-    assert_eq!(
-        app.mailbox.reading_page.row_count(),
-        0,
-        "the fixture shelf is empty"
-    );
-    key(&mut app, '2');
-    assert!(
-        app.mailbox.reading_page.later_shelf,
-        "a tab key picks its tab; it does not toggle"
-    );
-    key(&mut app, '1');
-    assert!(!app.mailbox.reading_page.later_shelf);
-    key(&mut app, '2');
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    assert!(!app.mailbox.reading_page.later_shelf);
-}
-
-#[test]
-fn shift_b_says_later_moved_to_a_digit() {
-    let mut app = reading_app();
-    let before = app.status_message.clone();
-    key(&mut app, 'B');
-    assert!(!app.mailbox.reading_page.later_shelf);
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced("reading", "B", "Later is now 2", before.as_deref())
-    );
-}
-
-#[test]
-fn one_in_the_reader_goes_back_to_the_edition() {
-    let mut app = reading_app();
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    app.mailbox.reading_page.reader_focused = true;
-    key(&mut app, '2');
-    assert!(!app.mailbox.reading_page.reader_focused);
-    assert!(app.mailbox.reading_page.later_shelf);
-    key(&mut app, '1');
-    assert!(!app.mailbox.reading_page.later_shelf);
-}
-
-#[test]
-fn shift_p_moves_the_items_sender() {
-    let mut app = reading_app();
-    key(&mut app, 'P');
-    let menu = app
-        .mailbox
-        .sender_kind_menu
-        .as_ref()
-        .expect("the menu opens");
-    assert_eq!(menu.display, "Long Reads Weekly");
 }

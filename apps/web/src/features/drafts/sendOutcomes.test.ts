@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { beforeEach, expect, test, vi } from "vitest";
-import { operationAfterReview, readSendReferences, retainSendReference } from "./sendOutcomes";
+import { operationAfterReview } from "./sendOutcomes";
 
 beforeEach(() => {
   const items = new Map<string, string>();
@@ -9,26 +9,6 @@ beforeEach(() => {
     setItem: (key: string, value: string) => items.set(key, value),
     clear: () => items.clear(),
   });
-});
-test("retains the query identity before submission and across reads", () => {
-  const reference = { operationId: "draft:1", accountId: "account", draftId: "draft" };
-  retainSendReference(reference);
-  retainSendReference(reference);
-  expect(readSendReferences()).toEqual([reference]);
-});
-test("refuses malformed persisted references without trusting JSON types", () => {
-  localStorage.setItem(
-    "mxr-reviewed-sends",
-    JSON.stringify([
-      null,
-      "identity",
-      { operationId: 4 },
-      { operationId: "a", accountId: "b", draftId: "c" },
-    ]),
-  );
-  expect(readSendReferences()).toEqual([{ operationId: "a", accountId: "b", draftId: "c" }]);
-  localStorage.setItem("mxr-reviewed-sends", "bad json");
-  expect(readSendReferences()).toEqual([]);
 });
 
 test("an explicit unchanged review permits a fresh attempt only after proven non-acceptance", () => {

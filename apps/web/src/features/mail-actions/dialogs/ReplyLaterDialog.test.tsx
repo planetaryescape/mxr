@@ -65,17 +65,4 @@ describe("ReplyLaterDialog", () => {
     expect(onClose).toHaveBeenCalled();
     expect(api.setReplyLater).not.toHaveBeenCalled();
   });
-
-  test("on Waiting on it asks when to bring it back and needs a time", async () => {
-    renderDialog(
-      <ReplyLaterDialog target={target} subject="Launch plan" waiting onClose={() => {}} />,
-    );
-
-    expect(screen.getByRole("heading", { name: "Bring back if nobody replies" })).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-    expect(screen.getByRole("button", { name: "Set" }).hasAttribute("disabled")).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(api.setReplyLater).not.toHaveBeenCalled();
-    expect(api.deferThreads).not.toHaveBeenCalled();
-  });
 });

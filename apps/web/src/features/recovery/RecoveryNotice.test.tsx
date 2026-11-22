@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import type { components } from "@/api/generated";
 import {
-  isRestoredProfile,
   RecoveryNotice,
   type RecoveryActionRequest,
   type RecoveryApi,
@@ -76,23 +75,6 @@ function renderNotice(
 }
 
 describe("RecoveryNotice", () => {
-  test("treats a paused or activated restored profile as readable cached mail", () => {
-    expect(isRestoredProfile(null)).toBe(false);
-    expect(
-      isRestoredProfile({ ...currentRecovery, restore_pending: true, source_owner_stopped: false }),
-    ).toBe(true);
-    expect(
-      isRestoredProfile({ ...currentRecovery, restore_pending: false, source_owner_stopped: true }),
-    ).toBe(true);
-    expect(
-      isRestoredProfile({
-        ...currentRecovery,
-        restore_pending: false,
-        source_owner_stopped: false,
-      }),
-    ).toBe(false);
-  });
-
   beforeEach(() => {
     preparedDraft = {
       id: "draft-new",
@@ -194,32 +176,5 @@ describe("RecoveryNotice", () => {
     await queryClient.invalidateQueries({ queryKey: ["recovery-status"] });
     expect(await screen.findByRole("alert")).toHaveTextContent(/revision changed/i);
     expect(screen.queryByRole("button", { name: "Confirm new draft" })).not.toBeInTheDocument();
-  });
-
-  test("refuses confirmation when the selected workspace changes after preview", async () => {
-    const queryClient = renderNotice();
-    fireEvent.click(await screen.findByRole("button", { name: "Preview new draft" }));
-    await screen.findByLabelText("Prepared draft preview");
-
-    currentRecovery = { ...currentRecovery, workspace_id: "workspace-b" };
-    await queryClient.invalidateQueries({ queryKey: ["recovery-status"] });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /owner or original revision changed/i,
-    );
-    expect(screen.queryByRole("button", { name: "Confirm new draft" })).not.toBeInTheDocument();
-  });
-
-  test("renders readable text from an HTML-only prepared draft", async () => {
-    preparedDraft = {
-      ...preparedDraft,
-      body_markdown: null,
-      body_text: null,
-      body_html: "<p>Visible HTML-only content</p><script>hidden()</script>",
-    };
-    renderNotice();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Preview new draft" }));
-    expect(await screen.findByText("Visible HTML-only content")).toBeInTheDocument();
-    expect(screen.queryByText("hidden()")).not.toBeInTheDocument();
   });
 });

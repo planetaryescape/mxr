@@ -227,6 +227,27 @@ mod tests {
     }
 
     #[test]
+    fn prefilled_tilde_path_expands_to_the_home_exports_folder() {
+        let (mut app, thread_id) = picker_app();
+        app.export_modal_choose_format(ExportFormat::Json);
+        app.export_modal_choose_save();
+        app.export_modal_confirm_path();
+        let Some(PendingExport {
+            destination: ExportDestination::Save { path, .. },
+            ..
+        }) = app.mailbox.pending_export.clone()
+        else {
+            panic!("expected a save export to be queued");
+        };
+        let home = dirs::home_dir().expect("tests need a home directory");
+        assert_eq!(
+            path,
+            home.join("mxr/exports")
+                .join(format!("mxr-thread-{thread_id}.json"))
+        );
+    }
+
+    #[test]
     fn clipboard_queues_and_closes_the_picker() {
         let (mut app, thread_id) = picker_app();
         app.export_modal_choose_format(ExportFormat::Markdown);

@@ -381,7 +381,6 @@ mod tests {
             let initial = serde_json::json!({
                 "access_token": "explicit-access",
                 "refresh_token": "explicit-refresh",
-                // Inside yup-oauth2's one-minute margin: already due for refresh.
                 "expires_in": 30,
                 "token_type": "Bearer"
             });
@@ -462,7 +461,6 @@ mod tests {
                     .expect("the handoff refreshes without waiting for another prompt")
                     .unwrap();
             assert_eq!(token, "refreshed-access");
-            // The refresh-only source reuses the cached token from here on.
             assert_eq!(auth.access_token().await.unwrap(), "refreshed-access");
             assert_eq!(prompts.0.load(Ordering::SeqCst), 1, "no second prompt");
             assert_eq!(
@@ -690,13 +688,6 @@ impl GmailAuth {
     ) -> Self {
         let token_client_id = client_id.clone();
         let token_client_secret = client_secret.clone();
-        // Built once and moved into the closure: this token_fn runs on every
-        // Gmail API call (no token caching on the refresh-token path), and a
-        // reqwest client carries a connection pool worth keeping. Short
-        // connect timeout so dead/half-open networks fail in seconds; the
-        // 30s total stays strictly inside `access_token()`'s 60s outer bound
-        // so the timeout error is deterministic. Builder only fails on TLS
-        // misconfiguration — fall back loudly to the default client.
         let token_client = reqwest::Client::builder()
             .timeout(TOKEN_HTTP_TIMEOUT)
             .connect_timeout(std::time::Duration::from_secs(10))
@@ -881,8 +872,6 @@ impl GmailAuth {
                 // Device-flow polls are flow-fatal in yup-oauth2 (a transport
                 // error aborts the whole authorization), so this path gets
                 // the full 60s per-request bound instead of the 30s used for
-                // refreshes — still hang-proof, but far less likely to
-                // abandon a device code over one slow poll.
                 let device_client =
                     DefaultHyperClientBuilder::default().with_timeout(TOKEN_REFRESH_TIMEOUT);
                 let mut builder = DeviceFlowAuthenticator::with_client(secret, device_client)
@@ -910,9 +899,6 @@ impl GmailAuth {
 
     pub async fn load_existing(&mut self) -> Result<(), AuthError> {
         let token_path = self.token_path()?;
-        // Either the keychain entry or the legacy on-disk cache must exist.
-        // The keychain check is fast enough (one OS call) that it's fine in
-        // the common case even when nothing is stored.
         let has_keychain_entry = has_keychain_token_cache(&self.keychain_service, &self.token_ref);
         if !has_keychain_entry && !token_path.exists() {
             return Err(AuthError::TokenExpired);

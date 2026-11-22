@@ -210,10 +210,6 @@ impl OutlookAuth {
                 ])
                 .send()
                 .await;
-            // Transient transport failures (incl. the request timeout added
-            // for hang-safety) must not abandon a device code the user is
-            // mid-way through approving — keep polling; the server tells us
-            // definitively when the code is dead (`expired_token`).
             let resp = match sent {
                 Ok(response) => match response.json::<TokenResponse>().await {
                     Ok(resp) => {
@@ -254,7 +250,6 @@ impl OutlookAuth {
                     });
                 }
                 Some("authorization_pending") => {
-                    // Normal — user hasn't completed auth yet, keep polling
                     continue;
                 }
                 Some("slow_down") => {
@@ -303,7 +298,6 @@ impl OutlookAuth {
         let access_token = resp
             .access_token
             .ok_or_else(|| OutlookError::OAuth2("no access_token in refresh response".into()))?;
-        // Use new refresh_token if provided, otherwise keep the existing one
         let refresh_token = resp
             .refresh_token
             .unwrap_or_else(|| tokens.refresh_token.clone());
@@ -361,7 +355,6 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let auth = OutlookAuth::new("client".into(), "work".into(), OutlookTenant::Work)
             .with_token_root(directory.path().to_path_buf());
-        // A directory at the destination lets the temporary file be written and then fails the rename.
         std::fs::create_dir(directory.path().join("work.json"))?;
 
         assert!(auth.save_tokens(&sample_tokens()).is_err());

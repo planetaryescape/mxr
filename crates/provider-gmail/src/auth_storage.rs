@@ -78,7 +78,6 @@ pub(crate) struct KeychainTokenStorage {
     /// Private disk fallback retained alongside the keychain so noninteractive
     /// keychain access failures cannot strand an otherwise valid token cache.
     fallback_path: PathBuf,
-    // Initial authorization and background refresh share the same live cache.
     cache: Arc<Mutex<Vec<StoredToken>>>,
 }
 
@@ -475,7 +474,6 @@ mod tests {
             token_ref: unique_ref("test-scope-order"),
             fallback_path: path,
             cache: Arc::new(Mutex::new(vec![StoredToken {
-                // Stored in the unsorted order the legacy migration produced.
                 scopes: vec![
                     "https://www.googleapis.com/auth/gmail.readonly".to_string(),
                     "https://www.googleapis.com/auth/gmail.modify".to_string(),

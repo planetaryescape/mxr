@@ -1,6 +1,4 @@
 fn main() {
-    // Read .env from workspace root to pick up GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET
-    // at compile time. These get baked into the binary via option_env!().
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let env_path = std::path::Path::new(&manifest_dir).join("../../.env");
         if let Ok(contents) = std::fs::read_to_string(env_path) {

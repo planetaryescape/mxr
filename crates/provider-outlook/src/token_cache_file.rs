@@ -160,9 +160,6 @@ mod tests {
         let directory = tempdir()?;
         let path = directory.path().join("tokens.json");
 
-        // Writer one is paused with its temporary file on disk while writer two
-        // runs to completion. A shared temporary name would make writer two
-        // either fail or clobber writer one's file.
         write_with_hook(&path, "first", |stage| {
             if let ReplaceStage::BeforeRename = stage {
                 assert_eq!(temporary_files(directory.path())?.len(), 1);

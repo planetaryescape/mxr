@@ -40,7 +40,6 @@ impl OutlookSmtpSendProvider {
 
         let creds = Credentials::new(self.username.clone(), token);
 
-        // Port 465 = implicit TLS, port 587 = STARTTLS.
         let builder = if self.port == 465 {
             AsyncSmtpTransport::<Tokio1Executor>::relay(&self.host).map_err(|e| e.to_string())?
         } else {

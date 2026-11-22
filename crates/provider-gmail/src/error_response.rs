@@ -131,7 +131,6 @@ fn split_retry_time(message: Option<&str>, now: DateTime<Utc>) -> (Option<String
     let Some(message) = message else {
         return (None, None);
     };
-    // to_ascii_lowercase keeps byte offsets, so `at` is valid in `message`.
     let Some(at) = message.to_ascii_lowercase().find("retry after") else {
         return (Some(message.to_string()), None);
     };

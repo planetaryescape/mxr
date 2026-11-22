@@ -136,8 +136,6 @@ fn classify_send_error(error: GmailError) -> mxr_core::SendFailure {
             retry_after_secs: None,
             error: MxrError::Provider(error.to_string()),
         },
-        // Once HTTP dispatch may have begun, a timeout, 5xx or unreadable
-        // response is ambiguous. Never authorize a retry from its error text.
         other => mxr_core::SendFailure::Unknown(MxrError::from(other)),
     }
 }
@@ -226,10 +224,6 @@ impl GmailProvider {
             _ => LabelKind::User,
         };
 
-        // Gmail system label ids are stable strings (RFC-style). Map the
-        // well-known ones to MSP roles so clients get typed semantics
-        // without parsing names. Unknown system labels (e.g. CATEGORY_*)
-        // stay role-less.
         let role = match gl.id.as_str() {
             "INBOX" => Some(Role::Inbox),
             "SENT" => Some(Role::Sent),
@@ -363,13 +357,9 @@ impl GmailProvider {
     async fn verify_receiver(&self, id: &str, synced: &mut SyncedMessage) {
         use base64::Engine;
         use mxr_mail_parse::receiver_arc::{ReceiverPolicy, MAX_RAW_BYTES};
-        // Raw bytes are required; rebuilding MIME from Full invalidates signatures.
-        // Avoid fetching giant attachments solely to authenticate an alert.
         if synced.envelope.size_bytes > MAX_RAW_BYTES as u64 {
             return;
         }
-        // Every eligible source message needs evidence for independent history,
-        // not only messages the content classifier happens to call an alert.
         let Ok(message) = self.client.get_message(id, MessageFormat::Raw).await else {
             return;
         };
@@ -445,10 +435,6 @@ impl GmailProvider {
         let mut all_messages = Vec::new();
         let mut page_token: Option<String> = None;
         let mut latest_history_id: Option<u64> = None;
-        // Fetch first 200 messages for fast time-to-first-content.
-        // The daemon stores a GmailBackfill cursor with the page_token,
-        // and the sync loop continues fetching remaining pages in the
-        // background every 2s until all messages are synced.
         const MAX_INITIAL_MESSAGES: usize = 200;
 
         loop {
@@ -632,21 +618,18 @@ impl GmailProvider {
 
             let records = resp.history.unwrap_or_default();
             for record in records {
-                // Messages added
                 if let Some(added) = record.messages_added {
                     for a in added {
                         upserted_ids.insert(a.message.id);
                     }
                 }
 
-                // Messages deleted
                 if let Some(deleted) = record.messages_deleted {
                     for d in deleted {
                         deleted_ids.push(d.message.id);
                     }
                 }
 
-                // Label additions
                 if let Some(label_added) = record.labels_added {
                     for la in label_added {
                         label_changes.push(LabelChange {
@@ -657,7 +640,6 @@ impl GmailProvider {
                     }
                 }
 
-                // Label removals
                 if let Some(label_removed) = record.labels_removed {
                     for lr in label_removed {
                         label_changes.push(LabelChange {
@@ -675,7 +657,6 @@ impl GmailProvider {
             }
         }
 
-        // Fetch full messages for new/changed messages
         let ids_to_fetch: Vec<String> = upserted_ids.into_iter().collect();
         let mut synced = Vec::new();
 
@@ -818,13 +799,9 @@ impl MailSyncProvider for GmailProvider {
             mutate: MutateCaps {
                 labels: true,
                 batch_operations: true,
-                // Gmail has no native keyword surface; the daemon
-                // refuses Mutation::SetKeywords against Gmail accounts.
                 custom_keywords: false,
             },
             search: SearchCaps { server_side: true },
-            // Gmail Pub/Sub push is deferred product work; the shipped path is
-            // periodic polling plus `history.list` delta sync.
             push: PushCaps { streaming: false },
         }
     }
@@ -842,12 +819,10 @@ impl MailSyncProvider for GmailProvider {
     }
 
     async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
-        // Auth is managed by GmailAuth externally before constructing the provider
         Ok(())
     }
 
     async fn refresh_auth(&mut self) -> mxr_core::provider::Result<()> {
-        // Token refresh is handled automatically by yup-oauth2
         Ok(())
     }
 
@@ -1015,7 +990,6 @@ impl GmailProvider {
     /// retains a temporary lookup failure rather than dropping threading.
     async fn reply_thread_id(&self, draft: &Draft) -> Option<String> {
         let headers = draft.reply_headers.as_ref()?;
-        // `thread-id: ""` in hand-edited frontmatter reaches here as `Some("")`.
         if let Some(thread_id) = headers.thread_id.as_deref().filter(|id| !id.is_empty()) {
             return Some(thread_id.to_string());
         }
@@ -1053,8 +1027,6 @@ impl MailSendProvider for GmailProvider {
     }
 
     fn legacy_cooldown_retry_after_secs(&self, diagnostic: &str) -> Option<u64> {
-        // This prefix was authored exclusively by GmailClient's local held
-        // gate before authentication and HTTP dispatch, not by an API 429.
         if !diagnostic.starts_with(
             "provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until ",
         ) || !diagnostic.contains(" UTC; Gmail ")
@@ -1105,9 +1077,6 @@ impl MailSendProvider for GmailProvider {
                 error: MxrError::Provider(e.to_string()),
             })?;
         let encoded = send::encode_for_gmail(&rfc2822);
-        // A temporary parent lookup failure must not silently send a reply on
-        // the wrong conversation. Native thread ids already on the draft need
-        // no lookup and survive a deferred attempt unchanged.
         let thread_id = self.send_reply_thread_id(draft).await?;
 
         let result = self
@@ -2175,10 +2144,6 @@ END:VCALENDAR\r\n";
 
     #[tokio::test]
     async fn gmail_fetch_message_parses_calendar_from_ics_attachment() {
-        // The invite delivers its iCalendar payload only as a text/calendar
-        // attachment (no inline part), so the synchronous body parse cannot
-        // see it. fetch_message must backfill calendar metadata by fetching
-        // the attachment bytes.
         let provider = gmail_provider();
         let synced = provider
             .fetch_message("msg-cal-attach")
@@ -2216,9 +2181,6 @@ END:VCALENDAR\r\n";
 
     #[tokio::test]
     async fn gmail_delta_sync_surfaces_sync_cursor_expired_when_history_is_stale() {
-        // Adapters no longer self-recover from stale cursors; they surface
-        // SyncCursorExpired so the daemon's reset-to-Initial path runs
-        // uniformly across providers (MSP alignment, see docs/msp/spec.md §5).
         let provider = gmail_provider_with_stale_history(true);
         let err = provider
             .sync_messages(&GmailCursor::delta(27_672_073).encode())
@@ -2321,11 +2283,6 @@ END:VCALENDAR\r\n";
         }
     }
 
-    // -- Reply threading -----------------------------------------------------
-    //
-    // Gmail files drafts on a conversation only by `threadId`; the mock
-    // resolves `rfc822msgid:` lookups against the `Message-ID` headers of its
-    // fixture messages (`<msg-1@example.com>` lives on `thread-1`).
 
     fn reply_draft(in_reply_to: &str, thread_id: Option<&str>) -> Draft {
         Draft {

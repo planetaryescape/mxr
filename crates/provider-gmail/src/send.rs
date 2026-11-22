@@ -88,8 +88,6 @@ fn build_draft_rfc2822_with_attachments(
     inline_assets: &[LoadedInlineAsset],
 ) -> Result<Vec<u8>, GmailSendError> {
     let started_at = Instant::now();
-    // Both body kinds land here. An HTML draft passes its document through
-    // untouched; rendering markdown for it would have stored an empty draft.
     let (plain, html) = match &draft.content {
         DraftContent::Markdown { source } => {
             let rendered = render_markdown(source);

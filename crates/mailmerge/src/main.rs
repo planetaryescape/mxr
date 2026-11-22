@@ -954,5 +954,44 @@ mod tests {
             assert!(format!("{err:#}").contains("line break"), "{err:#}");
             assert!(campaign.stub.calls().is_empty());
         }
+
+        #[test]
+        fn a_send_dry_run_sends_nothing() {
+            let campaign = Campaign::new(Stub::new());
+            campaign.draft(&["--yes"]).unwrap();
+            campaign.send(&["--dry-run"]).unwrap();
+
+            assert!(campaign.stub.calls_to("send").is_empty());
+            assert_eq!(campaign.manifest().count(RecordStatus::Sent), 0);
+        }
+
+        #[test]
+        fn a_failed_send_is_recorded_and_not_counted_as_sent() {
+            let campaign = Campaign::new(Stub::send_fails("smtp said no"));
+            campaign.draft(&["--yes"]).unwrap();
+            campaign.send(&["--yes"]).unwrap();
+
+            let manifest = campaign.manifest();
+            assert_eq!(manifest.count(RecordStatus::Sent), 0);
+            assert_eq!(manifest.failed().len(), 2);
+            assert!(manifest
+                .failed()
+                .iter()
+                .all(|entry| entry.draft_id.is_some()));
+        }
+
+        #[test]
+        fn resuming_a_campaign_from_another_account_is_refused() {
+            let campaign = Campaign::new(Stub::new());
+            campaign.draft(&["--yes"]).unwrap();
+
+            let err = campaign
+                .draft_as("someone-else@example.com", &["--yes"])
+                .unwrap_err();
+            assert!(err.to_string().contains(ACCOUNT), "{err}");
+            assert!(err.to_string().contains("someone-else"), "{err}");
+            assert_eq!(campaign.manifest().account, ACCOUNT);
+            assert_eq!(campaign.stub.calls_to("compose").len(), 2);
+        }
     }
 }

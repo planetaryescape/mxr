@@ -229,4 +229,36 @@ allowed_accounts = ["personal"]
             },
         );
     }
+
+    #[test]
+    fn daemon_token_read_tightens_too_open_permissions() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let token_path = tmp.path().join("daemon-token");
+        std::fs::write(&token_path, "loose-token\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        temp_env::with_vars(
+            [
+                (
+                    "MXR_DAEMON_TOKEN_PATH",
+                    Some(token_path.as_os_str().to_owned()),
+                ),
+                ("MXR_DAEMON_TOKEN", None),
+            ],
+            || {
+                let token = resolve_daemon_token(false).unwrap().expect("some");
+                assert_eq!(token, "loose-token");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = std::fs::metadata(&token_path).unwrap().permissions().mode() & 0o777;
+                    assert_eq!(mode, 0o600, "a too-open token file is tightened on read");
+                }
+            },
+        );
+    }
 }

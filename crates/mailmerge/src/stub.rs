@@ -36,6 +36,10 @@ impl Stub {
         )
     }
 
+    pub fn send_fails(stderr: &str) -> Self {
+        Self::with(true, Reply::Draft, Reply::Fail(stderr.to_string()))
+    }
+
     pub fn with(version_ok: bool, compose: Reply, send: Reply) -> Self {
         let dir = tempfile::tempdir().expect("stub temp dir");
         std::fs::create_dir_all(dir.path().join("outcomes")).expect("outcome dir");

@@ -275,4 +275,24 @@ mod tests {
         .is_err());
         assert!(stub.calls_to("send").is_empty());
     }
+
+    #[test]
+    fn legacy_acceptance_recovers_without_preview_or_send() {
+        let (dir, stub, mut manifest) = fixture(false);
+        std::fs::write(stub.dir().join("outcomes/draft-1"), "accepted").unwrap();
+        assert_eq!(
+            dispatch_record(
+                &Mxr::new(Some(stub.binary())),
+                &mut manifest,
+                dir.path(),
+                "hash",
+                None,
+                true
+            )
+            .unwrap(),
+            RecordStatus::Sent
+        );
+        assert!(stub.calls_to("send").is_empty());
+        assert_eq!(stub.calls().len(), 1);
+    }
 }

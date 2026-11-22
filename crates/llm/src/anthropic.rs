@@ -752,4 +752,19 @@ mod tests {
             "bad key <redacted> here"
         );
     }
+
+    #[test]
+    fn error_descriptions_keep_type_and_a_short_message_only() {
+        let long = "x".repeat(1000);
+        let body =
+            json!({"type": "error", "error": {"type": "invalid_request_error", "message": long}})
+                .to_string();
+        let described = describe_error(&body);
+        assert!(described.starts_with("invalid_request_error: "));
+        assert!(described.len() < 300);
+        assert_eq!(
+            describe_error("<html>proxy page with a prompt</html>"),
+            "no error details"
+        );
+    }
 }

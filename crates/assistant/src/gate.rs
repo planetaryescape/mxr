@@ -306,4 +306,53 @@ mod tests {
             Gate::Approve { preview: None }
         ));
     }
+
+    #[test]
+    fn send_recovery_previews_run_but_resuming_always_requires_approval() {
+        let tool = "mxr_recover_send_outcome";
+        let arguments = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+        });
+        let preview = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+            "dry_run": true,
+        });
+        assert_eq!(classify(tool, &preview), Gate::Run);
+        assert!(!auto_approvable(tool, &preview));
+        for committing in [
+            arguments.clone(),
+            with(&arguments, "dry_run", json!(false)),
+            with(&arguments, "dry_run", Value::Null),
+            with(&arguments, "dry_run", json!("true")),
+            with(&arguments, "dry_run", json!(1)),
+            with(&arguments, "dry_run", json!([])),
+            with(&arguments, "dry_run", json!({})),
+        ] {
+            assert_eq!(
+                classify(tool, &committing),
+                Gate::Approve {
+                    preview: Some((tool.into(), preview.clone())),
+                }
+            );
+            assert!(!auto_approvable(tool, &committing));
+        }
+    }
+
+    #[test]
+    fn applying_a_preview_token_waits_without_a_fresh_preview() {
+        assert_eq!(
+            classify("mxr_sorting_rule", &json!({"name": "x"})),
+            Gate::Run
+        );
+        assert_eq!(
+            classify("mxr_sorting_rule", &json!({"preview_token": "tok"})),
+            Gate::Approve { preview: None }
+        );
+    }
 }

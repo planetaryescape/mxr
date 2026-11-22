@@ -367,4 +367,28 @@ mod tests {
         assert!(!safe.contains("opaque-token-xyz"), "{safe}");
         assert!(safe.contains("compose failed"), "{safe}");
     }
+
+    #[test]
+    fn redaction_covers_every_record_in_the_batch_not_just_one() {
+        let batch = [
+            record(&[("to", "a@example.com"), ("url", "https://x/?t=token-aaaa")]),
+            record(&[("to", "b@example.com"), ("url", "https://x/?t=token-bbbb")]),
+        ];
+        let safe = Redactor::for_batch(&batch)
+            .scrub("failed: refusing https://x/?t=token-aaaa and https://x/?t=token-bbbb");
+        assert!(!safe.contains("token-aaaa"), "leaked record A: {safe}");
+        assert!(!safe.contains("token-bbbb"), "leaked record B: {safe}");
+        assert!(safe.contains("refusing"), "{safe}");
+    }
+
+    #[test]
+    fn redaction_does_not_leave_the_tail_of_an_overlapping_value() {
+        let batch = [record(&[
+            ("short", "token-abc"),
+            ("long", "token-abc-and-the-secret-part"),
+        ])];
+        let safe =
+            Redactor::for_batch(&batch).scrub("failed on token-abc-and-the-secret-part here");
+        assert!(!safe.contains("secret-part"), "{safe}");
+    }
 }

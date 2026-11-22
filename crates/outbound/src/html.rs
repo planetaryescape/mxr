@@ -1242,6 +1242,78 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn tag_case_does_not_hide_a_forbidden_element() {
+        for markup in [
+            "<SCRIPT>alert(1)</SCRIPT>",
+            "<ScRiPt>alert(1)</ScRiPt>",
+            "<IFRAME src='https://evil.example'></IFRAME>",
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
+    fn foreign_object_is_refused_outright() {
+        for markup in [
+            "<svg><foreignObject><p>x</p></foreignObject></svg>",
+            "<svg><foreignobject><p>x</p></foreignobject></svg>",
+            "<svg><FOREIGNOBJECT></FOREIGNOBJECT></svg>",
+        ] {
+            let error = refusal(markup);
+            assert!(
+                error.issues.iter().any(|issue| issue.kind
+                    == HtmlIssueKind::ForbiddenElement {
+                        tag: "foreignobject".to_string()
+                    }),
+                "expected <foreignObject> to be refused, got {:?}",
+                error.issues
+            );
+        }
+    }
+
+    #[test]
+    fn a_data_image_url_whose_payload_is_markup_is_refused_whatever_it_claims_to_be() {
+        for markup in [
+            r#"<img src="data:image/png;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+c3RlYWwoKTwvc2NyaXB0Pjwvc3ZnPg==">"#,
+            r#"<img src="data:image/gif;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2Zy8+">"#,
+            r#"<img src="data:image/jpeg;base64,PCFET0NUWVBFIGh0bWw+PGh0bWw+PC9odG1sPg==">"#,
+            r#"<img src="data:image/webp;base64,PGh0bWw+PGJvZHk+eDwvYm9keT48L2h0bWw+">"#,
+            r#"<img src="data:image/png;base64,ICAgCiA8c3ZnLz4=">"#,
+            r#"<img src="data:image/png,%3Csvg%2F%3E">"#,
+            r#"<img src="data:image/png,%20%20%3Csvg%2F%3E">"#,
+            r#"<p style="background:url(data:image/png;base64,PHN2Zz4=)">x</p>"#,
+            r#"<style>.a{background:url(data:image/png;base64,PHN2Zz4=)}</style>"#,
+            r#"<!--[if mso]><img src="data:image/png;base64,PHN2Zz4="><![endif]-->"#,
+        ] {
+            refusal(markup);
+        }
+    }
+
+    #[test]
+    fn an_unsafe_url_below_an_orphan_table_element_is_caught() {
+        let error = refusal(r#"<td><a href="javascript:steal()">x</a></td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn an_unsafe_url_on_an_orphan_table_element_is_not_a_blind_spot() {
+        let error = refusal(r#"<td background="javascript:steal()">x</td>"#);
+        assert!(
+            error.issues.iter().any(|issue| matches!(
+                &issue.kind,
+                HtmlIssueKind::UnsafeUrlScheme { scheme, .. } if scheme == "javascript"
+            )),
+            "{error:?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1268,6 +1340,21 @@ mod budget_validation_tests {
             sixty_five_inert_attributes()
         );
         assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_link_with_an_entity_encoded_javascript_url_among_65_attributes_is_refused() {
+        let html = format!(
+            r#"<a{} href="jav&#x61;script:alert(1)">x</a>"#,
+            sixty_five_inert_attributes()
+        );
+        assert!(refused_as_too_complex(&html));
+    }
+
+    #[test]
+    fn a_script_in_an_over_budget_document_is_refused() {
+        let over = format!("{}<script>x()</script>", "<br>".repeat(200_000));
+        assert!(refused_as_too_complex(&over));
     }
 }
 

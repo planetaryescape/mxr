@@ -374,4 +374,31 @@ mod tests {
         let store = SecretStore::new(link);
         assert!(store.get("s", "a").is_err());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_failure_after_temp_creation_leaves_no_partial_temp() {
+        let dir = TempDir::new().unwrap();
+        let dest = dir.path().join("secrets.toml");
+        std::fs::create_dir(&dest).unwrap();
+
+        let error = write_secrets_atomic(&dest, b"[[secret]]\nservice=\"s\"\n").unwrap_err();
+        assert!(
+            !matches!(error.kind(), io::ErrorKind::NotFound),
+            "expected a rename failure, got: {error}"
+        );
+
+        let strays: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.starts_with(".secrets.") && name.ends_with(".tmp")
+            })
+            .collect();
+        assert!(
+            strays.is_empty(),
+            "guard must remove the temp after a failed rename: {strays:?}"
+        );
+    }
 }

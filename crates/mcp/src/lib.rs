@@ -2951,6 +2951,34 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    #[derive(Debug, Default)]
+    struct ThreadPreviewRequester {
+        requests: Mutex<Vec<Request>>,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for ThreadPreviewRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            self.requests.lock().expect("requests lock").push(request);
+            Ok(Response::Ok {
+                data: mxr_protocol::ResponseData::ThreadPreviews {
+                    previews: vec![mxr_protocol::ThreadPreviewData {
+                        thread_id: ThreadId::new(),
+                        subject: "Quarterly, \"final\"".into(),
+                        sender_name: None,
+                        sender_email: "dana@example.com".into(),
+                        latest_at: 1_760_000_000,
+                        message_count: 2,
+                        unread_count: 1,
+                        snippet: "Please confirm".into(),
+                        has_attachments: false,
+                        account_id: None,
+                    }],
+                },
+            })
+        }
+    }
+
     #[test]
     #[expect(
         clippy::unwrap_used,
@@ -3600,6 +3628,35 @@ mod tests {
                 if filter.kinds == vec![RecordKindData::Invoice, RecordKindData::Receipt]
                     && filter.year == Some(2025)
         ));
+    }
+
+    #[tokio::test]
+    async fn thread_previews_tool_sends_the_ids_and_returns_headline_facts_without_bodies() {
+        let requester = Arc::new(ThreadPreviewRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let first = ThreadId::new();
+        let second = ThreadId::new();
+
+        let McpJson(value) = server
+            .thread_previews(Parameters(ThreadPreviewsInput {
+                thread_ids: vec![first.to_string(), second.to_string()],
+            }))
+            .await
+            .expect("thread previews");
+
+        let requests = requester.requests.lock().expect("requests lock");
+        assert!(matches!(
+            &requests[0],
+            Request::GetThreadPreviews { thread_ids } if *thread_ids == vec![first.clone(), second.clone()]
+        ));
+        assert_eq!(value["kind"], "ThreadPreviews");
+        let preview = &value["previews"][0];
+        assert_eq!(preview["subject"], "Quarterly, \"final\"");
+        assert_eq!(preview["sender_email"], "dana@example.com");
+        assert_eq!(preview["latest_at"], 1_760_000_000);
+        assert_eq!(preview["unread_count"], 1);
+        assert!(preview.get("body").is_none());
+        assert!(preview.get("sender_name").is_none());
     }
 }
 

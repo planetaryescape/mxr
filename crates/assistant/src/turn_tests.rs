@@ -189,6 +189,23 @@ fn tool_result(history: &[ToolChatMessage], id: &str) -> (String, bool) {
 }
 
 #[tokio::test]
+async fn decisions_for_calls_that_are_not_waiting_are_refused() {
+    let model = ScriptedModel::new(vec![]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let result = agent(&model, &host, &sink)
+        .resume(
+            &mut history,
+            vec![],
+            HashMap::from([("ghost".into(), Decision::Approve)]),
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(host.calls().is_empty());
+}
+
+#[tokio::test]
 async fn reads_run_at_once_and_their_results_are_fenced() {
     let model = ScriptedModel::new(vec![
         calls(&[(

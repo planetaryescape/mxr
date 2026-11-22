@@ -4,12 +4,6 @@ use mailbox_formats::{MboxVariant, MboxWriter, RawMessage};
 
 use crate::ExportThread;
 
-/// Export thread as RFC 4155 mbox format (mboxrd variant).
-///
-/// Thin adapter over [`mailbox-formats`](https://crates.io/crates/mailbox-formats):
-/// convert each `ExportMessage` into a `RawMessage` and let
-/// `MboxWriter` handle From-line escaping, CRLF normalisation, and the
-/// `From ` envelope line.
 pub fn export_mbox(thread: &ExportThread) -> String {
     let mut buf: Vec<u8> = Vec::new();
     {
@@ -27,11 +21,8 @@ pub fn export_mbox(thread: &ExportThread) -> String {
 
 fn export_message_to_raw(msg: &crate::ExportMessage) -> RawMessage {
     let headers = if let Some(raw) = &msg.headers_raw {
-        // Parse the caller-provided raw header block (already in
-        // RFC 5322 shape) into our (name, value) pairs.
         parse_raw_headers(raw)
     } else {
-        // Reconstruct minimal headers.
         reconstruct_headers(msg)
     };
 
@@ -39,7 +30,6 @@ fn export_message_to_raw(msg: &crate::ExportMessage) -> RawMessage {
         .body_text
         .as_deref()
         .map(|s| {
-            // Normalise to LF; the writer canonicalises to CRLF.
             s.replace("\r\n", "\n").into_bytes()
         })
         .unwrap_or_default();
@@ -53,13 +43,11 @@ fn export_message_to_raw(msg: &crate::ExportMessage) -> RawMessage {
 
 fn parse_raw_headers(raw: &str) -> Vec<(String, Vec<u8>)> {
     let mut headers: Vec<(String, Vec<u8>)> = Vec::new();
-    // Normalise line endings to LF for splitting.
     let normalised = raw.replace("\r\n", "\n");
     for line in normalised.split('\n') {
         if line.is_empty() {
             continue;
         }
-        // Folded continuation.
         if line.starts_with(' ') || line.starts_with('\t') {
             if let Some((_, value)) = headers.last_mut() {
                 value.push(b' ');

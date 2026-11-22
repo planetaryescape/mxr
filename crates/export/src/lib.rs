@@ -12,7 +12,6 @@ use chrono::{DateTime, Utc};
 use mxr_core::types::ExportFormat;
 use mxr_reader::ReaderConfig;
 
-/// Input data for export. The caller (daemon/CLI) assembles this from store queries.
 #[derive(Debug, Clone)]
 pub struct ExportThread {
     pub thread_id: String,
@@ -41,7 +40,6 @@ pub struct ExportAttachment {
     pub local_path: Option<String>,
 }
 
-/// Export a thread in the given format. Returns the exported string.
 pub fn export(
     thread: &ExportThread,
     format: &ExportFormat,
@@ -60,7 +58,6 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    /// Fixed dates for deterministic test output.
     fn date_1() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 3, 17, 9, 30, 0).unwrap()
     }

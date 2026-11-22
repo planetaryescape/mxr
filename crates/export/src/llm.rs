@@ -2,8 +2,6 @@ use crate::ExportThread;
 use mxr_reader::{clean, ReaderConfig};
 use std::collections::HashSet;
 
-/// Export thread optimized for AI consumption.
-/// Uses the reader pipeline to strip noise, producing a token-efficient representation.
 pub fn export_llm_context(thread: &ExportThread, reader_config: &ReaderConfig) -> String {
     let mut out = String::new();
 
@@ -25,7 +23,6 @@ pub fn export_llm_context(thread: &ExportThread, reader_config: &ReaderConfig) -
         let date = msg.date.format("%b %d %H:%M");
         out.push_str(&format!("[{}, {}]\n", msg.from_email, date));
 
-        // Run reader pipeline for maximum noise reduction
         let reader_output = clean(
             msg.body_text.as_deref(),
             msg.body_html.as_deref(),
@@ -34,7 +31,6 @@ pub fn export_llm_context(thread: &ExportThread, reader_config: &ReaderConfig) -
         out.push_str(&reader_output.content);
         out.push('\n');
 
-        // Attachment metadata (no binary content)
         if !msg.attachments.is_empty() {
             let att_summary: Vec<String> = msg
                 .attachments
@@ -72,7 +68,6 @@ mod tests {
     fn llm_falls_back_to_html_when_no_text() {
         let mut thread = single_message_thread();
         thread.messages[0].body_text = None;
-        // body_html is still "<p>Is this working?</p>"
         let result = export_llm_context(&thread, &default_config());
         assert!(result.contains("Is this working?"));
     }

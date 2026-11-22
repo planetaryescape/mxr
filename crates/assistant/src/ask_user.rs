@@ -1,10 +1,3 @@
-//! `ask_user`: the assistant asks the user a structured question.
-//!
-//! Prose questions are fine for open conversation. This tool is for the
-//! moment a choice decides what happens next (which account, which of
-//! three matches, how wide a cleanup should go): the app shows the options
-//! as a card and the turn waits for the answer, which comes back as the
-//! tool result.
 
 use mxr_llm::ToolSpec;
 use serde::{Deserialize, Serialize};
@@ -17,14 +10,12 @@ const MAX_OPTIONS: usize = 6;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Question {
     pub question: String,
-    /// A short label for the card, at most a few words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header: Option<String>,
     #[serde(default)]
     pub options: Vec<QuestionOption>,
     #[serde(default)]
     pub multi_select: bool,
-    /// Whether the user may type an answer instead of picking an option.
     /// Always true when there are no options.
     #[serde(default = "default_true")]
     pub allow_other: bool,
@@ -39,10 +30,8 @@ pub struct QuestionOption {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Answer {
-    /// Labels of the chosen options, in the order the user chose them.
     #[serde(default)]
     pub selected: Vec<String>,
-    /// What the user typed instead of, or as well as, choosing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other: Option<String>,
 }
@@ -97,8 +86,6 @@ a change: calling the change itself already asks the user to approve it. The res
     }
 }
 
-/// Read the model's questions, or say what is wrong with them so it can
-/// ask again.
 pub fn parse_questions(arguments: &Value) -> Result<Vec<Question>, String> {
     let questions: Vec<Question> = serde_json::from_value(
         arguments
@@ -132,7 +119,6 @@ pub fn parse_questions(arguments: &Value) -> Result<Vec<Question>, String> {
     Ok(questions)
 }
 
-/// Check the user's answers against the questions asked.
 pub fn validate_answers(questions: &[Question], answers: &[Answer]) -> Result<(), String> {
     if answers.len() != questions.len() {
         return Err(format!(

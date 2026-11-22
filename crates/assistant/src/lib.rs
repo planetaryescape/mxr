@@ -6,9 +6,6 @@
         reason = "unit tests use panic and unwrap to keep fixture failures direct"
     )
 )]
-//! The in-app assistant: a chat agent that works on the user's mailbox
-//! through mxr's own tools.
-//!
 //! This crate holds the parts that decide behaviour: the agent loop
 //! ([`turn`]), the approval gate ([`gate`]), structured questions
 //! ([`ask_user`]) and what the model reads ([`prompt`]). It knows nothing

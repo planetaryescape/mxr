@@ -6,7 +6,6 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-/// Replies in order and records every request it was sent.
 struct ScriptedModel {
     replies: Mutex<VecDeque<Result<ToolChatResponse, LlmError>>>,
     requests: Mutex<Vec<ToolChatRequest>>,
@@ -101,7 +100,6 @@ impl ToolHost for RecordingHost {
             .lock()
             .unwrap()
             .push((name.to_string(), arguments.clone()));
-        // mxr's own guard: a change without its confirm flag doesn't run.
         if name == "mxr_mutate" && arguments.get("confirm").is_none() {
             return ToolOutput {
                 content: json!({"blocked": true, "reason": "confirm=true is required"}).to_string(),
@@ -217,7 +215,6 @@ async fn reads_run_at_once_and_their_results_are_fenced() {
     );
     let (content, _) = tool_result(&history, "c1");
     assert!(content.starts_with(mxr_llm::UNTRUSTED_MAIL_BEGIN));
-    // The tool list the model saw includes ask_user and requires a reason.
     let tools = &model.requests()[0].tools;
     assert!(tools.iter().any(|tool| tool.name == ASK_USER_TOOL));
     assert!(tools.iter().all(|tool| tool.input_schema["required"]
@@ -268,7 +265,6 @@ async fn a_change_waits_with_its_preview_and_approval_runs_the_stored_arguments(
     let TurnOutcome::AwaitingUser(pending) = outcome else {
         panic!("expected a wait, got {outcome:?}");
     };
-    // Only the preview ran, through the read tool that lists the messages.
     assert_eq!(
         host.calls(),
         vec![(
@@ -507,7 +503,6 @@ fn an_interrupted_call_is_closed_in_model_input_but_not_in_history() {
     assert_eq!(model_input(&history), input, "the repair is deterministic");
 }
 
-/// Answers every call with a fixed result per tool.
 struct CannedHost {
     tools: Vec<ToolSpec>,
     results: HashMap<&'static str, Value>,
@@ -680,14 +675,11 @@ async fn too_long_for_the_model_summarises_once_and_retries() {
         requests[1].tools.is_empty(),
         "the summary call can't use tools"
     );
-    // The retry reads the summary instead of the first exchange, and keeps
-    // the current request in full.
     let retry = serde_json::to_string(&requests[2].messages).unwrap();
     assert!(retry.contains("The user asked a first question."));
     assert!(!retry.contains("first question\""));
     assert!(retry.contains("second question"));
     assert_eq!(sink.summaries.lock().unwrap()[0].through, 2);
-    // History itself is untouched.
     assert_eq!(history.len(), 4);
 }
 
@@ -714,8 +706,6 @@ async fn an_approved_call_mxr_blocks_is_stored_as_a_failure_and_shows_as_running
     let sink = MemorySink::default();
     let mut history = Vec::new();
     let assistant = agent(&model, &host, &sink);
-    // An approved change whose arguments lack `confirm`: mxr's guard answers
-    // `blocked`, as it does for a got-it without its token.
     let pending = vec![PendingItem {
         call_id: "c1".into(),
         kind: PendingKind::Approval {
@@ -743,7 +733,6 @@ async fn an_approved_call_mxr_blocks_is_stored_as_a_failure_and_shows_as_running
     };
     assert!(*is_error, "a blocked approved call is an error");
     assert_eq!(call_state(content, *is_error), CallState::Failed);
-    // Stored before the fix, with the error flag off, it still reads as failed.
     assert_eq!(call_state(content, false), CallState::Failed);
     let progress = sink.progress.lock().unwrap().clone();
     assert!(
@@ -754,10 +743,6 @@ async fn an_approved_call_mxr_blocks_is_stored_as_a_failure_and_shows_as_running
     );
 }
 
-/// The same conversation continued by a different model, as when the user
-/// switches from a local model to a hosted one and back: each model gets the
-/// whole history, every result still follows its call, and each reply
-/// records which model wrote it and where that runs.
 #[tokio::test]
 async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_mark() {
     let host = RecordingHost::new();
@@ -801,8 +786,6 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
         .await;
     assert!(matches!(outcome, TurnOutcome::Finished));
 
-    // The hosted model saw the local model's whole turn, and the local model
-    // saw both, every call answered by the result with its id.
     let hosted_saw = &hosted.requests()[0].messages;
     assert!(hosted_saw
         .iter()
@@ -819,7 +802,6 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
         );
     }
 
-    // Each reply was stored with the model and place that wrote it.
     let replies: Vec<(Option<String>, Option<bool>)> = sink
         .appended
         .lock()
@@ -839,9 +821,6 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
     );
 }
 
-/// A traced tool call names the model's call id, so Langfuse can pair the
-/// result with its request. The call id is unique to this test because
-/// the tracer provider is global to the test binary.
 #[cfg(feature = "langfuse")]
 #[tokio::test]
 async fn a_tool_span_names_the_call_it_answers() {

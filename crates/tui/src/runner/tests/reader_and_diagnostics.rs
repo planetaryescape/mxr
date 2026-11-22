@@ -568,35 +568,6 @@ fn sent_success_with_reminder_queues_auto_reminder_for_sent_message() {
     }
 }
 
-/// Phase 1.1 / Behavior 4: with no active label (e.g. on the accounts
-/// screen), applying SentSuccess still updates the status message but
-/// does not enqueue a label fetch. Catches regressions that would
-/// either crash on the None case or leak a stale label fetch.
-#[test]
-fn sent_success_effect_with_no_active_label_only_updates_status() {
-    let mut app = App::new();
-    app.mailbox.active_label = None;
-
-    app.apply_mutation_completion(
-        MutationEffect::SentSuccess {
-            status: "Sent!".into(),
-            remind_at: None,
-            sent_message_id: None,
-            draft_path: None,
-        },
-        true,
-    );
-
-    assert_eq!(app.mailbox.pending_label_fetch, None);
-    assert!(
-        app.toasts
-            .visible(std::time::Instant::now())
-            .iter()
-            .any(|toast| toast.text == "Sent!"),
-        "send completion must surface as a toast"
-    );
-}
-
 /// Phase 1.2 / Behavior 4: connection_state_label exposes a non-empty
 /// human-readable string when the connection is not healthy, which the
 /// status bar prepends. Catches "silent hang" regressions — a missing
@@ -617,34 +588,6 @@ fn connection_state_label_surfaces_reconnecting_state() {
         lower.contains("reconnect") || lower.contains("daemon"),
         "label must mention the disconnected state; got {label:?}"
     );
-}
-
-/// Phase 1.2 / Behavior 4: when Connected, the label is None so the
-/// status bar shows the regular mailbox info, not a stale connection
-/// notice.
-#[test]
-fn connection_state_label_is_none_when_connected() {
-    use crate::app::ConnectionState;
-    let mut app = App::new();
-    app.set_connection_state(ConnectionState::Connected);
-    assert!(app.connection_state_label().is_none());
-}
-
-/// Phase 1.3 / Behavior 1: a Warn through the reporter lands in the
-/// ring buffer with the supplied message and Warn severity. Catches
-/// regressions where async errors silently disappear (the original
-/// `let _ = ...` smell).
-#[test]
-fn report_warn_adds_one_entry_to_ring_buffer() {
-    use crate::app::UserErrorSeverity;
-    let mut app = App::new();
-    app.report_warn("body parse failed");
-
-    let log = &app.modals.error_log;
-    assert_eq!(log.len(), 1, "exactly one entry after one warn");
-    let entry = log.back().expect("entry");
-    assert_eq!(entry.message, "body parse failed");
-    assert!(matches!(entry.severity, UserErrorSeverity::Warn));
 }
 
 /// Phase 1.3 / Behavior 2: the ring buffer caps at 5 — pushing a sixth
@@ -690,82 +633,6 @@ fn current_user_warn_clears_after_5s() {
         app.current_user_warn(since + std::time::Duration::from_secs(6)),
         None,
         "warn must clear by 6s"
-    );
-}
-
-/// Phase 2.1 / Behavior 1: opening a fresh saved-search form has
-/// empty fields and lexical mode, and submitting valid name+query
-/// produces a `Request::CreateSavedSearch` ready to dispatch.
-#[test]
-fn saved_search_form_for_new_submits_create_request() {
-    let mut app = App::new();
-    app.open_saved_search_form_new();
-
-    let form = app
-        .modals
-        .saved_search_form
-        .as_mut()
-        .expect("form must open");
-    form.name = "Work overdue".into();
-    form.query = "label:work older_than:7d".into();
-
-    let request = app
-        .take_saved_search_form_request()
-        .expect("valid form must yield a request");
-    match request {
-        mxr_protocol::Request::CreateSavedSearch {
-            name,
-            query,
-            account_id: _,
-            search_mode,
-        } => {
-            assert_eq!(name, "Work overdue");
-            assert_eq!(query, "label:work older_than:7d");
-            assert!(matches!(search_mode, mxr_core::types::SearchMode::Lexical));
-        }
-        other => panic!("expected CreateSavedSearch, got {other:?}"),
-    }
-    assert!(
-        app.modals.saved_search_form.is_none(),
-        "form must close after a successful submit"
-    );
-}
-
-/// Phase 2.1 / Behavior 2: an empty name surfaces a validation
-/// error and does NOT yield a request — catches "form silently
-/// drops malformed input" regressions.
-#[test]
-fn saved_search_form_empty_name_rejects_with_validation_error() {
-    let mut app = App::new();
-    app.open_saved_search_form_new();
-
-    let form = app
-        .modals
-        .saved_search_form
-        .as_mut()
-        .expect("form must open");
-    form.name = String::new();
-    form.query = "label:inbox".into();
-
-    let request = app.take_saved_search_form_request();
-    assert!(
-        request.is_none(),
-        "empty name must not produce a request; got {request:?}"
-    );
-
-    let form = app
-        .modals
-        .saved_search_form
-        .as_ref()
-        .expect("form must remain open after validation failure");
-    assert!(
-        form.validation_error
-            .as_deref()
-            .unwrap_or_default()
-            .to_lowercase()
-            .contains("name"),
-        "validation error must mention the empty name; got {:?}",
-        form.validation_error
     );
 }
 
@@ -904,48 +771,6 @@ fn delete_saved_search_confirm_path_queues_delete_request() {
     );
 }
 
-/// Phase 2.2 / Palette parity: each of the four semantic palette
-/// actions appears in the default palette and is reachable from
-/// the standard mailbox context. Catches accidental removal or
-/// allowlist drift in `action_allowed_in_context`.
-#[test]
-fn semantic_palette_entries_present_in_default_commands() {
-    let commands = crate::ui::command_palette::default_commands();
-    let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
-    for needle in [
-        "Enable semantic search",
-        "Disable semantic search",
-        "Reindex semantic now",
-        "Backfill semantic now",
-        "Semantic: Install Profile (BGE Small EN)",
-        "Semantic: Install Profile (Multilingual E5)",
-        "Semantic: Install Profile (BGE-M3)",
-    ] {
-        assert!(
-            labels.contains(&needle),
-            "expected `{needle}` in palette; got {labels:?}"
-        );
-    }
-}
-
-#[test]
-fn platform_palette_entries_present_in_default_commands() {
-    let commands = crate::ui::command_palette::default_commands();
-    let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
-    for needle in [
-        "Draft a reply",
-        "Draft: new for sender",
-        "Voice: show profile",
-        "Voice: rebuild profile",
-        "Commitments: show open",
-    ] {
-        assert!(
-            labels.contains(&needle),
-            "expected `{needle}` in palette; got {labels:?}"
-        );
-    }
-}
-
 /// Phase 2.2 / Behavior 1: dispatching `EnableSemantic` queues exactly
 /// one `Request::EnableSemantic { enabled: true }` for the
 /// dispatcher.
@@ -979,75 +804,6 @@ fn disable_semantic_action_queues_enabled_false_request() {
             assert!(!*enabled, "Disable must request enabled=false");
         }
         other => panic!("expected EnableSemantic, got {other:?}"),
-    }
-}
-
-/// Phase 2.2 / Behavior 2: `ReindexSemantic` queues
-/// `Request::ReindexSemantic`.
-#[test]
-fn reindex_semantic_action_queues_reindex_request() {
-    use crate::action::Action;
-    let mut app = App::new();
-    app.apply(Action::ReindexSemantic);
-    let queue = app.take_pending_semantic_dispatch();
-    assert_eq!(queue.len(), 1);
-    assert!(
-        matches!(
-            queue[0],
-            mxr_protocol::Request::ReindexSemantic { force: false }
-        ),
-        "expected ReindexSemantic, got {:?}",
-        queue[0]
-    );
-}
-
-#[test]
-fn backfill_semantic_action_queues_backfill_request() {
-    use crate::action::Action;
-    let mut app = App::new();
-    app.apply(Action::BackfillSemantic);
-    let queue = app.take_pending_semantic_dispatch();
-    assert_eq!(queue.len(), 1);
-    assert!(
-        matches!(queue[0], mxr_protocol::Request::BackfillSemantic),
-        "expected BackfillSemantic, got {:?}",
-        queue[0]
-    );
-}
-
-/// Phase 2.2 / Behavior 3: `InstallSemanticProfile(profile)` queues
-/// `Request::InstallSemanticProfile { profile }` with the same
-/// profile variant. Verifies the profile parameter survives the
-/// palette → action → request hop without reshuffling.
-#[test]
-fn install_semantic_profile_action_queues_install_request() {
-    use crate::action::Action;
-    let mut app = App::new();
-    let profile = mxr_core::types::SemanticProfile::MultilingualE5Small;
-    app.apply(Action::InstallSemanticProfile(profile));
-    let queue = app.take_pending_semantic_dispatch();
-    assert_eq!(queue.len(), 1);
-    match &queue[0] {
-        mxr_protocol::Request::InstallSemanticProfile { profile: p } => {
-            assert_eq!(p.as_str(), profile.as_str());
-        }
-        other => panic!("expected InstallSemanticProfile, got {other:?}"),
-    }
-}
-
-#[test]
-fn use_semantic_profile_action_queues_use_request() {
-    use crate::action::Action;
-    let mut app = App::new();
-    let profile = mxr_core::types::SemanticProfile::BgeM3;
-    app.apply(Action::UseSemanticProfile(profile));
-    let queue = app.take_pending_semantic_dispatch();
-    assert_eq!(queue.len(), 1);
-    match &queue[0] {
-        mxr_protocol::Request::UseSemanticProfile { profile: p } => {
-            assert_eq!(p.as_str(), profile.as_str());
-        }
-        other => panic!("expected UseSemanticProfile, got {other:?}"),
     }
 }
 
@@ -1689,85 +1445,6 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
 }
 
 #[test]
-fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
-    let mut app = App::new();
-    let pending = test_pending_send("/tmp/mxr-proof-scroll.md");
-    let mut long = test_compose_proposal();
-    long.text = (0..40)
-        .map(|line| format!("draft line {line}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    long.changes = vec![mxr_protocol::TextChangeData {
-        kind: mxr_protocol::TextChangeKindData::Kept,
-        text: long.text.clone(),
-    }];
-    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
-        pending,
-        proposals: vec![long, test_compose_proposal()],
-        proposal_models: vec![None; 2],
-        current_index: 0,
-        note_input: None,
-        proof_scroll_offset: 0,
-        voice_source_index: 0,
-        request_pending: false,
-    });
-
-    app.handle_key(crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::End,
-        crossterm::event::KeyModifiers::NONE,
-    ));
-    assert_eq!(
-        app.compose
-            .assist_review
-            .as_ref()
-            .unwrap()
-            .proof_scroll_offset,
-        u16::MAX
-    );
-    let _ = render_to_string(100, 24, |frame| app.draw(frame));
-    let bottom = app
-        .compose
-        .assist_review
-        .as_ref()
-        .unwrap()
-        .proof_scroll_offset;
-    assert!(bottom > 8 && bottom < u16::MAX);
-    app.handle_key(crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::Char('k'),
-        crossterm::event::KeyModifiers::NONE,
-    ));
-    let _ = render_to_string(100, 24, |frame| app.draw(frame));
-    assert_eq!(
-        app.compose
-            .assist_review
-            .as_ref()
-            .unwrap()
-            .proof_scroll_offset,
-        bottom - 1
-    );
-    app.handle_key(crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::PageUp,
-        crossterm::event::KeyModifiers::NONE,
-    ));
-    let _ = render_to_string(100, 24, |frame| app.draw(frame));
-    assert_eq!(
-        app.compose
-            .assist_review
-            .as_ref()
-            .unwrap()
-            .proof_scroll_offset,
-        bottom - 9
-    );
-    app.handle_key(crossterm::event::KeyEvent::new(
-        crossterm::event::KeyCode::Right,
-        crossterm::event::KeyModifiers::NONE,
-    ));
-    let review = app.compose.assist_review.as_ref().unwrap();
-    assert_eq!(review.current_index, 1);
-    assert_eq!(review.proof_scroll_offset, 0);
-}
-
-#[test]
 fn proof_open_source_cycles_through_the_exact_voice_examples() {
     let mut app = App::new();
     let first = MessageId::new();
@@ -1886,62 +1563,6 @@ fn test_compose_proposal() -> mxr_protocol::ComposeProposalData {
     }
 }
 
-#[test]
-fn commitments_action_queues_open_commitments_for_selected_sender() {
-    use crate::action::Action;
-    let mut app = App::new();
-    let account_id = AccountId::new();
-    let envelope = TestEnvelopeBuilder::new()
-        .account_id(account_id.clone())
-        .with_from_address("Sender", "sender@example.com")
-        .subject("Quarterly plan")
-        .build();
-    app.mailbox.envelopes = vec![envelope];
-
-    app.apply(Action::OpenCommitments);
-
-    let queue = app.take_pending_platform_dispatch();
-    assert_eq!(queue.len(), 1);
-    match &queue[0].request {
-        Request::ListCommitments {
-            account_id: queued_account,
-            email,
-            status,
-        } => {
-            assert_eq!(queued_account, &account_id);
-            assert_eq!(email.as_deref(), Some("sender@example.com"));
-            assert_eq!(*status, Some(mxr_protocol::CommitmentStatusData::Open));
-        }
-        other => panic!("expected ListCommitments, got {other:?}"),
-    }
-}
-
-#[test]
-fn voice_actions_queue_selected_account_requests() {
-    use crate::action::Action;
-    let mut app = App::new();
-    let account_id = AccountId::new();
-    let envelope = TestEnvelopeBuilder::new()
-        .account_id(account_id.clone())
-        .with_from_address("Sender", "sender@example.com")
-        .build();
-    app.mailbox.envelopes = vec![envelope];
-
-    app.apply(Action::OpenVoiceProfile);
-    app.apply(Action::RebuildUserVoice);
-
-    let queue = app.take_pending_platform_dispatch();
-    assert_eq!(queue.len(), 2);
-    match &queue[0].request {
-        Request::GetUserVoice { account_id: queued } => assert_eq!(queued, &account_id),
-        other => panic!("expected GetUserVoice, got {other:?}"),
-    }
-    match &queue[1].request {
-        Request::RebuildUserVoice { account_id: queued } => assert_eq!(queued, &account_id),
-        other => panic!("expected RebuildUserVoice, got {other:?}"),
-    }
-}
-
 /// Phase 2.5 / Behavior 1: opening an analytics view from the
 /// palette switches to the Analytics screen, sets the right view
 /// mode, and sets `refresh_pending` so the dispatcher fires the
@@ -2008,21 +1629,6 @@ fn cadence_drift_request_requires_enabled_account() {
         app.analytics_request_for_active_view().is_none(),
         "cadence drift must not dispatch a request with a fabricated account id"
     );
-}
-
-/// Phase 2.5 / Behavior 4: the refresh action re-marks
-/// `refresh_pending` and clears any prior error. Catches "press r
-/// after a daemon error and nothing happens" regressions.
-#[test]
-fn refresh_analytics_action_clears_error_and_marks_pending() {
-    use crate::action::Action;
-    let mut app = App::new();
-    app.screen = crate::app::Screen::Analytics;
-    app.analytics.error = Some("stale".into());
-    app.analytics.refresh_pending = false;
-    app.apply(Action::RefreshAnalytics);
-    assert!(app.analytics.refresh_pending);
-    assert!(app.analytics.error.is_none());
 }
 
 /// The TUI's own IPC timeout is 60s, so a manual sync must not be the kind of

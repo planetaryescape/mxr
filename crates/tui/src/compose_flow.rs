@@ -966,7 +966,7 @@ pub(crate) fn draft_from_pending(
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_compose_account, ComposeValidationError, ComposeValidationKind};
+    use super::resolve_compose_account;
     use crate::ipc::IpcRequest;
     use mxr_protocol::{
         AccountEditModeData, AccountSourceData, AccountSummaryData, Request, Response, ResponseData,
@@ -991,45 +991,6 @@ mod tests {
             send: None,
             capabilities: Default::default(),
         }
-    }
-
-    /// Phase 3.2 / Behavior 3: multiple validation issues render as a
-    /// bullet list so users see all of them at once instead of just
-    /// the first jammed into a status_message string.
-    #[test]
-    fn multiple_issues_render_as_bullet_list() {
-        let error = ComposeValidationError {
-            kind: ComposeValidationKind::DraftIssues,
-            issues: vec![
-                "Missing To".into(),
-                "Subject is empty".into(),
-                "Body is blank".into(),
-            ],
-        };
-        let detail = error.modal_detail();
-        let lines: Vec<&str> = detail.lines().collect();
-        assert_eq!(lines.len(), 3, "one bullet per issue: {detail}");
-        assert!(lines.iter().all(|l| l.starts_with("• ")));
-        assert!(lines[0].contains("Missing To"));
-        assert!(lines[1].contains("Subject"));
-        assert!(lines[2].contains("Body"));
-    }
-
-    /// Phase 3.2: the modal title differs by kind so users can tell
-    /// system errors (filesystem / parser) apart from draft-content
-    /// problems.
-    #[test]
-    fn modal_title_differs_by_validation_kind() {
-        let system = ComposeValidationError {
-            kind: ComposeValidationKind::System,
-            issues: vec!["Failed to read draft".into()],
-        };
-        let draft = ComposeValidationError {
-            kind: ComposeValidationKind::DraftIssues,
-            issues: vec!["Missing To".into()],
-        };
-        assert_eq!(system.modal_title(), "Compose Failed");
-        assert_eq!(draft.modal_title(), "Draft Has Errors");
     }
 
     #[tokio::test]

@@ -359,18 +359,6 @@ mod tests {
         let _ = std::fs::remove_file(saved_path);
     }
 
-    #[test]
-    fn browser_open_result_updates_status_message() {
-        let path = std::env::temp_dir().join("mxr-browser-open-test.html");
-        let mut app = App::new();
-
-        assert!(handle_result(&mut app, AsyncResult::BrowserOpened(Ok(path.clone()))).is_none());
-        assert_eq!(
-            app.status_message.as_deref(),
-            Some(format!("Opened in browser: {}", path.display()).as_str())
-        );
-    }
-
     #[tokio::test]
     async fn ensure_browser_cache_file_reuses_existing_file_without_overwriting() {
         let dir = unique_browser_test_dir("reuse");

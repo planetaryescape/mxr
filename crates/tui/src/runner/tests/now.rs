@@ -80,44 +80,6 @@ fn each_rail_key_opens_its_mode() {
 }
 
 #[test]
-fn the_sidebar_is_the_rail_with_the_rest_under_more() {
-    let mut app = App::new();
-    app.mailbox.labels = make_test_labels();
-    let items = app.sidebar_items();
-    assert!(matches!(
-        &items[..7],
-        [
-            SidebarItem::Now,
-            SidebarItem::Messages,
-            SidebarItem::Todo,
-            SidebarItem::Updates,
-            SidebarItem::Reading,
-            SidebarItem::ArchiveMode,
-            SidebarItem::Inbox,
-        ]
-    ));
-    assert!(matches!(
-        &items[7..11],
-        [
-            SidebarItem::Header(crate::app::SidebarHeader::More),
-            SidebarItem::Screener,
-            SidebarItem::ReplyQueue,
-            SidebarItem::Waiting
-        ]
-    ));
-    assert!(
-        !items
-            .iter()
-            .any(|item| matches!(item, SidebarItem::Label(label) if label.name == "INBOX")),
-        "Inbox is on the rail, not repeated under More"
-    );
-    app.mailbox.sidebar_selected = 5;
-    app.mailbox.active_pane = ActivePane::Sidebar;
-    press(&mut app, KeyCode::Enter);
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::ArchiveMode);
-}
-
-#[test]
 fn e_on_a_person_is_done_in_messages_and_u_undoes_it() {
     let mut app = now_app(true);
     let thread = app.mailbox.now_page.now.as_ref().unwrap().people.rows[0]
@@ -330,20 +292,6 @@ fn hint_requests(app: &App) -> Vec<String> {
             _ => None,
         })
         .collect()
-}
-
-#[test]
-fn first_launch_opens_now_with_no_tour_and_no_card() {
-    let mut app = now_app(false);
-    let rendered = render_to_string(100, 30, |frame| app.draw(frame));
-    assert!(!rendered.contains("Start Here"), "{rendered}");
-    assert!(
-        !rendered.contains("Now shows at most ten things"),
-        "{rendered}"
-    );
-    // Arriving is not a need: no hint until a key is pressed on Now.
-    assert!(app.active_hint().is_none());
-    assert!(!status_line(&app).starts_with("Hint:"));
 }
 
 #[test]

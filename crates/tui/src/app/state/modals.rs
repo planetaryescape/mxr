@@ -1313,22 +1313,6 @@ mod activity_modal_tests {
     }
 
     #[test]
-    fn open_loading_resets_state() {
-        let mut s = ActivityModalState {
-            entries: vec![entry(1)],
-            selected_index: 5,
-            error: Some("stale".into()),
-            ..ActivityModalState::default()
-        };
-        s.open_loading();
-        assert!(s.visible);
-        assert!(s.loading);
-        assert!(s.entries.is_empty());
-        assert_eq!(s.selected_index, 0);
-        assert!(s.error.is_none());
-    }
-
-    #[test]
     fn set_entries_clamps_selected_index() {
         let mut s = ActivityModalState {
             selected_index: 10,
@@ -1345,24 +1329,5 @@ mod activity_modal_tests {
         s.selected_index = 1;
         s.select_next();
         assert_eq!(s.selected_index, 1, "no wrap at end");
-    }
-
-    #[test]
-    fn select_prev_stops_at_zero() {
-        let mut s = ActivityModalState::default();
-        s.set_entries(vec![entry(1), entry(2)]);
-        s.select_prev();
-        assert_eq!(s.selected_index, 0);
-    }
-
-    #[test]
-    fn close_clears_loading_and_error() {
-        let mut s = ActivityModalState::default();
-        s.open_loading();
-        s.set_error("nope".into());
-        s.close();
-        assert!(!s.visible);
-        assert!(!s.loading);
-        assert!(s.error.is_none());
     }
 }

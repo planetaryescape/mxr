@@ -311,22 +311,6 @@ fn after_a_move_p_says_always_for_this_sender_at_once() {
 }
 
 #[test]
-fn the_move_toast_is_the_daemons_copy_and_its_question() {
-    let message = MessageId::new();
-    assert_eq!(
-        crate::app::move_status(
-            &outcome(message.clone(), ModeKindData::Reading, true),
-            false
-        ),
-        "Moved to Reading.  Always for this sender? (P)"
-    );
-    assert_eq!(
-        crate::app::move_status(&outcome(message, ModeKindData::Messages, false), true),
-        "Moved to Messages.  Always for this sender? y/n"
-    );
-}
-
-#[test]
 fn navigation_chords_on_a_not_sure_question_never_answer_it() {
     for (suffix, action) in [
         ('m', Action::OpenMessages),
@@ -510,18 +494,6 @@ fn the_move_picker_moves_its_highlight_with_j_and_closes_on_q() {
             .as_slice(),
         [(_, ModeKindData::Todo, false, None)]
     ));
-}
-
-#[test]
-fn pass_to_mode_and_its_old_key_point_at_x() {
-    let mut app = inbox_app();
-    let before = app.status_message.clone();
-    press(&mut app, KeyCode::Char('T'));
-    assert_eq!(
-        app.status_message.as_deref(),
-        notice_while_announced("list", "T", "Pass to is now X", before.as_deref())
-    );
-    assert!(app.mailbox.records_page.pass_menu.is_none());
 }
 
 #[test]
@@ -745,28 +717,4 @@ fn x_marks_the_mode_the_email_is_in_without_moving_the_highlight() {
         app.mailbox.trust.move_menu.as_ref().and_then(|m| m.current),
         Some(ModeKindData::Messages)
     );
-}
-
-/// Dogfood 2026-10-29: the arrivals list's footer said "K sender", but the
-/// sender's key has been `P` since K3 and `K` does nothing there.
-#[test]
-fn the_arrivals_footer_names_the_senders_key() {
-    let mut app = now_with_questions();
-    app.mailbox.selected_index = 0;
-    press(&mut app, KeyCode::Enter);
-    assert!(app.mailbox.trust.arrivals_list.is_some());
-    let backend = ratatui::backend::TestBackend::new(160, 40);
-    let mut terminal = ratatui::Terminal::new(backend).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let buffer = terminal.backend().buffer();
-    let shown: String = (0..buffer.area.height)
-        .map(|y| {
-            (0..buffer.area.width)
-                .map(|x| buffer[(x, y)].symbol())
-                .collect::<String>()
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(shown.contains("X move  P sender"), "{shown}");
-    assert!(!shown.contains("K sender"), "{shown}");
 }

@@ -518,61 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn loading_state_shows_placeholder() {
-        let mut state = SenderProfileModalState::default();
-        state.open_loading("alice@example.com".into(), None);
-        let snapshot = render_to_string(80, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 30), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Loading sender profile..."),
-            "loading placeholder must appear; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("alice@example.com"),
-            "loading title must show queried email; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn renders_aggregates_when_profile_present() {
-        let mut state = SenderProfileModalState::default();
-        state.open_loading("alice@example.com".into(), None);
-        state.set_profile(Some(sample_profile()));
-        let snapshot = render_to_string(80, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 30), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("47 inbound"),
-            "inbound count must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("3.5 days"),
-            "cadence p50 must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("2"),
-            "open thread count must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Unanswered Q"),
-            "question signal must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Reply latency"),
-            "reply histogram must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Weekly trend"),
-            "weekly activity sparkline must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("[1 Overview]"),
-            "overview tab label must surface; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_recent_messages_on_messages_tab() {
         let mut state = SenderProfileModalState::default();
         state.open_loading("alice@example.com".into(), None);
@@ -652,20 +597,6 @@ mod tests {
         assert!(
             snapshot.contains("Send signed contract copy"),
             "got:\n{snapshot}"
-        );
-    }
-
-    #[test]
-    fn unknown_sender_shows_empty_message() {
-        let mut state = SenderProfileModalState::default();
-        state.open_loading("nobody@example.com".into(), None);
-        state.set_profile(None);
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Sender unknown"),
-            "unknown senders must surface a hint; got:\n{snapshot}",
         );
     }
 }

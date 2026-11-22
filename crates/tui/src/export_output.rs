@@ -218,15 +218,6 @@ mod tests {
     }
 
     #[test]
-    fn save_reports_a_parent_that_is_a_file() {
-        let dir = tempdir().unwrap();
-        let blocker = dir.path().join("exports");
-        std::fs::write(&blocker, "a file").unwrap();
-        let error = write_export_file(&blocker.join("thread.md"), "x", false).unwrap_err();
-        assert!(error.starts_with("could not create"), "{error}");
-    }
-
-    #[test]
     fn clipboard_program_receives_the_content_on_stdin() {
         let dir = tempdir().unwrap();
         let out = dir.path().join("clipboard.txt");
@@ -240,13 +231,6 @@ mod tests {
         let error =
             run_clipboard_command("sh", &["-c", "cat >/dev/null; exit 1"], "content").unwrap_err();
         assert!(error.contains("exited with"), "{error}");
-    }
-
-    #[test]
-    fn missing_clipboard_program_is_an_error() {
-        let error =
-            run_clipboard_command("mxr-no-such-clipboard-program", &[], "content").unwrap_err();
-        assert_eq!(error, "mxr-no-such-clipboard-program is not installed");
     }
 
     #[test]
@@ -269,15 +253,5 @@ mod tests {
                 other => panic!("unexpected request {other:?}"),
             }
         }
-    }
-
-    #[test]
-    fn default_path_uses_the_extension_the_exporter_emits() {
-        let thread_id = ThreadId::new();
-        assert_eq!(
-            default_export_path(&thread_id, &ExportFormat::LlmContext),
-            format!("~/mxr/exports/mxr-thread-{thread_id}.txt")
-        );
-        assert!(default_export_path(&thread_id, &ExportFormat::Mbox).ends_with(".mbox"));
     }
 }

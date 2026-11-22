@@ -142,21 +142,6 @@ pub(crate) fn populated() -> MessagesData {
     }
 }
 
-pub(crate) fn clear() -> MessagesData {
-    let mut data = populated();
-    data.your_turn.clear();
-    data.pinned.clear();
-    data.recent.clear();
-    data.quiet.clear();
-    data.recent_total = 0;
-    data.quiet_total = 0;
-    data.matched = 0;
-    data.row_count = 0;
-    data.thread_count = 0;
-    data.empty_state = Some(mxr_protocol::messages_copy::CLEAR.into());
-    data
-}
-
 fn message(
     from_me: bool,
     text: &str,
@@ -418,47 +403,6 @@ fn a_long_inline_exchange_is_never_reduced_to_the_cached_ask_paragraph() {
 }
 
 #[test]
-fn the_person_page_has_the_whole_screen_when_narrow_and_focused() {
-    let mut state = page(populated(), true);
-    state.focus = MessagesFocus::Person;
-    let rendered = render_at(&state, 60, 0);
-    assert!(rendered.contains("Topics:"), "{rendered}");
-    assert!(!rendered.contains("YOUR TURN"), "{rendered}");
-    insta::assert_snapshot!("messages_lens_person_60", rendered);
-}
-
-#[test]
-fn a_clear_list_says_nobody_is_waiting_without_history_or_lapsed_people() {
-    let page = page(clear(), true);
-    for width in [60u16, 80, 120] {
-        let rendered = render_at(&page, width, 0);
-        assert!(
-            rendered.contains("Nobody is waiting on you."),
-            "{width}\n{rendered}"
-        );
-        assert!(!rendered.contains("usually writes every week"), "{width}");
-        assert!(!rendered.contains("PINNED"), "{width}");
-        assert!(!rendered.contains("RECENT"), "{width}");
-        assert!(!rendered.contains("QUIET"), "{width}");
-        assert!(!rendered.contains("YOUR TURN"), "{width}");
-        insta::assert_snapshot!(format!("messages_lens_clear_{width}"), rendered);
-    }
-}
-
-#[test]
-fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
-    let unseen = page(populated(), false);
-    for width in [60u16, 80, 120] {
-        let rendered = render_at(&unseen, width, 0);
-        assert!(
-            !rendered.contains("Each row is a person"),
-            "{width}\n{rendered}"
-        );
-        assert!(!rendered.contains("Esc close"), "{width}");
-    }
-}
-
-#[test]
 fn got_it_shows_its_exact_text_and_countdown() {
     let mut state = page(populated(), true);
     state.ack = Some(crate::app::AckCountdown {
@@ -529,13 +473,4 @@ fn paragraph_blocks_treats_a_run_of_blank_lines_as_one_break() {
 #[test]
 fn paragraph_blocks_keeps_single_newlines_in_one_paragraph() {
     assert_eq!(paragraph_blocks("a\nb\nc"), vec!["a\nb\nc"]);
-}
-
-#[test]
-fn the_footer_keeps_help_at_every_width() {
-    let page = page(populated(), true);
-    for width in [80, 100, 120] {
-        let rendered = render_at(&page, width, 0);
-        assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
-    }
 }

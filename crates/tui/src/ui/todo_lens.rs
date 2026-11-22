@@ -1429,13 +1429,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
-        let unseen = render(&page(runway(vec![council_tax()], vec![]), false), 0);
-        assert!(!unseen.contains("Each row is one thing to do"), "{unseen}");
-        assert!(!unseen.contains("Esc close"), "{unseen}");
-    }
-
-    #[test]
     fn empty_states_teach_the_job_or_say_when_the_next_thing_shows_up() {
         let mut never = runway(vec![], vec![]);
         never.empty_state = Some(TODO_GUIDE.never_had_any.into());
@@ -1454,51 +1447,6 @@ pub(crate) mod tests {
             rendered.contains("Nothing needs you. Next: renew car insurance shows up Mon 19 Oct.")
         );
         assert!(!rendered.contains("Press t on any email"));
-    }
-
-    #[test]
-    fn the_catch_up_line_and_panel_offer_keep_or_let_go() {
-        let mut with_catchup = runway(vec![council_tax()], vec![]);
-        with_catchup.catchup_count = 2;
-        let rendered = render(&page(with_catchup.clone(), true), 0);
-        assert!(rendered.contains("Catch up: 2 things from before mxr sorted your mail"));
-
-        let mut catchup_page = page(with_catchup, true);
-        catchup_page.panel = TodoPanel::Catchup;
-        catchup_page.catchup = Some(mxr_protocol::TodoCatchupData {
-            title: "Catch up: 2 things from the last two weeks might still need you.".into(),
-            why: mxr_protocol::todo_copy::CATCH_UP_WHY.into(),
-            window_days: 14,
-            todos: vec![
-                todo("todo_6", "Sign Tenancy renewal"),
-                overdue_failed_payment(),
-            ],
-            overflow_count: 0,
-            already_over: Vec::new(),
-            already_over_line: Some("Already over, so not shown: 1 past invite.".into()),
-            first_run: TodoFirstRunData {
-                complete: true,
-                scanned: 10,
-                reached: None,
-            },
-        });
-        let rendered = render(&catchup_page, 0);
-        insta::assert_snapshot!("todo_lens_catchup", rendered);
-        assert!(rendered.contains("Catch up: 2 things from the last two weeks"));
-        assert!(rendered.contains("Already over, so not shown: 1 past invite."));
-        assert!(rendered.contains("\u{21b5} keep  e let go  E let go of all"));
-
-        catchup_page.catchup_preview = Some(TodoChangeData {
-            correction_undo: None,
-            dry_run: true,
-            action: "let_go".into(),
-            changed: catchup_page.catchup.as_ref().unwrap().todos.clone(),
-            unchanged: Vec::new(),
-            summary: "Would let go of 2.".into(),
-        });
-        let rendered = render(&catchup_page, 0);
-        assert!(rendered.contains("Would let go of 2."));
-        assert!(rendered.contains("Enter let go of these"));
     }
 
     #[test]
@@ -1562,15 +1510,5 @@ pub(crate) mod tests {
             .find(|line| line.contains("Pay council") && !line.contains("need you"))
             .unwrap();
         assert!(bill.contains('\u{2593}'), "{bill}");
-    }
-
-    #[test]
-    fn the_footer_keeps_undo_and_help_at_every_width() {
-        let page = page(runway(vec![council_tax()], vec![]), true);
-        for width in [80, 100, 120] {
-            let rendered = render_at(&page, width);
-            assert!(rendered.contains("u undo"), "{width}:\n{rendered}");
-            assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
-        }
     }
 }

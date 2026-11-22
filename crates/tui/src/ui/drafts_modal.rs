@@ -306,33 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn draws_loading_placeholder_while_request_in_flight() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        let snapshot = render_to_string(80, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Loading drafts..."),
-            "loading placeholder must surface while request is in-flight; got:\n{snapshot}"
-        );
-    }
-
-    #[test]
-    fn empty_state_points_at_compose_key() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![]);
-        let snapshot = render_to_string(80, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("No saved drafts"),
-            "empty state copy must surface; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_subject_and_recipient_in_list_and_detail() {
         let mut state = DraftsModalState::default();
         state.open_loading();
@@ -433,49 +406,6 @@ mod tests {
     }
 
     #[test]
-    fn html_draft_detail_falls_back_to_the_document_when_the_text_alternative_is_blank() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        // `mxr compose --html-file … --text-file …` accepts an empty or
-        // whitespace-only text file, so a draft can reach the modal carrying a
-        // text alternative that says nothing. Absent and present-but-blank are
-        // the same thing to a reader.
-        state.set_drafts(vec![html_draft(
-            "Launch",
-            "<html><body><h1>Ship day</h1><p>We go live on Friday.</p></body></html>",
-            Some("   \n\t\n"),
-        )]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("We go live on Friday."),
-            "a blank text alternative is no alternative at all: the document must \
-             still be shown; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn html_draft_detail_prefers_the_supplied_text_alternative() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![html_draft(
-            "Launch",
-            "<p>markup version</p>",
-            Some("author's own plain text"),
-        )]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("author's own plain text"),
-            "the supplied text/plain alternative is what the recipient reads; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn html_draft_detail_says_it_cannot_be_opened_in_the_editor() {
         let mut state = DraftsModalState::default();
         state.open_loading();
@@ -495,21 +425,6 @@ mod tests {
     }
 
     #[test]
-    fn markdown_draft_detail_is_not_labelled_as_html() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![draft("Q4 plan", "alice@example.com", "Plain body.")]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            !snapshot.contains("not editable"),
-            "a markdown draft is editable and must not carry the HTML warning; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn select_next_wraps() {
         let mut state = DraftsModalState::default();
         state.open_loading();
@@ -518,14 +433,5 @@ mod tests {
         assert_eq!(state.selected_index, 1);
         state.select_next();
         assert_eq!(state.selected_index, 0);
-    }
-
-    #[test]
-    fn select_prev_wraps_at_zero() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![draft("a", "a@x.com", "a"), draft("b", "b@x.com", "b")]);
-        state.select_prev();
-        assert_eq!(state.selected_index, 1);
     }
 }

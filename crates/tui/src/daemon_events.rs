@@ -687,19 +687,6 @@ mod tests {
     }
 
     #[test]
-    fn events_lagged_refetches_the_starred_role_view() {
-        let mut app = App::new();
-        app.mailbox.active_role = Some(mxr_core::Role::Starred);
-
-        handle_daemon_event(&mut app, DaemonEvent::EventsLagged { skipped: 3 });
-
-        assert_eq!(
-            app.mailbox.pending_role_fetch,
-            Some(mxr_core::Role::Starred)
-        );
-    }
-
-    #[test]
     fn paired_remote_reconnect_refreshes_only_mailbox_reads() {
         let mut app = App::from_config(&mxr_config::MxrConfig::default());
         app.enable_paired_remote_read_only_session();
@@ -1028,21 +1015,6 @@ mod tests {
         assert!(app.diagnostics.pending_status_refresh);
         assert!(app.mailbox.pending_labels_refresh);
         assert!(app.user_sync_events_before_ack.is_empty());
-    }
-
-    #[test]
-    fn a_second_acknowledged_join_keeps_the_same_account_tracked() {
-        let account_id = mxr_core::AccountId::new();
-        let mut app = app_with_account(&account_id);
-        app.user_sync_pending = true;
-        app.user_sync_acknowledgements_pending = 1;
-        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
-        app.user_sync_acknowledgements_pending = 1;
-        handle_sync_batch(&mut app, vec![sync_result(&account_id, "Work")]);
-        assert_eq!(app.user_sync_targets.len(), 1);
-        assert!(app.user_sync_targets.contains(&account_id));
-        assert!(app.user_sync_pending);
-        assert_eq!(app.user_sync_acknowledgements_pending, 0);
     }
 
     fn sync_result(

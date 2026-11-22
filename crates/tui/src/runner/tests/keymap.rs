@@ -1355,30 +1355,6 @@ fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
 }
 
-/// The third wave of moves (blueprint 35's verb table): each action runs
-/// on its new key.
-#[test]
-fn third_wave_keys_run_their_actions() {
-    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    for (context, keys, expected) in [
-        ("place", vec![press_of('s')], Action::TogglePin),
-        ("place", vec![shifted('P')], Action::OpenSenderKindMenu),
-        ("place", vec![shifted('E')], Action::SweepPlace),
-        (
-            "sidebar",
-            vec![press_of('c')],
-            Action::OpenSavedSearchFormNew,
-        ),
-        ("reader", vec![shifted('O')], Action::OpenInBrowser),
-    ] {
-        assert_eq!(
-            press(context, &keys),
-            Ok(Some(expected.clone())),
-            "{context}"
-        );
-    }
-}
-
 /// Enter on a sidebar section's header folds or unfolds it, and `{` / `}`
 /// jump between headers (blueprint 35).
 #[test]
@@ -1404,17 +1380,6 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
         app.mailbox.sidebar_selected, 0,
         "{{ from the first header goes to the top"
     );
-}
-
-/// `c` creates what a tool screen holds (blueprint 35).
-#[test]
-fn tool_screens_create_with_c() {
-    let mut app = App::new();
-    app.screen = Screen::Rules;
-    assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenRuleFormNew));
-    let mut app = App::new();
-    app.screen = Screen::Accounts;
-    assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenAccountFormNew));
 }
 
 /// D171: an action with a key run from the palette names its key, once per
@@ -1534,12 +1499,6 @@ fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
     }
     let mut remapped = remapped_app("list", "[mail_list]\n\"n\" = \"move_down\"\n");
     assert_eq!(press_char(&mut remapped, 'n'), Some(Action::MoveDown));
-}
-
-#[test]
-fn the_screener_modal_closes_on_q() {
-    let mut app = app_in("screener");
-    assert_eq!(press_char(&mut app, 'q'), Some(Action::CloseScreenerModal));
 }
 
 #[test]

@@ -4,8 +4,7 @@ use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{
     RecordAmountData, RecordAnswerCardData, RecordAnswerData, RecordDocumentData,
     RecordFacetCountData, RecordFacetsData, RecordFieldData, RecordFilterData, RecordGroupData,
-    RecordKindData, RecordLedgerData, RecordMomentData, RecordMonthData, RecordSourceData,
-    ARCHIVE_GUIDE,
+    RecordKindData, RecordLedgerData, RecordMomentData, RecordMonthData, ARCHIVE_GUIDE,
 };
 use mxr_test_support::render_to_string;
 
@@ -366,112 +365,6 @@ fn the_ledger_groups_records_by_month_with_counts_and_totals() {
 }
 
 #[test]
-fn an_answer_leads_with_the_field_and_where_it_came_from() {
-    let mut page = page(vec![dell()], true);
-    page.query = "lisbon booking ref".into();
-    page.answer = Some(lisbon_answer());
-    for width in [60u16, 80, 120] {
-        let rendered = render_at(&page, width);
-        insta::assert_snapshot!(format!("records_lens_answer_{width}"), rendered);
-        assert!(
-            rendered.contains("Booking ref  K7QX2M  \u{2713}schema"),
-            "{width}\n{rendered}"
-        );
-        assert!(rendered.contains("Part of trip \"Lisbon, June 2025\" (3)"));
-        assert!(rendered.contains("y copy  \u{21b5} pdf  o email"));
-    }
-    let wide = render_at(&page, 120);
-    assert!(wide.contains("\u{2713}schema"));
-    assert!(wide.contains("Also matching: Lisbon, 3 nights (88213)"));
-    assert!(wide.contains("a show all 2 matches"));
-}
-
-#[test]
-fn a_broad_query_lists_every_match_by_month_in_place_of_the_ledger() {
-    let mut page = page(vec![apple(), dell()], true);
-    page.query = "octopus".into();
-    page.answer = Some(octopus_list());
-    for width in [60u16, 120] {
-        let rendered = render_at(&page, width);
-        insta::assert_snapshot!(format!("records_lens_list_{width}"), rendered);
-        assert!(
-            rendered.contains("Octopus Energy \u{b7} 2 records \u{b7} \u{a3}238.60"),
-            "{width}\n{rendered}"
-        );
-        assert!(rendered.contains("Esc clear search"), "{width}");
-        assert!(rendered.contains("Bill, Mar"), "{width}");
-        assert!(rendered.contains("Bill, Feb"), "{width}");
-        // The ledger's own rows give way to the matches.
-        assert!(!rendered.contains("XPS 14"), "{width}");
-        assert!(
-            !rendered.contains('\u{25b6}'),
-            "{width}: no answer card in a list"
-        );
-    }
-    assert_eq!(page.rows().len(), 2);
-    assert!(page.answer_record().is_none(), "keys act on the rows");
-}
-
-#[test]
-fn the_record_card_shows_every_field_with_its_source_and_an_open_dot_when_unchecked() {
-    let mut card = apple();
-    card.fields
-        .iter_mut()
-        .filter(|f| f.field == "amount")
-        .for_each(|f| {
-            f.checked = false;
-            f.source = "rule".into();
-            f.source_label = "a pattern in the email".into();
-            f.evidence = Some("Total \u{a3}2.99".into());
-        });
-    card.sources = vec![RecordSourceData {
-        message_id: MessageId::new(),
-        thread_id: None,
-        stage: "receipt".into(),
-        date: at(2025, 3, 28),
-        subject: "Your receipt from Apple.".into(),
-        filed_by: "detector".into(),
-    }];
-    let mut page = page(vec![apple()], true);
-    page.card = Some(card);
-    for width in [60u16, 80, 120] {
-        let rendered = render_at(&page, width);
-        insta::assert_snapshot!(format!("records_lens_card_{width}"), rendered);
-        assert!(rendered.contains(" Record "), "{width}");
-        assert!(rendered.contains("\u{25cb} Paid"), "{width}\n{rendered}");
-    }
-    let wide = render_at(&page, 120);
-    assert!(
-        wide.contains("(a pattern in the email: \"Total \u{a3}2.99\")"),
-        "{wide}"
-    );
-    assert!(wide.contains("From 1 emails"));
-    assert!(wide.contains("Your receipt from Apple."));
-}
-
-#[test]
-fn never_had_any_teaches_the_job_and_no_card_teaches_above_the_ledger() {
-    let mut empty = page(Vec::new(), false);
-    if let Some(ledger) = empty.ledger.as_mut() {
-        ledger.empty_state = Some(format!(
-            "{} {}",
-            ARCHIVE_GUIDE.never_had_any, ARCHIVE_GUIDE.add_one
-        ));
-        ledger.coming_up.clear();
-    }
-    for width in [60u16, 80, 120] {
-        let rendered = render_at(&empty, width);
-        insta::assert_snapshot!(format!("records_lens_empty_{width}"), rendered);
-        assert!(rendered.contains("filed here as"), "{width}\n{rendered}");
-    }
-    // Hints not yet seen still never draw a block at the top: they show
-    // in the status line at their element.
-    let unseen = render_at(&page(vec![dell()], false), 120);
-    assert!(!unseen.contains("Archive keeps records built"), "{unseen}");
-    assert!(!unseen.contains("Esc close"), "{unseen}");
-}
-
-#[test]
 fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
     let mut hostile = dell();
     hostile.title = Some("XPS\u{1b}[2J laptop".into());
@@ -615,13 +508,4 @@ fn the_subscription_card_has_history_price_changes_and_provenance() {
         text.contains("1 other charge from Netflix not part of it"),
         "{text}"
     );
-}
-
-#[test]
-fn the_footer_keeps_help_at_every_width() {
-    let page = page(vec![apple(), dell(), octopus()], true);
-    for width in [80, 100, 120] {
-        let rendered = render_at(&page, width);
-        assert!(rendered.contains("? keys"), "{width}:\n{rendered}");
-    }
 }

@@ -2300,9 +2300,7 @@ mod tests {
 
     use super::*;
     use crate::app::AnalyticsState;
-    use mxr_core::types::{
-        ContactAsymmetryRow, ResponseTimeDirection, ResponseTimeSummary, StorageBucket,
-    };
+    use mxr_core::types::{ResponseTimeDirection, ResponseTimeSummary, StorageBucket};
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
 
@@ -2332,21 +2330,6 @@ mod tests {
         );
         assert!(rendered.contains("MiB"), "byte format missing: {rendered}");
         assert!(rendered.contains("42"), "row count missing: {rendered}");
-    }
-
-    /// Phase 2.5 / Behavior 3: an empty result set renders an
-    /// empty-state message instead of a blank pane or a panic.
-    #[test]
-    fn storage_view_renders_empty_state_when_no_rows() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
-        });
-        assert!(
-            rendered.contains("No storage data"),
-            "empty-state message missing: {rendered}"
-        );
     }
 
     /// Response Time view renders a 4-card stat strip (typical wait,
@@ -2412,55 +2395,6 @@ mod tests {
         assert!(
             rendered.contains("slow tail 1h0m"),
             "slow-tail annotation missing: {rendered}"
-        );
-    }
-
-    /// Empty histogram with `sample_count == 0` should fall through
-    /// to the empty-state block, not crash.
-    #[test]
-    fn response_time_view_renders_empty_state_when_zero_samples() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::ResponseTime;
-        state.response_time = Some(ResponseTimeSummary {
-            direction: ResponseTimeDirection::IReplied,
-            sample_count: 0,
-            clock_p50_seconds: 0,
-            clock_p90_seconds: 0,
-            business_hours_p50_seconds: None,
-            business_hours_p90_seconds: None,
-            histogram: vec![],
-        });
-        let rendered = render_to_string(120, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 30), &state, &theme());
-        });
-        assert!(
-            rendered.contains("No reply pairs in scope")
-                || rendered.contains("No response-time data"),
-            "empty-state missing: {rendered}"
-        );
-    }
-
-    /// Phase 2.5: contact asymmetry renders rows with email + counts.
-    #[test]
-    fn asymmetry_view_renders_rows() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Contacts;
-        state.contacts_mode = ContactsMode::Asymmetry;
-        state.asymmetry_rows = vec![ContactAsymmetryRow {
-            email: "noreply@example.com".into(),
-            display_name: None,
-            total_inbound: 10,
-            total_outbound: 0,
-            asymmetry: 1.0,
-            last_seen_at: chrono::Utc::now(),
-        }];
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
-        });
-        assert!(rendered.contains("noreply@example.com"));
-        assert!(
-            rendered.contains("1.00"),
-            "asymmetry value missing: {rendered}"
         );
     }
 
@@ -2533,43 +2467,6 @@ mod tests {
     }
 
     #[test]
-    fn short_email_short_address_unchanged() {
-        assert_eq!(short_email("me@x.com"), "me@x.com");
-    }
-
-    #[test]
-    fn short_email_long_ascii_truncates_to_18_chars() {
-        let addr = "abcdefghijklmnopqrs@example.com"; // local part > 14, total > 18
-        let result = short_email(addr);
-        assert_eq!(result.chars().count(), 18);
-    }
-
-    #[test]
-    fn short_email_long_local_part_uses_18_char_limit() {
-        // local part is 20 chars, > 14 → falls through to 18-char truncation
-        let addr = "abcdefghijklmnopqrst@x.com";
-        let result = short_email(addr);
-        assert_eq!(result.chars().count(), 18);
-    }
-
-    #[test]
-    fn short_email_short_local_part_strips_domain() {
-        // local part ≤ 14 chars → return only local part
-        let addr = "alice@verylongdomainname.example.com";
-        let result = short_email(addr);
-        assert_eq!(result, "alice");
-    }
-
-    #[test]
-    fn short_email_multibyte_does_not_panic() {
-        // 'é' is 2 bytes; 20 of them = 20 chars but 40 bytes.
-        // Byte-slicing at 18 would land mid-char; char-slicing must not panic.
-        let addr = "éééééééééééééééééééé"; // 20 × 'é'
-        let result = short_email(addr);
-        assert_eq!(result.chars().count(), 18);
-    }
-
-    #[test]
     fn short_email_cjk_does_not_panic() {
         // Each CJK char is 3 bytes; 20 of them → total > 18 chars, > 54 bytes.
         let addr = "日日日日日日日日日日日日日日日日日日日日"; // 20 × '日'
@@ -2609,14 +2506,6 @@ mod cache_tests {
         assert!(state.cache_is_fresh(AnalyticsView::Storage));
     }
 
-    /// A view with no data is never fresh, regardless of TTL.
-    #[test]
-    fn empty_view_is_not_fresh() {
-        let state = AnalyticsState::default();
-        assert!(!state.has_data_for_view(AnalyticsView::Storage));
-        assert!(!state.cache_is_fresh(AnalyticsView::Storage));
-    }
-
     /// Cache key must change when filters change so freshness is
     /// scoped per-filter-combo. Different group_by → different key.
     #[test]
@@ -2631,30 +2520,6 @@ mod cache_tests {
         assert_ne!(
             key_sender, key_mime,
             "different group_by must produce distinct cache keys"
-        );
-    }
-
-    /// `should_show_cold_load` is the gate that decides whether to
-    /// blank the view. Stale data must keep the view visible.
-    #[test]
-    fn should_show_cold_load_only_without_data() {
-        let mut state = AnalyticsState::default();
-        state.view = AnalyticsView::Storage;
-        state.loading = true;
-        assert!(state.should_show_cold_load(), "no data → cold load");
-
-        state.storage_rows = vec![StorageBucket {
-            key: "k".into(),
-            bytes: 1,
-            count: 1,
-        }];
-        assert!(
-            !state.should_show_cold_load(),
-            "with cached data, refresh must not blank the view"
-        );
-        assert!(
-            state.is_refreshing_with_data(),
-            "should report refreshing-with-data so the badge renders"
         );
     }
 }

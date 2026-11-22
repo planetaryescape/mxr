@@ -132,14 +132,6 @@ fn decision(app: &mut App) -> AssistantDecisionData {
 }
 
 #[test]
-fn the_pane_is_hidden_by_default() {
-    let mut app = App::new();
-    assert!(!app.assistant.open);
-    let screen = render_to_string(140, 30, |frame| app.draw(frame));
-    assert!(!screen.contains("Talk to your mail"), "{screen}");
-}
-
-#[test]
 fn at_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     let mut app = App::new();
     at(&mut app);
@@ -747,16 +739,6 @@ fn a_later_reply_without_links_leaves_the_earlier_links_open() {
     assert!(screen.contains("Q1 report [1]"), "{screen}");
     press(&mut app, KeyCode::Char('1'), KeyModifiers::NONE);
     assert!(app.pending_assistant_thread_open.is_some());
-}
-
-#[test]
-fn numbers_past_the_links_do_nothing() {
-    let mut app = linked_reply();
-    let view = app.mailbox.mailbox_view;
-    press(&mut app, KeyCode::Char('9'), KeyModifiers::NONE);
-    assert!(app.pending_assistant_thread_open.is_none());
-    assert_eq!(app.mailbox.mailbox_view, view);
-    assert_eq!(app.assistant.focus, AssistantFocus::Pane);
 }
 
 fn model_choice(

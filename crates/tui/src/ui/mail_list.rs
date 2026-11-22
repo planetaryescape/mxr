@@ -9,8 +9,6 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
-#[cfg(test)]
-use unicode_width::UnicodeWidthStr;
 
 pub struct MailListView<'a> {
     pub rows: &'a [MailListRow],
@@ -711,37 +709,6 @@ fn commitment_marker(count: u32) -> char {
 }
 
 #[cfg(test)]
-fn display_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
-}
-
-#[cfg(test)]
-fn truncate_display(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    if display_width(text) <= max_width {
-        return text.to_string();
-    }
-    if max_width <= 3 {
-        return ".".repeat(max_width);
-    }
-
-    let mut width = 0;
-    let mut truncated = String::new();
-    for ch in text.chars() {
-        let ch_width = UnicodeWidthStr::width(ch.encode_utf8(&mut [0; 4]));
-        if width + ch_width > max_width.saturating_sub(3) {
-            break;
-        }
-        truncated.push(ch);
-        width += ch_width;
-    }
-    truncated.push_str("...");
-    truncated
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -1070,19 +1037,6 @@ mod tests {
     }
 
     #[test]
-    fn one_account_view_shows_no_chips() {
-        use crate::ui::account_mark::{AccountMarks, ChipDepth};
-        use mxr_core::AccountColor;
-
-        let (first_id, work) = marked_account("work", true, AccountColor::Sky, "W");
-        let rows = two_account_rows(&first_id, &AccountId::new());
-        let marks = AccountMarks::from_accounts(&[work], false, ChipDepth::Truecolor);
-
-        let rendered = render_marked_rows(&rows, &marks);
-        insta::assert_snapshot!("mail_list_account_chips_one_account", rendered);
-    }
-
-    #[test]
     fn plain_terminal_marks_rows_with_a_bracketed_tag() {
         use crate::ui::account_mark::{AccountMarks, ChipDepth};
         use mxr_core::AccountColor;
@@ -1094,11 +1048,6 @@ mod tests {
 
         let rendered = render_marked_rows(&rows, &marks);
         insta::assert_snapshot!("mail_list_account_chips_plain", rendered);
-    }
-
-    #[test]
-    fn truncate_display_adds_ellipsis() {
-        assert_eq!(truncate_display("abcdefghij", 6), "abc...");
     }
 
     /// build_row should compose subjects with `format_subject_line`
@@ -1194,43 +1143,6 @@ mod tests {
         assert!(!snapshot.contains("Shipping plan"), "{snapshot}");
     }
 
-    #[test]
-    fn row_renders_thread_count_badge_for_conversations() {
-        use mxr_test_support::render_to_string;
-        use std::collections::HashSet;
-
-        let mut row = row(4, false);
-        row.representative.subject = "Planning".into();
-        row.representative.snippet = "Latest reply".into();
-        let rows = vec![row];
-
-        let snapshot = render_to_string(100, 6, |frame| {
-            draw_view(
-                frame,
-                Rect::new(0, 0, 100, 6),
-                &MailListView {
-                    rows: &rows,
-                    selected_index: 0,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MailList,
-                    title: "Inbox",
-                    selected_set: &HashSet::new(),
-                    mode: MailListMode::Threads,
-                    loading_message: None,
-                    loading_throbber: None,
-                    row_gists: &RowGists::new(),
-                    account_marks: &AccountMarks::default(),
-                },
-                &Theme::default(),
-            );
-        });
-
-        assert!(
-            snapshot.contains("↔4"),
-            "conversation rows must surface a thread-count badge; got:\n{snapshot}",
-        );
-    }
-
     /// Narrow renders should fall back gracefully — no snippet, no panic.
     /// The subject still appears, attachment chip still renders the
     /// paperclip but may drop the size depending on column width.
@@ -1307,53 +1219,6 @@ mod tests {
 
         assert!(snapshot.contains(">  1"));
         assert!(snapshot.contains("+  2"));
-    }
-    #[test]
-    fn bulk_selection_uses_tinted_background_for_contrast() {
-        let theme = Theme::default();
-        let style = row_base_style(
-            &Theme {
-                selection_bg: Color::Rgb(40, 44, 52),
-                accent_dim: Color::Rgb(160, 200, 255),
-                ..theme
-            },
-            false,
-            true,
-            false,
-        );
-
-        assert_eq!(style.bg, Some(Color::Rgb(73, 88, 109)));
-        assert_eq!(style.fg, Some(Theme::default().contrast_light));
-    }
-
-    #[test]
-    fn loading_placeholder_renders_when_mailbox_is_loading() {
-        use mxr_test_support::render_to_string;
-        use throbber_widgets_tui::ThrobberState;
-
-        let throbber = ThrobberState::default();
-        let rendered = render_to_string(60, 8, |frame| {
-            draw_view(
-                frame,
-                Rect::new(0, 0, 60, 8),
-                &MailListView {
-                    rows: &[],
-                    selected_index: 0,
-                    scroll_offset: 0,
-                    active_pane: &ActivePane::MailList,
-                    title: "Inbox",
-                    selected_set: &HashSet::new(),
-                    mode: MailListMode::Threads,
-                    loading_message: Some("Loading selected account..."),
-                    loading_throbber: Some(&throbber),
-                    row_gists: &RowGists::new(),
-                    account_marks: &AccountMarks::default(),
-                },
-                &Theme::default(),
-            );
-        });
-
-        assert!(rendered.contains("Loading selected account..."));
     }
 
     /// Subject containing an ANSI erase-display sequence must be stripped

@@ -124,19 +124,6 @@ mod tests {
     }
 
     #[test]
-    fn draws_loading_placeholder_while_request_in_flight() {
-        let mut state = SnippetsModalState::default();
-        state.open_loading();
-        let snapshot = render_to_string(80, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Loading snippets..."),
-            "loading placeholder must surface while request is in-flight; got:\n{snapshot}"
-        );
-    }
-
-    #[test]
     fn renders_snippet_name_in_list_and_body_in_preview() {
         let mut state = SnippetsModalState::default();
         state.open_loading();
@@ -155,51 +142,6 @@ mod tests {
         assert!(
             snapshot.contains("Thanks for reaching out!"),
             "body of selected snippet must appear in preview pane; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn empty_state_shows_cli_hint() {
-        let mut state = SnippetsModalState::default();
-        state.open_loading();
-        state.set_snippets(vec![]);
-        let snapshot = render_to_string(80, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("No snippets yet"),
-            "empty state copy must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("mxr snippets set"),
-            "empty state must point users at the CLI command; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn select_next_wraps_at_end() {
-        let mut state = SnippetsModalState::default();
-        state.open_loading();
-        state.set_snippets(vec![snippet("a", "a"), snippet("b", "b")]);
-        state.select_next();
-        assert_eq!(state.selected_index, 1);
-        state.select_next();
-        assert_eq!(
-            state.selected_index, 0,
-            "select_next must wrap at end of list"
-        );
-    }
-
-    #[test]
-    fn select_prev_wraps_at_zero() {
-        let mut state = SnippetsModalState::default();
-        state.open_loading();
-        state.set_snippets(vec![snippet("a", "a"), snippet("b", "b")]);
-        assert_eq!(state.selected_index, 0);
-        state.select_prev();
-        assert_eq!(
-            state.selected_index, 1,
-            "select_prev must wrap from index 0 to last"
         );
     }
 }

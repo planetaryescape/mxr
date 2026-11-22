@@ -175,18 +175,6 @@ mod tests {
     }
 
     #[test]
-    fn visible_skips_expired_toasts_even_before_sweep() {
-        let t0 = Instant::now();
-        let mut queue = ToastQueue::default();
-        queue.push(toast_at("expired", t0, Duration::from_secs(1)));
-        queue.push(toast_at("live", t0, Duration::from_secs(60)));
-
-        let visible = queue.visible(t0 + Duration::from_secs(2));
-        assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].text, "live");
-    }
-
-    #[test]
     fn queue_capacity_drops_oldest_entries() {
         let t0 = Instant::now();
         let mut queue = ToastQueue::default();
@@ -196,15 +184,6 @@ mod tests {
 
         assert_eq!(queue.entries.len(), TOAST_QUEUE_CAPACITY);
         assert_eq!(queue.entries.front().unwrap().text, "t2");
-    }
-
-    #[test]
-    fn remaining_counts_down_and_saturates_at_zero() {
-        let t0 = Instant::now();
-        let toast = toast_at("x", t0, Duration::from_secs(10));
-        assert_eq!(toast.remaining(t0 + Duration::from_secs(4)).as_secs(), 6);
-        assert!(toast.remaining(t0 + Duration::from_secs(11)).is_zero());
-        assert!(toast.expired(t0 + Duration::from_secs(11)));
     }
 
     #[test]

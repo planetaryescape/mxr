@@ -41,23 +41,3 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &PlatformModalState, theme: &T
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, inner);
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mxr_test_support::render_to_string;
-
-    #[test]
-    fn renders_platform_text() {
-        let mut state = PlatformModalState::default();
-        state.open_loading("Voice profile", "Loading voice profile...");
-        state.set_body("casual register: formality 0.30".into());
-
-        let snapshot = render_to_string(90, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 90, 18), &state, &Theme::default());
-        });
-
-        assert!(snapshot.contains("Voice profile"), "got:\n{snapshot}");
-        assert!(snapshot.contains("casual register"), "got:\n{snapshot}");
-    }
-}

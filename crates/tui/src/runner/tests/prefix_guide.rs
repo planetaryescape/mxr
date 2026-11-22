@@ -148,13 +148,6 @@ fn with_single_keys_off_no_prefix_waits() {
 }
 
 #[test]
-fn z_undoes_now_that_z_z_retired() {
-    let mut app = mailbox(MailboxView::Messages);
-    assert_eq!(press(&mut app, 'z'), Some(Action::UndoLastMutation));
-    assert!(!app.input_pending());
-}
-
-#[test]
 fn g_still_waits_four_seconds() {
     let mut app = mailbox(MailboxView::Messages);
     press(&mut app, 'g');

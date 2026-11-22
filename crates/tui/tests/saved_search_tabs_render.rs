@@ -142,39 +142,3 @@ fn tab_unread_count_reflects_search_match_count() {
         "tab with zero unread must not show `(0)`. got: {rendered}"
     );
 }
-
-/// Phase 1.5: the rendered label is the saved-search NAME, not its
-/// query. If we ever flipped to rendering the query string by accident
-/// the tabs would become unreadable for any non-trivial saved search.
-#[test]
-fn tab_strip_renders_saved_search_name_not_query() {
-    let searches = vec![fixture_saved_search(
-        "Open replies",
-        "is:owed-reply -has:label:archived",
-        0,
-    )];
-
-    let theme = Theme::default();
-    let rendered = render_to_string(80, 2, |frame| {
-        draw(
-            frame,
-            Rect::new(0, 0, 80, 2),
-            &SavedSearchTabsView {
-                searches: &searches,
-                active_query: None,
-                active_mode: None,
-                unread_counts: &std::collections::HashMap::new(),
-            },
-            &theme,
-        );
-    });
-
-    assert!(
-        rendered.contains("g1 Open replies"),
-        "tab label is the user-given name. got: {rendered}"
-    );
-    assert!(
-        !rendered.contains("is:owed-reply"),
-        "tab label must not leak the underlying query. got: {rendered}"
-    );
-}

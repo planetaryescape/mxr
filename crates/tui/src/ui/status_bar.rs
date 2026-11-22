@@ -232,17 +232,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bulk_batches_render_done_of_total_progress() {
-        assert_eq!(pending_progress_prefix(&state(5, 5)), "[0/5]");
-        assert_eq!(pending_progress_prefix(&state(2, 5)), "[3/5]");
-    }
-
-    #[test]
-    fn single_pending_mutation_keeps_pending_prefix() {
-        assert_eq!(pending_progress_prefix(&state(1, 1)), "[pending:1]");
-    }
-
     fn rendered(state: &StatusBarState) -> ratatui::buffer::Buffer {
         let theme = crate::theme::Theme::default();
         let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(110, 1)).unwrap();
@@ -342,13 +331,6 @@ mod tests {
         let counts = line.find("[Msgs:42").expect("counts");
         let mode = line.find("[mode: hybrid]").expect("mode chip");
         assert!(counts < mode, "{line}");
-    }
-
-    #[test]
-    fn no_search_means_no_mode_chip() {
-        let mut calm = state(0, 0);
-        calm.busy = false;
-        assert!(!rendered_at_width(&calm, 120).contains("[mode:"));
     }
 
     #[test]

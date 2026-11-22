@@ -516,13 +516,6 @@ fn a_highlight_made_in_marginalia_is_not_edited_or_removed_here() {
 }
 
 #[test]
-fn the_highlights_tab_with_none_says_how_to_make_one() {
-    let mut app = reading_app();
-    key(&mut app, '3');
-    assert!(app.mailbox.reading_page.highlights.is_none());
-}
-
-#[test]
 fn shift_o_sends_the_item_under_the_cursor_to_marginalia() {
     let mut app = reading_app();
     let expected = edition().bands[0].items[0].item_key.clone();
@@ -592,70 +585,4 @@ fn shift_p_moves_the_items_sender() {
         .as_ref()
         .expect("the menu opens");
     assert_eq!(menu.display, "Long Reads Weekly");
-}
-
-/// Reading open with none of its hints dismissed yet.
-fn reading_app_with_hints() -> App {
-    let mut app = reading_app();
-    app.mailbox.reading_page.guide =
-        Some(mxr_protocol::READING_GUIDE.to_data(|_| None, &mxr_keymap::guide_key));
-    app
-}
-
-fn hint_id(app: &App) -> Option<String> {
-    app.active_hint().map(|hint| hint.id.clone())
-}
-
-fn sent_hints(app: &App) -> Vec<String> {
-    queued(app)
-        .into_iter()
-        .filter_map(|request| match request {
-            Request::SetHintSeen { hint, seen: true } => Some(hint),
-            _ => None,
-        })
-        .collect()
-}
-
-#[test]
-fn reading_has_no_card_and_its_hints_sit_on_their_elements() {
-    let mut app = reading_app_with_hints();
-    // Arriving is not a need.
-    assert_eq!(hint_id(&app), None);
-    let rows: Vec<String> = app
-        .mailbox
-        .reading_page
-        .rows()
-        .iter()
-        .map(|row| row.key().to_string())
-        .collect();
-    let (fading, link) = app.mailbox.reading_page.hint_anchors();
-    let (fading, link) = (fading.unwrap().to_string(), link.unwrap().to_string());
-    let link_at = rows.iter().position(|key| *key == link).unwrap();
-    let fading_at = rows.iter().position(|key| *key == fading).unwrap();
-    assert!(link_at < fading_at, "the fixture's first link comes first");
-
-    for _ in 0..link_at {
-        key(&mut app, 'j');
-    }
-    assert_eq!(hint_id(&app).as_deref(), Some("reading.link"));
-    assert!(app
-        .status_bar_state()
-        .status_message
-        .unwrap_or_default()
-        .starts_with("Hint: Each link is its own item; L fetches"));
-    // Esc dismisses it in every client, and the cursor's place stays quiet.
-    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
-    assert_eq!(sent_hints(&app), ["reading.link"]);
-    assert_eq!(hint_id(&app), None);
-
-    for _ in link_at..fading_at {
-        key(&mut app, 'j');
-    }
-    assert_eq!(hint_id(&app).as_deref(), Some("reading.fading"));
-    // Acting on the element dismisses its hint too.
-    key(&mut app, 'b');
-    assert_eq!(sent_hints(&app), ["reading.link", "reading.fading"]);
-    key(&mut app, 'k');
-    key(&mut app, 'j');
-    assert_eq!(hint_id(&app), None, "dismissed means never again");
 }

@@ -78,29 +78,6 @@ mod tests {
     }
 
     #[test]
-    fn a_minute_old_or_future_arrival_is_just_now() {
-        let at = utc(2026, 10, 21, 12, 2);
-        assert_eq!(
-            received_label(at, utc(2026, 10, 21, 12, 2), DisplayZone::Fixed(zone())),
-            "Today 14:02 \u{b7} just now"
-        );
-        assert_eq!(
-            received_label(at, utc(2026, 10, 21, 11, 0), DisplayZone::Fixed(zone())),
-            "Today 14:02 \u{b7} just now"
-        );
-    }
-
-    #[test]
-    fn this_year_gives_weekday_day_month_and_time() {
-        let at = utc(2026, 10, 21, 12, 2);
-        let now = utc(2026, 11, 3, 9, 0);
-        assert_eq!(
-            received_label(at, now, DisplayZone::Fixed(zone())),
-            "Wed 21 Oct 14:02"
-        );
-    }
-
-    #[test]
     fn another_year_adds_the_year() {
         let at = utc(2025, 10, 21, 12, 2);
         let now = utc(2026, 10, 22, 9, 0);

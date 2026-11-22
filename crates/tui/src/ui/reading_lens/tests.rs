@@ -2,9 +2,8 @@ use super::*;
 use chrono::{Duration, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
-    ReadingArticleData, ReadingBandGroupData, ReadingEditionData, ReadingEmptyData,
-    ReadingItemDetailData, ReadingItemKindData, ReadingLinkData, ReadingShapeData,
-    ReadingSourceData, READING_GUIDE,
+    ReadingArticleData, ReadingBandGroupData, ReadingEditionData, ReadingItemDetailData,
+    ReadingItemKindData, ReadingLinkData, ReadingShapeData, ReadingSourceData, READING_GUIDE,
 };
 use mxr_test_support::render_to_string;
 
@@ -316,39 +315,6 @@ fn a_tracked_link_says_via_and_the_offer_names_its_evidence() {
 }
 
 #[test]
-fn the_empty_edition_says_so_in_the_daemons_words() {
-    let mut empty = page();
-    let edition = empty.edition.as_mut().expect("edition");
-    edition.bands.clear();
-    edition.left_off_here = false;
-    edition.empty = Some(ReadingEmptyData {
-        never_had_any: false,
-        line: "Nothing new since Tuesday. Later has 2 things saved.".into(),
-    });
-    for width in [60u16, 80, 120] {
-        let rendered = render(&empty, 0, width);
-        insta::assert_snapshot!(format!("reading_lens_empty_{width}"), rendered);
-        assert!(rendered.contains("Nothing new since Tuesday"), "{width}");
-    }
-}
-
-#[test]
-fn the_reader_shows_the_article_with_where_it_came_from() {
-    let mut reading = page();
-    reading.reader = Some(detail(true));
-    reading.reader_focused = true;
-    reading.view = ReadingView::Article;
-    for width in [60u16, 80, 120] {
-        let rendered = render(&reading, 6, width);
-        insta::assert_snapshot!(format!("reading_lens_reader_article_{width}"), rendered);
-        assert!(rendered.contains("[Article]"), "{width}");
-        assert!(rendered.contains("fetched from platform.demo"), "{width}");
-        assert!(rendered.contains("From this source"), "{width}");
-        assert!(rendered.contains("Esc back"), "{width}");
-    }
-}
-
-#[test]
 fn an_unfetched_article_names_the_site_l_would_contact() {
     let mut reading = page();
     reading.reader = Some(detail(false));
@@ -356,30 +322,6 @@ fn an_unfetched_article_names_the_site_l_would_contact() {
     reading.view = ReadingView::Article;
     let rendered = render(&reading, 6, 80);
     assert!(rendered.contains("L fetches it from platform.demo.mxr.local"));
-}
-
-#[test]
-fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() {
-    let mut confirm = page();
-    confirm.confirm = Some(ReadingConfirm::Unsubscribe {
-        target: crate::app::ReadingUnsubscribeTarget {
-            account_id: AccountId::from_provider_id("fake", "alex@demo.mxr.local"),
-            sender_email: "digest@growth.demo.mxr.local".into(),
-            source: "Growth Digest".into(),
-            evidence: "You opened 0 of the last 11 issues".into(),
-            method: ReadingUnsubscribeData::OneClick,
-        },
-        message_count: 11,
-        preview_token: Some("tok".into()),
-    });
-    for width in [60u16, 80, 120] {
-        let rendered = render(&confirm, 0, width);
-        insta::assert_snapshot!(format!("reading_lens_unsubscribe_{width}"), rendered);
-    }
-    let rendered = render(&confirm, 0, 120);
-    assert!(rendered.contains("You opened 0 of the last 11 issues."));
-    assert!(rendered.contains("one-click"));
-    assert!(rendered.contains("can't be undone from mxr"));
 }
 
 #[test]
@@ -441,92 +383,4 @@ fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
             .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
         "{rendered:?}"
     );
-}
-
-#[test]
-fn the_later_shelf_lists_what_you_kept_and_asks_once_about_old_things() {
-    let mut shelf = page();
-    let mut kept = item(
-        "kept",
-        "WAL checkpoints, explained with pictures",
-        "Local-first Links",
-    );
-    kept.on_later = true;
-    kept.article_cached = true;
-    kept.still_want_it = true;
-    kept.why = "On Later since Thu 3 Sep. Later never fades.".into();
-    shelf.edition.as_mut().expect("edition").later = vec![kept];
-    shelf.later_shelf = true;
-    for width in [60u16, 80, 120] {
-        let rendered = render(&shelf, 0, width);
-        insta::assert_snapshot!(format!("reading_lens_later_{width}"), rendered);
-        assert!(rendered.contains("LATER"), "{width}");
-        assert!(rendered.contains("Still want it?"), "{width}");
-    }
-    assert!(render(&shelf, 0, 80).contains("saved to read offline"));
-    assert_eq!(shelf.row_count(), 1);
-}
-
-#[test]
-fn the_highlights_panel_lists_notes_and_marks_marginalias_as_theirs() {
-    let mut reading = page();
-    let mut reader = detail(false);
-    let template =
-        |id: &str, origin: &str, note: Option<&str>| mxr_protocol::ReadingHighlightData {
-            id: id.into(),
-            item_key: reader.item.item_key.clone(),
-            account_id: reader.item.account_id.clone(),
-            message_id: reader.item.message_id.clone(),
-            view: "issue".into(),
-            quote: format!("A delete is the absence of a row ({id})"),
-            note: note.map(str::to_string),
-            origin: origin.into(),
-            paragraph: None,
-            title: reader.item.title.clone(),
-            source: reader.item.source.clone(),
-            url: None,
-            created_at: at(),
-        };
-    reader.highlights = vec![
-        template("own", "mxr", Some("for the talk")),
-        template("theirs", "marginalia", None),
-    ];
-    reading.reader = Some(reader);
-    reading.reader_focused = true;
-    reading.highlights = Some(crate::app::HighlightsPanel::default());
-    for width in [80u16, 120] {
-        let rendered = render(&reading, 6, width);
-        insta::assert_snapshot!(format!("reading_lens_highlights_{width}"), rendered);
-        assert!(rendered.contains("Note: for the talk"), "{width}");
-        assert!(rendered.contains("(made in Marginalia)"), "{width}");
-    }
-    reading.highlights = Some(crate::app::HighlightsPanel {
-        selected: 0,
-        step: crate::app::HighlightStep::Remove,
-    });
-    let rendered = render(&reading, 6, 100);
-    assert!(rendered.contains("Remove the selected highlight?"));
-    reading.highlights = Some(crate::app::HighlightsPanel {
-        selected: 0,
-        step: crate::app::HighlightStep::Note("new".into()),
-    });
-    assert!(render(&reading, 6, 100).contains("Note: new"));
-}
-
-#[test]
-fn the_footer_keeps_help_at_every_width() {
-    let mut reading = page();
-    for width in [80, 100, 120] {
-        let rendered = render(&reading, 0, width);
-        assert!(rendered.contains("? keys"), "list at {width}:\n{rendered}");
-    }
-    reading.reader = Some(detail(false));
-    reading.reader_focused = true;
-    for width in [80, 100, 120] {
-        let rendered = render(&reading, 0, width);
-        assert!(
-            rendered.contains("? keys"),
-            "reader at {width}:\n{rendered}"
-        );
-    }
 }

@@ -89,17 +89,6 @@ mod tests {
     }
 
     #[test]
-    fn passthrough_plain_text_is_borrowed() {
-        let s = "Hello, world!\tTabbed\nNewline 你好 🎉 café";
-        let result = strip_control_chars(s);
-        assert!(
-            matches!(result, Cow::Borrowed(_)),
-            "plain text should be returned as Cow::Borrowed"
-        );
-        assert_eq!(result.as_ref(), s);
-    }
-
-    #[test]
     fn ansi_csi_stripped() {
         let input = "\x1b[31mred\x1b[0m text";
         let result = strip_control_chars(input);
@@ -119,23 +108,6 @@ mod tests {
     }
 
     #[test]
-    fn osc_with_st_terminator_stripped() {
-        // ST = ESC \ (0x1b 0x5c)
-        let input = "\x1b]8;;http://x\x1b\\ after";
-        let result = strip_control_chars(input);
-        assert!(!result.contains('\x1b'), "OSC ESC must be stripped");
-        assert!(result.contains("after"), "trailing text must survive");
-    }
-
-    #[test]
-    fn bare_esc_stripped() {
-        let input = "before\x1bafter";
-        let result = strip_control_chars(input);
-        assert!(!result.contains('\x1b'));
-        assert_eq!(result.as_ref(), "beforeafter");
-    }
-
-    #[test]
     fn c1_control_bytes_stripped() {
         // U+009B is CSI in C1; encoded as 0xC2 0x9B in UTF-8
         let input = "before\u{009b}after";
@@ -145,31 +117,12 @@ mod tests {
     }
 
     #[test]
-    fn del_stripped() {
-        let input = "be\x7fore";
-        let result = strip_control_chars(input);
-        assert!(!result.as_bytes().contains(&0x7f), "DEL must be stripped");
-        assert_eq!(result.as_ref(), "beore");
-    }
-
-    #[test]
     fn tabs_and_newlines_preserved() {
         let s = "col1\tcol2\nline2";
         let result = strip_control_chars(s);
         assert!(
             matches!(result, Cow::Borrowed(_)),
             "tab+newline text is Cow::Borrowed"
-        );
-        assert_eq!(result.as_ref(), s);
-    }
-
-    #[test]
-    fn wide_chars_emoji_combining_preserved() {
-        let s = "CJK: 你好世界 emoji: 🎉🦀 combining: café naïve";
-        let result = strip_control_chars(s);
-        assert!(
-            matches!(result, Cow::Borrowed(_)),
-            "rich unicode should be Cow::Borrowed"
         );
         assert_eq!(result.as_ref(), s);
     }

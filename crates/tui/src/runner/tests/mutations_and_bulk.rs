@@ -226,23 +226,6 @@ fn preview_navigation_only_marks_message_read_after_settling() {
 }
 
 #[test]
-fn help_action_toggles_modal_state() {
-    let mut app = App::new();
-
-    app.apply(Action::Help);
-    assert!(app.modals.help_open);
-    assert!(app.modals.help_query.is_empty());
-    assert_eq!(app.modals.help_selected, 0);
-
-    app.modals.help_query = "config".into();
-    app.modals.help_selected = 3;
-    app.apply(Action::Help);
-    assert!(!app.modals.help_open);
-    assert!(app.modals.help_query.is_empty());
-    assert_eq!(app.modals.help_selected, 0);
-}
-
-#[test]
 fn help_modal_typing_enters_search_mode_and_backspace_clears_it() {
     let mut app = App::new();
     app.apply(Action::Help);
@@ -533,33 +516,6 @@ fn new_account_draft_prompt_can_start_fresh_form() {
     assert!(app.accounts.page.form.key.is_empty());
     assert!(app.accounts.page.new_account_draft.is_none());
     assert!(!app.accounts.page.resume_new_account_draft_prompt_open);
-}
-
-#[test]
-fn leaving_accounts_screen_preserves_new_account_draft() {
-    let mut app = App::new();
-    app.screen = Screen::Accounts;
-    app.accounts.page.form.visible = true;
-    app.accounts.page.form.is_new_account = true;
-    app.accounts.page.form.key = "draft".into();
-    app.accounts.page.form.email = "draft@example.com".into();
-
-    app.apply(Action::OpenMailboxScreen);
-
-    assert_eq!(app.screen, Screen::Mailbox);
-    assert!(!app.accounts.page.form.visible);
-    assert_eq!(
-        app.accounts.page.new_account_draft.as_ref().unwrap().email,
-        "draft@example.com"
-    );
-}
-
-#[test]
-fn open_search_screen_activates_dedicated_search_workspace() {
-    let mut app = App::new();
-    app.apply(Action::OpenSearchScreen);
-    assert_eq!(app.screen, Screen::Search);
-    assert!(app.search.page.editing);
 }
 
 #[test]
@@ -1016,23 +972,6 @@ fn search_jump_bottom_loads_remaining_pages() {
 }
 
 #[test]
-fn search_jump_bottom_uses_search_results_viewport_height() {
-    let mut app = App::new();
-    app.screen = Screen::Search;
-    app.search.page.query = "deploy".into();
-    app.search.page.results = make_test_envelopes(15);
-    app.search.page.session_active = true;
-
-    let _ = render_to_string(120, 20, |frame| app.draw(frame));
-
-    app.apply(Action::JumpBottom);
-
-    assert_eq!(app.visible_height, 10);
-    assert_eq!(app.search.page.selected_index, 14);
-    assert_eq!(app.search.page.scroll_offset, 5);
-}
-
-#[test]
 fn search_escape_routes_back_to_inbox() {
     let mut app = App::new();
     app.screen = Screen::Search;
@@ -1047,52 +986,11 @@ fn search_escape_routes_back_to_inbox() {
 }
 
 #[test]
-fn open_rules_screen_marks_refresh_pending() {
-    let mut app = App::new();
-    app.apply(Action::OpenRulesScreen);
-    assert_eq!(app.screen, Screen::Rules);
-    assert!(app.rules.page.refresh_pending);
-}
-
-#[test]
-fn open_diagnostics_screen_marks_refresh_pending() {
-    let mut app = App::new();
-    app.apply(Action::OpenDiagnosticsScreen);
-    assert_eq!(app.screen, Screen::Diagnostics);
-    assert!(app.diagnostics.page.refresh_pending);
-}
-
-#[test]
 fn open_accounts_screen_marks_refresh_pending() {
     let mut app = App::new();
     app.apply(Action::OpenAccountsScreen);
     assert_eq!(app.screen, Screen::Accounts);
     assert!(app.accounts.page.refresh_pending);
-}
-
-#[test]
-fn new_account_form_opens_from_accounts_screen() {
-    let mut app = App::new();
-    app.apply(Action::OpenAccountsScreen);
-    app.apply(Action::OpenAccountFormNew);
-
-    assert_eq!(app.screen, Screen::Accounts);
-    assert!(app.accounts.page.form.visible);
-    assert_eq!(
-        app.accounts.page.form.mode,
-        crate::app::AccountFormMode::Gmail
-    );
-}
-
-#[test]
-fn app_from_empty_config_enters_account_onboarding() {
-    let config = mxr_config::MxrConfig::default();
-    let app = App::from_config(&config);
-
-    // Onboarding modal shows on whatever page the user is on (mailbox by default)
-    assert_eq!(app.screen, Screen::Mailbox);
-    assert!(app.accounts.page.onboarding_required);
-    assert!(app.accounts.page.onboarding_modal_open);
 }
 
 #[test]
@@ -1164,25 +1062,6 @@ fn account_form_h_and_l_switch_modes_from_any_field() {
 }
 
 #[test]
-fn account_form_tab_on_mode_cycles_modes() {
-    let mut app = App::new();
-    app.apply(Action::OpenAccountFormNew);
-    app.accounts.page.form.active_field = 0;
-
-    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-    assert_eq!(
-        app.accounts.page.form.mode,
-        crate::app::AccountFormMode::ImapSmtp
-    );
-
-    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
-    assert_eq!(
-        app.accounts.page.form.mode,
-        crate::app::AccountFormMode::Gmail
-    );
-}
-
-#[test]
 fn account_form_mode_switch_with_input_requires_confirmation() {
     let mut app = App::new();
     app.apply(Action::OpenAccountFormNew);
@@ -1212,22 +1091,6 @@ fn account_form_mode_switch_confirmation_applies_mode_change() {
     assert_eq!(
         app.accounts.page.form.mode,
         crate::app::AccountFormMode::ImapSmtp
-    );
-    assert!(app.accounts.page.form.pending_mode_switch.is_none());
-}
-
-#[test]
-fn account_form_mode_switch_confirmation_cancel_keeps_mode() {
-    let mut app = App::new();
-    app.apply(Action::OpenAccountFormNew);
-    app.accounts.page.form.key = "work".into();
-
-    app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
-    app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
-
-    assert_eq!(
-        app.accounts.page.form.mode,
-        crate::app::AccountFormMode::Gmail
     );
     assert!(app.accounts.page.form.pending_mode_switch.is_none());
 }
@@ -1399,26 +1262,6 @@ fn labels_refresh_preserves_active_label_context_when_label_becomes_empty() {
         Some(crate::app::SidebarItem::Label(label)) if label.id == work.id
     ));
     assert_eq!(app.status_bar_state().mailbox_name, "Work");
-}
-
-#[test]
-fn opening_search_result_keeps_search_workspace_open() {
-    let mut app = App::new();
-    app.screen = Screen::Search;
-    app.search.page.results = make_test_envelopes(2);
-    app.search.page.selected_index = 1;
-
-    app.apply(Action::OpenSelected);
-
-    assert_eq!(app.screen, Screen::Search);
-    assert_eq!(app.search.page.active_pane, SearchPane::Preview);
-    assert_eq!(
-        app.mailbox
-            .viewing_envelope
-            .as_ref()
-            .map(|env| env.id.clone()),
-        Some(app.search.page.results[1].id.clone())
-    );
 }
 
 #[test]

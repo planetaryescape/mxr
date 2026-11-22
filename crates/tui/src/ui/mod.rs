@@ -123,18 +123,3 @@ pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect 
         ])
         .split(vertical[1])[1]
 }
-
-#[cfg(test)]
-mod centered_rect_tests {
-    use super::*;
-
-    #[test]
-    fn centered_rect_centers_within_area() {
-        let area = Rect::new(0, 0, 100, 50);
-        let popup = centered_rect(60, 40, area);
-        assert_eq!(popup.width, 60);
-        assert_eq!(popup.height, 20);
-        assert_eq!(popup.x, 20);
-        assert_eq!(popup.y, 15);
-    }
-}

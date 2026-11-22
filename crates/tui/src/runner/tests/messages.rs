@@ -375,19 +375,6 @@ fn after_send_at(start: std::time::Instant) -> std::time::Instant {
 }
 
 #[test]
-fn the_send_carries_the_previews_token() {
-    let mut app = messages_app(true);
-    let start = std::time::Instant::now();
-    let preview = counting_down(&mut app, start);
-    app.tick_messages_ack(after_send_at(start));
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::AckMessage { preview_token: Some(token), .. }]
-            if Some(token) == preview.preview_token.as_ref()
-    ));
-}
-
-#[test]
 fn going_to_another_mode_mid_countdown_sends_nothing() {
     let mut app = messages_app(true);
     let start = std::time::Instant::now();

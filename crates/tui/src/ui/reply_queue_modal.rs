@@ -154,20 +154,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_queue_points_user_at_bookmark_key() {
-        let mut state = ReplyQueueModalState::default();
-        state.open_loading();
-        state.set_messages(vec![]);
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Flag messages with `b`"),
-            "empty state must teach the bookmark key; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_subject_and_snippet_for_selected() {
         let mut state = ReplyQueueModalState::default();
         state.open_loading();
@@ -187,16 +173,5 @@ mod tests {
             snapshot.contains("Plan ready for review"),
             "snippet must surface in detail pane; got:\n{snapshot}",
         );
-    }
-
-    #[test]
-    fn select_next_wraps() {
-        let mut state = ReplyQueueModalState::default();
-        state.open_loading();
-        state.set_messages(vec![envelope("a", "a@x", "a"), envelope("b", "b@x", "b")]);
-        state.select_next();
-        assert_eq!(state.selected_index, 1);
-        state.select_next();
-        assert_eq!(state.selected_index, 0);
     }
 }

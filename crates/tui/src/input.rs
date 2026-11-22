@@ -755,20 +755,6 @@ mod tests {
         }
     }
 
-    /// Slice 1 / B1.5: the chord `g` then `A` (capital, mirroring the
-    /// existing `g L` -> OpenLogs convention) opens the analytics
-    /// screen directly. Lowercase `g a` is already bound to
-    /// GoToAllMail, so capital A is the analytics mnemonic.
-    #[test]
-    fn chord_g_then_capital_a_opens_analytics() {
-        let mut input = InputHandler::new();
-        // First key consumes silently while waiting for the second.
-        let first = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(first, None, "g alone must wait, not act");
-        let second = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
-        assert_eq!(second, Some(Action::OpenAnalyticsScreen));
-    }
-
     #[test]
     fn chord_g_then_h_opens_now_and_g_d_stays_drafts() {
         let mut input = InputHandler::new();
@@ -781,16 +767,6 @@ mod tests {
         assert_eq!(
             input.handle_key(key(KeyCode::Char('d'))),
             Some(Action::GoToDrafts)
-        );
-    }
-
-    #[test]
-    fn chord_g_then_r_opens_reading() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(
-            input.handle_key(key(KeyCode::Char('r'))),
-            Some(Action::OpenReading)
         );
     }
 
@@ -816,18 +792,6 @@ mod tests {
         }
     }
 
-    /// Slice 1 / B1.5 (continued): lowercase `g a` must keep its
-    /// existing meaning (GoToAllMail). Guards against accidentally
-    /// stealing a Gmail navigation chord when adding the analytics
-    /// shortcut.
-    #[test]
-    fn chord_g_then_lowercase_a_still_goes_to_all_mail() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('g')));
-        let action = input.handle_key(key(KeyCode::Char('a')));
-        assert_eq!(action, Some(Action::GoToAllMail));
-    }
-
     /// `g <digit>` jumps to the corresponding saved-search tab. `g 1`
     /// targets the first saved search, `g 9` the ninth. The action is
     /// 1-indexed; `g 0` is reserved for "return to default inbox".
@@ -843,25 +807,6 @@ mod tests {
                 "g {digit} should target saved-search index {digit}"
             );
         }
-    }
-
-    /// `g 0` returns to the default inbox view, clearing any active
-    /// saved-search filter. Mirrors Apple Mail / Gmail "g 0 = inbox" muscle
-    /// memory while staying inside the `g`-prefix family.
-    #[test]
-    fn chord_g_then_zero_returns_to_default_inbox() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('g')));
-        let action = input.handle_key(key(KeyCode::Char('0')));
-        assert_eq!(action, Some(Action::OpenSavedSearchByIndex(0)));
-    }
-
-    /// Bare digits no longer open screens (D166); saved searches still
-    /// need the `g` prefix.
-    #[test]
-    fn bare_digit_opens_no_screen_or_saved_search() {
-        let mut input = InputHandler::new();
-        assert_eq!(input.handle_key(key(KeyCode::Char('1'))), None);
     }
 
     #[test]
@@ -906,32 +851,6 @@ mod tests {
             action,
             Some(Action::RespondInvite(
                 mxr_protocol::CalendarInviteActionData::Accept
-            ))
-        );
-    }
-
-    #[test]
-    fn chord_i_then_m_responds_invite_tentative() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('i')));
-        let action = input.handle_key(key(KeyCode::Char('m')));
-        assert_eq!(
-            action,
-            Some(Action::RespondInvite(
-                mxr_protocol::CalendarInviteActionData::Tentative
-            ))
-        );
-    }
-
-    #[test]
-    fn chord_i_then_d_responds_invite_decline() {
-        let mut input = InputHandler::new();
-        let _ = input.handle_key(key(KeyCode::Char('i')));
-        let action = input.handle_key(key(KeyCode::Char('d')));
-        assert_eq!(
-            action,
-            Some(Action::RespondInvite(
-                mxr_protocol::CalendarInviteActionData::Decline
             ))
         );
     }

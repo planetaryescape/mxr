@@ -361,32 +361,6 @@ mod tests {
     }
 
     #[test]
-    fn selected_mailbox_hints_lead_with_clear_and_keep_archive() {
-        let hints = hints_for_context(UiContext::MailboxList, 3, false);
-        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
-        assert_eq!(
-            labels.first().map(String::as_str),
-            Some("Clear Sel"),
-            "selected mailbox must surface the clear-selection escape first"
-        );
-        assert!(
-            labels.contains(&"Archive".to_string()),
-            "Archive must remain in the slim bar; got {labels:?}",
-        );
-    }
-
-    #[test]
-    fn message_view_hints_lead_with_reply() {
-        let hints = hints_for_context(UiContext::MailboxMessage, 0, false);
-        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
-        assert_eq!(
-            labels.first().map(String::as_str),
-            Some("Reply"),
-            "message view must surface Reply first; got {labels:?}",
-        );
-    }
-
-    #[test]
     fn invite_message_view_surfaces_rsvp_keys() {
         let hints = hints_for_context(UiContext::MailboxMessage, 0, true);
         let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();

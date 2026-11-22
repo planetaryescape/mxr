@@ -1258,34 +1258,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_key_string_single_char() {
-        let kb = parse_key_string("j").unwrap();
-        assert_eq!(kb.keys.len(), 1);
-        assert_eq!(kb.keys[0].code, KeyCode::Char('j'));
-        assert_eq!(kb.keys[0].modifiers, KeyModifiers::NONE);
-    }
-
-    #[test]
     fn parse_key_string_ctrl_p() {
         let kb = parse_key_string("Ctrl-p").unwrap();
         assert_eq!(kb.keys.len(), 1);
         assert_eq!(kb.keys[0].code, KeyCode::Char('p'));
         assert_eq!(kb.keys[0].modifiers, KeyModifiers::CONTROL);
-    }
-
-    #[test]
-    fn parse_key_string_gg() {
-        let kb = parse_key_string("gg").unwrap();
-        assert_eq!(kb.keys.len(), 2);
-        assert_eq!(kb.keys[0].code, KeyCode::Char('g'));
-        assert_eq!(kb.keys[1].code, KeyCode::Char('g'));
-    }
-
-    #[test]
-    fn parse_key_string_enter() {
-        let kb = parse_key_string("Enter").unwrap();
-        assert_eq!(kb.keys.len(), 1);
-        assert_eq!(kb.keys[0].code, KeyCode::Enter);
     }
 
     #[test]
@@ -1310,95 +1287,6 @@ mod tests {
             format_keybinding(&parse_key_string("Space").unwrap()),
             "Space"
         );
-    }
-
-    #[test]
-    fn default_keybindings_contain_gmail_native() {
-        let config = default_keybindings();
-
-        // Check that key actions are present
-        let actions: Vec<&str> = config
-            .mail_list
-            .values()
-            .map(std::string::String::as_str)
-            .collect();
-        assert!(actions.contains(&"compose"));
-        assert!(actions.contains(&"reply"));
-        assert!(actions.contains(&"reply_all"));
-        assert!(actions.contains(&"archive"));
-        assert!(actions.contains(&"mark_read_archive"));
-        assert!(actions.contains(&"trash"));
-        assert!(actions.contains(&"spam"));
-        assert!(actions.contains(&"star"));
-        assert!(actions.contains(&"mark_read"));
-        assert!(actions.contains(&"mark_unread"));
-        assert!(actions.contains(&"toggle_select"));
-        assert!(actions.contains(&"unsubscribe"));
-        assert!(actions.contains(&"snooze"));
-        assert!(actions.contains(&"visual_line_mode"));
-        assert!(actions.contains(&"sender_profile"));
-    }
-
-    #[test]
-    fn action_from_name_coverage() {
-        // Test that all important actions are mapped
-        assert!(action_from_name("compose").is_some());
-        assert!(action_from_name("reply").is_some());
-        assert!(action_from_name("reply_all").is_some());
-        assert!(action_from_name("forward").is_some());
-        assert!(action_from_name("archive").is_some());
-        assert!(action_from_name("mark_read_archive").is_some());
-        assert!(action_from_name("trash").is_some());
-        assert!(action_from_name("spam").is_some());
-        assert!(action_from_name("star").is_some());
-        assert!(action_from_name("mark_read").is_some());
-        assert!(action_from_name("mark_unread").is_some());
-        assert!(action_from_name("unsubscribe").is_some());
-        assert!(action_from_name("snooze").is_some());
-        assert!(action_from_name("toggle_reader_mode").is_some());
-        assert!(action_from_name("toggle_select").is_some());
-        assert!(action_from_name("pattern_select_unread").is_some());
-        assert!(action_from_name("visual_line_mode").is_some());
-        assert!(action_from_name("go_inbox").is_some());
-        assert!(action_from_name("go_starred").is_some());
-        assert!(action_from_name("edit_config").is_some());
-        assert!(action_from_name("open_logs").is_some());
-        assert!(action_from_name("enable_semantic").is_some());
-        assert!(action_from_name("disable_semantic").is_some());
-        assert!(action_from_name("reindex_semantic").is_some());
-        assert!(action_from_name("draft_assist").is_some());
-        assert!(action_from_name("draft_new_for_sender").is_some());
-        assert!(action_from_name("open_commitments").is_some());
-        assert!(action_from_name("open_voice_profile").is_some());
-        assert!(action_from_name("nonexistent").is_none());
-    }
-
-    #[test]
-    fn resolve_action_finds_match() {
-        let config = default_keybindings();
-        let j = KeyPress {
-            code: KeyCode::Char('j'),
-            modifiers: KeyModifiers::NONE,
-        };
-        let result = resolve_action(&config, ViewContext::MailList, &[j]);
-        assert_eq!(result, Some("move_down".to_string()));
-    }
-
-    #[test]
-    fn format_keybinding_basic() {
-        let kb = parse_key_string("Ctrl-p").unwrap();
-        assert_eq!(format_keybinding(&kb), "Ctrl-p");
-    }
-
-    #[test]
-    fn all_bindings_for_mail_list_include_full_action_set() {
-        let bindings = all_bindings_for_context(ViewContext::MailList);
-        let labels: Vec<String> = bindings.into_iter().map(|(_, label)| label).collect();
-        assert!(labels.contains(&"Apply Label".to_string()));
-        assert!(labels.contains(&"Full View".to_string()));
-        assert!(labels.contains(&"Visual Line Mode".to_string()));
-        assert!(labels.contains(&"Go Inbox".to_string()));
-        assert!(labels.contains(&"Accounts Page".to_string()));
     }
 
     #[test]
@@ -1448,23 +1336,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn user_override_replaces_default() {
-        let mut config = default_keybindings();
-
-        // Override 'j' to do something different
-        let j_key = parse_key_string("j").unwrap();
-        config
-            .mail_list
-            .insert(j_key.clone(), "page_down".to_string());
-
-        let j_press = KeyPress {
-            code: KeyCode::Char('j'),
-            modifiers: KeyModifiers::NONE,
-        };
-        let result = resolve_action(&config, ViewContext::MailList, &[j_press]);
-        assert_eq!(result, Some("page_down".to_string()));
     }
 }

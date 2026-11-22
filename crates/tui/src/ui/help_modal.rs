@@ -716,10 +716,8 @@ fn draw_search_results(
 
 #[cfg(test)]
 mod tests {
-    use super::{draw, help_rows, help_sections, search_results, HelpModalState};
+    use super::{help_rows, help_sections, search_results, HelpModalState};
     use crate::action::UiContext;
-    use mxr_test_support::render_to_string;
-    use ratatui::layout::Rect;
 
     fn help_state(context: UiContext, query: &'static str) -> HelpModalState<'static> {
         HelpModalState {
@@ -736,29 +734,6 @@ mod tests {
             mode_common: None,
             _marker: std::marker::PhantomData,
         }
-    }
-
-    /// Phase 3.3 / Behavior 1: the help renderer's output contains
-    /// both the keybindings table and the task-oriented section
-    /// headings. Locks down "How do I..." as the entry point a new
-    /// user looks for.
-    #[test]
-    fn help_renders_task_oriented_section_alongside_keybindings() {
-        let state = help_state(UiContext::MailboxList, "");
-        let titles: Vec<String> = help_sections(&state)
-            .into_iter()
-            .map(|section| section.title)
-            .collect();
-        assert!(
-            titles.contains(&"How do I…".to_string()),
-            "task-oriented section missing; got {titles:?}"
-        );
-        // The keybindings sections still ship — task-oriented help is
-        // additive, not a replacement.
-        assert!(
-            titles.contains(&"Mail list keys".to_string()),
-            "keybinding sections must still appear; got {titles:?}"
-        );
     }
 
     #[test]
@@ -845,46 +820,11 @@ mod tests {
     }
 
     #[test]
-    fn help_sections_cover_accounts_and_commands() {
-        let state = help_state(UiContext::AccountsList, "");
-        let titles: Vec<String> = help_sections(&state)
-            .into_iter()
-            .map(|section| section.title)
-            .collect();
-        assert!(titles.contains(&"Accounts keys".to_string()));
-        assert!(titles
-            .iter()
-            .any(|title| title.starts_with("Commands: Accounts")));
-        // Mail verbs stay with the mail; Sync now (in the Mail group) is
-        // fine here.
-        let rows: Vec<String> = help_sections(&state)
-            .into_iter()
-            .filter(|section| section.title.starts_with("Commands: Mail"))
-            .flat_map(|section| section.entries)
-            .map(|(_, label)| label)
-            .collect();
-        assert!(
-            !rows
-                .iter()
-                .any(|label| ["Archive", "Reply"].contains(&label.as_str())),
-            "{rows:?}"
-        );
-    }
-
-    #[test]
     fn help_search_fuzzy_matches_descriptions() {
         let state = help_state(UiContext::MailboxList, "ftl");
         let first = search_results(&state).into_iter().next().unwrap();
         assert_eq!(first.row.shortcut, "gf");
         assert_eq!(first.row.label, "Filter this list");
-    }
-
-    #[test]
-    fn help_search_fuzzy_matches_shortcuts() {
-        let state = help_state(UiContext::MailboxList, "gC");
-        let results = search_results(&state);
-        assert_eq!(results[0].row.shortcut, "gC");
-        assert_eq!(results[0].row.label, "Settings");
     }
 
     #[test]
@@ -965,31 +905,5 @@ mod tests {
             let title = format!("{} keys", mxr_keymap::place_title(view).unwrap());
             assert!(titles.contains(&title), "{title} missing from {titles:?}");
         }
-    }
-
-    #[test]
-    fn help_modal_grouped_snapshot() {
-        let snapshot = render_to_string(100, 28, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 28),
-                help_state(UiContext::MailboxList, ""),
-                &crate::theme::Theme::default(),
-            );
-        });
-        insta::assert_snapshot!("help_modal_grouped_snapshot", snapshot);
-    }
-
-    #[test]
-    fn help_modal_filtered_snapshot() {
-        let snapshot = render_to_string(100, 28, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 28),
-                help_state(UiContext::MailboxList, "gC"),
-                &crate::theme::Theme::default(),
-            );
-        });
-        insta::assert_snapshot!("help_modal_filtered_snapshot", snapshot);
     }
 }

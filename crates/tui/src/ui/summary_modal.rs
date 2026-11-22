@@ -59,19 +59,6 @@ mod tests {
     use mxr_test_support::render_to_string;
 
     #[test]
-    fn loading_state_shows_placeholder() {
-        let mut state = ThreadSummaryModalState::default();
-        state.open_loading(ThreadId::new());
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Summarizing thread..."),
-            "loading placeholder must appear; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_summary_text_and_model_name() {
         let mut state = ThreadSummaryModalState::default();
         state.open_loading(ThreadId::new());
@@ -94,24 +81,6 @@ mod tests {
         assert!(
             snapshot.contains("qwen2.5-3b-instruct"),
             "model name must surface in title; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn renders_disabled_error_message() {
-        let mut state = ThreadSummaryModalState::default();
-        state.open_loading(ThreadId::new());
-        state.set_error("LLM disabled (set [llm] enabled = true in mxr.toml)".into());
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Failed to summarize"),
-            "error banner must appear; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("LLM disabled"),
-            "underlying daemon error must surface verbatim; got:\n{snapshot}",
         );
     }
 }

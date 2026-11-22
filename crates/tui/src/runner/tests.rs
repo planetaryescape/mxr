@@ -4,18 +4,14 @@ use crate::app::PendingSend;
 use crate::app::{
     ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MailListMode,
     MailboxView, MutationEffect, PendingSearchRequest, PendingSendMode, Screen, SearchPane,
-    SearchTarget, SidebarItem, SEARCH_PAGE_SIZE,
+    SearchTarget, SEARCH_PAGE_SIZE,
 };
 use crate::async_result::{ComposeReadyData, SearchResultData};
 use crate::compose_flow::{handle_compose_editor_status, pending_send_from_edited_draft};
 use crate::input::InputHandler;
 use crate::runtime::{enqueue_replaceable_request, ReplaceableRequest};
 use crate::test_fixtures::TestEnvelopeBuilder;
-use crate::ui::command_palette::default_commands;
-use crate::ui::command_palette::CommandPalette;
 use crate::ui::search_bar::SearchBar;
-use crate::ui::status_bar;
-use mxr_config::RenderConfig;
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::MxrError;

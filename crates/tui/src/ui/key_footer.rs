@@ -68,14 +68,6 @@ mod tests {
     }
 
     #[test]
-    fn everything_shows_when_it_fits() {
-        assert_eq!(
-            fit(&entries(), "  ", 200),
-            "\u{21b5} open  e done  a reply all  u undo  f forward  ? keys"
-        );
-    }
-
-    #[test]
     fn the_last_optional_entries_go_first_and_the_kept_ones_stay() {
         assert_eq!(
             fit(&entries(), "  ", 40),

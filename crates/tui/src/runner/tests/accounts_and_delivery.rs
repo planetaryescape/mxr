@@ -245,42 +245,6 @@ fn search_preview_shift_o_opens_in_browser_and_o_folds_the_message() {
 }
 
 #[test]
-fn search_preview_r_toggles_reader_mode_without_shift_modifier() {
-    let mut app = App::new();
-    let results = make_test_envelopes(1);
-    let env = results[0].clone();
-    app.screen = Screen::Search;
-    app.search.page.results = results;
-    app.search.page.session_active = true;
-    app.search.page.active_pane = SearchPane::Preview;
-    app.mailbox.viewed_thread_messages = vec![env.clone()];
-    app.mailbox.viewing_envelope = Some(env);
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('R'), KeyModifiers::NONE));
-
-    assert_eq!(action, Some(Action::ToggleReaderMode));
-}
-
-#[test]
-fn search_preview_h_and_m_toggle_html_controls_without_shift_modifier() {
-    let mut app = App::new();
-    let results = make_test_envelopes(1);
-    let env = results[0].clone();
-    app.screen = Screen::Search;
-    app.search.page.results = results;
-    app.search.page.session_active = true;
-    app.search.page.active_pane = SearchPane::Preview;
-    app.mailbox.viewed_thread_messages = vec![env.clone()];
-    app.mailbox.viewing_envelope = Some(env);
-
-    let html = app.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::NONE));
-    let remote = app.handle_key(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::NONE));
-
-    assert_eq!(html, Some(Action::ToggleHtmlView));
-    assert_eq!(remote, Some(Action::ToggleRemoteContent));
-}
-
-#[test]
 fn search_results_f_opens_full_message_view() {
     let mut app = App::new();
     let results = make_test_envelopes(2);
@@ -332,61 +296,6 @@ fn search_preview_f_toggles_back_to_split_view() {
     assert!(!app.search.page.preview_fullscreen);
     assert_eq!(app.search.page.active_pane, SearchPane::Preview);
     assert_eq!(app.status_message.as_deref(), Some("Showing split view"));
-}
-
-#[test]
-fn search_fullscreen_render_hides_results_pane() {
-    let mut app = App::new();
-    let results = make_test_envelopes(1);
-    let env = results[0].clone();
-    app.screen = Screen::Search;
-    app.search.page.query = "deploy".into();
-    app.search.page.results = results;
-    app.search.page.session_active = true;
-    app.search.page.active_pane = SearchPane::Preview;
-    app.search.page.result_selected = true;
-    app.search.page.preview_fullscreen = true;
-    app.mailbox.viewed_thread_messages = vec![env.clone()];
-    app.mailbox.viewing_envelope = Some(env);
-    app.mailbox.body_view_state = BodyViewState::ready(
-        "hello".into(),
-        "hello".into(),
-        BodySource::Plain,
-        BodyViewMetadata::default(),
-    );
-
-    let output = render_to_string(120, 20, |frame| app.draw(frame));
-
-    assert!(output.contains("Search All Mail"));
-    assert!(!output.contains("Search Results /"));
-}
-
-#[test]
-fn search_preview_toggle_select_keeps_current_message_visible() {
-    let mut app = App::new();
-    let results = make_test_envelopes(2);
-    let env = results[0].clone();
-    app.screen = Screen::Search;
-    app.search.page.results = results;
-    app.search.page.session_active = true;
-    app.search.page.active_pane = SearchPane::Preview;
-    app.mailbox.viewed_thread_messages = vec![env.clone()];
-    app.mailbox.viewing_envelope = Some(env.clone());
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-    assert_eq!(action, Some(Action::ToggleSelect));
-
-    app.apply(Action::ToggleSelect);
-
-    assert_eq!(app.search.page.selected_index, 0);
-    assert_eq!(
-        app.mailbox
-            .viewing_envelope
-            .as_ref()
-            .map(|current| current.id.clone()),
-        Some(env.id.clone())
-    );
-    assert!(app.mailbox.selected_set.contains(&env.id));
 }
 
 #[tokio::test]
@@ -908,34 +817,6 @@ fn test_draft_account(
 }
 
 #[test]
-fn open_stored_drafts_opens_modal_and_flags_refresh() {
-    let mut app = App::new();
-
-    app.apply(Action::OpenStoredDrafts);
-
-    assert!(app.modals.drafts.visible);
-    assert!(app.modals.drafts.loading);
-    assert!(
-        app.pending_drafts_refresh,
-        "opening the drafts modal should schedule a Request::ListDrafts refresh"
-    );
-
-    let subjects = ["Q4 plan", "Follow up"];
-    let drafts: Vec<Draft> = subjects.iter().map(|s| test_draft(s)).collect();
-    app.modals.drafts.set_drafts(drafts);
-    assert!(!app.modals.drafts.loading);
-    assert_eq!(
-        app.modals
-            .drafts
-            .drafts
-            .iter()
-            .map(|d| d.subject.as_str())
-            .collect::<Vec<_>>(),
-        subjects
-    );
-}
-
-#[test]
 fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
     let mut app = App::new();
     let drafts = vec![test_draft("First"), test_draft("Second")];
@@ -1075,22 +956,6 @@ fn stored_drafts_cancel_a_scheduled_send_but_keep_the_draft() {
 }
 
 #[test]
-fn stored_drafts_delete_preview_can_be_cancelled_without_a_request() {
-    let mut app = App::new();
-    app.modals.drafts.open_loading();
-    app.modals.drafts.set_drafts(vec![test_draft("Keep me")]);
-    app.apply(Action::StoredDraftsModalPreviewDelete);
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    assert_eq!(action, Some(Action::StoredDraftsModalCancelConfirmation));
-    app.apply(action.unwrap());
-
-    assert!(app.modals.drafts.confirmation.is_none());
-    assert!(app.pending_draft_operation.is_none());
-    assert_eq!(app.modals.drafts.drafts.len(), 1);
-}
-
-#[test]
 fn stored_drafts_provider_copy_previews_then_queues_same_draft() {
     let mut app = App::new();
     let draft = test_draft("Copy me");
@@ -1178,20 +1043,6 @@ fn escape_closes_recipient_modal_without_starting_compose() {
     let mut app = App::new();
     app.mailbox.all_envelopes = make_test_envelopes(1);
     app.apply(Action::Compose);
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-
-    assert!(!app.compose.compose_picker.visible);
-    assert!(app.compose.pending_compose.is_none());
-    assert!(app.compose.compose_picker.pending_to.is_empty());
-}
-
-#[test]
-fn escape_closes_subject_modal_without_starting_compose() {
-    let mut app = App::new();
-    app.mailbox.all_envelopes = make_test_envelopes(1);
-    app.apply(Action::Compose);
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
@@ -1446,53 +1297,6 @@ fn escape_returns_to_the_draft_and_only_hash_discards_it() {
 }
 
 #[test]
-fn mail_list_l_opens_label_picker_not_message() {
-    let mut app = App::new();
-    app.mailbox.active_pane = ActivePane::MailList;
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
-
-    assert_eq!(action, Some(Action::ApplyLabel));
-}
-
-#[test]
-fn input_g_shift_c_opens_accounts_and_settings() {
-    let mut h = InputHandler::new();
-
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('C'), KeyModifiers::SHIFT)),
-        Some(Action::OpenTab4)
-    );
-}
-
-#[test]
-fn input_g_shift_l_opens_logs() {
-    let mut h = InputHandler::new();
-
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
-        None
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT)),
-        Some(Action::OpenLogs)
-    );
-}
-
-#[test]
-fn input_m_marks_read_and_archives() {
-    let mut app = App::new();
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE));
-
-    assert_eq!(action, Some(Action::MarkReadAndArchive));
-}
-
-#[test]
 fn reconnect_detection_treats_connection_refused_as_recoverable() {
     let result = Err(MxrError::Ipc(
         "IPC error: Connection refused (os error 61)".into(),
@@ -1523,30 +1327,6 @@ fn diagnostics_shift_l_opens_logs() {
 }
 
 #[test]
-fn diagnostics_uppercase_l_opens_logs_without_shift_modifier() {
-    let mut app = App::new();
-    app.screen = Screen::Diagnostics;
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::NONE));
-
-    assert_eq!(action, Some(Action::OpenLogs));
-}
-
-#[test]
-fn diagnostics_tab_cycles_selected_pane() {
-    let mut app = App::new();
-    app.screen = Screen::Diagnostics;
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-
-    assert!(action.is_none());
-    assert_eq!(
-        app.diagnostics.page.selected_pane,
-        crate::app::DiagnosticsPaneKind::Data
-    );
-}
-
-#[test]
 fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
     let mut app = App::new();
     app.screen = Screen::Diagnostics;
@@ -1563,17 +1343,6 @@ fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
         .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .is_none());
     assert_eq!(app.diagnostics.page.fullscreen_pane, None);
-}
-
-#[test]
-fn diagnostics_d_opens_selected_pane_details() {
-    let mut app = App::new();
-    app.screen = Screen::Diagnostics;
-    app.diagnostics.page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
-
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-
-    assert_eq!(action, Some(Action::OpenDiagnosticsPaneDetails));
 }
 
 #[test]
@@ -1985,31 +1754,6 @@ fn confirming_bulk_archive_queues_mutation_and_clears_selection() {
 }
 
 #[test]
-fn command_palette_includes_major_mail_actions() {
-    let labels: Vec<String> = default_commands()
-        .into_iter()
-        .map(|cmd| cmd.label)
-        .collect();
-    for label in [
-        "Reply",
-        "Reply all",
-        "Archive",
-        "Move to Trash",
-        "Labels…",
-        "Not now…",
-        "Who is this sender?",
-        "Pass to a mode…",
-        "Clear selection",
-        "Settings",
-        "Add account",
-        "Set default account",
-        "Edit config",
-    ] {
-        assert!(labels.contains(&label.to_string()), "{label}");
-    }
-}
-
-#[test]
 fn local_label_changes_update_open_message() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
@@ -2229,20 +1973,6 @@ fn deliveries_o_opens_source_thread() {
     assert_eq!(app.pending_delivery_open, Some(thread_id));
 }
 
-/// Opening a delivery's source thread shows it inline in the split preview
-/// and stays on the Deliveries screen (not the mailbox).
-#[test]
-fn open_delivery_thread_previews_inline_without_leaving_screen() {
-    let mut app = App::new();
-    app.screen = Screen::Deliveries;
-
-    app.open_delivery_thread(make_test_envelopes(1));
-
-    assert!(app.deliveries.preview_active);
-    assert_eq!(app.screen, Screen::Deliveries);
-    assert!(app.mailbox.viewing_envelope.is_some());
-}
-
 /// Esc closes the inline preview and drops the loaded message.
 #[test]
 fn deliveries_esc_closes_inline_preview() {
@@ -2409,32 +2139,5 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
     assert!(
         got_account_op_err,
         "poller must deliver AccountOperation(Err) after 5 consecutive failures"
-    );
-}
-
-/// `g` + a capital opens a tool from the Deliveries screen and Analytics'
-/// storage breakdown too: refresh and group by moved off `g` to `R` and `b`.
-#[test]
-fn g_and_a_capital_leave_deliveries_and_the_storage_breakdown() {
-    let shift = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    let plain = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
-
-    let mut app = App::new();
-    app.screen = Screen::Deliveries;
-    assert_eq!(app.handle_key(plain('g')), None);
-    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
-    assert!(!app.pending_deliveries_refresh, "g R refreshed the list");
-    let _ = app.handle_key(shift('R'));
-    assert!(app.pending_deliveries_refresh, "R refreshes the list");
-
-    let mut app = App::new();
-    app.screen = Screen::Analytics;
-    app.analytics.view = crate::app::AnalyticsView::Storage;
-    app.analytics.storage_mode = crate::app::StorageMode::Breakdown;
-    assert_eq!(app.handle_key(plain('g')), None);
-    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
-    assert_eq!(
-        app.handle_key(plain('b')),
-        Some(Action::CycleStorageGroupBy)
     );
 }

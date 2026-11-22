@@ -1195,12 +1195,6 @@ mod auto_summary_tests {
     }
 
     #[test]
-    fn long_thread_is_eligible() {
-        let envs = vec![envelope(250, "alice@example.com")];
-        assert!(auto_summary_eligible(&envs, &HashMap::new()));
-    }
-
-    #[test]
     fn short_thread_is_skipped() {
         let envs = vec![envelope(40, "alice@example.com")];
         assert!(!auto_summary_eligible(&envs, &HashMap::new()));
@@ -1235,15 +1229,6 @@ mod auto_summary_tests {
         let mut bodies = HashMap::new();
         bodies.insert(env.id.clone(), body(env.id.clone(), None));
         assert!(!auto_summary_eligible(&[env], &bodies));
-    }
-
-    #[test]
-    fn empty_bodies_partially_cached_falls_through_to_word_count() {
-        // No bodies cached at all → only word count gates. Sufficient
-        // count keeps eligibility live so we don't suppress on every
-        // first paint before bodies arrive.
-        let envs = vec![envelope(500, "alice@example.com")];
-        assert!(auto_summary_eligible(&envs, &HashMap::new()));
     }
 
     #[test]

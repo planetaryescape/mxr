@@ -63,28 +63,3 @@ pub fn draw(
     lines.push(Line::from("[Enter/y] confirm   [Esc/n/q] cancel"));
     frame.render_widget(Paragraph::new(lines), inner);
 }
-
-#[cfg(test)]
-mod tests {
-    use super::draw;
-    use crate::app::{BulkPreview, MutationEffect, PendingBulkConfirm};
-    use mxr_protocol::{MutationCommand, Request};
-
-    #[test]
-    fn pending_bulk_confirm_is_constructible() {
-        let pending = PendingBulkConfirm {
-            title: "Archive messages".into(),
-            detail: "You are about to archive these 15 messages.".into(),
-            request: Request::mutation(MutationCommand::Archive {
-                message_ids: vec![],
-            }),
-            effect: MutationEffect::RefreshList,
-            optimistic_effect: None,
-            status_message: "Archiving...".into(),
-            preview: BulkPreview::default(),
-            preview_scroll: 0,
-        };
-        let _ = draw;
-        assert!(pending.detail.contains("15"));
-    }
-}

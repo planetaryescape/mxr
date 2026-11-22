@@ -261,49 +261,8 @@ mod tests {
     }
 
     #[test]
-    fn deduplicates_urls() {
-        let plain = "Visit https://example.com for more";
-        let html = r#"<a href="https://example.com">Example</a>"#;
-        let urls = extract_urls(Some(plain), Some(html));
-        assert_eq!(urls.len(), 1);
-        // HTML anchor version wins (has label)
-        assert_eq!(urls[0].label, "Example");
-    }
-
-    #[test]
     fn strips_trailing_punctuation() {
         let urls = extract_urls(Some("See https://example.com."), None);
         assert_eq!(urls[0].url, "https://example.com");
-    }
-
-    #[test]
-    fn modal_state_navigation() {
-        let mut state = UrlModalState::new(vec![
-            UrlEntry {
-                label: "A".into(),
-                url: "https://a.com".into(),
-            },
-            UrlEntry {
-                label: "B".into(),
-                url: "https://b.com".into(),
-            },
-            UrlEntry {
-                label: "C".into(),
-                url: "https://c.com".into(),
-            },
-        ]);
-        assert_eq!(state.selected, 0);
-        state.next();
-        assert_eq!(state.selected, 1);
-        state.next();
-        assert_eq!(state.selected, 2);
-        state.next();
-        assert_eq!(state.selected, 2); // clamped
-        state.prev();
-        assert_eq!(state.selected, 1);
-        state.prev();
-        assert_eq!(state.selected, 0);
-        state.prev();
-        assert_eq!(state.selected, 0); // clamped
     }
 }

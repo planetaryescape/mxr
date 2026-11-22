@@ -1,4 +1,3 @@
-//! Remote grants and cooperative profiles must both permit every operation.
 use super::*;
 use mxr_core::{AccountId, Draft, DraftAttachment, DraftAttachmentId, MessageDirection};
 use mxr_protocol::{ClientKind, IpcErrorKind, Response};
@@ -83,8 +82,6 @@ async fn broad_registration_cannot_bypass_profiles_on_preview_send_or_attachment
         other.account_id = excluded;
         state.store.insert_draft(&other).await.unwrap();
         other = state.store.get_draft(&other.id).await.unwrap().unwrap();
-        // A real allowed preview succeeds, proving this is account filtering
-        // rather than a blanket rejection of all remote agent requests.
         let preview = Request::PreviewDraft {
             draft: own.clone(),
             context: Default::default(),
@@ -149,7 +146,6 @@ async fn broad_registration_cannot_bypass_profiles_on_preview_send_or_attachment
                 draft_id: other.id.clone(),
                 resource_id: resource.id.clone(),
             },
-            // Declaring an allowed owner does not overwrite an excluded draft.
             Request::SaveDraft {
                 draft: Draft {
                     account_id: own.account_id.clone(),
@@ -314,7 +310,6 @@ async fn paired_profile_refuses_excluded_reads_while_cli_reads_remain_ordinary()
     };
     assert_eq!(envelopes.len(), 1);
     assert_eq!(envelopes[0].id, mails[0].id);
-    // A shared thread request cannot reveal the excluded account's content.
     let request = Request::GetThread {
         thread_id: thread,
         window: None,

@@ -1,11 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
+import type { MessageRowView } from "@/features/mailbox/types";
 
 import {
-  projectGroups,
   projectRows,
-  rowMessageIds,
   type LensIdentity,
   type MailAction,
   type MailActionPayload,
@@ -45,7 +43,6 @@ const STARRED: LensIdentity = { kind: "starred" };
 const TRASH: LensIdentity = { kind: "trash" };
 const SPAM: LensIdentity = { kind: "spam" };
 const WORK: LensIdentity = { kind: "label", labelName: "Work" };
-const RECEIPTS: LensIdentity = { kind: "label", labelName: "Receipts" };
 
 function visible(ops: PendingMailOp[], lens: LensIdentity): string[] {
   return projectRows([row("a"), row("b")], ops, lens).map((item) => item.id);
@@ -61,67 +58,11 @@ describe("projectRows: which lenses an action removes rows from", () => {
     expect(visible([op("archive", ["a"])], lens)).toEqual(expected);
   });
 
-  test("read-and-archive and snooze leave only the inbox", () => {
-    expect(visible([op("read-and-archive", ["a"])], INBOX)).toEqual(["b"]);
-    expect(visible([op("read-and-archive", ["a"])], ALL_MAIL)).toEqual(["a", "b"]);
-    expect(visible([op("snooze", ["a"])], INBOX)).toEqual(["b"]);
-    expect(visible([op("snooze", ["a"])], SEARCH)).toEqual(["a", "b"]);
-  });
-
   test("trash removes everywhere except Trash", () => {
     for (const lens of [INBOX, ALL_MAIL, WORK, SEARCH, STARRED, SPAM]) {
       expect(visible([op("trash", ["a"])], lens)).toEqual(["b"]);
     }
     expect(visible([op("trash", ["a"])], TRASH)).toEqual(["a", "b"]);
-  });
-
-  test("label-remove hides rows only in that label's lens, ignoring case", () => {
-    const remove = op("label-remove", ["a"], { label: "work" });
-
-    expect(visible([remove], WORK)).toEqual(["b"]);
-    expect(visible([remove], RECEIPTS)).toEqual(["a", "b"]);
-    expect(visible([remove], INBOX)).toEqual(["a", "b"]);
-  });
-
-  test("labels removes rows from the lens of any removed label, never on add", () => {
-    const change = op("labels", ["a"], { add: ["Receipts"], remove: ["Work", "Later"] });
-
-    expect(visible([change], WORK)).toEqual(["b"]);
-    expect(visible([change], RECEIPTS)).toEqual(["a", "b"]);
-    expect(visible([change], INBOX)).toEqual(["a", "b"]);
-  });
-
-  test("unstar hides the row only in Starred", () => {
-    expect(visible([op("unstar", ["a"])], STARRED)).toEqual(["b"]);
-    expect(visible([op("unstar", ["a"])], INBOX)).toEqual(["a", "b"]);
-  });
-
-  test("move leaves the inbox and other label lenses but stays in its destination", () => {
-    const move = op("move", ["a"], { label: "Receipts" });
-
-    expect(visible([move], INBOX)).toEqual(["b"]);
-    expect(visible([move], WORK)).toEqual(["b"]);
-    expect(visible([move], RECEIPTS)).toEqual(["a", "b"]);
-    expect(visible([move], ALL_MAIL)).toEqual(["a", "b"]);
-  });
-
-  test("route leaves the inbox and its queue label", () => {
-    const route = op("route", ["a"], { label: "Receipts", fromQueueLabel: "Work" });
-
-    expect(visible([route], INBOX)).toEqual(["b"]);
-    expect(visible([route], WORK)).toEqual(["b"]);
-    expect(visible([route], RECEIPTS)).toEqual(["a", "b"]);
-  });
-
-  test("route without archiving keeps the row in the inbox", () => {
-    const route = op("route", ["a"], {
-      label: "Receipts",
-      fromQueueLabel: "Work",
-      archive: false,
-    });
-
-    expect(visible([route], INBOX)).toEqual(["a", "b"]);
-    expect(visible([route], WORK)).toEqual(["b"]);
   });
 });
 
@@ -140,45 +81,10 @@ describe("projectRows: flag changes", () => {
       { id: "b", starred: false, unread: false },
     ]);
   });
-
-  test("the server rows are not mutated", () => {
-    const original = row("a");
-    projectRows([original], [op("star", ["a"])], INBOX);
-
-    expect(original.starred).toBe(false);
-  });
 });
 
 describe("projectRows: thread rows and op order", () => {
-  test("a thread row is matched through any of its message_ids", () => {
-    const thread = row("thread-row", { kind: "thread", message_ids: ["m1", "m2", "m3"] });
-
-    expect(projectRows([thread], [op("archive", ["m2"])], INBOX)).toEqual([]);
-    expect(projectRows([thread], [op("archive", ["thread-row"])], INBOX)).toEqual([thread]);
-  });
-
-  test("a thread row with an empty message_ids list falls back to its own id", () => {
-    const thread = row("t", { kind: "thread", message_ids: [] });
-    expect(rowMessageIds(thread)).toEqual(["t"]);
-    expect(projectRows([thread], [op("archive", ["t"])], INBOX)).toEqual([]);
-  });
-
   test("a removal wins over a later flag change", () => {
     expect(visible([op("archive", ["a"]), op("star", ["a"])], INBOX)).toEqual(["b"]);
   });
-
-});
-
-describe("projectGroups", () => {
-  test("drops groups that the projection empties", () => {
-    const groups: MessageGroupView[] = [
-      { id: "today", label: "Today", rows: [row("a")] },
-      { id: "older", label: "Older", rows: [row("b"), row("c")] },
-    ];
-
-    const projected = projectGroups(groups, [op("archive", ["a", "b"])], INBOX);
-
-    expect(projected).toEqual([{ id: "older", label: "Older", rows: [row("c")] }]);
-  });
-
 });

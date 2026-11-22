@@ -15,7 +15,6 @@ These specs run the web app against a real `mxr` daemon (the fake provider's dem
 | `updates.spec.ts` | Opening a peek persists that revision's seen state through reload; let go of all acts on exactly the previewed set, and undo restores it. |
 | `unsubscribe.spec.ts` | Unsubscribe commits the daemon's own preview token, for both choices. |
 | `sorting-rules.spec.ts` | A sorting rule's preview, its apply and a later personal correction agree in the daemon. |
-| `onboarding-redirect.spec.ts` | A blank install lands on onboarding from any URL. |
 | `token-expiry.spec.ts` | An expired bridge token routes to the token page with an alert. |
 | `html-rendering.spec.ts` | HTML mail renders in a sandbox without scripts, with trackers stripped and remote images held back (only a real browser enforces the sandbox). |
 

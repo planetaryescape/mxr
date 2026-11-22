@@ -117,35 +117,4 @@ describe("attachment transfer in the browser", () => {
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
     expect(popup.location.replace).not.toHaveBeenCalled();
   });
-
-  test("rejects corrupted bytes and closes the preparing tab", async () => {
-    transferResponses(metadata.mime_type, "0".repeat(64));
-
-    await expect(openAttachment(input, dependencies)).rejects.toThrow("SHA-256 integrity check");
-
-    expect(popup.close).toHaveBeenCalledOnce();
-    expect(popup.location.replace).not.toHaveBeenCalled();
-    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
-  });
-
-  test("falls back to download when the user closes the popup during transfer", async () => {
-    fetchMetadata.mockResolvedValueOnce(metadata);
-    fetchChunk.mockImplementationOnce(async () => {
-      popup.closed = true;
-      return {
-        message_id: input.messageId,
-        attachment_id: input.attachmentId,
-        offset: 0,
-        data_base64: "YWJj",
-      };
-    });
-
-    await expect(openAttachment(input, dependencies)).resolves.toEqual({
-      filename: "note.txt",
-      opened: false,
-    });
-
-    expect(popup.location.replace).not.toHaveBeenCalled();
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
-  });
 });

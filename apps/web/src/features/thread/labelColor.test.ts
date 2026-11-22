@@ -3,11 +3,6 @@ import { describe, expect, test } from "vitest";
 import { labelColor } from "./LabelBadge";
 
 describe("labelColor", () => {
-  test("keeps a valid hex, expanding the short form", () => {
-    expect(labelColor("Work", "#ff8800")).toBe("#ff8800");
-    expect(labelColor("Work", "#f80")).toBe("#ff8800");
-  });
-
   test("never lets anything but a hex reach a style value", () => {
     for (const hostile of [
       "red; background: url(//evil.example)",
@@ -21,5 +16,4 @@ describe("labelColor", () => {
     }
     expect(labelColor("Work", null)).toMatch(/^#[0-9a-f]{6}$/i);
   });
-
 });

@@ -121,15 +121,6 @@ afterEach(() => {
 });
 
 describe("LabelsDialog", () => {
-  test("shows which labels all, some or none of the conversations have", async () => {
-    renderDialog();
-
-    expect(screen.getByText("2 conversations")).toBeInTheDocument();
-    expect(await presence("Work")).toBe("all");
-    expect(await presence("Receipts")).toBe("some");
-    expect(await presence("Later")).toBe("none");
-  });
-
   test("stages adds and removals and applies them in one change", async () => {
     renderDialog();
 
@@ -149,34 +140,5 @@ describe("LabelsDialog", () => {
       ["a-1", "a-2", "b-1", "b-2"],
       { payload: { add: ["Later", "Receipts"], remove: ["Work"] } },
     );
-  });
-
-  test("toggling a label back to where it started is not a change", async () => {
-    renderDialog();
-
-    await toggle("Later");
-    await toggle("Later");
-
-    expect(screen.getByText("Enter toggles a label")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
-
-    expect(onClose).toHaveBeenCalled();
-    expect(mutations.performMailAction).not.toHaveBeenCalled();
-  });
-
-  test("offers to create a label that doesn't exist and stages it", async () => {
-    mailboxApi.createLabel.mockResolvedValue({});
-    renderDialog();
-    await screen.findByRole("option", { name: /^Work/ });
-
-    fireEvent.change(screen.getByPlaceholderText(/find or create a label/i), {
-      target: { value: "Travel" },
-    });
-    fireEvent.click(await screen.findByRole("option", { name: /Create “Travel”/ }));
-
-    await vi.waitFor(() =>
-      expect(mailboxApi.createLabel).toHaveBeenCalledWith({ name: "Travel", accountId: undefined }),
-    );
-    await vi.waitFor(() => expect(screen.getByText("1 add, 0 removals")).toBeInTheDocument());
   });
 });

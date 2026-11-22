@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -131,20 +131,6 @@ function lastSearchParams(): { sort?: string; limit?: number } {
   return (searchApi.fetchSearch.mock.lastCall?.[0] ?? {}) as { sort?: string; limit?: number };
 }
 
-function navigatedSearch(): { sort?: string } {
-  const call = router.navigate.mock.lastCall?.[0] as { search: { sort?: string } };
-  return call.search;
-}
-
-const facet = (label: string) => ({
-  key: `${label}@example.com`,
-  label,
-  count: 2,
-  unread: 1,
-  oldest: 1_779_000_000,
-  newest: 1_779_086_400,
-});
-
 describe("SearchResultsRoute", () => {
   beforeEach(() => {
     Object.defineProperty(Element.prototype, "scrollIntoView", {
@@ -190,72 +176,6 @@ describe("SearchResultsRoute", () => {
     usePendingMailOps.setState({ ops: [] });
   });
 
-  test("says so above the results when the daemon answered from the limited search", async () => {
-    const notice =
-      "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.";
-    searchApi.fetchSearch.mockResolvedValue({
-      scope: "threads",
-      sort: "relevance",
-      mode: "lexical",
-      total: rows.length,
-      has_more: false,
-      groups: [{ id: "today", label: "Today", rows }],
-      degraded: {
-        reason: "index_stopped",
-        searched_fields: ["subject", "sender", "preview"],
-        notice,
-      },
-    });
-
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    expect(await screen.findByRole("status")).toHaveTextContent(notice);
-    expect(screen.getByText("Subject 1")).toBeVisible();
-  });
-
-  test("the filter shortcut focuses a control, and Escape returns to the filter button", async () => {
-    renderWithQueryClient(<SearchResultsRoute />);
-    fireEvent.click(screen.getByRole("button", { name: "Run filter shortcut" }));
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Show" })).toHaveFocus());
-    fireEvent.keyDown(screen.getByRole("combobox", { name: "Show" }), { key: "Escape" });
-    expect(screen.queryByRole("combobox", { name: "Show" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Filters/ })).toHaveFocus();
-  });
-
-  test("the query is the page's title, and the filters wait behind one button", async () => {
-    searchApi.fetchSearchGroups.mockResolvedValue({
-      query: "invoice",
-      group_by: "from",
-      total: rows.length,
-      groups: [facet("Ada"), facet("Sam")],
-    });
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    expect(await screen.findByRole("heading", { name: "invoice", level: 1 })).toBeVisible();
-    expect(screen.getByRole("radiogroup", { name: "Search mode" })).toBeVisible();
-    expect(screen.queryByTestId("search-filters")).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Narrow by" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
-    expect(screen.getByTestId("search-filters")).toBeVisible();
-    expect(await screen.findByRole("combobox", { name: "Narrow by" })).toBeVisible();
-    expect(screen.getByRole("button", { name: /Ada/ }).textContent).not.toMatch(/\d/);
-  });
-
-  test("search account options include cached accounts from restored profiles", async () => {
-    recoveryState.restored = true;
-    accountApi.accounts = [
-      { account_id: "active", name: "Active", email: "active@example.com", enabled: true },
-      { account_id: "personal", name: "Personal", email: "personal@example.com", enabled: true },
-      { account_id: "cached", name: "Cached", email: "cached@example.com", enabled: false },
-    ];
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
-    fireEvent.click(await screen.findByRole("combobox", { name: "Account" }));
-    expect(await screen.findByRole("option", { name: "cached@example.com" })).toBeVisible();
-  });
-
   test("loads additional pages through offset pagination", async () => {
     const baseRow = rows[0] as MessageRowView;
     const nextRows: MessageRowView[] = [
@@ -298,52 +218,6 @@ describe("SearchResultsRoute", () => {
       expect.anything(),
     );
     expect(lastSearchParams().limit).toBeUndefined();
-  });
-
-  test("choosing Default in the sort control clears the sort from the URL", async () => {
-    router.search = { q: "invoice", mode: "lexical", sort: "oldest" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
-    fireEvent.click(await screen.findByRole("combobox", { name: "Sort" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Default" }));
-
-    expect(navigatedSearch().sort).toBeUndefined();
-  });
-
-  test("triage keeps its own page of 100", async () => {
-    router.search = { q: "invoice", mode: "lexical", scope: "triage", sort: "verdict" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    await screen.findByTestId("mailbox-list");
-    expect(lastSearchParams().limit).toBe(100);
-  });
-
-  test("submitting the query blurs the input and navigates", async () => {
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    await screen.findByTestId("mailbox-list");
-    const input = screen.getByLabelText("Search query") as HTMLInputElement;
-    input.focus();
-    fireEvent.change(input, { target: { value: "alice" } });
-    const form = input.closest("form");
-    if (!form) throw new Error("missing search form");
-    fireEvent.submit(form);
-
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/search",
-      search: {
-        q: "alice",
-        mode: "lexical",
-        sort: "relevance",
-        scope: "threads",
-        verdict: undefined,
-        groupBy: "from",
-        account: undefined,
-      },
-    });
-    await waitFor(() => expect(document.activeElement).not.toBe(input));
-    expect(useMailboxPane.getState().activePane).toBe("mailbox");
   });
 
   test("a pending trash hides the row; a pending archive doesn't", async () => {

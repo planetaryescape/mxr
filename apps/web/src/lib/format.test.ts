@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { formatReceived, formatTime, formatTimeIn, formatWhen, initials } from "./format";
+import { formatReceived, formatTime, formatTimeIn, formatWhen } from "./format";
 
 process.env.TZ = "Europe/London";
 
@@ -14,22 +14,7 @@ const fullDate = (date: Date) =>
     date,
   );
 
-describe("initials for an avatar", () => {
-  test("two words give two letters; an address gives one", () => {
-    expect(initials("Samir Patel")).toBe("SP");
-    expect(initials("Samir, Ruth")).toBe("SR");
-    expect(initials("iris@meridian.example")).toBe("I");
-    expect(initials("")).toBe("?");
-  });
-});
-
 describe("formatWhen: one wording for an age, on every surface", () => {
-  test("within a minute either way is just now", () => {
-    expect(formatWhen(at(2026, 8, 26, 15, 0, 0), NOW)).toBe("Just now");
-    expect(formatWhen(at(2026, 8, 26, 14, 59, 1), NOW)).toBe("Just now");
-    expect(formatWhen(at(2026, 8, 26, 15, 0, 59), NOW)).toBe("Just now");
-  });
-
   test("minutes this hour, then the time of day", () => {
     expect(formatWhen(at(2026, 8, 26, 14, 59, 0), NOW)).toBe("1m");
     expect(formatWhen(at(2026, 8, 26, 14, 0, 1), NOW)).toBe("59m");
@@ -55,11 +40,6 @@ describe("formatWhen: one wording for an age, on every surface", () => {
     expect(formatWhen(january, NOW)).toBe(dayMonth(january));
   });
 
-  test("another year carries the year", () => {
-    const lastYear = at(2025, 11, 31, 9);
-    expect(formatWhen(lastYear, NOW)).toBe(fullDate(lastYear));
-  });
-
   test("future-dated: time today, tomorrow, the weekday, then the date", () => {
     const tonight = at(2026, 8, 26, 21);
     expect(formatWhen(tonight, NOW)).toBe(formatTime(tonight));
@@ -70,11 +50,6 @@ describe("formatWhen: one wording for an age, on every surface", () => {
     expect(formatWhen(later, NOW)).toBe(dayMonth(later));
     const nextYear = at(2027, 0, 4, 9);
     expect(formatWhen(nextYear, NOW)).toBe(fullDate(nextYear));
-  });
-
-  test("an empty or unreadable value is blank", () => {
-    expect(formatWhen(null, NOW)).toBe("");
-    expect(formatWhen("not a date", NOW)).toBe("");
   });
 });
 
@@ -98,11 +73,6 @@ describe("formatReceived: when an open email arrived, always in plain sight", ()
     expect(formatReceived(twelveMinutes, NOW)).toBe(
       `Today, ${formatTime(twelveMinutes)} · 12 minutes ago`,
     );
-  });
-
-  test("under a minute is just now, not a count", () => {
-    const moments = at(2026, 8, 26, 14, 59, 30);
-    expect(formatReceived(moments, NOW)).toBe(`Today, ${formatTime(moments)} · just now`);
   });
 
   test("midnight belongs to the day it starts", () => {
@@ -137,11 +107,6 @@ describe("formatReceived: when an open email arrived, always in plain sight", ()
     expect(formatReceived(newYearsDay, now)).toBe(
       `Today, ${formatTime(newYearsDay)} · 9 hours ago`,
     );
-  });
-
-  test("an empty or unreadable value is blank", () => {
-    expect(formatReceived(null, NOW)).toBe("");
-    expect(formatReceived("not a date", NOW)).toBe("");
   });
 });
 

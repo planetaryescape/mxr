@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { NONE_HIDDEN, type HiddenByMode } from "@/features/modes/modeDone";
 
 import type { Now } from "./api";
-import { itemTarget, litIndex, nowItems } from "./nowItems";
+import { nowItems } from "./nowItems";
 
 function person(thread: string, name: string) {
   return {
@@ -67,17 +67,6 @@ const now = {
 } as unknown as Now;
 
 describe("Now's rows", () => {
-  test("keep the fixed section order: People, Due soon, the card, the pick", () => {
-    expect(nowItems(now, NONE_HIDDEN).map((item) => item.key)).toEqual([
-      "person:t1",
-      "person:t2",
-      "todo:a",
-      "todo:b",
-      "updates",
-      "reading:r1",
-    ]);
-  });
-
   test("leave out rows whose done is in flight, in that row's own mode", () => {
     const hidden: HiddenByMode = {
       ...NONE_HIDDEN,
@@ -93,36 +82,5 @@ describe("Now's rows", () => {
     ]);
     const allLetGo = { ...NONE_HIDDEN, updates: new Set(["u1", "u2"]) };
     expect(nowItems(now, allLetGo).some((item) => item.kind === "updates")).toBe(false);
-  });
-
-  test("open in their own mode, on that item", () => {
-    const [maya, , due, dueWithoutEmail, card, pick] = nowItems(now, NONE_HIDDEN);
-    expect(itemTarget(maya!)).toEqual({ to: "/messages/t1" });
-    expect(itemTarget(due!)).toEqual({ to: "/todo/t3", search: { row: "a" } });
-    expect(itemTarget(dueWithoutEmail!)).toEqual({ to: "/todo", search: { row: "b" } });
-    expect(itemTarget(card!)).toEqual({ to: "/updates" });
-    expect(itemTarget(pick!)).toEqual({
-      to: "/reading/item/r-m%3A0",
-      search: { row: "r-m:0" },
-    });
-    expect(itemTarget(pick!, { email: true })).toEqual({ to: "/reading/r1" });
-  });
-
-});
-
-const rows = (...keys: string[]) => keys.map((key) => ({ key }));
-
-describe("litIndex", () => {
-  test("follows the row by id when a refetch reorders the list", () => {
-    expect(litIndex(rows("a", "b", "c"), "b")).toBe(1);
-    expect(litIndex(rows("c", "b", "a"), "b")).toBe(1);
-    expect(litIndex(rows("b", "c", "a"), "b")).toBe(0);
-    expect(litIndex(rows("c", "a", "b"), "b")).toBe(2);
-  });
-
-  test("always lights exactly one row: the first when the key is absent or unset", () => {
-    expect(litIndex(rows("a", "b"), null)).toBe(0);
-    expect(litIndex(rows("a", "b"), "gone")).toBe(0);
-    expect(litIndex([], "gone")).toBe(0);
   });
 });

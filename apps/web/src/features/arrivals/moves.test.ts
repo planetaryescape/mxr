@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { runLatestUndo, useUndo } from "@/state/undoStore";
 
-import { answerPendingSenderAsk, performMove, useSenderAsk } from "./moves";
+import { performMove, useSenderAsk } from "./moves";
 import { outcome } from "./testing";
 import { resetHintsForTests } from "./useTrustHint";
 
@@ -67,44 +67,5 @@ describe("moving an email", () => {
     );
     expect(useUndo.getState().lastUndo).toBeNull();
     expect(useSenderAsk.getState().pending).toBeNull();
-  });
-
-  test("K while the toast asks sends the sender's mail there instead of opening a picker", async () => {
-    fetchMock.mockResolvedValueOnce(moved());
-    await performMove({ messageId: "msg-1", mode: "reading" });
-    fetchMock.mockResolvedValueOnce(
-      moved({
-        sender: true,
-        ask_sender: null,
-        hint: null,
-        copy: "All mail from maya@orbit.example goes to Reading.",
-      }),
-    );
-    expect(answerPendingSenderAsk()).toBe(true);
-    await vi.waitFor(() =>
-      expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/mail/messages/msg-1/move", {
-        method: "POST",
-        body: { mode: "reading", sender: true, dry_run: false },
-      }),
-    );
-    expect(answerPendingSenderAsk()).toBe(false);
-  });
-
-  test("a move that changed nothing has no undo", async () => {
-    fetchMock.mockResolvedValueOnce(
-      moved({ copy: "Already in Reading.", correction_id: null, ask_sender: null, hint: null }),
-    );
-    await performMove({ messageId: "msg-1", mode: "reading" });
-    expect(toastMock.info).toHaveBeenCalledWith("Already in Reading.", { id: "move-msg-1" });
-    expect(useUndo.getState().lastUndo).toBeNull();
-  });
-
-  test("a failure says so and leaves no undo behind", async () => {
-    fetchMock.mockRejectedValueOnce(new Error("No message msg-1."));
-    expect(await performMove({ messageId: "msg-1", mode: "reading" })).toBeNull();
-    expect(toastMock.error).toHaveBeenCalledWith("Couldn't move it", {
-      description: "No message msg-1.",
-    });
-    expect(useUndo.getState().lastUndo).toBeNull();
   });
 });

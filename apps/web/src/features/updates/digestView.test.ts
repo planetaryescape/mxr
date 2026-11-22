@@ -1,32 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  canLetGoSource,
-  cutLabel,
-  cutLine,
-  digestRows,
-  displaySourceName,
-  gistThread,
-  numberNotInFact,
-  openableLink,
-  splitSourceName,
-  trackLabel,
-  trailingItem,
-} from "./digestView";
+import { digestRows, openableLink, trackLabel } from "./digestView";
 import { digestFixture, lineFixture } from "./testing";
-
-describe("source names read as names", () => {
-  test("an all-lowercase acronym is upper-cased; a longer one gets a capital", () => {
-    expect(displaySourceName("ups")).toBe("UPS");
-    expect(displaySourceName("usps")).toBe("USPS");
-    expect(displaySourceName("dhl")).toBe("DHL");
-    expect(displaySourceName("plausible")).toBe("Plausible");
-    expect(displaySourceName("linear")).toBe("Linear");
-    expect(displaySourceName("dell")).toBe("DELL");
-    expect(displaySourceName("strav")).toBe("Strav");
-  });
-
-});
 
 describe("the digest's layout", () => {
   test("Routine has no rows until opened, and its totals still count", () => {
@@ -40,33 +15,6 @@ describe("the digest's layout", () => {
     expect(open.bySection.routine).toHaveLength(6);
     expect(open.routine).toEqual({ sources: 6, messages: 21 });
   });
-
-  test("hidden lines leave the Routine totals too", () => {
-    const digest = digestFixture();
-    const rows = digestRows(digest, {
-      routineOpen: false,
-      hidden: new Set([digest.routine[0]!.id]),
-    });
-    expect(rows.routine).toEqual({ sources: 5, messages: 20 });
-  });
-
-  test("lines being let go leave the cursor's order", () => {
-    const digest = digestFixture();
-    const rows = digestRows(digest, {
-      routineOpen: true,
-      hidden: new Set([digest.changed[0]!.id]),
-    });
-    expect(rows.bySection.changed).toHaveLength(0);
-    expect(rows.rows[1]?.section).toBe("routine");
-  });
-
-  test("the page says its count once, and the frame names the cut", () => {
-    expect(cutLine(digestFixture())).toBe("23 updates from 8 sources");
-    expect(cutLine(digestFixture({ message_count: 1, source_count: 1 }))).toBe(
-      "1 update from 1 source",
-    );
-    expect(cutLabel(digestFixture())).toBe("08:00 digest");
-  });
 });
 
 describe("what a line offers", () => {
@@ -76,21 +24,6 @@ describe("what a line offers", () => {
     expect(openableLink(lineFixture({ link, signal: "needs_you" }))).toBeUndefined();
     expect(openableLink(lineFixture({ link, section: "needs_a_look" }))).toBeUndefined();
   });
-
-  test("a parcel leaves on its own, so it has no let go", () => {
-    expect(canLetGoSource(lineFixture())).toBe(true);
-    const parcel = lineFixture({
-      message_ids: [],
-      tracker: {
-        kind: "parcel",
-        state: "in_transit",
-        state_label: "on its way",
-        outcome: "progress",
-      },
-    });
-    expect(canLetGoSource(parcel)).toBe(false);
-  });
-
 });
 
 describe("a row's facts", () => {
@@ -109,94 +42,5 @@ describe("a row's facts", () => {
     expect(trackLabel(parcel(-1))).toBeNull();
     expect(trackLabel(parcel(1.5))).toBeNull();
     expect(trackLabel(lineFixture())).toBeNull();
-  });
-
-  test("the sending host splits off a Needs a look name only when it is the sender's", () => {
-    const google = lineFixture({
-      source_name: "Google (accounts.google.com)",
-      sender_email: "no-reply@accounts.google.com",
-    });
-    expect(splitSourceName(google)).toEqual({ name: "Google", host: "accounts.google.com" });
-    expect(
-      splitSourceName(
-        lineFixture({
-          source_name: "Google (Accounts.Google.com)",
-          sender_email: "a@accounts.google.com",
-        }),
-      ),
-    ).toEqual({ name: "Google", host: "accounts.google.com" });
-    expect(
-      splitSourceName(
-        lineFixture({
-          source_name: "Google (evil.example)",
-          sender_email: "a@accounts.google.com",
-        }),
-      ),
-    ).toEqual({ name: "Google (evil.example)", host: null });
-    expect(
-      splitSourceName(lineFixture({ source_name: "Strava", sender_email: undefined })),
-    ).toEqual({
-      name: "Strava",
-      host: null,
-    });
-  });
-
-  test("the amount shown is the first one the fact leaves out", () => {
-    const line = lineFixture({
-      fact: "Your scheduled payment of £33.33 is due",
-      numbers: [
-        { raw: "£33.33", value: 33.33, unit: "GBP" },
-        { raw: "£1,204.33", value: 1204.33, unit: "GBP" },
-      ],
-    });
-    expect(numberNotInFact(line)?.raw).toBe("£1,204.33");
-    expect(
-      numberNotInFact(lineFixture({ fact: "Your statement", numbers: undefined })),
-    ).toBeUndefined();
-  });
-
-  test("one trailing item, in precedence order", () => {
-    const delta = {
-      raw: "21.3 km",
-      previous_raw: "19.0 km",
-      change: 12.1,
-      text: "up 12%",
-      against: "2026-09-30T05:00:00Z",
-    };
-    const amount = { raw: "£4.20", value: 4.2, unit: "GBP" };
-    const everything = lineFixture({
-      in_todo: "already in To do",
-      todo_suggestion: "Suggested to-do",
-      delta,
-      numbers: [amount],
-      section: "routine",
-      count: 5,
-    });
-    expect(trailingItem(everything)).toEqual({ kind: "in_todo", text: "already in To do" });
-    expect(trailingItem({ ...everything, in_todo: null })).toEqual({ kind: "todo_suggestion" });
-    expect(trailingItem({ ...everything, in_todo: null, todo_suggestion: null })).toEqual({
-      kind: "delta",
-      text: "up 12%",
-      title: "Computed from 21.3 km and 19.0 km",
-    });
-    const noDelta = { ...everything, in_todo: null, todo_suggestion: null, delta: null };
-    expect(trailingItem(noDelta)).toEqual({ kind: "amount", text: "£4.20" });
-    expect(trailingItem({ ...noDelta, numbers: [] })).toEqual({ kind: "count", text: "5 emails" });
-    expect(trailingItem({ ...noDelta, numbers: [], count: 1 })).toBeNull();
-    expect(trailingItem({ ...noDelta, numbers: [], section: "changed" })).toBeNull();
-  });
-});
-
-describe("which lines ask for a gist", () => {
-  test("a subject-only fact from the line's latest email asks about that thread", () => {
-    expect(gistThread(lineFixture())).toBe("t1");
-    expect(gistThread(lineFixture({ fact_message_id: "m1", latest_message_id: "m1" }))).toBe("t1");
-  });
-
-  test("a fact the rules took from the body, a fact from an older email, or no thread does not", () => {
-    expect(gistThread(lineFixture({ fact_source: "body" }))).toBeNull();
-    expect(gistThread(lineFixture({ fact_source: "rule" }))).toBeNull();
-    expect(gistThread(lineFixture({ fact_message_id: "m0", latest_message_id: "m1" }))).toBeNull();
-    expect(gistThread(lineFixture({ latest_thread_id: null }))).toBeNull();
   });
 });

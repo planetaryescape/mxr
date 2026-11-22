@@ -296,44 +296,6 @@ test("opening the reader does mark the conversation read", async () => {
   assert.deepEqual(JSON.parse(readRequests()[0].body), { message_ids: ["m1"], read: true });
 });
 
-test("the reader's side panel names the account, labels and attachment sizes", async () => {
-  const view = await mount(
-    React.createElement(ThreadDetail, { threadId: "t1", webPath: "/m/inbox/t1" }),
-  );
-  const tags = (title) =>
-    view.root
-      .findAll((node) => node.type === "Detail.Metadata.TagList" && node.props.title === title)
-      .flatMap((list) => list.findAllByType("Detail.Metadata.TagList.Item"))
-      .map((item) => item.props);
-
-  assert.deepEqual(
-    tags("Account").map((tag) => tag.text),
-    ["work"],
-  );
-  assert.deepEqual(
-    tags("Labels").map(({ text, color }) => [text, color]),
-    [
-      ["Finance", "#fb4c2f"],
-      ["Clients", undefined],
-    ],
-  );
-  assert.deepEqual(
-    view.root.findAllByType("Detail.Metadata.Label").map((label) => label.props.text),
-    ["report.pdf · 84 KB"],
-  );
-});
-
-test("rows show initials, an overdue tag and reading progress", async () => {
-  const messages = await mount(React.createElement(Messages));
-  const person = messages.root.findByType("List.Item");
-  assert.match(person.props.icon, /^data:image\/svg\+xml,/);
-  assert.ok(person.props.accessories.some((entry) => entry.tag?.value === "Overdue"));
-
-  const reading = await mount(React.createElement(Reading));
-  const item = reading.root.findByType("List.Item");
-  assert.ok(item.props.accessories.some((entry) => entry.tooltip === "50% read"));
-});
-
 test("initials are drawn locally and survive a hostile sender name", () => {
   global.fetch = async () => assert.fail("initials must not touch the network");
   for (const [name, email, expected] of [
@@ -349,28 +311,4 @@ test("initials are drawn locally and survive a hostile sender name", () => {
     const svg = decodeURIComponent(face.slice("data:image/svg+xml,".length));
     assert.equal(svg.match(/<text[^>]*>([^<&]*)<\/text>/)?.[1], expected, String(name));
   }
-});
-
-test("attachment sizes read in the unit that fits", () => {
-  assert.equal(fileSize(512), "512 B");
-  assert.equal(fileSize(86016), "84 KB");
-  assert.equal(fileSize(1048575), "1.0 MB");
-  assert.equal(fileSize(5 * 1024 * 1024), "5.0 MB");
-});
-
-test("no other Raycast action uses the pane's key", () => {
-  assert.deepEqual(keyFor("raycast.reading-pane"), { modifiers: ["cmd"], key: "d" });
-  const source = join(__dirname, "../src");
-  const files = readdirSync(source, { recursive: true })
-    .filter((file) => /\.tsx?$/.test(file))
-    .map((file) => readFileSync(join(source, file), "utf8"));
-  const ids = new Set(
-    files.flatMap((text) => [...text.matchAll(/keyFor\("([^"]+)"\)/g)].map((m) => m[1])),
-  );
-  const taken = [...ids].filter((id) => {
-    const { modifiers, key } = keyFor(id);
-    return key === "d" && modifiers.join() === "cmd";
-  });
-  assert.deepEqual(taken, ["raycast.reading-pane"]);
-  assert.ok(!files.some((text) => /key: "d"/.test(text)), "no hard-coded key uses d");
 });

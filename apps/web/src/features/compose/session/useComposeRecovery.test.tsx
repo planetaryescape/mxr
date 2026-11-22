@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { useRef, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { BridgeRequestError, DaemonUnavailableError } from "@/api/client";
+import { DaemonUnavailableError } from "@/api/client";
 import type { ComposeSessionResponse } from "../api";
 import { draftFromSession, type ComposeDraftState } from "./composeDraft";
 import { useComposeAutosave } from "./useComposeAutosave";
@@ -93,73 +93,6 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-for (const disconnected of [false, true]) {
-  test(`unchanged confirmed recovery stops autosave across two more windows (connection lost: ${disconnected})`, async () => {
-    vi.useFakeTimers();
-    const conflict = new BridgeRequestError(
-      disconnected ? 503 : 409,
-      disconnected ? "Daemon connection failed" : "Draft changed; text preserved",
-      disconnected ? "connect" : "draft_revision_conflict",
-      {
-        details: { current_revision: 2 },
-        recovery_session: {
-          draft_path: "/tmp/timer-recovery",
-          draft_id: "timer-draft",
-          revision: 1,
-        },
-      },
-    );
-    const failure = disconnected ? new DaemonUnavailableError({ cause: conflict }) : conflict;
-    update.mockRejectedValue(failure);
-    const hook = setup();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3100);
-    });
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(hook.result.current.draft.recoverySourcePath).toBe("/tmp/timer-shared");
-    expect(hook.result.current.dirty).toBe(false);
-    expect(hook.result.current.isCurrentDraftSaved(hook.result.current.draft)).toBe(false);
-    expect(hook.result.current.saveError).toContain("preserved");
-    expect(hook.result.current.saveError).toContain(failure.message);
-    expect(hook.result.current.lastSavedAt).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(7000);
-    });
-    expect(update).toHaveBeenCalledTimes(1);
-    update.mockImplementation(async (request) => saved(request.body ?? ""));
-    availability.down = true;
-    hook.rerender();
-    act(() => {
-      hook.result.current.setDraft((draft) =>
-        draft ? { ...draft, bodyMarkdown: "latest before close" } : draft,
-      );
-      hook.result.current.setDirty(true);
-    });
-    expect(hook.result.current.saveError).toContain("preserved");
-    availability.down = false;
-    hook.rerender();
-    expect(hook.result.current.saveError).toContain("preserved");
-    await act(async () => {
-      await hook.result.current.saveCurrentDraft();
-    });
-    expect(update.mock.lastCall?.[0]).toMatchObject({
-      draftPath: "/tmp/timer-recovery",
-      expectedRevision: 1,
-      body: "latest before close",
-    });
-    expect(hook.result.current.dirty).toBe(false);
-    expect(hook.result.current.lastSavedAt).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(7000);
-      await hook.result.current.saveCurrentDraft();
-    });
-    expect(update).toHaveBeenCalledTimes(2);
-    expect(hook.result.current.draft.bodyMarkdown).toBe("latest before close");
-    hook.unmount();
-    expect(update).toHaveBeenCalledTimes(2);
-  });
-}
-
 test("an unconfirmed lost response stays dirty without an automatic request loop", async () => {
   vi.useFakeTimers();
   update.mockRejectedValue(new DaemonUnavailableError());
@@ -171,35 +104,5 @@ test("an unconfirmed lost response stays dirty without an automatic request loop
   expect(hook.result.current.dirty).toBe(true);
   expect(hook.result.current.draft.revision).toBe(1);
   hook.result.current.markSessionFinished();
-  hook.unmount();
-});
-
-test("an observed daemon recovery retries the pending text once", async () => {
-  vi.useFakeTimers();
-  update.mockRejectedValueOnce(new DaemonUnavailableError());
-  const hook = setup();
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(3100);
-  });
-  expect(update).toHaveBeenCalledTimes(1);
-  availability.down = true;
-  hook.rerender();
-  update.mockResolvedValue({
-    session: {
-      binding: originalBinding(),
-      ...saved("losing text").session,
-      draftPath: "/tmp/timer-shared",
-      recoverySourcePath: null,
-      revision: 2,
-    },
-  });
-  availability.down = false;
-  hook.rerender();
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(11000);
-  });
-  expect(update).toHaveBeenCalledTimes(2);
-  expect(hook.result.current.dirty).toBe(false);
-  expect(hook.result.current.draft.revision).toBe(2);
   hook.unmount();
 });

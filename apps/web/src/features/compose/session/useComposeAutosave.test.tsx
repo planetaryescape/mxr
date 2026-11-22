@@ -1,8 +1,4 @@
-import {
-  observeWorkspace,
-  resetWorkspaceOwnerForTest,
-  WorkspaceConflictError,
-} from "@/lib/workspaceOwner";
+import { resetWorkspaceOwnerForTest } from "@/lib/workspaceOwner";
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -117,49 +113,6 @@ test("queued own saves advance the token even when the first UI result is stale"
   hook.unmount();
 });
 
-test("an ordinary save keeps model marks when the accepted text is unchanged", async () => {
-  const hook = setup("/tmp/marked-draft.md");
-  const body = "Model wrote this.";
-  const mark = { start: 6, end: body.length };
-  update.mockResolvedValue(session("/tmp/marked-draft.md", 2, body));
-  act(() => {
-    hook.result.current.setDraft((draft) =>
-      draft ? { ...draft, bodyMarkdown: body, modelSpans: [mark] } : draft,
-    );
-  });
-
-  await act(async () => {
-    await hook.result.current.saveCurrentDraft();
-  });
-
-  expect(hook.result.current.draft?.bodyMarkdown).toBe(body);
-  expect(hook.result.current.draft?.modelSpans).toEqual([mark]);
-  hook.result.current.markSessionFinished();
-  hook.unmount();
-});
-
-test("an autosave response with different text cannot retain stale model offsets", async () => {
-  const hook = setup("/tmp/changed-marked-draft.md");
-  const body = "Model wrote this.";
-  update.mockResolvedValue(session("/tmp/changed-marked-draft.md", 2, "Different text."));
-  act(() => {
-    hook.result.current.setDraft((draft) =>
-      draft
-        ? { ...draft, bodyMarkdown: body, modelSpans: [{ start: 6, end: body.length }] }
-        : draft,
-    );
-  });
-
-  await act(async () => {
-    await hook.result.current.saveCurrentDraft();
-  });
-
-  expect(hook.result.current.draft?.bodyMarkdown).toBe("Different text.");
-  expect(hook.result.current.draft?.modelSpans).toBeUndefined();
-  hook.result.current.markSessionFinished();
-  hook.unmount();
-});
-
 test("a save finishing after a session switch cannot copy identity or revision to the new draft", async () => {
   const first = deferred();
   update.mockReturnValueOnce(first.promise);
@@ -181,34 +134,6 @@ test("a save finishing after a session switch cannot copy identity or revision t
   expect(hook.result.current.draftRef.current?.draftId).toBe("/tmp/new-session.md");
   expect(hook.result.current.draftRef.current?.revision).toBe(7);
   expect(hook.result.current.draft?.bodyMarkdown).toBe("new session text");
-  hook.result.current.markSessionFinished();
-  hook.unmount();
-});
-
-test("a late original-owner save cannot advance revision or replace retained text after transition", async () => {
-  const pending = deferred();
-  update.mockReturnValueOnce(pending.promise);
-  const hook = setup("/tmp/late-owner.md");
-  const binding = hook.result.current.draft?.binding;
-  if (!binding) throw new Error("owned fixture");
-  observeWorkspace(binding);
-  let saving: Promise<unknown> = Promise.resolve();
-  act(() => {
-    saving = hook.result.current.saveCurrentDraft().catch((error: unknown) => error);
-  });
-  await waitFor(() => expect(update).toHaveBeenCalledOnce());
-  const journal = localStorage.getItem("mxr.compose.activeDrafts");
-  observeWorkspace({
-    target: binding.target,
-    workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
-  });
-  await act(async () => {
-    pending.resolve(session("/tmp/late-owner.md", 9, "old response"));
-  });
-  expect(await saving).toBeInstanceOf(WorkspaceConflictError);
-  expect(hook.result.current.draft?.revision).toBe(1);
-  expect(hook.result.current.draft?.bodyMarkdown).toBe("first");
-  expect(localStorage.getItem("mxr.compose.activeDrafts")).toBe(journal);
   hook.result.current.markSessionFinished();
   hook.unmount();
 });

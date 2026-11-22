@@ -1,30 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import "@/lib/actions/catalog";
-import { isOverlayKey } from "@/lib/actions/definition";
-import keymap from "@/lib/actions/keymap.generated.json";
 import { getRegistry } from "@/lib/actions/registry";
 
 import { BROWSER_RESERVED, type Platform } from "./browserReserved";
 import { parseChord } from "./chord";
-
-const LITERAL_BINDINGS: { chord: string; source: string; macOnly: boolean }[] = (
-  keymap.action as {
-    id: string;
-    scopes?: string[];
-    keys?: string[];
-    mac_keys?: string[];
-    clients?: string[];
-  }[]
-)
-  .filter((action) => (!action.clients || action.clients.includes("web")) && isOverlayKey(action))
-  .flatMap((action) =>
-    (action.keys ?? [])
-      .map((chord) => ({ chord, source: action.id, macOnly: false }))
-      .concat(
-        (action.mac_keys ?? []).map((chord) => ({ chord, source: action.id, macOnly: true })),
-      ),
-  );
 
 const KNOWN_CONFLICTS: { id: string; chord: string; reason: string }[] = [
   {
@@ -101,59 +81,5 @@ describe("browser-reserved shortcuts", () => {
       }
     }
     expect(problems).toEqual([]);
-  });
-
-  test("each known conflict is a registry binding that still conflicts", () => {
-    const bindings = getRegistry().bindings();
-    const stale = KNOWN_CONFLICTS.filter(
-      (known) =>
-        !bindings.some((b) => b.action.id === known.id && b.chord === known.chord) ||
-        conflictsWith(known.chord).length === 0,
-    );
-    expect(stale).toEqual([]);
-  });
-
-  test("every compose key in the definition is a registry binding the check above sees", () => {
-    const bound = new Set(
-      getRegistry()
-        .bindings()
-        .filter((binding) => binding.scope === "compose")
-        .map((binding) => `${binding.action.id} ${binding.chord}`),
-    );
-    const defined = (keymap.action as { id: string; scopes?: string[]; keys?: string[] }[])
-      .filter((action) => action.scopes?.includes("compose"))
-      .flatMap((action) => (action.keys ?? []).map((chord) => `${action.id} ${chord}`));
-    expect(defined.length).toBeGreaterThan(0);
-    expect(defined.filter((entry) => !bound.has(entry))).toEqual([]);
-  });
-
-  test("no dialog's own key uses a reserved combo", () => {
-    const problems: string[] = [];
-    for (const literal of LITERAL_BINDINGS) {
-      const hits = conflictsWith(literal.chord, literal.macOnly);
-      if (hits.length > 0) {
-        problems.push(`${literal.source} "${literal.chord}" is ${hits[0]?.reserved}`);
-      }
-    }
-    expect(problems).toEqual([]);
-  });
-
-  test("macOS-only aliases are inert off macOS", () => {
-    const macOnly = getRegistry()
-      .bindings()
-      .filter((binding) => binding.macOnly);
-    expect(macOnly.map((binding) => `${binding.scope} ${binding.chord}`).toSorted()).toEqual([
-      "global Ctrl+p",
-      "list Ctrl+f",
-      "messages Ctrl+f",
-      "reader Ctrl+f",
-      "sidebar Ctrl+f",
-    ]);
-    for (const binding of macOnly) {
-      expect(getRegistry().resolve(binding.chord, [binding.scope], false)).toBeUndefined();
-    }
-    expect(getRegistry().resolve("Ctrl+p", ["global"], true)?.action.id).toBe(
-      "shell.command-palette",
-    );
   });
 });

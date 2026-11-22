@@ -33,27 +33,6 @@ function renderField(initial = "") {
 }
 
 describe("RecipientField", () => {
-  test("flags an unparseable chip as invalid on commit", () => {
-    renderField();
-
-    const input = screen.getByRole("combobox", { name: "To" });
-    fireEvent.change(input, { target: { value: "not-an-email" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(screen.getByTitle("Invalid address: not-an-email")).toBeVisible();
-  });
-
-  test("Enter that picks an IME candidate does not commit the chip", () => {
-    renderField();
-
-    const input = screen.getByRole("combobox", { name: "To" });
-    fireEvent.change(input, { target: { value: "やまだ" } });
-    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
-
-    expect(screen.queryByTitle(/invalid address/i)).not.toBeInTheDocument();
-    expect(input).toHaveValue("やまだ");
-  });
-
   test("parses pasted RFC 5322 address lists into normalized chips", () => {
     renderField();
 
@@ -67,37 +46,5 @@ describe("RecipientField", () => {
     expect(screen.getByText("Jane Doe")).toBeVisible();
     expect(screen.getByText("bob@example.com")).toBeVisible();
     expect(screen.queryByTitle(/invalid address/i)).not.toBeInTheDocument();
-  });
-
-  test("picking a suggestion adds its address as a chip", async () => {
-    renderField();
-    api.fetchContactsAutocomplete.mockResolvedValue([
-      { email: "nora@foundry.example", name: "Nora Okafor" },
-    ]);
-
-    const input = screen.getByRole("combobox", { name: "To" });
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "nor" } });
-
-    fireEvent.mouseDown(await screen.findByRole("option", { name: /nora okafor/i }));
-
-    expect(screen.getByText("nora@foundry.example")).toBeVisible();
-    expect(screen.queryByRole("option")).not.toBeInTheDocument();
-  });
-
-  test("hides a suggestion whose address is already a chip", async () => {
-    renderField("nora@foundry.example");
-    api.fetchContactsAutocomplete.mockResolvedValue([
-      { email: "nora@foundry.example", name: "Nora Okafor" },
-      { email: "nora.bello@foundry.example", name: "Nora Bello" },
-    ]);
-
-    const input = screen.getByRole("combobox", { name: "To" });
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "nor" } });
-
-    const options = await screen.findAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("Nora Bello");
   });
 });

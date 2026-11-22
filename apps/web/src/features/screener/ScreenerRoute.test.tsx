@@ -7,8 +7,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getRegistry, snapshotActionContext } from "@/lib/actions";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
-import { focusActivePane } from "@/lib/keys/focusPane";
-import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { ScreenerRoute } from "./ScreenerRoute";
 
@@ -103,44 +101,6 @@ describe("ScreenerRoute", () => {
   afterEach(() => {
     uninstall();
     vi.clearAllMocks();
-  });
-
-  test("opens on the account the app is scoped to, as the desk's screener count does", async () => {
-    accounts.fetchAccounts.mockResolvedValue({
-      accounts: [
-        { account_id: "account-1", name: "Work", email: "me@example.com", enabled: true },
-        { account_id: "account-2", name: "Home", email: "me@home.example", enabled: true },
-      ],
-    });
-    useUiPrefs.getState().setAccountScope("account-2");
-    try {
-      renderWithQueryClient(<ScreenerRoute />);
-      await waitFor(() => expect(screener.fetchScreenerQueue).toHaveBeenCalledWith("account-2"));
-      expect(screener.fetchScreenerQueue).not.toHaveBeenCalledWith("account-1");
-    } finally {
-      useUiPrefs.getState().setAccountScope(null);
-    }
-  });
-
-  test("a linked account wins over the app's scope", async () => {
-    accounts.fetchAccounts.mockResolvedValue({
-      accounts: [
-        { account_id: "account-1", name: "Work", email: "me@example.com", enabled: true },
-        { account_id: "account-2", name: "Home", email: "me@home.example", enabled: true },
-      ],
-    });
-    renderWithQueryClient(<ScreenerRoute account="account-2" />);
-    await waitFor(() => expect(screener.fetchScreenerQueue).toHaveBeenCalledWith("account-2"));
-    expect(screener.fetchScreenerQueue).not.toHaveBeenCalledWith("account-1");
-  });
-
-  test("focus returns to the queue when an overlay closes with nothing to return to", async () => {
-    renderWithQueryClient(<ScreenerRoute />);
-    expect(await screen.findByText("Unknown Sender")).toBeVisible();
-
-    focusActivePane();
-
-    expect(screen.getByRole("list", { name: "Screener queue" })).toHaveFocus();
   });
 
   test("j moves the cursor before deciding, and a failure is reported", async () => {

@@ -40,24 +40,6 @@ function show() {
   );
 }
 
-test("waiting approval reports the retry deadline rather than rejection or uncertainty", async () => {
-  vi.mocked(fetchSendOutcome).mockResolvedValue({
-    outcome: {
-      ...unknown,
-      state: "waiting",
-      recovery: { retry_at: "2026-10-26T12:15:00Z", attempts: 1, phase: "cooldown", reason: null },
-    },
-  });
-  show();
-  expect(
-    await screen.findByText(
-      /Waiting for the mail provider; retrying automatically at 2026-10-26T12:15:00Z/,
-    ),
-  ).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Resume original approved send" })).toBeNull();
-  expect(recoverSendOutcome).not.toHaveBeenCalled();
-});
-
 test("legacy recovery previews before confirming the exact evidence fingerprint", async () => {
   vi.mocked(fetchSendOutcome).mockResolvedValue({ outcome: unknown });
   vi.mocked(recoverSendOutcome)

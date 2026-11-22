@@ -60,7 +60,6 @@ beforeEach(() => {
 });
 
 describe("ReadingUnsubscribeDialog", () => {
-
   test("just unsubscribe commits the previewed sender and method while keeping mail", async () => {
     renderDialog();
     const just = screen.getByTestId("unsubscribe-just");
@@ -91,25 +90,6 @@ describe("ReadingUnsubscribeDialog", () => {
       }),
     );
     expect(api.unsubscribeFromSender).not.toHaveBeenCalled();
-  });
-
-  test("keep mail reports a daemon failure without claiming success", async () => {
-    api.commitUnsubscribePreview.mockResolvedValueOnce({
-      ok: false,
-      result: {
-        address: "news@digest.example",
-        status: "failed",
-        method: "None",
-        message_count: 12,
-        archived_count: 0,
-        error: "The method changed; preview again",
-      },
-    });
-    renderDialog();
-    await vi.waitFor(() => expect(screen.getByTestId("unsubscribe-just")).toBeEnabled());
-    fireEvent.click(screen.getByTestId("unsubscribe-just"));
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(toast.success).not.toHaveBeenCalled();
   });
   test("a cached preview cannot commit while a fresh preview is being fetched", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

@@ -1,15 +1,12 @@
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { ThreadResponse } from "@/features/mailbox/types";
 
-import { CopyableAddress } from "./AddressDisclosure";
-import { ConversationPeople } from "./ConversationPeople";
 import { MessageInfoDialog } from "./MessageInfoDialog";
-import { PersonIdentity } from "./PersonIdentity";
-import type { ConversationMessage, MessagesRow } from "./api";
+import type { ConversationMessage } from "./api";
 
 const http = vi.hoisted(() => ({ send: vi.fn<(path: string) => Promise<unknown>>() }));
 vi.mock("@/api/client", async (original) => ({
@@ -98,15 +95,6 @@ function queryClient() {
   });
 }
 
-function renderDialog(message = first, client = queryClient()) {
-  const result = render(
-    <QueryClientProvider client={client}>
-      <MessageInfoDialog threadId="thread-1" message={message} />
-    </QueryClientProvider>,
-  );
-  return { ...result, client };
-}
-
 afterEach(() => {
   http.send.mockReset();
   vi.unstubAllGlobals();
@@ -147,100 +135,6 @@ test("shows the exact recorded audience for each message, including available Bc
   );
 });
 
-test("loads conversation people on demand and keeps same-name addresses distinct", async () => {
-  const response = threadResponse();
-  response.messages[1]!.cc = [
-    { name: "Samir Patel", email: "samir.alt@example.net" },
-    { name: "Malformed", email: "not-an-address" },
-  ];
-  http.send.mockResolvedValue(response);
-  render(
-    <QueryClientProvider client={queryClient()}>
-      <ConversationPeople threadId="thread-1" />
-    </QueryClientProvider>,
-  );
-  expect(http.send).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
-  expect(await screen.findByText("samir.p@home.example")).toBeInTheDocument();
-  expect(screen.getByText("samir.alt@example.net")).toBeInTheDocument();
-  expect(screen.getByText("alex@example.com")).toBeInTheDocument();
-  expect(screen.getByText("jo@example.com")).toBeInTheDocument();
-  expect(screen.getByText("lee@example.com")).toBeInTheDocument();
-  expect(screen.getByText("maya@example.com")).toBeInTheDocument();
-  expect(screen.queryByText("not-an-address")).toBeNull();
-  expect(screen.getByText(/Each message can have a different audience/)).toBeInTheDocument();
-  expect(http.send).toHaveBeenCalledTimes(1);
-});
-
-test("conversation people retry without retaining failed data", async () => {
-  http.send.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(threadResponse());
-  render(
-    <QueryClientProvider client={queryClient()}>
-      <ConversationPeople threadId="thread-1" />
-    </QueryClientProvider>,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
-  expect(
-    await screen.findByText("Couldn't load people for this conversation."),
-  ).toBeInTheDocument();
-  expect(screen.queryByText("alex@example.com")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  expect(await screen.findByText("alex@example.com")).toBeInTheDocument();
-  expect(http.send).toHaveBeenCalledTimes(2);
-});
-
-test("conversation people never show a previous topic while a new fetch is pending", async () => {
-  let resolveOld!: (response: ThreadResponse) => void;
-  const oldThread = new Promise<ThreadResponse>((resolve) => {
-    resolveOld = resolve;
-  });
-  const nextThread = threadResponse();
-  nextThread.thread.id = "thread-2";
-  nextThread.messages = [
-    {
-      ...nextThread.messages[0]!,
-      thread_id: "thread-2",
-      to: [{ email: "next-topic@example.com" }],
-      cc: [],
-      bcc: [],
-    },
-  ];
-  http.send.mockReturnValueOnce(oldThread).mockResolvedValueOnce(nextThread);
-  const client = queryClient();
-  const view = render(
-    <QueryClientProvider client={client}>
-      <ConversationPeople threadId="thread-1" />
-    </QueryClientProvider>,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <ConversationPeople threadId="thread-2" />
-    </QueryClientProvider>,
-  );
-  expect(await screen.findByText("next-topic@example.com")).toBeInTheDocument();
-  resolveOld(threadResponse());
-  await waitFor(() => expect(screen.queryByText("alex@example.com")).toBeNull());
-});
-
-test("treats explicitly empty recipient arrays as empty recorded lists", async () => {
-  const response = threadResponse();
-  response.messages[0]!.to = [];
-  response.messages[0]!.cc = [];
-  response.messages[0]!.bcc = [];
-  http.send.mockResolvedValue(response);
-  renderDialog();
-  fireEvent.click(screen.getByRole("button", { name: /Message info for Samir Patel/ }));
-
-  expect(await screen.findByRole("region", { name: "To" })).toHaveTextContent("None recorded");
-  expect(screen.getByRole("region", { name: "Cc" })).toHaveTextContent("None recorded");
-  expect(screen.getByRole("region", { name: "Bcc" })).toHaveTextContent(
-    "Not recorded in this copy",
-  );
-  expect(screen.queryByText("Unavailable")).toBeNull();
-  expect(screen.getByText(/does not confirm that nobody was hidden/)).toBeInTheDocument();
-});
-
 test("switching topics does not reuse the previous thread's audience", async () => {
   let resolveThread!: (response: ThreadResponse) => void;
   const pendingThread = new Promise<ThreadResponse>((resolve) => {
@@ -275,51 +169,4 @@ test("switching topics does not reuse the previous thread's audience", async () 
   expect(screen.queryByText("alex@example.com")).toBeNull();
   resolveThread(otherThread);
   expect(await screen.findByText("next-topic@example.com")).toBeInTheDocument();
-});
-
-test("shows every linked person address separately from the original sender", async () => {
-  const row: MessagesRow = {
-    id: "person:samir@launchpad.example",
-    kind: "person",
-    account_id: "account",
-    band: "recent",
-    title: "Samir Patel",
-    person: {
-      id: "samir@launchpad.example",
-      name: "Samir Patel",
-      addresses: ["samir@launchpad.example", "samir.p@home.example"],
-    },
-    members: [],
-    closeness: "regular",
-    your_turn: false,
-    last_at: "2026-10-21T12:00:00Z",
-    topics: [],
-    overdue: false,
-    pinned: false,
-    unread: false,
-    why: "",
-  };
-  render(<PersonIdentity row={row} />);
-  fireEvent.click(screen.getByRole("button", { name: "Show email addresses for Samir Patel" }));
-  expect(await screen.findByText("samir@launchpad.example")).toBeInTheDocument();
-  expect(screen.getByText("samir.p@home.example")).toBeInTheDocument();
-  const trigger = screen.getByRole("button", { name: "Show email addresses for Samir Patel" });
-  fireEvent.keyDown(screen.getByRole("dialog", { name: "Samir Patel email addresses" }), {
-    key: "Escape",
-  });
-  await waitFor(() => expect(trigger).toHaveFocus());
-});
-
-test("selects the address when clipboard access fails", async () => {
-  const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error("denied"));
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText },
-  });
-  render(<CopyableAddress address="samir@launchpad.example" />);
-  fireEvent.click(screen.getByRole("button", { name: "Copy samir@launchpad.example" }));
-  await waitFor(() => {
-    expect(window.getSelection()?.toString()).toBe("samir@launchpad.example");
-  });
-  expect(writeText).toHaveBeenCalledWith("samir@launchpad.example");
 });

@@ -87,7 +87,6 @@ pub(crate) async fn replace_message_labels_tx(
             sqlx::query("INSERT INTO message_events (message_id, account_id, event_type, source, label_id, occurred_at) VALUES (?, ?, ?, ?, ?, ?)")
                 .bind(message_id.as_str())
                 .bind(account)
-                // First seeing mail in INBOX is not an "unarchive".
                 .bind(if in_inbox { "labeled" } else { "archived" })
                 .bind(source.as_db_str())
                 .bind(inbox_id)
@@ -139,17 +138,6 @@ pub(crate) async fn upsert_envelope_tx(
     let size_bytes = envelope.size_bytes as i64;
     let direction_str = direction.as_db_str();
 
-    // The 0.4.52 release changed `MessageId` derivation from
-    // `from_provider_id` to `from_scoped_provider_id`, which means a fresh
-    // sync can compute a different `id` for a message that already exists
-    // under its old unscoped UUID. The natural key `(account_id, provider_id)`
-    // is `UNIQUE`, so a plain `INSERT ... ON CONFLICT(id)` would hit
-    // SQLITE_CONSTRAINT (2067). Resolve by id when present, otherwise resolve
-    // by the natural key and update in place.
-    // `thread_id` comes back with it because the UPDATE below overwrites it: a
-    // message the provider moved to another thread leaves its old thread
-    // behind, and only the row's prior value can tell the caller which thread
-    // to report as changed.
     let existing: Option<(String, String)> = sqlx::query_as(
         "SELECT id, thread_id FROM messages WHERE account_id = ? AND provider_id = ?",
     )
@@ -160,8 +148,6 @@ pub(crate) async fn upsert_envelope_tx(
 
     let link_count = envelope.link_count as i64;
     let body_word_count_persist: Option<i64> = if envelope.body_word_count == 0 {
-        // Preserve prior body_word_count (populated by analytics) instead
-        // of clobbering with zero when sync code path didn't compute it.
         None
     } else {
         Some(envelope.body_word_count as i64)
@@ -1231,9 +1217,9 @@ impl super::Store {
             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
             LIMIT ?"#,
         )
-        .bind(read_flag) // opened: (flags & READ) = READ
         .bind(read_flag)
-        .bind(archived_flag) // archived_unread: (flags & ARCHIVED) = ARCHIVED AND (flags & READ) = 0
+        .bind(read_flag)
+        .bind(archived_flag)
         .bind(archived_flag)
         .bind(read_flag)
         .bind(cutoff)
@@ -1272,7 +1258,6 @@ impl super::Store {
                         .transpose()?
                         .unwrap_or(UnsubscribeMethod::None),
                     opened_count: row.get::<i64, _>("opened_count") as u32,
-                    // Stable JSON field; subscriptions do not rank by reply pairs.
                     replied_count: 0,
                     archived_unread_count: row.get::<i64, _>("archived_unread_count") as u32,
                 })
@@ -1461,9 +1446,6 @@ pub(crate) fn record_to_envelope(record: EnvelopeRecord<'_>) -> Result<Envelope,
                 .map(str::to_string)
                 .collect()
         },
-        // Keywords live in a separate junction table; callers that
-        // need them stitch via Store::hydrate_envelope_keywords after
-        // the row decode.
         keywords: std::collections::BTreeSet::new(),
     })
 }

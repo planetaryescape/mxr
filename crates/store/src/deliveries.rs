@@ -275,8 +275,6 @@ impl super::Store {
         filter: DeliveryListFilter,
     ) -> Result<Vec<Delivery>, sqlx::Error> {
         let started_at = std::time::Instant::now();
-        // Each arm uses the same projection; only the predicate/order differs,
-        // which `query!` requires as distinct literals.
         let rows = match filter {
             DeliveryListFilter::Active => sqlx::query!(
                 r#"SELECT id as "id!", account_id as "account_id!",
@@ -519,7 +517,6 @@ mod tests {
         d.tracking_number = None;
         store.insert_delivery(&d).await.unwrap();
 
-        // Order-only row later gains a tracking number → dedup_key migrates.
         d.tracking_number = Some("1Z42".into());
         d.dedup_key = "1Z42".into();
         d.status = "shipped".into();
@@ -578,7 +575,6 @@ mod tests {
                 .unwrap()),
             vec![dismissed.id.clone()]
         );
-        // All excludes only the dismissed row.
         let all = ids(store
             .list_deliveries(DeliveryListFilter::All)
             .await
@@ -656,7 +652,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Re-link the first one with a new stage; still one row per message.
         store
             .link_delivery_message(&d.id, &envs[0].id, Some(&tid), Some("delivered"), anchor())
             .await

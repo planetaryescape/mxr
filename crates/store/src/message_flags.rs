@@ -388,7 +388,6 @@ mod tests {
             store.upsert_envelope(env).await.unwrap();
         }
 
-        // Flag in non-monotonic order; expect descending-by-set_at output.
         store.set_reply_later(&envs[1].id, anchor()).await.unwrap();
         store
             .set_reply_later(&envs[0].id, anchor() + Duration::seconds(60))
@@ -427,7 +426,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Re-flag `a` with a fresher set_at.
         store
             .set_reply_later(&a.id, anchor() + Duration::seconds(90))
             .await
@@ -485,7 +483,6 @@ mod tests {
             "a claimed return is never announced again"
         );
 
-        // Setting a new time arms it again.
         let later = due + Duration::days(1);
         store.defer_reply_later(&id, due, later).await.unwrap();
         assert_eq!(
@@ -560,8 +557,6 @@ mod tests {
             id
         };
 
-        // The daemon was down at the time; the first tick after a restart
-        // announces it, and the tick after the next restart does not.
         {
             let store = Store::new(&path).await.unwrap();
             assert_eq!(

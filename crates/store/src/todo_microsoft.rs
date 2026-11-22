@@ -75,8 +75,6 @@ impl crate::Store {
             .execute(&mut *tx)
             .await?
             .rows_affected() == 1;
-        // The promise mirror must commit with the local task. Otherwise a
-        // failed mirror can undo a Microsoft reopening on the next To do tick.
         if changed
             && expected.state != desired.state
             && matches!(
@@ -138,8 +136,6 @@ impl crate::Store {
             .await?
             .rows_affected() == 1;
         if claimed {
-            // Protect the linked task from ageing and redetection in the same
-            // transaction as the receipt, before any external effect.
             sqlx::query("UPDATE todos SET user_edited = 1 WHERE id = ?")
                 .bind(&expected.id)
                 .execute(&mut *tx)

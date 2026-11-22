@@ -5,7 +5,6 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::collections::HashMap;
 
-// An indexed batch avoids rescanning JSON for every thread in the account.
 const ACKNOWLEDGE_BATCH: &str = "WITH expected AS MATERIALIZED (SELECT key, value FROM json_each(?2)) UPDATE assessment_thread_inputs SET dirty = 0, revision = expected.value FROM expected WHERE account_id = ?1 AND thread_id = expected.key AND (dirty != 0 OR revision != expected.value)";
 
 impl super::Store {
@@ -42,8 +41,6 @@ impl super::Store {
         asks: &[mxr_core::asks::AskAssessment],
     ) -> Result<bool, sqlx::Error> {
         let expected = encode_json(revisions)?;
-        // A settled read must not queue behind the writer. One SELECT checks
-        // both CAS and pending acknowledgements against one SQLite snapshot.
         if answers.is_empty() && asks.is_empty() {
             let (changed, dirty): (bool, bool) = sqlx::query_as("SELECT COALESCE(max(COALESCE(i.effective_revision, -1) != expected.value), 0), COALESCE(max(i.dirty != 0 OR i.revision != i.effective_revision), 0) FROM json_each(?2) expected LEFT JOIN assessment_effective_thread_inputs i ON i.account_id = ?1 AND i.thread_id = expected.key")
                 .bind(account.as_str()).bind(&expected).fetch_one(self.reader()).await?;
@@ -198,8 +195,6 @@ impl super::Store {
         &self,
         accounts: &[AccountId],
     ) -> Result<Vec<String>, sqlx::Error> {
-        // The asks namespace has a different payload and includes sent mail;
-        // home reports must never try to decode it as an inbound home row.
         sqlx::query_scalar("SELECT DISTINCT policy_version FROM mail_assessments WHERE account_id IN (SELECT value FROM json_each(?)) AND policy_version NOT LIKE 'asks-%' ORDER BY policy_version")
             .bind(encode_json(&accounts.iter().map(AccountId::as_str).collect::<Vec<_>>())?).fetch_all(self.reader()).await
     }

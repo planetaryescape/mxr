@@ -66,13 +66,9 @@ async fn sync_prune_keeps_newest_50_per_account_and_deletes_older_rows_past_cuto
     let now = Utc::now().timestamp();
     let cutoff = now - 90 * DAY;
 
-    // 60 old rows, then 5 recent ones. The 5 recent rows and the newest 45
-    // old rows are the account's newest 50, so 15 old rows are deletable.
     seed_sync_rows(&store, &busy, 60, now - 200 * DAY, 1).await;
     seed_sync_rows(&store, &busy, 5, now - DAY, 1).await;
 
-    // A rarely syncing account: every row is older than the cutoff, but all
-    // three are in its newest 50, so none may go.
     let quiet = AccountId::new();
     let mut quiet_account = test_account();
     quiet_account.id = quiet.clone();
@@ -98,8 +94,6 @@ async fn sync_prune_keeps_newest_50_per_account_and_deletes_older_rows_past_cuto
 
 #[tokio::test]
 async fn sync_prune_tie_breaks_match_the_rows_doctor_reads() {
-    // All 55 rows share one started_at, so only the id tie-break separates
-    // them. The prune must keep exactly the rows doctor's window reads.
     let (store, account) = fresh_store_with_account().await;
     let now = Utc::now().timestamp();
     seed_sync_rows(&store, &account, 55, now - 200 * DAY, 0).await;
@@ -117,8 +111,6 @@ async fn sync_prune_tie_breaks_match_the_rows_doctor_reads() {
 
 #[tokio::test]
 async fn sync_prune_ranks_by_started_at_not_insert_order() {
-    // The row inserted first is the newest by started_at. Ranking by id would
-    // keep the wrong 50.
     let (store, account) = fresh_store_with_account().await;
     let now = Utc::now().timestamp();
     seed_sync_rows(&store, &account, 55, now - 200 * DAY, -1).await;
@@ -135,7 +127,6 @@ async fn sync_prune_ranks_by_started_at_not_insert_order() {
 
 #[tokio::test]
 async fn sync_prune_crosses_batch_boundary_and_keeps_newest_rows() {
-    // 5,500 rows is more than one 5,000-row batch.
     let (store, account) = fresh_store_with_account().await;
     let now = Utc::now().timestamp();
     seed_sync_rows(&store, &account, 5_500, now - 200 * DAY, 1).await;
@@ -156,8 +147,6 @@ async fn sync_prune_leaves_a_running_row_in_window_and_tolerates_pruned_ids() {
     let (store, account) = fresh_store_with_account().await;
     let now = Utc::now().timestamp();
     seed_sync_rows(&store, &account, 60, now - 300 * DAY, 1).await;
-    // A sync that started 200 days ago and is still running is the newest
-    // row by started_at, so it stays.
     let running = store
         .insert_sync_log(&account, &SyncStatus::Running)
         .await
@@ -179,7 +168,6 @@ async fn sync_prune_leaves_a_running_row_in_window_and_tolerates_pruned_ids() {
         .await
         .unwrap();
 
-    // Completing a kept row works; completing a pruned row is a no-op.
     store
         .complete_sync_log(running, &SyncStatus::Success, 3, None)
         .await
@@ -200,7 +188,6 @@ async fn sync_prune_cutoff_is_strict_and_in_unix_seconds() {
     let cutoff = 1_700_000_000;
     seed_sync_rows(&store, &account, 1, cutoff - 1, 0).await;
     seed_sync_rows(&store, &account, 1, cutoff, 0).await;
-    // Fifty newer rows keep the two above from being protected by the window.
     seed_sync_rows(&store, &account, 50, cutoff + DAY, 1).await;
 
     let deleted = store.prune_sync_logs_before(cutoff, 50).await.unwrap();

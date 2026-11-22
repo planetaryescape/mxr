@@ -170,7 +170,6 @@ impl Rng {
 const SENDERS: u64 = 200;
 
 fn sender_email(sender: u64) -> String {
-    // Some senders arrive with capitals; contacts are keyed lowercase.
     if sender.is_multiple_of(7) {
         format!("Sender{sender}@Example.com")
     } else {
@@ -279,7 +278,6 @@ async fn seed_mailbox(store: &Store, threads: u64, now_unix: i64) -> AccountId {
                  VALUES (?, ?, ?, 0)",
             )
             .bind(account_id.as_str())
-            // Mixed case on purpose: sender_email is COLLATE NOCASE.
             .bind(sender_email(sender).to_uppercase())
             .bind(disposition)
             .execute(&mut *tx)
@@ -327,7 +325,6 @@ async fn sql_ranking_returns_exactly_what_the_rust_ranking_did() {
             compared += actual.len();
         }
     }
-    // The fixture must exercise the ranking, not compare empty lists.
     assert!(compared > 5_000, "only {compared} rows compared");
 }
 

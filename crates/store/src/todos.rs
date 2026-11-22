@@ -240,14 +240,10 @@ pub(crate) fn row_to_todo(row: &SqliteRow) -> Result<TodoRecord, sqlx::Error> {
         thread_id: optional_id(row.try_get("thread_id")?)?,
         source_message_id: optional_id(row.try_get("source_message_id")?)?,
         source_date: decode_optional_timestamp(row.try_get("source_date")?)?,
-        // Some internal queries select the todo columns without the derived
-        // filed time; absence means "not known here", never a wrong marker.
         source_filed_at: decode_optional_timestamp(
             row.try_get::<Option<i64>, _>("source_filed_at")
                 .unwrap_or(None),
         )?,
-        // Same for the read state: a query without the derived column leaves
-        // it unknown, and the row keeps the neutral tier.
         source_unread: row
             .try_get::<Option<i64>, _>("source_unread")
             .unwrap_or(None)
@@ -342,7 +338,6 @@ async fn write_todo_from_assessment(
     answer: Option<&mxr_core::asks::AskAssessment>,
     promise: Option<&crate::PromiseForTodo>,
 ) -> Result<TodoUpsert, sqlx::Error> {
-    // Read for the report only: the conflict clause below decides.
     let prior = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {SELECT_COLUMNS} FROM todos WHERE account_id = ? AND dedup_key = ?"
     )))
@@ -505,8 +500,6 @@ impl super::Store {
                 .rsplit_once('|')
                 .filter(|(_, period)| period.starts_with("sent:") || period.starts_with("due:"))
             {
-                // One write transaction: a dated mail that commits between the
-                // read and the write would otherwise lose its newer date.
                 let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
                 let keys: Vec<String> = sqlx::query_scalar(concat!(
                     "SELECT dedup_key FROM todos WHERE account_id = ?1 AND dedup_key LIKE ?2 UNION SELECT l.dedup_key FROM asks_legacy_links l JOIN todos t ON t.id=l.todo_id WHERE t.account_id=?1 AND l.dedup_key LIKE ?2 AND ",
@@ -675,8 +668,6 @@ impl super::Store {
         let wanted =
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
-        // The account's open rows are few (the state index finds them), so
-        // the thread filter runs over those rather than needing its own index.
         let sql = format!(
             "SELECT {SELECT_COLUMNS} FROM todos
              WHERE account_id = ?1 AND state = 'open'
@@ -700,7 +691,6 @@ impl super::Store {
         prefix: &str,
         limit: u32,
     ) -> Result<Vec<String>, sqlx::Error> {
-        // `substr` rather than LIKE keeps `%` and `_` in the prefix literal.
         sqlx::query_scalar::<_, String>(
             "SELECT id FROM todos WHERE substr(id, 1, length(?1)) = ?1 ORDER BY id LIMIT ?2",
         )

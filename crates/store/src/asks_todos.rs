@@ -44,7 +44,6 @@ impl Store {
                 .bind(old_key)
                 .bind(answer.message_id.as_str())
         };
-        // A read first, so the common scan with nothing to move takes no write lock.
         if find_old().fetch_optional(self.reader()).await?.is_none() {
             return Ok(());
         }
@@ -90,7 +89,6 @@ impl Store {
             (false, Some(_)) => {
                 sqlx::query(retire).bind(&old.id).execute(&mut *tx).await?;
             }
-            // Never merge two histories the user has each acted on.
             (true, Some(target)) if protected(&target) => {}
             (true, target) => {
                 if let Some(target) = target {
@@ -99,13 +97,10 @@ impl Store {
                         .execute(&mut *tx)
                         .await?;
                 }
-                // An alias, not a move: the row's exact Undo snapshot survives.
                 sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
                     .bind(&old.id).bind(&record.dedup_key).execute(&mut *tx).await?;
             }
         }
-        // Undo reopened the row, so it speaks for none of its aliased bills. A
-        // kept alias would suppress them again if the user later closes the row.
         if !protected(&old) {
             sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=?")
                 .bind(&old.id)
@@ -139,8 +134,6 @@ impl Store {
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(record.account_id.as_str())
             .bind(crate::encode_json(&legacy_keys)?)
-            // Multiple keys come only from exact prior spans inside one grouped
-            // obligation. An amount-less remediation shares its saved decision.
             .bind(&record.currency)
             .bind(legacy_keys.len() > 1)
             .fetch_all(&mut *tx)
@@ -169,8 +162,6 @@ impl Store {
         {
             sqlx::query("UPDATE todos SET dedup_key=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM todos target WHERE target.account_id=? AND target.dedup_key=?)")
                 .bind(&record.dedup_key).bind(&candidate.id).bind(record.account_id.as_str()).bind(&record.dedup_key).execute(&mut *tx).await?;
-            // Undo revokes suppression even when the canonical automatic row
-            // already exists and no predecessor can move into its identity.
             for prior in &prior {
                 sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=? AND dedup_key=?")
                     .bind(&prior.id)
@@ -207,9 +198,6 @@ impl Store {
             return Ok(());
         }
         let prefix = format!("{identity}|");
-        // Exact prefix match: LIKE would read `_` and `%` in the key as
-        // wildcards. A read first, so the common scan (row already keyed, or
-        // a new item) takes no write lock.
         let candidates: Vec<(String, String)> = sqlx::query_as(
             "SELECT id, dedup_key FROM todos WHERE account_id=?1 AND source_message_id=?2 AND substr(dedup_key, 1, length(?3))=?3 AND instr(substr(dedup_key, length(?3)+1), '|')=0 AND (substr(dedup_key, length(?3)+1, 4)='due:' OR substr(dedup_key, length(?3)+1, 5)='sent:') AND dedup_key NOT IN (SELECT value FROM json_each(?4)) AND NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id=?1 AND t.dedup_key=?5) ORDER BY created_at, id LIMIT 2",
         )
@@ -220,20 +208,16 @@ impl Store {
         .bind(&record.dedup_key)
         .fetch_all(self.reader())
         .await?;
-        // Two rows from one email for one item are already ambiguous; leave them.
         let [(id, old_key)] = candidates.as_slice() else {
             return Ok(());
         };
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
-        // Only the answer the upsert will write may move a row.
         let current: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?1 AND a.account_id=?2 AND a.policy_version=?3 AND a.input_fingerprint=?4 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?5)")
             .bind(answer.message_id.as_str()).bind(record.account_id.as_str()).bind(&answer.policy_version).bind(&answer.input_fingerprint)
             .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?).fetch_one(&mut *tx).await?;
         if !current {
             return Ok(());
         }
-        // The read above ran outside this transaction; the row moves only if
-        // it still holds its old key and nothing took the new one meanwhile.
         sqlx::query("UPDATE todos SET dedup_key=?1 WHERE id=?2 AND account_id=?3 AND source_message_id=?4 AND dedup_key=?5 AND NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id=?3 AND t.dedup_key=?1)")
             .bind(&record.dedup_key)
             .bind(id)
@@ -380,8 +364,6 @@ impl Store {
             }
         }
         if let Some(replacement) = replacement {
-            // Never merge two histories: the caller must finish this upgrade
-            // before inserting new automatic rows for the account.
             let sql = format!(
                 "SELECT {} FROM todos WHERE account_id = ? AND dedup_key = ? AND id != ?",
                 crate::todos::SELECT_COLUMNS
@@ -423,8 +405,6 @@ impl Store {
             sqlx::query("UPDATE todos SET dedup_key = ?, rules_version = 2, reason = ?, field_sources = ? WHERE id = ?")
                 .bind(&replacement.dedup_key).bind(&replacement.reason).bind(crate::encode_json(&fields)?).bind(&before.id).execute(&mut *tx).await?;
         } else {
-            // Unsupported old verdicts stop surfacing, but manual edits and
-            // all completed/dismissed history retain their exact state.
             sqlx::query("UPDATE todos SET rules_version = 2, state = CASE WHEN state = 'open' AND user_edited = 0 AND scheduled_for IS NULL THEN 'expired' ELSE state END WHERE id = ?")
                 .bind(&before.id).execute(&mut *tx).await?;
         }

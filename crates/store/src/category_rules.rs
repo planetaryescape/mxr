@@ -110,8 +110,6 @@ async fn write_source(
     Ok(())
 }
 
-// A transaction snapshot closes the race between daemon revalidation and sync persistence.
-// Table/column names come only from this fixed internal allowlist and SQLite schema.
 async fn snapshot(
     connection: &mut sqlx::SqliteConnection,
     message: Option<&MessageId>,

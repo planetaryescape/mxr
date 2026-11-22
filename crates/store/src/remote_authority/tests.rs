@@ -255,7 +255,6 @@ async fn restart_preserves_authority_but_recovery_generation_invalidates_it() {
         .authenticate_remote_client(&c.client_id, &mail, c.expires_at)
         .await
         .is_err());
-    // Cleanup retries retain authority after ordinary credentials expire.
     store
         .cleanup_remote_client(&c.client_id, &cleanup, c.expires_at + 1)
         .await
@@ -295,7 +294,6 @@ async fn migration_replay_preserves_grant_when_a_table_and_stamp_are_missing() {
         .await
         .unwrap();
     let identity = store.remote_authority_status().await.unwrap();
-    // Stamp-last adoption must reconcile partial DDL without deleting durable authority.
     sqlx::raw_sql("DROP TABLE remote_pairings; DELETE FROM schema_migrations WHERE version=83;")
         .execute(store.writer())
         .await
@@ -374,7 +372,6 @@ async fn expired_start_can_be_reestablished_unapproved_then_retired() {
         .await
         .unwrap();
 
-    // Expiry removes the pending proof row, so cleanup must not acknowledge yet.
     assert!(store
         .abandon_remote_pairing(&cleanup, original.expires_at + 1)
         .await
@@ -386,7 +383,6 @@ async fn expired_start_can_be_reestablished_unapproved_then_retired() {
         .iter()
         .any(|pairing| pairing.request_id == original.request_id));
 
-    // The client can recreate its pending proof from retained cleanup intent.
     let recreated = store
         .start_remote_pairing(
             "fixture",

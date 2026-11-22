@@ -228,8 +228,6 @@ impl super::Store {
             .into_iter()
             .map(|r| r.thread_id)
             .collect::<Vec<_>>(),
-            // DateDesc | Relevance (Relevance has no defined meaning
-            // for thread listing — fall back to "most recent first").
             _ => sqlx::query!(
                 r#"SELECT thread_id as "thread_id!"
                    FROM messages
@@ -262,8 +260,6 @@ impl super::Store {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut threads = self.get_threads_batch(&thread_ids).await?;
-        // get_threads_batch returns in arbitrary order; restore the
-        // SQL sort order before returning.
         threads.sort_by_key(|t| {
             thread_ids
                 .iter()

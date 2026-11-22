@@ -85,7 +85,6 @@ impl Store {
         let write_opts = SqliteConnectOptions::from_str(&db_url)?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
-            // Authority commits must survive host power loss; keep the pooled policy constant.
             .synchronous(SqliteSynchronous::Full)
             .pragma("fullfsync", "ON")
             .busy_timeout(BUSY_TIMEOUT)
@@ -106,11 +105,6 @@ impl Store {
             .pragma("foreign_keys", "ON")
             .read_only(true);
 
-        // 6 readers: WAL readers don't block each other and are cheap.
-        // Background DB work is capped below this by the daemon's
-        // `BACKGROUND_DB_PERMITS` semaphore, so at least
-        // `6 - BACKGROUND_DB_PERMITS` connections always stay free for
-        // interactive/status traffic even under full background load.
         let reader = SqlitePoolOptions::new()
             .max_connections(6)
             .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
@@ -127,8 +121,6 @@ impl Store {
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
-        // Migrations may have just added indexes; give the planner statistics
-        // before the first read. Not fatal: a store without statistics still works.
         if let Err(error) = store.optimize_all_tables().await {
             tracing::warn!(%error, "initial PRAGMA optimize failed");
         }
@@ -159,7 +151,6 @@ impl Store {
         Ok(())
     }
 
-    // Only private staging databases use this constructor; the offline caller owns the workspace lease.
     pub(crate) async fn fresh_backup(db_path: &Path) -> Result<Self, sqlx::Error> {
         if db_path.exists() {
             return Err(sqlx::Error::Protocol(
@@ -206,9 +197,6 @@ impl Store {
             .await?;
 
         let (store, name) = Self::empty_in_memory().await?;
-        // A deserialized database belongs to the one connection that loaded
-        // it, so the copy goes into a scratch connection first. VACUUM INTO
-        // then writes it into the shared database every connection opens.
         let mut scratch = SqliteConnectOptions::from_str("sqlite::memory:")?
             .connect()
             .await?;
@@ -226,8 +214,6 @@ impl Store {
 
     /// An empty memory database and the name it is shared under.
     async fn empty_in_memory() -> Result<(Self, String), sqlx::Error> {
-        // A named shared-cache memory database lives while any connection to
-        // it is open. The unique name keeps each store's database its own.
         let name = format!("mxr-memory-{}", uuid::Uuid::now_v7());
         let opts = SqliteConnectOptions::new()
             .filename(format!("file:{name}"))
@@ -236,14 +222,9 @@ impl Store {
             .journal_mode(SqliteJournalMode::Wal)
             .pragma("foreign_keys", "ON");
 
-        // sqlx replaces a pooled connection on its own: one whose acquire is
-        // cancelled mid-ping, one that fails its ping on release, one dropped
-        // while connecting. Without another open connection, the replacement
-        // would open an empty database.
         let memory_anchor = opts.connect().await?;
 
         let changes = Arc::new(ChangeFeed::default());
-        // Recycling on age or idleness buys nothing for a memory database.
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .max_lifetime(None)
@@ -266,9 +247,6 @@ impl Store {
     }
 
     pub(crate) async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-        // Bootstrap the version-tracking table itself. Done outside the
-        // version-tracked path so existing DBs (which may have all migrations
-        // applied but no version stamps) get a clean target to backfill into.
         sqlx::raw_sql(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
                 version    INTEGER PRIMARY KEY,
@@ -282,11 +260,7 @@ impl Store {
         for migration in MIGRATIONS {
             self.apply_migration(migration).await?;
         }
-        // Runs on every open, not once: a restored bundle from before 96
-        // brings accounts without a colour or tag.
         self.backfill_account_identity().await?;
-        // Same reason as above: a dev database from before 093 was edited in
-        // place lacks the receipts foreign key.
         self.repair_unsubscribe_receipts_foreign_key().await?;
 
         self.validate_schema().await?;
@@ -927,10 +901,6 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 26,
         name: "contact_style_drift",
-        // Three ALTER TABLE ADD COLUMN steps. SQLite has no `ADD COLUMN
-        // IF NOT EXISTS`, so we use idempotent `AddColumn` steps that
-        // probe via `PRAGMA table_info`. This keeps the migration
-        // re-runnable when a pre-versioning DB needs backfilling.
         kind: MigrationKind::Composite(CONTACT_STYLE_DRIFT_STEPS),
     },
     Migration {
@@ -1064,37 +1034,26 @@ const MIGRATIONS: &[Migration] = &[
         kind: MigrationKind::AddColumn {
             table: "drafts",
             column: "from_addr",
-            // Per-message From override, JSON-encoded `Address`. NULL means
-            // "send from the account's primary address" (default behaviour).
             sql: "ALTER TABLE drafts ADD COLUMN from_addr TEXT",
         },
     },
     Migration {
         version: 49,
         name: "draft_html_content",
-        // Additive and forward-only: existing rows keep `body_markdown` and
-        // take `content_kind = 'markdown'` from the default, so they decode as
-        // `DraftContent::Markdown` without any row being rewritten.
-        // Mirrors migrations/049_draft_html_content.sql.
         kind: MigrationKind::Composite(&[
             MigrationStep::AddColumn {
                 table: "drafts",
                 column: "body_html",
-                // The caller's HTML document, stored byte-for-byte.
                 sql: "ALTER TABLE drafts ADD COLUMN body_html TEXT",
             },
             MigrationStep::AddColumn {
                 table: "drafts",
                 column: "body_text",
-                // Caller-supplied text/plain alternative; NULL means the
-                // outbound builder generates one from the HTML.
                 sql: "ALTER TABLE drafts ADD COLUMN body_text TEXT",
             },
             MigrationStep::AddColumn {
                 table: "drafts",
                 column: "inline_assets",
-                // JSON array of `{cid, path}`. Paths only, like `attachments`,
-                // so image bytes stay out of the DB and off the IPC frame.
                 sql: "ALTER TABLE drafts ADD COLUMN inline_assets TEXT NOT NULL DEFAULT '[]'",
             },
             MigrationStep::AddColumn {
@@ -1112,8 +1071,6 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::AddColumn {
                 table: "drafts",
                 column: "provider_draft_id",
-                // Stable provider draft resource ID. The provider's nested
-                // message ID may change whenever the draft content is replaced.
                 sql: "ALTER TABLE drafts ADD COLUMN provider_draft_id TEXT",
             },
             MigrationStep::AddColumn {
@@ -1141,8 +1098,6 @@ const MIGRATIONS: &[Migration] = &[
         kind: MigrationKind::AddColumn {
             table: "mutation_undo_log",
             column: "desk_state_json",
-            // The desk's Done also changes dismissals and promises; undo
-            // puts those back from here (JSON `DeskUndo`, NULL otherwise).
             sql: "ALTER TABLE mutation_undo_log ADD COLUMN desk_state_json TEXT",
         },
     },
@@ -1161,18 +1116,15 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 56,
         name: "reply_later_due",
-        // Timed reply later. Mirrors migrations/056_reply_later_due.sql.
         kind: MigrationKind::Composite(&[
             MigrationStep::AddColumn {
                 table: "message_flags",
                 column: "reply_later_due_at",
-                // When a timed reply later comes back; NULL is untimed.
                 sql: "ALTER TABLE message_flags ADD COLUMN reply_later_due_at INTEGER",
             },
             MigrationStep::AddColumn {
                 table: "message_flags",
                 column: "reply_later_returned_at",
-                // Set once, by the wake loop that announces the return.
                 sql: "ALTER TABLE message_flags ADD COLUMN reply_later_returned_at INTEGER",
             },
             MigrationStep::Sql(
@@ -1182,7 +1134,6 @@ const MIGRATIONS: &[Migration] = &[
                        AND reply_later_due_at IS NOT NULL
                        AND reply_later_returned_at IS NULL",
             ),
-            // A reminder's replies filed in another thread, by parent.
             MigrationStep::Sql(
                 "CREATE INDEX IF NOT EXISTS idx_reply_pairs_parent
                      ON reply_pairs (parent_message_id, direction)",
@@ -1242,9 +1193,6 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::Sql(include_str!("../migrations/062_done_watermark_by_date.sql")),
         ]),
     },
-    // Done marks also keep the ids of the messages they saw, so a message
-    // the mark never saw is new whatever its Date header says. NULL on
-    // older marks, which keep the (date, id) watermark and count.
     Migration {
         version: 63,
         name: "done_marks_covered_ids",
@@ -1276,15 +1224,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "reading",
         kind: MigrationKind::Sql(include_str!("../migrations/066_reading.sql")),
     },
-    // Archive: records built from mail, with a value per field per source.
-    // 66 belongs to the Reading phase.
     Migration {
         version: 67,
         name: "records",
         kind: MigrationKind::Sql(include_str!("../migrations/067_records.sql")),
     },
-    // When mxr stored each message: freshness reads arrival time from it
-    // instead of a Date header that may run ahead.
     Migration {
         version: 68,
         name: "message_stored_at",
@@ -1294,10 +1238,6 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE messages ADD COLUMN stored_at INTEGER",
         },
     },
-    // Hints replace the page-top first-encounter cards (D118, amended
-    // 2026-10-07): seen state is per hint, not per mode. The old per-mode
-    // rows retired cards that no longer exist, so they are dropped, not
-    // carried over.
     Migration {
         version: 69,
         name: "hint_seen",
@@ -1309,8 +1249,6 @@ const MIGRATIONS: &[Migration] = &[
              DROP TABLE IF EXISTS mode_guide_seen;",
         ),
     },
-    // Where each email went when it arrived, and the user's corrections
-    // (D119). 68 belongs to message stored_at, 69 to contextual hints.
     Migration {
         version: 70,
         name: "arrivals",
@@ -1759,8 +1697,6 @@ pub(crate) mod tests {
     }
 
     async fn schema_of(pool: &sqlx::SqlitePool) -> Vec<(String, String, Option<String>)> {
-        // `sqlite_stat1` appears once PRAGMA optimize has analysed a table; it
-        // holds planner statistics, not schema.
         sqlx::query_as(
             "SELECT type, name, sql FROM sqlite_schema \
              WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
@@ -1867,8 +1803,6 @@ pub(crate) mod tests {
         .await
         .unwrap();
 
-        // sqlx closes a pooled connection on its own too: after a query or
-        // acquire is cancelled mid-flight, or when a ping fails.
         store
             .writer()
             .acquire()
@@ -2128,7 +2062,6 @@ pub(crate) mod tests {
         let category = mxr_core::CategoryId::new();
         {
             let store = store_at_version(&path, 77).await;
-            // insert_account writes identity_color, which a version-77 schema lacks.
             sqlx::query("INSERT INTO accounts (id, name, email, enabled, created_at, updated_at) VALUES (?, ?, ?, 1, 1, 1)")
                 .bind(account.id.as_str())
                 .bind(&account.name)
@@ -2351,13 +2284,11 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn marginalia_migration_upgrades_83_and_85_keeping_highlights_as_made_in_mxr() {
-        // 83 also crosses the two remote migrations that precede it on main.
         for from in [83, 85] {
             let temp = tempdir().unwrap();
             let db_path = temp.path().join(format!("version-{from}.db"));
             {
                 let store = store_at_version(&db_path, from).await;
-                // Only the upgrade is under test, so skip the parent rows.
                 sqlx::query("PRAGMA foreign_keys = OFF")
                     .execute(store.writer())
                     .await
@@ -2403,20 +2334,14 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn pre_versioning_db_is_backfilled_into_schema_migrations() {
-        // Simulates a user who ran an older daemon that applied every migration
-        // imperatively without recording versions. On next launch the new code
-        // must stamp every migration row without re-running any migration body
-        // (because all `CREATE TABLE IF NOT EXISTS` / column-exists checks pass).
         let temp = tempdir().unwrap();
         let db_path = temp.path().join("legacy.db");
 
-        // First open: produces a fully-migrated DB.
         {
             let store = Store::new(&db_path).await.unwrap();
             drop(store);
         }
 
-        // Erase the version stamps to simulate a pre-versioning install.
         {
             let url = format!("sqlite:{}", db_path.display());
             let opts = SqliteConnectOptions::from_str(&url)
@@ -2434,7 +2359,6 @@ pub(crate) mod tests {
             pool.close().await;
         }
 
-        // Re-open: should backfill cleanly without complaints.
         let store = Store::new(&db_path).await.unwrap();
         let rows: Vec<(i64,)> =
             sqlx::query_as("SELECT version FROM schema_migrations ORDER BY version")
@@ -2578,9 +2502,6 @@ pub(crate) mod tests {
                 .execute(store.writer())
                 .await
                 .unwrap();
-            // (id, by_when): a user's promise, a user's promise with no
-            // date, a dated detected row, an undated detected row, and a
-            // dated row from a draft promotion.
             for (id, by_when) in [
                 ("msg-1::promise::0190", Some(1_000_i64)),
                 ("msg-3::promise::undated", None),
@@ -2713,10 +2634,8 @@ pub(crate) mod tests {
         assert_eq!(role("sent").as_deref(), Some("sent"));
         assert_eq!(role("draft").as_deref(), Some("drafts"));
         assert_eq!(role("inbox").as_deref(), Some("inbox"));
-        // Only System labels are backfilled from a name.
         assert_eq!(role("folder"), None);
         assert_eq!(role("user"), None);
-        // A name the table does not know stays unset.
         assert_eq!(role("gesendet"), None);
     }
 }

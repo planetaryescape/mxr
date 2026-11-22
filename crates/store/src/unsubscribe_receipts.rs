@@ -66,9 +66,6 @@ impl super::Store {
             return Ok(Claim::Claimed { claimed_at: now });
         }
 
-        // Neither insert nor takeover won: a confirmed receipt, or a live
-        // claim. A row released between the two statements reads as a live
-        // claim, which is safe: the caller only gets a retryable error.
         let method: Option<String> =
             sqlx::query_scalar("SELECT method FROM unsubscribe_receipts WHERE message_id = ?")
                 .bind(message_id.as_str())
@@ -216,8 +213,6 @@ mod tests {
             .account_id(account.clone())
             .build();
         envelope.id = id.clone();
-        // The builder's default provider id is shared, so every message would
-        // upsert onto one row.
         envelope.provider_id = id.as_str();
         store
             .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
@@ -286,7 +281,6 @@ mod tests {
         ] {
             insert_message(&store, &account.id, id).await;
         }
-        // No event carries this account, so it resolves only through messages.
         insert_message(&store, &account.id, &via_message).await;
 
         insert_event(
@@ -325,8 +319,6 @@ mod tests {
             "Archived \"News\"",
         )
         .await;
-        // The later row is inserted first, so the test would catch an
-        // implementation that keeps the last row or the lowest id.
         insert_event(
             &store,
             300,
@@ -354,8 +346,6 @@ mod tests {
             "Unsubscribed from \"News\"",
         )
         .await;
-        // A mutation on a message whose subject contains the words. The
-        // subject sits after the action verb, so the prefix never reaches it.
         insert_event(
             &store,
             240,
@@ -365,7 +355,6 @@ mod tests {
             "Marked \"How to unsubscribe\" as read",
         )
         .await;
-        // The message was deleted; its event row survives in history only.
         insert_event(
             &store,
             220,
@@ -444,7 +433,6 @@ mod tests {
         let (account, id) = fresh_message(&store).await;
         store.claim_unsubscribe(&id, &account, 1_000).await.unwrap();
 
-        // Exactly 600 seconds old is not yet stale: the boundary is strict.
         assert_eq!(
             store
                 .claim_unsubscribe(&id, &account, 1_000 + STALE_CLAIM_SECS)
@@ -543,7 +531,6 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let (account, id) = fresh_message(&store).await;
 
-        // The first attempt stalls holding its claim.
         let Claim::Claimed {
             claimed_at: stalled,
         } = store.claim_unsubscribe(&id, &account, 1).await.unwrap()
@@ -558,7 +545,6 @@ mod tests {
             panic!("stale claim must be taken over");
         };
 
-        // The stalled attempt finally fails and releases with its own time.
         store.release_unsubscribe_claim(&id, stalled).await.unwrap();
         assert!(
             store.has_unsubscribe_receipt(&id).await.unwrap(),
@@ -612,8 +598,6 @@ mod tests {
         store.claim_unsubscribe(&kept, &account, 1).await.unwrap();
         store.confirm_unsubscribe(&kept, "mailto", 2).await.unwrap();
 
-        // The shape a developer database has when it applied 093 before the
-        // foreign key was added: same columns, no REFERENCES clause.
         sqlx::raw_sql(
             "DROP TABLE unsubscribe_receipts;
              CREATE TABLE unsubscribe_receipts (
@@ -664,11 +648,9 @@ mod tests {
         .unwrap();
         assert!(has_key.is_some(), "the rebuilt table declares the key");
 
-        // Deleting the message now takes its receipt with it.
         store.delete_account(&account).await.unwrap();
         assert!(receipts(&store).await.is_empty());
 
-        // A second open finds the key and changes nothing.
         store
             .repair_unsubscribe_receipts_foreign_key()
             .await

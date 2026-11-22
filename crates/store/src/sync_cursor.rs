@@ -2,11 +2,6 @@ use mxr_core::{AccountId, SyncCursor};
 use sqlx::Row;
 use std::collections::HashMap;
 
-// The `accounts.sync_cursor` column is TEXT. With MSP Phase B, the cursor
-// is opaque bytes owned by the provider adapter — by convention always
-// UTF-8 JSON. We round-trip it as a String here without decoding any
-// inner structure; the adapter parses (and migrates) on read.
-
 impl super::Store {
     pub async fn get_sync_cursor(
         &self,
@@ -34,7 +29,6 @@ impl super::Store {
             sqlx::Error::Decode(Box::new(err))
         })?;
         let aid = account_id.as_str();
-        // An idle sync saves the cursor it started from; leave the row alone.
         sqlx::query!(
             "UPDATE accounts SET sync_cursor = ?1 WHERE id = ?2 AND sync_cursor IS NOT ?1",
             cursor_text,

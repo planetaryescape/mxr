@@ -148,7 +148,6 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
         .unwrap();
     assert_eq!(first, RecordFiled::Inserted { id: "r1".into() });
 
-    // A rule on the shipping email reads a different amount: schema wins.
     let second = fx
         .store
         .file_record(&fx.filing(
@@ -191,7 +190,6 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
     assert_eq!(record.currency.as_deref(), Some("GBP"));
     assert_eq!(record.issuer_key.as_deref(), Some("dell"));
     assert_eq!(record.delivered_at, Some(at(4)));
-    // The delivered date came from a rule: unchecked.
     assert!(!record.checked);
     assert_eq!(record.last_message_at, Some(at(4)));
     let sources = fx
@@ -241,7 +239,6 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
     let confirm = RecordFieldEdit::Confirm {
         field: "amount".into(),
     };
-    // The dry run shows the outcome and writes nothing.
     let (preview, _) = fx
         .store
         .edit_archive_record("r1", &confirm, at(1), false)
@@ -279,7 +276,6 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
         )
         .await
         .unwrap();
-    // A re-run of the detector with a fresh observation never beats the user.
     fx.store
         .file_record(&fx.filing(
             "r1",

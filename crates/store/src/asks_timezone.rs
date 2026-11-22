@@ -46,8 +46,6 @@ impl AsksTimezone {
         } else {
             Path::new("/usr/share/zoneinfo").join(zone)
         };
-        // Always read current bytes before consulting the bounded parse cache.
-        // Metadata and elapsed time cannot establish that future offset rules agree.
         let source = match std::fs::read(&path) {
             Ok(bytes) => Ok(bytes),
             Err(error) if !zone.is_empty() && !Path::new(zone).is_absolute() => Err(error),

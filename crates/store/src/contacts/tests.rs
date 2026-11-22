@@ -38,9 +38,6 @@ async fn bob_outbound_total(store: &crate::Store, account: &AccountId) -> i64 {
 
 #[tokio::test]
 async fn refresh_zeroes_a_contact_whose_mail_changed_direction() {
-    // Bob is named by mail that is no longer outbound. The aggregate stops
-    // producing him, the prune keeps him because the mail still names him,
-    // and his outbound total must not survive the refresh.
     let store = crate::Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -62,8 +59,6 @@ async fn refresh_zeroes_a_contact_whose_mail_changed_direction() {
 
 #[tokio::test]
 async fn zeroing_spares_a_contact_whose_mail_arrived_after_the_snapshot() {
-    // Bob was nominated by the snapshot, and then new outbound mail to him
-    // arrives before the reset runs. The reset must not clear his counters.
     let store = crate::Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();

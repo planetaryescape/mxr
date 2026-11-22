@@ -35,8 +35,6 @@ impl super::Store {
         entry: &RelationshipWatchEntry,
         allow_list_sender: bool,
     ) -> Result<(), String> {
-        // Reject list senders unless the override is set, with a
-        // named reason so the CLI can surface it.
         let is_list: Option<i64> = sqlx::query_scalar(
             "SELECT is_list_sender FROM contacts
              WHERE account_id = ? AND email = LOWER(?)",
@@ -225,7 +223,6 @@ mod tests {
     #[tokio::test]
     async fn list_sender_is_rejected_without_override() {
         let (store, account) = fixture().await;
-        // Insert a contacts row marked as list sender.
         sqlx::query(
             "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
                last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
@@ -243,7 +240,6 @@ mod tests {
             .expect_err("must reject list sender by default");
         assert!(err.contains("list sender"), "{err}");
         assert!(err.contains("--allow-list-sender"), "{err}");
-        // With override flag, succeeds.
         store
             .watch_cadence(&entry(&account, "newsletter@example.com"), true)
             .await
@@ -255,7 +251,6 @@ mod tests {
         let (store, account) = fixture().await;
         let recent = Utc::now() - Duration::days(2);
         let stale = Utc::now() - Duration::days(60);
-        // Recent contact: cadence 7d, drift would be -5d => excluded.
         sqlx::query(
             "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
                last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
@@ -269,7 +264,6 @@ mod tests {
         .execute(store.writer())
         .await
         .unwrap();
-        // Stale contact: cadence 7d, drift would be 53d => included.
         sqlx::query(
             "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
                last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,

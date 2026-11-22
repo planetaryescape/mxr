@@ -88,7 +88,6 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         let person = merge.person_email.to_ascii_lowercase();
         let mut tx = self.writer().begin().await?;
-        // The target must not itself be linked to someone else.
         sqlx::query("DELETE FROM person_links WHERE account_id = ?1 AND email = ?2")
             .bind(account_id.as_str())
             .bind(&person)

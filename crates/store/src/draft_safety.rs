@@ -103,8 +103,6 @@ impl super::Store {
         token: &str,
     ) -> Result<Option<Vec<DraftSafetyIssueCode>>, sqlx::Error> {
         let now = Utc::now().timestamp();
-        // Atomic UPDATE … WHERE used_at IS NULL RETURNING. Guarantees
-        // single-use even under concurrent send attempts.
         let row = sqlx::query(
             r#"UPDATE draft_safety_overrides
                SET used_at = ?
@@ -131,8 +129,6 @@ mod tests {
     use crate::Store;
 
     async fn temp_store() -> Store {
-        // A directory named from the clock was shared by tests started in the
-        // same microsecond, which then locked or re-migrated one database.
         let temp_dir = tempfile::tempdir().unwrap().keep();
         Store::new(&temp_dir.join("mxr.db")).await.unwrap()
     }
@@ -145,11 +141,9 @@ mod tests {
             .await
             .unwrap();
 
-        // First consume returns the issue kinds.
         let kinds = store.consume_safety_override(&token).await.unwrap();
         assert_eq!(kinds, Some(vec![DraftSafetyIssueCode::PiiSecret]));
 
-        // Second consume returns None (token already used).
         let again = store.consume_safety_override(&token).await.unwrap();
         assert_eq!(again, None);
     }

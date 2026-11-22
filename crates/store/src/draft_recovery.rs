@@ -66,8 +66,6 @@ impl super::Store {
     /// Compatibility entry point: uncertain legacy and current sends stay blocked.
     pub async fn reset_orphaned_draft(&self, draft_id: &DraftId) -> Result<bool, sqlx::Error> {
         let _ = draft_id;
-        // Age cannot prove that a provider rejected the message. Legacy
-        // Sending rows are equally uncertain and stay blocked.
         Ok(false)
     }
 }
@@ -117,8 +115,6 @@ mod tests {
     async fn list_orphaned_excludes_drafts_in_draft_status() {
         let store = Store::in_memory().await.unwrap();
         let _id = seed_draft(&store).await;
-        // Default status is 'draft' and updated_at is anchor.
-        // Cutoff at anchor + 1h: any 'sending' row would be orphaned.
         let orphans = store
             .list_orphaned_sending_drafts(anchor() + Duration::hours(1))
             .await
@@ -133,14 +129,10 @@ mod tests {
     async fn list_orphaned_includes_stale_sending_drafts() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;
-        // CAS to sending; cas updates status_updated_at to "now-ish"
-        // which is the test's wall-clock. To make it look stale to the
-        // cutoff, we use a future cutoff well past anything plausible.
         let _ = store
             .cas_draft_status(&id, DraftStatus::Draft, DraftStatus::Sending)
             .await
             .unwrap();
-        // Cutoff far in the future ⇒ everything stale.
         let orphans = store
             .list_orphaned_sending_drafts(Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap())
             .await
@@ -170,7 +162,6 @@ mod tests {
     async fn reset_orphaned_is_noop_for_drafts_not_in_sending() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;
-        // Draft is in 'draft' status; reset should be a no-op.
         let reset = store.reset_orphaned_draft(&id).await.unwrap();
         assert!(!reset, "reset returns false when nothing to reset");
     }

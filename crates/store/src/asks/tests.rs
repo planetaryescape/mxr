@@ -240,7 +240,6 @@ async fn mail_view_summaries_keep_answers_but_leave_source_zones_on_detail_reads
         .save_asks_batch(&account.id, &revisions, std::slice::from_ref(&full))
         .await
         .unwrap());
-    // Recreate the projection exactly as an upgrade from schema 101 does.
     sqlx::raw_sql("DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
         .execute(store.writer()).await.unwrap();
     sqlx::raw_sql(include_str!("../../migrations/102_ask_view_summaries.sql"))
@@ -425,7 +424,6 @@ async fn projection_outbox_survives_restart_and_rejects_same_fingerprint_new_gen
             .await
             .unwrap()
             .remove(0)
-        // Simulated crash: no projection acknowledgement before the store closes.
     };
     let store = Store::new(&path).await.unwrap();
     assert_eq!(
@@ -570,7 +568,6 @@ async fn unchanged_receiver_authority_survives_persistent_reopen_without_retirin
         .sync_assessment_context("shape10:timezone-a")
         .await
         .unwrap();
-    // Startup and every reconciliation tick use the same durable authority seam.
     store
         .sync_receiver_authority(&Default::default())
         .await

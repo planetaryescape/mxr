@@ -649,7 +649,6 @@ impl super::Store {
         limit: u32,
     ) -> Result<(Vec<ArrivalRow>, u32), sqlx::Error> {
         let started_at = Instant::now();
-        // Every filter names ?4, so the bound parameters always match.
         let filter = match bucket {
             None => "?4 = ''",
             Some("todo") => "(also_todo AND ?4 = 'todo')",

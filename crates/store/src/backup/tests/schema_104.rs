@@ -70,7 +70,6 @@ async fn a_schema_104_bundle_is_inspected_against_the_104_shape() {
 
     assert_eq!(inspect(stage.path()).await.unwrap().schema_version, 104);
 
-    // A 105 stamp on the same bytes is a different schema and is refused.
     let mut mislabelled = manifest;
     mislabelled.schema_version = 105;
     std::fs::write(
@@ -100,7 +99,6 @@ async fn a_backup_from_schema_104_restores_with_label_roles() {
         .unwrap();
     let store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
 
-    // Restore does not run migration 105, so the copy carried its backfill.
     let roles: Vec<Option<String>> = sqlx::query_scalar("SELECT role FROM labels")
         .fetch_all(store.writer())
         .await

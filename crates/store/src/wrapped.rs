@@ -44,13 +44,6 @@ impl super::Store {
         let acct: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let floor = since_unix.max(EARLIEST_PLAUSIBLE_TS);
 
-        // The seven sub-aggregates are fully independent — they share no
-        // intermediate state and just dispatch their own SQL. Run them
-        // concurrently so the reader pool (4 connections) can saturate
-        // instead of blocking on a strict serial chain. On a large
-        // mailbox (multi-million rows) this is the difference between
-        // "minutes" and "seconds" because the bound is read-IO + index
-        // walking, not CPU.
         let (
             volume,
             time_patterns,
@@ -120,12 +113,6 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedTimePatterns, sqlx::Error> {
-        // Full DOW distribution (up to 7 rows), full hour distribution
-        // (up to 24 rows), and busiest-day all share the same predicate
-        // shape; run them concurrently against the reader pool.
-        // SQLite's strftime('%w') returns 0=Sunday..6=Saturday; the
-        // public `day_of_week_distribution` array uses 0=Monday..6=Sunday,
-        // so remap by `(sqlite_dow + 6) % 7`.
         let dow_sql = format!(
             r#"SELECT CAST(strftime('%w', m.date, 'unixepoch') AS INTEGER) AS dow,
                       COUNT(*) AS c
@@ -229,8 +216,6 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedTopContacts, sqlx::Error> {
-        // Three independent aggregates — top inbound, top outbound,
-        // and most-asymmetric — fan out to the reader pool together.
         let inbound_sql = format!(
             r#"SELECT LOWER(m.from_email), MAX(m.from_name), COUNT(*) AS c
                FROM messages m
@@ -280,9 +265,6 @@ impl super::Store {
         .bind(TOP_N)
         .fetch_all(self.reader());
 
-        // Most asymmetric over the window — recompute (the materialized
-        // contacts table is all-time, doesn't respect window). Requires
-        // ≥5 inbound to filter out one-off senders.
         let asym_sql = format!(
             r#"WITH window_contacts AS (
                 SELECT LOWER(m.from_email) AS email, m.from_name AS name,
@@ -337,8 +319,6 @@ impl super::Store {
             Vec<ContactAsymmetrySqlRow>,
         ) = tokio::try_join!(inbound_query, outbound_query, asym_query)?;
 
-        // last_seen_at on ContactAsymmetryRow needs a value — reuse
-        // window_end as a placeholder rather than running another query.
         let placeholder_last_seen = decode_timestamp(until)?;
 
         Ok(WrappedTopContacts {
@@ -605,7 +585,6 @@ impl super::Store {
                 .bind(read_flag)
                 .fetch_optional(self.reader());
 
-        // Share of inbound that is list-bearing.
         let share_sql = format!(
             r#"SELECT
                 CASE WHEN COUNT(*) = 0 THEN NULL
@@ -645,7 +624,6 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedSuperlatives, sqlx::Error> {
-        // Longest thread by message count in window.
         let longest_sql = format!(
             r#"SELECT m.thread_id, COUNT(*) AS c, MAX(m.subject)
                FROM messages m
@@ -665,8 +643,6 @@ impl super::Store {
                 .fetch_optional(self.reader())
                 .await?;
 
-        // Most ghosted: high inbound, zero outbound. Reuses the window_contacts
-        // CTE shape from top_contacts but constrains to out_count = 0.
         let ghosted_sql = format!(
             r#"WITH window_contacts AS (
                 SELECT LOWER(m.from_email) AS email, 'in' AS dir

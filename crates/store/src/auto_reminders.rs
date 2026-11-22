@@ -608,7 +608,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Re-set: a new window, fresh state.
         store
             .set_auto_reminder(&env.id, &account_id, anchor() + Duration::days(2), anchor())
             .await
@@ -657,8 +656,6 @@ mod tests {
             store.upsert_envelope(env).await.unwrap();
         }
 
-        // Three reminders, all in the past, with different remind_at.
-        // Set in non-chronological order; expect ascending by remind_at.
         store
             .set_auto_reminder(
                 &envs[0].id,
@@ -782,12 +779,10 @@ mod tests {
             .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
             .await
             .unwrap();
-        // The loop read it as due...
         assert_eq!(
             store.get_due_auto_reminders(anchor()).await.unwrap().len(),
             1
         );
-        // ...then the user moved it to next week before the claim.
         let later = anchor() + Duration::days(7);
         store
             .set_auto_reminder(&env.id, &account_id, later, anchor())

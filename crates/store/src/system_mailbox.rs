@@ -120,8 +120,6 @@ impl super::Store {
                     order.push(id);
                 }
             }
-            // A shared thread id folded two rows into one: refetch a larger
-            // slice only when that left the page short.
             if order.len() > page_end || rows.len() < rows_wanted {
                 return Ok(order
                     .into_iter()
@@ -478,7 +476,6 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let a = account(&store).await;
         let b = account(&store).await;
-        // Gmail-style names on one account, fake-style on the other: both map to Inbox.
         let a_inbox = label(&store, &a.id, "INBOX", LabelKind::System).await;
         let b_inbox = label(&store, &b.id, "Inbox", LabelKind::System).await;
         let a_sent = label(&store, &a.id, "SENT", LabelKind::System).await;
@@ -495,7 +492,6 @@ mod tests {
     #[tokio::test]
     async fn threads_by_role_merge_accounts_newest_first_and_page() {
         let t = two_accounts().await;
-        // Interleave by age so a per-account concatenation would be wrong.
         let (a1, _) = message(&t.store, &t.a.id, 10, &[&t.a_inbox], None).await;
         let (b1, _) = message(&t.store, &t.b.id, 20, &[&t.b_inbox], None).await;
         let (a2, _) = message(&t.store, &t.a.id, 30, &[&t.a_inbox], None).await;
@@ -534,8 +530,6 @@ mod tests {
     #[tokio::test]
     async fn role_matches_only_system_labels_of_that_mailbox() {
         let t = two_accounts().await;
-        // A user label and a folder that happen to be called "Inbox", and a
-        // different system mailbox.
         let fake_user = label(&t.store, &t.b.id, "inbox", LabelKind::User).await;
         let fake_folder = label(&t.store, &t.a.id, "Inbox", LabelKind::Folder).await;
         let (real, _) = message(&t.store, &t.a.id, 1, &[&t.a_inbox], None).await;
@@ -624,7 +618,6 @@ mod tests {
         assert_eq!(paged.len(), 1);
         assert_ne!(paged[0].id, a_msg);
 
-        // The single-id path still sees one account only.
         let single = t
             .store
             .list_envelopes_by_label(&t.a_inbox.id, 10, 0)
@@ -667,10 +660,6 @@ mod tests {
     #[tokio::test]
     async fn a_thread_id_shared_across_accounts_is_listed_once() {
         let t = two_accounts().await;
-        // Legacy Gmail thread ids (before 0.4.52) are not account-scoped, so
-        // two accounts can hold the same id. `get_threads_batch` keys on it, so
-        // the listing returns the thread once rather than twice. Pinned so a
-        // change is deliberate; see docs/blueprint/02-data-model.md.
         let shared = ThreadId::new();
         message(&t.store, &t.a.id, 10, &[&t.a_inbox], Some(shared.clone())).await;
         message(&t.store, &t.b.id, 20, &[&t.b_inbox], Some(shared.clone())).await;
@@ -688,8 +677,6 @@ mod tests {
     async fn a_system_label_joins_the_role_it_is_stored_with_not_its_name() {
         let store = Store::in_memory().await.unwrap();
         let acct = account(&store).await;
-        // An IMAP folder named in German with the \Sent special-use: the
-        // provider reports Sent, so the name is not what places it.
         let sent = Label {
             id: LabelId::new(),
             account_id: acct.id.clone(),
@@ -785,8 +772,6 @@ mod tests {
 
     #[tokio::test]
     async fn starred_is_the_flag_for_gmail_and_imap_alike_and_unstar_removes_the_row() {
-        // Gmail-shaped account: the STARRED label and, from sync, the flag.
-        // IMAP-shaped account: \Flagged is only the flag, no STARRED label.
         let store = Store::in_memory().await.unwrap();
         let gmail = account(&store).await;
         let imap = account(&store).await;
@@ -827,9 +812,6 @@ mod tests {
         let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
         assert_eq!((starred.1, starred.2), (2, 2), "unread, total");
 
-        // A local unstar clears only the flag. The Gmail message still has
-        // its STARRED label association until the next sync, and must leave
-        // the merged Starred list anyway.
         for thread in [&gmail_thread, &imap_thread] {
             let message = store.get_thread_envelopes(thread).await.unwrap().remove(0);
             store
@@ -907,7 +889,6 @@ mod tests {
             .update_label_counts(&t.b_inbox.id, 1, 7)
             .await
             .unwrap();
-        // Only account A has an All Mail label (and its stored count is stale).
         let all = label(&t.store, &t.a.id, "ALL", LabelKind::System).await;
         t.store.update_label_counts(&all.id, 0, 1).await.unwrap();
         for _ in 0..3 {
@@ -921,9 +902,7 @@ mod tests {
         let counts = t.store.system_mailbox_counts(&both).await.unwrap();
         let get = |role| counts.iter().find(|(r, _, _)| *r == role).copied().unwrap();
         assert_eq!((get(Role::Inbox).1, get(Role::Inbox).2), (3, 12));
-        // Every message of both accounts, whatever labels exist.
         assert_eq!(get(Role::AllMail).2, 7);
-        // One account only counts that account.
         let only_b = t
             .store
             .system_mailbox_counts(std::slice::from_ref(&t.b.id))

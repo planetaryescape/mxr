@@ -25,8 +25,6 @@ async fn facet_summaries_keep_the_assessments_account_boundary() {
         .save_asks_batch(&account.id, &revisions, &[answer(&account.id, &message)])
         .await
         .unwrap();
-    // Even with the same message and generation, a differently owned facet
-    // cannot be used. Exercise the projection's account-update trigger too.
     for (owner, expected) in [(&other.id, 0), (&account.id, 1)] {
         sqlx::query("UPDATE mail_assessments SET account_id = ? WHERE message_id = ?")
             .bind(owner.as_str())

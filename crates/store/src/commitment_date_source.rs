@@ -90,7 +90,6 @@ mod tests {
 
     #[test]
     fn the_sql_condition_agrees_with_the_rust_rule() {
-        // The two spellings of the rule must not drift apart.
         for source in ALL {
             assert_eq!(
                 ACTIONABLE_BY_WHEN_SQL.contains(&format!("'{}'", source.as_str())),

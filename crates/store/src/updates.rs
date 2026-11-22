@@ -377,7 +377,6 @@ mod tests {
                 .unwrap();
             assert_eq!(streaks["strava.com"], expected);
         }
-        // The same cut again counts once.
         let again = now + Duration::hours(3);
         let streaks = store
             .record_update_let_go(&id, &unopened, again, again)

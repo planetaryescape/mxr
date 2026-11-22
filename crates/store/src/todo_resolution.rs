@@ -867,8 +867,6 @@ mod tests {
                 dismissed_at: None,
             };
             store.upsert_detected_todo(&task).await.unwrap();
-            // Match production scanning: fingerprint the exact persisted row
-            // that supplied the matcher with its task snapshot.
             let task = store.get_todo(&task.id).await.unwrap().unwrap();
             let fingerprint = todo_resolution_fingerprint(&task);
             Self {

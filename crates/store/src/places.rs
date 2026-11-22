@@ -332,8 +332,6 @@ const NOT_TRASHED: &str = r#"(m.flags & ?2) = 0
         WHERE tml.message_id = m.id AND tl.provider_id IN ('TRASH', 'SPAM')
     )"#;
 
-// The inbox selection and the filed selection cannot overlap. UNION ALL
-// avoids sorting every candidate's complete envelope to remove duplicates.
 fn mode_candidates_sql() -> String {
     let columns = place_columns(false);
     format!(
@@ -576,7 +574,6 @@ pub(crate) mod tests {
         let archived = store.place_message(&ids[2]).await.unwrap().unwrap();
         assert!(!archived.in_inbox);
 
-        // Only an observed outside archive is retained, not all historical mail.
         store
             .remove_message_label(&ids[0], &inbox, EventSource::Sync)
             .await

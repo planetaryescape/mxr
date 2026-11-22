@@ -300,11 +300,6 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
             .execute(expected.writer())
             .await?;
     }
-    // The ordered thread page summary (migration 112) is derived from
-    // `messages` and `message_labels`: a restore from before it rebuilds it.
-    // A bundle stamped before 112 may or may not carry it (a test or a
-    // hand-stamped bundle made from a newer schema), so mirror whichever the
-    // bundle has instead of insisting on one shape.
     let bundle_has_thread_role_pages: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'thread_role_pages')",
     )
@@ -384,7 +379,6 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
             .await?;
     }
     if manifest.schema_version < 97 {
-        // The counter is runtime bookkeeping; old bundles have no assessments.
         sqlx::raw_sql(PRE_ASSESSMENT_SCHEMA)
             .execute(expected.writer())
             .await?;
@@ -431,8 +425,6 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
         .await?;
     }
     if manifest.schema_version < 89 {
-        // Before 089 the table only took four sources: compare with the
-        // definition those bundles were written with.
         sqlx::raw_sql(LEGACY_ACTIVITY_SCHEMA)
             .execute(expected.writer())
             .await?;
@@ -476,7 +468,6 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
         .await?;
     }
     if manifest.schema_version == 81 {
-        // Compare legacy bundles against their immutable schema, not today's migrated schema.
         sqlx::query("DROP TABLE todo_resolution_queue")
             .execute(expected.writer())
             .await?;
@@ -661,8 +652,6 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         if !exists {
             continue;
         }
-        // Identifiers come only from this allowlist and the freshly migrated main schema.
-        // Columns an older source lacks keep their defaults.
         let source_columns: BTreeSet<String> = sqlx::query(AssertSqlSafe(format!(
             "PRAGMA source.table_info(\"{table}\")"
         )))
@@ -694,11 +683,6 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         } else {
             "rowid,"
         };
-        // Migration 108 makes identity_tag unique, and the staging schema has
-        // that index before any row is copied. A source from before 108 can
-        // hold a duplicate, so the copy keeps the oldest holder of each tag
-        // and copies the rest with NULL. The identity backfill derives new tags
-        // for those rows when the restored store opens.
         let select_columns = if *table == "accounts"
             && source_columns.contains("identity_tag")
             && source_columns.contains("created_at")
@@ -725,9 +709,6 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     .fetch_one(&mut *connection)
     .await?;
     if !receipts_in_source {
-        // Schema 92 predates receipts. Rebuild them from its event_log with
-        // migration 093's rules, so a message unsubscribed before this backup
-        // stays protected after restore.
         sqlx::query("DELETE FROM main.unsubscribe_receipts")
             .execute(&mut *connection)
             .await?;
@@ -740,13 +721,11 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         .execute(&mut *connection)
         .await?;
     if version < 94 {
-        // The column is new in 94, so the copy left it empty.
         sqlx::raw_sql(crate::commitment_date_source::BACKFILL_BY_WHEN_SOURCE_SQL)
             .execute(&mut *connection)
             .await?;
     }
     if version < 95 {
-        // And on draft candidates in 95.
         sqlx::raw_sql(crate::commitment_date_source::BACKFILL_DRAFT_CANDIDATE_SOURCE_SQL)
             .execute(&mut *connection)
             .await?;
@@ -756,8 +735,6 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         .await?;
     drop(connection);
     if version < 105 {
-        // Restore does not run migration 105, and these labels arrive with
-        // no role.
         store
             .backfill_label_roles_from_names()
             .await
@@ -769,9 +746,6 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         .map_err(|e| format!("Referenced resource inventory: {e}"))?;
     let mut connection = store.writer().acquire().await?;
     validate(&mut connection).await?;
-    // The bundle carries the staging schema, which is migrated to the
-    // current version even when the source is older. Stamp that, not the
-    // source's version.
     let stage_schema: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
@@ -894,7 +868,6 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
         let rows = sqlx::query(AssertSqlSafe(format!("SELECT {key} AS original_id,{account} AS account_id,{state} AS original_state FROM {table} WHERE {selection}"))).fetch_all(&mut *tx).await?;
         for row in rows {
             let id: String = row.get("original_id");
-            // Preserve domain payload as SQL JSON, including the original scheduling identity.
             let columns = sqlx::query(AssertSqlSafe(format!("PRAGMA table_info({table})")))
                 .fetch_all(&mut *tx)
                 .await?

@@ -48,8 +48,6 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         ),
     ),
 
-    // SQLite's conversation_message_delete trigger clears both projections
-    // inside the same message deletion transaction, including raw SQL deletes.
     ("conversation_summaries", MessageDeletionRule::ClearedWithMessages),
     ("conversation_candidate_sets", MessageDeletionRule::ClearedWithMessages),
     ("conversation_view_inputs", MessageDeletionRule::KeptNoText(
@@ -61,7 +59,6 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::ClearedWithMessages,
     ),
     ("deliveries", MessageDeletionRule::ClearedWithMessages),
-    // Field and message rows cascade; the record goes with its last source.
     ("records", MessageDeletionRule::ClearedWithMessages),
     (
         "record_runs",
@@ -79,7 +76,6 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
     ("unsubscribe_receipts", MessageDeletionRule::ClearedWithMessages),
-    // Cleared for every person a delete touches, and with its contact.
     (
         "contact_relationship_summary",
         MessageDeletionRule::ClearedWithMessages,
@@ -169,9 +165,6 @@ impl super::Store {
         if provider_ids.is_empty() {
             return Ok(DeletedMessages::default());
         }
-        // Read before the transaction: the counterparties come from rows
-        // about to be deleted, and the lookup needs the reader pool, which
-        // may share the writer's only connection (in-memory stores).
         let mut preview = Vec::new();
         for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
             preview.extend(
@@ -196,8 +189,6 @@ impl super::Store {
         ] {
             sqlx::query(statement).execute(&mut *tx).await?;
         }
-        // Resolved again inside the transaction, so what is deleted is
-        // exactly what the database holds now.
         for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
             provider_id_query(
                 "INSERT OR IGNORE INTO temp.mxr_deleting (id, thread_id) SELECT id, thread_id FROM messages",
@@ -208,8 +199,6 @@ impl super::Store {
             .await?;
         }
         for (_, email) in &counterparties {
-            // Lowercased as recipient briefings key it; SQL `lower()` folds
-            // ASCII only.
             sqlx::query("INSERT OR IGNORE INTO temp.mxr_deleting_people (email) VALUES (?)")
                 .bind(email.to_lowercase())
                 .execute(&mut *tx)
@@ -229,27 +218,14 @@ impl super::Store {
                 .map(|id| decode_id::<ThreadId>(id))
                 .collect::<Result<Vec<_>, _>>()?;
 
-        // Statements bind `?1` to the account. Order matters: the
-        // provenance and evidence lookups read rows the message delete
-        // cascades away, so they are captured first and checked after.
         for statement in [
-            // Thread gists and summaries can quote any message of the
-            // thread, so a partial delete drops them too.
-            // `GetThreadBriefing` keys on the bare thread id, the gist on
-            // `gist:<thread id>`.
             "DELETE FROM context_briefings WHERE account_id = ?1 AND kind = 'thread'
                AND (subject_key IN (SELECT thread_id FROM temp.mxr_deleting)
                     OR subject_key IN (SELECT 'gist:' || thread_id FROM temp.mxr_deleting))",
             "DELETE FROM context_briefings WHERE account_id = ?1 AND kind = 'recipient'
                AND subject_key IN (SELECT email FROM temp.mxr_deleting_people)",
-            // A relationship summary is model text drawn from the person's
-            // mail. A refresh skips rewriting one when no newer mail exists,
-            // so it is dropped here and rebuilt from the mail that is left.
             "DELETE FROM contact_relationship_summary WHERE account_id = ?1
                AND email IN (SELECT email FROM temp.mxr_deleting_people)",
-            // Moves the version a recipient briefing in flight read, so its
-            // late write is refused. `refreshed_at` is otherwise written
-            // only by the contacts refresh, which sets it afresh.
             "UPDATE contacts SET refreshed_at = refreshed_at - 1
                WHERE account_id = ?1
                  AND (email IN (SELECT email FROM temp.mxr_deleting_people)
@@ -260,9 +236,6 @@ impl super::Store {
                AND evidence_msg_id IN (SELECT id FROM temp.mxr_deleting)",
             "DELETE FROM event_log WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
             "DELETE FROM unsubscribe_receipts WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
-            // A detected to-do goes with its email. One the user made or
-            // edited is theirs and stays, without the words it copied from
-            // the email; the foreign keys then clear its pointers to it.
             concat!(
                 "DELETE FROM todos WHERE account_id = ?1
                    AND source_message_id IN (SELECT id FROM temp.mxr_deleting)
@@ -291,8 +264,6 @@ impl super::Store {
             "CREATE TEMP TABLE mxr_deleting_decisions AS
                SELECT DISTINCT decision_id AS id FROM decision_evidence
                WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
-            // Recorded with the delete so the cleanup outside SQLite
-            // survives a failed pass or a crash before the daemon runs it.
             "INSERT OR IGNORE INTO pending_message_forgets (message_id, account_id, deleted_at)
                SELECT id, ?1, unixepoch() FROM temp.mxr_deleting",
             "DELETE FROM messages WHERE id IN (SELECT id FROM temp.mxr_deleting)",
@@ -301,9 +272,6 @@ impl super::Store {
                  AND NOT EXISTS (
                      SELECT 1 FROM delivery_messages
                      WHERE delivery_messages.delivery_id = deliveries.id)",
-            // A record goes with its last source email. One that keeps a
-            // source has its fields recomputed from the candidates left: the
-            // deleted email's cascaded away with it.
             "DELETE FROM records
                WHERE id IN (SELECT id FROM temp.mxr_deleting_records)
                  AND NOT EXISTS (
@@ -314,12 +282,9 @@ impl super::Store {
                SELECT id FROM records WHERE id IN (SELECT id FROM temp.mxr_deleting_records)",
             crate::records::RECOMPUTE_SQL,
             "DELETE FROM temp.mxr_records",
-            // A trip or series with no record left has nothing to name.
             "DELETE FROM record_groups
                WHERE NOT EXISTS (
                    SELECT 1 FROM records WHERE records.group_id = record_groups.id)",
-            // A decision survives while any of its evidence is still here;
-            // the message delete cascaded the rows of the evidence that went.
             "DELETE FROM decision_log
                WHERE id IN (SELECT id FROM temp.mxr_deleting_decisions)
                  AND NOT EXISTS (
@@ -763,14 +728,10 @@ mod tests {
             ids(&store, "SELECT summary FROM event_log").await,
             set(&["kept"])
         );
-        // A receipt is what stops a second unsubscribe. It goes with its
-        // message, and the kept message's receipt stays.
         assert_eq!(
             ids(&store, "SELECT message_id FROM unsubscribe_receipts").await,
             set(&[&kept_s])
         );
-        // Alice still has mail in thread A, but her summary drew on the
-        // deleted message and is rebuilt; Dave's mail was untouched.
         assert_eq!(
             ids(&store, "SELECT email FROM contact_relationship_summary").await,
             set(&["dave@example.com"])
@@ -822,8 +783,6 @@ mod tests {
             .delete_messages_and_derived(&account.id, &["from-alice".to_string()])
             .await
             .unwrap();
-        // In the same second as the first refresh: the prune must not
-        // depend on timestamps telling runs apart.
         store.refresh_contacts().await.unwrap();
 
         let bob = set(&["bob@example.com"]);
@@ -969,7 +928,6 @@ mod tests {
             )
             .await;
         }
-        // Both were missing from a snapshot; Bob's mail arrived after it.
         inbound(
             &store,
             &account.id,
@@ -1038,7 +996,6 @@ mod tests {
             vec![only]
         );
 
-        // The relationship summary's samples follow the same rule.
         let samples = store
             .recent_contact_messages(&account.id, "b@example.com", 10)
             .await
@@ -1061,7 +1018,6 @@ mod tests {
         let kept = inbound(&store, &account.id, "kept", &thread, "alice@example.com").await;
         let gone = inbound(&store, &account.id, "gone", &thread, "alice@example.com").await;
         store.refresh_contacts().await.unwrap();
-        // The model calls start: they read the mail and the contact row.
         let contact_version: i64 = sqlx::query_scalar(
             "SELECT refreshed_at FROM contacts WHERE email = 'alice@example.com'",
         )
@@ -1133,7 +1089,6 @@ mod tests {
             assert_eq!(rows, 0, "{table} took a write built from deleted mail");
         }
 
-        // Built from mail that is all still here, the writes go through.
         assert!(store
             .upsert_thread_summary_if_sources_exist(&summary, std::slice::from_ref(&kept))
             .await

@@ -275,9 +275,6 @@ impl Store {
             .collect::<Vec<_>>()
             .join(", ");
         if existing {
-            // The alert task is already there, but an independent owner
-            // request is its own task. Keep it, once, under the durable claim
-            // instead of dropping it with the early return.
             let sql = format!(
                 "INSERT INTO todos ({columns}) VALUES ({placeholders}) \
                  ON CONFLICT(account_id, dedup_key) DO NOTHING"

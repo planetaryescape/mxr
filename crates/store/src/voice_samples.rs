@@ -353,7 +353,6 @@ mod tests {
         assert_eq!(all[0].parent_body, "Can you review the deck?");
         assert_eq!(all[0].parent_from_name.as_deref(), Some("Alice"));
 
-        // History as it stood before the second reply: only the first.
         let before = chrono::Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).unwrap();
         let earlier = store
             .my_reply_samples(&account.id, None, None, Some(before), 10)

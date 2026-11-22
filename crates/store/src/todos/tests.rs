@@ -127,7 +127,6 @@ async fn a_reminder_updates_the_row_and_older_mail_never_overwrites_it() {
     assert_eq!(row.amount_minor, Some(15000));
     assert_eq!(row.source_message_id.as_ref(), Some(&reminder.0));
 
-    // Classifying newest first meets the first bill after the reminder.
     assert_eq!(
         fx.store
             .upsert_detected_todo(&fx.record("t3", &first, at(0)))
@@ -209,7 +208,6 @@ async fn a_row_is_claimed_once() {
             .is_empty(),
         "never twice"
     );
-    // A re-run keeps the claim.
     let mut rerun = fx.record("t2", &source, at(0));
     rerun.rules_version = 2;
     fx.store.upsert_detected_todo(&rerun).await.unwrap();
@@ -269,7 +267,6 @@ async fn the_catch_up_keeps_the_cap_across_accounts_by_act_by_then_newest() {
         let mut row = fx.record(&format!("t{n}"), &source, at(n));
         row.dedup_key = format!("k{n}");
         row.catchup = Some(TodoCatchup::Pending);
-        // This test ranks the current first run, not pending legacy upgrades.
         row.rules_version = 2;
         row.act_by_at = (n == 0).then(|| at(300));
         if n % 2 == 1 {
@@ -286,7 +283,6 @@ async fn the_catch_up_keeps_the_cap_across_accounts_by_act_by_then_newest() {
         .into_iter()
         .map(|row| row.id)
         .collect();
-    // Dated first, then the newest undated ones.
     assert_eq!(kept, vec!["t0", "t5", "t4"]);
     assert_eq!(fx.store.count_catchup_overflow(None).await.unwrap(), 3);
     assert_eq!(
@@ -778,14 +774,12 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
         .unwrap();
     let november = keyed("rescan", &source, "due:2026-11");
 
-    // This email still has an item due in October: that row is its sibling.
     fx.store
         .adopt_asks_same_source(&november, ask, &[key("due:2026-10"), key("due:2026-11")])
         .await
         .unwrap();
     assert_eq!(key_of("october").await, key("due:2026-10"));
 
-    // A stale answer moves nothing.
     let mut stale = ask.clone();
     stale.input_fingerprint = "older".into();
     fx.store
@@ -801,7 +795,6 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
     assert_eq!(key_of("october").await, key("due:2026-11"));
     assert_eq!(key_of("theirs").await, key("due:2026-12"));
 
-    // Another email's row for the same item is next month's bill, not this one.
     let next_rescan = keyed("next-rescan", &next, "due:2027-01");
     fx.store
         .adopt_asks_same_source(&next_rescan, next_ask, &[key("due:2027-01")])
@@ -810,7 +803,6 @@ async fn a_redated_item_keeps_its_emails_row_and_never_takes_a_sibling_or_anothe
     assert_eq!(key_of("october").await, key("due:2026-11"));
     assert_eq!(key_of("theirs").await, key("due:2027-01"));
 
-    // A key some row already holds is never taken a second time.
     let back = keyed("back", &source, "due:2027-01");
     fx.store
         .adopt_asks_same_source(&back, ask, &[key("due:2027-01")])
@@ -838,7 +830,6 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
     };
     fx.store.upsert_label(&inbox).await.unwrap();
 
-    // Sync saw the mail leave the inbox: the row says filed elsewhere.
     let (message, thread) = fx.message("filed", at(0)).await;
     fx.store
         .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::Sync)
@@ -861,7 +852,6 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
         "a sync unlabel is evidence the user filed the mail elsewhere"
     );
 
-    // mxr's own archive is attributed locally, never filed elsewhere.
     let (own, own_thread) = fx.message("own", at(0)).await;
     fx.store
         .set_message_labels(&own, std::slice::from_ref(&inbox.id), EventSource::Sync)
@@ -884,7 +874,6 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
         None
     );
 
-    // The mail came back to the inbox: the marker clears.
     fx.store
         .add_message_label(&message, &inbox.id, EventSource::Sync)
         .await
@@ -899,7 +888,6 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
         None
     );
 
-    // A local archive after that return must not revive the older sync event.
     fx.store
         .set_message_labels(&message, &[], EventSource::User)
         .await
@@ -919,7 +907,6 @@ async fn a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not() {
         .unwrap()
         .is_empty());
 
-    // Full sync uses bulk replacement too: its real inbox departure is observed.
     fx.store
         .set_message_labels(&message, std::slice::from_ref(&inbox.id), EventSource::User)
         .await
@@ -1027,8 +1014,6 @@ async fn reading_the_source_does_not_block_undoing_a_correction() {
         .await
         .unwrap();
 
-    // Reading the email changes the derived tone, not the to-do, so undo
-    // must still be allowed.
     fx.store
         .set_read(&source.0, true, EventSource::User)
         .await
@@ -1169,7 +1154,6 @@ async fn a_stale_alias_does_not_make_an_undated_reminder_ambiguous() {
 
 #[tokio::test]
 async fn an_undated_reminder_never_restores_a_date_replaced_while_it_was_writing() {
-    // The in-memory store shares one connection, which hides this interleaving.
     let dir = tempfile::tempdir().unwrap();
     let store = Store::new(&dir.path().join("todos.db")).await.unwrap();
     let account = test_account();
@@ -1192,8 +1176,6 @@ async fn an_undated_reminder_never_restores_a_date_replaced_while_it_was_writing
     };
     let newer = at(400);
 
-    // The open write transaction lets the reminder take any read it does
-    // outside the write lock before the newer date commits.
     let mut held = fx
         .store
         .writer()

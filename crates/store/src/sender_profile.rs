@@ -115,10 +115,6 @@ impl super::Store {
 
         let Some(r) = row else { return Ok(None) };
 
-        // "Open threads": threads where the latest envelope is from this
-        // sender and there's no outbound message in the same thread that's
-        // chronologically after it. Approximated by checking each thread
-        // whose most-recent envelope is from `email`.
         let open = sqlx::query_scalar!(
             r#"SELECT COUNT(*) as "count!: i64"
                FROM (
@@ -742,10 +738,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        // Alice: 3 messages
-        // Bob:   1 message
-        // Carol: 2 messages
-        // Expected ranking: Alice (3), Carol (2), Bob (1).
         let senders = [
             ("alice@example.com", "Alice", 3),
             ("bob@example.com", "Bob", 1),
@@ -794,8 +786,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        // Two senders, one message each. The one with the more-recent
-        // `date` must come first.
         for (email, slug, date) in [
             (
                 "old@example.com",
@@ -844,7 +834,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        // Outbound: this should never appear in the top-senders list.
         let mut sent = TestEnvelopeBuilder::new()
             .account_id(account.id.clone())
             .build();
@@ -861,7 +850,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Inbound: should appear.
         let mut received = TestEnvelopeBuilder::new()
             .account_id(account.id.clone())
             .build();
@@ -897,8 +885,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
 
-        // Three months apart so any reasonable cutoff in between
-        // catches one and rejects the other.
         let old_date = Utc.with_ymd_and_hms(2025, 12, 1, 9, 0, 0).unwrap();
         let fresh_date = Utc.with_ymd_and_hms(2026, 5, 1, 9, 0, 0).unwrap();
 
@@ -923,11 +909,9 @@ mod tests {
                 .unwrap();
         }
 
-        // No bound: both senders appear.
         let unbounded = store.list_top_senders_since(10, None, None).await.unwrap();
         assert_eq!(unbounded.len(), 2, "unbounded list returns both");
 
-        // Cutoff between the two dates: only the recent one.
         let cutoff = Utc
             .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
             .unwrap()

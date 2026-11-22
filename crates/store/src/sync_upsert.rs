@@ -77,8 +77,6 @@ impl super::Store {
         upserts: &mut [SyncUpsert],
     ) -> Result<Vec<ThreadId>, sqlx::Error> {
         let mut vacated_threads = Vec::new();
-        // Storing a message whose id a pending cleanup names must not land
-        // while that cleanup is between its check and its removal.
         let _cleanup = self.lock_message_cleanup().await;
         for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
             let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
@@ -93,9 +91,6 @@ impl super::Store {
                     && !upsert.envelope.flags.contains(mxr_core::MessageFlags::READ);
                 vacated_threads.extend(stored.vacated_thread_id);
                 upsert.retarget(stored.id);
-                // A message whose id was deleted before (an IMAP UID reused
-                // under the same folder) is live again: cleanup owed to the
-                // old message must not reach its files or index entries.
                 sqlx::query("DELETE FROM pending_message_forgets WHERE message_id = ?")
                     .bind(upsert.envelope.id.as_str())
                     .execute(&mut *tx)
@@ -527,7 +522,6 @@ mod tests {
         let mut first = upsert(&account, 0, vec![work.id.clone(), travel.id.clone()]);
         first.envelope.keywords = BTreeSet::from(["$Forwarded".to_string(), "$Label1".to_string()]);
 
-        // Second pass: read flag set, one label dropped, keywords emptied.
         let mut second = upsert(&account, 0, vec![work.id.clone()]);
         second.envelope.flags = MessageFlags::READ | MessageFlags::STARRED;
         second.envelope.subject = "Subject 0 edited".to_string();
@@ -599,7 +593,6 @@ mod tests {
         legacy[0].body.attachments.clear();
         store.apply_sync_upserts(&mut legacy).await.unwrap();
 
-        // Same provider id, id derived the way the current code derives it.
         let mut current = vec![upsert(&account, 0, vec![work.id.clone()])];
         let incoming_id = current[0].envelope.id.clone();
         assert_ne!(incoming_id, legacy_id, "the two derivations must differ");
@@ -611,8 +604,6 @@ mod tests {
             1,
             "the re-sync must update the legacy row, not add a second one"
         );
-        // The caller reads the ids back off the page it handed in — that is
-        // how sync learns which id its search index and reply pairs must use.
         assert_eq!(current[0].envelope.id, legacy_id);
         assert_eq!(current[0].body.message_id, legacy_id);
         assert!(current[0]
@@ -676,7 +667,6 @@ mod tests {
             .expect("envelope");
         assert_eq!(envelope.thread_id, new_thread);
 
-        // Re-applying the same page changes nothing, so nothing is vacated.
         let vacated = store.apply_sync_upserts(&mut moved).await.unwrap();
         assert!(vacated.is_empty());
     }

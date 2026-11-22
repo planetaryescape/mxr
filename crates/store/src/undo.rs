@@ -149,7 +149,6 @@ impl UndoEntry {
     /// Decode one `mutation_undo_log` row, read or claimed.
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
         let kind_value: String = row.try_get("mutation_kind")?;
-        // Re-add quotes so serde can decode the kebab-case unit variant.
         let kind: UndoableMutationKind =
             super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
         let snapshots_json: String = row.try_get("prior_state_json")?;
@@ -176,9 +175,6 @@ impl super::Store {
     pub async fn write_undo_entry(&self, entry: &UndoEntry) -> Result<(), sqlx::Error> {
         let snapshots_json = super::encode_json(&entry.snapshots)?;
         let kind_json = super::encode_json(&entry.kind)?;
-        // `kind_json` includes serde-rendered quotes; strip them for a
-        // clean column value (the round-trip via decode_json would
-        // re-quote, but we want a plain TEXT value for grep-friendliness).
         let kind_value = kind_json.trim_matches('"').to_string();
         let desk_json = entry.desk.as_ref().map(super::encode_json).transpose()?;
         sqlx::query(

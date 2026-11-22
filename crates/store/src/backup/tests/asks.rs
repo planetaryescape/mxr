@@ -87,9 +87,6 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
 
 #[tokio::test]
 async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_history() {
-    // One current backup, staged once and copied for each older schema.
-    // Staging runs every migration twice, which was most of this test's
-    // time when it was redone for each version.
     let source = tempfile::tempdir().unwrap();
     let staged = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -142,7 +139,6 @@ async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_hi
                 .await
                 .unwrap();
         }
-        // Labels gained `role` in 105.
         sqlx::raw_sql("DROP TABLE message_arrivals; DROP TABLE alert_todo_claims; DROP TABLE mode_row_seen; DROP TRIGGER IF EXISTS thread_role_pages_message_insert; DROP TRIGGER IF EXISTS thread_role_pages_message_update; DROP TRIGGER IF EXISTS thread_role_pages_message_delete; DROP TRIGGER IF EXISTS thread_role_pages_label_insert; DROP TRIGGER IF EXISTS thread_role_pages_label_delete; DROP TRIGGER IF EXISTS thread_role_pages_message_flags; DROP TRIGGER IF EXISTS thread_role_pages_label_role_update; DROP TABLE thread_role_pages; ALTER TABLE labels DROP COLUMN role")
             .execute(&mut db)
             .await

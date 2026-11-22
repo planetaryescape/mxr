@@ -463,8 +463,6 @@ async fn inspect_accepts_exact_schema_81_and_rejects_schemas_outside_the_support
     .unwrap();
     inspect(stage.path()).await.unwrap();
 
-    // The first version on each side of the supported range. A new migration
-    // widens the range and fails this test until the bound here moves with it.
     for unsupported in [80, 115] {
         manifest.schema_version = unsupported;
         std::fs::write(
@@ -768,7 +766,6 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
         .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
         .await
         .unwrap();
-    // A mail whose subject contains the words; its mutation row must not count.
     let mut decoy = TestEnvelopeBuilder::new()
         .account_id(account.id.clone())
         .build();
@@ -795,7 +792,6 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
     }
     store.writer().close().await;
 
-    // Make the source look like schema 92: no receipts table at all.
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(source.path().join("mxr.db")),
     )
@@ -1037,7 +1033,6 @@ async fn portable_backup_excludes_and_restore_erases_remote_authority() {
         .is_none());
     portable.writer().close().await;
     portable.reader().close().await;
-    // Raw copies are not portable backups; retirement still explicitly erases their grants.
     retire_restored(&source.path().join("mxr.db"))
         .await
         .unwrap();
@@ -1114,7 +1109,6 @@ async fn exact_schema_82_backup_remains_restorable() {
 
 #[tokio::test]
 async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
-    // Staged once and copied per version: staging runs every migration twice.
     let source = tempfile::tempdir().unwrap();
     let staged = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -1139,7 +1133,6 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
             .execute(&mut db)
             .await
             .unwrap();
-        // Rebuild authority from the immutable migration, without today's added columns.
         sqlx::raw_sql(crate::backup::LEGACY_ACTIVITY_SCHEMA)
             .execute(&mut db)
             .await
@@ -1190,7 +1183,6 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
         .unwrap();
         inspect(stage.path()).await.unwrap();
 
-        // Restore retirement runs before Store::new applies current migrations.
         retire_restored(&stage.path().join("mxr.db")).await.unwrap();
         let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
         assert!(restored
@@ -1205,7 +1197,6 @@ async fn exact_schema_83_and_84_backups_remain_restorable_before_migrations() {
 
 #[tokio::test]
 async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
-    // 83 predates the remote send grant too; 85 is the schema just before Marginalia.
     for source_version in [83, 85] {
         let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
@@ -1299,7 +1290,6 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
     assert_eq!(manifest.schema_version, 114);
     inspect(stage.path()).await.unwrap();
 
@@ -1341,7 +1331,6 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
     .unwrap();
     inspect(stage.path()).await.unwrap();
 
-    // A bundle claiming 86 but missing the schema must not pass.
     manifest.schema_version = 86;
     std::fs::write(
         stage.path().join("manifest.json"),
@@ -1408,7 +1397,6 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
     .unwrap();
     inspect(stage.path()).await.unwrap();
 
-    // A bundle claiming 87 but missing the column must not pass.
     manifest.schema_version = 87;
     std::fs::write(
         stage.path().join("manifest.json"),
@@ -1470,7 +1458,6 @@ async fn a_backup_from_before_95_marks_dated_draft_candidates_as_unverified() {
     )
     .await
     .unwrap();
-    // Schema 94: no source on draft candidates.
     sqlx::raw_sql(
         "DROP TABLE message_arrivals; DROP TABLE alert_todo_claims; DROP TABLE mode_row_seen; DROP TRIGGER IF EXISTS thread_role_pages_message_insert; DROP TRIGGER IF EXISTS thread_role_pages_message_update; DROP TRIGGER IF EXISTS thread_role_pages_message_delete; DROP TRIGGER IF EXISTS thread_role_pages_label_insert; DROP TRIGGER IF EXISTS thread_role_pages_label_delete; DROP TRIGGER IF EXISTS thread_role_pages_message_flags; DROP TRIGGER IF EXISTS thread_role_pages_label_role_update; DROP TABLE thread_role_pages; ALTER TABLE labels DROP COLUMN role; DROP INDEX IF EXISTS idx_accounts_identity_tag; ALTER TABLE accounts DROP COLUMN identity_color; ALTER TABLE accounts DROP COLUMN identity_tag; ALTER TABLE draft_commitment_candidates DROP COLUMN by_when_source;
          DELETE FROM schema_migrations WHERE version>=95;",
@@ -1535,7 +1522,6 @@ async fn a_backup_from_before_94_backfills_where_each_commitment_date_came_from(
     )
     .await
     .unwrap();
-    // Schema 93: no provenance columns.
     sqlx::raw_sql(
         "DROP TABLE message_arrivals; DROP TABLE alert_todo_claims; DROP TABLE mode_row_seen; DROP TRIGGER IF EXISTS thread_role_pages_message_insert; DROP TRIGGER IF EXISTS thread_role_pages_message_update; DROP TRIGGER IF EXISTS thread_role_pages_message_delete; DROP TRIGGER IF EXISTS thread_role_pages_label_insert; DROP TRIGGER IF EXISTS thread_role_pages_label_delete; DROP TRIGGER IF EXISTS thread_role_pages_message_flags; DROP TRIGGER IF EXISTS thread_role_pages_label_role_update; DROP TABLE thread_role_pages; ALTER TABLE labels DROP COLUMN role; DROP INDEX IF EXISTS idx_accounts_identity_tag; ALTER TABLE accounts DROP COLUMN identity_color; ALTER TABLE accounts DROP COLUMN identity_tag; ALTER TABLE contact_commitments DROP COLUMN by_when_source;
          ALTER TABLE draft_commitment_candidates DROP COLUMN by_when_source;
@@ -1700,7 +1686,6 @@ async fn a_pre_108_source_with_duplicate_identity_tags_backs_up_and_restores_dis
     };
     store.insert_account(&older).await.unwrap();
     store.insert_account(&newer).await.unwrap();
-    // Put the source back to schema 106 with a duplicate tag in it.
     sqlx::query("DROP INDEX idx_accounts_identity_tag")
         .execute(store.writer())
         .await
@@ -1766,8 +1751,6 @@ async fn a_pre_105_source_with_duplicate_tags_and_no_label_roles_backs_up_both_r
     };
     store.insert_account(&older).await.unwrap();
     store.insert_account(&newer).await.unwrap();
-    // Put the source back to schema 104: no label role, no mode_row_seen, and
-    // a duplicate tag.
     sqlx::raw_sql(
         "DROP TABLE message_arrivals; DROP TABLE alert_todo_claims; DROP TABLE mode_row_seen",
     )

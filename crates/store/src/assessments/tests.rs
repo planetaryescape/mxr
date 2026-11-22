@@ -64,7 +64,6 @@ async fn unstamped_assessment_migration_preserves_existing_thread_generations() 
     assert!(before.iter().all(|(_, revision, _)| *revision > 0));
     assert!(before.iter().any(|(_, _, dirty)| *dirty == 0));
     assert!(before.iter().any(|(_, _, dirty)| *dirty == 1));
-    // The SQL can finish before a crash prevents the final version stamp.
     sqlx::query("DELETE FROM schema_migrations WHERE version = 97")
         .execute(store.writer())
         .await
@@ -142,7 +141,6 @@ async fn sender_ingest_writes_scale_linearly_and_lazy_pages_keep_new_mutations()
         after_body - before_body < 30,
         "a body must not rewrite sender history"
     );
-    // Dependency changes reject CAS immediately, before any page is drained.
     assert!(!store
         .save_assessment_batch(&account.id, &old, &[])
         .await
@@ -173,7 +171,6 @@ async fn sender_ingest_writes_scale_linearly_and_lazy_pages_keep_new_mutations()
         100,
         "a dependency page only acknowledges its own 100 threads"
     );
-    // Another change after this page settled must requeue that same page.
     sqlx::query("UPDATE bodies SET text_plain = 'changed again' WHERE message_id = ?")
         .bind(first.id.as_str())
         .execute(store.writer())
@@ -196,7 +193,6 @@ async fn sender_ingest_writes_scale_linearly_and_lazy_pages_keep_new_mutations()
         .await
         .unwrap()
         .is_empty());
-    // Deleting body evidence also invalidates the sender dependants.
     let old = store
         .assessment_thread_revisions(&account.id, &page)
         .await
@@ -241,7 +237,6 @@ async fn sender_ingest_writes_scale_linearly_and_lazy_pages_keep_new_mutations()
         .save_assessment_batch(&account.id, &old, &[])
         .await
         .unwrap());
-    // Reconciliation bookkeeping alone never invalidates a view cache.
     let seq = store.change_feed().seq();
     acknowledge_all(&store, &account.id).await;
     assert_eq!(store.change_feed().seq(), seq);

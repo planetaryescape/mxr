@@ -341,7 +341,6 @@ async fn finish_refreshes_edited_input_without_a_rescan_and_respects_disabled_ac
             .unwrap(),
         (1, 1)
     );
-    // Success-with-none and deterministic paths share this final CAS.
     store.finish_todo_resolution_work(&refreshed).await.unwrap();
     assert_eq!(
         store

@@ -95,8 +95,8 @@ pub struct ActivityInsert<'a> {
 /// not narrow that field.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ActivityFilter {
-    pub since: Option<i64>, // unix ms inclusive
-    pub until: Option<i64>, // unix ms exclusive
+    pub since: Option<i64>,
+    pub until: Option<i64>,
     pub account_id: Option<String>,
     pub sources: Vec<String>,
     pub actions: Vec<String>,
@@ -104,7 +104,7 @@ pub struct ActivityFilter {
     pub target_kind: Option<String>,
     pub target_id: Option<String>,
     pub tiers: Vec<String>,
-    pub query: Option<String>, // FTS5 expression
+    pub query: Option<String>,
     pub include_redacted: bool,
 }
 
@@ -203,7 +203,6 @@ impl Store {
         new_ts: i64,
         new_count: u64,
     ) -> sqlx::Result<()> {
-        // Read existing context_json, bump `count`, write back.
         let existing: Option<String> =
             sqlx::query_scalar("SELECT context_json FROM user_activity WHERE id = ?")
                 .bind(id)
@@ -393,7 +392,6 @@ impl Store {
         since: i64,
         until: i64,
     ) -> sqlx::Result<Vec<(String, i64)>> {
-        // Bucket by UTC day. Clients format to local timezone for display.
         let rows = sqlx::query(
             "SELECT strftime('%Y-%m-%d', ts/1000, 'unixepoch') AS day, COUNT(*) AS c
              FROM user_activity
@@ -451,8 +449,6 @@ impl Store {
             .map(|r| Ok((r.try_get::<String, _>("tk")?, r.try_get::<i64, _>("c")?)))
             .collect()
     }
-
-    // ---- saved activity filters (Phase 8) ----
 
     pub async fn list_saved_activity_filters(&self) -> sqlx::Result<Vec<SavedActivityFilter>> {
         let rows = sqlx::query(
@@ -595,7 +591,6 @@ fn push_filter_clauses(qb: &mut QueryBuilder<sqlx::Sqlite>, filter: &ActivityFil
         qb.push(")");
     }
     if let Some(ref prefix) = filter.action_prefix {
-        // SQLite LIKE supports `||` for runtime concat; pattern-bind safely.
         qb.push(" AND action LIKE ");
         qb.push_bind(format!("{prefix}%"));
     }
@@ -796,12 +791,10 @@ mod tests {
         };
         let page = store.list_activity(&filter, 10, None).await.unwrap();
         let sources: Vec<&str> = page.rows.iter().map(|r| r.source.as_str()).collect();
-        // ts=200(web), ts=400(tui) — both inside window. ts=100(tui) excluded by since; ts=300(cli) excluded by source.
         assert_eq!(sources, vec!["tui", "web"]);
         assert_eq!(page.rows[0].ts, 400);
         assert_eq!(page.rows[1].ts, 200);
 
-        // count_activity should match
         filter.since = Some(150);
         let count = store.count_activity(&filter).await.unwrap();
         assert_eq!(count, 2);
@@ -810,7 +803,6 @@ mod tests {
     #[tokio::test]
     async fn cursor_pagination_yields_no_duplicates_and_no_gaps() {
         let store = fresh_store().await;
-        // Insert 7 rows with strictly increasing ts.
         let entries: Vec<_> = (1..=7i64)
             .map(|i| {
                 ins(
@@ -882,14 +874,12 @@ mod tests {
         let n = store.redact_activity_by_ids(&[id]).await.unwrap();
         assert_eq!(n, 1);
 
-        // Default list excludes redacted rows.
         let default_page = store
             .list_activity(&ActivityFilter::default(), 10, None)
             .await
             .unwrap();
         assert!(default_page.rows.is_empty());
 
-        // Opt-in shows them, with cleared context.
         let filter = ActivityFilter {
             include_redacted: true,
             ..ActivityFilter::default()
@@ -898,7 +888,6 @@ mod tests {
         assert_eq!(page.rows.len(), 1);
         assert!(page.rows[0].redacted);
         assert!(page.rows[0].context_json.is_none());
-        // Audit-trail columns survive.
         assert_eq!(page.rows[0].action, "mail.read");
         assert_eq!(page.rows[0].target_id.as_deref(), Some("thr_secret"));
     }
@@ -930,7 +919,6 @@ mod tests {
         let n = store.redact_activity_by_filter(&filter).await.unwrap();
         assert_eq!(n, 2);
 
-        // search.run survives, unredacted.
         let remaining = store
             .list_activity(&ActivityFilter::default(), 10, None)
             .await
@@ -970,7 +958,6 @@ mod tests {
             .await
             .unwrap();
         let actions: Vec<&str> = page.rows.iter().map(|r| r.action.as_str()).collect();
-        // Newest first: search.run(120), mail.read(110)
         assert_eq!(actions, vec!["search.run", "mail.read"]);
     }
 
@@ -1127,7 +1114,6 @@ mod tests {
         assert_eq!(page.rows.len(), 1);
         assert_eq!(page.rows[0].id, id);
 
-        // After redaction the FTS row is removed.
         store.redact_activity_by_ids(&[id]).await.unwrap();
         let page2 = store.list_activity(&filter, 10, None).await.unwrap();
         assert!(page2.rows.is_empty(), "FTS no longer matches redacted row");
@@ -1170,11 +1156,9 @@ mod tests {
             ])
             .await
             .unwrap();
-        // Redact one mail.archive so it doesn't get counted.
         store.redact_activity_by_ids(&[1]).await.unwrap();
 
         let buckets = store.activity_stats_by_action(0, 1_000).await.unwrap();
-        // mail.archive=2 (after redaction), mail.read=2 — alphabetical tie-break for equal counts.
         assert_eq!(
             buckets,
             vec![
@@ -1226,14 +1210,12 @@ mod tests {
             .collect();
         store.record_activity_batch(&entries).await.unwrap();
 
-        // limit=0 → default 50
         let page = store
             .list_activity(&ActivityFilter::default(), 0, None)
             .await
             .unwrap();
         assert_eq!(page.rows.len(), 50);
 
-        // limit=1000 → caps at 500
         let page = store
             .list_activity(&ActivityFilter::default(), 1000, None)
             .await

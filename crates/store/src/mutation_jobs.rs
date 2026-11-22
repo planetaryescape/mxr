@@ -71,8 +71,6 @@ impl super::Store {
 
     /// Initialize the database identity once, including under concurrent first use.
     pub async fn archive_workspace(&self) -> Result<(String, String), sqlx::Error> {
-        // Ownership checks run on every web read. Only first use needs the
-        // writer; an existing identity must stay readable while sync writes.
         if let Some(identity) = self.read_archive_workspace().await? {
             return Ok(identity);
         }
@@ -333,13 +331,11 @@ mod tests {
                 .unwrap();
         }
 
-        // Newest first.
         let all = store.list_mutation_jobs(10).await.unwrap();
         assert_eq!(all.len(), 5);
         assert!(all[0].contains("job-4"));
         assert!(all[4].contains("job-0"));
 
-        // Single fetch + update (status transition) replaces in place.
         store
             .upsert_mutation_job(
                 "job-2",
@@ -355,7 +351,6 @@ mod tests {
         assert!(one.contains("completed"));
         assert_eq!(store.list_mutation_jobs(10).await.unwrap().len(), 5);
 
-        // Prune keeps only the newest 2.
         store.prune_mutation_jobs(2).await.unwrap();
         let kept = store.list_mutation_jobs(10).await.unwrap();
         assert_eq!(kept.len(), 2);

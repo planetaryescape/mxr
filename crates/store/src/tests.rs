@@ -301,7 +301,6 @@ async fn a_commitments_date_source_round_trips_and_only_words_and_user_dates_act
     store.insert_account(&account).await.unwrap();
     let due = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
 
-    // (source, whether mxr may act on the date)
     for (source, acts) in [
         (Some(ByWhenSource::ModelDate), false),
         (Some(ByWhenSource::Words), true),
@@ -450,7 +449,6 @@ async fn an_undated_commitment_has_no_source_and_is_not_unverified() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
-    // A source with no date means nothing, so it is not stored.
     let record = commitment_fixture(&store, &account, None, Some(ByWhenSource::Words), "u").await;
     store.upsert_contact_commitment(&record).await.unwrap();
 
@@ -467,14 +465,11 @@ async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected
     let first = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
     let second = Utc.with_ymd_and_hms(2026, 10, 9, 8, 0, 0).unwrap();
 
-    // Insert: the source is the user's whatever the record carried.
     let record = commitment_fixture(&store, &account, Some(first), None, "mine").await;
     let id = store.record_own_promise(&record).await.unwrap();
     let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
     assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
 
-    // Upsert over a detected row with a model-written date: the user's
-    // latest answer wins, so the date becomes theirs.
     let detected = commitment_fixture(
         &store,
         &account,
@@ -494,8 +489,6 @@ async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected
     assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
     assert!(!stored.date_unverified());
 
-    // A repeat without a date clears the date, and with it the source: a
-    // source only describes a date. The mirror's fingerprint notices.
     let dated = store.promise_fingerprint(&account.id).await.unwrap();
     let mut undated = again.clone();
     undated.by_when = None;
@@ -506,7 +499,6 @@ async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected
     assert_eq!(stored.by_when_source, None);
     assert_ne!(store.promise_fingerprint(&account.id).await.unwrap(), dated);
 
-    // And a repeat with a date makes it the user's again.
     store.record_own_promise(&again).await.unwrap();
     let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
     assert_eq!(stored.by_when, Some(second));
@@ -553,9 +545,6 @@ async fn list_sync_cursors_returns_all_persisted_cursors() {
     store.insert_account(&first).await.unwrap();
     store.insert_account(&second).await.unwrap();
 
-    // Opaque-cursor persistence: the store round-trips bytes
-    // verbatim. Adapter-specific schema is tested in each provider's
-    // own cursor tests; here we just confirm bytes-in, bytes-out.
     let first_cursor = SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec());
     let second_cursor =
         SyncCursor::from_bytes(br#"{"v":"1","history_id":77,"page_token":"page-2"}"#.to_vec());
@@ -739,8 +728,6 @@ async fn envelope_upsert_preserves_existing_provider_identity_when_generated_id_
     regenerated.id = MessageId::from_scoped_provider_id(&account.id, "gmail", "msg-001");
     regenerated.provider_id = "msg-001".to_string();
     regenerated.subject = "Updated subject".to_string();
-    // The upsert reports the id it wrote, and the stored one wins. Callers
-    // that go on to write a body or labels have to follow it.
     assert_eq!(
         store.upsert_envelope(&regenerated).await.unwrap(),
         legacy_id
@@ -857,9 +844,6 @@ async fn get_thread_populates_message_ids_date_ordered() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Insert 3 envelopes with non-monotonic dates so the date-ASC
-    // sort is exercised. Equal-date ids ride on the secondary
-    // `id ASC` tiebreaker.
     let thread_id = ThreadId::new();
     let base = chrono::Utc::now();
     let mut envs: Vec<Envelope> = (0..3)
@@ -869,12 +853,11 @@ async fn get_thread_populates_message_ids_date_ordered() {
             env.thread_id = thread_id.clone();
             env.date = base - chrono::Duration::hours(i);
             if i == 0 {
-                env.flags = MessageFlags::empty(); // the one unread message
+                env.flags = MessageFlags::empty();
             }
             env
         })
         .collect();
-    // Date order: env[2] (oldest), env[1], env[0] (newest)
     for env in &envs {
         store.upsert_envelope(env).await.unwrap();
     }
@@ -888,7 +871,6 @@ async fn get_thread_populates_message_ids_date_ordered() {
         "expected three members, got {:?}",
         thread.message_ids
     );
-    // Sorted ascending by date → env[2] first, env[0] last
     envs.sort_by_key(|e| e.date);
     assert_eq!(
         thread.message_ids,
@@ -902,7 +884,6 @@ async fn get_threads_batch_skips_empty_thread_ids() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // One live thread, one orphan id with no member rows.
     let live = ThreadId::new();
     let orphan = ThreadId::new();
     let mut env = test_envelope(&account.id);
@@ -914,8 +895,6 @@ async fn get_threads_batch_skips_empty_thread_ids() {
         .get_threads_batch(&[live.clone(), orphan.clone()])
         .await
         .unwrap();
-    // Orphan is silently skipped — sync engine synthesises the
-    // tombstone, not the store.
     assert_eq!(batch.len(), 1);
     assert_eq!(batch[0].id, live);
     assert_eq!(batch[0].message_ids, vec![env.id]);
@@ -927,8 +906,6 @@ async fn list_threads_pagination_and_sort() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Seed 5 threads with descending latest_date so DateDesc gives
-    // them in insertion order; DateAsc reverses it.
     let base = chrono::Utc::now();
     let mut thread_ids: Vec<ThreadId> = Vec::new();
     for i in 0..5 {
@@ -937,12 +914,10 @@ async fn list_threads_pagination_and_sort() {
         let mut env = test_envelope(&account.id);
         env.thread_id = tid;
         env.provider_id = format!("phase-f-list-{i}");
-        // Newest first: i=0 most recent, i=4 oldest.
         env.date = base - chrono::Duration::hours(i);
         store.upsert_envelope(&env).await.unwrap();
     }
 
-    // limit=2, offset=2, DateDesc → 3rd and 4th newest = indices 2,3
     let page = store
         .list_threads(None, None, 2, 2, SortOrder::DateDesc)
         .await
@@ -950,12 +925,10 @@ async fn list_threads_pagination_and_sort() {
     assert_eq!(page.len(), 2);
     assert_eq!(page[0].id, thread_ids[2]);
     assert_eq!(page[1].id, thread_ids[3]);
-    // Each returned thread carries its single member id.
     for thread in &page {
         assert_eq!(thread.message_ids.len(), 1);
     }
 
-    // DateAsc reverses: limit=2, offset=0 → oldest two = indices 4,3
     let asc = store
         .list_threads(None, None, 2, 0, SortOrder::DateAsc)
         .await
@@ -1073,18 +1046,15 @@ async fn draft_from_override_round_trips_through_get_list_and_update() {
     };
     store.insert_draft(&draft).await.unwrap();
 
-    // Survives get_draft...
     let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
     assert_eq!(fetched.from.as_ref().unwrap().email, "hello@example.com");
     assert_eq!(
         fetched.from.as_ref().unwrap().name.as_deref(),
         Some("Support")
     );
-    // ...and list_drafts.
     let listed = store.list_drafts(&account.id).await.unwrap();
     assert_eq!(listed[0].from.as_ref().unwrap().email, "hello@example.com");
 
-    // Clearing the override persists as NULL / None.
     draft.from = None;
     draft.updated_at = chrono::Utc::now();
     assert!(store.update_draft(&draft).await.unwrap());
@@ -1123,7 +1093,6 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     };
     store.insert_draft(&draft).await.unwrap();
 
-    // Edit in place: same id, new content, later updated_at.
     let later = chrono::DateTime::from_timestamp(1_700_000_500, 0).unwrap();
     let edited = Draft {
         subject: "Edited".to_string(),
@@ -1134,7 +1103,6 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     let updated = store.update_draft(&edited).await.unwrap();
     assert!(updated, "an editable draft should report a row updated");
 
-    // Same id still there (no new row), content changed, created_at preserved.
     let drafts = store.list_drafts(&account.id).await.unwrap();
     assert_eq!(drafts.len(), 1);
     let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
@@ -1146,7 +1114,6 @@ async fn update_draft_edits_in_place_and_preserves_created_at() {
     );
     assert_eq!(stored.updated_at, later);
 
-    // Updating a non-existent draft reports no row touched.
     let ghost = Draft {
         revision: Some(1),
         id: DraftId::new(),
@@ -1224,7 +1191,6 @@ async fn html_draft_survives_a_round_trip_byte_for_byte() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Quotes, angle brackets and a multibyte char: nothing may be reformatted.
     let html = r#"<div class="x"><p>Hi&nbsp;— <img src="cid:logo"></p></div>"#;
     let mut draft = draft_with(
         &account.id,
@@ -1259,8 +1225,6 @@ async fn html_draft_without_a_text_alternative_stays_none_not_empty() {
     store.insert_draft(&draft).await.unwrap();
 
     let fetched = store.get_draft(&draft.id).await.unwrap().unwrap();
-    // None means "the outbound builder generates one"; Some("") would ship an
-    // empty text/plain part instead.
     assert_eq!(fetched.content, DraftContent::html("<p>hi</p>", None));
 }
 
@@ -1315,7 +1279,6 @@ async fn update_draft_can_switch_an_html_draft_back_to_markdown() {
     assert!(store.update_draft(&edited).await.unwrap());
 
     let stored = store.get_draft(&draft.id).await.unwrap().unwrap();
-    // The stale HTML columns must not leak back through the discriminator.
     assert_eq!(stored.content, DraftContent::markdown("plain again"));
 }
 
@@ -1325,9 +1288,6 @@ async fn a_pre_049_draft_row_still_decodes_as_markdown() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // A row as migration 048 would have left it: only the pre-049 columns are
-    // written, so `body_html`/`body_text`/`inline_assets`/`content_kind` take
-    // their column defaults exactly as they do on a real upgraded database.
     let id = DraftId::new();
     sqlx::query(
         "INSERT INTO drafts (id, account_id, subject, body_markdown, created_at, updated_at)
@@ -1343,10 +1303,6 @@ async fn a_pre_049_draft_row_still_decodes_as_markdown() {
     .await
     .unwrap();
 
-    // The discriminator the upgrade hands an untouched row. Asserted on the
-    // column, not just the decoded value: the decoder forgives an unusable
-    // `content_kind` by falling back to markdown, so a wrong default would
-    // otherwise be invisible here.
     let kind: String = sqlx::query_scalar("SELECT content_kind FROM drafts WHERE id = ?")
         .bind(id.as_str())
         .fetch_one(store.reader())
@@ -1361,7 +1317,6 @@ async fn a_pre_049_draft_row_still_decodes_as_markdown() {
     );
     assert_eq!(fetched.subject, "Legacy subject");
     assert!(fetched.inline_assets.is_empty());
-    // And the same row through the list path.
     let listed = store.list_drafts(&account.id).await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(
@@ -1383,7 +1338,6 @@ async fn an_html_row_with_no_html_body_degrades_to_readable_markdown() {
     );
     store.insert_draft(&healthy).await.unwrap();
 
-    // Impossible via the writer, but a corrupt row must not take the list down.
     let corrupt = DraftId::new();
     sqlx::query(
         "INSERT INTO drafts (id, account_id, subject, body_markdown, content_kind, body_html, created_at, updated_at)
@@ -1415,10 +1369,6 @@ async fn an_interrupted_migration_049_finishes_on_the_next_open() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Simulate a crash partway through 049: some columns landed, one did not,
-    // and the version stamp was never written. 049 adds its columns one
-    // statement at a time outside a transaction, so this is a state a real
-    // upgrade can be left in.
     sqlx::query("ALTER TABLE drafts DROP COLUMN body_text")
         .execute(store.writer())
         .await
@@ -1429,8 +1379,6 @@ async fn an_interrupted_migration_049_finishes_on_the_next_open() {
         .unwrap();
     drop(store);
 
-    // Re-opening must finish the job rather than trip over the columns that
-    // are already present.
     let store = Store::new(&db_path).await.unwrap();
     let draft = draft_with(
         &account.id,
@@ -1577,7 +1525,6 @@ async fn event_log_filter_search_and_offset() {
         .await
         .unwrap();
 
-    // Free-text search hits summary substring; no level constraint.
     let hits = store
         .list_events_filtered(EventLogFilter {
             limit: 10,
@@ -1589,7 +1536,6 @@ async fn event_log_filter_search_and_offset() {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].summary, "Sync batch 3");
 
-    // Free-text search hits the `details` column too.
     let detail_hits = store
         .list_events_filtered(EventLogFilter {
             limit: 10,
@@ -1600,7 +1546,6 @@ async fn event_log_filter_search_and_offset() {
         .unwrap();
     assert_eq!(detail_hits.len(), 1);
 
-    // Category prefix.
     let sync_only = store
         .list_events_filtered(EventLogFilter {
             limit: 10,
@@ -1611,7 +1556,6 @@ async fn event_log_filter_search_and_offset() {
         .unwrap();
     assert_eq!(sync_only.len(), 6);
 
-    // Offset for paging.
     let page1 = store
         .list_events_filtered(EventLogFilter {
             limit: 3,
@@ -1637,14 +1581,12 @@ async fn event_log_filter_search_and_offset() {
         "paging produces non-overlapping ids"
     );
 
-    // Total count.
     let total = store
         .count_events_filtered(EventLogFilter::default())
         .await
         .unwrap();
     assert_eq!(total, 7);
 
-    // Distinct categories sorted by recency.
     let cats = store.list_event_categories().await.unwrap();
     assert!(cats.contains(&"sync".to_string()));
     assert!(cats.contains(&"rule".to_string()));
@@ -1706,7 +1648,6 @@ async fn recalculate_label_counts() {
     };
     store.upsert_label(&label).await.unwrap();
 
-    // Insert 3 messages: 2 read, 1 unread
     for i in 0..3 {
         let mut env = test_envelope(&account.id);
         env.provider_id = format!("fake-label-{i}");
@@ -1792,10 +1733,6 @@ async fn replace_label_moves_message_associations_when_id_changes() {
 
 #[tokio::test]
 async fn label_mutations_do_not_leak_between_accounts() {
-    // v1 ship-gate: confirm a junction-table mutation on account A's
-    // message doesn't accidentally touch account B's labels. The data
-    // model is isolated by message_id (which is account-scoped via
-    // UUIDv5), but a regression here would be silent and subtle.
     let store = Store::in_memory().await.unwrap();
     let account_a = test_account();
     store.insert_account(&account_a).await.unwrap();
@@ -1868,8 +1805,6 @@ async fn label_mutations_do_not_leak_between_accounts() {
     assert_eq!(by_b.len(), 1);
     assert_eq!(by_b[0].account_id, account_b.id);
 
-    // Removing all labels from account A's message must not affect
-    // account B's labels or messages.
     store
         .set_message_labels(&env_a.id, &[], EventSource::User)
         .await
@@ -1888,9 +1823,6 @@ async fn label_mutations_do_not_leak_between_accounts() {
 
 #[tokio::test]
 async fn set_message_labels_is_atomic_under_constraint_violation() {
-    // Regression: a mid-loop INSERT failure used to delete every existing
-    // junction row before bailing, leaving the message with zero labels and
-    // permanent corruption. The DELETE+INSERT must roll back as one tx.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -1931,10 +1863,6 @@ async fn set_message_labels_is_atomic_under_constraint_violation() {
         .await
         .unwrap();
 
-    // Duplicate label_id in the input list triggers PRIMARY KEY violation on
-    // the second INSERT. Without the wrapping transaction, the prior DELETE
-    // would have already wiped [A, B] and we'd be stuck with one of them
-    // (or none). The transaction must roll back the DELETE.
     let result = store
         .set_message_labels(
             &env.id,
@@ -1989,24 +1917,20 @@ async fn saved_search_crud() {
     store.insert_saved_search(&s1).await.unwrap();
     store.insert_saved_search(&s2).await.unwrap();
 
-    // List returns both, ordered by position
     let all = store.list_saved_searches().await.unwrap();
     assert_eq!(all.len(), 2);
     assert_eq!(all[0].name, "Unread");
     assert_eq!(all[1].name, "Starred");
 
-    // Get by name
     let found = store.get_saved_search_by_name("Starred").await.unwrap();
     assert!(found.is_some());
     assert_eq!(found.unwrap().query, "is:starred");
 
-    // Delete
     store.delete_saved_search(&s1.id).await.unwrap();
     let remaining = store.list_saved_searches().await.unwrap();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].name, "Starred");
 
-    // Delete by name
     let deleted = store.delete_saved_search_by_name("Starred").await.unwrap();
     assert!(deleted);
     let empty = store.list_saved_searches().await.unwrap();
@@ -2019,7 +1943,6 @@ async fn list_contacts_ordered_by_frequency() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Insert 3 messages from alice, 2 from bob, 1 from carol
     for i in 0..3 {
         let mut env = test_envelope(&account.id);
         env.provider_id = format!("fake-alice-{i}");
@@ -2050,7 +1973,6 @@ async fn list_contacts_ordered_by_frequency() {
 
     let contacts = store.list_contacts(10).await.unwrap();
     assert_eq!(contacts.len(), 3);
-    // Ordered by frequency: alice (3), bob (2), carol (1)
     assert_eq!(contacts[0].1, "alice@example.com");
     assert_eq!(contacts[1].1, "bob@example.com");
     assert_eq!(contacts[2].1, "carol@example.com");
@@ -2058,10 +1980,6 @@ async fn list_contacts_ordered_by_frequency() {
 
 #[tokio::test]
 async fn set_read_emits_message_event_on_transition() {
-    // Three cases: real transition emits, no-op repeat does not, opposite
-    // transition with different source emits with that source. Asserts on the
-    // observable contract of `message_events` rows — survives any rewrite of
-    // how the hook is wired so long as transitions still produce typed rows.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -2072,7 +1990,6 @@ async fn set_read_emits_message_event_on_transition() {
     store.upsert_envelope(&env).await.unwrap();
     assert!(!env.flags.contains(MessageFlags::READ));
 
-    // Transition: unread -> read.
     store
         .set_read(&env.id, true, EventSource::User)
         .await
@@ -2083,7 +2000,6 @@ async fn set_read_emits_message_event_on_transition() {
     assert_eq!(events[0].source, EventSource::User);
     assert_eq!(events[0].account_id, account.id);
 
-    // No-op: read -> read with same source. Must not emit.
     store
         .set_read(&env.id, true, EventSource::User)
         .await
@@ -2091,7 +2007,6 @@ async fn set_read_emits_message_event_on_transition() {
     let events_after_noop = store.list_message_events(&env.id).await.unwrap();
     assert_eq!(events_after_noop.len(), 1);
 
-    // Transition: read -> unread with a different source.
     store
         .set_read(&env.id, false, EventSource::Sync)
         .await
@@ -2104,11 +2019,6 @@ async fn set_read_emits_message_event_on_transition() {
 
 #[tokio::test]
 async fn mutations_emit_typed_message_events_with_source() {
-    // Single test drives the source-attribution refactor across the rest of
-    // the mutation surface. Each row in `message_events` proves: (a) the
-    // method now takes EventSource, (b) it emits on actual transition, (c)
-    // the source is recorded as given. No-op repeats and bulk methods are
-    // covered by separate tests above / below.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -2170,7 +2080,6 @@ async fn mutations_emit_typed_message_events_with_source() {
             EventSource::User,
         ],
     );
-    // Label events must carry the label_id; flag events must not.
     assert_eq!(events[0].label_id, None);
     assert_eq!(events[1].label_id, None);
     assert_eq!(events[2].label_id, Some(label.id.clone()));
@@ -2179,10 +2088,6 @@ async fn mutations_emit_typed_message_events_with_source() {
 
 #[tokio::test]
 async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
-    // Pins the StorageBucket contract for all three group-by modes. Inputs
-    // are deliberate so each ordering and arithmetic check is grounded in
-    // the fixture, not the SQL — the query can be rewritten and this test
-    // still proves the contract.
     use mxr_core::{
         AttachmentDisposition, AttachmentId, AttachmentMeta, MessageBody, MessageMetadata,
     };
@@ -2204,8 +2109,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
     };
     store.upsert_label(&label_work).await.unwrap();
 
-    // Two messages from alice (1000 + 2000 bytes) under "Work";
-    // one message from bob (5000 bytes) with no label.
     let mut msg_a = TestEnvelopeBuilder::new()
         .account_id(account.id.clone())
         .build();
@@ -2254,7 +2157,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
     msg_b.provider_id = "third-msg".into();
     store.upsert_envelope(&msg_b).await.unwrap();
 
-    // Attachments: 2 PNGs (10k each) on msg_a, 1 PDF (50k) on msg_b.
     let body_a = MessageBody {
         message_id: msg_a.id.clone(),
         text_plain: Some("body".into()),
@@ -2311,7 +2213,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
     };
     store.insert_body(&body_b).await.unwrap();
 
-    // by mimetype: PDF leads at 50k×1, PNG follows at 20k×2.
     let by_mime = store
         .storage_breakdown(None, StorageGroupBy::Mimetype, 10)
         .await
@@ -2324,7 +2225,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
     assert_eq!(by_mime[1].bytes, 20_000);
     assert_eq!(by_mime[1].count, 2);
 
-    // by sender: bob 5000×1 leads alice 3000×2.
     let by_sender = store
         .storage_breakdown(None, StorageGroupBy::Sender, 10)
         .await
@@ -2337,7 +2237,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
     assert_eq!(by_sender[1].bytes, 3000);
     assert_eq!(by_sender[1].count, 2);
 
-    // by label: only Work shows (bob's message is unlabeled).
     let by_label = store
         .storage_breakdown(None, StorageGroupBy::Label, 10)
         .await
@@ -2350,9 +2249,6 @@ async fn storage_breakdown_groups_by_mimetype_sender_and_label() {
 
 #[tokio::test]
 async fn reclassify_unknown_directions_uses_lookup_closure() {
-    // Pins Slice 15's reclassification: rows with direction='unknown'
-    // get reclassified per the lookup; rows with concrete direction are
-    // untouched.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -2427,7 +2323,6 @@ async fn reclassify_unknown_directions_uses_lookup_closure() {
 fn compute_business_hours_seconds_excludes_weekends_and_off_hours() {
     use crate::reply_pairs::compute_business_hours_seconds;
     use chrono::TimeZone;
-    // Friday 17:00 UTC -> Monday 09:00 UTC: business-hours latency is 0.
     let fri_5pm = chrono::Utc
         .with_ymd_and_hms(2026, 5, 1, 17, 0, 0)
         .unwrap()
@@ -2438,7 +2333,6 @@ fn compute_business_hours_seconds_excludes_weekends_and_off_hours() {
         .timestamp();
     assert_eq!(compute_business_hours_seconds(fri_5pm, mon_9am), 0);
 
-    // Same-day window inside business hours: 10:00 -> 12:00 = 2h = 7200s.
     let mon_10am = chrono::Utc
         .with_ymd_and_hms(2026, 5, 4, 10, 0, 0)
         .unwrap()
@@ -2449,9 +2343,6 @@ fn compute_business_hours_seconds_excludes_weekends_and_off_hours() {
         .timestamp();
     assert_eq!(compute_business_hours_seconds(mon_10am, mon_12pm), 7200);
 
-    // Window straddles a weekend: Mon 16:00 -> Tue 10:00 with weekend
-    // intervening NOT in the test (consecutive weekdays). Mon: 16-17 = 1h.
-    // Tue: 9-10 = 1h. Total = 7200.
     let mon_4pm = chrono::Utc
         .with_ymd_and_hms(2026, 5, 4, 16, 0, 0)
         .unwrap()
@@ -2462,19 +2353,15 @@ fn compute_business_hours_seconds_excludes_weekends_and_off_hours() {
         .timestamp();
     assert_eq!(compute_business_hours_seconds(mon_4pm, tue_10am), 2 * 3600);
 
-    // Reverse range: returns 0.
     assert_eq!(compute_business_hours_seconds(mon_12pm, mon_10am), 0);
 }
 
 #[tokio::test]
 async fn list_response_time_returns_clock_and_business_percentiles() {
-    // Three i_replied pairs with latencies 1h/2h/3h all on a Monday so
-    // business hours match clock.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Anchor parents/replies on Monday in business hours.
     let monday: chrono::DateTime<chrono::Utc> =
         chrono::Utc.with_ymd_and_hms(2026, 5, 4, 10, 0, 0).unwrap();
     for (i, latency_h) in [1i64, 2, 3].iter().enumerate() {
@@ -2515,8 +2402,6 @@ async fn list_response_time_returns_clock_and_business_percentiles() {
             .unwrap();
         assert!(store.try_create_reply_pair(&reply).await.unwrap());
     }
-    // Pairs are written with their business-hours latency already, so the
-    // backfill has nothing left to fill.
     let backfilled = store.backfill_business_hours_latency().await.unwrap();
     assert_eq!(backfilled, 0);
 
@@ -2634,9 +2519,6 @@ async fn wrapped_excludes_self_addressed_story_counts_but_keeps_storage_bytes() 
 
 #[tokio::test]
 async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
-    // Pins the contacts materialization contract: per (account, email),
-    // inbound/outbound counts roll up correctly. asymmetry ratios derive
-    // from the materialized rows and must surface the imbalance.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -2689,7 +2571,6 @@ async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
         }
     }
 
-    // alice: 10 inbound, 1 outbound (high asymmetry)
     seed(
         &store,
         &account.id,
@@ -2708,7 +2589,6 @@ async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
         now,
     )
     .await;
-    // bob: 5 inbound, 5 outbound (balanced)
     seed(
         &store,
         &account.id,
@@ -2727,7 +2607,6 @@ async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
         now,
     )
     .await;
-    // carol: 0 inbound, 8 outbound (extreme asymmetry, but min_inbound filter)
     seed(
         &store,
         &account.id,
@@ -2740,14 +2619,12 @@ async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
 
     store.refresh_contacts().await.unwrap();
 
-    // min_inbound = 1: carol filtered out, alice + bob remain.
     let asym = store.list_contact_asymmetry(None, 1, 50).await.unwrap();
     let by_email: std::collections::HashMap<_, _> =
         asym.iter().map(|r| (r.email.clone(), r)).collect();
     let alice = by_email.get("alice@example.com").unwrap();
     assert_eq!(alice.total_inbound, 10);
     assert_eq!(alice.total_outbound, 1);
-    // 9/10 = 0.9
     assert!((alice.asymmetry - 0.9).abs() < 1e-6);
 
     let bob = by_email.get("bob@example.com").unwrap();
@@ -2757,7 +2634,6 @@ async fn refresh_contacts_aggregates_inbound_and_outbound_per_email() {
 
     assert!(!by_email.contains_key("carol@example.com"));
 
-    // First row should be alice (largest asymmetry).
     assert_eq!(asym[0].email, "alice@example.com");
 }
 
@@ -2869,10 +2745,6 @@ async fn refresh_contacts_uses_reply_pairs_for_replied_count_and_cadence() {
 
 #[tokio::test]
 async fn list_contact_decay_excludes_30_day_boundary() {
-    // Three contacts:
-    //   A: last inbound 60d ago / no outbound -> appears (cold > 30 days)
-    //   B: last inbound 5d ago / outbound 1d ago -> excluded (recent reply)
-    //   C: last inbound exactly 30d ago / no outbound -> excluded (boundary)
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -2931,12 +2803,9 @@ async fn list_contact_decay_excludes_30_day_boundary() {
     seed_inbound(&store, &account.id, "alice", 60, now).await;
     seed_inbound(&store, &account.id, "bob", 5, now).await;
     seed_outbound(&store, &account.id, "bob", 1, now).await;
-    // Tip: feeding `30 * 86400` exact seconds produces a boundary at the
-    // cutoff, which the SQL excludes (`<` cutoff, not `<=`).
     seed_inbound(&store, &account.id, "carol", 30, now).await;
 
     store.refresh_contacts().await.unwrap();
-    // Wide max-lookback so the test isn't bounded by the fixture's age.
     let decay = store
         .list_contact_decay_at(None, 30, 365 * 100, 50, now.timestamp())
         .await
@@ -2949,10 +2818,6 @@ async fn list_contact_decay_excludes_30_day_boundary() {
 
 #[tokio::test]
 async fn list_stale_threads_filters_by_perspective_and_age() {
-    // Three threads:
-    //   A: latest message inbound 30d ago     -> should appear with --mine
-    //   B: latest message outbound 30d ago    -> should appear with --theirs
-    //   C: latest message inbound 5d ago      -> excluded by older-than-14d
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3024,7 +2889,6 @@ async fn list_stale_threads_filters_by_perspective_and_age() {
     .await;
 
     let older_than = now.timestamp() - 14 * 86_400;
-    // Wide within-window so the 30-day-ago fixtures aren't excluded.
     let within = now.timestamp() - 365 * 86_400;
     let mine = store
         .list_stale_threads(None, StaleBallInCourt::Mine, older_than, within, 50)
@@ -3046,10 +2910,6 @@ async fn list_stale_threads_filters_by_perspective_and_age() {
 
 #[tokio::test]
 async fn try_create_reply_pair_links_outbound_reply_to_inbound_parent() {
-    // Pins the i_replied contract: outbound message with in_reply_to
-    // pointing at an inbound parent creates a reply_pairs row with
-    // accurate latency. Negative case (unknown parent) returns false and
-    // leaves the table untouched, then enqueues into the pending queue.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3216,9 +3076,6 @@ async fn try_create_reply_pair_enqueues_when_parent_unknown() {
 
 #[tokio::test]
 async fn reconcile_reply_pair_pending_resolves_when_parent_arrives() {
-    // Pins Slice 10's reconciler contract: a pending reply gets migrated
-    // into `reply_pairs` once its parent lands in `messages`. Function-
-    // level test — the daemon-loop wiring is exercised separately.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3242,7 +3099,6 @@ async fn reconcile_reply_pair_pending_resolves_when_parent_arrives() {
         .unwrap();
     store.enqueue_reply_pair_pending(&outbound).await.unwrap();
 
-    // Parent arrives later.
     let mut inbound = TestEnvelopeBuilder::new()
         .account_id(account.id.clone())
         .build();
@@ -3282,11 +3138,6 @@ async fn reconcile_reply_pair_pending_resolves_when_parent_arrives() {
 
 #[tokio::test]
 async fn upsert_envelope_with_direction_writes_direction_column() {
-    // Pins the direction-write contract: explicit Inbound/Outbound lands
-    // in the column on insert, and re-upserting with `Unknown` preserves
-    // the previously classified value (sticky direction). Survives any
-    // future refactor of how the column is plumbed because it asserts on
-    // the persisted value.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3306,7 +3157,6 @@ async fn upsert_envelope_with_direction_writes_direction_column() {
         .unwrap();
     assert_eq!(direction.0, "outbound");
 
-    // Re-upserting with `Unknown` must NOT downgrade a classified row.
     store
         .upsert_envelope_with_direction(&env, MessageDirection::Unknown)
         .await
@@ -3318,8 +3168,6 @@ async fn upsert_envelope_with_direction_writes_direction_column() {
         .unwrap();
     assert_eq!(direction_after.0, "outbound");
 
-    // Re-upserting with an explicit Inbound flips it (reclassification
-    // is allowed, only Unknown is sticky-skipped).
     store
         .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
         .await
@@ -3335,21 +3183,15 @@ async fn upsert_envelope_with_direction_writes_direction_column() {
 
 #[tokio::test]
 async fn account_addresses_roundtrip_with_primary_uniqueness() {
-    // Pins the account_addresses contract: insert_account seeds primary,
-    // adding aliases preserves a single primary, set_primary_address
-    // atomically demotes the previous primary, removal works, and the
-    // global snapshot returns everything for the AppState cache.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // insert_account auto-seeds the canonical email as primary.
     let initial = store.list_account_addresses(&account.id).await.unwrap();
     assert_eq!(initial.len(), 1);
     assert_eq!(initial[0].email, account.email);
     assert!(initial[0].is_primary);
 
-    // Add an alias as non-primary.
     store
         .add_account_address(&account.id, "alias@example.com", false)
         .await
@@ -3360,7 +3202,6 @@ async fn account_addresses_roundtrip_with_primary_uniqueness() {
     assert_eq!(primaries.len(), 1);
     assert_eq!(primaries[0].email, account.email);
 
-    // Promote alias to primary; previous primary must demote.
     store
         .set_primary_address(&account.id, "alias@example.com")
         .await
@@ -3370,7 +3211,6 @@ async fn account_addresses_roundtrip_with_primary_uniqueness() {
     assert_eq!(new_primary.len(), 1);
     assert_eq!(new_primary[0].email, "alias@example.com");
 
-    // Adding a third with is_primary=true also demotes the current primary.
     store
         .add_account_address(&account.id, "third@example.com", true)
         .await
@@ -3380,7 +3220,6 @@ async fn account_addresses_roundtrip_with_primary_uniqueness() {
     assert_eq!(third_primaries.len(), 1);
     assert_eq!(third_primaries[0].email, "third@example.com");
 
-    // Removal works.
     store
         .remove_account_address(&account.id, "alias@example.com")
         .await
@@ -3389,23 +3228,18 @@ async fn account_addresses_roundtrip_with_primary_uniqueness() {
     assert_eq!(after_remove.len(), 2);
     assert!(!after_remove.iter().any(|a| a.email == "alias@example.com"));
 
-    // Setting primary on a non-existent address fails loudly.
     let err = store
         .set_primary_address(&account.id, "ghost@example.com")
         .await
         .unwrap_err();
     assert!(matches!(err, sqlx::Error::RowNotFound));
 
-    // Global snapshot returns everything for the cache.
     let all = store.list_all_account_addresses().await.unwrap();
     assert_eq!(all.len(), 2);
 }
 
 #[tokio::test]
 async fn remove_account_address_refuses_the_primary() {
-    // The primary is the account's own identity: direction inference and the
-    // daemon's owned-address set read the address table, so a primary row
-    // must survive removal. Promote another address first.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3429,15 +3263,10 @@ async fn remove_account_address_refuses_the_primary() {
 
 #[tokio::test]
 async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
-    // Pins the new ROI fields on SubscriptionSummary. Three senders, each
-    // with a distinct read/archive mix. Test asserts counts arithmetic;
-    // survives any later refactor of the SQL window functions.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // Helper closure builds an envelope with the desired flags + sender +
-    // an unsubscribe header so it qualifies as a "subscription".
     let mut next_id = 0u32;
     let mut make_msg = |sender: &str, flags: MessageFlags| {
         next_id += 1;
@@ -3456,7 +3285,6 @@ async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
         env
     };
 
-    // alice: 3 messages — 1 read, 0 archived-unread.
     for i in 0..3 {
         let flags = if i == 0 {
             MessageFlags::READ
@@ -3468,14 +3296,12 @@ async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
             .await
             .unwrap();
     }
-    // bob: 5 messages — 5 read, 0 archived-unread.
     for _ in 0..5 {
         store
             .upsert_envelope(&make_msg("bob", MessageFlags::READ))
             .await
             .unwrap();
     }
-    // carol: 4 messages — 0 read, 3 archived-unread.
     for i in 0..4 {
         let flags = if i < 3 {
             MessageFlags::ARCHIVED
@@ -3517,11 +3343,6 @@ async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
 
 #[tokio::test]
 async fn insert_body_promotes_list_id_to_messages_column() {
-    // Pins the sync-time list_id promotion contract. Body metadata's
-    // `list_id` field flows into `messages.list_id` so the indexed grouping
-    // works in `mxr unsub --rank`. Survives any future split of the
-    // promotion path (e.g. moving it into upsert_envelope) because it
-    // asserts on the column value, not the call shape.
     use mxr_core::{MessageBody, MessageMetadata};
 
     let store = Store::in_memory().await.unwrap();
@@ -3533,7 +3354,6 @@ async fn insert_body_promotes_list_id_to_messages_column() {
         .build();
     store.upsert_envelope(&env).await.unwrap();
 
-    // Initial state: list_id is NULL because migration 007 default applies.
     let pre: Vec<(Option<String>,)> = sqlx::query_as("SELECT list_id FROM messages WHERE id = ?")
         .bind(env.id.as_str())
         .fetch_all(store.reader())
@@ -3541,7 +3361,6 @@ async fn insert_body_promotes_list_id_to_messages_column() {
         .unwrap();
     assert_eq!(pre[0].0, None);
 
-    // Body with list_id set.
     let body = MessageBody {
         message_id: env.id.clone(),
         text_plain: Some("body".into()),
@@ -3562,10 +3381,6 @@ async fn insert_body_promotes_list_id_to_messages_column() {
         .unwrap();
     assert_eq!(post[0].0.as_deref(), Some("readwise.io"));
 
-    // Body without list_id leaves the column untouched (idempotent — the
-    // column does not get cleared by a subsequent body that lacks the
-    // header). This is the intended behavior; doctor --rebuild-analytics
-    // can clear stale promotions explicitly if ever needed.
     let body_no_list = MessageBody {
         message_id: env.id.clone(),
         text_plain: Some("body".into()),
@@ -3585,9 +3400,6 @@ async fn insert_body_promotes_list_id_to_messages_column() {
 
 #[tokio::test]
 async fn add_message_label_does_not_emit_on_duplicate() {
-    // INSERT OR IGNORE is idempotent; the hook must respect that and skip
-    // emitting an event for a no-op insert. Otherwise rule re-runs and sync
-    // reconciles would double-count label additions.
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3647,7 +3459,6 @@ async fn delete_undo_entry_is_exact_and_idempotent() {
     }
 
     store.delete_undo_entry("mut-a").await.unwrap();
-    // Second delete is a no-op, not an error.
     store.delete_undo_entry("mut-a").await.unwrap();
 
     assert!(store.read_undo_entry("mut-a").await.unwrap().is_none());
@@ -3815,7 +3626,6 @@ async fn stored_message_homes_returns_the_account_and_thread_of_stored_messages_
     let mut stored = Vec::new();
     for n in 0..3 {
         let mut envelope = test_envelope(&account.id);
-        // The fixture's provider id is fixed, and a repeat would upsert one row.
         envelope.provider_id = format!("homes-{n}");
         store.upsert_envelope(&envelope).await.unwrap();
         stored.push(envelope);
@@ -3850,7 +3660,6 @@ async fn stored_message_homes_returns_the_account_and_thread_of_stored_messages_
     );
     assert!(store.stored_message_homes(&[]).await.unwrap().is_empty());
 
-    // More ids than one statement binds.
     let many: Vec<MessageId> = (0..1_200).map(|_| MessageId::new()).collect();
     let mut with_stored = many.clone();
     with_stored.push(stored[1].id.clone());
@@ -3889,14 +3698,12 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
         "recorded key must report applied"
     );
 
-    // Re-record is idempotent (INSERT OR IGNORE).
     store
         .record_mutation_applied("mut-1", "msg-1", &account.id, 200)
         .await
         .unwrap();
     assert_eq!(store.count_mutation_dedup_rows().await.unwrap(), 1);
 
-    // Different message under same mutation_id gets its own row.
     store
         .record_mutation_applied("mut-1", "msg-2", &account.id, 100)
         .await
@@ -3987,9 +3794,6 @@ async fn prune_expired_mutation_dedup_drops_only_stale_rows() {
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // applied_at=100 -> expires_at=100 + 24h. Use a tiny offset below
-    // by calling record_mutation_applied with applied_at=0 to make a
-    // very-old row, and a current row for the "fresh" case.
     store
         .record_mutation_applied("expired", "msg-expired", &account.id, 0)
         .await
@@ -4000,10 +3804,7 @@ async fn prune_expired_mutation_dedup_drops_only_stale_rows() {
         .await
         .unwrap();
 
-    // Prune at "now + 1 day": the 0-applied row's expires_at is
-    // 86400, which is < now+86400 for any present-day now. The fresh
-    // row's expires_at = now + 86400 is > prune cutoff.
-    let prune_cutoff = now + 100; // well past expired's expires_at, well before fresh's
+    let prune_cutoff = now + 100;
     let pruned = store
         .prune_expired_mutation_dedup(prune_cutoff)
         .await
@@ -4043,7 +3844,6 @@ async fn message_keywords_persist_and_replace() {
     let read_back = store.get_message_keywords(&message_id).await.unwrap();
     assert_eq!(read_back, initial);
 
-    // Replace: drop $Work, keep $Forwarded, add $Important.
     let replacement: std::collections::BTreeSet<String> =
         ["$Forwarded".to_string(), "$Important".to_string()]
             .into_iter()
@@ -4099,8 +3899,6 @@ async fn reindex_keyset_pages_visit_every_row_once_across_ties_and_mid_scan_inse
     let account = test_account();
     store.insert_account(&account).await.unwrap();
 
-    // One shared date makes every row a tie. Ordering by id must still
-    // place each row on exactly one page.
     let shared_date = chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
     let mut originals = Vec::new();
     for i in 0..10 {
@@ -4117,8 +3915,6 @@ async fn reindex_keyset_pages_visit_every_row_once_across_ties_and_mid_scan_inse
     seen.extend(first.iter().map(|env| env.id.clone()));
     let cursor = first.last().unwrap().id.clone();
 
-    // Inserted between pages: one id above the cursor, which this scan
-    // reaches, and one below it, which this scan has already passed.
     let mut above = test_envelope(&account.id);
     above.provider_id = "above".to_string();
     above.id = MessageId::from_uuid(uuid::Uuid::from_u128(u128::MAX));
@@ -4146,8 +3942,6 @@ async fn reindex_keyset_pages_visit_every_row_once_across_ties_and_mid_scan_inse
         assert_eq!(seen.iter().filter(|seen_id| *seen_id == id).count(), 1);
     }
     assert_eq!(seen.iter().filter(|id| **id == above.id).count(), 1);
-    // A row behind the cursor is missed by this scan. The live index write
-    // for that row already covers it.
     assert!(!seen.contains(&below.id));
     assert_eq!(seen.len(), originals.len() + 1);
 }
@@ -4230,15 +4024,12 @@ async fn dedup_lookup_uses_message_id_header_index() {
     env.message_id_header = Some("<dedup@example.com>".to_string());
     store.upsert_envelope(&env).await.unwrap();
 
-    // Sanity: the lookup path itself still returns the inserted row.
     let hits = store
         .list_envelopes_by_message_id_header(&account.id, "<dedup@example.com>")
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
 
-    // EXPLAIN QUERY PLAN must show an index search on the new composite index,
-    // never a full scan of the messages table.
     let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
         "EXPLAIN QUERY PLAN \
          SELECT id FROM messages \

@@ -1877,7 +1877,6 @@ mod tests {
         );
         assert_eq!(error.issues.len(), 2, "{error:?}");
     }
-
 }
 
 #[cfg(test)]

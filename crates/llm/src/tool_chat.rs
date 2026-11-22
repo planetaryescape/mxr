@@ -681,5 +681,4 @@ mod tests {
         // A recursive type stops at an open object instead of looping.
         assert!(!portable.to_string().contains("$ref"));
     }
-
 }

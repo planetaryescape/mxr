@@ -1027,5 +1027,4 @@ mod tests {
         // Generation reads the HTML; it never rewrites it.
         assert_eq!(String::from_utf8(html_part_bytes(&raw)).unwrap(), html);
     }
-
 }

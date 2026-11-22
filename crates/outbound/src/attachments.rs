@@ -315,5 +315,4 @@ mod tests {
             assert!(validate_cid(cid).is_err(), "should have refused: {cid:?}");
         }
     }
-
 }

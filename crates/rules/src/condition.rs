@@ -515,5 +515,4 @@ mod tests {
     }
 
     // -- Serialization tests --
-
 }

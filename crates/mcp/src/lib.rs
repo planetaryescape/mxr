@@ -4312,7 +4312,6 @@ mod tests {
             }]
         ));
     }
-
 }
 
 #[derive(Deserialize, JsonSchema)]

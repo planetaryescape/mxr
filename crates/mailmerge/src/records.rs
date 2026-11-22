@@ -525,5 +525,4 @@ mod tests {
             Redactor::for_batch(&batch).scrub("failed on token-abc-and-the-secret-part here");
         assert!(!safe.contains("secret-part"), "{safe}");
     }
-
 }

@@ -649,5 +649,4 @@ mod tests {
             "relative-path secret must round-trip"
         );
     }
-
 }

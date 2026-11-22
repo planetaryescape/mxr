@@ -261,5 +261,4 @@ mod tests {
             {"@type":"WebSite","name":"Acme"}</script>"#;
         assert!(extract(Some(html)).is_none());
     }
-
 }

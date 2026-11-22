@@ -394,5 +394,4 @@ mod tests {
         assert_eq!(json["ask"]["msg_id"], "m2");
         assert_eq!(json["ask"]["quote"], "Can you send the deck today?");
     }
-
 }

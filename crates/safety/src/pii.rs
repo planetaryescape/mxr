@@ -350,5 +350,4 @@ mod tests {
             "secret in quoted context should be ignored ({issues:?})"
         );
     }
-
 }

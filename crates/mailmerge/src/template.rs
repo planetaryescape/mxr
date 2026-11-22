@@ -300,5 +300,4 @@ mod tests {
             .is_ok());
         assert!(templates.render(HTML, &props(&[])).is_err());
     }
-
 }

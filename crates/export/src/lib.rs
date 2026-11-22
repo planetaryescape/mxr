@@ -164,5 +164,4 @@ mod tests {
         let llm = export(&thread, &ExportFormat::LlmContext, &config);
         assert!(llm.starts_with("Thread:"));
     }
-
 }

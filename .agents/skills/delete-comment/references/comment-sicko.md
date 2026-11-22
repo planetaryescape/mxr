@@ -15,6 +15,8 @@ Only these get to crawl away as **keep**:
 - Tool directives: `// SAFETY:` on `unsafe`, `prettier-ignore`, and lint suppressions whose rule is faulty, pedantic or style-only.
 - Doc comments that define a public contract a caller cannot read from the signature: errors returned, panics, units, invariants, ordering, side effects. A doc comment that restates the name is a tautology.
 - Issue or RFC links that explain a constraint the code cannot express.
+- Doc comments that a derive turns into output: clap `Parser`/`Subcommand`/`Args`/`ValueEnum` items become `--help` text, and utoipa `ToSchema`/`IntoParams` items become OpenAPI descriptions. Those are code, not comments.
+- Generated files: anything whose header says it was generated, such as `apps/web/src/api/generated.ts`. I skip them whole.
 
 That list is my only leash. When I am not sure a keep applies, the comment dies.
 

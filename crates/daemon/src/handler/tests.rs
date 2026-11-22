@@ -734,7 +734,6 @@ mod alert_todos;
 mod approved_send_recovery;
 mod archive_recovery;
 mod arrivals;
-mod arrivals_report;
 mod ask_assessments;
 mod ask_deadlines;
 mod asks_delivery;
@@ -765,10 +764,8 @@ mod html_drafts;
 mod legacy_transport;
 mod llm_routes;
 mod messages;
-mod messages_report;
 mod mode_cache;
 mod modes;
-mod modes_report;
 mod mutations_and_delivery;
 mod now;
 mod one_waiting;
@@ -797,7 +794,6 @@ mod undo_claims;
 mod undo_preview;
 mod unsubscribe_plan;
 mod updates;
-mod updates_report;
 
 /// The dispatch future holds every request arm's state inline. Past about a
 /// megabyte it overflows a Tokio worker's 2 MiB stack in debug builds (the

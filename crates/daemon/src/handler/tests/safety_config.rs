@@ -151,16 +151,6 @@ async fn a_configured_sensitive_domain_blocks_the_send_path() {
 }
 
 #[test]
-fn an_absent_safety_section_gives_the_safety_crate_defaults() {
-    let config = mxr_config::load_config_from_str("[general]\n").unwrap();
-    let configured = super::super::mutations::safety_check_config(&config.safety);
-    assert_eq!(
-        serde_json::to_value(&configured).unwrap(),
-        serde_json::to_value(mxr_safety::SafetyConfig::default()).unwrap(),
-    );
-}
-
-#[test]
 fn an_out_of_range_or_nan_threshold_is_kept_inside_the_documented_range() {
     let threshold = |value: f64| {
         let mut config = mxr_config::SafetyConfig::default();

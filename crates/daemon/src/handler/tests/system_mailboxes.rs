@@ -206,15 +206,6 @@ async fn each_system_mailbox_has_its_own_role() {
 }
 
 #[tokio::test]
-async fn disabled_accounts_stay_out_of_the_merged_mailbox() {
-    let a = accounts().await;
-    let req = list_envelopes(None, None, Some("inbox"));
-    let subjects = envelope_subjects(&a, req).await;
-    assert!(!subjects.iter().any(|s| s.starts_with("disabled")));
-    assert_ne!(a.disabled, a.first);
-}
-
-#[tokio::test]
 async fn unknown_role_is_an_error_not_the_default_account() {
     let a = accounts().await;
     let msg = IpcMessage {

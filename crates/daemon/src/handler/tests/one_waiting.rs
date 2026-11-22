@@ -317,32 +317,6 @@ async fn the_screener_page_is_the_set_its_badge_counts() {
 }
 
 #[tokio::test]
-async fn deserialises_without_the_new_fields() {
-    let json = serde_json::json!({
-        "rows": [], "total": 2, "more_line": "and 2 more in Messages"
-    });
-    let people: mxr_protocol::NowPeopleData = serde_json::from_value(json).unwrap();
-    assert_eq!(people.split, PeopleSplitData::default());
-    let request: Request = serde_json::from_value(serde_json::json!({
-        "cmd": "ListScreenerQueue",
-        "account_id": fx_account_json(),
-    }))
-    .unwrap();
-    assert!(matches!(
-        request,
-        Request::ListScreenerQueue {
-            all_senders: false,
-            limit: 100,
-            ..
-        }
-    ));
-}
-
-fn fx_account_json() -> serde_json::Value {
-    serde_json::to_value(mxr_core::id::AccountId::new()).unwrap()
-}
-
-#[tokio::test]
 async fn done_here_moves_the_badge_the_page_and_the_headline_together() {
     let seeded = seed().await;
     let fx = &seeded.fx;

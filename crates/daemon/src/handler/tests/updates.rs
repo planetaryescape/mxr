@@ -1378,27 +1378,19 @@ async fn assert_the_seeded_digest_holds_at((month, day, hour, minute): (u32, u32
     }
 }
 
-/// The CI failure's three-minute window.
+/// The seeded digest holds in the CI failure's three-minute window, just after
+/// midnight, and when US clocks go forward (8 March 2026) and back (1 November
+/// 2026).
 #[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_in_the_ci_failure_window() {
-    assert_the_seeded_digest_holds_at((10, 19, 4, 44)).await;
-}
-
-#[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_just_after_midnight() {
-    assert_the_seeded_digest_holds_at((10, 20, 0, 2)).await;
-}
-
-/// US clocks go forward on 8 March 2026.
-#[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_forward() {
-    assert_the_seeded_digest_holds_at((3, 8, 4, 44)).await;
-}
-
-/// US clocks go back on 1 November 2026.
-#[tokio::test]
-async fn demo_updates_mail_stays_in_the_digest_when_the_clocks_go_back() {
-    assert_the_seeded_digest_holds_at((11, 1, 4, 44)).await;
+async fn demo_updates_mail_stays_in_the_digest_across_clock_edge_cases() {
+    for seed in [
+        (10, 19, 4, 44),
+        (10, 20, 0, 2),
+        (3, 8, 4, 44),
+        (11, 1, 4, 44),
+    ] {
+        assert_the_seeded_digest_holds_at(seed).await;
+    }
 }
 
 /// The e2e config pins one daily cut a minute before the seed, so a run

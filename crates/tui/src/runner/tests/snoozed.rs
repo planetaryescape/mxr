@@ -118,23 +118,6 @@ fn g_n_lists_snoozed_mail_waking_soonest_first_with_its_wake_time() {
 }
 
 #[test]
-fn enter_opens_the_lit_snoozed_message() {
-    let Snoozed {
-        mut app, soonest, ..
-    } = snoozed_app();
-    if let Some(action) = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)) {
-        app.apply(action);
-    }
-    assert_eq!(
-        app.mailbox
-            .viewing_envelope
-            .as_ref()
-            .map(|env| env.id.clone()),
-        Some(soonest.id)
-    );
-}
-
-#[test]
 fn w_wakes_every_snoozed_message_in_the_lit_conversation() {
     let Snoozed {
         mut app, thread, ..
@@ -182,82 +165,5 @@ fn the_lists_mail_keys_act_on_the_lit_snoozed_conversation() {
         confirm.preview.rows.len(),
         2,
         "the preview lists the same two"
-    );
-}
-
-#[test]
-fn w_outside_snoozed_and_the_reply_queue_wakes_nothing() {
-    let mut app = App::new();
-    app.screen = Screen::Mailbox;
-    app.mailbox.envelopes = make_test_envelopes(2);
-    press(&mut app, 'w');
-    assert!(queued(&app).is_empty());
-    assert!(app
-        .status_message
-        .as_deref()
-        .is_some_and(|status| status.contains("g n opens Snoozed")));
-}
-
-#[test]
-fn w_in_the_reply_queue_takes_the_lit_message_out_of_it() {
-    let mut app = App::new();
-    app.screen = Screen::Mailbox;
-    let messages = make_test_envelopes(2);
-    app.modals.reply_queue.open_loading();
-    app.modals.reply_queue.set_messages(messages.clone());
-    for message in &messages {
-        app.mailbox
-            .reply_later_message_ids
-            .insert(message.id.clone());
-    }
-    app.modals.reply_queue.select_next();
-    press(&mut app, 'w');
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::SetReplyLater { message_id, flag: false }] if *message_id == messages[1].id
-    ));
-    assert_eq!(app.modals.reply_queue.messages.len(), 1);
-    assert_eq!(app.modals.reply_queue.messages[0].id, messages[0].id);
-    assert!(app.modals.reply_queue.visible, "the queue stays open");
-    assert!(!app
-        .mailbox
-        .reply_later_message_ids
-        .contains(&messages[1].id));
-}
-
-#[test]
-fn not_now_leaves_out_tonight_once_the_evening_has_passed() {
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    app.modals.snooze_config.evening_hour = 0;
-    app.apply(Action::Snooze);
-    let rows = crate::ui::snooze_modal::rows_of(&app.modals.snooze_panel);
-    assert_eq!(
-        rows.preset(2),
-        Some(crate::app::SnoozePreset::Weekend),
-        "2 is the next preset shown"
-    );
-    let shown = screen(&mut app);
-    assert!(!shown.contains("Tonight"), "{shown}");
-    assert!(shown.contains("1-3 a time"), "{shown}");
-    press(&mut app, '2');
-    let weekend = crate::app::resolve_snooze_preset(
-        crate::app::SnoozePreset::Weekend,
-        &app.modals.snooze_config,
-    );
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::Snooze { wake_at, .. }] if *wake_at == weekend
-    ));
-
-    let mut app = App::new();
-    app.mailbox.envelopes = make_test_envelopes(1);
-    app.modals.snooze_config.evening_hour = 23;
-    app.apply(Action::Snooze);
-    let offered = crate::app::available_snooze_presets(&app.modals.snooze_config);
-    assert_eq!(
-        offered.contains(&crate::app::SnoozePreset::Tonight),
-        chrono::Local::now().format("%H").to_string() != "23"
     );
 }

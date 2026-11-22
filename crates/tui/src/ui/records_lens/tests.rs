@@ -268,50 +268,6 @@ pub(crate) fn lisbon_answer() -> RecordAnswerData {
     }
 }
 
-pub(crate) fn octopus_list() -> RecordAnswerData {
-    let march = record(
-        "rec_octopus_mar",
-        RecordKindData::Statement,
-        "Octopus Energy",
-        "Bill, Mar",
-        Some((11_020, "\u{a3}110.20")),
-        None,
-        at(2025, 3, 11),
-    );
-    let card = RecordAnswerCardData {
-        provenance: None,
-        record: octopus(),
-        field: "amount".into(),
-        label: "Amount".into(),
-        value: "\u{a3}128.40".into(),
-        copy: "128.40".into(),
-    };
-    RecordAnswerData {
-        query: "octopus".into(),
-        asked: "any".into(),
-        mode: mxr_protocol::RecordAnswerModeData::List,
-        answer: Some(card),
-        also: Vec::new(),
-        matching: 2,
-        list: Some(Box::new(mxr_protocol::RecordAnswerListData {
-            header: "Octopus Energy \u{b7} 2 records \u{b7} \u{a3}238.60".into(),
-            count: 2,
-            offset: 0,
-            records: vec![march, octopus()],
-            months: vec![
-                month("2025-03", "2025 \u{b7} March", 1, "\u{a3}110.20"),
-                month("2025-02", "2025 \u{b7} February", 1, "\u{a3}128.40"),
-            ],
-            totals: Vec::new(),
-            first: Some(at(2025, 2, 11)),
-            last: Some(at(2025, 3, 11)),
-            top_record_id: "rec_octopus".into(),
-            issuer: Some("Octopus Energy".into()),
-        })),
-        fallback: None,
-    }
-}
-
 fn render_at(page: &RecordsPageState, width: u16) -> String {
     render_to_string(width, 34, |frame| {
         draw(

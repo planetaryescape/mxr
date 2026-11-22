@@ -10,8 +10,6 @@ pub fn introduction<'a>(source: &ForwardSource, body: &'a str) -> Result<&'a str
     if let Some(intro) = remainder.strip_suffix(original) {
         return Ok(intro.trim_end());
     }
-    // Editors may normalize CRLF to LF (or vice versa). Compare the display
-    // by lines, while keeping the immutable original for the outgoing MIME.
     for expected in original.lines().rev() {
         let (prefix, actual) = remainder.rsplit_once('\n').unwrap_or(("", remainder));
         if actual.trim_end_matches('\r') != expected {

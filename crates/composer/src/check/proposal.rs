@@ -70,8 +70,6 @@ pub fn check_proposal_with_rates(
     fixes.regions_removed = !regions.rest.is_empty();
     let mut text = regions.text.to_string();
 
-    // Where the model may have written. Everything outside it is the user's
-    // and no later pass touches it.
     let mut editable = None;
     if input.action == AssistActionData::EditSelection {
         if let Some(selection) = input.selection.clone() {
@@ -96,7 +94,6 @@ pub fn check_proposal_with_rates(
             let pattern = mxr_humanizer::pattern_for_category(hit.category)?;
             let spec = mxr_humanizer::PATTERNS.get(usize::from(pattern - 1))?;
             let (start, end) = (hit.span.start, hit.span.end);
-            // Humanizer hits are byte ranges; widen to the containing line for a useful client hover.
             let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
             let line_end = text[end..]
                 .find('\n')
@@ -113,8 +110,6 @@ pub fn check_proposal_with_rates(
 
     let user_owned_ranges = equal_output_ranges(input.typed, &text);
     Checked {
-        // An edit keeps what is outside its selection byte for byte, blank
-        // space included, so the diff starts from the text as typed.
         changes: word_changes(
             if input.action == AssistActionData::EditSelection {
                 input.typed
@@ -242,8 +237,6 @@ struct KeptEdit {
 fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> KeptEdit {
     let prefix = &original[..selection.start];
     let suffix = &original[selection.end..];
-    // The model's answer arrives trimmed, so blank space at the very ends is
-    // not something it can be held to: it is put back as it was.
     let prefix_core = prefix.trim_start();
     let suffix_core = suffix.trim_end();
     let lead = &prefix[..prefix.len() - prefix_core.len()];
@@ -276,8 +269,6 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> Ke
     for op in diff.ops() {
         let (tag, old_range, new_range) = op.as_tag_tuple();
         let (from, to) = (starts[old_range.start], starts[old_range.end]);
-        // An insertion at either edge is inside: it adds to the selection
-        // without touching a byte outside it.
         let inside = selection.start <= from && to <= selection.end;
         if tag == DiffTag::Equal || !inside {
             old[old_range].iter().for_each(|token| text.push_str(token));
@@ -286,8 +277,6 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> Ke
             new[new_range].iter().for_each(|token| text.push_str(token));
         }
     }
-    // The ends were never rewritten, so this holds; it is the guarantee, so a
-    // surprise falls back to the user's own text.
     if !(text.starts_with(prefix) && text.ends_with(suffix)) {
         return KeptEdit {
             editable: selection,
@@ -404,7 +393,6 @@ mod tests {
         assert_eq!(checked.text, output);
         assert!(checked.yours_changed.is_empty());
         assert!(checked.gaps.is_empty());
-        // The diff shows what was added around the user's words.
         let added: Vec<&str> = checked
             .changes
             .iter()
@@ -585,7 +573,6 @@ mod tests {
     #[test]
     fn an_edit_outside_the_selection_is_put_back() {
         let typed = "Thursday works. Numbers by wed. Thanks.";
-        // Selection: "Numbers by wed."
         let selection = 16..31;
         let output = "Thursday is fine. I will send the numbers by Wednesday. Thanks a lot.";
         let checked = check(
@@ -602,8 +589,6 @@ mod tests {
             checked.text
         );
         assert!(checked.text.ends_with(" Thanks."), "{}", checked.text);
-        // Where the model's edit and its outside change run together, the
-        // whole run goes back: what is outside stays exactly as it was.
         assert!(checked.text.contains("Wednesday."), "{}", checked.text);
         assert_eq!(checked.yours_changed, [1]);
     }
@@ -636,12 +621,10 @@ mod tests {
 
     #[test]
     fn bytes_outside_the_selection_stay_byte_for_byte() {
-        // Selecting only the `a` of `cat`: `cat` must not become `dog`.
         let typed = "Keep cat safe.";
         let checked = edit(typed, 6..7, "Keep dog safe.");
         assert_eq!(checked.text, typed);
         assert!(checked.fixes.outside_reverted);
-        // A model that changed only the selected byte is believed.
         let checked = edit(typed, 6..7, "Keep cot safe.");
         assert_eq!(checked.text, "Keep cot safe.");
         assert!(!checked.fixes.outside_reverted);
@@ -651,17 +634,13 @@ mod tests {
     fn trailing_and_leading_blank_space_outside_the_selection_is_kept_byte_for_byte() {
         let typed = "\n  Keep cat safe.  \n";
         let (start, end) = (typed.find('a').unwrap(), typed.find('a').unwrap() + 1);
-        // The model's answer arrives trimmed; an honest one-byte edit is kept.
         let checked = edit(typed, start..end, "Keep cot safe.");
         assert_eq!(checked.text, "\n  Keep cot safe.  \n");
         assert!(!checked.fixes.outside_reverted);
-        // A change to the neighbouring word is put back with the blank space.
         let checked = edit(typed, start..end, "Keep dog safe.");
         assert_eq!(checked.text, typed);
-        // So is a model that dropped everything.
         let checked = edit(typed, start..end, "x");
         assert_eq!(checked.text, typed);
-        // The diff starts from the text as typed.
         assert!(checked
             .changes
             .iter()
@@ -696,15 +675,12 @@ mod tests {
 
     #[test]
     fn a_figure_outside_the_selection_is_never_rewritten() {
-        // `3` is known as part of `3pm`, and the model dropped the unit that
-        // was selected; the figure pass must leave the rest alone.
         let typed = "Meet at 3 pm tomorrow.";
         let checked = edit(typed, 10..12, "Meet at 3 tomorrow.");
         assert!(!checked.text.contains("[[?:"), "{}", checked.text);
         assert!(checked.text.starts_with("Meet at 3 "), "{}", checked.text);
         assert!(checked.text.ends_with(" tomorrow."), "{}", checked.text);
 
-        // The pass itself only reaches into the editable range.
         let text = "Meet at 4 tomorrow. It costs £40.";
         let editable = text.find("It").unwrap()..text.len();
         let (out, count) = figures_to_gaps(text, "", Some(editable));

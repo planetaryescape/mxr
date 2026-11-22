@@ -107,8 +107,6 @@ pub(crate) fn read_frame(input: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
 pub(crate) fn encode_request(id: u64, kind: &str, params: &[u8], html: &[u8]) -> Vec<u8> {
     let mut body = Vec::with_capacity(8 + 2 + kind.len() + 4 + params.len() + html.len());
     body.extend_from_slice(&id.to_le_bytes());
-    // Kinds are static identifiers written by us; saturating keeps this total
-    // and a kind that long fails the helper's lookup rather than panicking.
     let kind_len = u16::try_from(kind.len()).unwrap_or(u16::MAX);
     body.extend_from_slice(&kind_len.to_le_bytes());
     body.extend_from_slice(&kind.as_bytes()[..usize::from(kind_len)]);
@@ -218,8 +216,6 @@ mod tests {
     #[test]
     fn a_request_cut_before_its_params_end_is_an_error_not_a_panic() {
         let body = encode_request(1, "k", b"{}", b"x");
-        // id 8 + kind_len 2 + kind 1 + params_len 4 + params 2 = 17 bytes
-        // before the HTML starts; any cut inside that prefix is malformed.
         for cut in 0..17 {
             assert!(decode_request(&body[..cut]).is_err(), "cut at {cut}");
         }

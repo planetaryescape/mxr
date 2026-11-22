@@ -54,7 +54,6 @@ impl BodyRegions<'_> {
     /// it written back as it was stored: the lead, the text, the original gap
     /// (the body's trailing blank space when nothing follows) and the rest.
     pub fn with_text(&self, text: &str) -> String {
-        // A body that began with its signature has no blank space to keep.
         let gap = if self.gap.is_empty() && !self.rest.is_empty() {
             "\n\n"
         } else {

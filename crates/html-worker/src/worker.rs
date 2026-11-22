@@ -36,8 +36,6 @@ pub fn run_helper(jobs: &[&dyn AnyJob]) -> ExitCode {
             .name("html-helper".to_string())
             .stack_size(JOB_STACK_BYTES)
             .spawn_scoped(scope, || {
-                // After the stack is mapped, so the address-space cap is
-                // measured with it counted.
                 limits::apply(limits);
                 serve(&registry, io::stdin().lock(), io::stdout().lock(), || {
                     limits::rearm_cpu(limits);
@@ -112,7 +110,6 @@ fn handle(registry: &Registry<'_>, request: &wire::Request<'_>) -> (Status, Vec<
     };
     // html2text 0.17 panics on some malformed tables. Jobs guard what they
     // know about, and this catches the rest, so one bad document costs a
-    // fallback and not the helper.
     match catch_unwind(AssertUnwindSafe(|| job.run_erased(html, request.params))) {
         Ok(Ok(bytes)) => (Status::Ok, bytes),
         Ok(Err(message)) => (Status::JobError, message.into_bytes()),

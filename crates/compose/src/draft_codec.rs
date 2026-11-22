@@ -145,8 +145,6 @@ pub fn apply_edited_compose_file(
         crate::forward::apply(&mut draft, &frontmatter)?;
         return Ok(draft);
     }
-    // Guarded on the way back in as well: converting an HTML draft to markdown
-    // here would drop the document and orphan its inline assets.
     if existing.content.is_html() {
         return Err(ComposeError::HtmlDraftNotEditable);
     }
@@ -187,8 +185,6 @@ pub fn apply_edited_compose_file(
         account_id: existing.account_id.clone(),
         from: parse_from_field(&frontmatter.from)?,
         reply_headers,
-        // A user who clears `intent:` back to the default keeps the draft's
-        // original intent rather than silently downgrading a reply to a new.
         intent: if frontmatter.intent == mxr_core::DraftIntent::New {
             existing.intent
         } else {
@@ -289,9 +285,6 @@ mod tests {
 
     #[test]
     fn reply_to_list_in_to_frontmatter_reads_back_as_one_address_each() {
-        // A reply to several people reaches the compose file as one
-        // comma-joined `to:` string (ComposeKind::Reply copies the daemon's
-        // reply_to into frontmatter.to). Each address must survive as its own.
         let draft = sample_draft();
         let rendered = draft_to_compose_file(&draft, "me@example.com").unwrap();
         let (mut fm, body) = parse_compose_file(&rendered).unwrap();
@@ -319,7 +312,6 @@ mod tests {
             email: "hello@example.com".into(),
         });
 
-        // The override is what the editor sees, not the passed account primary.
         let file = draft_to_compose_file(&original, "me@example.com").unwrap();
         assert!(file.contains("from: Support <hello@example.com>"));
 
@@ -327,7 +319,6 @@ mod tests {
         let result = apply_edited_compose_file(&original, &file, later).unwrap();
         assert_eq!(result.from.as_ref().unwrap().email, "hello@example.com");
 
-        // Clearing the `from:` line in the editor drops the override.
         let cleared = file.replace("from: Support <hello@example.com>", "from:");
         let result = apply_edited_compose_file(&original, &cleared, later).unwrap();
         assert!(result.from.is_none());
@@ -345,7 +336,6 @@ mod tests {
         let later = DateTime::from_timestamp(1_700_000_999, 0).unwrap();
         let result = apply_edited_compose_file(&original, &edited, later).unwrap();
 
-        // Identity and creation time survive the edit; only content + updated_at change.
         assert_eq!(result.id, original.id);
         assert_eq!(result.account_id, original.account_id);
         assert_eq!(result.created_at, original.created_at);
@@ -377,8 +367,6 @@ mod tests {
     fn absent_intent_falls_back_to_existing() {
         let mut original = sample_draft();
         original.intent = DraftIntent::Reply;
-        // A compose file with no `intent:` line — the user never touched it, so
-        // the parsed frontmatter defaults to New and must fall back to Reply.
         let file = "---\nto: a@example.com\nsubject: Hi\nfrom: me@example.com\n---\n\nBody.";
         let now = DateTime::from_timestamp(1_700_000_500, 0).unwrap();
         let result = apply_edited_compose_file(&original, file, now).unwrap();

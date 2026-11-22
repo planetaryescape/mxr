@@ -65,7 +65,6 @@ pub fn parse_compose_file(content: &str) -> Result<(ComposeFrontmatter, String),
     let frontmatter: ComposeFrontmatter = serde_yaml::from_str(yaml_str)
         .map_err(|e| ComposeError::InvalidFrontmatter(e.to_string()))?;
 
-    // Strip context block
     let body = if let Some(ctx_pos) = rest
         .find(CONTEXT_MARKER)
         .filter(|_| frontmatter.intent != DraftIntent::Forward)

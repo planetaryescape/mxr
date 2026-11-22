@@ -53,7 +53,6 @@ pub fn resolve(
         return Err(PlanError::TextTooLong { len: text.len() });
     }
     let selection = selection.map(|range| validate(text, range)).transpose()?;
-    // A cursor with nothing selected, or only blank space, is no selection.
     let selection = selection.filter(|range| !text[range.clone()].trim().is_empty());
     let typed = !text.trim().is_empty();
     let action = explicit.unwrap_or_else(|| match (typed, selection.is_some()) {
@@ -183,7 +182,6 @@ mod tests {
 
     #[test]
     fn a_selection_off_a_char_boundary_is_a_clear_error() {
-        // "é" is two bytes: offset 1 is inside it.
         let error = resolve(None, "é works", range(1, 3)).unwrap_err();
         assert_eq!(error, PlanError::SelectionNotOnBoundary { offset: 1 });
         assert!(error.to_string().contains("inside a character"));
@@ -205,7 +203,6 @@ mod tests {
                 len: 3
             }
         );
-        // Checked even when the action would not read it.
         assert!(resolve(Some(AssistActionData::Write), "Hi.", range(0, 9)).is_err());
     }
 

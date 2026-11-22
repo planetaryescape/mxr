@@ -96,7 +96,6 @@ fn limit_address_space(headroom: u64) {
     };
     let cap = current.saturating_add(headroom);
     if let Err(error) = setrlimit(Resource::RLIMIT_AS, cap, cap) {
-        // The watchdog below still bounds resident memory.
         eprintln!("html helper: could not set the address-space limit: {error}");
     }
 }

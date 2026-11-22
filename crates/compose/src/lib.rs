@@ -218,14 +218,13 @@ fn build_draft_file(
 
     let content = frontmatter::render_compose_file(&fm, &body, context.as_deref())?;
 
-    // Calculate cursor line: first empty line after frontmatter closing ---
     let cursor_line = content
         .lines()
         .enumerate()
         .skip(1)
         .find_map(|(i, line)| {
             if line == "---" {
-                Some(i + 2) // line after ---, 1-indexed, +1 for blank line
+                Some(i + 2)
             } else {
                 None
             }
@@ -314,7 +313,6 @@ fn validate_draft_with_mode(
         }
     }
 
-    // Validate email addresses
     for addr in frontmatter
         .to
         .split(',')
@@ -329,8 +327,6 @@ fn validate_draft_with_mode(
         }
     }
 
-    // A non-empty From must be a syntactically valid address, in every mode —
-    // a bad value must never silently fall through to the account primary.
     if crate::draft_codec::parse_from_field(&frontmatter.from).is_err() {
         issues.push(ComposeValidation::Error(format!(
             "Invalid from address: {}",
@@ -505,7 +501,6 @@ mod tests {
             "a non-empty unparseable from must be a hard error: {:?}",
             issue_messages(&issues)
         );
-        // An empty from is fine (send from primary).
         let ok = ComposeFrontmatter {
             to: "alice@example.com".into(),
             subject: "Test".into(),
@@ -715,13 +710,11 @@ mod tests {
         )
         .unwrap();
 
-        // File should be inside the private scratch dir.
         assert!(
             path.starts_with(&scratch),
             "draft path {path:?} should be inside private scratch dir {scratch:?}"
         );
 
-        // File should have 0600 permissions.
         let meta = std::fs::metadata(&path).expect("metadata");
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(

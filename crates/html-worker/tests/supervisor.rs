@@ -50,8 +50,6 @@ fn a_job_runs_in_a_child_process_that_is_reused() {
 
 #[test]
 fn a_scoped_supervisor_routes_calls_on_this_thread_and_only_inside_the_scope() {
-    // The fixture's `pid` job reports the process it ran in; the static here
-    // would answer 0 if it ran in this one.
     let supervisor = Arc::new(supervisor_with(|config| config.max_helpers = 1));
     let inside = with_supervisor(Arc::clone(&supervisor), || PID.call(" ", &()));
     assert!(inside.is_some_and(|pid| pid != 0 && pid != std::process::id()));
@@ -123,7 +121,6 @@ fn an_input_that_timed_out_is_not_tried_again() {
         1,
         "no second timeout was spent"
     );
-    // The same kind with other input still runs.
     assert_eq!(
         SLEEP.call_on(&supervisor, "other", &0).as_deref(),
         Some("slept")
@@ -167,8 +164,6 @@ fn a_helper_killed_from_outside_costs_a_retry_not_a_poisoned_input() {
         .expect("kill runs");
     assert!(status.success());
 
-    // The same input that was in flight when the helper vanished still works:
-    // it is retried on a fresh helper and never marked bad.
     assert_eq!(
         ECHO.call_on(&supervisor, "same input", &()).as_deref(),
         Some("same input")
@@ -205,7 +200,6 @@ fn a_helper_that_grows_past_its_memory_headroom_is_stopped() {
         config.memory_headroom_bytes = 96 * 1024 * 1024;
     });
     let parent_before = peak_resident_bytes();
-    // Four times the headroom, all touched.
     let started = Instant::now();
     let outcome = supervisor.run("fixture.allocate", b"", b"[400,1500]", usize::MAX);
     assert!(
@@ -217,13 +211,11 @@ fn a_helper_that_grows_past_its_memory_headroom_is_stopped() {
         "the limit stops it long before the timeout, took {:?}",
         started.elapsed()
     );
-    // The parent never held the memory, whatever the child did.
     assert!(
         peak_resident_bytes() < parent_before + 64 * 1024 * 1024,
         "parent peak resident size grew from {parent_before} to {}",
         peak_resident_bytes()
     );
-    // Within the headroom it works, on a fresh helper.
     assert_eq!(ALLOCATE.call_on(&supervisor, "", &(16, 0)), Some(16));
 }
 
@@ -232,7 +224,6 @@ fn a_helper_that_burns_its_cpu_budget_is_stopped_by_the_os() {
     let supervisor = supervisor_with(|config| {
         config.max_helpers = 1;
         config.cpu_seconds_per_request = 1;
-        // The wall clock is far away, so only the CPU limit can end this.
         config.request_timeout = Duration::from_secs(60);
     });
     let started = Instant::now();
@@ -254,8 +245,6 @@ fn a_helper_that_burns_its_cpu_budget_is_stopped_by_the_os() {
 fn the_cpu_budget_is_armed_under_an_inherited_hard_cpu_limit() {
     // `ulimit -t` sets the soft and hard limits, as a shell or service manager
     // with a CPU cap would. Raising that hard limit is refused, so a re-arm
-    // that asked for an unlimited hard limit left the budget unarmed and the
-    // spin ran until the wall clock.
     let mut config = Config::new(
         "/bin/sh",
         vec![
@@ -289,9 +278,6 @@ fn the_cpu_budget_is_per_request_not_for_the_helpers_life() {
         config.cpu_seconds_per_request = 1;
     });
     let helper = PID.call_on(&supervisor, "", &()).expect("pid");
-    // Twelve requests of 150 ms of CPU each are about 1.8 s in total, past the
-    // 1 s budget a lifetime limit would allow, while each request alone is well
-    // inside it.
     for _ in 0..12 {
         assert_eq!(
             BURN.call_on(&supervisor, "", &150).as_deref(),
@@ -357,7 +343,6 @@ fn a_missing_helper_program_falls_back_and_is_not_respawned_on_every_request() {
 fn a_helper_from_another_release_is_refused_at_the_handshake() {
     // What macOS gives a daemon or TUI whose binary was upgraded under it: the
     // helper starts from the new file. Its answers may not match this build's
-    // types, so it gets no requests and the caller uses its fallback.
     let supervisor = Supervisor::new(Config::new(
         env!("CARGO_BIN_EXE_mxr-html-worker-fixture"),
         vec!["--another-release".into()],
@@ -440,7 +425,6 @@ fn a_crash_in_the_middle_of_a_batch_only_affects_the_request_in_flight() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn waiting_on_a_helper_does_not_stall_the_async_runtime() {
     let supervisor = Arc::new(supervisor_with(|config| config.max_helpers = 2));
-    // Warm both helpers so spawning is not part of what is measured.
     let _ = ECHO.call_on(&supervisor, "warm", &());
 
     let ticks = Arc::new(AtomicUsize::new(0));
@@ -453,7 +437,6 @@ async fn waiting_on_a_helper_does_not_stall_the_async_runtime() {
             }
         })
     };
-    // More callers than runtime threads, each blocked on a 300 ms job.
     let callers: Vec<_> = (0..4)
         .map(|_| {
             let supervisor = Arc::clone(&supervisor);

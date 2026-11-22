@@ -34,9 +34,6 @@ fn private_scratch_dir_unix() -> std::io::Result<PathBuf> {
         return Ok(dir);
     }
 
-    // Fall back to $TMPDIR/mxr-<uid> created 0700.
-    // We use the uid of a newly created file in the temp dir as a
-    // portable way to get the effective uid without libc.
     let uid = effective_uid()?;
     let dir = std::env::temp_dir().join(format!("mxr-{uid}"));
     std::fs::DirBuilder::new()
@@ -44,10 +41,6 @@ fn private_scratch_dir_unix() -> std::io::Result<PathBuf> {
         .recursive(true)
         .create(&dir)?;
 
-    // Verify the directory has the expected permissions and owner —
-    // guards against a squatter: another user pre-creating the path
-    // (with 0700 owned by THEM they could rename/delete entries and
-    // pre-place paths under a directory our mail-content files use).
     let meta = std::fs::metadata(&dir)?;
     if !meta.is_dir() {
         return Err(std::io::Error::other(format!(
@@ -87,7 +80,6 @@ fn private_scratch_dir_unix() -> std::io::Result<PathBuf> {
 fn effective_uid() -> std::io::Result<u32> {
     use std::os::unix::fs::MetadataExt;
     use uuid::Uuid;
-    // Use a UUID-based name so concurrent calls (e.g. tests) never collide.
     let tmp = std::env::temp_dir().join(format!(".mxr-uid-probe-{}", Uuid::now_v7()));
     {
         use std::fs::OpenOptions;
@@ -173,8 +165,6 @@ mod tests {
     #[test]
     fn private_scratch_dir_verifies_ownership() {
         use std::os::unix::fs::MetadataExt;
-        // Force the $TMPDIR/mxr-<uid> fallback branch (the one with the
-        // ownership assertion) even on hosts where XDG_RUNTIME_DIR is set.
         let dir = temp_env::with_var("XDG_RUNTIME_DIR", None::<&str>, || {
             private_scratch_dir().expect("scratch dir owned by us should pass")
         });
@@ -193,7 +183,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = private_scratch_dir().expect("scratch dir");
         let path = dir.join(format!("test-write-private-{}.txt", std::process::id()));
-        let _ = std::fs::remove_file(&path); // clean up any leftover
+        let _ = std::fs::remove_file(&path);
         write_private(&path, b"hello").expect("write_private");
         let meta = std::fs::metadata(&path).expect("metadata");
         let mode = meta.permissions().mode() & 0o777;

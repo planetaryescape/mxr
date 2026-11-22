@@ -24,7 +24,6 @@ pub fn collapse(text: &str) -> (String, Vec<QuotedBlock>) {
     let mut i = 0;
 
     while i < lines.len() {
-        // Check for "On {date}, {person} wrote:" pattern
         if ON_WROTE.is_match(lines[i]) {
             let header = lines[i];
             let from = extract_from_on_wrote(header);
@@ -62,7 +61,6 @@ pub fn collapse(text: &str) -> (String, Vec<QuotedBlock>) {
             continue;
         }
 
-        // Check for standalone > quoted blocks
         if QUOTE_PREFIX.is_match(lines[i]) {
             let mut quote_lines = Vec::new();
             while i < lines.len() && (QUOTE_PREFIX.is_match(lines[i]) || lines[i].trim().is_empty())
@@ -71,7 +69,6 @@ pub fn collapse(text: &str) -> (String, Vec<QuotedBlock>) {
                     let stripped = QUOTE_PREFIX.replace(lines[i], "").to_string();
                     quote_lines.push(stripped);
                 } else {
-                    // Only include blank lines if more quoted lines follow
                     if i + 1 < lines.len() && QUOTE_PREFIX.is_match(lines[i + 1]) {
                         quote_lines.push(String::new());
                     } else {

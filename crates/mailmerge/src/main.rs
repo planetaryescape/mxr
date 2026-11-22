@@ -167,8 +167,6 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
         &args.account,
     )?;
 
-    // Render everything before creating anything. A template error on record
-    // 40 should not leave 39 drafts behind.
     let mut rendered = Vec::with_capacity(records.len());
     for (index, record) in records.iter().enumerate() {
         let position = index + 1;
@@ -216,7 +214,6 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
             rendered.len() - already
         );
         for (record, subject, ..) in rendered.iter().take(5) {
-            // Subject and address only — property values stay out of output.
             println!("  → {} — {subject}", record.to);
         }
         if rendered.len() > 5 {
@@ -235,12 +232,8 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
     let client = mxr::Mxr::new(args.mxr_binary.clone());
     client.preflight()?;
 
-    // Built from every record, not the one being drafted: mxr's stderr can
-    // quote back a body rendered for somebody else.
     let redactor = records::Redactor::for_batch(&records);
 
-    // A private (0700) directory that is removed when this binding drops, so an
-    // early return cannot leave a personalised body behind in shared /tmp.
     let workdir = tempfile::Builder::new()
         .prefix("mxr-mailmerge-")
         .tempdir()
@@ -252,9 +245,6 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
     for (record, subject, html, text) in rendered {
         let hash = record.hash();
 
-        // Idempotency: a record that already produced a draft is never
-        // drafted again, so rerunning after a partial failure cannot
-        // duplicate anyone.
         if let Some(entry) = manifest.entry(&hash) {
             if entry.draft_id.is_some() {
                 skipped += 1;
@@ -303,8 +293,6 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
                     review: None,
                     to: record.to.clone(),
                     draft_id: None,
-                    // A fixed reason: mxr's own words stay out of a file that
-                    // ends up in the working tree.
                     error: Some(FailureReason::Draft),
                     status: RecordStatus::Failed,
                 });
@@ -317,12 +305,8 @@ fn run_draft(args: DraftArgs) -> anyhow::Result<()> {
             }
         }
 
-        // Saved after every record so an interrupted run still knows which
-        // drafts exist.
         manifest.save(&args.state_dir)?;
 
-        // Remove the rendered bodies as soon as mxr has them; they contain
-        // personalised links.
         let _ = std::fs::remove_file(&html_path);
         if let Some(path) = text_path {
             let _ = std::fs::remove_file(path);
@@ -620,9 +604,6 @@ fn campaign_state(
 ) -> anyhow::Result<(String, Manifest)> {
     let campaign_id = requested.unwrap_or(generated).to_string();
 
-    // A manifest that exists but cannot be read must stop the run. Starting a
-    // fresh one would re-draft every record and then overwrite the only record
-    // of the drafts that already exist.
     match Manifest::load_if_present(state_dir, &campaign_id)? {
         None => {
             let manifest = Manifest::new(campaign_id.clone(), account.to_string());
@@ -673,8 +654,6 @@ mod tests {
 
     #[test]
     fn neither_dry_run_nor_yes_means_the_command_does_not_act() {
-        // Parsing must succeed — the refusal is a runtime one, with a count in
-        // it — but neither flag may be set by default.
         let cli = Cli::try_parse_from([
             "mxr-mailmerge",
             "draft",
@@ -724,7 +703,6 @@ mod tests {
         assert!(
             Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--dry-run", "--yes"]).is_err()
         );
-        // Each flag alone still parses, or the conflict would be vacuous.
         assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--yes"]).is_ok());
         assert!(Cli::try_parse_from(["mxr-mailmerge", "send", "c1", "--dry-run"]).is_ok());
         assert!(Cli::try_parse_from([
@@ -747,7 +725,6 @@ mod tests {
         .unwrap();
         assert_eq!(parsed[0].0, "logo");
         assert_eq!(parsed[0].1, PathBuf::from("/tmp/logo.png"));
-        // Split on the first `=` only: a path may contain one.
         assert_eq!(parsed[1].0, "hero");
         assert_eq!(parsed[1].1, PathBuf::from("/tmp/a=b.png"));
 
@@ -779,7 +756,6 @@ mod tests {
         assert_eq!(id, "c1");
         assert_eq!(manifest.records.len(), 1, "the resume lost the drafts");
 
-        // A fresh campaign under an id nobody has used starts empty.
         let (id, manifest) =
             campaign_state(Some("c2"), "generated", dir.path(), "notto@example.com").unwrap();
         assert_eq!(id, "c2");
@@ -789,9 +765,6 @@ mod tests {
 
     #[test]
     fn a_generated_campaign_id_never_adopts_an_existing_manifest() {
-        // Two runs started in the same second generate the same id. Adopting
-        // the earlier run's manifest would merge two campaigns, and one `send`
-        // would then transmit both.
         let dir = tempfile::tempdir().unwrap();
         Manifest::new("campaign-x".into(), "notto@example.com".into())
             .save(dir.path())
@@ -801,7 +774,6 @@ mod tests {
         assert!(err.to_string().contains("did not ask to resume"), "{err}");
         assert!(err.to_string().contains("campaign-x"), "{err}");
 
-        // Without a collision, a generated id is used as-is.
         let (id, _) = campaign_state(None, "campaign-y", dir.path(), "notto@example.com").unwrap();
         assert_eq!(id, "campaign-y");
     }
@@ -969,14 +941,11 @@ mod tests {
                 .records
                 .iter()
                 .all(|entry| entry.draft_id.is_some()));
-            // Drafting never sends.
             assert!(campaign.stub.calls_to("send").is_empty());
         }
 
         #[test]
         fn one_records_token_never_appears_in_another_records_body() {
-            // The privacy property the whole feature turns on, checked on the
-            // bytes mxr was actually handed.
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
 
@@ -1026,9 +995,6 @@ mod tests {
 
         #[test]
         fn a_rendered_body_is_deleted_before_the_next_one_is_written() {
-            // Stronger than "nothing is left when the run ends": across 500
-            // records, every body that outlives its own compose is one more
-            // personalised link sitting on disk for the rest of the run.
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
 
@@ -1046,8 +1012,6 @@ mod tests {
 
         #[test]
         fn a_rerun_skips_records_that_already_have_a_draft() {
-            // The idempotency contract: rerunning after a partial failure must
-            // not draft anyone twice.
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
             assert_eq!(campaign.stub.calls_to("compose").len(), 2);
@@ -1072,7 +1036,6 @@ mod tests {
                 .records
                 .iter()
                 .all(|entry| entry.draft_id.is_none()));
-            // Nothing to send: a failed draft has no draft id to hand back.
             assert!(manifest.pending_send().is_empty());
 
             let retry = Campaign {
@@ -1086,10 +1049,6 @@ mod tests {
 
         #[test]
         fn a_failed_draft_never_puts_a_property_value_in_the_manifest() {
-            // mxr's stderr can quote the rendered body back, and a property may
-            // be an opaque access token. Note whose token: the stub quotes
-            // record A's body while failing both records, which is what a
-            // per-record scrubber gets wrong.
             let campaign = Campaign::new(Stub::compose_fails(&format!(
                 "refusing body: <a href=\"https://x.example/?t={TOKEN_A}\">read</a>"
             )));
@@ -1105,8 +1064,6 @@ mod tests {
                 "token leaked into the manifest: {raw}"
             );
             assert!(!raw.contains(TOKEN_B), "token leaked: {raw}");
-            // Not "the token happened to be scrubbed": none of mxr's output is
-            // in the file at all.
             assert!(!raw.contains("refusing"), "subprocess text in state: {raw}");
             assert!(raw.contains("draft_refused"), "{raw}");
             assert_eq!(campaign.manifest().failed().len(), 2);
@@ -1114,8 +1071,6 @@ mod tests {
 
         #[test]
         fn resuming_a_campaign_from_another_account_is_refused() {
-            // The manifest would still name the first account while the drafts
-            // went out from the second — a campaign sent from the wrong address.
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
 
@@ -1125,7 +1080,6 @@ mod tests {
             assert!(err.to_string().contains(ACCOUNT), "{err}");
             assert!(err.to_string().contains("someone-else"), "{err}");
             assert_eq!(campaign.manifest().account, ACCOUNT);
-            // The second account never got a draft of its own.
             assert_eq!(campaign.stub.calls_to("compose").len(), 2);
         }
 
@@ -1210,7 +1164,6 @@ mod tests {
             assert_eq!(ids.len(), 2, "the same draft was sent twice: {sends:?}");
             assert_eq!(campaign.manifest().count(RecordStatus::Sent), 2);
 
-            // Rerunning the send is the double-send this must never do.
             campaign.send(&["--yes"]).unwrap();
             assert_eq!(campaign.stub.calls_to("send").len(), 2);
             campaign.send(&["--retry-failed", "--yes"]).unwrap();
@@ -1255,7 +1208,6 @@ mod tests {
             let campaign = Campaign::new(Stub::new());
             campaign.draft(&["--yes"]).unwrap();
 
-            // Mark one record sent and one failed, as a partial run would.
             let state = campaign.dir.path().join("state");
             let mut manifest = campaign.manifest();
             let hashes: Vec<String> = manifest
@@ -1306,7 +1258,6 @@ mod tests {
             let manifest = campaign.manifest();
             assert_eq!(manifest.count(RecordStatus::Sent), 0);
             assert_eq!(manifest.failed().len(), 2);
-            // The draft id survives so the retry has something to send.
             assert!(manifest
                 .failed()
                 .iter()

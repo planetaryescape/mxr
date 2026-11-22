@@ -38,13 +38,9 @@ fn builtin_to_plain_text(html: &str) -> String {
     html_to_plain_text(html, "reader")
 }
 
-/// Largest colspan/rowspan html2text is given. See `html_limits`.
 pub const MAX_TABLE_SPAN: u64 = crate::html_limits::MAX_SPAN;
 
 thread_local! {
-    // Set while a guarded html2text call runs on this thread. A panic hook
-    // runs on the panicking thread, before unwinding reaches the guard, so a
-    // thread-local is the right scope for "this panic is about to be caught".
     static IN_GUARDED_RENDER: Cell<bool> = const { Cell::new(false) };
 }
 
@@ -180,7 +176,6 @@ pub(crate) static RENDER: Job<(), (String, bool)> =
     Job::new("reader.render", |html, ()| render_in_process(html));
 
 fn render_in_process(html: &str) -> (String, bool) {
-    // `bounded_html` clamps the spans and refuses documents over the caps.
     let Some(bounded) = bounded_html(html) else {
         return (strip_html_tags(html), false);
     };
@@ -192,14 +187,11 @@ fn render_in_process(html: &str) -> (String, bool) {
 }
 
 static STYLE_OR_SCRIPT_BLOCK_RE: Lazy<Regex> = Lazy::new(|| {
-    // An unclosed <style> or <script> runs to the end of the input, so it
-    // can't leak its CSS or JS as text.
     Regex::new(r"(?is)<(?:style|script)\b[^>]*>.*?(?:</(?:style|script)\s*>|\z)")
         .expect("style/script block regex should compile")
 });
 
 static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-    // Requiring a letter, `/` or `!` after `<` keeps "a < b" as text.
     Regex::new(r"<[a-zA-Z/!][^>]*>").expect("html tag regex should compile")
 });
 
@@ -215,7 +207,6 @@ pub fn strip_html_tags(html: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-        // Decode &amp; last so it can't manufacture another entity.
         .replace("&amp;", "&");
     decoded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -262,7 +253,6 @@ fn run_external_command(cmd: &str, input: &str) -> Result<String, HtmlRenderErro
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     let program = parts.first().ok_or(HtmlRenderError::EmptyCommand)?;
 
-    // Check if the program exists before trying to spawn it
     if which::which(program).is_err() {
         return Err(HtmlRenderError::CommandNotFound {
             command: program.to_string(),
@@ -341,14 +331,13 @@ mod tests {
             ..Default::default()
         };
         let result = to_plain_text("<p>Hello</p>", &config);
-        // Should fall back to built-in and still produce output
         assert!(result.contains("Hello"));
     }
 
     #[test]
     fn fallback_to_builtin_when_command_fails() {
         let config = ReaderConfig {
-            html_command: Some("false".into()), // `false` exits with code 1
+            html_command: Some("false".into()),
             ..Default::default()
         };
         let result = to_plain_text("<p>Hello from fallback</p>", &config);
@@ -357,8 +346,6 @@ mod tests {
 
     #[test]
     fn external_command_cat_falls_back_when_raw_html_passes_through() {
-        // `cat` is universally available and passes stdin to stdout; reader mode
-        // must still avoid returning raw markup when a renderer is misconfigured.
         let config = ReaderConfig {
             html_command: Some("cat".into()),
             ..Default::default()
@@ -370,7 +357,6 @@ mod tests {
 
     #[test]
     fn external_command_with_args() {
-        // `wc -c` verifies arguments are passed through without returning HTML.
         let config = ReaderConfig {
             html_command: Some("wc -c".into()),
             ..Default::default()
@@ -406,8 +392,6 @@ mod tests {
     fn huge_colspan_is_clamped_and_html2text_renders_it_without_fallback() {
         let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
         let clamped = clamp_table_spans(html);
-        // Call html2text directly: an Err or panic here would mean the clamp
-        // did not keep the renderer away from the overflow.
         let text = html2text::config::plain_no_decorate()
             .string_from_read(clamped.as_bytes(), 80)
             .expect("clamped table should render");

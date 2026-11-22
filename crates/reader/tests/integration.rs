@@ -12,7 +12,6 @@ fn newsletter_stripped_to_content() {
     assert!(!output.content.contains("<html"));
     assert!(!output.content.contains("<p"));
     assert!(!output.content.contains("</"));
-    // Should not contain tracking junk
     assert!(!output
         .content
         .to_lowercase()

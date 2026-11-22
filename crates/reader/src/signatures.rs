@@ -22,7 +22,6 @@ pub fn strip(text: &str) -> (String, Option<String>) {
         return (body, Some(sig));
     }
 
-    // Heuristic: "Sent from" pattern at end
     for i in (lines.len().saturating_sub(5)..lines.len()).rev() {
         if SENT_FROM.is_match(lines[i].trim()) {
             let body = lines[..i].join("\n");
@@ -31,7 +30,6 @@ pub fn strip(text: &str) -> (String, Option<String>) {
         }
     }
 
-    // Heuristic: block of short lines at end with phone numbers, emails, URLs
     let mut sig_start = None;
     let mut consecutive_short = 0;
     for i in (0..lines.len()).rev() {

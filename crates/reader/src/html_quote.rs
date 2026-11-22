@@ -50,10 +50,8 @@ static QUOTE_HEADERS: Lazy<Vec<Selector>> = Lazy::new(|| compile(QUOTE_HEADER_SE
 static SIGNATURES: Lazy<Vec<Selector>> = Lazy::new(|| compile(SIGNATURE_SELECTORS));
 static IMG: Lazy<Selector> = Lazy::new(|| Selector::parse("img").expect("img selector"));
 
-/// An HTML body split at its client markers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HtmlParts {
-    /// The body with the marked quote and signature removed.
     pub main: String,
     pub has_quote: bool,
     pub has_signature: bool,
@@ -74,13 +72,9 @@ pub fn split_html_quote_keeping_signature(html: &str) -> HtmlParts {
 }
 
 fn split(html: &str, keep_signature: bool) -> HtmlParts {
-    // Cheap check first: most mail carries none of the markers, and those
-    // documents never need the parser or the helper process.
     if !may_hold_markers(html) {
         return unchanged(html);
     }
-    // A lost helper (timeout, crash) leaves the body whole, as an over-budget
-    // one does: no quote or signature is recognised.
     SPLIT
         .call(html, &keep_signature)
         .unwrap_or_else(|| unchanged(html))
@@ -116,15 +110,12 @@ fn may_hold_markers(html: &str) -> bool {
     .any(|marker| lower.contains(marker))
 }
 
-/// The parse, which is what runs in the HTML helper process.
 pub(crate) static SPLIT: Job<bool, HtmlParts> = Job::new("reader.split_quote", split_in_process);
 
 fn split_in_process(html: &str, keep_signature: &bool) -> HtmlParts {
     let keep_signature = *keep_signature;
     let untouched = || unchanged(html);
 
-    // Over budget, no parse: the message keeps its markup-free fallback text and
-    // no quote or signature is recognised.
     if !crate::html_limits::within_budget(html) {
         return untouched();
     }
@@ -149,9 +140,6 @@ fn split_in_process(html: &str, keep_signature: &bool) -> HtmlParts {
     for selector in QUOTES.iter() {
         for element in doc.select(selector) {
             if has_text_after(element) || contains_forwarded_headers(element) {
-                // A reply after the citation may answer it inline. Keep the
-                // marked block so HTML-to-text conversion preserves its
-                // position beside the answer.
                 has_preserved_quote = true;
                 continue;
             }
@@ -167,7 +155,6 @@ fn split_in_process(html: &str, keep_signature: &bool) -> HtmlParts {
 
     let body_text: String = doc.root_element().text().collect();
     if has_quote && body_text.trim().is_empty() && doc.select(&IMG).next().is_none() {
-        // A bare forward: the quote is the message.
         return HtmlParts {
             has_signature,
             has_preserved_quote,
@@ -190,8 +177,6 @@ fn contains_forwarded_headers(element: ElementRef<'_>) -> bool {
 }
 
 fn first_in_document_order<'a>(doc: &'a Html, selectors: &[Selector]) -> Option<ElementRef<'a>> {
-    // `select` walks in document order, so the first match across all
-    // selectors is the one whose position in a full walk comes first.
     let order: Vec<_> = doc.root_element().descendants().map(|n| n.id()).collect();
     selectors
         .iter()
@@ -380,8 +365,6 @@ mod lost_helper_tests {
 
     #[test]
     fn a_body_with_no_markers_never_reaches_the_helper() {
-        // The marker check runs first, so a plain message costs no round trip
-        // and survives a helper that cannot start.
         let lost = Arc::new(Supervisor::new(Config::new(
             "/nonexistent/mxr-helper",
             Vec::new(),

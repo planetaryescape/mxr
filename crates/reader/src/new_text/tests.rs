@@ -116,7 +116,6 @@ fn outlook_plain_text_header_block_is_a_boundary() {
 fn an_unmarked_quote_is_found_in_the_earlier_message() {
     let text = fixture("plain_unprefixed_quote.txt");
     let before = fixture("earlier_rollout.txt");
-    // Without the thread, nothing marks the quote.
     let alone = new_text(Some(&text), None, &[]);
     assert!(alone.text.contains("Decision: keep the canary"));
     assert!(!alone.trimmed.quote);
@@ -166,7 +165,6 @@ fn nested_quote_levels_remain_visible_beside_the_reply() {
 
 #[test]
 fn a_quote_only_message_says_so_instead_of_passing_the_quote_off_as_new() {
-    // Alice's words must never show as the current sender's.
     let text = "On Tue, Alice wrote:\n> Can we move the launch to Friday?\n> Thanks, Alice";
     let out = new_text(Some(text), None, &[]);
     assert_eq!(out.text, ONLY_QUOTED_TEXT);

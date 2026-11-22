@@ -19,11 +19,9 @@ static TRACKING_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     ]
 });
 
-/// Strip tracking/footer junk lines from both ends of message.
 pub fn strip(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
 
-    // Strip from top: contiguous tracking lines at start
     let mut content_start = 0;
     for (i, raw_line) in lines.iter().enumerate() {
         let line = raw_line.trim();
@@ -38,7 +36,6 @@ pub fn strip(text: &str) -> String {
         }
     }
 
-    // Strip from bottom: contiguous tracking lines at end
     let mut content_end = lines.len();
     for i in (content_start..lines.len()).rev() {
         let line = lines[i].trim();

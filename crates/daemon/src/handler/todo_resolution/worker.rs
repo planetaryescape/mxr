@@ -36,8 +36,6 @@ enum ModelOutcome {
     Succeeded(Option<Candidate>),
 }
 
-/// Only the existing to-do tick calls this consumer. Sync can enqueue
-/// concurrently; revision checks fence both completion and offer writes.
 pub(in crate::handler) async fn drain(
     state: &AppState,
     now: DateTime<Utc>,
@@ -117,7 +115,6 @@ pub(in crate::handler) async fn drain(
             state.store.finish_todo_resolution_work(&work).await?;
             continue;
         }
-        // Do not spend a call on evidence already superseded by newer mail.
         if state
             .store
             .todo_resolution_evidence_is_newer(&work.todo_id, &input.message_id, input.date)
@@ -162,8 +159,6 @@ pub(in crate::handler) async fn drain(
         {
             continue;
         }
-        // Re-enqueue edited input even without another sync, before clearing
-        // the old revision. The transactional offer gate checks it once more.
         if let Some(current) = state
             .store
             .todo_resolution_input(&work.todo_id, &work.message_id)
@@ -257,8 +252,6 @@ async fn model_resolution(
     let response = match tokio::time::timeout_at(deadline, llm.complete_background(request)).await {
         Ok(Ok(response)) => response,
         Ok(Err(LlmError::Disabled | LlmError::PrivacyBlocked(_))) => return ModelOutcome::Skipped,
-        // The endpoint is out (or the breaker is open): not this input's
-        // fault, so it costs none of its attempts.
         Ok(Err(error)) if error.is_endpoint_failure() => return ModelOutcome::Skipped,
         _ => return ModelOutcome::Failed,
     };

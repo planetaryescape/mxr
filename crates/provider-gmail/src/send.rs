@@ -299,6 +299,16 @@ mod tests {
     }
 
     #[test]
+    fn encode_for_gmail_base64url_round_trips_without_padding() {
+        let rfc2822 = b"From: test@test.com\r\nTo: alice@test.com\r\n\r\nHello";
+        let encoded = encode_for_gmail(rfc2822);
+        assert!(!encoded.contains('+'));
+        assert!(!encoded.contains('/'));
+        assert!(!encoded.contains('='));
+        assert_eq!(URL_SAFE_NO_PAD.decode(&encoded).unwrap(), rfc2822);
+    }
+
+    #[test]
     fn rfc2822_keeps_bcc_for_gmail_submission() {
         let mut draft = test_draft();
         draft.bcc = vec![Address {

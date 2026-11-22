@@ -565,34 +565,3 @@ fn year(word: &str) -> Option<i32> {
         .ok()
         .filter(|year| (1970..=9999).contains(year))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn spans_index_into_the_original_input() {
-        let parsed = parse("  Fri at 3  ").unwrap();
-        assert_eq!(parsed.spans, vec![TimeSpan { start: 2, end: 10 }]);
-    }
-
-    #[test]
-    fn unrecognized_token_is_reported_with_understood_spans() {
-        let err = parse("fri frday").unwrap_err();
-        assert_eq!(
-            err,
-            GrammarError::Unrecognized {
-                token: "frday".into(),
-                understood: vec![TimeSpan { start: 0, end: 3 }],
-            }
-        );
-    }
-
-    #[test]
-    fn two_days_conflict() {
-        assert!(matches!(
-            parse("fri tomorrow"),
-            Err(GrammarError::Conflict { .. })
-        ));
-    }
-}

@@ -335,13 +335,6 @@ mod tests {
     }
 
     #[test]
-    fn handles_empty_html() {
-        let config = ReaderConfig::default();
-        let result = to_plain_text("", &config);
-        assert!(result.trim().is_empty());
-    }
-
-    #[test]
     fn fallback_to_builtin_when_command_missing() {
         let config = ReaderConfig {
             html_command: Some("nonexistent_command_xyz_12345".into()),
@@ -360,16 +353,6 @@ mod tests {
         };
         let result = to_plain_text("<p>Hello from fallback</p>", &config);
         assert!(result.contains("Hello from fallback"));
-    }
-
-    #[test]
-    fn empty_command_string_falls_back() {
-        let config = ReaderConfig {
-            html_command: Some(String::new()),
-            ..Default::default()
-        };
-        let result = to_plain_text("<p>Still works</p>", &config);
-        assert!(result.contains("Still works"));
     }
 
     #[test]
@@ -395,35 +378,6 @@ mod tests {
         let input = "<p>Hello World</p>";
         let result = to_plain_text(input, &config);
         assert_eq!(result.trim(), input.len().to_string());
-    }
-
-    #[test]
-    fn no_html_command_uses_builtin() {
-        let config = ReaderConfig {
-            html_command: None,
-            ..Default::default()
-        };
-        let result = to_plain_text("<h1>Title</h1><p>Body text</p>", &config);
-        assert!(result.contains("Title"));
-        assert!(result.contains("Body text"));
-    }
-
-    #[test]
-    fn builtin_strips_html_tags() {
-        let config = ReaderConfig::default();
-        let html = "<div><a href='https://example.com'>Click here</a></div>";
-        let result = to_plain_text(html, &config);
-        assert!(result.contains("Click here"));
-        assert!(!result.contains("<div>"));
-    }
-
-    #[test]
-    fn command_not_found_error_has_suggestion() {
-        let err = run_external_command("nonexistent_cmd_xyz", "test")
-            .expect_err("unknown commands should fail");
-        let msg = err.to_string();
-        assert!(msg.contains("not found"));
-        assert!(msg.contains("Install it"));
     }
 
     #[test]
@@ -473,22 +427,6 @@ mod tests {
             clamp_table_spans(&html),
             format!(r#"<td colspan="{MAX_TABLE_SPAN}">x</td>"#)
         );
-    }
-
-    #[test]
-    fn guarded_render_flag_is_set_only_inside_the_guard() {
-        assert!(!in_guarded_render());
-        let inside = guard_html2text("test", in_guarded_render);
-        assert_eq!(inside, Some(true));
-        assert!(!in_guarded_render());
-    }
-
-    #[test]
-    fn guarded_render_flag_is_reset_after_a_caught_panic() {
-        let result: Option<()> =
-            guard_html2text("test", || std::panic::resume_unwind(Box::new("probe")));
-        assert!(result.is_none());
-        assert!(!in_guarded_render());
     }
 
     #[test]

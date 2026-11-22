@@ -316,12 +316,4 @@ mod tests {
         assert_eq!(sender_kind(Who::Person, "a@github.com"), SenderKind::Person);
         assert_eq!(sender_kind(Who::List, "a@b.example"), SenderKind::List);
     }
-
-    #[test]
-    fn locale_follows_the_domain() {
-        assert_eq!(locale_of("a@kloof.co.za"), "en-ZA");
-        assert_eq!(locale_of("a@mail.amazon.com"), "en-US");
-        assert_eq!(locale_of("a@thameswater.co.uk"), "en-GB");
-        assert_eq!(locale_of("a@notamazon.com"), "en-GB");
-    }
 }

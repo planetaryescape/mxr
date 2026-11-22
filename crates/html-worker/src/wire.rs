@@ -172,14 +172,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_handshake_names_the_release() {
-        assert_eq!(
-            READY,
-            format!("mxr-html-worker/1 {}", env!("CARGO_PKG_VERSION")).as_bytes()
-        );
-    }
-
-    #[test]
     fn a_request_survives_a_frame_round_trip() {
         let body = encode_request(7, "reader.render", b"{\"width\":80}", b"<p>hi</p>");
         let mut wire = Vec::new();

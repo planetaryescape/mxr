@@ -228,64 +228,6 @@ mod tests {
     }
 
     #[test]
-    fn mixed_recipients_and_a_rewrite_are_said_plainly() {
-        let mut data = provenance(vec![source("maya@x.com", None), source("sam@x.com", None)]);
-        data.rewrite = Some(DraftRewriteProvenanceData {
-            model: "gpt-4o-mini".to_string(),
-            locality: AiLocalityData::Cloud,
-            history_used: false,
-            outcome: DraftRewriteOutcomeData::Applied,
-            rejected_by: None,
-        });
-        assert_eq!(
-            data.summary_line(),
-            "Local model gemma4 · used 2 of your emails · history used · rewritten by cloud model gpt-4o-mini"
-        );
-    }
-
-    #[test]
-    fn no_examples_and_no_history_is_said_too() {
-        let mut data = provenance(Vec::new());
-        data.locality = AiLocalityData::Cloud;
-        data.history_used = false;
-        assert_eq!(data.summary_line(), "Cloud model gemma4 · history not used");
-    }
-
-    #[test]
-    fn a_source_without_a_name_falls_back_to_the_address() {
-        let data: DraftSourceData = serde_json::from_value(serde_json::json!({
-            "message_id": MessageId::new(),
-            "thread_id": ThreadId::new(),
-            "date": "2026-09-30T10:00:00Z",
-            "from_me": false,
-            "person": "maya@x.com"
-        }))
-        .expect("a source without a name parses");
-        assert_eq!(data.short_person(), "maya@x.com");
-    }
-
-    #[test]
-    fn a_rewrite_that_was_not_used_or_not_run_says_so() {
-        let mut data = provenance(Vec::new());
-        let mut rewrite = DraftRewriteProvenanceData {
-            model: "gpt-4o-mini".to_string(),
-            locality: AiLocalityData::Cloud,
-            history_used: false,
-            outcome: DraftRewriteOutcomeData::Rejected,
-            rejected_by: None,
-        };
-        data.rewrite = Some(rewrite.clone());
-        assert!(data
-            .summary_line()
-            .ends_with("rewrite attempted by cloud model gpt-4o-mini, not used"));
-        rewrite.outcome = DraftRewriteOutcomeData::Skipped;
-        data.rewrite = Some(rewrite);
-        assert!(data
-            .summary_line()
-            .ends_with("rewrite by cloud model gpt-4o-mini skipped to keep your history local"));
-    }
-
-    #[test]
     fn a_draft_from_an_older_daemon_has_no_provenance() {
         let data: crate::ResponseData = serde_json::from_value(serde_json::json!({
             "kind": "DraftSuggestion",

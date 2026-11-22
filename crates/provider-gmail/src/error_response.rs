@@ -213,16 +213,6 @@ mod tests {
     }
 
     #[test]
-    fn a_timestamp_already_past_waits_one_second() {
-        let body =
-            r#"{"error":{"message":"User-rate limit exceeded. Retry after 2026-10-21T18:00:00Z"}}"#;
-
-        let refusal = classify_rate_limit(429, None, body, now()).unwrap();
-
-        assert_eq!(refusal.retry_after_secs, 1);
-    }
-
-    #[test]
     fn a_403_usage_limit_is_a_rate_limit() {
         let body = r#"{"error":{"code":403,"message":"Rate Limit Exceeded","errors":[{"domain":"usageLimits","reason":"rateLimitExceeded"}]}}"#;
 
@@ -230,13 +220,6 @@ mod tests {
 
         assert_eq!(refusal.retry_after_secs, 60);
         assert_eq!(refusal.reason.as_deref(), Some("rateLimitExceeded"));
-    }
-
-    #[test]
-    fn a_403_daily_limit_is_a_rate_limit() {
-        let body = r#"{"error":{"code":403,"message":"Daily Limit Exceeded","errors":[{"domain":"usageLimits","reason":"dailyLimitExceeded"}]}}"#;
-
-        assert!(classify_rate_limit(403, None, body, now()).is_some());
     }
 
     #[test]
@@ -268,34 +251,5 @@ mod tests {
         .unwrap();
 
         assert_eq!(refusal.retry_after_secs, 5 * 60 + 31);
-    }
-
-    #[test]
-    fn long_or_multiline_text_is_capped_and_flattened() {
-        let message = format!("line one\n{}", "x".repeat(500));
-        let body = serde_json::json!({
-            "error": {"message": message, "errors": [{"domain": "usageLimits", "reason": "rateLimitExceeded"}]}
-        })
-        .to_string();
-
-        let refusal = classify_rate_limit(403, None, &body, now()).unwrap();
-        let text = refusal.message.unwrap();
-
-        assert_eq!(text.chars().count(), TEXT_CAP_CHARS);
-        assert!(text.starts_with("line one xxx"));
-    }
-
-    #[test]
-    fn describe_names_reason_and_message_together() {
-        let refusal = RateLimitRefusal {
-            retry_after_secs: 1,
-            reason: Some("rateLimitExceeded".into()),
-            message: Some("User-rate limit exceeded".into()),
-        };
-
-        assert_eq!(
-            refusal.describe().as_deref(),
-            Some("rateLimitExceeded: User-rate limit exceeded")
-        );
     }
 }

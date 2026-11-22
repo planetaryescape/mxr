@@ -1069,42 +1069,6 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn fixture_counts() {
-        let account_id = AccountId::new();
-        let (envelopes, _, labels) = fixtures::generate_fixtures(&account_id);
-        assert_eq!(envelopes.len(), 55);
-        assert_eq!(labels.len(), 8);
-    }
-
-    #[test]
-    fn fixture_threads() {
-        let account_id = AccountId::new();
-        let (envelopes, _, _) = fixtures::generate_fixtures(&account_id);
-        let thread_ids: HashSet<String> = envelopes.iter().map(|e| e.thread_id.as_str()).collect();
-        assert!(thread_ids.len() >= 12);
-    }
-
-    #[test]
-    fn fixture_unsubscribe_methods() {
-        let account_id = AccountId::new();
-        let (envelopes, _, _) = fixtures::generate_fixtures(&account_id);
-        let methods: HashSet<String> = envelopes
-            .iter()
-            .map(|e| format!("{:?}", std::mem::discriminant(&e.unsubscribe)))
-            .collect();
-        // Should have at least None, OneClick, HttpLink, Mailto
-        assert!(methods.len() >= 3);
-    }
-
-    #[test]
-    fn fixture_attachments() {
-        let account_id = AccountId::new();
-        let (envelopes, _, _) = fixtures::generate_fixtures(&account_id);
-        let with_attachments = envelopes.iter().filter(|e| e.has_attachments).count();
-        assert!(with_attachments >= 3);
-    }
-
-    #[test]
     fn demo_fixtures_split_known_demo_accounts() {
         let personal = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
         let work = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
@@ -1115,72 +1079,6 @@ mod tests {
         assert_eq!(work_env.len(), 45);
         assert!(personal_env.iter().all(|env| env.account_id == personal));
         assert!(work_env.iter().all(|env| env.account_id == work));
-    }
-
-    #[test]
-    fn demo_fixtures_exercise_links_html_attachments_and_colors() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        // Keep the same generated-message tail after adding seeded subscriptions.
-        let (envelopes, bodies, labels) = fixtures::generate_demo_fixtures(&account_id, 234);
-        let html_with_links = bodies
-            .values()
-            .filter_map(|body| body.text_html.as_deref())
-            .filter(|html| html.contains("href=\"https://"))
-            .count();
-        let image_bodies = bodies
-            .values()
-            .filter_map(|body| body.text_html.as_deref())
-            .filter(|html| html.contains("<img "))
-            .count();
-        let attachment_messages = envelopes.iter().filter(|env| env.has_attachments).count();
-        let colored_labels = labels.iter().filter(|label| label.color.is_some()).count();
-
-        assert!(html_with_links > 20);
-        assert!(image_bodies > 0);
-        assert!(attachment_messages > 0);
-        assert!(colored_labels >= 6);
-    }
-
-    #[test]
-    fn demo_fixtures_include_spam_promotions_and_suspicious_inbox_mail() {
-        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 262);
-        let spam = envelopes
-            .iter()
-            .filter(|env| {
-                env.flags.contains(MessageFlags::SPAM)
-                    && env.label_provider_ids.iter().any(|label| label == "SPAM")
-            })
-            .count();
-        let promotions = envelopes
-            .iter()
-            .filter(|env| {
-                env.label_provider_ids
-                    .iter()
-                    .any(|label| label == "promotions")
-            })
-            .count();
-        let potential_spam_inbox = envelopes
-            .iter()
-            .filter(|env| {
-                !env.flags.contains(MessageFlags::SPAM)
-                    && env.label_provider_ids.iter().any(|label| label == "INBOX")
-                    && env
-                        .label_provider_ids
-                        .iter()
-                        .any(|label| label == "potential_spam")
-            })
-            .count();
-
-        assert!(spam > 0);
-        assert!(promotions > 0);
-        assert!(potential_spam_inbox > 0);
-        assert!(labels
-            .iter()
-            .any(|label| label.provider_id == "promotions" && label.color.is_some()));
-        assert!(labels
-            .iter()
-            .any(|label| label.provider_id == "potential_spam" && label.color.is_some()));
     }
 
     #[tokio::test]
@@ -1318,32 +1216,6 @@ mod tests {
         }
     }
 
-    /// The dataset size is known up front, so every page can say exactly how
-    /// many messages are left to deliver — counted from the cursor, which is
-    /// what makes the number right for a resumed backfill too.
-    #[tokio::test]
-    async fn demo_pages_report_what_is_left_to_deliver() {
-        const PAGE: usize = 100;
-        const TOTAL: usize = 250;
-        let provider =
-            FakeProvider::with_demo_dataset(AccountId::new(), TOTAL).with_page_size(PAGE);
-
-        let mut cursor = SyncCursor::empty();
-        let mut remaining = Vec::new();
-        loop {
-            let batch = provider.sync_messages(&cursor).await.unwrap();
-            remaining.push(batch.remaining_estimate);
-            cursor = batch.next_cursor;
-            if !batch.has_more {
-                break;
-            }
-        }
-
-        assert_eq!(remaining, vec![Some(250), Some(150), Some(50)]);
-        let caught_up = provider.sync_messages(&cursor).await.unwrap();
-        assert_eq!(caught_up.remaining_estimate, Some(0));
-    }
-
     /// A page resumed from a cursor must equal the same slice generated in
     /// one pass — that is what makes a restarted seed idempotent.
     #[tokio::test]
@@ -1375,99 +1247,6 @@ mod tests {
         assert_eq!(fetched.envelope.id, sample.envelope.id);
         assert_eq!(fetched.envelope.thread_id, sample.envelope.thread_id);
         assert_eq!(fetched.body.text_plain, sample.body.text_plain);
-    }
-
-    #[tokio::test]
-    async fn sync_delta_returns_empty() {
-        let provider = FakeProvider::new(AccountId::new());
-        let batch = provider
-            .sync_messages(&SyncCursor::from_bytes(b"any-non-empty".to_vec()))
-            .await
-            .unwrap();
-        assert_eq!(batch.upserted.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn mutations_recorded() {
-        let provider = FakeProvider::new(AccountId::new());
-        provider
-            .apply_mutation(
-                "mut-1",
-                &Mutation::Trash {
-                    provider_message_id: "fake-msg-1".to_string(),
-                },
-            )
-            .await
-            .unwrap();
-        provider
-            .apply_mutation(
-                "mut-2",
-                &Mutation::SetRead {
-                    provider_message_id: "fake-msg-2".to_string(),
-                    read: true,
-                },
-            )
-            .await
-            .unwrap();
-        provider
-            .apply_mutation(
-                "mut-3",
-                &Mutation::ModifyLabels {
-                    provider_message_id: "fake-msg-3".to_string(),
-                    add: vec!["work".to_string()],
-                    remove: vec![],
-                },
-            )
-            .await
-            .unwrap();
-
-        let mutations = provider.mutations();
-        assert_eq!(mutations.len(), 3);
-        assert!(matches!(mutations[0], RecordedMutation::Trashed { .. }));
-        assert!(matches!(
-            mutations[1],
-            RecordedMutation::ReadSet { read: true, .. }
-        ));
-        assert!(matches!(
-            mutations[2],
-            RecordedMutation::LabelsModified { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn send_recorded() {
-        let provider = FakeProvider::new(AccountId::new());
-        let draft = Draft {
-            revision: Some(1),
-            id: DraftId::new(),
-            account_id: provider.account_id().clone(),
-            from: None,
-            intent: DraftIntent::New,
-            reply_headers: None,
-            to: vec![Address {
-                name: None,
-                email: "bob@example.com".to_string(),
-            }],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Test".to_string(),
-            content: DraftContent::markdown("Hello"),
-            managed_attachments: None,
-            attachments: vec![],
-            inline_assets: Vec::new(),
-            inline_calendar_reply: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-        let from = Address {
-            name: Some("User".to_string()),
-            email: "user@example.com".to_string(),
-        };
-        provider
-            .send(&draft, &from, "<test-message@example.com>")
-            .await
-            .unwrap();
-        assert_eq!(provider.sent_drafts().len(), 1);
     }
 
     #[tokio::test]

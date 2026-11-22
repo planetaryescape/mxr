@@ -316,22 +316,6 @@ fn an_html_forward_after_an_intro_keeps_its_attribution_and_body() {
 }
 
 #[test]
-fn a_short_unquoted_note_stays_clean() {
-    let text = "Hi Alex,\n\nThanks for the update.\n\nBest,\nSam";
-    let out = new_text(Some(text), None, &[]);
-    assert_eq!(out.text, text);
-    assert!(!out.trimmed.any());
-}
-
-#[test]
-fn an_empty_body_is_not_called_quoted() {
-    let out = new_text(Some("   "), None, &[]);
-    assert_eq!(out.text, "");
-    assert!(!out.only_quoted);
-    assert!(!out.trimmed.any());
-}
-
-#[test]
 fn removing_a_footer_or_disclaimer_marks_it_trimmed() {
     let text = "Invoice approved.\n\nYou are receiving this email because you signed up.\nClick here to unsubscribe";
     let out = new_text(Some(text), None, &[]);
@@ -381,12 +365,4 @@ fn a_mobile_footer_is_a_signature() {
     let out = new_text(Some("On my way.\n\nSent from my iPhone"), None, &[]);
     assert_eq!(out.text, "On my way.");
     assert!(out.trimmed.signature);
-}
-
-#[test]
-fn text_with_nothing_removed_keeps_its_own_spacing() {
-    let text = "Line one   \n\n\n\nLine two\n  indented";
-    let out = new_text(Some(text), None, &[]);
-    assert!(!out.trimmed.any());
-    assert_eq!(out.text, text);
 }

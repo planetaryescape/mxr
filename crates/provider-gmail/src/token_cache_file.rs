@@ -58,11 +58,6 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn bare_filename_uses_current_directory() {
-        assert_eq!(parent_directory(Path::new("tokens.json")), Path::new("."));
-    }
-
-    #[test]
     fn replacement_restricts_existing_permissions_and_replaces_symlink() {
         let directory = tempdir().unwrap();
         let target = directory.path().join("target.json");

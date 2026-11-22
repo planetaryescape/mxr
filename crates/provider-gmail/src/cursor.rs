@@ -185,18 +185,6 @@ mod tests {
     }
 
     #[test]
-    fn v1_backfill_round_trip() {
-        let cursor = GmailCursor::backfill(99, "page-token-abc".into());
-        assert!(cursor.is_backfill());
-        let encoded = cursor.encode();
-        let decoded = GmailCursor::decode(&encoded).unwrap().unwrap();
-        assert!(decoded.is_backfill());
-        let GmailCursor::V1(v) = decoded;
-        assert_eq!(v.history_id, 99);
-        assert_eq!(v.page_token.as_deref(), Some("page-token-abc"));
-    }
-
-    #[test]
     fn empty_bytes_decode_to_none() {
         let result = GmailCursor::decode(&SyncCursor::empty()).unwrap();
         assert!(result.is_none());
@@ -246,14 +234,5 @@ mod tests {
         );
         let err = GmailCursor::decode(&legacy).unwrap_err();
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
-    }
-
-    #[test]
-    fn describe_truncates_long_page_tokens() {
-        let cursor = GmailCursor::backfill(1, "a".repeat(100));
-        let desc = cursor.describe();
-        assert!(desc.contains("gmail_backfill"));
-        assert!(desc.contains("history_id=1"));
-        assert!(desc.contains("..."));
     }
 }

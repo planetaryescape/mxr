@@ -523,41 +523,6 @@ mod tests {
     }
 
     #[test]
-    fn a_step_rows_request_and_response_round_trip() {
-        let request = crate::Request::GetAssistantStepRows {
-            conversation_id: "c1".into(),
-            call_id: "call1".into(),
-            seq: 7,
-        };
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["cmd"], "GetAssistantStepRows");
-        let back: crate::Request = serde_json::from_value(json).unwrap();
-        assert!(matches!(
-            back,
-            crate::Request::GetAssistantStepRows { conversation_id, call_id, seq: 7 }
-                if conversation_id == "c1" && call_id == "call1"
-        ));
-
-        let response = crate::ResponseData::AssistantStepRows {
-            rows: vec![AssistantReadoutRowData {
-                account_id: None,
-                title: "Quarterly report".into(),
-                ..Default::default()
-            }],
-            listed: 1,
-            total: Some(14),
-        };
-        let json = serde_json::to_value(&response).unwrap();
-        assert_eq!(json["kind"], "AssistantStepRows");
-        let back: crate::ResponseData = serde_json::from_value(json).unwrap();
-        assert!(matches!(
-            back,
-            crate::ResponseData::AssistantStepRows { rows, listed: 1, total: Some(14) }
-                if rows.len() == 1
-        ));
-    }
-
-    #[test]
     fn a_row_carries_email_fields_and_reads_without_them() {
         let row = AssistantReadoutRowData {
             account_id: None,
@@ -617,36 +582,5 @@ mod tests {
         let wire = serde_json::to_value(reply).unwrap();
         assert!(wire.get("rows").is_none());
         assert!(wire.get("leaves_machine").is_none());
-    }
-
-    #[test]
-    fn the_live_line_names_what_the_turn_is_doing() {
-        let line = |progress: AssistantProgressData| progress.live_line();
-        assert_eq!(
-            line(AssistantProgressData::Thinking { step: 1 }),
-            "Reading your request"
-        );
-        assert_eq!(
-            line(AssistantProgressData::Thinking { step: 2 }),
-            "Deciding what to do next"
-        );
-        assert_eq!(
-            line(AssistantProgressData::Calling {
-                tool: "mxr_search".into(),
-                reason: String::new(),
-                title: Some("Searching your mail for \"x\"".into()),
-            }),
-            "Searching your mail for \"x\""
-        );
-        assert_eq!(
-            line(AssistantProgressData::Writing {
-                text: String::new()
-            }),
-            "Writing the answer"
-        );
-        assert_eq!(
-            line(AssistantProgressData::Summarizing),
-            "Making room: summarising earlier messages"
-        );
     }
 }

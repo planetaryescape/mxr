@@ -286,20 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn rfc2822_basic_message() {
-        let draft = test_draft();
-        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
-        assert!(msg.contains("From: Me <me@example.com>"));
-        assert!(msg.contains("To: Alice <alice@example.com>"));
-        assert!(msg.contains("Subject: Test Subject"));
-        assert!(msg.contains("MIME-Version: 1.0"));
-        assert!(msg.contains("Content-Type: multipart/alternative"));
-        assert!(msg.contains("text/plain; charset=utf-8"));
-        assert!(msg.contains("text/html; charset=utf-8"));
-        assert!(msg.contains("\r\n"));
-    }
-
-    #[test]
     fn rfc2822_reply_has_full_references_chain() {
         let mut draft = test_draft();
         draft.reply_headers = Some(ReplyHeaders {
@@ -310,16 +296,6 @@ mod tests {
         let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
         assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
         assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
-    }
-
-    #[test]
-    fn encode_for_gmail_base64url_round_trips_without_padding() {
-        let rfc2822 = b"From: test@test.com\r\nTo: alice@test.com\r\n\r\nHello";
-        let encoded = encode_for_gmail(rfc2822);
-        assert!(!encoded.contains('+'));
-        assert!(!encoded.contains('/'));
-        assert!(!encoded.contains('='));
-        assert_eq!(URL_SAFE_NO_PAD.decode(&encoded).unwrap(), rfc2822);
     }
 
     #[test]

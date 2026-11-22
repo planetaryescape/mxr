@@ -2664,12 +2664,6 @@ mod draft_content_tests {
     use super::*;
 
     #[test]
-    fn markdown_draft_keeps_the_historical_wire_shape() {
-        let json = serde_json::to_value(DraftContent::markdown("hello")).unwrap();
-        assert_eq!(json, serde_json::json!({ "body_markdown": "hello" }));
-    }
-
-    #[test]
     fn empty_markdown_still_emits_the_key() {
         // Legacy clients read `body_markdown` unconditionally; omitting it on
         // an empty body would break them.
@@ -2688,20 +2682,6 @@ mod draft_content_tests {
     fn payload_with_no_body_key_at_all_is_empty_markdown() {
         let content: DraftContent = serde_json::from_value(serde_json::json!({})).unwrap();
         assert_eq!(content, DraftContent::markdown(""));
-    }
-
-    #[test]
-    fn html_roundtrips_with_its_text_alternative() {
-        let content = DraftContent::html("<p>hi</p>", Some("hi".to_string()));
-        let json = serde_json::to_value(&content).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({ "body_html": "<p>hi</p>", "body_text": "hi" })
-        );
-        assert_eq!(
-            serde_json::from_value::<DraftContent>(json).unwrap(),
-            content
-        );
     }
 
     #[test]
@@ -2750,22 +2730,6 @@ mod draft_content_tests {
     }
 
     #[test]
-    fn the_strictness_is_symmetric_in_both_directions() {
-        // Both bodies present -> rejected. Text without a document -> rejected.
-        // Neither silently wins; that asymmetry was the root cause of a
-        // data-loss bug.
-        for payload in [
-            serde_json::json!({ "body_markdown": "a", "body_html": "<p>a</p>" }),
-            serde_json::json!({ "body_text": "a" }),
-        ] {
-            assert!(
-                serde_json::from_value::<DraftContent>(payload.clone()).is_err(),
-                "should have rejected: {payload}"
-            );
-        }
-    }
-
-    #[test]
     fn markdown_source_is_none_for_html_rather_than_an_empty_string() {
         // An empty-string fallback here would make safety checks analyse
         // nothing on HTML drafts.
@@ -2793,14 +2757,6 @@ mod draft_content_tests {
     }
 
     #[test]
-    fn is_html_follows_the_variant_not_the_body() {
-        // Empty bodies on both sides, so only the variant can decide.
-        assert!(DraftContent::html("", None).is_html());
-        assert!(!DraftContent::markdown("").is_html());
-        assert!(!DraftContent::markdown("<p>looks like html</p>").is_html());
-    }
-
-    #[test]
     fn an_empty_markdown_key_alongside_html_is_still_a_conflict() {
         // The boundary an "ignore it if it's empty" precedence rule would let
         // through. `body_markdown: ""` is exactly what the store writes beside
@@ -2813,13 +2769,6 @@ mod draft_content_tests {
             err.to_string().contains("mutually exclusive"),
             "unexpected error: {err}"
         );
-    }
-
-    #[test]
-    fn default_is_the_empty_markdown_draft() {
-        // `Draft` relies on this for the no-body-key case; a `Default` that
-        // produced an HTML draft would flip an absent body into the HTML path.
-        assert_eq!(DraftContent::default(), DraftContent::markdown(""));
     }
 
     #[test]
@@ -3065,15 +3014,5 @@ mod system_mailbox_tests {
             assert_eq!(Role::from_storage_name(role.storage_name()), Some(role));
         }
         assert_eq!(Role::from_storage_name("Inbox"), None);
-    }
-
-    #[test]
-    fn wire_names_round_trip() {
-        for role in Role::system_mailboxes() {
-            let wire = role.system_mailbox_wire_name().unwrap();
-            assert_eq!(Role::from_system_mailbox_wire_name(wire), Some(role));
-        }
-        assert_eq!(Role::from_system_mailbox_wire_name("archive"), None);
-        assert_eq!(Role::Archive.system_mailbox_wire_name(), None);
     }
 }

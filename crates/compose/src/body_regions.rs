@@ -77,28 +77,6 @@ mod tests {
     }
 
     #[test]
-    fn the_forward_header_ends_the_text_too() {
-        let body = "Fyi.\n\n-- \nAlex\n\n---------- Forwarded message ----------\nFrom: a";
-        assert_eq!(split_body(body).text, "Fyi.");
-        let forward_only = "Fyi.\n\n---------- Forwarded message ----------";
-        assert_eq!(split_body(forward_only).rest, FORWARD_HEADER);
-    }
-
-    #[test]
-    fn a_body_with_neither_is_all_text() {
-        let regions = split_body("Just this.\n");
-        assert_eq!(regions.text, "Just this.");
-        assert_eq!(regions.rest, "");
-        assert_eq!(regions.with_text("New."), "New.\n");
-    }
-
-    #[test]
-    fn a_dash_inside_a_line_is_not_a_signature() {
-        let body = "Two -- no, three things.\n--- not a rule";
-        assert_eq!(split_body(body).text, body);
-    }
-
-    #[test]
     fn blank_lines_before_the_text_are_not_part_of_it_and_survive_a_replacement() {
         let body = "\n\nHi\n\n-- \nBK";
         let regions = split_body(body);

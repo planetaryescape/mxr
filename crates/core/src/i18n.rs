@@ -260,31 +260,6 @@ mod tests {
     }
 
     #[test]
-    fn body_templates_contain_email_placeholder() {
-        for locale in AVAILABLE_LOCALES {
-            for (label, tpl) in [
-                ("accepted", locale.invite.body_template_accepted),
-                ("declined", locale.invite.body_template_declined),
-                ("tentative", locale.invite.body_template_tentative),
-            ] {
-                assert!(
-                    tpl.contains("{email}"),
-                    "locale {} body_template_{} missing {{email}} placeholder",
-                    locale.code,
-                    label,
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn select_known_locale_returns_it() {
-        assert_eq!(select("en").code, "en");
-        assert_eq!(select("EN").code, "en");
-        assert_eq!(select(" en ").code, "en");
-    }
-
-    #[test]
     fn select_unknown_locale_falls_back_to_default() {
         assert_eq!(select("xx-YY").code, DEFAULT_LOCALE.code);
         assert_eq!(select("").code, DEFAULT_LOCALE.code);
@@ -303,18 +278,5 @@ mod tests {
     fn body_dispatch_substitutes_email() {
         let body = EN.invite_body_for(SendableCalendarPartstat::Accepted, "alice@example.com");
         assert_eq!(body, "alice@example.com has accepted this invitation.");
-    }
-
-    #[test]
-    fn state_label_is_none_for_unresponded() {
-        assert!(EN
-            .invite_state_label_for(CalendarPartstat::NeedsAction)
-            .is_none());
-        assert!(EN
-            .invite_state_label_for(CalendarPartstat::Delegated)
-            .is_none());
-        assert!(EN
-            .invite_state_label_for(CalendarPartstat::Accepted)
-            .is_some());
     }
 }

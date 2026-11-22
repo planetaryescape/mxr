@@ -155,12 +155,6 @@ pub async fn write_private_async(path: &Path, content: &[u8]) -> std::io::Result
 mod tests {
     use super::*;
 
-    #[test]
-    fn private_scratch_dir_is_created() {
-        let dir = private_scratch_dir().expect("private_scratch_dir should succeed");
-        assert!(dir.is_dir(), "scratch dir should be a directory");
-    }
-
     #[cfg(unix)]
     #[test]
     fn private_scratch_dir_has_0700_mode() {

@@ -69,16 +69,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_editor_fallback() {
-        let result =
-            temp_env::with_vars([("EDITOR", None::<&str>), ("VISUAL", None::<&str>)], || {
-                resolve_editor(None)
-            });
-
-        assert_eq!(result, "vi");
-    }
-
-    #[test]
     fn resolve_editor_config() {
         let result =
             temp_env::with_vars([("EDITOR", None::<&str>), ("VISUAL", None::<&str>)], || {

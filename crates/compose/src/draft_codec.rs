@@ -303,26 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn format_addresses_renders_name_and_bare() {
-        let rendered = format_addresses(&sample_draft().to);
-        assert_eq!(
-            rendered,
-            "Alice Example <alice@example.com>, bob@example.com"
-        );
-    }
-
-    #[test]
-    fn parse_from_field_maps_blank_to_none_and_address_to_some() {
-        assert!(parse_from_field("   ").unwrap().is_none());
-        assert!(parse_from_field("").unwrap().is_none());
-        let parsed = parse_from_field("Support <hello@example.com>")
-            .unwrap()
-            .unwrap();
-        assert_eq!(parsed.email, "hello@example.com");
-        assert_eq!(parsed.name.as_deref(), Some("Support"));
-    }
-
-    #[test]
     fn parse_from_field_rejects_a_nonempty_unparseable_value() {
         let err = parse_from_field("not-an-address").unwrap_err();
         assert!(

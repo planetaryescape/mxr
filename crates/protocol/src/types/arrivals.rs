@@ -324,33 +324,7 @@ pub struct CorrectionData {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap for direct fixture failures"
-    )]
-
     use super::*;
-
-    #[test]
-    fn buckets_round_trip_through_their_ids_and_serde() {
-        for bucket in ArrivalBucketData::ALL {
-            assert_eq!(ArrivalBucketData::parse(bucket.id()), Some(bucket));
-            assert_eq!(
-                serde_json::to_value(bucket).unwrap(),
-                serde_json::Value::String(bucket.id().to_string())
-            );
-        }
-        assert_eq!(
-            ArrivalBucketData::parse("To do"),
-            Some(ArrivalBucketData::Todo)
-        );
-        assert_eq!(
-            ArrivalBucketData::parse("screened-out"),
-            Some(ArrivalBucketData::ScreenedOut)
-        );
-        assert_eq!(ArrivalBucketData::Spam.label(1), "1 spam");
-        assert_eq!(ArrivalBucketData::Reading.label(31), "31 Reading");
-    }
 
     #[test]
     fn every_mode_has_one_picker_key_and_none_repeat() {

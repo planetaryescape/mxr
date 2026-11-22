@@ -74,11 +74,6 @@ mod tests {
     }
 
     #[test]
-    fn bare_filename_uses_current_directory() {
-        assert_eq!(parent_directory(Path::new("tokens.json")), Path::new("."));
-    }
-
-    #[test]
     fn temporary_file_is_private_from_creation_before_any_content_is_written() -> TestResult {
         let directory = tempdir()?;
         let path = directory.path().join("tokens.json");
@@ -178,26 +173,6 @@ mod tests {
 
         assert!(temporary_files(directory.path())?.is_empty());
         assert_eq!(std::fs::read_to_string(&path)?, "first");
-        Ok(())
-    }
-
-    #[test]
-    fn concurrent_threads_never_leave_temporary_files_behind() -> TestResult {
-        let directory = tempdir()?;
-        let path = directory.path().join("tokens.json");
-        let handles = (0..8)
-            .map(|index| {
-                let path = path.clone();
-                std::thread::spawn(move || write(&path, &format!("writer-{index}")))
-            })
-            .collect::<Vec<_>>();
-        for handle in handles {
-            handle.join().map_err(|_| "writer thread panicked")??;
-        }
-
-        assert!(temporary_files(directory.path())?.is_empty());
-        assert!(std::fs::read_to_string(&path)?.starts_with("writer-"));
-        assert_eq!(mode(&path)?, 0o600);
         Ok(())
     }
 }

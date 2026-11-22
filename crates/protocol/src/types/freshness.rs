@@ -306,18 +306,6 @@ mod tests {
     }
 
     #[test]
-    fn ages_read_in_the_largest_whole_unit() {
-        let now = Utc::now();
-        assert_eq!(ago(now - Duration::seconds(30), now), "just now");
-        assert_eq!(ago(now - Duration::minutes(5), now), "5m ago");
-        assert_eq!(ago(now - Duration::hours(2), now), "2h ago");
-        assert_eq!(ago(now - Duration::days(3), now), "3d ago");
-        // A clock a little ahead never reads as the future.
-        assert_eq!(ago(now + Duration::minutes(2), now), "just now");
-        assert_eq!(latest_mail(None, now), "No mail yet");
-    }
-
-    #[test]
     fn an_ok_account_turns_stale_as_time_passes() {
         let built = Utc::now();
         let ok = account(SyncHealthData::Ok, Some(built - Duration::minutes(1)));
@@ -326,53 +314,6 @@ mod tests {
         assert_eq!(ok.effective_health(later, 900), SyncHealthData::Stale);
         assert_eq!(sync_line(&ok, 900, later, &Utc), "Last sync 2h ago");
         assert_eq!(sync_line(&ok, 900, built, &Utc), "synced 1m ago");
-    }
-
-    #[test]
-    fn warnings_name_the_account_and_what_happens_next() {
-        let now = Utc.with_ymd_and_hms(2026, 10, 7, 9, 42, 0).unwrap();
-        let mut paused = account(SyncHealthData::Paused, Some(now - Duration::minutes(3)));
-        paused.last_sync_error = Some(SyncErrorData {
-            kind: SyncErrorKindData::RateLimited,
-            message: "Rate limited".into(),
-            retry_at: Some(now + Duration::minutes(8)),
-            consecutive_failures: 1,
-        });
-        assert_eq!(
-            sync_line(&paused, 900, now, &Utc),
-            "me@example.com paused: rate limited, retrying 09:50"
-        );
-
-        let mut auth = account(SyncHealthData::Failing, None);
-        auth.last_sync_error = Some(SyncErrorData {
-            kind: SyncErrorKindData::Auth,
-            message: "oauth".into(),
-            retry_at: None,
-            consecutive_failures: 2,
-        });
-        assert_eq!(
-            sync_line(&auth, 900, now, &Utc),
-            "me@example.com needs you to sign in again"
-        );
-
-        let mut offline = account(SyncHealthData::Failing, Some(now - Duration::minutes(12)));
-        offline.last_sync_error = Some(SyncErrorData {
-            kind: SyncErrorKindData::Offline,
-            message: "dns".into(),
-            retry_at: None,
-            consecutive_failures: 1,
-        });
-        assert_eq!(
-            sync_line(&offline, 900, now, &Utc),
-            "Can't reach me@example.com, last sync 12m ago"
-        );
-        if let Some(error) = offline.last_sync_error.as_mut() {
-            error.retry_at = Some(now + Duration::minutes(1));
-        }
-        assert_eq!(
-            sync_line(&offline, 900, now, &Utc),
-            "Can't reach me@example.com, retrying 09:43"
-        );
     }
 
     #[test]

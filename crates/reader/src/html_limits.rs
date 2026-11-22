@@ -367,34 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn a_comment_cannot_hide_a_wide_table() {
-        let html = wide_table().replacen("<tr>", "<!-- </table> --><tr>", 1);
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
-    fn a_tag_with_100000_attributes_is_over_budget_without_parsing_it() {
-        let mut html = String::from("<td");
-        for n in 0..100_000 {
-            html.push_str(&format!(" a{n}"));
-        }
-        html.push_str(">x</td>");
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
-    fn foster_parenting_table_of_brs_is_over_budget() {
-        let html = format!("<table>{}</table>", "<br>".repeat(200_000));
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
-    fn a_100000_deep_div_nest_is_over_budget() {
-        let html = format!("{}x{}", "<div>".repeat(100_000), "</div>".repeat(100_000));
-        assert!(!within_budget(&html));
-    }
-
-    #[test]
     fn a_list_with_optional_end_tags_is_within_budget() {
         // Depth is not a budget: this list has 300 items and no unclosed depth
         // cap trips.

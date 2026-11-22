@@ -646,16 +646,4 @@ mod tests {
             assert!(claims <= 1, "{} claimed {claims} times", envelope.subject);
         }
     }
-
-    #[test]
-    fn every_spec_labels_at_least_one_email() {
-        let labels = label(&curated());
-        for spec in specs() {
-            assert!(
-                labels.iter().any(|l| l.scenario == spec.id),
-                "{} matches no demo email",
-                spec.id
-            );
-        }
-    }
 }

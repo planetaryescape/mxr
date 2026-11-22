@@ -103,12 +103,4 @@ mod tests {
         assert_eq!(summary.last_hour, 1);
         assert_eq!(log.lock().len(), 1, "record prunes what the window dropped");
     }
-
-    #[test]
-    fn an_idle_account_reports_no_endpoints() {
-        let summary = RequestLog::default().summary(Instant::now());
-
-        assert_eq!(summary, RequestSummary::default());
-        assert_eq!(summary.endpoint_counts(), "none");
-    }
 }

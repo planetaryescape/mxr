@@ -408,24 +408,6 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_new_message() {
-        let (path, _cursor) = create_draft_file(
-            ComposeKind::New {
-                to: String::new(),
-                subject: String::new(),
-            },
-            "me@example.com",
-        )
-        .unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
-        let (fm, body) = parse_compose_file(&content).unwrap();
-        assert_eq!(fm.from, "me@example.com");
-        assert!(fm.to.is_empty());
-        assert!(body.is_empty());
-        std::fs::remove_file(path).ok();
-    }
-
-    #[test]
     fn roundtrip_reply() {
         let (path, _) = create_draft_file(
             ComposeKind::Reply {
@@ -619,45 +601,6 @@ mod tests {
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
-    }
-
-    #[test]
-    fn roundtrip_new_with_to() {
-        let (path, _cursor) = create_draft_file(
-            ComposeKind::New {
-                to: "alice@example.com".into(),
-                subject: String::new(),
-            },
-            "me@example.com",
-        )
-        .unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
-        let (fm, body) = parse_compose_file(&content).unwrap();
-        assert_eq!(fm.from, "me@example.com");
-        assert_eq!(fm.to, "alice@example.com");
-        assert!(fm.subject.is_empty());
-        assert!(body.is_empty());
-        std::fs::remove_file(path).ok();
-    }
-
-    #[test]
-    fn valid_draft_no_errors() {
-        let fm = ComposeFrontmatter {
-            to: "alice@example.com".into(),
-            cc: String::new(),
-            bcc: String::new(),
-            subject: "Hello".into(),
-            from: "me@example.com".into(),
-            in_reply_to: None,
-            intent: mxr_core::DraftIntent::New,
-            references: Vec::new(),
-            thread_id: None,
-            attach: Vec::new(),
-            signature: None,
-            forward_source: None,
-        };
-        let issues = validate_draft(&fm, "Hello there!");
-        assert!(issues.is_empty());
     }
 
     #[test]

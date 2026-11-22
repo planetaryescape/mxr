@@ -561,6 +561,8 @@ impl App {
             (_, state) => state,
         };
         if matches!(state, ConnectionState::Connected) {
+            // Only close error modals that were opened by the connection
+            // watchdog. Heuristic: title mentions "daemon".
             if self
                 .modals
                 .error

@@ -28,13 +28,8 @@ pub(super) struct SearchExecutionOptions {
     pub(super) explain: bool,
 }
 
-/// How many times a search is rerun when the index starts or finishes a
-/// rebuild under it, before it is answered from SQLite instead.
 const MAX_INDEX_ATTEMPTS: usize = 3;
 
-/// Runs a search that has no limited form: counts and grouping. With the
-/// lexical index unavailable it fails with the actionable text instead of a
-/// bare "worker stopped".
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_search(
     state: &AppState,
@@ -57,8 +52,6 @@ pub(super) async fn execute_search(
     run_search(state, query, &options, false).await
 }
 
-/// Runs a search that may be answered from SQLite when the lexical index is
-/// unavailable. The reply carries `degraded` when it was.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_search_or_fallback(
     state: &AppState,
@@ -81,11 +74,6 @@ pub(super) async fn execute_search_or_fallback(
     run_search(state, query, &options, true).await
 }
 
-/// Decides, once per page, whether the index or SQLite answers it.
-///
-/// A page is never part index, part SQLite: the index's availability is read
-/// before the query and checked again after it, and a query that straddled a
-/// stop or a rebuild is thrown away and answered whole from the other side.
 async fn run_search(
     state: &AppState,
     query: &str,
@@ -103,9 +91,6 @@ async fn run_search(
             }
             IndexAvailability::Stopped => SearchDegradedReason::IndexStopped,
             IndexAvailability::Rebuilding => SearchDegradedReason::IndexRebuilding,
-            // Wire reason stays `index_stopped`: a failed rebuild means full
-            // search is unavailable until a reindex or restart. The retry text
-            // is chosen here, not by a new reason value that older clients reject.
             IndexAvailability::Incomplete => {
                 return answer_incomplete(state, query, options, limited_ok).await;
             }
@@ -122,8 +107,6 @@ async fn run_search(
     .await
 }
 
-/// Shown when the last rebuild failed. Clients render it in place of the
-/// generic notice for `index_stopped`.
 pub(super) const INCOMPLETE_NOTICE: &str = "Search is limited because the last index rebuild failed. Run `mxr doctor --reindex` or restart the daemon to retry the rebuild.";
 
 async fn answer_incomplete(
@@ -160,12 +143,7 @@ async fn answer_without_index(
     }
 }
 
-/// How a search string runs against the index. `execute_search_indexed` and
-/// the bulk-selection resolver both compile through here, so a selection
-/// matches the same messages the search that previewed it listed.
 pub(super) enum CompiledQuery {
-    /// Parsed, with label display names resolved to provider ids and
-    /// Trash/Spam excluded unless the query asks for them.
     Structured {
         ast: QueryNode,
         needs_owed_filter: bool,
@@ -178,11 +156,6 @@ pub(super) enum CompiledQuery {
 pub(super) async fn compile_query(state: &AppState, query: &str) -> Result<CompiledQuery, String> {
     match parse_query(query) {
         Ok(ast) => {
-            // Resolve user-typed label display names (e.g.
-            // `label:Notto`) to provider IDs (e.g. `Label_101`)
-            // before query construction. Tantivy only sees provider
-            // IDs because that's what sync writes to the index; the
-            // parser doesn't know about a given user's labels.
             let labels = collect_labels_for_resolution(state).await;
             let label_index = build_label_name_index(&labels);
             let ast = exclude_trash_and_spam_by_default(resolve_label_names(ast, &label_index));
@@ -214,9 +187,6 @@ async fn execute_search_indexed(
             ast,
             needs_owed_filter,
         } => {
-            // Lexical paging applies the owed filter inside its page loop, so a
-            // page fills with owed rows. Other modes filter the fused window
-            // after the fact.
             let owed_in_stream = needs_owed_filter && options.mode == SearchMode::Lexical;
             (
                 execute_search_ast(state, query, &ast, options, owed_in_stream).await?,
@@ -260,8 +230,6 @@ async fn execute_search_indexed(
             (execution, false)
         }
     };
-    // Lexical pages already drop hidden accounts row by row in
-    // `filter_live_search_results`, so only the other modes need this pass.
     if options.mode != SearchMode::Lexical {
         filter_to_cached_mail_accounts(state, &mut execution).await?;
     }
@@ -271,11 +239,6 @@ async fn execute_search_indexed(
     Ok(execution)
 }
 
-/// Collect every label across readable local accounts so we can rewrite
-/// `label:<display name>` into the provider IDs that Tantivy actually
-/// indexes. Failures are non-fatal: if the store is unreachable we
-/// fall back to the unresolved AST, which still serves raw provider
-/// IDs correctly.
 async fn collect_labels_for_resolution(state: &AppState) -> Vec<Label> {
     let accounts = match state.store.list_cached_mail_accounts().await {
         Ok(accounts) => accounts,
@@ -301,10 +264,6 @@ async fn collect_labels_for_resolution(state: &AppState) -> Vec<Label> {
     labels
 }
 
-/// Reduce `execution.results` to the set of messages whose thread is
-/// owed-reply right now. Owed-reply is dynamic (depends on current
-/// time and cadence) so this is computed inline rather than indexed.
-/// Spans every enabled account that produced a hit.
 async fn filter_to_owed_threads(
     state: &AppState,
     execution: &mut SearchExecution,
@@ -312,8 +271,6 @@ async fn filter_to_owed_threads(
     if execution.results.is_empty() {
         return Ok(());
     }
-    // Collect the unique account IDs from the current result set so we
-    // only run owed-reply computation for accounts that produced hits.
     let mut account_ids: Vec<String> = execution
         .results
         .iter()
@@ -355,9 +312,6 @@ async fn filter_to_owed_threads(
     Ok(())
 }
 
-/// The thread ids that are owed a reply right now in these accounts, at most
-/// `cap` per account, plus the accounts whose lookup failed (with why). A
-/// caller that must not act on a partial answer treats any failure as fatal.
 pub(super) async fn owed_thread_ids(
     state: &AppState,
     account_ids: &[String],
@@ -386,8 +340,6 @@ pub(super) async fn owed_thread_ids(
     (owed_thread_ids, failures)
 }
 
-/// Owed-reply thread ids for the accounts a lexical page has met so far. A
-/// page asks the store once per account, not once per raw chunk.
 #[derive(Default)]
 struct OwedThreads {
     accounts_loaded: HashSet<String>,
@@ -418,10 +370,6 @@ impl OwedThreads {
     }
 }
 
-/// Pull at most this many owed-reply rows per account when serving an
-/// `is:owed-reply` query. The owed-reply lens is intended for human
-/// triage; capping at a few thousand keeps the filter cheap even on
-/// inboxes with very long backlogs of unanswered threads.
 const OWED_REPLY_FETCH_CAP: u32 = 5_000;
 
 async fn filter_to_cached_mail_accounts(
@@ -623,8 +571,6 @@ async fn execute_search_ast(
     let dense_window = requested_window.saturating_mul(8).max(200);
     let semantic_hits = match state
         .semantic
-        // Lexical search remains the exact/literal path. Dense retrieval only
-        // broadens recall inside the source kinds implied by the parsed query.
         .search(&semantic_query, dense_window, &semantic_plan.source_kinds)
         .await
     {
@@ -795,9 +741,6 @@ async fn lexical_text_search(
     .await
 }
 
-/// Pages a lexical stream: raw index rows are fetched chunk by chunk, live
-/// and (when `owed_only`) owed-reply rows are kept, and the loop stops once the
-/// page and one extra row are in hand. The one extra row sets `has_more`.
 async fn live_lexical_page<F, Fut>(
     state: &AppState,
     limit: usize,
@@ -960,10 +903,6 @@ pub(super) async fn filter_dense_hits(
 
 #[cfg(test)]
 mod owed_reply_filter_tests {
-    //! Slice 2's `is:owed-reply` search operator. Verifies that the
-    //! search executor intersects Tantivy results with the dynamic
-    //! owed-reply thread set, so the lens is reachable as a saved
-    //! search and matches `list_owed_replies`.
     use super::*;
     use crate::state::AppState;
     use mxr_core::types::{Address, Envelope, MessageDirection, MessageFlags, UnsubscribeMethod};
@@ -1077,10 +1016,6 @@ mod owed_reply_filter_tests {
         assert_eq!(found("in:anywhere invoice").await, all);
     }
 
-    /// `--search` on a batch mutation resolves its targets with this
-    /// request, for the dry run and for the real run alike. With
-    /// `in:trash OR from:alice`, the selection is Alice's live mail and
-    /// everything in Trash; Alice's Spam stays out, and `mxr count` agrees.
     #[tokio::test]
     async fn a_search_selection_lifts_only_the_place_its_alternative_asks_for() {
         use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
@@ -1215,11 +1150,6 @@ mod owed_reply_filter_tests {
         assert_eq!(kept("in:anywhere invoice").await.len(), 3);
     }
 
-    /// The acceptance criterion from
-    /// `docs/reference/ai-email.md`: "`is:owed-reply` matches
-    /// daemon list." After seeding a thread where the user is the
-    /// bottleneck, both `list_owed_replies` and `Search { query:
-    /// "is:owed-reply" }` must return the same thread set.
     #[tokio::test]
     async fn is_owed_reply_search_matches_list_owed_replies() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1272,9 +1202,6 @@ mod owed_reply_filter_tests {
         );
     }
 
-    /// Sending a reply moves the thread out of owed. Models the spec
-    /// "Sending reply removes row." After we upsert an outbound after
-    /// the inbound, neither surface should list the thread.
     #[tokio::test]
     async fn is_owed_reply_excludes_thread_after_outbound_reply() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1290,7 +1217,6 @@ mod owed_reply_filter_tests {
             .unwrap();
         index_envelope(&state, &inbound).await;
 
-        // Now upsert an outbound reply newer than the inbound.
         let mut outbound = envelope_inbound(&account_id, &thread_id, "user@example.com", 1);
         outbound.from = Address {
             name: None,
@@ -1331,10 +1257,6 @@ mod owed_reply_filter_tests {
         );
     }
 
-    /// Seeds `owed` threads whose inbound is unanswered and `answered` threads
-    /// whose inbound has a newer outbound reply. The answered rows are all
-    /// newer than the owed rows, so newest-first paging meets them first.
-    /// Returns the owed thread ids.
     async fn seed_owed_and_answered(
         state: &AppState,
         account_id: &AccountId,
@@ -1402,9 +1324,6 @@ mod owed_reply_filter_tests {
         .unwrap()
     }
 
-    /// Owed rows are a minority of the newest-first candidates. Before
-    /// the filter ran inside the page loop, the first page took the newest
-    /// `limit` candidates, dropped every answered row, and came back empty.
     #[tokio::test]
     async fn lexical_owed_page_fills_when_most_candidates_are_answered() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1419,9 +1338,6 @@ mod owed_reply_filter_tests {
         assert_eq!(first.next_offset, Some(5));
     }
 
-    /// Paging through an owed lens with a small limit returns each owed
-    /// row exactly once, in the same order as one unpaged request, and
-    /// `has_more` is true until the last page.
     #[tokio::test]
     async fn lexical_owed_pages_continue_without_gaps_or_repeats() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1461,9 +1377,6 @@ mod owed_reply_filter_tests {
         assert_eq!(owed.len(), 7);
     }
 
-    /// Hidden accounts are dropped row by row inside the page loop, so a
-    /// page still fills after many hidden rows. Lexical paging already did
-    /// this before the owed change; this test keeps it that way.
     #[tokio::test]
     async fn lexical_pages_skip_hidden_account_rows_and_fill() {
         let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
@@ -1522,13 +1435,6 @@ mod owed_reply_filter_tests {
         assert_eq!(paged, visible_ids);
     }
 
-    /// Regression: searching `label:<display name>` must hit the
-    /// messages tagged with that label, not return zero results
-    /// because Tantivy only indexes Gmail provider IDs. Before the
-    /// label-name resolver was added, the daemon shipped a workaround
-    /// where users had to query by provider_id (e.g.
-    /// `label:Label_101`) instead of the human-readable name they
-    /// see in Gmail and the TUI.
     #[tokio::test]
     async fn label_search_by_display_name_resolves_to_provider_id() {
         use mxr_core::types::{Label, LabelKind};
@@ -1538,8 +1444,6 @@ mod owed_reply_filter_tests {
         let state = Arc::new(state);
         let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
 
-        // Persist a user-defined label so `collect_labels_for_resolution`
-        // can find the name → provider_id mapping.
         let label = Label {
             id: LabelId::new(),
             account_id: account_id.clone(),
@@ -1553,8 +1457,6 @@ mod owed_reply_filter_tests {
         };
         state.store.upsert_label(&label).await.unwrap();
 
-        // Index an envelope that carries the provider_id (the shape
-        // sync produces). The display name "Notto" is *not* indexed.
         let thread_id = ThreadId::new();
         let mut envelope = envelope_inbound(&account_id, &thread_id, "alice@example.com", 1);
         envelope.label_provider_ids = vec!["Label_101".into()];
@@ -1584,11 +1486,6 @@ mod owed_reply_filter_tests {
         );
     }
 
-    /// Spaces in label names must survive the parser's quoted-value
-    /// path (`label:"Follow Up"`) and the case-insensitive lookup.
-    /// Equally, raw provider IDs (`label:Label_42`) must continue to
-    /// work — there's no display name "Label_42", so the resolver
-    /// leaves it alone and the verbatim path still hits the index.
     #[tokio::test]
     async fn label_search_handles_quoted_names_and_raw_provider_ids() {
         use mxr_core::types::{Label, LabelKind};
@@ -1849,9 +1746,6 @@ mod tests {
         }
     }
 
-    /// Proves the query really went through dense retrieval, which is the
-    /// point of the fielded-source-kind test: with the fixture indexed
-    /// lexically too, a lexical-only fallback would return the same message.
     fn assert_dense_retrieval_ran(execution: &SearchExecution) {
         let explain = execution
             .explain
@@ -1873,13 +1767,6 @@ mod tests {
         );
     }
 
-    /// Indexes the fixture lexically as well as into the store.
-    ///
-    /// Hybrid ranking fuses the lexical and dense lists by rank, so with no
-    /// lexical hit the top result rides entirely on the ANN returning one
-    /// specific chunk. A tiny hnsw index drops points often enough for that to
-    /// flake: measured 7-8% of searches over an 8-point index fail to return
-    /// every point even when asked for 200 with ef 200.
     async fn index_for_lexical_search(
         state: &AppState,
         envelope: &mxr_core::types::Envelope,
@@ -1900,7 +1787,6 @@ mod tests {
         state.search.commit().await.unwrap();
     }
 
-    /// Text long enough to pass the chunker's 120-word window more than once.
     fn multi_chunk_text(lead: &str) -> String {
         let filler = "The rollout runbook lists the staging checks, the owner on \
                       call and the rollback plan for every service in the fleet. ";
@@ -1955,19 +1841,6 @@ mod tests {
             .has_attachments(true)
             .build();
 
-        // Three fixture rules keep the ranking below deterministic:
-        //  - "deployment" sits in exactly one source kind per message, and only
-        //    one message has any chunk of the kind a given query searches - the
-        //    subject message has no body, the attachment message's body is
-        //    empty. A kind-respecting `body:`/`filename:` query therefore sees
-        //    one message on the dense side and the same one lexically.
-        //  - Only the subject message's header embeds exactly onto the query
-        //    vector; every other chunk carries a second keyword. A tiny hnsw
-        //    graph drops points a few times per thousand builds when several
-        //    chunks tie for nearest.
-        //  - The body text and the attachment text each chunk more than once,
-        //    so one dropped point cannot take their message out of dense
-        //    retrieval.
         let bodies = [
             (
                 &body_message,

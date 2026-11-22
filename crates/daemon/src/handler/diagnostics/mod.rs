@@ -31,9 +31,6 @@ use std::collections::HashMap;
 
 #[cfg(not(test))]
 const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-// Generous in tests on purpose: a fake-provider sync can exceed a
-// tight limit under parallel test load, and the detach/timeout path
-// is exercised directly in `loops::tests` with explicit limits.
 #[cfg(test)]
 const MANUAL_SYNC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -45,7 +42,6 @@ struct SearchExecution {
     next_offset: Option<usize>,
     executed_mode: SearchMode,
     explain: Option<SearchExplain>,
-    /// Set when SQLite answered because the lexical index was unavailable.
     degraded: Option<SearchDegraded>,
 }
 
@@ -346,9 +342,6 @@ fn category_from_label(label: &str) -> Option<String> {
     (!category.is_empty()).then_some(category)
 }
 
-/// Return just the count of matches for a query — used by surfaces
-/// that need a number, not the results themselves (e.g. saved-search
-/// unread badges).
 pub(crate) async fn count_search_matches(
     state: &AppState,
     query: &str,
@@ -435,8 +428,6 @@ pub(crate) async fn list_subscriptions(
     limit: u32,
     all_accounts: bool,
 ) -> HandlerResult {
-    // Every enabled account's senders when asked for; otherwise the default
-    // account's when no account is named.
     let resolved = match account_id {
         Some(account_id) => Some(account_id.clone()),
         None if all_accounts => None,
@@ -575,12 +566,6 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::RefreshedContacts { rows })
 }
 
-/// Walk every message body, recompute `link_count` + `body_word_count` using
-/// the current `mxr_sync::links` extractor, and persist back. Used by
-/// `mxr doctor --recompute-link-counts` to backfill rows synced before the
-/// link-extractor existed.
-///
-/// Single-pass, paginated; avoids loading every message into memory.
 pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
     let mut after: Option<MessageId> = None;
     let page_size: u32 = 200;
@@ -624,11 +609,6 @@ pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
 
 pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     use mxr_core::types::AccountAddressLookup;
-    // The handler runs six sequential SQL passes. Each emits an
-    // `OperationProgress` event (with `current`/`total = 6`) so
-    // clients (CLI spinner, TUI status bar, `mxr events` tail) can
-    // show live per-step feedback instead of blocking blind on a
-    // single `AnalyticsRebuildSummary` response.
     let operation_id = uuid::Uuid::now_v7().to_string();
     let operation = "rebuild-analytics".to_string();
     const TOTAL_STEPS: u32 = 6;
@@ -643,7 +623,6 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         },
     );
 
-    // Refresh address cache so reclassification has the latest set.
     let address_cache_ready = state.refresh_account_addresses().await;
     let lookup = state.account_addresses.clone();
 
@@ -663,8 +642,6 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         retryable,
     };
 
-    // Reclassifying against a set that failed to rebuild would move mail to
-    // the wrong direction, so this step fails retryably instead.
     if !address_cache_ready {
         let err = "account address cache could not be rebuilt; direction reclassification skipped";
         emit_operation_event(state, fail(err, true));
@@ -699,9 +676,6 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         }
     };
 
-    // Backfill reply_pairs from already-stored messages — the sync
-    // hook only fires going forward, so existing data needs a
-    // one-time scan.
     emit_operation_event(
         state,
         progress(3, "Backfilling reply pairs from messages".into()),
@@ -811,8 +785,6 @@ pub(crate) async fn add_account_address(
             preview_account_directions(state, account_id, &owned).await?,
         ));
     }
-    // The gate covers the address write and the reclassify, so a sweep check
-    // cannot see the old set and archive after the change.
     let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
@@ -836,7 +808,6 @@ pub(crate) async fn remove_account_address(
     dry_run: bool,
 ) -> HandlerResult {
     if dry_run {
-        // The same refusal the real remove makes, from the same stored primary row.
         let is_primary = state
             .store
             .list_account_addresses(account_id)
@@ -893,8 +864,6 @@ fn address_changed(changes: AccountDirectionChanges) -> ResponseData {
     }
 }
 
-/// The counts an address change would apply, computed against `owned` without
-/// writing. Same selection as the real change.
 async fn preview_account_directions(
     state: &AppState,
     account_id: &AccountId,
@@ -906,25 +875,16 @@ async fn preview_account_directions(
         .await
 }
 
-/// After an address write, with the caller holding the account's sweep gate:
-/// owe the account a reconciliation after its next sync pass, then reclassify
-/// now for the response. The owed mark stays even when this succeeds, because a
-/// sync batch prepared before the write can still land after it.
 async fn settle_address_change(
     state: &AppState,
     account_id: &AccountId,
 ) -> Result<AccountDirectionChanges, sqlx::Error> {
     state.owe_direction_repair(account_id);
     let changes = reclassify_account_directions(state, account_id).await;
-    // Ownership changed even when no message flipped: Wrapped and contacts
-    // read the owned set and reply pairs directly.
     refresh_direction_derived(state, account_id).await;
     changes
 }
 
-/// The post-pass reconciliation, and the reload path's repair: reclassify one
-/// account under its sweep gate. A failure leaves the account owed, so the next
-/// successful sync pass retries it.
 pub(crate) async fn reconcile_account_directions(
     state: &AppState,
     account_id: &AccountId,
@@ -939,9 +899,6 @@ pub(crate) async fn reconcile_account_directions(
     }
 }
 
-/// Make the account's stored mail agree with its committed owned set. Callers
-/// refresh the registry first, so sync passes that start now classify against
-/// the new set. Callers follow with `refresh_direction_derived`.
 pub(crate) async fn reclassify_account_directions(
     state: &AppState,
     account_id: &AccountId,
@@ -953,11 +910,6 @@ pub(crate) async fn reclassify_account_directions(
         .await
 }
 
-/// Drop and requeue what is computed from ownership, direction and reply
-/// pairs: the Wrapped cache and the contacts table. Unconditional, because a
-/// pair-only repair or a recipient-only alias changes them without flipping a
-/// message. Not called under a provider guard: the contacts worker's
-/// acknowledgement can wait on a refresh already running.
 pub(crate) async fn refresh_direction_derived(state: &AppState, account_id: &AccountId) {
     state.wrapped_cache_clear();
     if let Err(error) = state
@@ -984,7 +936,6 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
     let api_key_env = (!config.api_key_env.is_empty()).then_some(config.api_key_env.clone());
     let features = super::llm_routes::feature_statuses(state);
     let keys = super::llm_routes::key_statuses();
-    // A routed base model has no `api_key_env`; it has the stored keys.
     let base_routed = config.enabled
         && !mxr_config::is_demo_instance()
         && super::llm_routes::base_model_routed(&config);
@@ -1071,9 +1022,6 @@ pub(crate) async fn llm_config(state: &AppState) -> HandlerResult {
 }
 
 pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -> HandlerResult {
-    // Everything that depends on the current config is read inside the
-    // locked update, from the file as it is then, not from a copy taken
-    // before the lock.
     let saved = state
         .try_mutate_config(|current| {
             current.llm = normalize_llm_config(config, &current.llm)?;
@@ -1189,11 +1137,8 @@ fn normalize_llm_config(
         api_key_env: config.api_key_env.trim().to_string(),
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
-        // Not exposed in the IPC SetLlmConfig DTO; preserve the
-        // config-file value (default 45s) across runtime updates.
         background_request_timeout_secs: current.background_request_timeout_secs,
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
-        // Config-file only, like the background timeout.
         gist_concurrency: current.gist_concurrency,
         fallback: current.fallback.clone(),
         models,
@@ -1336,8 +1281,6 @@ pub(crate) async fn create_saved_search(
     account_id: Option<AccountId>,
     search_mode: SearchMode,
 ) -> HandlerResult {
-    // Saved searches are run, renamed and deleted by name, so a second one
-    // with the same name would make those ambiguous.
     if state.store.get_saved_search_by_name(name).await?.is_some() {
         return Err(format!("A saved search named '{name}' already exists").into());
     }
@@ -1419,13 +1362,6 @@ pub(crate) async fn run_saved_search(
     })
 }
 
-/// How long `get_status` waits on the DB-backed snapshot before
-/// degrading. Status is observability: it must never block on the
-/// starved resource it reports on. Under normal load the snapshot
-/// returns in well under this; under reader-pool saturation it would
-/// otherwise hang the full 90s `acquire_timeout`, which breaks the
-/// daemon-version-match auto-restart check and the TUI launch (both
-/// only need the DB-free version fields below).
 const STATUS_SNAPSHOT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
@@ -1437,21 +1373,11 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
     .await
 }
 
-/// The body of `get_status`, with the DB-backed snapshot passed in.
-///
-/// Taking the future rather than building it means a test can decide whether
-/// it resolves. Racing a real store against a tiny budget does not: the
-/// snapshot may well finish on the timeout's first poll, and then the test
-/// asserts the opposite of what it meant to — which is exactly how the
-/// degraded-path test came to fail only on CI.
 pub(crate) async fn get_status_within_budget(
     state: &AppState,
     budget: std::time::Duration,
     snapshot: impl std::future::Future<Output = Result<StatusSnapshotFields, String>>,
 ) -> HandlerResult {
-    // Fast-fail the DB-backed snapshot so a saturated pool can't wedge
-    // status. On timeout we return a degraded (empty) snapshot but keep
-    // the DB-free version/protocol fields populated.
     let (accounts, total_messages, sync_statuses, degraded) =
         match tokio::time::timeout(budget, snapshot).await {
             Ok(Ok((accounts, total_messages, sync_statuses))) => {
@@ -1466,15 +1392,11 @@ pub(crate) async fn get_status_within_budget(
                 (Vec::new(), 0, Vec::new(), true)
             }
         };
-    // Don't trigger a search repair off a degraded reading.
     let repair_required = if degraded {
         false
     } else {
         crate::server::search_requires_repair(state, total_messages).await
     };
-    // Clients use status to check capabilities before ordinary reads. Runtime
-    // counters are already published by the worker, so neither embedding work
-    // nor the profile-table read belongs on that path.
     let semantic_runtime = state.semantic.runtime_metrics().ok();
     let recovery = if degraded {
         None
@@ -1504,10 +1426,6 @@ pub(crate) async fn get_status_within_budget(
         repair_required,
         semantic_runtime,
         feature_health: Some(feature_health_report(state, search_worker_failed(state))),
-        // Only the DB snapshot budget sets this: it is the one that empties
-        // `accounts`/`total_messages`/`sync_statuses`. A dropped semantic
-        // runtime leaves every other field a real reading, and flagging it
-        // here would make clients discard good sync statuses.
         degraded,
     })
 }
@@ -1584,23 +1502,12 @@ pub(crate) async fn sync_now(
             return Err(crate::handler::HandlerError::Message(error));
         }
     };
-    // `finalize_sync_pass` emits this pass's completion and failure events and
-    // runs the full post-sync fan-out; all that is left is turning its answer
-    // into a response.
     match crate::loops::finalize_sync_pass(pass, result).await {
         Ok(_) => Ok(ResponseData::Ack),
         Err(error) => Err(crate::handler::HandlerError::Message(error.to_string())),
     }
 }
 
-/// Start a sync and answer immediately.
-///
-/// The account is marked as syncing before the ack, and stays marked while the
-/// claim is queued, so a client that acks and then polls `GetSyncStatus`
-/// cannot read the account as idle before the spawned pass has taken the
-/// provider lock — nor be fooled by some other pass finishing in that window.
-/// A second background sync while one is outstanding joins it rather than
-/// queueing another pass behind the same lock.
 async fn start_background_sync(
     state: &std::sync::Arc<AppState>,
     provider: std::sync::Arc<dyn mxr_core::MailSyncProvider>,
@@ -1647,11 +1554,6 @@ async fn start_background_sync(
         .await;
     let task_state = state.clone();
     tokio::spawn(async move {
-        // `claim` is moved in and dropped when this task ends, however it
-        // ends: a panic in the pass, or the runtime dropping the task at
-        // shutdown, still releases the account. A leaked claim would have
-        // every later sync answer "already running" over an account whose
-        // `sync_in_progress` never clears.
         let pass = crate::loops::begin_sync_pass(
             &task_state,
             provider,
@@ -1659,29 +1561,18 @@ async fn start_background_sync(
             crate::loops::SyncStarter::BackgroundClient,
         )
         .await;
-        // The pass has the provider lock and has written its own status row,
-        // so the claim no longer has to stand in for it.
         claim.mark_started();
         match crate::loops::run_sync_pass(pass, MANUAL_SYNC_TIMEOUT).await {
             crate::loops::SyncWait::Finished { pass, result } => {
                 let _ = crate::loops::finalize_sync_pass(pass, result).await;
             }
-            // The reaper owns the pass now and finalizes it the same way.
-            // Dropping the claim here is deliberate: a pass that has been
-            // running for ten minutes should not keep blocking a fresh manual
-            // sync, and the provider lock still serialises the two.
             crate::loops::SyncWait::Detached => {}
         }
-        // Reached only if the pass was handed to a finalizer. A panic above
-        // skips this, and the claim's `Drop` then clears the in-progress flag
-        // this handler wrote before acking.
         claim.mark_handed_off();
     });
     Ok(true)
 }
 
-/// Preview and execution share this selector so the target set cannot drift
-/// between a dry run and the corresponding action.
 async fn sync_targets(
     state: &std::sync::Arc<AppState>,
     allowed_account_ids: Option<&[AccountId]>,
@@ -1771,17 +1662,12 @@ pub(crate) async fn sync_all(
     Ok(ResponseData::SyncBatch { results })
 }
 
-/// Summary of what the post-sync incremental backfill actually did.
-/// Used by callers (sync loop) to decide whether to log a line or
-/// stay quiet — we don't want a "did nothing" line on every sync.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct AnalyticsBackfillReport {
     pub directions_reclassified: u32,
     pub list_ids_backfilled: u32,
     pub reply_pairs_resolved: u32,
     pub business_hours_backfilled: u32,
-    /// Whether historical List-Id/reply-pair repair was attempted — only
-    /// on the first sync after daemon restart.
     pub startup_repair_ran: bool,
 }
 
@@ -1794,27 +1680,12 @@ impl AnalyticsBackfillReport {
     }
 }
 
-/// Run the cheap incremental analytics backfill steps. Each store
-/// delta method is `WHERE column IS NULL / = 'unknown'` filtered, so calls
-/// are near-free when there's nothing to do — making the function
-/// itself the cheapest possible probe ("just run it"). On the first
-/// invocation per daemon process, additionally runs the heavier
-/// historical List-Id and reply_pairs-from-messages scans to catch cases where a release
-/// added a derived column that needs backfilling — the AtomicBool
-/// guard means subsequent syncs skip it.
-///
-/// Errors are surfaced individually via `tracing::warn` (one bad
-/// step shouldn't block the others) and the report counts only the
-/// successful steps.
 pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> AnalyticsBackfillReport {
     use mxr_core::types::AccountAddressLookup;
     use std::sync::atomic::Ordering;
 
     let mut report = AnalyticsBackfillReport::default();
 
-    // The 3 cheap delta steps. Each filters by NULL / 'unknown' so
-    // is a no-op on healthy data. Refresh address cache once for the
-    // direction reclassifier.
     if !state.refresh_account_addresses().await {
         tracing::warn!("post-sync reclassify skipped: account address cache is stale");
     } else {
@@ -1831,12 +1702,6 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
         }
     }
     tokio::task::yield_now().await;
-    // One-shot historical repair: canonicalize cached List-Id and scan
-    // messages for reply_pairs we haven't
-    // captured yet (covers release upgrades adding the table). The
-    // AtomicBool flips on first attempt regardless of outcome — a
-    // failed attempt shouldn't loop forever; the user can `mxr
-    // doctor --rebuild-analytics` to retry explicitly.
     if !state
         .analytics_startup_repair_done
         .swap(true, Ordering::SeqCst)
@@ -2053,8 +1918,6 @@ mod sync_all_tests {
             0,
         )));
 
-        // Hold the existing per-account claim to exercise the same join path
-        // as a pass already in flight without relying on timing.
         let _busy_claim =
             AppState::claim_background_sync(&state, &busy_id).expect("busy account claim");
         let preview = sync_targets(&state, None).await.unwrap();
@@ -2201,8 +2064,6 @@ fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
     }
 }
 
-/// Tests that don't need the `semantic-local` feature. Kept in their
-/// own module so they run on the default `cargo test` invocation.
 #[cfg(test)]
 mod tests_no_semantic {
     use super::*;
@@ -2297,8 +2158,6 @@ mod tests_no_semantic {
                 .unwrap();
         assert_eq!(indexed.as_deref(), Some("weekly.example.org"));
 
-        // If the whole-body scan ran again it would repair this sentinel.
-        // Checking only an unchanged healthy row's returned count misses that cost.
         make_list_cache_legacy(&state, &id).await;
         let second = incremental_analytics_backfill(&state).await;
         assert!(!second.startup_repair_ran);
@@ -2364,19 +2223,6 @@ mod tests_no_semantic {
         );
     }
 
-    /// `rebuild_analytics` must broadcast `OperationStarted`, six
-    /// `OperationProgress` events (one per SQL pass) with
-    /// `total: Some(6)` and a stable `operation_id`, then
-    /// `OperationCompleted` — all carrying the operation name
-    /// `"rebuild-analytics"`. Without this the CLI/TUI spinner has
-    /// nothing to show during the seconds-to-minutes-long handler
-    /// and the user sees a hung process.
-    /// `incremental_analytics_backfill` runs the heavy
-    /// `backfill_reply_pairs_from_messages` step exactly once per
-    /// daemon process — the `analytics_startup_repair_done` flag
-    /// flips on the first call and gates subsequent calls. Without
-    /// this gate every sync would re-scan the entire messages table
-    /// for reply pairs, which is O(n) on a populated mailbox.
     #[tokio::test]
     async fn incremental_backfill_runs_startup_repair_only_on_first_call() {
         use std::sync::atomic::Ordering;
@@ -2405,17 +2251,9 @@ mod tests_no_semantic {
         );
     }
 
-    /// On a fresh in-memory store there are no `Unknown` directions,
-    /// `NULL` list_ids, or pending reply pairs to fix, so the cheap
-    /// delta steps must all return 0. This pins the "no work" path
-    /// — the post-sync hook fires every sync and we want it to be a
-    /// silent no-op when data is healthy (no log spam, no perf
-    /// regression).
     #[tokio::test]
     async fn incremental_backfill_returns_zeros_on_healthy_empty_store() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
-        // Pre-flip the guard so we observe only the cheap-delta
-        // behaviour (the heavy path is covered by the test above).
         state
             .analytics_startup_repair_done
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -2436,8 +2274,6 @@ mod tests_no_semantic {
     async fn rebuild_analytics_emits_started_progress_completed_event_sequence() {
         use mxr_protocol::{DaemonEvent, IpcPayload};
         let state = Arc::new(AppState::in_memory().await.unwrap());
-        // Subscribe before triggering so we don't lose the leading
-        // `OperationStarted` to a race.
         let mut rx = state.event_tx.subscribe();
 
         let result = rebuild_analytics(&state).await;
@@ -2540,8 +2376,6 @@ mod tests {
     use mxr_core::types::SortOrder;
     use std::sync::Arc;
 
-    // Semantic chunk persistence runs on the semantic worker, which only spins up
-    // with the `semantic-local` feature; without it the chunk poll never resolves.
     #[tokio::test]
     async fn sync_now_persists_semantic_chunks_without_embeddings_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

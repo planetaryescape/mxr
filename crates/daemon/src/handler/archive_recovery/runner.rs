@@ -90,7 +90,6 @@ async fn dispatch_intent(
         }
         retained.state = ItemState::Unknown;
         retained.reason = Some("Dispatch intent retained; provider completion is unproved. Query this operation; do not submit a new one".into());
-        // Undo must restore the labels present at dispatch, including changes made after review.
         retained.prior_flags_bits = current.flags.bits();
         retained
             .prior_label_provider_ids
@@ -117,8 +116,6 @@ pub(in crate::handler) async fn run(
         .ensure_effects_allowed()
         .map_err(HandlerError::Message)?;
     let (_, operation) = load(state, identity).await?;
-    // A runner started after completion must not restore an Undo entry the
-    // user has already consumed.
     if !operation
         .items
         .iter()
@@ -133,8 +130,6 @@ pub(in crate::handler) async fn run(
         }
         let _guard = state.acquire_provider_operation(&item.account_id).await;
         validate_identity(state, identity).await?;
-        // Check again under the same guard as dispatch: two concurrent workers
-        // may have read Pending, but only the durable CAS winner calls the provider.
         let current = state.store.get_envelope(&item.message_id).await?;
         if !current.as_ref().is_some_and(|env| binding(env, &item)) {
             transition(state, identity, &item.message_id, ItemState::Pending, ItemState::NotExecuted,
@@ -187,7 +182,6 @@ pub(in crate::handler) async fn run(
         .await;
         match result {
             Ok(Ok(())) => {
-                // Receipt first. Failure here leaves durable Unknown, never permission to repeat.
                 transition(
                     state,
                     identity,

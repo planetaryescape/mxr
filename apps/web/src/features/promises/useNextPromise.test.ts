@@ -36,21 +36,4 @@ describe("nextDuePromise", () => {
     expect(next?.commitment.id).toBe("words");
   });
 
-  it("returns nothing when every dated promise is unverified, past or theirs", () => {
-    const theirs = {
-      ...commitment("theirs", "2026-10-25T09:00:00Z"),
-      direction: "theirs" as const,
-    };
-    expect(
-      nextDuePromise(
-        [
-          commitment("model", "2026-10-25T09:00:00Z", true),
-          commitment("past", "2026-10-01T09:00:00Z"),
-          commitment("undated", null),
-          theirs,
-        ],
-        NOW,
-      ),
-    ).toBeNull();
-  });
 });

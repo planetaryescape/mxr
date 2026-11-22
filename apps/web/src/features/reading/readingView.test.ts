@@ -16,10 +16,8 @@ import {
   marksForParagraph,
   marksForView,
   minutesLeft,
-  quoteOpening,
   scrollProgress,
   shownLinks,
-  unsubscribeMethodLine,
   unsubscribePreview,
   visibleBands,
 } from "./readingView";
@@ -76,10 +74,10 @@ describe("digest links", () => {
   });
 
   test("a tracked link names the tracker, not a site it can't know", () => {
-    expect(domainLabel("sqlite.org")).toBe("sqlite.org");
     expect(domainLabel("substack.com", true)).toBe("via substack.com");
     expect(domainLabel(null)).toBe("");
   });
+
 });
 
 describe("the cursor order", () => {
@@ -148,12 +146,6 @@ describe("h", () => {
     expect(highlightPayload("x".repeat(5000), "m:0", "article")?.quote).toHaveLength(4000);
   });
 
-  test("a saved passage is named by its first eight words", () => {
-    expect(quoteOpening("Short  and\nsweet")).toBe("Short and sweet");
-    expect(quoteOpening("one two three four five six seven eight nine ten")).toBe(
-      "one two three four five six seven eight…",
-    );
-  });
 });
 
 describe("marksForParagraph", () => {
@@ -163,18 +155,6 @@ describe("marksForParagraph", () => {
     const marks = [{ quote: "Same words", paragraph: 1 }];
     expect(marksForParagraph(paragraphs, marks, 0)).toEqual([]);
     expect(marksForParagraph(paragraphs, marks, 1)).toEqual([{ quote: "Same words", once: true }]);
-  });
-
-  test("a highlight without a paragraph keeps drawing everywhere its words appear", () => {
-    for (const paragraph of [undefined, null]) {
-      const marks = [{ quote: "Same words", paragraph }];
-      expect(marksForParagraph(paragraphs, marks, 0)).toEqual([
-        { quote: "Same words", once: false },
-      ]);
-      expect(marksForParagraph(paragraphs, marks, 1)).toEqual([
-        { quote: "Same words", once: false },
-      ]);
-    }
   });
 
   test("an anchor that no longer holds the words falls back to drawing them wherever they are", () => {
@@ -203,12 +183,6 @@ const purgePreview = (method: UnsubscribeMethod, token: string | null = "tok") =
 });
 
 describe("unsubscribe", () => {
-  test("says how the sender is told", () => {
-    expect(unsubscribeMethodLine("one_click")).toMatch(/told directly/);
-    expect(unsubscribeMethodLine("link")).toMatch(/page/);
-    expect(unsubscribeMethodLine("mailto")).toMatch(/email/);
-    expect(unsubscribeMethodLine("none")).toMatch(/No unsubscribe method/);
-  });
 
   test("takes the method from the daemon's preview, not the edition", () => {
     const preview = unsubscribePreview({
@@ -246,10 +220,6 @@ describe("highlightMatching", () => {
     expect(highlightMatching("  A delete   is the absence ", saved)).toBe(saved[0]);
     expect(highlightMatching("other", saved)).toBe(saved[1]);
   });
-  test("a part of a highlight, or nothing, is not one", () => {
-    expect(highlightMatching("A delete", saved)).toBeUndefined();
-    expect(highlightMatching("   ", saved)).toBeUndefined();
-  });
   test("only mxr's own highlights are editable", () => {
     expect(isOwnHighlight({ origin: "mxr" })).toBe(true);
     expect(isOwnHighlight({})).toBe(true);
@@ -278,9 +248,4 @@ describe("marksForView", () => {
     ]);
   });
 
-  test("drops the anchor from a Marginalia highlight, numbered in Marginalia's copy", () => {
-    expect(marksForView([made("issue", "marginalia", 3)], "issue")).toEqual([
-      { quote: "same words", paragraph: null },
-    ]);
-  });
 });

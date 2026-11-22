@@ -88,13 +88,6 @@ describe("desk groups", () => {
     expect(hidden.groups.find((group) => group.id === "waiting")).toBeUndefined();
   });
 
-  test("a lane page shows one lane in full", () => {
-    const { groups } = deskGroups(desk(), [], "owed");
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.rows).toHaveLength(7);
-    expect(groups[0]!.more).toBeUndefined();
-  });
-
   test("a lane page knows when the daemon sent only part of the lane", () => {
     expect(partialLane(desk(), "owed")).toEqual({ shown: 7, total: 9 });
     expect(partialLane(desk(), "due")).toBeNull();

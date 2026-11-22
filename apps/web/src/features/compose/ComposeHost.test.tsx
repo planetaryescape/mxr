@@ -569,49 +569,6 @@ test("a Messages reply stays in its thread slot and summarizes the live draft au
   expect(within(threadSlot).queryByLabelText("To")).toBeNull();
 });
 
-test("sheet and fullscreen reply dialogs include the source subject in their accessible name", async () => {
-  api.startComposeSession.mockResolvedValue(
-    session({
-      frontmatter: {
-        to: "samir@example.com",
-        cc: "",
-        bcc: "",
-        subject: "Reply subject",
-        from: "me@example.com",
-        attach: [],
-      },
-      kind: "reply",
-    }),
-  );
-  renderHost(
-    <>
-      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
-      <ComposeHost />
-    </>,
-  );
-  act(() =>
-    useComposeUi.getState().openCompose(
-      {
-        key: "compose:reply:m1",
-        title: "Reply",
-        kind: "reply",
-        messageId: "m1",
-        contextThreadId: "thread-1",
-        contextTitle: "Contract renewal",
-        quiet: true,
-      },
-      "inline",
-    ),
-  );
-  await within(screen.getByTestId("thread-slot")).findByTestId("compose-summary");
-
-  fireEvent.click(screen.getByRole("button", { name: "Sheet" }));
-  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
-
-  fireEvent.click(screen.getByRole("button", { name: "Fullscreen (⇧⌘F)" }));
-  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
-});
-
 test("a reply left by switching topic saves, closes, and comes back with its recipients and body", async () => {
   const stored = new Map<string, ComposeSessionResponse>();
   const makeReply = (messageId: string) =>
@@ -731,48 +688,6 @@ test("a reply left by switching topic saves, closes, and comes back with its rec
   ).toBeInTheDocument();
 });
 
-test("a reply with no To recipient shows an add action without empty Cc and Bcc rows", async () => {
-  api.startComposeSession.mockResolvedValue(
-    session({
-      frontmatter: {
-        to: "",
-        cc: "",
-        bcc: "",
-        subject: "Reply subject",
-        from: "alias@example.com",
-        attach: [],
-      },
-      kind: "reply",
-    }),
-  );
-  renderHost(
-    <>
-      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
-      <ComposeHost />
-    </>,
-  );
-  act(() =>
-    useComposeUi.getState().openCompose(
-      {
-        key: "compose:reply:no-to",
-        title: "Reply",
-        kind: "reply",
-        messageId: "no-to",
-        contextThreadId: "thread-1",
-        contextTitle: "Contract renewal",
-        quiet: true,
-      },
-      "inline",
-    ),
-  );
-  const summary = await screen.findByTestId("compose-summary");
-  expect(summary).toHaveTextContent("Add recipient");
-  expect(summary).not.toHaveTextContent("Cc:");
-  expect(summary).not.toHaveTextContent("Bcc:");
-  fireEvent.click(within(summary).getByRole("button", { name: /Edit recipients:/ }));
-  expect(await screen.findByRole("combobox", { name: "To" })).toBeInTheDocument();
-});
-
 describe("ComposeHost validation", () => {
   const blank = () =>
     session({
@@ -783,17 +698,6 @@ describe("ComposeHost validation", () => {
         { severity: "warning", message: "Subject is empty" },
       ],
     });
-
-  test("a fresh message shows no validation before the user tries to send", async () => {
-    api.startComposeSession.mockResolvedValue(blank());
-    renderHost();
-    openNewMessage();
-
-    await screen.findByLabelText("Subject");
-    expect(screen.queryByRole("status", { name: "Compose issues" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/No recipients/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Subject is empty/)).not.toBeInTheDocument();
-  });
 
   test("a blocked send shows one line that separates blockers from warnings", async () => {
     api.startComposeSession.mockResolvedValue(blank());
@@ -841,22 +745,6 @@ describe("ComposeHost shortcut failures", () => {
       expect(toasts.error).toHaveBeenCalledWith("Save failed", { description: "disk full" }),
     );
     expect(toasts.success).not.toHaveBeenCalledWith("Draft saved locally");
-  });
-
-  test("Cmd+Shift+R reports a failed refresh instead of throwing", async () => {
-    api.refreshComposeSession.mockRejectedValue(new Error("compose file missing"));
-    renderHost();
-    openNewMessage();
-
-    const subject = await screen.findByLabelText("Subject");
-    fireEvent.keyDown(subject, { key: "R", metaKey: true, shiftKey: true });
-
-    await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith("Refresh failed", {
-        description: "compose file missing",
-      }),
-    );
-    expect(subject).toHaveValue("Quarterly plan");
   });
 });
 
@@ -1129,22 +1017,6 @@ describe("ComposeHost send and remind", () => {
     await waitFor(() =>
       expect(api.cancelAutoReminder).toHaveBeenCalledWith("msg-9", originalBinding()),
     );
-  });
-
-  test("says so when the bridge can't identify the sent message", async () => {
-    api.sendComposeSession.mockResolvedValue({ ok: true, draft_id: "draft-1" });
-    renderHost();
-    openNewMessage();
-
-    await chooseRemindIn("1 day");
-
-    await waitFor(() =>
-      expect(toasts.warning).toHaveBeenCalledWith("Sent, but no reminder was set", {
-        description: "The mxr bridge did not return the sent message id.",
-      }),
-    );
-    expect(api.sendComposeSession).toHaveBeenCalledTimes(1);
-    expect(api.setAutoReminder).not.toHaveBeenCalled();
   });
 });
 

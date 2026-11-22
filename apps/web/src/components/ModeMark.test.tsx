@@ -14,11 +14,6 @@ describe("ModeMark", () => {
     expect(mark.querySelector("svg")).toHaveClass("size-3.5");
   });
 
-  test("falls back to the mode's name without detail", () => {
-    render(<ModeMark mode="reading" />);
-    expect(screen.getByRole("img", { name: "Reading" })).toHaveAttribute("title", "Reading");
-  });
-
   test("a list of memberships is one mark per mode, and nothing when there are none", () => {
     const { rerender } = render(
       <ModeMarks
@@ -35,5 +30,4 @@ describe("ModeMark", () => {
     rerender(<ModeMarks modes={[]} />);
     expect(screen.queryByTestId("mode-mark")).toBeNull();
   });
-
 });

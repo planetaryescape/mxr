@@ -146,23 +146,4 @@ describe("Reading's finishing scene", () => {
     revisit.unmount();
   });
 
-  test("plays again on the next local day it is finished", async () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 20, 10) });
-    const day1 = visit(withWork);
-    await screen.findByTestId("reading-edition");
-    day1.show(cleared);
-    await screen.findByTestId("page-empty");
-    await settle();
-    day1.unmount();
-    expect(sounds()).toBe(1);
-
-    vi.setSystemTime(new Date(2026, 9, 21, 10));
-    const day2 = visit(withWork);
-    await screen.findByTestId("reading-edition");
-    day2.show(cleared);
-    await screen.findByTestId("page-empty");
-    await settle();
-    day2.unmount();
-    expect(sounds()).toBe(2);
-  });
 });

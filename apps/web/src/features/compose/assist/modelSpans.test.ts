@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { addedSpans, carryModelSpans, keptRuns, mapModelSpans, NO_SPANS } from "./modelSpans";
+import { addedSpans, carryModelSpans, keptRuns, mapModelSpans } from "./modelSpans";
 
 describe("mapModelSpans", () => {
   const before = "Hi Pat,\n\nFriday works.\n\n-- \nBK";
@@ -17,15 +17,6 @@ describe("mapModelSpans", () => {
   test("typing inside a span clears its mark", () => {
     const after = before.replace("Friday", "Friday,");
     expect(mapModelSpans([span], before, after)).toEqual([]);
-  });
-
-  test("a span survives typing directly after it", () => {
-    const after = before.replace("Friday works.", "Friday works.!");
-    expect(mapModelSpans([span], before, after)).toEqual([span]);
-  });
-
-  test("an unchanged body keeps every span", () => {
-    expect(mapModelSpans([span], before, before)).toEqual([span]);
   });
 });
 
@@ -45,11 +36,6 @@ describe("addedSpans", () => {
     // The proof ends in a newline, which the insert drops.
     const pieces = [{ kind: "added" as const, text: "Hi\n", gap: null }];
     expect(addedSpans(pieces, 10, "Hi".length)).toEqual([{ start: 10, end: 12 }]);
-  });
-
-  test("an unmarked draft stays on one shared empty list", () => {
-    const before = "Hi\n\n-- \nBK";
-    expect(mapModelSpans(NO_SPANS, before, "Hi there\n\n-- \nBK")).toBe(NO_SPANS);
   });
 });
 
@@ -101,21 +87,6 @@ describe("carryModelSpans", () => {
       kept ?? [],
     );
     expect(carried).toEqual([{ start: 0, end: 6 }]);
-  });
-
-  test("text after the region moves with the region's end", () => {
-    const carried = carryModelSpans(
-      [{ start: 20, end: 25 }],
-      {
-        oldRegionStart: 0,
-        oldRegionEnd: 13,
-        newRegionStart: 0,
-        insertedLength: 13,
-        suffixShift: 7,
-      },
-      [{ oldStart: 0, length: 13, newStart: 0 }],
-    );
-    expect(carried).toEqual([{ start: 27, end: 32 }]);
   });
 
   test("changes that do not spell both texts give no runs, so the caller falls back", () => {

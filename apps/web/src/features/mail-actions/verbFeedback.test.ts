@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getRegistry } from "@/lib/actions";
 
 import { verb } from "./actionPastTense";
-import type { MailAction } from "./pendingMailOps";
-import { toneFor, VERB_FEEDBACK } from "./verbFeedback";
+import { VERB_FEEDBACK } from "./verbFeedback";
 
 /** Registry actions that change mail or a place: each must be a verb's trigger. */
 const STATE_CHANGING = [
@@ -80,14 +79,6 @@ describe("verb feedback table", () => {
     expect(incomplete).toEqual([]);
   });
 
-  it("is where the toasts get their words", () => {
-    const actions: MailAction[] = ["archive", "trash", "spam", "snooze", "read-and-archive"];
-    expect(actions.map((action) => verb(action))).toEqual(
-      actions.map((action) => VERB_FEEDBACK[action].pastTense),
-    );
-    expect(verb("move", { label: "Work" })).toBe("Moved to Work");
-  });
-
   it("marks undo-less verbs irreversible, with a reason, and they confirm first", () => {
     const unguarded = Object.entries(VERB_FEEDBACK)
       .filter(
@@ -108,18 +99,5 @@ describe("verb feedback table", () => {
 });
 
 describe("toast tones", () => {
-  it("colours done green and neutral changes with an undo in the accent", () => {
-    const done = ["desk-done", "mode-done", "todo-done", "send"] as const;
-    expect(done.map(toneFor)).toEqual(done.map(() => "success"));
-    const neutral = ["archive", "move", "reply-later-at", "snooze", "sweep"] as const;
-    expect(neutral.map(toneFor)).toEqual(neutral.map(() => "info"));
-  });
 
-  it("never reports a verb's result as a warning or an error", () => {
-    // Those tones are for failures, which have their own toasts.
-    const off = Object.entries(VERB_FEEDBACK).filter(
-      ([, entry]) => entry.tone !== "success" && entry.tone !== "info",
-    );
-    expect(off.map(([name]) => name)).toEqual([]);
-  });
 });

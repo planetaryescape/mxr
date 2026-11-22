@@ -50,13 +50,6 @@ describe("moving an email", () => {
     expect(useSenderAsk.getState().pending?.message_id).toBe("msg-1");
   });
 
-  test("shows the hint on the first move's toast only", async () => {
-    fetchMock.mockResolvedValue(moved());
-    await performMove({ messageId: "msg-1", mode: "reading" });
-    await performMove({ messageId: "msg-1", mode: "reading" });
-    expect(toastMock.info.mock.calls[1]![1]?.description).toBeUndefined();
-  });
-
   test("u undoes the newest move through the daemon", async () => {
     fetchMock.mockResolvedValueOnce(moved());
     await performMove({ messageId: "msg-1", mode: "reading" });

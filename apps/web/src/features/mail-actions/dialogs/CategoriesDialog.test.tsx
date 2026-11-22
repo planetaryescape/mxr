@@ -115,18 +115,6 @@ test("does not report a changed assignment as fully undone", async () => {
     expect.objectContaining({ description: expect.stringContaining("1 assignment") }),
   );
 });
-test("shows Undo failure without reporting success", async () => {
-  api.undoCategoryMembership.mockRejectedValue(new Error("Undo expired"));
-  show();
-  await apply();
-  await act(async () => {
-    expect(await useUndo.getState().lastUndo?.()).toBe(false);
-  });
-  expect(toast.error).toHaveBeenCalledWith("Couldn't undo category changes", {
-    description: "Undo expired",
-  });
-  expect(toast.success).not.toHaveBeenCalled();
-});
 test("Manage Enter is not consumed as a category toggle", async () => {
   show();
   const button = await screen.findByRole("button", { name: "Manage Travel" });

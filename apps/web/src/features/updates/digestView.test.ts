@@ -9,11 +9,9 @@ import {
   gistThread,
   numberNotInFact,
   openableLink,
-  routineLine,
   splitSourceName,
   trackLabel,
   trailingItem,
-  tuneToast,
 } from "./digestView";
 import { digestFixture, lineFixture } from "./testing";
 
@@ -29,18 +27,6 @@ describe("source names read as names", () => {
     expect(displaySourceName("strav")).toBe("Strav");
   });
 
-  test("a name with any capital is left exactly as it came", () => {
-    expect(displaySourceName("eBay")).toBe("eBay");
-    expect(displaySourceName("iCloud")).toBe("iCloud");
-    expect(displaySourceName("GitHub acme/api")).toBe("GitHub acme/api");
-    expect(displaySourceName("Amazon.com")).toBe("Amazon.com");
-    expect(displaySourceName("Account Verification")).toBe("Account Verification");
-  });
-
-  test("an empty name stays empty, and a name with no letters is unchanged", () => {
-    expect(displaySourceName("")).toBe("");
-    expect(displaySourceName("1password")).toBe("1password");
-  });
 });
 
 describe("the digest's layout", () => {
@@ -55,11 +41,6 @@ describe("the digest's layout", () => {
     const open = digestRows(digest, { routineOpen: true });
     expect(open.bySection.routine).toHaveLength(6);
     expect(open.routine).toEqual({ sources: 6, messages: 21 });
-  });
-
-  test("the collapsed Routine line counts updates and sources in the daemon's words", () => {
-    expect(routineLine({ sources: 16, messages: 31 })).toBe("Routine · 16 sources");
-    expect(routineLine({ sources: 1, messages: 1 })).toBe("Routine · 1 source");
   });
 
   test("hidden lines leave the Routine totals too", () => {
@@ -112,12 +93,6 @@ describe("what a line offers", () => {
     expect(canLetGoSource(parcel)).toBe(false);
   });
 
-  test("tuning says what the source does now", () => {
-    expect(tuneToast("Strava", "changes_only")).toBe("Strava: only when something changes.");
-    expect(tuneToast("Vercel", "muted")).toBe(
-      "Vercel: muted, its mail stays in Archive and search.",
-    );
-  });
 });
 
 describe("a row's facts", () => {

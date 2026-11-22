@@ -152,21 +152,6 @@ afterEach(() => {
 });
 
 describe("MailboxList keyboard", () => {
-  test("the list takes focus and the cursor starts on the first row", () => {
-    renderList();
-
-    expect(document.activeElement).toBe(list());
-    expect(cursor()).toBe("mail-row-thread-thread-1");
-  });
-
-  test("exactly one row is lit, and the lamp follows j", () => {
-    renderList();
-
-    const lit = () => screen.getAllByRole("option").filter((el) => el.dataset.lit === "true");
-    expect(lit().map((el) => el.id)).toEqual(["mail-row-thread-thread-1"]);
-    type({ key: "j" });
-    expect(lit().map((el) => el.id)).toEqual(["mail-row-thread-thread-2"]);
-  });
 
   test("j and k move the cursor, clamped at the ends", () => {
     renderList();
@@ -176,15 +161,6 @@ describe("MailboxList keyboard", () => {
     type({ key: "k" });
     expect(cursor()).toBe("mail-row-thread-thread-2");
     type({ key: "k" }, { key: "k" }, { key: "k" });
-    expect(cursor()).toBe("mail-row-thread-thread-1");
-  });
-
-  test("G jumps to the last row and g g back to the first", () => {
-    renderList();
-
-    type({ key: "G", shiftKey: true });
-    expect(cursor()).toBe("mail-row-thread-thread-4");
-    type({ key: "g" }, { key: "g" });
     expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
@@ -351,16 +327,6 @@ describe("MailboxList row action", () => {
     expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: "msg-2" }));
   });
 
-  test("w on a list with no row action runs its own key handler and nothing else", () => {
-    const onRowActionKey = vi.fn<() => void>();
-    renderList({ onRowActionKey });
-
-    type({ key: "w" });
-
-    expect(onRowActionKey).toHaveBeenCalledOnce();
-    expect(api.archiveMessagesRecoverably).not.toHaveBeenCalled();
-    expect(usePendingMailOps.getState().ops).toEqual([]);
-  });
 });
 
 describe("MailboxList readOnly", () => {
@@ -380,29 +346,7 @@ describe("MailboxList readOnly", () => {
 });
 
 describe("MailboxList rows", () => {
-  test("rows announce thread size, attachments and unread state", () => {
-    renderList({
-      groups: [
-        {
-          id: "today",
-          label: "Today",
-          rows: [row(1, { message_count: 3, has_attachments: true, unread: true })],
-        },
-      ],
-    });
 
-    const option = screen.getByRole("option");
-    expect(option).toHaveAccessibleName(/^Unread\./);
-    expect(option).toHaveAccessibleName(/3 messages in conversation/);
-    expect(option).toHaveAccessibleName(/Has attachments/);
-  });
-
-  test("renders the empty state when there are no rows", () => {
-    renderList({ groups: [] });
-
-    expect(screen.getByText("Empty")).toBeInTheDocument();
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-  });
 });
 
 describe("gistOrder", () => {

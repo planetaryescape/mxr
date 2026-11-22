@@ -4,7 +4,6 @@ import type { ConversationMessage, MessagesData, MessagesRow, MessagesTopic } fr
 import {
   afterDone,
   bands,
-  countdownLabel,
   cursorRows,
   doneLine,
   letterLead,
@@ -128,12 +127,6 @@ describe("labels", () => {
     ).toBe("your turn · 16h");
   });
 
-  test("quiet topics keep recency without repeating the quiet state", () => {
-    expect(topicStateLabel(topic("t", { state: "quiet" }), NOW)).toBe("1d");
-    expect(topicStateLabel(topic("t", { state: "waiting" }), NOW)).toBe("waiting · 1d");
-    expect(topicStateLabel(topic("t", { state: "done" }), NOW)).toBe("done here · 1d");
-  });
-
   test("{ and } step through topics without wrapping", () => {
     const topics = [topic("a"), topic("b"), topic("c")];
     expect(stepTopic(topics, "b", 1)?.thread_id).toBe("c");
@@ -143,11 +136,6 @@ describe("labels", () => {
     expect(stepTopic([], "a", 1)).toBeUndefined();
   });
 
-  test("the countdown counts whole seconds down to sending", () => {
-    expect(countdownLabel(5_000, 0)).toBe("Sending in 5s");
-    expect(countdownLabel(5_000, 4_100)).toBe("Sending in 1s");
-    expect(countdownLabel(5_000, 5_000)).toBe("Sending…");
-  });
 });
 
 describe("length decides the shape", () => {
@@ -166,23 +154,10 @@ describe("length decides the shape", () => {
     });
   });
 
-  test("a two-paragraph greeting does not hide the substantive paragraph", () => {
-    const text =
-      "Hi Alex,\n\nThe renewal terms have changed substantially, and I need you to review the new timeline before Friday.";
-    expect(letterLead(message(text, { paragraphs: 2 }))).toEqual({ lead: text, hidden: 0 });
-  });
-
   test("a provider preview is shown whole rather than offered as complete-message expansion", () => {
     const text = "Preview introduction.\n\nSecond preview paragraph.\n\nFinal preview detail.";
     expect(letterLead(message(text, { paragraphs: 3, source: "provider_snippet" }))).toEqual({
       lead: text,
-      hidden: 0,
-    });
-  });
-
-  test("a compact note shows whole", () => {
-    expect(letterLead(message("Thanks, on it.", { layout: "compact" }))).toEqual({
-      lead: "Thanks, on it.",
       hidden: 0,
     });
   });

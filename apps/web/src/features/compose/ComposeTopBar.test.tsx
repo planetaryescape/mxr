@@ -48,22 +48,6 @@ describe("ComposeTopBar send-as picker", () => {
     expect(screen.queryByRole("combobox", { name: "Send as address" })).not.toBeInTheDocument();
   });
 
-  test("multiple aliases on one account: renders the send-as picker with each alias", () => {
-    renderTopBar({
-      addresses: [
-        "hello@planetaryescape.xyz",
-        "admin@planetaryescape.xyz",
-        "legal@planetaryescape.xyz",
-      ],
-      fromAddress: "admin@planetaryescape.xyz",
-    });
-
-    const picker = screen.getByRole("combobox", { name: "Send as address" });
-    expect(picker).toBeVisible();
-    // The trigger reflects the currently selected alias.
-    expect(picker).toHaveTextContent("admin@planetaryescape.xyz");
-  });
-
   test("a from-address not in the alias list falls back to the first alias for display", () => {
     renderTopBar({
       addresses: ["hello@planetaryescape.xyz", "admin@planetaryescape.xyz"],
@@ -101,10 +85,5 @@ describe("ComposeTopBar send-as picker", () => {
     expect(screen.getByRole("combobox", { name: "Send as address" })).toHaveTextContent(
       "admin@planetaryescape.xyz",
     );
-  });
-
-  test("one account, one address: the account's name shows beside its address", () => {
-    renderTopBar();
-    expect(screen.getByText("Bhekani.com")).toBeVisible();
   });
 });

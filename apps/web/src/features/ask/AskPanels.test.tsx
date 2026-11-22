@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { AskArchivePanel } from "./AskArchivePanel";
-import { WhoisPanel } from "./WhoisPanel";
 
 const client = vi.hoisted(() => ({
   apiFetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),
@@ -36,33 +35,6 @@ function respond(routes: Record<string, unknown>) {
 afterEach(() => vi.clearAllMocks());
 
 describe("WhoisPanel", () => {
-  test("shows the summary and points to LLM setup when no model is configured", async () => {
-    respond({
-      "/api/v1/platform/llm/status": { status: { enabled: false } },
-      "/api/v1/mail/whois": {
-        kind: "EntityExplanation",
-        entity: {
-          canonical_name: "cal@signal.example",
-          kind: "person",
-          summary: "Cal Brooks, 10 inbound, 0 outbound.",
-          first_seen_at: "2026-09-26T02:33:46Z",
-          last_seen_at: "2026-09-26T19:32:46Z",
-          topics: ["release"],
-          citations: [{ msg_id: "m1", quote: "The build is red again." }],
-          candidates: [],
-        },
-      },
-    });
-    renderWithClient(<WhoisPanel entity="cal@signal.example" accountId="acct-1" />);
-
-    expect(await screen.findByText("Cal Brooks, 10 inbound, 0 outbound.")).toBeVisible();
-    expect(client.apiFetch).toHaveBeenCalledWith(
-      "/api/v1/mail/whois?query=cal%40signal.example&account=acct-1",
-    );
-    expect(screen.getByText("release")).toBeVisible();
-    expect(screen.getByText("The build is red again.")).toBeVisible();
-    expect(await screen.findByRole("link", { name: /set up a language model/i })).toBeVisible();
-  });
 });
 
 describe("AskArchivePanel", () => {

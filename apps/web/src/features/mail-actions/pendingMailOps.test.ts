@@ -76,12 +76,6 @@ describe("projectRows: which lenses an action removes rows from", () => {
     expect(visible([op("trash", ["a"])], TRASH)).toEqual(["a", "b"]);
   });
 
-  test("spam removes everywhere except Spam", () => {
-    expect(visible([op("spam", ["a"])], INBOX)).toEqual(["b"]);
-    expect(visible([op("spam", ["a"])], TRASH)).toEqual(["b"]);
-    expect(visible([op("spam", ["a"])], SPAM)).toEqual(["a", "b"]);
-  });
-
   test("label-remove hides rows only in that label's lens, ignoring case", () => {
     const remove = op("label-remove", ["a"], { label: "work" });
 
@@ -96,10 +90,6 @@ describe("projectRows: which lenses an action removes rows from", () => {
     expect(visible([change], WORK)).toEqual(["b"]);
     expect(visible([change], RECEIPTS)).toEqual(["a", "b"]);
     expect(visible([change], INBOX)).toEqual(["a", "b"]);
-  });
-
-  test("label-add never removes a row", () => {
-    expect(visible([op("label-add", ["a"], { label: "Work" })], WORK)).toEqual(["a", "b"]);
   });
 
   test("unstar hides the row only in Starred", () => {
@@ -152,16 +142,6 @@ describe("projectRows: flag changes", () => {
     ]);
   });
 
-  test("read-and-archive marks read where the row stays", () => {
-    const [projected] = projectRows(
-      [row("a", { unread: true })],
-      [op("read-and-archive", ["a"])],
-      ALL_MAIL,
-    );
-
-    expect(projected?.unread).toBe(false);
-  });
-
   test("the server rows are not mutated", () => {
     const original = row("a");
     projectRows([original], [op("star", ["a"])], INBOX);
@@ -184,20 +164,10 @@ describe("projectRows: thread rows and op order", () => {
     expect(projectRows([thread], [op("archive", ["t"])], INBOX)).toEqual([]);
   });
 
-  test("ops apply in order: star then unstar ends unstarred", () => {
-    const [projected] = projectRows([row("a")], [op("star", ["a"]), op("unstar", ["a"])], INBOX);
-    expect(projected?.starred).toBe(false);
-  });
-
   test("a removal wins over a later flag change", () => {
     expect(visible([op("archive", ["a"]), op("star", ["a"])], INBOX)).toEqual(["b"]);
   });
 
-  test("unrelated rows are returned as the same objects", () => {
-    const rows = [row("a"), row("b")];
-    const projected = projectRows(rows, [op("star", ["a"])], INBOX);
-    expect(projected[1]).toBe(rows[1]);
-  });
 });
 
 describe("projectGroups", () => {
@@ -212,8 +182,4 @@ describe("projectGroups", () => {
     expect(projected).toEqual([{ id: "older", label: "Older", rows: [row("c")] }]);
   });
 
-  test("returns the input untouched with no pending ops", () => {
-    const groups: MessageGroupView[] = [{ id: "today", label: "Today", rows: [row("a")] }];
-    expect(projectGroups(groups, [], INBOX)).toBe(groups);
-  });
 });

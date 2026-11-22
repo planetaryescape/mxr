@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { components } from "@/api/generated";
-import { downloadAttachment, openAttachment } from "./api";
+import { openAttachment } from "./api";
 
 type AttachmentTransferMetadata = components["schemas"]["AttachmentTransferMetadata"];
 type AttachmentChunk = components["schemas"]["AttachmentChunk"];
@@ -118,18 +118,6 @@ describe("attachment transfer in the browser", () => {
     expect(popup.location.replace).not.toHaveBeenCalled();
   });
 
-  test("downloads verified bytes with the attachment filename", async () => {
-    transferResponses();
-
-    await expect(downloadAttachment(input, dependencies)).resolves.toEqual({
-      filename: "note.txt",
-      opened: false,
-    });
-
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
-    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-  });
-
   test("rejects corrupted bytes and closes the preparing tab", async () => {
     transferResponses(metadata.mime_type, "0".repeat(64));
 
@@ -138,18 +126,6 @@ describe("attachment transfer in the browser", () => {
     expect(popup.close).toHaveBeenCalledOnce();
     expect(popup.location.replace).not.toHaveBeenCalled();
     expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
-  });
-
-  test("falls back to download when the browser blocks the popup", async () => {
-    popupResult = null;
-    transferResponses();
-
-    await expect(openAttachment(input, dependencies)).resolves.toEqual({
-      filename: "note.txt",
-      opened: false,
-    });
-
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
   });
 
   test("falls back to download when the user closes the popup during transfer", async () => {

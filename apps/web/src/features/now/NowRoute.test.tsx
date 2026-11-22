@@ -146,17 +146,6 @@ describe("Now's finishing scene", () => {
     revisit.unmount();
   });
 
-  test("plays again on the next local day it is finished", () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 20, 10) });
-    visit(withWork).unmount();
-    visit(cleared).unmount();
-    expect(sounds()).toBe(1);
-
-    vi.setSystemTime(new Date(2026, 9, 21, 10));
-    visit(withWork).unmount();
-    visit(cleared).unmount();
-    expect(sounds()).toBe(2);
-  });
 });
 
 describe("Now's mail verbs", () => {

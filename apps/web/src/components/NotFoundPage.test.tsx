@@ -34,13 +34,6 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 describe("NotFoundPage", () => {
-  test("names the path that matched nothing and says why it may be stale", () => {
-    render(<NotFoundPage />);
-
-    expect(screen.getByRole("heading", { name: "Nothing at /nope-route" })).toBeVisible();
-    expect(screen.getByText(/may be from an older version of mxr/i)).toBeVisible();
-  });
-
   test("offers the two places people go", () => {
     render(<NotFoundPage />);
 

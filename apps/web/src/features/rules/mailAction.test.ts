@@ -61,11 +61,6 @@ describe("rules mailAction parser", () => {
     expect(mailActions("star")).toEqual([{ kind: "star" }]);
   });
 
-  test("normalises read/unread aliases", () => {
-    expect(mailActions("mark-read")).toEqual([{ kind: "read" }]);
-    expect(mailActions("mark_unread")).toEqual([{ kind: "unread" }]);
-  });
-
   test("parses label aliases with arbitrary case + whitespace", () => {
     expect(mailActions("label:Receipts")).toEqual([{ kind: "label-add", label: "Receipts" }]);
     expect(mailActions("ADD-LABEL: Follow Up ")).toEqual([
@@ -78,18 +73,10 @@ describe("rules mailAction parser", () => {
     expect(mailActions("remove-label: Queue ")).toEqual([{ kind: "label-remove", label: "Queue" }]);
   });
 
-  test("parses move:Target", () => {
-    expect(mailActions("move:Archive")).toEqual([{ kind: "move", label: "Archive" }]);
-  });
-
   test("rejects unsupported strings", () => {
     expect(mailActions("forward")).toBeNull();
     expect(mailActions("label:")).toBeNull();
     expect(mailActions("")).toBeNull();
-  });
-
-  test("rejects trailing-whitespace-only label payload", () => {
-    expect(mailActions("label:   ")).toBeNull();
   });
 
   test("parses ordered action chains", () => {

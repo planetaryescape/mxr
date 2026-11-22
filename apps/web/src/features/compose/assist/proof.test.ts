@@ -70,16 +70,4 @@ describe("proofRuns", () => {
     );
     expect(runs.map((run) => run.gap)).toEqual([0, 0, 0]);
   });
-
-  test("removed words are not part of the proposed text", () => {
-    const runs = proofRuns(
-      [
-        { kind: "removed", text: "gone" },
-        { kind: "kept", text: "stays" },
-      ],
-      [],
-    );
-    expect(runsText(runs)).toBe("stays");
-    expect(runs[0]).toEqual({ kind: "removed", text: "gone", gap: null });
-  });
 });

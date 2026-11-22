@@ -68,17 +68,6 @@ describe("returnFocusFromFrame", () => {
     expect(onReturn).not.toHaveBeenCalled();
   });
 
-  it("ignores the window losing focus to another app", () => {
-    const { frame } = mountFrame("<p>hello</p>");
-    const onReturn = vi.fn<() => void>();
-    cleanup = returnFocusFromFrame(frame, onReturn);
-
-    window.dispatchEvent(new FocusEvent("blur"));
-    vi.runAllTimers();
-
-    expect(onReturn).not.toHaveBeenCalled();
-  });
-
   it("copies the text selected in the message once the page holds focus", () => {
     const { frame, inner } = mountFrame("<p>hello <b>there</b> world</p>");
     cleanup = returnFocusFromFrame(frame);

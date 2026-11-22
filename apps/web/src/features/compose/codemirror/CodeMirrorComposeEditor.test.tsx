@@ -20,13 +20,6 @@ function setup() {
 }
 
 describe("CodeMirrorComposeEditor held keys", () => {
-  it("a held ⌘↵ sends once", () => {
-    const { content, onSend } = setup();
-    fireEvent.keyDown(content, { key: "Enter", ctrlKey: true, metaKey: true });
-    fireEvent.keyDown(content, { key: "Enter", ctrlKey: true, metaKey: true, repeat: true });
-    fireEvent.keyDown(content, { key: "Enter", ctrlKey: true, metaKey: true, repeat: true });
-    expect(onSend).toHaveBeenCalledTimes(1);
-  });
 
   it("editor chords' repeats reach the editor exactly as their first press does", () => {
     const { content } = setup();

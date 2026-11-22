@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import type { PlaceBundle, PlaceMessage, SweepPreview } from "./api";
 import {
-  correctionMessage,
   isStalePreview,
   KIND_OPTIONS,
   kindOptionForKey,
@@ -10,8 +9,7 @@ import {
   sweepConfirmLabel,
   sweepNote,
   sweepTitle,
-  whyHere,
-} from "./placeCopy";
+  } from "./placeCopy";
 
 function message(id: string, date: string, extra: Partial<PlaceMessage> = {}): PlaceMessage {
   return {
@@ -83,11 +81,6 @@ describe("Paper trail rows", () => {
 });
 
 describe("copy", () => {
-  test("why here quotes the daemon's reason", () => {
-    expect(whyHere({ reason: "automated sender, has List-Unsubscribe" })).toBe(
-      "Here because: automated sender, has List-Unsubscribe.",
-    );
-  });
 
   test("the whole-place confirm names its scope and size; a bundle's stays short", () => {
     const all = preview({
@@ -120,10 +113,6 @@ describe("copy", () => {
     expect(isStalePreview(new Error("bridge unreachable"))).toBe(false);
   });
 
-  test("corrections say where the sender went", () => {
-    expect(correctionMessage("Hacker News", "people")).toBe("Moved Hacker News to People");
-    expect(correctionMessage("Hacker News", null)).toBe("Hacker News is automatic again");
-  });
 });
 
 describe("kind menu", () => {

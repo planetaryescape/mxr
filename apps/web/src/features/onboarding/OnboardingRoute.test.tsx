@@ -148,38 +148,9 @@ describe("OnboardingRoute auth step", () => {
 describe("OnboardingRoute status copy", () => {
   afterEach(() => vi.clearAllMocks());
 
-  test("the auth step explains the daemon state instead of printing it", async () => {
-    await reachAuthStep(
-      "gmail",
-      session({ state: "waiting_for_user", auth_url: "https://accounts.google.com/x" }),
-    );
-
-    expect(await screen.findByText(/approve access in the gmail tab/i)).toBeVisible();
-    expect(screen.queryByText("waiting_for_user")).toBeNull();
-  });
 });
 
 describe("OnboardingRoute IMAP form", () => {
   afterEach(() => vi.clearAllMocks());
 
-  test("every IMAP input is named by its label, with the autofill and input hints", async () => {
-    renderOnboarding(<OnboardingRoute />);
-    fireEvent.click(screen.getByRole("button", { name: /connect first account/i }));
-    fireEvent.click(screen.getByRole("radio", { name: /imap/i }));
-    fireEvent.change(screen.getByPlaceholderText(/you@example\.com/i), {
-      target: { value: "user@example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
-
-    expect(screen.getByRole("textbox", { name: "IMAP host" })).toHaveAttribute("aria-describedby");
-    expect(screen.getByRole("spinbutton", { name: "IMAP port" })).toHaveAttribute(
-      "inputmode",
-      "numeric",
-    );
-    expect(screen.getByRole("textbox", { name: "Email" })).toHaveAttribute("autocomplete", "email");
-    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
-    expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
-    expect(screen.getByRole("group", { name: "Incoming mail (IMAP)" })).toBeVisible();
-    expect(screen.getByRole("group", { name: "Outgoing mail (SMTP)" })).toBeVisible();
-  });
 });

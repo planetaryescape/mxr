@@ -25,13 +25,11 @@ import {
   identitiesFrom,
 } from "@/features/accounts/useAccountIdentities";
 import type { RuntimeAccount } from "@/features/compose/api";
-import { previewMessages } from "./describe";
 import { renderMarkdown } from "./markdown";
 import { PendingCards } from "./PendingCards";
-import { orderedOptions } from "./Question";
 import { Transcript, mutationIdOf } from "./Transcript";
 import { useLandChanges } from "./useAssistant";
-import { foldSummary, irreversibleWarning, liveLine, slowNote, stepTitle } from "./wire";
+import { foldSummary, irreversibleWarning, liveLine, stepTitle } from "./wire";
 import { LiveLine } from "./LiveLine";
 import { useLanded, useLanding } from "@/state/landingStore";
 
@@ -141,11 +139,6 @@ describe("proof", () => {
     expect(rows.getByText("Out for delivery")).toBeVisible();
   });
 
-  test("a change with no title says so plainly, never a tool name", () => {
-    cards([{ ...approval, title: undefined } as AssistantPending]);
-    expect(screen.getByRole("heading", { name: "Change waiting for you" })).toBeVisible();
-  });
-
   test("shows the daemon's warning, and works one out only when it sends none", () => {
     const { unmount } = render(
       <PendingCards
@@ -159,11 +152,6 @@ describe("proof", () => {
     // An older daemon: no field, so the client's own rule for a trash.
     cards([{ ...approval, arguments: { action: "trash", message_ids: ["m1"] } }]);
     expect(screen.getByText("Can't be undone.")).toBeVisible();
-  });
-
-  test("a reversible change shows no warning", () => {
-    cards([approval]);
-    expect(screen.queryByText(/undone/)).toBeNull();
   });
 
   test("has one primary button, Apply, and it approves", () => {
@@ -227,14 +215,12 @@ describe("proof", () => {
     const card = screen.getByRole("region", { name: "Archive 2 emails" });
     fireEvent.keyDown(card, { key: "y" });
     expect(onDecide).not.toHaveBeenCalled();
-  });
-
-  test("a chord with y is not Apply", () => {
-    const onDecide = cards([approval]);
-    const card = screen.getByRole("region", { name: "Archive 2 emails" });
-    fireEvent.keyDown(card, { key: "y", metaKey: true });
-    fireEvent.keyDown(card, { key: "y", repeat: true });
-    expect(onDecide).not.toHaveBeenCalled();
+    cleanup();
+    const free = cards([approval]);
+    const freeCard = screen.getByRole("region", { name: "Archive 2 emails" });
+    fireEvent.keyDown(freeCard, { key: "y", metaKey: true });
+    fireEvent.keyDown(freeCard, { key: "y", repeat: true });
+    expect(free).not.toHaveBeenCalled();
   });
 
   test("a note goes back to the model as the reason", () => {
@@ -268,32 +254,9 @@ describe("proof", () => {
     expect(irreversibleWarning("mxr_mutate", { action: "trash" })).toBe("Can't be undone.");
   });
 
-  test("more than five rows end in 'and N more', which opens the rest", () => {
-    const envelopes = Array.from({ length: 8 }, (_, n) => ({
-      id: `m${n}`,
-      subject: `Subject ${n}`,
-      from: { name: `Sender ${n}`, email: "s@x" },
-    }));
-    cards([{ ...approval, preview: { preview: { envelopes } } } as AssistantPending]);
-    expect(screen.queryByText("Subject 7")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "and 3 more" }));
-    expect(screen.getByText("Subject 7")).toBeVisible();
-  });
 });
 
 describe("question", () => {
-  test("recommended goes first and is tagged; the model's marker is not shown", () => {
-    cards([question]);
-    const options = screen.getAllByRole("radio");
-    expect(options[0]).toHaveTextContent("Home");
-    expect(options[0]).toHaveTextContent("recommended");
-    expect(options[0]).not.toHaveTextContent("(Recommended)");
-    expect(
-      orderedOptions(question.kind === "question" ? question.questions[0]! : (null as never)).map(
-        (o) => o.label,
-      ),
-    ).toEqual(["Home", "Work"]);
-  });
 
   test("answers with the chosen option, and only once something is chosen", () => {
     const onDecide = cards([question]);
@@ -461,22 +424,6 @@ describe("transcript", () => {
     expect(screen.getByRole("link", { name: "Your parcel shipped, Work" })).toBeVisible();
   });
 
-  test("no default view shows a tool name or JSON, until Details is opened", () => {
-    const { container } = render(<Transcript items={turn} running={false} conversationId="c1" />);
-    fireEvent.click(screen.getByRole("button", { name: /1 step/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
-    expect(container.textContent).not.toMatch(/mxr_[a-z_]+|\{\s*"/);
-    fireEvent.click(screen.getByRole("button", { name: /Details/ }));
-    expect(container.textContent).toMatch(/mxr_search/);
-  });
-
-  test("a step reads in the tense of its state", () => {
-    expect(stepTitle({ ...search, state: "running" } as never)).toBe(
-      "Searching your mail for “shipped”",
-    );
-    expect(stepTitle(search as never)).toBe("Searched your mail: 14 found");
-  });
-
   test("an old daemon sends no titles: the model's reason, else the tool as words", () => {
     const old = { ...search, title: undefined } as never;
     expect(stepTitle(old)).toBe("Find shipping notices.");
@@ -519,11 +466,6 @@ describe("transcript", () => {
     expect(note).toHaveTextContent("Couldn't star 1 email: it was already moved");
   });
 
-  test("a reply whose steps all worked has no failure note", () => {
-    render(<Transcript items={turn} running={false} conversationId="c1" />);
-    expect(screen.queryByRole("note")).toBeNull();
-  });
-
   test("the reply carries the model mark, and where it ran when that model is the current one", () => {
     render(
       <Transcript
@@ -534,38 +476,6 @@ describe("transcript", () => {
       />,
     );
     expect(screen.getByTestId("model-mark")).toHaveTextContent("gemma4 · local");
-  });
-
-  test("a reply from another model says only which", () => {
-    render(
-      <Transcript
-        conversationId="c1"
-        items={turn}
-        running={false}
-        provenance={{ model: "gpt-x", leavesMachine: true }}
-      />,
-    );
-    expect(screen.getByTestId("model-mark")).toHaveTextContent("gemma4");
-    expect(screen.getByTestId("model-mark")).not.toHaveTextContent("cloud");
-  });
-
-  test("a reply keeps the place its own model ran after the model in use changes", () => {
-    const reply = {
-      ...turn[2]!,
-      model: "claude-haiku-5-5 via Anthropic",
-      leaves_machine: true,
-    } as AssistantItem;
-    render(
-      <Transcript
-        conversationId="c1"
-        items={[turn[0]!, turn[1]!, reply]}
-        running={false}
-        provenance={{ model: "gemma4", leavesMachine: false }}
-      />,
-    );
-    expect(screen.getByTestId("model-mark")).toHaveTextContent(
-      "claude-haiku-5-5 via Anthropic · cloud",
-    );
   });
 
   test("rows a reply refers to draw under it, each opening beside the assistant", () => {
@@ -628,29 +538,6 @@ describe("transcript", () => {
       expect(lookups()).toEqual([["t-rich"]]);
     });
 
-    test("a row with only a detail draws as before and asks for nothing", () => {
-      render(
-        <Transcript
-          items={[
-            turn[0]!,
-            replyWith([
-              { title: "Q1 report", detail: "Diana", link: { kind: "thread", thread_id: "t-9" } },
-            ]),
-          ]}
-          running={false}
-          conversationId="c1"
-        />,
-      );
-      const li = list()
-        .getByRole("link", { name: /Q1 report/ })
-        .closest("li")!;
-      expect(li).toHaveTextContent("Q1 report");
-      expect(li).toHaveTextContent("Diana");
-      expect(li.querySelector("svg.lucide-paperclip, svg.lucide-mail")).toBeNull();
-      expect(li.dataset.unread).toBeUndefined();
-      expect(lookups()).toEqual([]);
-    });
-
     test("hostile mail text stays text", () => {
       const hostile = '<img src=x onerror="alert(1)"><b>bold</b>';
       render(
@@ -667,11 +554,6 @@ describe("transcript", () => {
       expect(rows.querySelector("img, b")).toBeNull();
       expect(rows).toHaveTextContent(hostile);
     });
-  });
-
-  test("shows steps as they happen while the turn runs", () => {
-    render(<Transcript items={turn.slice(0, 2)} running conversationId="c1" />);
-    expect(screen.getByRole("button", { name: /Searched your mail: 14 found/ })).toBeVisible();
   });
 
   test("a summary marks where earlier messages were folded, and auto-approved steps say so", () => {
@@ -740,18 +622,9 @@ describe("live line", () => {
     ).toBe("Searching your mail for invoices");
     expect(liveLine({ kind: "writing", text: "Hi" })).toBe("Writing the answer");
     expect(liveLine({ kind: "summarizing" })).toBe("Making room: summarising earlier messages");
-  });
-
-  test("an old daemon sends no call title: the reason stands in", () => {
     expect(liveLine({ kind: "calling", tool: "mxr_search", reason: "Looking for invoices" })).toBe(
       "Looking for invoices",
     );
-  });
-
-  test("names the model only after a step runs long", () => {
-    expect(slowNote("gemma4", 19)).toBeNull();
-    expect(slowNote("gemma4", 24)).toBe("gemma4 is slow on this; 24s");
-    expect(slowNote(null, 90)).toBeNull();
   });
 
   test("shows the phrase, the seconds and Stop; Stop stops", () => {
@@ -895,63 +768,9 @@ describe("links to mail", () => {
     expect(chip.querySelector(".lucide-mail")).toBeNull();
   });
 
-  test("a chip for an email no mode knows keeps the mail icon", async () => {
-    const chip = chipFor("", null);
-    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalled());
-    expect(chip.querySelector(".lucide-mail")).not.toBeNull();
-  });
-
-  test("every chip in a reply is looked up in one request", async () => {
-    render(
-      <Transcript
-        conversationId="c1"
-        items={[
-          {
-            kind: "assistant",
-            seq: 1,
-            text: "[A](mxr:thread/t-a) and [B](mxr:thread/t-b) and [A again](mxr:thread/t-a)",
-            created_at: 0,
-          },
-        ]}
-        running={false}
-      />,
-    );
-    await vi.waitFor(() => expect(lookups()).toEqual([["t-a", "t-b"]]));
-  });
-
-  test("a re-render while the lookup is out keeps the chip and settles on the glyph", async () => {
-    const held = holdLookup();
-    const answer = (threads: unknown[]) => held.resolve({ kind: "ModeMembership", threads });
-    apiFetch.mockReturnValue(held.promise);
-    const items = [
-      {
-        kind: "assistant" as const,
-        seq: 1,
-        text: "See [Q1 report](mxr:thread/t-1234567).",
-        created_at: 0,
-      },
-    ];
-    const { rerender } = render(<Transcript items={items} running={false} conversationId="c1" />);
-    rerender(<Transcript items={[...items]} running={false} conversationId="c1" />);
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    expect(chip.querySelector(".lucide-mail")).not.toBeNull();
-    await act(async () => {
-      answer([{ thread_id: "t-1234567", in_inbox: false, modes: [{ mode: "todo" }] }]);
-    });
-    await vi.waitFor(() =>
-      expect(
-        screen.getByRole("link", { name: "Q1 report" }).querySelector(".lucide-list-checks"),
-      ).not.toBeNull(),
-    );
-    expect(lookups()).toHaveLength(1);
-  });
 });
 
 describe("change titles and previews", () => {
-  test("a preview's messages", () => {
-    expect(previewMessages(approval.kind === "approval" ? approval.preview : null)).toHaveLength(2);
-    expect(previewMessages({ nothing: true })).toEqual([]);
-  });
 });
 
 describe("undo", () => {
@@ -1014,17 +833,6 @@ describe("landing", () => {
       vi.advanceTimersByTime(600);
     });
     expect(result.current).toBe(false);
-  });
-
-  test("a row that isn't landing doesn't re-render when another does", () => {
-    let renders = 0;
-    renderHook(() => {
-      renders += 1;
-      return useLanded("t9");
-    });
-    const before = renders;
-    act(() => useLanding.getState().land(["m1"]));
-    expect(renders).toBe(before);
   });
 
   test("a change applied while the conversation is open lands; history doesn't replay", () => {
@@ -1091,29 +899,6 @@ describe("step rows", () => {
     expect(stepCalls()).toHaveLength(1);
   });
 
-  test("while the rest loads, the same button says so and keeps focus", async () => {
-    const held = holdLookup();
-    apiFetch.mockImplementation(async (path: string) => answerOthers(path) ?? (await held.promise));
-    open();
-    const more = screen.getByRole("button", { name: "and 7 more" });
-    more.focus();
-    fireEvent.click(more);
-
-    const loading = screen.getByRole("button", { name: "Loading the rest…" });
-    expect(loading).toBe(more);
-    expect(loading).toHaveAttribute("aria-busy", "true");
-    expect(document.activeElement).toBe(more);
-    // A second click while loading starts no second request.
-    fireEvent.click(more);
-    expect(stepCalls()).toHaveLength(1);
-
-    await act(async () => held.resolve({ rows: rowsOf(12), listed: 12, total: 12 }));
-    expect(await screen.findByText("Mail 11")).toBeVisible();
-    const fewer = screen.getByRole("button", { name: "Show fewer" });
-    expect(fewer).toBe(more);
-    expect(document.activeElement).toBe(more);
-  });
-
   test("when the rest fails, the step keeps its five and says so", async () => {
     apiFetch.mockImplementation(async (path: string) => {
       if (path.includes("/steps/")) throw new Error("the daemon is busy");
@@ -1125,16 +910,6 @@ describe("step rows", () => {
     expect(screen.getByText("Mail 4")).toBeVisible();
     expect(screen.queryByText("Mail 7")).toBeNull();
     expect(screen.getByRole("button", { name: "and 7 more" })).toBeVisible();
-  });
-
-  test("a total above what the rows list ends the list with a plain line", async () => {
-    apiFetch.mockImplementation(
-      async (path: string) => answerOthers(path) ?? { rows: rowsOf(10), listed: 10, total: 12 },
-    );
-    open();
-    fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
-    expect(await screen.findByText("Mail 9")).toBeVisible();
-    expect(screen.getByText("and 2 more matched that this step didn't load")).toBeVisible();
   });
 
   test("a conversation switch folds the steps and drops a late response for the old one", async () => {

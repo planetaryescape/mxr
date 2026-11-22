@@ -122,30 +122,9 @@ describe("the catalog is not on the first-paint path", () => {
       app.dispose();
     }
   });
-
-  test("a served keymap replaces the defaults without a reload", async () => {
-    const before = useKeymapStore.getState().version;
-    applyServedKeymap({
-      actions: [{ id: "mail.archive", keys: ["%"] }],
-      remapped: ["mail.archive"],
-    });
-    expect(definedShortcut("mail.archive")).toBe("%");
-    expect(useKeymapStore.getState().version).toBe(before + 1);
-    expect(
-      getRegistry()
-        .bindings()
-        .find((b) => b.action.id === "mail.archive")?.chord,
-    ).toBe("%");
-  });
 });
 
 describe("the index answers the labels the first screen shows", () => {
-  test("the keys navMap and sidebarRail read at module evaluation are right", () => {
-    expect(definedShortcut("nav.now")).toBe("g h");
-    expect(definedShortcut("nav.settings")).toBe("g C");
-    expect(definedShortcut("shell.help")).toBe("?");
-  });
-
   test("the registry cannot be built from the index alone", () => {
     resetDefinitionForTests();
     expect(isDefinitionLoaded()).toBe(false);

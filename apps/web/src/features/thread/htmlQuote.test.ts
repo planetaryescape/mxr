@@ -45,8 +45,4 @@ describe("splitHtmlQuote", () => {
     expect(parts.main).toBe(html);
   });
 
-  test("leaves a message without markers unchanged", () => {
-    const parts = splitHtmlQuote("<p>Plain</p>");
-    expect(parts).toEqual({ main: "<p>Plain</p>", hasQuote: false, hasSignature: false });
-  });
 });

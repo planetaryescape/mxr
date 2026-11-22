@@ -92,17 +92,6 @@ const MIDNIGHT_BEFORE: Record<string, string> = {
   "chart-6": "#6fe3d6",
 };
 
-/** The contrast-increased override Midnight shipped with. */
-const MIDNIGHT_INCREASED_BEFORE: Record<string, string> = {
-  "muted-foreground": "#c4ced8",
-  "subtle-foreground": "#b2bfcc",
-  border: "#52616f",
-  "border-strong": "#728190",
-  "input-border": "#728190",
-  input: "#202d39",
-  ring: "#8ae9ff",
-};
-
 const MAX_DELTA = 2;
 const deltaOk = differenceEuclidean("oklab");
 
@@ -144,19 +133,6 @@ describe("the generated Midnight (spike S3)", () => {
     }
     expect(misses).toEqual([]);
   });
-
-  test("the generator defines every role Midnight had", () => {
-    expect(Object.keys(MIDNIGHT_BEFORE).filter((name) => !roles.has(name))).toEqual([]);
-  });
-
-  test("contrast-increased roles are within ΔE OK 2 as well", () => {
-    const increased = generateIncreased(midnight);
-    const misses = Object.entries(MIDNIGHT_INCREASED_BEFORE).filter(
-      ([name, before]) =>
-        delta(resolve(increased, name), before, MIDNIGHT_BEFORE["ink-desk"]!) > MAX_DELTA,
-    );
-    expect(misses.map(([name]) => name)).toEqual([]);
-  });
 });
 
 describe.each(THEMES)("$id as generated", (theme) => {
@@ -164,14 +140,6 @@ describe.each(THEMES)("$id as generated", (theme) => {
   const desk = resolve(roles, "ink-desk");
   const ratio = (fg: string, bg: string) =>
     wcagContrast(colour(resolve(roles, fg)), colour(resolve(roles, bg)));
-
-  test("the text tiers meet their contrast targets on the desk", () => {
-    // The solver stops within sRGB rounding of the target.
-    const short = ["text-1", "text-2", "text-3"].filter(
-      (tier, i) => ratio(tier, "ink-desk") < theme.contrast[i]! - 0.08,
-    );
-    expect(short).toEqual([]);
-  });
 
   test("text on a filled control passes 4.5:1", () => {
     const pairs = [

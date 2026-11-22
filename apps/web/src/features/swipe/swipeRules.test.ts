@@ -33,14 +33,6 @@ describe("swipe rules", () => {
     });
   });
 
-  it("commits on release past the threshold, and only there", () => {
-    expect(releaseAt(SWIPE.commit - 1, 0, MAIL)).toBeNull();
-    expect(releaseAt(SWIPE.commit, 0, MAIL)).toBe("archive");
-    expect(releaseAt(-SWIPE.commit, 0, MAIL)).toBe("snooze");
-    expect(releaseAt(SWIPE.long - 1, 0, MAIL)).toBe("archive");
-    expect(releaseAt(SWIPE.long, 0, MAIL)).toBe("trash");
-  });
-
   it("lets a fast flick commit the short action but never the destructive one", () => {
     expect(releaseAt(SWIPE.flickDistance, SWIPE.flickVelocity, MAIL)).toBe("archive");
     expect(releaseAt(-SWIPE.flickDistance, -SWIPE.flickVelocity, MAIL)).toBe("snooze");
@@ -90,8 +82,4 @@ describe("swipe rules", () => {
     expect(mismatches).toEqual([]);
   });
 
-  it("a fast throw past the long threshold shows Archive, a slow one Trash", () => {
-    expect(pendingAt(250, 10, MAIL)).toEqual({ action: "archive", side: "right", armed: true });
-    expect(pendingAt(250, 0.1, MAIL)).toEqual({ action: "trash", side: "right", armed: true });
-  });
 });

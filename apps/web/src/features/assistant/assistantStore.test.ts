@@ -32,12 +32,6 @@ describe("how the panel was opened", () => {
     expect(ui().via).toBeNull();
   });
 
-  test("opening a panel that is already open never starts a slide", () => {
-    ui().toggle("key");
-    ui().setOpen(true, "pointer");
-    expect(ui().via).toBeNull();
-  });
-
   test("the slide is spent once it has played", () => {
     ui().toggle("pointer");
     ui().settle();

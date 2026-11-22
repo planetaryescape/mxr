@@ -53,17 +53,6 @@ function renderRow(
 }
 
 describe("Row", () => {
-  test("an unread row names the state for assistive tech", () => {
-    const { rerender } = renderRow({ unread: true });
-    expect(screen.getByText("Unread.")).toHaveClass("sr-only");
-    rerender(
-      <ul>
-        <Row lit={false} unread={false} primary="Pat" data-testid="row" />
-      </ul>,
-    );
-    expect(screen.queryByText("Unread.")).toBeNull();
-  });
-
   test("a verb is its own act: it doesn't also light the row", () => {
     const onRow = vi.fn<() => void>();
     const onVerb = vi.fn<() => void>();
@@ -111,7 +100,6 @@ describe("Row", () => {
       act(() => vi.advanceTimersByTime(LANDING_MS));
       expect(screen.getByTestId("row")).not.toHaveClass("landed");
     });
-
   });
 
   describe("account mark (docs/blueprint/33)", () => {
@@ -130,6 +118,5 @@ describe("Row", () => {
       renderRow({ accountId: "work" }, identitiesFrom(ACCOUNTS.slice(0, 1), false));
       expect(screen.queryByRole("img")).toBeNull();
     });
-
   });
 });

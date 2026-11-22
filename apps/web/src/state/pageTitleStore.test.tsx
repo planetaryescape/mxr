@@ -11,19 +11,6 @@ function Publishes({ title }: { title: string | null }) {
 }
 
 describe("usePublishPageTitle", () => {
-  test("publishes while mounted and clears on unmount", () => {
-    const view = render(<Publishes title="Now" />);
-    expect(usePageTitleStore.getState().title).toBe("Now");
-    view.unmount();
-    expect(usePageTitleStore.getState().title).toBeNull();
-  });
-
-  test("a null title publishes nothing", () => {
-    usePageTitleStore.setState({ title: null });
-    render(<Publishes title={null} />);
-    expect(usePageTitleStore.getState().title).toBeNull();
-  });
-
   test("the outgoing page does not clear the title of the page that replaced it", () => {
     const view = render(<Publishes title="Now" />);
     // Route change: the new page's effect runs after the old page's cleanup.

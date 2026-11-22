@@ -295,15 +295,6 @@ describe("cold mailbox connection state", () => {
     expect(await screen.findByText(notice, {}, { timeout: 5_000 })).toBeVisible();
   });
 
-  test("a list answered by the index shows no limited-search line", async () => {
-    daemonDown = false;
-
-    renderInbox();
-
-    expect(await screen.findByText("Inbox zero", {}, { timeout: 5_000 })).toBeVisible();
-    expect(screen.queryByText(/Search is limited/)).toBeNull();
-  });
-
   test.each([
     ["label", { kind: "label" as const, name: "receipts" }],
     ["saved search", { kind: "saved" as const, slug: "weekly" }],

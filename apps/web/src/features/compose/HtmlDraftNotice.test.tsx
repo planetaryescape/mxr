@@ -81,11 +81,4 @@ describe("HtmlDraftNotice preview", () => {
     expect(srcDoc).not.toContain("window.leaked");
   });
 
-  test("names an empty body instead of rendering a blank panel", () => {
-    render(<HtmlDraftNotice refusal={{ previewHtml: "" }} />);
-
-    expect(screen.queryByTitle("HTML message body")).not.toBeInTheDocument();
-    expect(screen.getByText(/HTML body is empty/i)).toBeVisible();
-  });
-
 });

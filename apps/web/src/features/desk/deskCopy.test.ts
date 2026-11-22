@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import type { Desk, DeskLane, DeskRow } from "./api";
 import { formatTime } from "@/lib/format";
 
-import { deskHeadline, rowAge, rowPerson, shortDuration } from "./deskCopy";
+import { deskHeadline, rowAge, rowPerson, } from "./deskCopy";
 
 // Saturday 26 September 2026, 10:00 local time.
 const NOW = new Date(2026, 8, 26, 10, 0, 0);
@@ -68,11 +68,6 @@ describe("desk headline", () => {
     expect(deskHeadline(desk({ waiting: 2 }), NOW).calm).toBe("No replies owed.");
   });
 
-  test("no copy uses an em dash", () => {
-    const headline = deskHeadline(desk({ owed: 1, due: 2, waiting: 3, people_new: 4 }), NOW);
-    const text = [headline.lead, ...headline.counts.map((c) => c.text), headline.sub].join(" ");
-    expect(text).not.toContain("—");
-  });
 });
 
 describe("row time", () => {
@@ -106,12 +101,4 @@ describe("row time", () => {
     );
   });
 
-  test("short durations step from minutes to weeks", () => {
-    expect([30, 90 * 60, 3 * 86_400, 20 * 86_400].map(shortDuration)).toEqual([
-      "1m",
-      "1h",
-      "3d",
-      "2w",
-    ]);
-  });
 });

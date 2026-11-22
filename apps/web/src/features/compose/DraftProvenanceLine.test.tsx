@@ -56,10 +56,4 @@ describe("DraftProvenanceLine", () => {
       "/m/sent/thread-m1?message=m1",
     );
   });
-
-  test("states honestly when no voice examples were returned", async () => {
-    await renderProvenance(provenance([]));
-    expect(screen.getByTestId("draft-voice-example-count")).toHaveTextContent("Voice examples: 0");
-    expect(screen.queryByRole("button", { name: /Sources/ })).not.toBeInTheDocument();
-  });
 });

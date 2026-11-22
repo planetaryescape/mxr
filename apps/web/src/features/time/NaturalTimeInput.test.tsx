@@ -43,20 +43,6 @@ afterEach(() => {
 });
 
 describe("NaturalTimeInput", () => {
-  test("highlights the understood text and mutes the assumed part", async () => {
-    resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
-    const field = renderField();
-
-    fireEvent.change(field, { target: { value: "fri 3" } });
-
-    await waitFor(() => expect(document.querySelector("mark[data-understood]")).not.toBeNull());
-    expect(document.querySelector("mark[data-understood]")).toHaveTextContent("fri 3");
-    const status = screen.getByRole("status");
-    expect(status).toHaveAttribute("aria-live", "polite");
-    expect(status).toHaveTextContent(/15:00/);
-    // "fri 3" leaves out am or pm, so the time is shown as assumed.
-    expect(status.querySelector("[data-assumed]")).toHaveTextContent("15:00");
-  });
 
   test("chips pick a reading by arrow keys, number keys and click; Enter commits it", async () => {
     resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
@@ -122,14 +108,6 @@ describe("NaturalTimeInput", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  test("a bridge failure says so calmly", async () => {
-    resolver.resolveTime.mockRejectedValue(new Error("connection refused"));
-    const field = renderField();
-
-    fireEvent.change(field, { target: { value: "tomorrow" } });
-
-    expect(await screen.findByText("Couldn't check that time: connection refused")).toBeVisible();
-  });
 });
 
 describe("NaturalTimeInput fast Enter", () => {

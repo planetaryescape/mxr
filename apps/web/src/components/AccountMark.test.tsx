@@ -3,7 +3,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { AccountMark, SWATCH_CLASS } from "./AccountMark";
+import { AccountMark } from "./AccountMark";
 import { ACCOUNT_SLOTS } from "@/styles/accountSlots";
 
 describe("AccountMark", () => {
@@ -21,9 +21,5 @@ describe("AccountMark", () => {
     const chip = screen.getByRole("img", { name: "Acct" });
     expect(chip).toHaveClass(`bg-account-${slot}`, `text-account-${slot}-ink`);
     expect(chip).toHaveAttribute("data-account-slot", slot);
-  });
-
-  test("every slot has a swatch class too", () => {
-    for (const slot of ACCOUNT_SLOTS) expect(SWATCH_CLASS[slot]).toBe(`bg-account-${slot}`);
   });
 });

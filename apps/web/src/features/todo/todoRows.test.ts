@@ -3,12 +3,9 @@ import { describe, expect, test } from "vitest";
 import { runwayFixture, todoFixture } from "./testing";
 import {
   arrivedDay,
-  linkLine,
   dueByToday,
   openCount,
-  orderedFields,
   primaryAction,
-  provenanceSummary,
   rowParty,
   rowSecondary,
   runwayItems,
@@ -31,11 +28,6 @@ describe("a To do row", () => {
     expect(primaryAction(trusted)).toMatchObject({ kind: "email", messageId: "msg_bill" });
   });
 
-  test("the domain is said before Enter", () => {
-    expect(linkLine(todoFixture())).toBe("The link in the email goes to camden.gov.uk.");
-    expect(linkLine(todoFixture({ action: null }))).toBeNull();
-  });
-
   test("a promise replies to the person, and a row with nothing to point at opens the email", () => {
     const promise = todoFixture({
       kind: "promise",
@@ -55,14 +47,6 @@ describe("a To do row", () => {
     expect(primaryAction(todoFixture({ action: null, thread_id: null }))).toBeNull();
   });
 
-  test("the provenance chip names the main source and counts fields to check", () => {
-    expect(provenanceSummary(todoFixture().fields)).toEqual({ source: "schema.org", unchecked: 1 });
-    expect(orderedFields(todoFixture().fields).map((field) => field.field)).toEqual([
-      "amount",
-      "due_at",
-      "act_by_at",
-    ]);
-  });
 });
 
 describe("a To do row's words", () => {

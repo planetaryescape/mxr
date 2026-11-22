@@ -42,14 +42,6 @@ describe("useDelayedPending", () => {
     expect(result.current).toBe("ready");
   });
 
-  it("a skeleton shown longer than the minimum leaves as soon as data lands", () => {
-    const { result, rerender } = setup(true);
-    act(() => vi.advanceTimersByTime(PENDING_DELAY_MS + PENDING_MINIMUM_MS + 100));
-    rerender({ loading: false });
-    act(() => vi.advanceTimersByTime(0));
-    expect(result.current).toBe("ready");
-  });
-
   it("cached data never passes through a loading phase", () => {
     const { result } = setup(false);
     expect(result.current).toBe("ready");

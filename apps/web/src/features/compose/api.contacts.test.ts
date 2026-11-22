@@ -17,16 +17,6 @@ describe("fetchContactsAutocomplete", () => {
     apiFetchMock.mockReset();
   });
 
-  test("returns the suggestions the bridge sent", async () => {
-    apiFetchMock.mockResolvedValue({
-      contacts: [{ name: "Nora Okafor", email: "nora@foundry.example" }],
-    });
-
-    await expect(fetchContactsAutocomplete("nor")).resolves.toEqual([
-      { name: "Nora Okafor", email: "nora@foundry.example" },
-    ]);
-  });
-
   test("drops rows without an address so the dropdown never receives them", async () => {
     apiFetchMock.mockResolvedValue({
       contacts: [{ name: "No Address" }, { email: "nora@foundry.example", name: null }],

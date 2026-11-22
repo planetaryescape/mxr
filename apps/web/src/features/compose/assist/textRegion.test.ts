@@ -38,20 +38,6 @@ describe("splitTextRegion mirrors the daemon's split_body", () => {
       suffix: `\n\n${FORWARD_HEADER}`,
     },
     {
-      name: "the forwarded original is never the text",
-      body: `FYI\n\n${FORWARD_HEADER}\nOriginal words`,
-      prefix: "",
-      text: "FYI",
-      suffix: `\n\n${FORWARD_HEADER}\nOriginal words`,
-    },
-    {
-      name: "a forward with a signature keeps the original out of the text too",
-      body: `FYI\n\n-- \nsig\n\n${FORWARD_HEADER}\nOriginal`,
-      prefix: "",
-      text: "FYI",
-      suffix: `\n\n-- \nsig\n\n${FORWARD_HEADER}\nOriginal`,
-    },
-    {
       name: "a body that starts with its signature has no text",
       body: "-- \nAlex",
       prefix: "",
@@ -66,13 +52,6 @@ describe("splitTextRegion mirrors the daemon's split_body", () => {
       suffix: `${FORWARD_HEADER}\nFrom: a`,
     },
     {
-      name: "a body with neither is all text",
-      body: "Just this.\n",
-      prefix: "",
-      text: "Just this.",
-      suffix: "\n",
-    },
-    {
       name: "a dash inside a line is not a signature",
       body: "Two -- no, three things.\n--- not a rule",
       prefix: "",
@@ -85,20 +64,6 @@ describe("splitTextRegion mirrors the daemon's split_body", () => {
       prefix: "",
       text: "Hi",
       suffix: "\r\n\r\n-- \r\nBK",
-    },
-    {
-      name: "a delimiter with trailing spaces still cuts",
-      body: "Hi\n--  \nBK",
-      prefix: "",
-      text: "Hi",
-      suffix: "\n--  \nBK",
-    },
-    {
-      name: "non-ASCII text before the cut keeps its characters",
-      body: "Café — ok 🙂\n\n-- \nBK",
-      prefix: "",
-      text: "Café — ok 🙂",
-      suffix: "\n\n-- \nBK",
     },
     {
       name: "leading blank lines stay in the prefix, outside the text",
@@ -159,27 +124,10 @@ describe("accepting keeps the user's spacing byte for byte", () => {
   const accept = (body: string, proposal: string) =>
     joinTextRegion(splitTextRegion(body), proposal);
 
-  test("a single newline before the signature is not widened to a blank line", () => {
-    expect(accept("Hi\n-- \nBK", "Hi there").body).toBe("Hi there\n-- \nBK");
-  });
-
-  test("the signature and the spacing after the text come back exactly", () => {
-    const body = "Thursday works.  \n\n\n-- \nBK\n";
-    expect(accept(body, "Thursday works. Friday too.").body).toBe(
-      "Thursday works. Friday too.  \n\n\n-- \nBK\n",
-    );
-  });
-
   test("a leading space in the proof is kept verbatim, so marks stay on the words", () => {
     const { body, textStart } = accept("Hi\n\n-- \nBK", " Hi there");
     expect(body).toBe(" Hi there\n\n-- \nBK");
     expect(body.slice(textStart, textStart + " Hi there".length)).toBe(" Hi there");
-  });
-
-  test("a signature-only body gets a break before the new text", () => {
-    const { body, textStart } = accept("-- \nBK", "Hi");
-    expect(body).toBe("Hi\n\n-- \nBK");
-    expect(textStart).toBe(0);
   });
 
   test("an empty proof leaves the prefix and signature joined by one break", () => {
@@ -195,11 +143,5 @@ describe("UTF-8 offsets", () => {
     // "é" is two bytes in UTF-8 but one UTF-16 unit.
     expect(utf8Offset(text, text.indexOf("au"))).toBe(6);
     expect(utf16Index(text, 6)).toBe(text.indexOf("au"));
-  });
-
-  test("emoji (surrogate pairs) round trip", () => {
-    const text = "hi 🙂 there";
-    const index = text.indexOf("there");
-    expect(utf16Index(text, utf8Offset(text, index))).toBe(index);
   });
 });

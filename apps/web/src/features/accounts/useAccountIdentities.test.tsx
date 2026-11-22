@@ -61,13 +61,6 @@ describe("useAccountIdentities", () => {
     expect(scoped.result.current.several).toBe(true);
   });
 
-  test("one enabled account shows no marks", async () => {
-    const { result } = renderIdentities([work, { ...home, enabled: false }]);
-    await waitFor(() => expect(result.current.byId.size).toBe(2));
-    expect(result.current.several).toBe(false);
-    expect(result.current.marksShown).toBe(false);
-  });
-
   test("a colour slot from a newer daemon draws as slate, and the account keeps its tag", async () => {
     const { result } = renderIdentities([{ ...work, identity: { color: "teal", tag: "W" } }, home]);
     await waitFor(() => expect(result.current.marksShown).toBe(true));

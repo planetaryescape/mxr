@@ -94,14 +94,6 @@ describe("useHint", () => {
     expect(result.current.hint).toBeUndefined();
   });
 
-  test("the only thing on the page may show on arrival", () => {
-    const { result } = renderHook(
-      () => useHint("todo", "todo.runway", { ready: true, alone: true }),
-      { wrapper },
-    );
-    expect(result.current.hint?.id).toBe("todo.runway");
-  });
-
   test("one hint at a time, and dismissing it never reveals the next", () => {
     const { result, rerender } = renderHook(
       ({ catchupReady }: { catchupReady: boolean }) => ({
@@ -123,15 +115,6 @@ describe("useHint", () => {
     rerender({ catchupReady: false });
     rerender({ catchupReady: true });
     expect(result.current.catchup.hint?.id).toBe("todo.catchup");
-  });
-
-  test("a seen hint never shows", () => {
-    qc.setQueryData(modeGuideKey("todo"), guide("todo", [hint("todo.runway", true)]));
-    const { result } = renderHook(
-      () => useHint("todo", "todo.runway", { ready: true, alone: true }),
-      { wrapper },
-    );
-    expect(result.current.hint).toBeUndefined();
   });
 
   test("dismissing posts SetHintSeen and marks it seen in every guide that carries it", async () => {

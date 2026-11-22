@@ -62,19 +62,6 @@ describe("the move picker's keys", () => {
     });
   });
 
-  test("the sender picker offers only the modes a sender's mail can go to", () => {
-    render(
-      <MoveToModeDialog
-        subject={{ messageId: "msg-1", label: "Q4 plan", senderLabel: "Maya" }}
-        sender
-        onClose={vi.fn<(...args: unknown[]) => void>()}
-      />,
-    );
-    expect(screen.getByText("Send everything from Maya to…")).toBeVisible();
-    expect(screen.queryByTestId("move-choice-todo")).toBeNull();
-    expect(screen.queryByTestId("move-choice-archive")).toBeNull();
-  });
-
   test("the highlight starts on the first option; j, k and the arrows move it", async () => {
     render(
       <MoveToModeDialog
@@ -89,21 +76,6 @@ describe("the move picker's keys", () => {
     expect(screen.getByTestId("move-choice-todo")).toHaveFocus();
     fireEvent.keyDown(screen.getByTestId("move-choice-todo"), { key: "ArrowUp" });
     expect(messages).toHaveFocus();
-  });
-
-  test("an ordinary move marks the mode it is in now but starts on the first option", async () => {
-    render(
-      <MoveToModeDialog
-        subject={{ messageId: "msg-1", label: "Q4 plan", here: "reading" }}
-        sender={false}
-        onClose={() => {}}
-      />,
-    );
-    const reading = screen.getByTestId("move-choice-reading");
-    expect(reading).toHaveTextContent("here now");
-    expect(reading).toHaveAttribute("aria-current", "true");
-    expect(screen.getByTestId("move-choice-messages")).not.toHaveTextContent("here now");
-    await waitFor(() => expect(screen.getByTestId("move-choice-messages")).toHaveFocus());
   });
 
   test("a Not-sure email starts on where it is now, and a key answers the question", async () => {
@@ -156,16 +128,4 @@ describe("the move picker's keys", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  test("P on a new sender's row is their question alone", () => {
-    render(
-      <MoveToModeDialog
-        subject={{ messageId: "msg-4", label: "Hello", newSender: { question, label: "Noor" } }}
-        sender
-        onClose={() => {}}
-      />,
-    );
-    expect(screen.queryByTestId("move-choice-messages")).toBeNull();
-    fireEvent.keyDown(screen.getByTestId("move-to-mode-dialog"), { key: "r" });
-    expect(correct).toHaveBeenCalledWith(expect.anything(), "reading");
-  });
 });

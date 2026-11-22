@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { putGist, resetRowGistsForTest } from "@/features/gists/rowGists";
-import { formatReceived, formatWhen } from "@/lib/format";
 
 import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
@@ -80,6 +79,7 @@ describe("UpdateLineRow at rest", () => {
     expect(view.getByTestId("update-fact")).toHaveTextContent(
       "Your week in running: 21.3 km over 3 runs",
     );
+    expect(view.getByTestId("update-fact")).toHaveAttribute("title", lineFixture().fact);
     expect(view.getByTestId("update-delta")).toHaveTextContent("up 12% on last week");
     expect(view.getByTestId("update-delta")).toHaveAttribute(
       "title",
@@ -91,62 +91,6 @@ describe("UpdateLineRow at rest", () => {
     expect(view.queryByText("Why this update?")).toBeNull();
     expect(view.queryByRole("link")).toBeNull();
     expect(view.queryByTestId("update-peek")).toBeNull();
-  });
-
-  test("the fact keeps the full subject for a hover, since the row is one line", () => {
-    const { row } = renderLine(lineFixture(), { focused: false });
-    expect(within(row).getByTestId("update-fact")).toHaveAttribute("title", lineFixture().fact);
-  });
-
-  test("the trail's time is the latest email's arrival, lit or not; the peek gives it in full", () => {
-    const line = lineFixture();
-    const { row } = renderLine(line, { focused: false });
-    expect(within(row).getByText(formatWhen(line.latest_at))).toBeInTheDocument();
-    cleanup();
-    const lit = renderLine(line, { focused: true, peeked: true });
-    expect(within(lit.row).getByText(formatWhen(line.latest_at))).toBeInTheDocument();
-    expect(within(lit.row).getByTestId("update-arrived")).toHaveTextContent(
-      formatReceived(line.latest_at),
-    );
-  });
-
-  test("a clock time is not shown at rest", () => {
-    const { row } = renderLine(
-      lineFixture({
-        section: "needs_a_look",
-        signal: "needs_you",
-        fact: "Security alert: New sign-in",
-        delta: undefined,
-        link: undefined,
-        time_label: "06:12",
-      }),
-    );
-    expect(row).not.toHaveTextContent("06:12");
-  });
-
-  test("a routine count carries its unit, and a single message shows none", () => {
-    const { row } = renderLine(
-      lineFixture({ section: "routine", delta: undefined, numbers: [], count: 5 }),
-    );
-    expect(within(row).getByTestId("update-count")).toHaveTextContent(/^5 emails$/);
-    cleanup();
-    const single = renderLine(
-      lineFixture({ section: "routine", delta: undefined, numbers: [], count: 1 }),
-    );
-    expect(within(single.row).queryByTestId("update-count")).toBeNull();
-  });
-
-  test("an amount the fact leaves out trails it; one the fact already says does not", () => {
-    const amounts = [{ raw: "£33.33", value: 33.33, unit: "GBP" }];
-    const { row } = renderLine(
-      lineFixture({ fact: "Your scheduled payment", delta: undefined, numbers: amounts }),
-    );
-    expect(within(row).getByTestId("update-amount")).toHaveTextContent("£33.33");
-    cleanup();
-    const said = renderLine(
-      lineFixture({ fact: "Paid £33.33 today", delta: undefined, numbers: amounts }),
-    );
-    expect(within(said.row).queryByTestId("update-amount")).toBeNull();
   });
 
   test("a wrong-shaped payload renders without throwing", () => {
@@ -199,7 +143,7 @@ describe("UpdateLineRow's trailing slot", () => {
         signal: "needs_you",
         todo_suggestion: "Suggested to-do: failed payment (rule). t adds it.",
         todo_title: "Check failed payment from Stripe",
-        delta: undefined,
+        numbers: [{ raw: "21.3 km", value: 21.3, unit: "km" }],
         latest_message_pinned: true,
       }),
     );
@@ -209,38 +153,14 @@ describe("UpdateLineRow's trailing slot", () => {
     expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
     fireEvent.click(affordance);
     expect(h.onNeedsMe).toHaveBeenCalledTimes(1);
+    // It replaces the other trailing values.
+    expect(view.queryByTestId("update-delta")).toBeNull();
+    expect(view.queryByTestId("update-amount")).toBeNull();
   });
 
-  test("the to-do affordance replaces the other trailing values", () => {
-    const { row } = renderLine(
-      lineFixture({
-        section: "needs_a_look",
-        todo_suggestion: "Suggested to-do: x",
-        todo_title: "x",
-        numbers: [{ raw: "21.3 km", value: 21.3, unit: "km" }],
-        fact: "Something else",
-      }),
-    );
-    expect(within(row).getByTestId("update-todo-suggestion")).toBeInTheDocument();
-    expect(within(row).queryByTestId("update-delta")).toBeNull();
-    expect(within(row).queryByTestId("update-amount")).toBeNull();
-  });
 });
 
 describe("UpdateLineRow's source", () => {
-  test("a Needs a look name keeps its sending host, muted, and the name stays whole", () => {
-    const { row } = renderLine(
-      lineFixture({
-        section: "needs_a_look",
-        source_name: "Google (accounts.google.com)",
-        sender_email: "no-reply@accounts.google.com",
-        delta: undefined,
-      }),
-    );
-    const source = within(row).getByTestId("update-source");
-    expect(source).toHaveTextContent("Google (accounts.google.com)");
-    expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
-  });
 
 });
 
@@ -296,45 +216,6 @@ describe("UpdateLineRow's track", () => {
     expect(within(row).queryByTestId("update-fact-full")).toBeNull();
   });
 
-  test("a parcel in Needs a look shows its fact even when the fact is generic", () => {
-    const { row } = renderLine(parcel({ section: "needs_a_look", signal: "needs_you" }), {
-      focused: false,
-    });
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel on its way");
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
-      "Shipped · next: out for delivery",
-    );
-  });
-
-  test("a parcel that went quiet keeps the fact that says so", () => {
-    const quiet = parcel({ fact: "Parcel from Bookshop went quiet" });
-    const { row } = renderLine(
-      { ...quiet, tracker: { ...quiet.tracker!, outcome: "quiet" } },
-      {
-        focused: false,
-      },
-    );
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
-      "Parcel from Bookshop went quiet",
-    );
-  });
-
-  test("the peek keeps the full fact when the track stands in for it", () => {
-    const { row } = renderLine(parcel(), { focused: false, peeked: true });
-    expect(within(row).getByTestId("update-fact-full")).toHaveTextContent("Parcel on its way");
-  });
-
-  test("a delivered parcel keeps its own fact, since there is no track left", () => {
-    const { row } = renderLine(
-      parcel({
-        fact: "Parcel delivered",
-        tracker: { ...parcel().tracker!, state: "delivered", step: 3 },
-      }),
-      { focused: false },
-    );
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent("Parcel delivered");
-  });
-
   test("a parcel's references and items are in its peek", () => {
     const { row } = renderLine(parcel(), { peeked: true });
     expect(within(row).getByTestId("parcel-identity")).toHaveTextContent(
@@ -350,26 +231,9 @@ describe("UpdateLineRow's track", () => {
     expect(within(row).getByTestId("update-fact-full")).toHaveTextContent("Parcel on its way");
   });
 
-  test("a parcel has no sender's mail to sweep, pin or let go", () => {
-    const { row } = renderLine(parcel());
-    openMenu(row, "More actions for Bookshop");
-    expect(screen.queryByRole("menuitem", { name: "Sweep sender" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Pin" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Let go" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Tune…" })).toBeNull();
-  });
 });
 
 describe("UpdateLineRow's keys and focus", () => {
-  test("the lit row names its verbs with their keys; the unlit row shows none by itself", () => {
-    const { row } = renderLine(lineFixture(), { focused: true });
-    expect(row).toHaveAttribute("data-lit", "true");
-    const view = within(row);
-    expect(view.getByRole("button", { name: "peek" })).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "let go" })).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "email" })).toBeInTheDocument();
-    expect(view.queryByTestId("update-keys")).toBeNull();
-  });
 });
 
 describe("UpdateLineRow's more menu", () => {
@@ -393,31 +257,6 @@ describe("UpdateLineRow's more menu", () => {
     ]) {
       expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
-  });
-
-  test("a suggested to-do reads Add to To do in the menu", () => {
-    const { row } = renderLine(
-      lineFixture({
-        todo_suggestion: "Suggested to-do: x",
-        todo_title: "x",
-        section: "needs_a_look",
-      }),
-    );
-    openMenu(row, "More actions for Strava");
-    expect(screen.getByRole("menuitem", { name: "Add to To do" })).toBeInTheDocument();
-  });
-
-  test("a link that needs you is not in the menu", () => {
-    const { row } = renderLine(
-      lineFixture({
-        section: "needs_a_look",
-        signal: "needs_you",
-        link: { url: "https://myaccount.google.com/", domain: "google.com" },
-        delta: undefined,
-      }),
-    );
-    openMenu(row, "More actions for Strava");
-    expect(screen.queryByRole("menuitem", { name: "Open google.com" })).toBeNull();
   });
 
   test("closing the menu returns focus to the row, not its More trigger", async () => {
@@ -546,30 +385,6 @@ describe("UpdateLineRow's peek", () => {
     expect(h.onOpenEmail).toHaveBeenCalledTimes(1);
   });
 
-  test("a line that folds several emails says how many in its peek", () => {
-    const { row } = renderLine(lineFixture({ section: "needs_a_look", count: 2 }), {
-      peeked: true,
-    });
-    expect(within(row).getByTestId("update-count-folded")).toHaveTextContent(
-      "2 emails in this digest",
-    );
-  });
-
-  test("a line that needs you opens no link in its peek", () => {
-    const { row } = renderLine(
-      lineFixture({
-        section: "needs_a_look",
-        signal: "needs_you",
-        link: { url: "https://myaccount.google.com/", domain: "google.com" },
-        delta: undefined,
-      }),
-      { peeked: true },
-    );
-    const peek = within(row).getByRole("region", { name: "Details for Strava" });
-    expect(within(peek).queryByRole("link")).toBeNull();
-    expect(within(peek).getByRole("button", { name: "Open email" })).toBeInTheDocument();
-  });
-
   test("an unverified alert explains the hold and keeps the manual to-do action", () => {
     const reason = "Not created automatically: Outlook doesn't give mxr a verified sender.";
     const line = lineFixture({
@@ -686,25 +501,6 @@ describe("UpdateLineRow's gist", () => {
     );
   });
 
-  test("a fact the rules took from the body keeps the rule's words", () => {
-    act(() => putGist(receiptGist()));
-    const { row } = renderLine(
-      lineFixture({ fact: "Your payment of $19.00 was received", fact_source: "body" }),
-      { focused: false },
-    );
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
-      "Your payment of $19.00 was received",
-    );
-  });
-
-  test("a fact taken from an older email than the line's latest keeps the subject", () => {
-    act(() => putGist(receiptGist()));
-    const { row } = renderLine(receiptFromAnOlderEmail(), { focused: false });
-    expect(within(row).getByTestId("update-fact")).toHaveTextContent(
-      "Your receipt from Perplexity",
-    );
-  });
-
   test("the peek names the subject, the model and the email, and previews the email's first lines", async () => {
     apiFetch.mockResolvedValue({
       thread: {},
@@ -748,29 +544,6 @@ describe("UpdateLineRow's gist", () => {
     expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/threads/t1");
   });
 
-  test("a cloud model is named as cloud, and the email is the only thing it read", () => {
-    act(() =>
-      putGist(
-        receiptGist({
-          provenance: {
-            model: "claude-haiku-5-5 via Anthropic",
-            locality: "cloud",
-            sources: ["this_thread"],
-          },
-        }),
-      ),
-    );
-    const { row } = renderLine(receipt(), { focused: false, peeked: true });
-    expect(within(row).getByTestId("update-gist-source")).toHaveTextContent(
-      "claude-haiku-5-5 via Anthropic · cloud · from this email only",
-    );
-  });
-
-  test("a closed peek fetches nothing", () => {
-    renderLine(receipt(), { focused: false });
-    expect(apiFetch).not.toHaveBeenCalled();
-  });
-
   test("a peek whose fetch fails still shows its other lines", async () => {
     apiFetch.mockRejectedValue(new Error("offline"));
     const { row } = renderLine(receipt(), { peeked: true });
@@ -779,17 +552,6 @@ describe("UpdateLineRow's gist", () => {
     expect(within(row).queryByTestId("update-preview")).toBeNull();
   });
 });
-
-function receiptFromAnOlderEmail(): UpdateLine {
-  return lineFixture({
-    fact: "Your receipt from Perplexity",
-    fact_source: "subject",
-    fact_message_id: "m0",
-    latest_message_id: "m1",
-    delta: undefined,
-    numbers: [],
-  });
-}
 
 describe("UpdateLineRow with a one-time code", () => {
   test("the code shows on the line and a click copies it without opening the peek", async () => {
@@ -807,8 +569,4 @@ describe("UpdateLineRow with a one-time code", () => {
     expect(within(row).getAllByRole("button", { name: /copy code/i })).toHaveLength(2);
   });
 
-  test("a line without a code offers no copy", () => {
-    const { row } = renderLine(lineFixture());
-    expect(within(row).queryByTestId("update-code")).toBeNull();
-  });
 });

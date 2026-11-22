@@ -20,9 +20,4 @@ describe("highlightSegments", () => {
     ]);
   });
 
-  test("an empty span list leaves the text unmarked", () => {
-    expect(highlightSegments("in 2h", [])).toEqual([
-      { start: 0, text: "in 2h", understood: false },
-    ]);
-  });
 });

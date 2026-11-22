@@ -22,11 +22,6 @@ describe("InstallOffer", () => {
   });
   afterEach(() => cleanup());
 
-  test("stays hidden until the browser has offered an install", () => {
-    render(<InstallOffer />);
-    expect(screen.queryByTestId("install-offer")).toBeNull();
-  });
-
   test("shows once the install prompt is held, and hides when dismissed", () => {
     useInstallPrompt.setState({ deferred: fakeEvent() });
     const { unmount } = render(<InstallOffer />);

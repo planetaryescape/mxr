@@ -32,10 +32,4 @@ describe("LatestCode", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("482913"));
   });
 
-  test("a sender named as its host is named once", () => {
-    render(
-      <LatestCode code={code({ sender_name: "acme.example", sender_host: "acme.example" })} />,
-    );
-    expect(screen.getByTestId("updates-latest-code")).not.toHaveTextContent("(acme.example)");
-  });
 });

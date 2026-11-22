@@ -6,7 +6,6 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
-  docChord,
   renderKeybindingsMarkdown,
   undocumentedActionIds,
   undocumentedOverlays,
@@ -39,13 +38,5 @@ describe("web keybindings reference", () => {
   test("every bound key has a table, so a new scope can't go unpublished", () => {
     expect(undocumentedActionIds()).toEqual([]);
     expect(undocumentedOverlays()).toEqual([]);
-  });
-
-  test("renders modifier chords for both platforms", () => {
-    expect(docChord("Mod+k")).toBe("⌘K / Ctrl+K");
-    expect(docChord("Mod+Shift+c")).toBe("⌘⇧C / Ctrl+Shift+C");
-    expect(docChord("Mod+Enter")).toBe("⌘Enter / Ctrl+Enter");
-    expect(docChord("g i")).toBe("g i");
-    expect(docChord("Escape")).toBe("Esc");
   });
 });

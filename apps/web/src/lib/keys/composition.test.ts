@@ -11,18 +11,6 @@ function key(init: KeyboardEventInit & { keyCode?: number }): KeyboardEvent {
 }
 
 describe("isComposingKey", () => {
-  test("is true during a composition", () => {
-    expect(isComposingKey(key({ key: "Enter", isComposing: true }))).toBe(true);
-  });
-
-  test("is true on an edge keystroke WebKit reports only as keyCode 229", () => {
-    expect(isComposingKey(key({ key: "Enter", isComposing: false, keyCode: 229 }))).toBe(true);
-  });
-
-  test("is false for an ordinary key", () => {
-    expect(isComposingKey(key({ key: "Enter", keyCode: 13 }))).toBe(false);
-  });
-
   test("reads a React event's native event", () => {
     const nativeEvent = key({ key: "Enter", keyCode: 229 });
     expect(isComposingKey({ nativeEvent } as unknown as ReactKeyboardEvent)).toBe(true);

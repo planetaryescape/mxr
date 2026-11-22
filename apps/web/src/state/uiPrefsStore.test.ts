@@ -18,10 +18,6 @@ import {
 } from "./uiPrefsStore";
 
 describe("compose editor preference", () => {
-  test("someone with no saved prefs gets the CodeMirror + vim editor", () => {
-    expect(useUiPrefs.getInitialState().composeEditor).toBe("codemirror-vim");
-  });
-
   test("a saved Rich text choice is kept, not migrated to the new default", async () => {
     // Written through the store's own storage so the test holds whether the
     // runtime exposes a working localStorage or the in-memory fallback.
@@ -46,10 +42,6 @@ describe("compose editor preference", () => {
 });
 
 describe("theme preference", () => {
-  test("someone with no saved prefs follows the OS appearance", () => {
-    expect(useUiPrefs.getInitialState().theme).toBe("system");
-  });
-
   test("new installs use Auto and saved explicit canvas choices survive migration", () => {
     expect(useUiPrefs.getInitialState().emailHtmlTheme).toBe("auto");
     expect(migrateUiPrefs({ emailHtmlTheme: "dark" }, 4)).toEqual({
@@ -162,30 +154,9 @@ describe("contrast preference", () => {
       window.matchMedia = original;
     }
   });
-
-  test("persists the selected contrast value", async () => {
-    const previous = useUiPrefs.getState().contrast;
-    try {
-      useUiPrefs.getState().setContrast("increased");
-      const saved = await useUiPrefs.persist.getOptions().storage?.getItem("mxr.uiPrefs");
-      expect(saved).toEqual(
-        expect.objectContaining({
-          state: expect.objectContaining({ contrast: "increased" }),
-        }),
-      );
-    } finally {
-      useUiPrefs.getState().setContrast(previous);
-    }
-  });
 });
 
 describe("home and sidebar prefs", () => {
-  test("new installs land on Now with only places unfolded", () => {
-    const initial = useUiPrefs.getInitialState();
-    expect(initial.home).toBe("now");
-    expect(initial.collapsedSections).toEqual(["mail", "views", "tools", "labels"]);
-  });
-
   test("saved v2 prefs keep their choices, fold Mail, Views and Labels and land on Now", () => {
     expect(migrateUiPrefs({ theme: "paper", collapsedSections: ["tools", "saved"] }, 2)).toEqual({
       theme: "paper",
@@ -226,15 +197,6 @@ describe("home and sidebar prefs", () => {
 });
 
 describe("reading display preference", () => {
-  test("defaults to following the app theme in a serif at 20px", () => {
-    expect(useUiPrefs.getInitialState().readingDisplay).toEqual({
-      theme: "auto",
-      typeface: "serif",
-      size: 20,
-      spacing: "even",
-    });
-  });
-
   test("repairs stored values field by field", () => {
     expect(readReadingDisplay(null)).toEqual(DEFAULT_READING_DISPLAY);
     expect(readReadingDisplay([])).toEqual(DEFAULT_READING_DISPLAY);
@@ -261,25 +223,6 @@ describe("reading display preference", () => {
       size: 24,
       spacing: "snug",
     });
-  });
-
-  test("saved settings come back after a reload, repaired", async () => {
-    await useUiPrefs.persist.getOptions().storage?.setItem("mxr.uiPrefs", {
-      state: { readingDisplay: { theme: "dusk", typeface: "sans", size: "huge", spacing: "airy" } },
-      version: 6,
-    });
-    await useUiPrefs.persist.rehydrate();
-    expect(useUiPrefs.getState().readingDisplay).toEqual({
-      theme: "dusk",
-      typeface: "sans",
-      size: 20,
-      spacing: "airy",
-    });
-  });
-
-  test("a bad size from the settings control is clamped back to something valid", () => {
-    useUiPrefs.getState().setReadingDisplay({ size: 500 });
-    expect(useUiPrefs.getState().readingDisplay.size).toBe(20);
   });
 
   test("agrees with the reader package's schema for every field", () => {

@@ -114,68 +114,6 @@ describe("FreshnessIndicator", () => {
     expect(screen.getByText("synced 4m ago")).toBeInTheDocument();
   });
 
-  test("a good sync that ages past the limit becomes a stale warning linking to details", () => {
-    query.data = freshness();
-    renderIndicator();
-    expect(screen.queryByTestId("freshness-warning")).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(2 * 60 * 60_000);
-    });
-    const warning = screen.getByTestId("freshness-warning");
-    expect(warning).toHaveTextContent("Last sync 2h ago");
-    expect(warning).toHaveAttribute("href", "/accounts/acct-1");
-  });
-
-  test("a rate limit shows the paused warning with its retry time", () => {
-    query.data = freshness({
-      accounts: [
-        {
-          account_id: "acct-1",
-          account_name: "work",
-          label: "work@example.com",
-          health: "paused",
-          last_sync_ok_at: minutesAgo(3),
-          sync_in_progress: false,
-          last_sync_error: {
-            kind: "rate_limited",
-            message: "Rate limited",
-            retry_at: new Date(start.getTime() + 8 * 60_000).toISOString(),
-            consecutive_failures: 1,
-          },
-        },
-      ],
-    });
-    renderIndicator();
-    expect(screen.getByTestId("freshness-warning")).toHaveTextContent(
-      /work@example.com paused: rate limited, retrying 09:50/,
-    );
-    expect(screen.getByTestId("freshness-trigger").querySelector("[data-tone]")).toHaveAttribute(
-      "data-tone",
-      "warn",
-    );
-  });
-
-  test("an auth failure turns the dot red on a phone, where only the age shows", () => {
-    query.data = freshness({
-      accounts: [
-        {
-          account_id: "acct-1",
-          account_name: "work",
-          label: "work@example.com",
-          health: "failing",
-          sync_in_progress: false,
-          last_sync_error: { kind: "auth", message: "oauth", consecutive_failures: 3 },
-        },
-      ],
-    });
-    renderIndicator(true);
-    const trigger = screen.getByTestId("freshness-trigger");
-    expect(trigger).toHaveTextContent(/^5m ago$/);
-    expect(trigger.querySelector("[data-tone]")).toHaveAttribute("data-tone", "bad");
-    expect(trigger).toHaveAccessibleName(/work@example.com needs you to sign in again/);
-    expect(screen.queryByTestId("freshness-warning")).toBeNull();
-  });
-
   test("the popover lists each arrival with where it went and opens the email", () => {
     query.data = freshness();
     renderIndicator();

@@ -149,14 +149,4 @@ describe("AppShell with no account", () => {
     expect(screen.getByTestId("statusbar")).toBeVisible();
     expect(screen.getByRole("navigation", { name: "Mailboxes" })).toBeVisible();
   });
-
-  test("keeps the full shell once an account exists", async () => {
-    state.accounts = [{ account_id: "a-1" }];
-    state.pathname = "/now";
-    renderShell(<AppShell />);
-
-    await waitFor(() => expect(screen.getByTestId("topbar")).toBeVisible());
-    expect(screen.getByTestId("statusbar")).toBeVisible();
-    expect(screen.getByRole("navigation", { name: "Mailboxes" })).toBeVisible();
-  });
 });

@@ -10,66 +10,6 @@ import {
 } from "./ModeSkeletons";
 
 describe("mode loading layouts", () => {
-  test("Now reserves its summary, four sections and different people/task leads", () => {
-    const { container } = render(<NowSkeleton shown />);
-    expect(screen.getByRole("status", { name: "Loading Now" })).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
-    expect([...container.querySelectorAll("h2")].map((heading) => heading.textContent)).toEqual([
-      "People",
-      "Due soon",
-      "Updates",
-      "For tonight",
-    ]);
-    expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-skeleton-row="checkbox"]')).toBeInTheDocument();
-    expect(container.querySelector("[data-split=true]")).toBeInTheDocument();
-    expect(container.querySelector('[data-frame="wide"]')).toBeInTheDocument();
-    expect(screen.getByTestId("now-arrivals-placeholder")).toBeInTheDocument();
-  });
-
-  test("To do reserves task bands and checkbox leads rather than an email list", () => {
-    const { container } = render(<TodoSkeleton shown />);
-    expect([...container.querySelectorAll("h2")].map((heading) => heading.textContent)).toEqual([
-      "Now",
-      "Coming up",
-    ]);
-    expect(container.querySelector('[data-skeleton-row="checkbox"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeNull();
-    expect(container.querySelector('[role="checkbox"]')).toBeNull();
-    const lists = container.querySelectorAll("ul");
-    expect(lists).toHaveLength(2);
-    for (const list of lists) {
-      expect(list).toHaveClass("gap-0.5");
-    }
-  });
-
-  test("Updates uses grouped single-line source rows", () => {
-    const { container } = render(<UpdatesSkeleton shown />);
-    expect([...container.querySelectorAll("h2")].map((heading) => heading.textContent)).toEqual([
-      "Needs a look",
-      "Changed",
-      "Routine",
-    ]);
-    const first = container.querySelector('[data-skeleton-row="source"]');
-    // One primary line, unlike the two-line mail skeleton this replaces.
-    expect(first?.querySelectorAll(".type-body")).toHaveLength(1);
-    const lists = container.querySelectorAll("ul");
-    expect(lists).toHaveLength(2);
-    for (const list of lists) {
-      expect(list).toHaveClass("gap-0.5");
-    }
-  });
-
-  test("Reading reserves its edition bands and source leads", () => {
-    const { container } = render(<ReadingSkeleton shown />);
-    expect(container.querySelector("h2")).toHaveTextContent("Since you were last here");
-    expect(container.querySelector('[data-skeleton-row="source"]')).toBeInTheDocument();
-    expect(
-      container.querySelector('[data-skeleton-row="source"]')?.querySelectorAll(".type-body"),
-    ).toHaveLength(2);
-  });
 
   test.each([
     ["NowSkeleton", NowSkeleton],

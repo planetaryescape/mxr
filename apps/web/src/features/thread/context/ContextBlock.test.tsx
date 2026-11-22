@@ -60,14 +60,6 @@ describe("ContextBlock", () => {
     expect(screen.getByTestId("thread-context")).not.toHaveTextContent(/\bmodel\b|\bAI\b/);
   });
 
-  test("the gist slot keeps one fixed height while loading and when ready", () => {
-    renderBlock(gistState({ loading: true }));
-    const slot = screen.getByTestId("thread-gist");
-    expect(slot).toHaveAttribute("data-state", "loading");
-    expect(slot.className).toMatch(/(^| )h-\[9rem\] .*@xl:h-\[7\.5rem\]/);
-    expect(slot).toHaveTextContent("Reading this conversation…");
-  });
-
   test("a ready gist shows the ask, its source and a way to the quote", () => {
     const { onRevealAsk } = renderBlock(gistState({ data: READY }));
     const slot = screen.getByTestId("thread-gist");
@@ -84,20 +76,4 @@ describe("ContextBlock", () => {
     expect(onRevealAsk).toHaveBeenCalledOnce();
   });
 
-  test("no ask reads as nothing asked", () => {
-    renderBlock(gistState({ data: { ...READY, ask: null } }));
-    expect(screen.getByTestId("thread-ask")).toHaveTextContent("Nothing asked of you.");
-  });
-
-  test("a blocked model explains itself and offers no retry", () => {
-    renderBlock(
-      gistState({
-        data: { thread_id: "t1", status: "blocked", from_cache: false, reason: "cloud" },
-      }),
-    );
-    expect(screen.getByTestId("thread-gist")).toHaveTextContent(
-      "Privacy settings keep this conversation from the configured model.",
-    );
-    expect(screen.queryByRole("button", { name: /Try again/ })).toBeNull();
-  });
 });

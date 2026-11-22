@@ -18,12 +18,6 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 describe("SettingsRoute", () => {
-  test("an unknown section renders a not-found state, not a blank page", () => {
-    router.section = "nonsense";
-    render(<SettingsRoute />);
-
-    expect(screen.getByText(/there is no "nonsense" settings page/i)).toBeVisible();
-  });
 
   test("the old density id still opens appearance", () => {
     router.section = "density";

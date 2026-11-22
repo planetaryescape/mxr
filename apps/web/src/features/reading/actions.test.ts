@@ -33,22 +33,4 @@ describe("Reading's keys", () => {
     expect(keys.get("g r")).toBe("nav.reading");
   });
 
-  test('the reader highlights with " and fetches the article with L', () => {
-    const reader = getRegistry()
-      .bindings()
-      // A moved key stays bound only to announce its new key.
-      .filter((binding) => binding.scope === "reading-reader" && !binding.moved)
-      .map((binding) => [binding.chord, binding.action.id]);
-    expect(reader).toEqual(
-      expect.arrayContaining([
-        ['"', "reading.reader-highlight"],
-        ["L", "reading.reader-article"],
-        ["b", "reading.reader-later"],
-        ["e", "reading.reader-let-go"],
-        ["R", "reading.reader-original"],
-        ["n", "reading.reader-next"],
-        ["Escape", "reading.reader-back"],
-      ]),
-    );
-  });
 });

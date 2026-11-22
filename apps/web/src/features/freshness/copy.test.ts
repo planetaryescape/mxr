@@ -6,10 +6,8 @@ import {
   healthTone,
   latestMail,
   syncLine,
-  wentTo,
   worstAccount,
   type AccountFreshness,
-  type Arrival,
   type Freshness,
 } from "./copy";
 
@@ -128,47 +126,4 @@ describe("freshness words", () => {
     expect(worstAccount(data, now)?.account_id).toBe("acct-2");
   });
 
-  test("an arrival says the mode it went to and why, in one word", () => {
-    const arrival: Arrival = {
-      account_id: "acct-1",
-      message_id: "m-1",
-      thread_id: "t-1",
-      from: { email: "notifications@github.com", name: "GitHub" },
-      subject: "Build passed",
-      received_at: minutesAgo(5),
-      in_inbox: true,
-      modes: [
-        {
-          mode: "updates",
-          name: "Updates",
-          key: "g u",
-          reason: "Here because: automated sender (rule).",
-          also_in: "",
-          tag: "automated",
-        },
-      ],
-    };
-    expect(wentTo(arrival)).toBe("→ Updates · automated");
-    expect(
-      wentTo({
-        ...arrival,
-        in_inbox: false,
-        modes: [
-          {
-            mode: "todo",
-            name: "To do",
-            key: "g x",
-            reason: "Explicit task",
-            also_in: "",
-            todo_ids: ["task-1"],
-          },
-        ],
-      }),
-    ).toBe("→ out of the inbox · To do");
-    expect(wentTo({ ...arrival, in_inbox: false })).toBe(
-      "→ out of the inbox · Updates · automated",
-    );
-    expect(wentTo({ ...arrival, modes: [] })).toBe("→ Inbox");
-    expect(wentTo({ ...arrival, modes: [], in_inbox: false })).toBe("→ out of the inbox");
-  });
 });

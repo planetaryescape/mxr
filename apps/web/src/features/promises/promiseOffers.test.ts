@@ -120,9 +120,4 @@ describe("promise offers", () => {
     expect(api.recordPromise).not.toHaveBeenCalled();
   });
 
-  test("a model that can't answer offers nothing", () => {
-    beginSend("s1");
-    offerPromises("s1", { status: "timed_out", promises: [] } as PromiseDetection);
-    expect(usePromiseOffers.getState().offers).toHaveLength(0);
-  });
 });

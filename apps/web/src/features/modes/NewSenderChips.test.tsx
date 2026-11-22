@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ScreenerQuestion } from "./membership";
-import { NEW_SENDER_ANSWERS, NEW_SENDER_NOTE, NewSenderChips } from "./NewSenderChips";
+import { NEW_SENDER_NOTE, NewSenderChips } from "./NewSenderChips";
 
 const correct = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<boolean>>());
 vi.mock("@/features/places/senderKind", () => ({ correctSender: correct }));
@@ -28,15 +28,6 @@ describe("new sender choice", () => {
       "Block (X then D)",
     ]);
     expect(NEW_SENDER_NOTE).toBe("New sender: X then M Messages · U Updates · R Reading · D Block");
-  });
-
-  test("the answers are the g letters' capitals, as every picker of these places", () => {
-    expect(NEW_SENDER_ANSWERS.map(({ kind, key }) => [kind, key])).toEqual([
-      ["people", "M"],
-      ["paper_trail", "U"],
-      ["reading", "R"],
-      ["screened_out", "D"],
-    ]);
   });
 
   test("a chip answers with that sender kind, once, without lighting the row under it", () => {

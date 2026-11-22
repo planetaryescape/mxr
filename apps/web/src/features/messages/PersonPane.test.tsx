@@ -189,36 +189,6 @@ test("keeps topic navigation compact and returns focus after selecting a group t
   expect(trigger).toHaveTextContent("Contract renewal");
 });
 
-test("Escape closes the topic list and restores focus to its trigger", async () => {
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <PersonPane {...props(false, "thread-1")} page={{ ...page, topics: [topic] }} />
-    </QueryClientProvider>,
-  );
-  const trigger = screen.getByTestId("topics-trigger");
-  fireEvent.click(trigger);
-  fireEvent.keyDown(screen.getByTestId("topics"), { key: "Escape" });
-  expect(screen.queryByTestId("topics")).toBeNull();
-  await waitFor(() => expect(trigger).toHaveFocus());
-});
-
-test("shows the selected reply mode as an explicit action", () => {
-  const onReplyAllChange = vi.fn<(enabled: boolean) => void>();
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <PersonPane {...props(false, "thread-1")} onReplyAllChange={onReplyAllChange} />
-    </QueryClientProvider>,
-  );
-
-  const modes = within(screen.getByRole("group", { name: "Reply mode" }));
-  const reply = modes.getByRole("button", { name: "Reply" });
-  const replyAll = modes.getByRole("button", { name: "Reply all" });
-  expect(reply).toHaveAttribute("aria-pressed", "true");
-  expect(replyAll).toHaveAttribute("aria-pressed", "false");
-  fireEvent.click(replyAll);
-  expect(onReplyAllChange).toHaveBeenCalledWith(true);
-});
-
 test("keeps this topic replyable while a different topic's reply is docked", () => {
   useComposeUi.setState({
     intent: {

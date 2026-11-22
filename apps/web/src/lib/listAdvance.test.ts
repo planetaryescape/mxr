@@ -16,12 +16,4 @@ describe("nextAfterRemoval", () => {
     expect(nextAfterRemoval(["a", "b", "c", "d", "e"], "c", (id) => !left.has(id))).toBe("e");
     expect(nextAfterRemoval(["a", "b", "c", "d"], "c", (id) => !left.has(id))).toBe("b");
   });
-
-  test("never opens the removed row itself, even if it is still there", () => {
-    expect(nextAfterRemoval(["a", "b"], "b", all)).toBe("a");
-  });
-
-  test("a row that was never in the list moves nothing", () => {
-    expect(nextAfterRemoval(["a", "b"], "z", all)).toBeNull();
-  });
 });

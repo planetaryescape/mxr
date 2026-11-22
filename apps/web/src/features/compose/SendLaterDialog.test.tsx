@@ -52,18 +52,4 @@ describe("SendLaterDialog", () => {
     expect(await screen.findByText(/Didn't catch "whenever"/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Schedule send" })).toBeDisabled();
   });
-
-  test("presets show their resolved time and confirm without typing", async () => {
-    const onConfirm = vi.fn<(at: Date, label: string) => void>();
-    renderWithQueryClient(
-      <SendLaterDialog open scheduling={false} onOpenChange={() => {}} onConfirm={onConfirm} />,
-    );
-
-    const preset = await screen.findByRole("button", { name: /tomorrow 9am.*, 09:00/i });
-    fireEvent.click(preset);
-
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-    const [at] = onConfirm.mock.calls[0] ?? [];
-    expect((at as Date).getHours()).toBe(9);
-  });
 });

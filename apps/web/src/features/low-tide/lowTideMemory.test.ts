@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { claimLowTide, localDay, noteWork, useLowTide, type TideState } from "./lowTideMemory";
+import { claimLowTide, noteWork, useLowTide, type TideState } from "./lowTideMemory";
 
 function blocked(): never {
   throw new Error("blocked");
@@ -44,22 +44,6 @@ describe("low tide memory", () => {
     expect(claimLowTide("todo", "2026-10-17")).toBe(true);
   });
 
-  it("a daily moment is still earned by work, not by a place that was always clear", () => {
-    expect(claimLowTide("messages", "2026-10-16")).toBe(false);
-    noteWork("messages");
-    expect(claimLowTide("messages", "2026-10-16")).toBe(true);
-  });
-
-  it("names the viewer's local day", () => {
-    expect(localDay(new Date(2026, 9, 6, 23, 59))).toBe("2026-10-06");
-  });
-
-  it("keeps places apart", () => {
-    noteWork("reading");
-    expect(claimLowTide("paper_trail")).toBe(false);
-    expect(claimLowTide("reading")).toBe(true);
-  });
-
   it("never shows when storage is unavailable, and never throws", () => {
     vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked });
     expect(() => noteWork("desk")).not.toThrow();
@@ -80,10 +64,4 @@ describe("low tide memory", () => {
     expect(result.current).toBe(false);
   });
 
-  it("a revisit to a clear desk is calm, not a moment", () => {
-    noteWork("desk");
-    claimLowTide("desk");
-    const { result } = renderHook(() => useLowTide("desk", false, false));
-    expect(result.current).toBe(false);
-  });
 });

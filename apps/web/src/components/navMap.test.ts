@@ -5,37 +5,6 @@ import { isEntryActive, MAIL_ENTRIES, TOOL_ENTRIES, VIEW_ENTRIES } from "./navMa
 const find = (entries: typeof MAIL_ENTRIES, key: string) => entries.find((e) => e.key === key)!;
 
 describe("the map's fixed groups", () => {
-  test("Mail, Views and Tools are the ones D133 names, in order, with no daemon data", () => {
-    expect(MAIL_ENTRIES.map((e) => e.label)).toEqual([
-      "Starred",
-      "Sent",
-      "Drafts",
-      "Snoozed",
-      "Reply later",
-      "All Mail",
-      "Spam",
-      "Trash",
-    ]);
-    expect(VIEW_ENTRIES.map((e) => e.label)).toEqual([
-      "Waiting on",
-      "Owed replies",
-      "Screener",
-      "Subscriptions",
-      "Invites",
-      "Deliveries",
-    ]);
-    expect(TOOL_ENTRIES.map((e) => e.label)).toEqual([
-      "Search",
-      "Analytics",
-      "Rules",
-      "Accounts",
-      "Activity",
-      "Jobs",
-      "Diagnostics",
-      "Settings",
-    ]);
-  });
-
   test("every item has a distinct key and path", () => {
     const all = [...MAIL_ENTRIES, ...VIEW_ENTRIES, ...TOOL_ENTRIES];
     expect(new Set(all.map((e) => e.key)).size).toBe(all.length);

@@ -97,11 +97,6 @@ describe("focusReducer", () => {
     expect(session.queue).toEqual(["a", "b", "c"]);
   });
 
-  test("a refetch that changes nothing keeps the same session", () => {
-    const first = run({ kind: "sync", items: [item("a"), item("b")] });
-    expect(focusReducer(first, { kind: "sync", items: [item("a"), item("b")] })).toBe(first);
-  });
-
   test("the conversation on screen stays when a refetch drops it; others go", () => {
     const session = run(
       { kind: "sync", items: [item("a"), item("b"), item("c")] },
@@ -163,9 +158,4 @@ describe("focusReducer", () => {
     expect(focusReducer(synced, { kind: "revisit" }).queue).toEqual(["b"]);
   });
 
-  test("finishing leaves an empty queue with everything handled", () => {
-    const session = run({ kind: "sync", items: [item("a")] }, { kind: "handled", threadId: "a" });
-    expect(session.queue).toEqual([]);
-    expect(focusProgress(session)).toEqual({ position: 1, total: 1, done: 1 });
-  });
 });

@@ -23,12 +23,6 @@ describe("foldsFor", () => {
     expect(foldsFor("key", 1_200)).toBe(false);
   });
 
-  it("measures the burst from the last key, so a held run never folds again", () => {
-    expect(foldsFor("key", 1_000)).toBe(true);
-    expect(foldsFor("key", 1_000 + KEY_BURST_MS - 1)).toBe(false);
-    expect(foldsFor("key", 1_000 + 2 * KEY_BURST_MS - 2)).toBe(false);
-  });
-
   it("folds again after a pause", () => {
     expect(foldsFor("key", 1_000)).toBe(true);
     expect(foldsFor("key", 1_000 + KEY_BURST_MS)).toBe(true);

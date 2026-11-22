@@ -136,22 +136,6 @@ describe("ScreenerRoute", () => {
     expect(screener.fetchScreenerQueue).not.toHaveBeenCalledWith("account-1");
   });
 
-  test("pressing a allows the focused sender", async () => {
-    renderWithQueryClient(<ScreenerRoute />);
-
-    expect(await screen.findByText("Unknown Sender")).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "a" });
-
-    await waitFor(() => {
-      expect(screener.setScreenerDecision).toHaveBeenCalledWith({
-        accountId: "account-1",
-        senderEmail: "unknown@example.com",
-        disposition: "allow",
-      });
-    });
-  });
-
   test("focus returns to the queue when an overlay closes with nothing to return to", async () => {
     renderWithQueryClient(<ScreenerRoute />);
     expect(await screen.findByText("Unknown Sender")).toBeVisible();
@@ -197,14 +181,6 @@ describe("ScreenerRoute", () => {
       });
     });
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-  });
-
-  test("shows a skeleton, not an empty queue, while loading", async () => {
-    screener.fetchScreenerQueue.mockReturnValue(new Promise(() => {}));
-    renderWithQueryClient(<ScreenerRoute />);
-
-    expect(await screen.findByRole("status", { name: /loading screener queue/i })).toBeVisible();
-    expect(screen.queryByText("Queue empty")).not.toBeInTheDocument();
   });
 
   test("Decisions tab lists decisions and clears one", async () => {

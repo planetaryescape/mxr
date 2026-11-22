@@ -9,8 +9,6 @@ use super::routes_v6::passthrough;
 use super::*;
 use mxr_protocol::ArchiveAskFiltersData;
 
-// Mirror the protocol's serde defaults (private to `mxr-protocol`) so an
-// omitted `limit` behaves the same over HTTP as over IPC.
 const DEFAULT_OWED_REPLY_LIMIT: u32 = 50;
 const DEFAULT_DESK_LANE_LIMIT: u32 = 25;
 const DEFAULT_WHOIS_LIMIT: u32 = 10;

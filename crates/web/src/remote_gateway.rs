@@ -81,7 +81,6 @@ async fn upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Native clients never send browser Origin. Browser grants are a later stage.
     if headers.contains_key("origin") {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -513,8 +512,6 @@ async fn request_with_events(
                 if !send_frame(ws, codec, 0, IpcPayload::Event(crate::remote_browser::public_event(event))).await { return Err(()); }
             }
             response = &mut call => {
-                // A ready response and event may arrive in the same poll. Do not
-                // lose a stopping notice merely because the provider also finished.
                 if !notice_sent {
                     let notice = stop_notice.borrow_and_update().clone();
                     if let Some(event) = notice {

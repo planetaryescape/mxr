@@ -11,8 +11,6 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub(crate) struct BridgeChrome {
-    // Web-specific shaping stays here. The daemon returns reusable runtime data;
-    // the bridge assembles shell/sidebar JSON for this client.
     pub(crate) shell: serde_json::Value,
     pub(crate) sidebar: serde_json::Value,
     pub(crate) labels: Vec<Label>,
@@ -250,10 +248,6 @@ pub(crate) async fn build_bridge_chrome(
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
-    // Navigation is built from roles, so it needs every in-scope account's
-    // system labels, not just the default account's. An older daemon that
-    // ignores `all_accounts` returns the default account's, which is the
-    // old behaviour.
     let scope_labels = if account_id.is_none() {
         match ipc_request(
             socket_path,
@@ -271,9 +265,6 @@ pub(crate) async fn build_bridge_chrome(
         labels.clone()
     };
 
-    // Counts come from the daemon so All Mail and Starred (no label on some
-    // providers) and accounts without a given label still add up. A daemon
-    // that predates the request errors; the label's own counts stand in.
     let unified_counts = match system_mailbox_counts_request(socket_path, account_id.cloned()).await
     {
         Ok(Some(mailboxes)) => mailboxes
@@ -434,9 +425,6 @@ pub(crate) fn build_sidebar_sections(
     active_lens: &MailboxLensRequest,
     unified_counts: &HashMap<Role, (u32, u32)>,
 ) -> Vec<serde_json::Value> {
-    // The label a role is reached through: the default (or named) account's,
-    // else any in-scope account's. A mailbox only another account has still
-    // gets an item.
     let label_for = |role: Role| {
         labels
             .iter()
@@ -464,9 +452,6 @@ pub(crate) fn build_sidebar_sections(
         let Some(title) = role.system_mailbox_title() else {
             continue;
         };
-        // Some accounts (IMAP without a \Flagged folder) have no Starred
-        // label. The role lens lists by the starred flag, so the item needs
-        // no label id.
         if role == Role::Starred && label_for(role).is_none() {
             let (unread, total) = counts_for(role, None).unwrap_or_default();
             system_items.push(json!({
@@ -788,10 +773,6 @@ pub(crate) async fn load_mailbox_selection(
         }
         MailboxLensKind::Subscription => {
             if let Some(sender_email) = lens.sender_email.as_deref() {
-                // A subscription drilldown is a sender search; `Request::Search`
-                // supports offset, so this lens paginates (unlike the saved-search
-                // and subscription-overview lenses, whose IPC variants take no
-                // offset).
                 let (envelopes, degraded) =
                     search_envelopes(socket_path, sender_email, account_id, limit, offset).await?;
                 return Ok(MailboxSelection {

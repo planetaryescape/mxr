@@ -263,10 +263,6 @@ async fn mailbox(
     let commitment_counts = open_commitment_counts(&state.config.socket_path, &row_envelopes).await;
     annotate_open_commitment_counts(&mut rows, &commitment_counts);
     let groups = group_row_views(rows);
-    // Saved-search and subscription-overview lenses can't paginate: their IPC
-    // variants (RunSavedSearch, ListSubscriptions) take no offset. A subscription
-    // drilldown (sender_email present) runs through Request::Search, which does.
-    // Thread pages count threads, envelope pages count envelopes.
     let supports_pagination = matches!(
         lens.kind,
         MailboxLensKind::Inbox
@@ -290,8 +286,6 @@ async fn mailbox(
             "groups": groups,
         }
     });
-    // Only on a saved-search or subscription lens the daemon answered from
-    // SQLite: the list shows the notice as given.
     if let Some(degraded) = degraded {
         response["mailbox"]["degraded"] = degraded_json(&degraded);
     }
@@ -403,8 +397,6 @@ async fn thread(
             messages,
             summary,
         } => {
-            // Label ids are per account; the default account's labels would
-            // leave a thread from any other account unlabelled.
             let labels = match ipc_request(
                 &state.config.socket_path,
                 Request::ListLabels {
@@ -441,8 +433,6 @@ async fn thread(
                 .iter()
                 .filter(|body| body.metadata.calendar.is_some())
                 .count();
-            // The thread keeps the whole ordered id list for actions and
-            // deep links; these fields say where the page sits inside it.
             let total_messages = thread.message_ids.len() as u32;
             let has_earlier = messages
                 .first()
@@ -552,7 +542,6 @@ async fn search(
         })));
     }
 
-    // Omitted sort defers to the daemon's `[search] default_sort`.
     let sort = match query.sort.as_deref() {
         None => None,
         Some("relevant") => Some(SortOrder::Relevance),
@@ -640,7 +629,6 @@ async fn search(
 
             let mut response = json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
-                // Omitted, the daemon applied its own `[search] default_sort`.
                 "sort": query.sort.unwrap_or_else(|| "default".to_string()),
                 "mode": query.mode.unwrap_or_default(),
                 "total": response_total,
@@ -649,8 +637,6 @@ async fn search(
                 "groups": groups,
                 "explain": explain,
             });
-            // Only present when SQLite answered; the page shows `notice`
-            // as given so every client says the same sentence.
             if let Some(degraded) = degraded {
                 response["degraded"] = degraded_json(&degraded);
             }
@@ -853,8 +839,6 @@ async fn start_compose_session(
                 ));
             }
         };
-        // The stored draft owns the current reply mode. Opening it from a
-        // different message or with a different requested mode must not flip it.
         session["kind"] = json!(match draft.intent {
             mxr_core::DraftIntent::Reply => "reply",
             mxr_core::DraftIntent::ReplyAll => "reply_all",
@@ -962,8 +946,6 @@ async fn set_compose_audience(
     }
     .await
     {
-        // The canonical CAS already succeeded. The recovery copy must carry
-        // that new revision while retaining the exact pre-operation body.
         let recovery = preserve_compose_snapshot(path, &original, &draft).await;
         if let Err(failure) = replace_compose_file(path, original).await {
             tracing::warn!(error = %failure, "could not restore compose file after audience update failure");
@@ -1005,8 +987,6 @@ async fn refresh_compose_session(
         }
     }
     let session = if let Some(source) = compose_recovery_source(path).await? {
-        // An explicit reopen owns a fresh copy: another tab may still edit or
-        // discard the remembered recovery file. Autosave never enters this path.
         let draft = read_draft_session_metadata(path)
             .await?
             .ok_or_else(|| BridgeError::BadRequest("recovery metadata is missing".into()))?;
@@ -1030,8 +1010,6 @@ async fn restore_compose_session(
         RestoredComposeSession::Editable(session) => {
             Json(json!({ "session": session })).into_response()
         }
-        // 409, not 502: the daemon is healthy and the draft is intact. This
-        // combination will never succeed, so the client must not retry it.
         RestoredComposeSession::HtmlNotEditable { preview_html } => (
             StatusCode::CONFLICT,
             Json(json!({
@@ -1112,7 +1090,6 @@ async fn update_compose_session(
     let metadata = match read_draft_session_metadata(path).await? {
         Some(metadata) => metadata,
         None => {
-            // Pre-upgrade windows keep their text but cannot infer a durable token.
             replace_compose_file(path, rendered).await?;
             return Err(BridgeError::BadRequest(
                 "compose session is missing its draft identity; reopen it".into(),
@@ -1133,8 +1110,6 @@ async fn update_compose_session(
     .await?;
     candidate.revision = request.expected_revision;
     if let Some(source) = compose_recovery_source(path).await? {
-        // Automatic saves preserve this editor's private destination. Only an
-        // explicit retry may submit its original observed revision to the daemon.
         if request.expected_revision != metadata.revision {
             return Err(BridgeError::BadRequest(
                 "recovery revision does not match its observed token".into(),
@@ -1158,8 +1133,6 @@ async fn update_compose_session(
         let mut session = compose_session_from_snapshot(path, &rendered, Some(&candidate))?;
         session["recoverySourcePath"] = json!(source);
         if request.retry_recovery {
-            // Prepare an independently owned payload before SQLite may store its
-            // paths. An ambiguous IPC result retains this copy and its bytes.
             let retry = preserve_compose_snapshot(path, &rendered, &candidate).await?;
             let retry_path = Path::new(&retry.draft_path);
             let retry_content = read_compose_file(retry_path).await?;
@@ -1175,7 +1148,6 @@ async fn update_compose_session(
             let committed = async {
                 let canonical_content =
                     compose_content_with_accepted_attachments(&retry_content, &accepted)?;
-                // Tokens without matching sidecar metadata block another save after a partial commit.
                 replace_compose_file(retry_path, canonical_content.clone()).await?;
                 write_draft_session_metadata(retry_path, &accepted).await?;
                 Ok::<_, BridgeError>(canonical_content)
@@ -1221,8 +1193,6 @@ async fn update_compose_session(
     let rendered = match committed {
         Ok(content) => content,
         Err(error) => {
-            // The metadata writer is atomic; restore the previous coherent file if
-            // the second replace failed, while preserving the accepted snapshot.
             if let Err(failure) = replace_compose_file(path, content).await {
                 tracing::warn!(request_id, error = %failure, "could not restore compose file after persistence failure");
             }
@@ -1266,7 +1236,6 @@ async fn send_compose_session(
         draft_file,
         "bridge compose send requested"
     );
-    // Autosave persists this session under its stable local draft identity.
     let draft = compose_draft_from_file(
         &request.draft_path,
         &request.account_id,
@@ -1276,9 +1245,6 @@ async fn send_compose_session(
     .await?;
     ensure_compose_revision(&draft, request.expected_revision)?;
     let draft_id = draft.id.clone();
-    // The sent message id is what `POST /mail/reminders` keys on, so a client
-    // can offer "send and remind" without re-finding the message. A bare `Ack`
-    // (no receipt) leaves it null.
     let mut identity = mxr_core::SendIdentity::for_draft(&draft);
     if let Some(operation_id) = request.operation_id {
         identity.operation_id = operation_id;
@@ -1341,9 +1307,6 @@ async fn send_compose_session(
             return Err(error);
         }
     };
-    // The message is out. A leftover session file must never turn that into
-    // a failed request: the client would put the reply back and a retry
-    // would send it again under a new draft id.
     let cleanup_warnings = cleanup_committed_session(
         Path::new(&request.draft_path),
         SessionCleanup::WithAttachments,
@@ -1418,9 +1381,6 @@ async fn check_compose_session_safety(
         .await?;
     require_canonical_compose(Path::new(&request.draft_path)).await?;
     let request_id = bridge_request_id(&headers);
-    // Nothing is stored, so the id never leaves this report: the safety
-    // pipeline reads recipients and body only, and override tokens are keyed
-    // by blocker kind rather than by draft.
     let draft = compose_draft_from_file(
         &request.draft_path,
         &request.account_id,
@@ -1460,7 +1420,6 @@ async fn suggest_compose_collaborators(
         .await?;
     workspace_owner::require_sidecar(Path::new(&request.draft_path)).await?;
     let request_id = bridge_request_id(&headers);
-    // Read-only suggestion lookup; nothing is stored under this draft's id.
     let draft = compose_draft_from_file(
         &request.draft_path,
         &request.account_id,
@@ -1659,9 +1618,6 @@ async fn schedule_compose_session(
         );
         return Err(error.with_compose_evidence(Some(&draft), None));
     }
-    // The stored draft now owns the content, so the session file and invite
-    // sidecar go. The attachment directory stays: the stored draft points at
-    // those files and reads them when the send fires.
     let cleanup_warnings = cleanup_committed_session(
         Path::new(&request.draft_path),
         SessionCleanup::KeepAttachments,
@@ -1824,7 +1780,6 @@ async fn upload_compose_attachment(
             };
             let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
                 .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-            // A token without matching sidecar metadata blocks saves; write it before metadata so a crash cannot silently detach bytes.
             replace_compose_file(Path::new(&request.draft_path), rendered).await?;
             write_draft_session_metadata(Path::new(&request.draft_path), &canonical).await?;
             Ok(Json(request_types::ComposeAttachmentResponse::Finalize(
@@ -2719,11 +2674,6 @@ async fn ipc_request_with_id(
     request_id: u64,
     request: Request,
 ) -> Result<ResponseData, BridgeError> {
-    // The bridge stays connection-per-request (its isolation model) but now
-    // constructs the connection through `mxr-client`. `with_start_id` keeps the
-    // externally-chosen correlation id on the wire so daemon logs still line up
-    // with the bridge's `request_id`. The `ClientKind::Web` tag is preserved so
-    // daemon activity attributes web traffic correctly.
     let mut connection = remote_browser::connect(socket_path, mxr_protocol::ClientKind::Web)
         .await
         .map_err(map_bridge_error)?
@@ -2802,14 +2752,9 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
         ClientError::DaemonIncompatible { message } => BridgeError::Ipc(message),
-        // A non-response frame kept mapping to UnexpectedResponse before, so
-        // `bridge_error_kind` still reports "unexpected_response".
         ClientError::UnexpectedFrame {
             is_response: false, ..
         } => BridgeError::UnexpectedResponse,
-        // A wrong-id response is unreachable now that `with_start_id` pins the
-        // wire id (and the old code accepted any response id regardless, so
-        // there is no prior behavior worth preserving here).
         ClientError::UnexpectedFrame {
             frame_id,
             expected_id,
@@ -2821,9 +2766,6 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
             "IPC request timed out after {} seconds",
             duration.as_secs()
         )),
-        // Transport-level connect failure (generic-connector path). The bridge
-        // dials via the path constructor, so this is unreachable here; the arm
-        // keeps the match exhaustive.
         ClientError::Transport(error) => BridgeError::Connect(error.to_string()),
     }
 }
@@ -2833,8 +2775,6 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
         match remote_browser::connect(&socket_path, mxr_protocol::ClientKind::Web).await {
             Ok(connection) => connection,
             Err(error) => {
-                // Preserve the pre-refactor payload: the bare io-error string,
-                // not the wrapped `ClientError::Connect` display.
                 let detail = match error {
                     ClientError::Connect { source, .. } => source.to_string(),
                     other => other.to_string(),
@@ -2849,9 +2789,6 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
         };
 
     let mut auth_check = tokio::time::interval(std::time::Duration::from_secs(2));
-    // Read the browser side too: without it a closed tab keeps the daemon
-    // socket open until the next event happens to fail its send. Both
-    // `next_event` and `recv` are cancel-safe, so `select!` loses no frame.
     loop {
         tokio::select! {
             _ = auth_check.tick(), if remote_browser::proof().is_some() => {
@@ -2953,16 +2890,7 @@ async fn create_compose_session(
     request: ComposeSessionStartRequest,
 ) -> Result<serde_json::Value, BridgeError> {
     let (account_id, from) = default_account(socket_path).await?;
-    // Set by the invite-with-comment arm so the iTIP REPLY payload (ICS,
-    // PARTSTAT, source message) survives to send time; persisted alongside the
-    // draft file so the stateless send request can rebuild the Draft's
-    // `inline_calendar_reply` instead of sending a plain email with no ATTENDEE.
     let mut invite_reply: Option<mxr_core::types::InlineCalendarReply> = None;
-    // Each arm yields the sender identity to seed: `New` uses the default
-    // account's address; reply/forward/invite use the daemon-computed default
-    // From *for the message's own account* (an owned address), never the
-    // global default account's — otherwise a reply on a non-default account
-    // would seed an address that account doesn't own and be rejected on send.
     let (kind, account_id, cursor_line, from_seed) = match request.kind {
         ComposeSessionKindRequest::New => (
             ComposeKind::New {
@@ -3065,9 +2993,6 @@ async fn create_compose_session(
                 ResponseData::InviteResponsePreview { preview } => preview,
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
-            // RSVP-with-comment sends From the matched ATTENDEE alias and must
-            // carry the iTIP REPLY payload so From/ATTENDEE agree and the
-            // PARTSTAT is updated after send (parity with the TUI path).
             let from_seed = preview.attendee_email.clone();
             invite_reply = Some(mxr_core::types::InlineCalendarReply {
                 source_message_id: envelope.id.clone(),
@@ -3083,9 +3008,6 @@ async fn create_compose_session(
                         mxr_core::types::CalendarPartstat::Declined
                     }
                 },
-                // Store only the trusted triple (source, attendee, partstat) —
-                // the ICS is rebuilt server-side at the send choke point, so no
-                // ICS bytes are persisted in (or trusted from) the sidecar.
                 ics_body: String::new(),
             });
             (
@@ -3153,7 +3075,6 @@ fn draft_session_metadata_path(path: &Path) -> PathBuf {
     path.with_extension("draft.json")
 }
 
-// Recovery ownership is bridge-written metadata, not a filename convention.
 async fn compose_recovery_source(path: &Path) -> Result<Option<String>, BridgeError> {
     match tokio::fs::read(draft_session_metadata_path(path)).await {
         Ok(bytes) => {
@@ -3211,7 +3132,6 @@ fn compose_content_with_accepted_attachments(
         return Ok(content.to_string());
     }
     frontmatter.attach = attach;
-    // Replace only the YAML header so editor whitespace and stripped context remain verbatim.
     let suffix = content
         .trim_start()
         .strip_prefix("---")
@@ -3243,8 +3163,6 @@ async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), 
 }
 
 fn ensure_compose_revision(draft: &Draft, expected: Option<i64>) -> Result<(), BridgeError> {
-    // Two unsaved views may both observe None. Once either saves, the other
-    // must not perform effects using text now owned by a revised snapshot.
     if expected != draft.revision {
         return Err(BridgeError::DraftConflict {
             message: "Draft changed in another editor; preserve your unsent text".into(),
@@ -3262,7 +3180,6 @@ async fn persist_compose_draft(
     draft: Draft,
     expected_revision: Option<i64>,
 ) -> Result<Draft, BridgeError> {
-    // The initial identity is written before submission so a lost create response reuses it.
     if read_draft_session_metadata(path).await?.is_none() {
         write_draft_session_metadata(path, &draft).await?;
     }
@@ -3546,8 +3463,6 @@ async fn compose_draft_from_snapshot(
     let now = Utc::now();
     let mut draft = Draft {
         revision: None,
-        // A restored session supplies the id so the draft updates in place;
-        // a new compose mints one.
         id: draft_id.unwrap_or_default(),
         account_id: parse_account_id(account_id)?,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
@@ -3569,9 +3484,6 @@ async fn compose_draft_from_snapshot(
         managed_attachments: None,
         attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_assets: Vec::new(),
-        // Rebuild the iTIP REPLY payload for an invite-with-comment session so
-        // the outbound builder emits the ATTENDEE part and the daemon updates
-        // PARTSTAT after send (parity with the TUI path).
         inline_calendar_reply: read_invite_reply_sidecar(Path::new(draft_path)).await?,
         created_at: now,
         updated_at: now,
@@ -3598,15 +3510,9 @@ async fn restore_saved_draft_session(
 ) -> Result<RestoredComposeSession, BridgeError> {
     let socket_path = &state.config.socket_path;
     let draft = saved_draft(socket_path, &draft_id).await?;
-    // Decide up front, before creating any scratch file: refusing later would
-    // leave an orphaned compose file behind on every attempt to open an HTML
-    // draft. Exhaustive so a future body kind is a compile error here rather
-    // than a session with a silently empty body.
     let body = match &draft.content {
         mxr_core::DraftContent::Html { html, .. } => {
             return Ok(RestoredComposeSession::HtmlNotEditable {
-                // Verbatim: the client sanitises for display only. Whatever mxr
-                // sends on the wire is this document, untouched.
                 preview_html: html.clone(),
             });
         }
@@ -3664,9 +3570,6 @@ async fn restore_saved_draft_session(
     session["cursorLine"] = json!(cursor_line);
     session["accountId"] = json!(account.account_id);
     session["kind"] = json!("new");
-    // `kind` stays `new` for the flows that read it; what the draft is (a reply,
-    // a forward) rides beside it, so a client can ask for help with the stored
-    // draft instead of a new message that carries mail's subject.
     session["draftIntent"] = json!(draft.intent);
     session["editorCommand"] = json!(resolved_editor_command());
     Ok(RestoredComposeSession::Editable(session))
@@ -3704,13 +3607,9 @@ fn draft_summary_view(draft: Draft, send_at: Option<chrono::DateTime<Utc>>) -> s
         "updated_at_full": format_date_full(draft.updated_at),
         "updated_at_relative": format!("edited {}", format_relative_label(draft.updated_at)),
         "attachment_count": (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len)),
-        // Lets a client tell an HTML draft apart before opening it. Without
-        // this the only way to discover one is uneditable in the markdown
-        // composer is to click it and take the 409.
         "content_kind": draft.content.kind_str(),
         "inline_asset_count": draft.inline_assets.len(),
         "revision": draft.revision,
-        // Set while the draft is scheduled to send later and has not fired.
         "send_at": send_at,
     })
 }
@@ -3772,12 +3671,9 @@ async fn copy_recovery_attachments(
         let mut paths: HashMap<PathBuf, PathBuf> = HashMap::new();
         for attachment in &mut frontmatter.attach {
             let source = PathBuf::from(&*attachment);
-            // Copies this destination already owns sit in its UUID subdirectories.
             if !source.starts_with(&managed_root) || source.starts_with(&destination_dir) {
                 continue;
             }
-            // Repeated references reuse one copy, while equal basenames from
-            // different directories get distinct UUID-based destination names.
             let target = if let Some(target) = paths.get(&source) {
                 target.clone()
             } else {
@@ -3807,8 +3703,6 @@ async fn copy_recovery_attachments(
             };
             *attachment = target.display().to_string();
         }
-        // The compose parser trims body whitespace for the draft codec. Only
-        // replace the YAML header here: preserved editor text stays verbatim.
         let suffix = content
             .trim_start()
             .strip_prefix("---")
@@ -4169,8 +4063,6 @@ fn resolve_snooze_until(
     mxr_config::snooze::parse_snooze_until(until, config)
         .ok_or_else(|| BridgeError::BadRequest(format!("invalid snooze time: {until}")))
 }
-
-// --- Feature parity routes ---
 
 #[derive(serde::Deserialize)]
 struct SubscriptionsQuery {
@@ -5022,9 +4914,6 @@ async fn trigger_sync(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    // Keep the pre-existing HTTP contract scoped to the default account.
-    // Global sync has its own additive endpoint so older SPAs keep their
-    // historical behavior when they talk to a newer bridge.
     ack_request(
         &state.config.socket_path,
         Request::SyncNow {

@@ -27,8 +27,6 @@ async fn update_chimes(
     Json(patch): Json<NotificationChimesPatchData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, None, &state.config.auth_token)?;
-    // A patch, applied by the daemon under its config lock: saves from two
-    // tabs, or from the web and `mxr chimes`, never undo each other.
     let response = ipc_request(
         &state.config.socket_path,
         Request::PatchNotificationChimes {

@@ -304,7 +304,6 @@ async fn send_stored_adds_message_id_and_draft_id_to_the_receipt() {
         .unwrap();
     assert_eq!(json["message_id"], sent_message_id.to_string());
     assert_eq!(json["draft_id"], draft_id.to_string());
-    // Existing readers of the raw receipt keep working.
     assert_eq!(json["kind"], "SendReceipt");
     assert_eq!(json["local_message_id"], sent_message_id.to_string());
 }
@@ -701,7 +700,6 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     .await;
     let addr = serve(socket_path).await;
     let client = test_http_client();
-    // No recipients: a draft error the user has to fix.
     let (draft_path, account_id, expected_revision) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
 
@@ -757,8 +755,6 @@ async fn thread_reader_resolves_labels_from_the_threads_own_account() {
     let body = sample_body(&envelope);
     let mut thread_labels = sample_labels(&thread_account);
     thread_labels[2].name = "Other account follow up".into();
-    // The default account has no label with the thread's provider id, so a
-    // lookup against it leaves the message unlabelled.
     let default_labels = vec![sample_labels(&default_account)[0].clone()];
     let label_scopes = Arc::new(Mutex::new(Vec::new()));
     let scopes_seen = label_scopes.clone();
@@ -951,8 +947,6 @@ async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
                 accounts: vec![account.clone()],
             }),
             Request::SendDraft { .. } => {
-                // After the send, the session file can't be removed: it has
-                // become a non-empty directory.
                 let path = session_for_ipc.lock().unwrap().clone().unwrap();
                 std::fs::remove_file(&path).unwrap();
                 std::fs::create_dir_all(path.join("blocker")).unwrap();
@@ -1085,7 +1079,6 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
         assert_eq!(store.snapshot()[0].revision, Some(2));
         assert_eq!(store.snapshot()[0].content.analysis_text(), winning);
     }
-    // Recovery cannot cause effects, including requests from null-token clients.
     for endpoint in ["send", "save", "schedule", "safety-check"] {
         let blocked = client.post(format!("http://{addr}/api/v1/mail/compose/session/{endpoint}"))
             .bearer_auth(TEST_AUTH_TOKEN)
@@ -1098,7 +1091,6 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
             "{endpoint}"
         );
     }
-    // Explicit canonical restore does not erase the rejected editor's text.
     let reopened = restore_session_path(&client, addr, &id).await;
     let canonical = load_compose_session(Path::new(&reopened)).await.unwrap();
     assert_eq!(canonical["bodyMarkdown"], winning);
@@ -1107,8 +1099,6 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
         load_compose_session(Path::new(recovered)).await.unwrap()["bodyMarkdown"],
         "latest before close"
     );
-    // Two explicit reopens own independent editable copies, even when they
-    // began with the same remembered recovery path.
     let mut opened = Vec::new();
     for _ in 0..2 {
         let response: serde_json::Value = client

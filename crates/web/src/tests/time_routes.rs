@@ -108,8 +108,6 @@ async fn snooze_stores_the_previewed_instant_unchanged() {
     let addr = serve(socket_path).await;
     let message_id = MessageId::new();
 
-    // The web sends `choices[n].at` back as `until`; a preview in +01:00 must
-    // land on the same instant.
     let response = test_http_client()
         .post(format!("http://{addr}/api/v1/mail/actions/snooze"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -145,7 +143,6 @@ async fn snooze_presets_come_from_the_daemon_in_the_browser_zone() {
                 return Some(Response::error("unexpected request"));
             };
             let now = Utc.with_ymd_and_hms(2024, 5, 7, 20, 0, 0).unwrap();
-            // At 20:00, "tonight" has passed and is left out.
             let result = mxr_core::natural_time::resolve_time(
                 input,
                 &now,

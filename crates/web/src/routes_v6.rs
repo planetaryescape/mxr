@@ -37,9 +37,6 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-// ---------------------------------------------------------------------------
-// query helpers
-
 fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
     AccountId::from_str(raw)
         .map_err(|err| BridgeError::BadRequest(format!("invalid account_id: {err}")))
@@ -63,9 +60,6 @@ pub(crate) fn passthrough(response: ResponseData) -> Result<Json<Value>, BridgeE
         .map(Json)
         .map_err(|err| BridgeError::Ipc(format!("response serialize: {err}")))
 }
-
-// ---------------------------------------------------------------------------
-// admin
 
 async fn ping(
     State(state): State<AppState>,
@@ -208,9 +202,6 @@ async fn count_events(
     .await?;
     passthrough(response)
 }
-
-// ---------------------------------------------------------------------------
-// platform — analytics
 
 #[derive(Debug, Deserialize, Default)]
 struct WrappedQuery {
@@ -564,9 +555,6 @@ async fn analytics_rebuild(
     passthrough(response)
 }
 
-// ---------------------------------------------------------------------------
-// platform — saved searches (list + run)
-
 async fn saved_search_unread_counts(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -627,9 +615,6 @@ async fn run_saved_search(
     .await?;
     passthrough(response)
 }
-
-// ---------------------------------------------------------------------------
-// platform — account lifecycle
 
 async fn list_accounts_config(
     State(state): State<AppState>,
@@ -743,9 +728,6 @@ async fn set_account_identity(
     passthrough(response)
 }
 
-// ---------------------------------------------------------------------------
-// platform — account addresses (account_id is a UUID, hence path param parsing)
-
 async fn list_account_addresses(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -850,9 +832,6 @@ async fn set_primary_account_address(
     passthrough(response)
 }
 
-// ---------------------------------------------------------------------------
-// platform — semantic profile management
-
 #[derive(Debug, Deserialize)]
 struct EnableSemanticBody {
     enabled: bool,
@@ -918,9 +897,6 @@ async fn semantic_use_profile(
     .await?;
     passthrough(response)
 }
-
-// ---------------------------------------------------------------------------
-// mail — message-level helpers and undo
 
 #[derive(Debug, Deserialize)]
 struct UndoMutationBody {
@@ -1298,10 +1274,6 @@ async fn unsnooze(
     passthrough(response)
 }
 
-// ---------------------------------------------------------------------------
-// reply-later, auto-reminders, send-later, snippets, sender, screener,
-// summarize, draft-assist — bridge surface for the v0.5+ delight features.
-
 #[derive(Debug, Deserialize)]
 struct SetReplyLaterBody {
     flag: bool,
@@ -1582,7 +1554,6 @@ async fn contacts_autocomplete(
     headers: HeaderMap,
     Query(query): Query<ContactsAutocompleteQuery>,
 ) -> Result<Json<ContactsAutocompleteResponse>, BridgeError> {
-    // Pull more than the requested limit so client-side filtering has headroom.
     let scan_limit = query.limit.saturating_mul(20).clamp(50, 500);
     let senders = match dispatch(
         &state,
@@ -1601,10 +1572,6 @@ async fn contacts_autocomplete(
     };
     let q = query.q.unwrap_or_default().to_lowercase();
     let limit = query.limit as usize;
-    // Senders come one row per account, so the same address can appear several
-    // times. Keep one suggestion per address (case-insensitive) and fill its name
-    // from the first row that has one. The scan continues past the limit so a
-    // later row can still supply a name for an address already listed.
     let mut contacts: Vec<ContactSuggestion> = Vec::new();
     let mut index_by_email: HashMap<String, usize> = HashMap::new();
     for sender in senders {
@@ -2153,9 +2120,6 @@ async fn semantic_backfill(
     passthrough(response)
 }
 
-// ---------------------------------------------------------------------------
-// mail — body/headers/flags, export-search, draft IPC, signatures
-
 async fn get_message_body(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2467,9 +2431,6 @@ async fn send_stored_draft(
         },
     )
     .await?;
-    // Keep the raw receipt for existing readers, and add the same
-    // `draft_id` / `message_id` pair `compose/session/send` returns so a
-    // client can chain `POST /mail/reminders` off either send path.
     let message_id = match &response {
         ResponseData::SendReceipt {
             local_message_id, ..
@@ -2763,11 +2724,6 @@ async fn authorize_account_config(
     passthrough(response)
 }
 
-// ===========================================================================
-// Activity log routes (Phase 6 — `docs/activity-log.md`).
-// Strictly local: routes are bridge-gated like the rest. No new auth surface.
-// ===========================================================================
-
 /// The list and count routes' filters, parsed from the raw query string by one
 /// parser so the two routes can never apply different filters.
 ///
@@ -2821,7 +2777,6 @@ impl ActivityListQuery {
                 _ if is_indexed_key(key, "source") => extend_filter(&mut q.source, value),
                 _ if is_indexed_key(key, "action") => extend_filter(&mut q.action, value),
                 _ if is_indexed_key(key, "tier") => extend_filter(&mut q.tier, value),
-                // Unknown parameters are ignored, as serde_urlencoded did.
                 _ => {}
             }
         }
@@ -3233,9 +3188,6 @@ struct TokenOnlyQuery {
     token: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// router builders — extend the bucket sub-routers in lib.rs
-
 pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/ping", post(ping))
@@ -3244,7 +3196,6 @@ pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
         .route("/events/count", get(count_events))
         .route("/events/categories", get(list_event_categories))
         .route("/logs", get(get_logs))
-        // ---- activity log (Phase 6) ----
         .route("/activity", get(list_activity))
         .route("/activity/count", get(count_activity))
         .route("/activity/stats", get(activity_stats))
@@ -3310,22 +3261,17 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/count", get(count_messages))
         .route("/sync/status", get(sync_status))
         .route("/snoozed/{message_id}/wake", post(unsnooze))
-        // reply-later
         .route("/reply-later/{message_id}", post(set_reply_later))
         .route("/reply-later", get(list_reply_queue))
-        // auto-reminders
         .route("/reminders", post(set_auto_reminder))
         .route("/reminders/{message_id}", delete(cancel_auto_reminder))
-        // send-later (scheduled drafts)
         .route(
             "/scheduled-sends",
             get(list_scheduled_sends).post(schedule_send),
         )
         .route("/scheduled-sends/{draft_id}", delete(cancel_scheduled_send))
-        // snippets
         .route("/snippets", get(list_snippets).post(set_snippet))
         .route("/snippets/{name}", delete(delete_snippet))
-        // sender view + contact autocomplete
         .route("/sender", get(get_sender_profile))
         .route("/contacts/autocomplete", get(contacts_autocomplete))
         .route("/relationship", get(get_relationship_profile))
@@ -3335,11 +3281,9 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             "/commitments/{commitment_id}/resolve",
             post(resolve_commitment),
         )
-        // briefings + expert finder
         .route("/threads/{thread_id}/briefing", get(get_thread_briefing))
         .route("/contacts/briefing", get(get_recipient_briefing))
         .route("/contacts/expert", get(find_expert))
-        // screener
         .route("/screener/queue", get(list_screener_queue))
         .route(
             "/screener/decisions",
@@ -3347,7 +3291,6 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
                 .post(set_screener_decision)
                 .delete(clear_screener_decision),
         )
-        // LLM features
         .route("/threads/{thread_id}/summarize", post(summarize_thread))
         .route("/drafts/compose", post(draft_compose))
         .route("/drafts/refine", post(draft_refine))
@@ -3357,7 +3300,6 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
 
 pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
     router
-        // analytics
         .route("/analytics/wrapped", get(analytics_wrapped))
         .route(
             "/analytics/storage-breakdown",
@@ -3379,21 +3321,18 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
             post(analytics_refresh_contacts),
         )
         .route("/analytics/rebuild", post(analytics_rebuild))
-        // saved searches list + run
         .route("/saved-searches", get(list_saved_searches))
         .route(
             "/saved-searches/unread-counts",
             get(saved_search_unread_counts),
         )
         .route("/saved-searches/run", post(run_saved_search))
-        // accounts: config / lifecycle
         .route("/accounts/config", get(list_accounts_config))
         .route("/accounts/authorize", post(authorize_account_config))
         .route("/accounts/repair", post(repair_account_config))
         .route("/accounts/{key}", delete(remove_account))
         .route("/accounts/{key}/disable", post(disable_account))
         .route("/accounts/{key}/identity", post(set_account_identity))
-        // account addresses
         .route(
             "/accounts/{account_id}/addresses",
             get(list_account_addresses),
@@ -3410,7 +3349,6 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
             "/accounts/{account_id}/addresses/primary",
             post(set_primary_account_address),
         )
-        // semantic
         .route("/semantic/enable", post(semantic_enable))
         .route("/semantic/backfill", post(semantic_backfill))
         .route("/semantic/profiles/install", post(semantic_install_profile))

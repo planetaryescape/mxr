@@ -101,7 +101,6 @@ async fn conflict_and_reopened_recoveries_own_uploaded_attachment_bytes() {
         owned.iter().map(PathBuf::from).collect::<Vec<_>>()
     );
 
-    // Recovery continues to preserve legacy path-backed drafts.
     let legacy = compose_attachment_dir(Path::new(recovery))
         .unwrap()
         .join("uploaded-later.txt");

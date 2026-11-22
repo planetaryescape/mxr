@@ -20,19 +20,16 @@ use axum::{
 /// the router and gets the usual 404).
 fn translate(path: &str) -> Option<&'static str> {
     Some(match path {
-        // admin
         "/status" => "/api/v1/admin/status",
         "/diagnostics" => "/api/v1/admin/diagnostics",
         "/diagnostics/bug-report" => "/api/v1/admin/diagnostics/bug-report",
 
-        // mail — content
         "/mailbox" => "/api/v1/mail/mailbox",
         "/search" => "/api/v1/mail/search",
         "/drafts" => "/api/v1/mail/drafts",
         "/snoozed" => "/api/v1/mail/snoozed",
         "/sync" => "/api/v1/mail/sync",
 
-        // mail — mutations
         "/mutations/archive" => "/api/v1/mail/mutations/archive",
         "/mutations/trash" => "/api/v1/mail/mutations/trash",
         "/mutations/spam" => "/api/v1/mail/mutations/spam",
@@ -42,23 +39,19 @@ fn translate(path: &str) -> Option<&'static str> {
         "/mutations/labels" => "/api/v1/mail/mutations/labels",
         "/mutations/move" => "/api/v1/mail/mutations/move",
 
-        // mail — actions
         "/actions/snooze" => "/api/v1/mail/actions/snooze",
         "/actions/snooze/presets" => "/api/v1/mail/actions/snooze/presets",
         "/actions/unsubscribe" => "/api/v1/mail/actions/unsubscribe",
         "/actions/unsubscribe-purge" => "/api/v1/mail/actions/unsubscribe-purge",
         "/actions/invite/reply" => "/api/v1/mail/actions/invite/reply",
 
-        // mail — attachments
         "/attachments/open" => "/api/v1/mail/attachments/open",
         "/attachments/download" => "/api/v1/mail/attachments/download",
 
-        // mail — labels
         "/labels/create" => "/api/v1/mail/labels/create",
         "/labels/rename" => "/api/v1/mail/labels/rename",
         "/labels/delete" => "/api/v1/mail/labels/delete",
 
-        // mail — compose
         "/compose/session" => "/api/v1/mail/compose/session",
         "/compose/session/refresh" => "/api/v1/mail/compose/session/refresh",
         "/compose/session/restore" => "/api/v1/mail/compose/session/restore",
@@ -67,7 +60,6 @@ fn translate(path: &str) -> Option<&'static str> {
         "/compose/session/save" => "/api/v1/mail/compose/session/save",
         "/compose/session/discard" => "/api/v1/mail/compose/session/discard",
 
-        // platform — rules
         "/rules" => "/api/v1/platform/rules",
         "/rules/detail" => "/api/v1/platform/rules/detail",
         "/rules/form" => "/api/v1/platform/rules/form",
@@ -77,25 +69,20 @@ fn translate(path: &str) -> Option<&'static str> {
         "/rules/upsert-form" => "/api/v1/platform/rules/upsert-form",
         "/rules/delete" => "/api/v1/platform/rules/delete",
 
-        // platform — accounts
         "/accounts" => "/api/v1/platform/accounts",
         "/accounts/test" => "/api/v1/platform/accounts/test",
         "/accounts/upsert" => "/api/v1/platform/accounts/upsert",
         "/accounts/default" => "/api/v1/platform/accounts/default",
 
-        // platform — auth sessions
         "/auth/sessions/start" => "/api/v1/platform/auth/sessions/start",
 
-        // platform — saved searches
         "/saved-searches/create" => "/api/v1/platform/saved-searches/create",
         "/saved-searches/delete" => "/api/v1/platform/saved-searches/delete",
 
-        // platform — subscriptions / semantic
         "/subscriptions" => "/api/v1/platform/subscriptions",
         "/semantic/status" => "/api/v1/platform/semantic/status",
         "/semantic/reindex" => "/api/v1/platform/semantic/reindex",
 
-        // events — top-level under v1
         "/events" => "/api/v1/events",
 
         _ => return None,
@@ -119,7 +106,6 @@ fn translate_dynamic(path: &str) -> Option<String> {
         } else if let Some(id) = rest.strip_suffix("/complete") {
             format!("/api/v1/platform/auth/sessions/{id}/complete")
         } else {
-            // bare /auth/sessions/{id}
             format!("/api/v1/platform/auth/sessions/{rest}")
         };
         return Some(new);

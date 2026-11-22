@@ -127,9 +127,6 @@ async fn boot_bridge(socket_path: std::path::PathBuf) -> SocketAddr {
     .unwrap()
 }
 
-// --------------------------------------------------------------------------
-// suite: discovery surface
-
 #[tokio::test]
 async fn openapi_spec_is_3_1_and_lists_v1_paths() {
     let temp = TempDir::new().unwrap();
@@ -147,7 +144,6 @@ async fn openapi_spec_is_3_1_and_lists_v1_paths() {
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["openapi"], "3.1.0");
 
-    // bearer scheme registered for SDK / Swagger UI
     assert_eq!(
         json["components"]["securitySchemes"]["bearer"]["scheme"],
         "bearer"
@@ -269,9 +265,6 @@ async fn health_is_unauthenticated_and_returns_protocol_version() {
     assert_eq!(json["protocol_version"], IPC_PROTOCOL_VERSION);
 }
 
-// --------------------------------------------------------------------------
-// suite: daemon-event coverage on the WebSocket
-
 /// Feed every `DaemonEvent` variant through the WebSocket and assert each
 /// surfaces with its `event` discriminator (the protocol uses
 /// `#[serde(tag = "event")]`). Running every variant through the real
@@ -384,9 +377,6 @@ async fn websocket_relays_every_daemon_event_variant() {
     }
 }
 
-// --------------------------------------------------------------------------
-// suite: representative HTTP routes per bucket
-
 /// One assertion per IPC bucket — admin / mail / platform / events —
 /// that the daemon-hosted bridge can dispatch and return the
 /// expected ResponseData. Per the client-parity rule in
@@ -453,7 +443,6 @@ async fn one_route_per_bucket_dispatches() {
     let addr = boot_bridge(socket).await;
     let client = reqwest::Client::new();
 
-    // admin
     let response = client
         .get(format!("http://{addr}/api/v1/admin/status"))
         .bearer_auth(TEST_TOKEN)
@@ -464,7 +453,6 @@ async fn one_route_per_bucket_dispatches() {
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["daemon_version"], "0.5.0");
 
-    // admin (slice 6 addition)
     let response = client
         .post(format!("http://{addr}/api/v1/admin/ping"))
         .bearer_auth(TEST_TOKEN)
@@ -473,7 +461,6 @@ async fn one_route_per_bucket_dispatches() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // platform
     let response = client
         .get(format!("http://{addr}/api/v1/platform/subscriptions"))
         .bearer_auth(TEST_TOKEN)
@@ -482,7 +469,6 @@ async fn one_route_per_bucket_dispatches() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // platform (slice 6 addition)
     let response = client
         .get(format!("http://{addr}/api/v1/platform/saved-searches"))
         .bearer_auth(TEST_TOKEN)
@@ -491,7 +477,6 @@ async fn one_route_per_bucket_dispatches() {
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    // client
     let response = client
         .get(format!("http://{addr}/api/v1/client/shell"))
         .bearer_auth(TEST_TOKEN)
@@ -500,9 +485,6 @@ async fn one_route_per_bucket_dispatches() {
         .unwrap();
     assert_eq!(response.status(), 200);
 }
-
-// --------------------------------------------------------------------------
-// suite: compose recipient autocomplete
 
 fn sender_summary(email: &str, display_name: Option<&str>) -> mxr_protocol::SenderSummaryData {
     mxr_protocol::SenderSummaryData {
@@ -523,7 +505,6 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
     let _server = spawn_fake(
         &socket,
         |request| match request {
-            // The client probes daemon status before each request.
             Request::GetStatus => Some(Response::Ok {
                 data: ResponseData::Status {
                     workspace_owner_supported: false,
@@ -550,8 +531,6 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
             }),
             Request::ListSenders { .. } => Some(Response::Ok {
                 data: ResponseData::Senders {
-                    // One row per account: the same person can appear more than once,
-                    // with different casing and with a name on only some rows.
                     senders: vec![
                         sender_summary("nora@foundry.example", Some("Nora Okafor")),
                         sender_summary("NORA@foundry.example", Some("Nora Kim")),
@@ -576,7 +555,6 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
             .send()
     };
 
-    // The query matches only the address, not the display name.
     let response = autocomplete("foundry").await.unwrap();
     assert_eq!(response.status(), 200);
     let json: serde_json::Value = response.json().await.unwrap();
@@ -587,14 +565,12 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
         })
     );
 
-    // A blank display name is reported as absent, not as an empty string.
     let json: serde_json::Value = autocomplete("bob").await.unwrap().json().await.unwrap();
     assert_eq!(
         json,
         serde_json::json!({ "contacts": [{ "name": null, "email": "bob@example.com" }] })
     );
 
-    // An address seen under two accounts is suggested once, with the first name seen.
     let json: serde_json::Value = autocomplete("nora").await.unwrap().json().await.unwrap();
     assert_eq!(
         json,
@@ -603,14 +579,12 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
         })
     );
 
-    // A name is filled from a later row when the first row for the address has none.
     let json: serde_json::Value = autocomplete("pat").await.unwrap().json().await.unwrap();
     assert_eq!(
         json,
         serde_json::json!({ "contacts": [{ "name": "Pat Lee", "email": "pat@example.com" }] })
     );
 
-    // The limit counts distinct addresses, so a duplicate row does not use up a slot.
     let json: serde_json::Value = client
         .get(format!(
             "http://{addr}/api/v1/mail/contacts/autocomplete?q=example&limit=2"
@@ -632,9 +606,6 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
         })
     );
 }
-
-// --------------------------------------------------------------------------
-// suite: writing help (compose assist)
 
 fn status_ok() -> Response {
     Response::Ok {
@@ -676,8 +647,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         &socket,
         move |request| match request {
             Request::GetStatus => Some(status_ok()),
-            // The proposal echoes what the bridge sent, so the test can see
-            // that every field of the body reached the daemon request.
             Request::ComposeAssist {
                 draft,
                 text,
@@ -748,7 +717,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
     let addr = boot_bridge(socket).await;
     let client = reqwest::Client::new();
 
-    // Reply, with a selection and a chip.
     let message_id = MessageId::new();
     let response = client
         .post(format!("http://{addr}/api/v1/mail/compose/assist"))
@@ -767,7 +735,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .unwrap();
     assert_eq!(response.status(), 200);
     let json: serde_json::Value = response.json().await.unwrap();
-    // The answer is the typed envelope `{ "proposal": … }`, not a tagged variant.
     assert!(json.get("kind").is_none(), "{json}");
     assert_eq!(json["proposal"]["proposal_id"], "p1");
     assert_eq!(json["proposal"]["action"], "finish");
@@ -778,7 +745,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
     assert_eq!(json["proposal"]["yours_changed"], serde_json::json!([1]));
     assert!(json["proposal"]["provenance"].is_object());
 
-    // Optional fields may be left out.
     let json: serde_json::Value = client
         .post(format!("http://{addr}/api/v1/mail/compose/assist"))
         .bearer_auth(TEST_TOKEN)
@@ -799,7 +765,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         "stored||None|None|false|None|None"
     );
 
-    // A body the daemon would not understand is refused here.
     let bad = client
         .post(format!("http://{addr}/api/v1/mail/compose/assist"))
         .bearer_auth(TEST_TOKEN)
@@ -809,7 +774,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .unwrap();
     assert!(bad.status().is_client_error(), "{}", bad.status());
 
-    // The routes sit behind the bridge token.
     let unauthorized = client
         .post(format!("http://{addr}/api/v1/mail/compose/assist"))
         .json(&serde_json::json!({"draft": {"kind": "stored", "draft_id": draft_id}, "text": ""}))
@@ -818,7 +782,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .unwrap();
     assert_eq!(unauthorized.status(), 401);
 
-    // Apply answers the typed data of `ComposeApplied`.
     let applied = client
         .post(format!("http://{addr}/api/v1/mail/compose/apply"))
         .bearer_auth(TEST_TOKEN)
@@ -832,7 +795,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         serde_json::json!({"draft_id": draft_id, "text_hash": "deadbeef"})
     );
 
-    // A daemon refusal reaches the caller as a validation error with its words.
     let refused = client
         .post(format!("http://{addr}/api/v1/mail/compose/apply"))
         .bearer_auth(TEST_TOKEN)
@@ -843,7 +805,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
     assert_eq!(refused.status(), 422);
     assert!(refused.text().await.unwrap().contains("expired"));
 
-    // A draft id that is not one is the caller's mistake.
     let malformed = client
         .post(format!("http://{addr}/api/v1/mail/compose/apply"))
         .bearer_auth(TEST_TOKEN)
@@ -853,9 +814,6 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .unwrap();
     assert_eq!(malformed.status(), 400);
 }
-
-// --------------------------------------------------------------------------
-// suite: legacy migration
 
 #[tokio::test]
 async fn archive_boundary_errors_are_structured_before_any_ipc_dispatch() {

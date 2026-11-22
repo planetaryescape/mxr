@@ -63,7 +63,6 @@ pub(super) async fn middleware(
             Ok(_) => return BridgeError::UnexpectedResponse.into_response(),
             Err(error) => return crate::map_bridge_error(error).into_response(),
         }
-        // The body is still unread. A stale request cannot create files or upload bytes.
         if let Some(expected) = &owner {
             if let Err(error) = connection.verify_workspace(expected).await {
                 let mut response = crate::map_bridge_error(error).into_response();

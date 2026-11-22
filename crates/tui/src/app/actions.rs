@@ -93,12 +93,8 @@ impl App {
 
     fn apply_action(&mut self, action: Action) {
         self.recorder.record(&action, &self.screen);
-        // Clear status message on any action
         self.status_message = None;
-        // Before the action moves the cursor or the page.
         self.dismiss_hint_acted_on(&action);
-        // "Always for this sender?" lasts until the next key that isn't its
-        // answer, so a later K never moves a sender by surprise.
         if !matches!(
             action,
             Action::OpenSenderMoveMenu | Action::AnswerAlwaysForSender(_)
@@ -455,8 +451,6 @@ impl App {
             | Action::ToggleAssistantTrust
             | Action::DeleteAssistantConversation => self.apply_assistant_action(action),
         }
-        // The person page follows the cursor in Messages, and a Got it
-        // never outlives the conversation it answers.
         self.sync_messages_page();
         self.guard_messages_ack();
         self.settle_hint_quiet();

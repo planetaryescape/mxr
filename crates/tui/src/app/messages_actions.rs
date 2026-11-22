@@ -1,7 +1,3 @@
-//! Messages in the TUI: open the people list, follow the cursor with the
-//! person's page, step through topics, Got it with its countdown, done
-//! here, pin, a new topic, and the email as sent. The daemon owns every
-//! band, order and word; this file only sends requests and moves focus.
 
 use super::key_dispatch::DefinedKey;
 use super::*;
@@ -15,17 +11,13 @@ use chrono::Offset as _;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{AckPlanData, MessagesData, MessagesRowData, ModeKindData, PersonPageData};
 
-/// The mode id `GetModeGuide` takes for Messages.
 pub(crate) const MESSAGES_MODE: &str = mxr_protocol::MESSAGES_GUIDE.mode;
 
-/// The conversation an action on the selected row acts on.
 pub(crate) struct MessagesTopic {
     pub account_id: mxr_core::AccountId,
     pub thread_id: ThreadId,
     pub reply_to: MessageId,
-    /// The message `o` shows as sent: the conversation's latest.
     pub latest: MessageId,
-    /// "Samir", or a group's title.
     pub who: String,
 }
 
@@ -47,8 +39,6 @@ impl App {
             }
             Action::MessagesAsSent => self.messages_as_sent(),
             Action::MessagesFilter => {
-                // Opening the picker takes the Messages keys away, so a Got it
-                // counting down is cancelled here, not left to send under it.
                 self.modals.messages_filter = Some(MessagesFilterPicker::default());
                 self.guard_messages_ack();
             }
@@ -83,7 +73,6 @@ impl App {
         self.mailbox.pending_rail_refresh = true;
     }
 
-    /// What the Messages lens draws, at this moment in local time.
     pub(crate) fn messages_view(&self) -> crate::ui::messages_lens::MessagesView<'_> {
         let now = chrono::Utc::now();
         let ack_seconds_left = self.mailbox.messages_page.ack.as_ref().map(|ack| {
@@ -103,7 +92,6 @@ impl App {
         }
     }
 
-    /// The Messages lens owns the keyboard.
     pub(crate) fn messages_list_focused(&self) -> bool {
         self.screen == Screen::Mailbox
             && self.mailbox.mailbox_view == MailboxView::People
@@ -116,16 +104,12 @@ impl App {
             .row_at(self.mailbox.selected_index)
     }
 
-    /// Refetch the bands (and the page on screen) after anything that can
-    /// move them.
     pub(crate) fn refresh_messages(&mut self) {
         if self.mailbox.mailbox_view != MailboxView::People {
             return;
         }
         let page = &mut self.mailbox.messages_page;
         page.pending_refresh = true;
-        // The page asked for last, not the one on screen: after a done the
-        // screen can still show the topic just finished.
         if let Some((row, topic)) = page.person_target.clone() {
             page.ask_person(row, topic);
         } else if let Some(row) = page.page_for.clone() {
@@ -138,7 +122,6 @@ impl App {
         }
     }
 
-    /// The runtime fetched the bands and the guide.
     pub(crate) fn set_messages(
         &mut self,
         messages: MessagesData,
@@ -148,9 +131,6 @@ impl App {
         if messages.filter != page.filter {
             return;
         }
-        // The selection is a person, not a position: a refetch that reorders
-        // the bands keeps it on them, and one that drops them moves it to
-        // their neighbour.
         let before = page.row_keys();
         let selected = page.row_at(self.mailbox.selected_index).map(row_key);
         page.messages = Some(messages);
@@ -165,16 +145,12 @@ impl App {
         self.guard_messages_ack();
     }
 
-    /// Open Messages on one person, by row id. The bands are refetched on
-    /// open, so the row is selected when they arrive.
     pub(crate) fn open_messages_person(&mut self, row_id: String) {
         self.open_messages();
         self.mailbox.messages_page.select_row = Some(row_id);
         self.select_requested_messages_row();
     }
 
-    /// Open Messages on the person a conversation is with, their page on
-    /// that conversation, as the web's `/messages/<thread>` does.
     pub(crate) fn open_messages_thread(&mut self, thread_id: ThreadId) {
         self.open_messages();
         self.mailbox.messages_page.select_row = None;
@@ -182,9 +158,6 @@ impl App {
         self.select_requested_messages_row();
     }
 
-    /// Select the row `open_messages_person` or `open_messages_thread`
-    /// asked for, once it is shown. Someone Messages doesn't list gets a
-    /// note instead.
     fn select_requested_messages_row(&mut self) {
         if self.mailbox.messages_page.select_thread.is_some() {
             self.select_requested_messages_thread();
@@ -221,8 +194,6 @@ impl App {
         self.sync_messages_page();
     }
 
-    /// `select_requested_messages_row` for a conversation: the row whose
-    /// topics hold it, focused on its page at that topic.
     fn select_requested_messages_thread(&mut self) {
         let page = &mut self.mailbox.messages_page;
         let (Some(thread_id), Some(messages)) = (page.select_thread.clone(), &page.messages) else {
@@ -256,9 +227,6 @@ impl App {
         page.ask_person(id, Some(thread_id));
     }
 
-    /// Put the selection back on `selected` after the bands changed, or on
-    /// its neighbour in `before` when it left. A person whose row moved
-    /// into the folded Quiet band still has topics, so Quiet opens.
     fn reselect_messages_row(
         &mut self,
         before: &[MessagesRowKey],
@@ -284,8 +252,6 @@ impl App {
         });
     }
 
-    /// The runtime fetched a person's page, asked for on `topic`. An
-    /// answer for anything but the page asked for last is dropped.
     pub(crate) fn set_person_page(
         &mut self,
         row_id: String,
@@ -305,7 +271,6 @@ impl App {
         self.guard_messages_ack();
     }
 
-    /// Ask for the selected row's page when it isn't the one on screen.
     pub(crate) fn sync_messages_page(&mut self) {
         if self.mailbox.mailbox_view != MailboxView::People {
             return;
@@ -325,8 +290,6 @@ impl App {
         }
     }
 
-    /// The topic actions act on: the conversation open on the page, else
-    /// the row's most pressing topic.
     pub(crate) fn selected_messages_topic(&self) -> Option<MessagesTopic> {
         let row = self.selected_messages_row()?;
         let who = row.person.as_ref().map_or_else(
@@ -366,7 +329,6 @@ impl App {
         match page.items().get(index) {
             Some(MessagesItem::QuietToggle(_)) => page.quiet_open = !page.quiet_open,
             Some(MessagesItem::Row(_)) if page.focus == MessagesFocus::Person => {
-                // Enter on the page opens every letter, or closes them.
                 let ids: Vec<MessageId> = page
                     .page
                     .as_ref()
@@ -390,8 +352,6 @@ impl App {
         }
     }
 
-    /// `.`: ask the daemon for the exact acknowledgement; it shows with a
-    /// countdown and sends when the countdown ends, unless undone.
     fn messages_ack(&mut self) {
         let Some(topic) = self.selected_messages_topic() else {
             self.status_message = Some("No conversation selected".into());
@@ -404,10 +364,6 @@ impl App {
         self.status_message = Some("Preparing got it…".into());
     }
 
-    /// The daemon's preview of Got it: show it and start the countdown,
-    /// but only for the thread `.` asked about and only while the lens is
-    /// still on it. A preview that comes back after you left, undid it or
-    /// moved on is dropped.
     pub(crate) fn show_messages_ack(&mut self, plan: AckPlanData, now: std::time::Instant) {
         let asked = self.mailbox.messages_page.ack_requested.take();
         if asked.as_ref() != Some(&plan.thread_id)
@@ -425,7 +381,6 @@ impl App {
         self.mailbox.messages_page.ack = Some(AckCountdown { plan, to, send_at });
     }
 
-    /// Send a Got it whose countdown has ended: exactly the previewed text.
     pub fn tick_messages_ack(&mut self, now: std::time::Instant) {
         let due = self
             .mailbox
@@ -439,9 +394,6 @@ impl App {
         let Some(ack) = self.mailbox.messages_page.ack.take() else {
             return;
         };
-        // Sends only if you are still looking at the conversation it
-        // answers: any other path away from it has already cancelled it,
-        // and this check catches one that didn't.
         if !self.messages_ack_still_wanted(&ack.plan.thread_id) {
             return;
         }
@@ -469,9 +421,6 @@ impl App {
         }
     }
 
-    /// Whether a Got it for `thread_id` may still start or send: the app
-    /// is running, the Messages lens has the keys, and the conversation on
-    /// it (including one about to load) is that thread.
     fn messages_ack_still_wanted(&self, thread_id: &ThreadId) -> bool {
         if self.should_quit
             || !self.messages_list_focused()
@@ -492,9 +441,6 @@ impl App {
             .is_some_and(|topic| &topic.thread_id == thread_id)
     }
 
-    /// Cancel a Got it, waiting or counting down, once the lens has left
-    /// its conversation: another mode, screen or pane, another person or
-    /// topic, or quitting.
     pub(crate) fn guard_messages_ack(&mut self) {
         let page = &self.mailbox.messages_page;
         let thread = page
@@ -509,16 +455,10 @@ impl App {
         }
     }
 
-    /// `e`: done here for the open topic, then on at once, as the web does:
-    /// to the person's next topic still in Messages, else the next person
-    /// (the previous one at the end). The toast names both, around the
-    /// daemon's handoff copy, and `u` undoes it.
     fn messages_done(&mut self) {
         let Some(topic) = self.selected_messages_topic() else {
             return;
         };
-        // Until the page it moved to is on screen, `e` would act on the
-        // page left behind (or a row's first topic), not the one shown next.
         let page = &self.mailbox.messages_page;
         if page.is_done_here(&topic.thread_id) || !page.target_shown() {
             return;
@@ -531,7 +471,6 @@ impl App {
         let title = row.title.clone();
         let page = &self.mailbox.messages_page;
         let shown = page.page_for_row(row);
-        // The page's topics in its order, else the row's own.
         let topics = shown.map_or(row.topics.as_slice(), |p| p.topics.as_slice());
         let subject = shown
             .and_then(|p| p.conversation.as_ref())
@@ -543,8 +482,6 @@ impl App {
                     .map(|t| t.subject.clone())
             })
             .unwrap_or_default();
-        // Left with them: the row's own topics not done here, as the web
-        // counts them; history and group rows on the page don't count.
         let open: std::collections::HashSet<&ThreadId> = row
             .topics
             .iter()
@@ -561,7 +498,6 @@ impl App {
 
         self.mailbox.messages_page.mark_done_here(&topic.thread_id);
         let note = if let Some((thread, label)) = next_topic {
-            // They still have topics here: stay on them, on the next one.
             let page = &mut self.mailbox.messages_page;
             if let Some(index) = page.index_of(&key) {
                 self.mailbox.selected_index = index;
@@ -591,11 +527,9 @@ impl App {
         };
         let mutation = self.queue_mode_done(ModeKindData::Messages, topic.thread_id);
         self.mailbox.messages_page.done_notes.insert(mutation, note);
-        // After queueing, which sets its own progress line.
         self.explain_done_here_once();
     }
 
-    /// `s`: pin or unpin the person (the cadence watchlist).
     fn messages_pin(&mut self) {
         let Some(row) = self.selected_messages_row() else {
             return;
@@ -629,7 +563,6 @@ impl App {
         self.queue_mutation(request, MutationEffect::Messages(status), "Saving…".into());
     }
 
-    /// `c`: a new topic with the person, the subject left for you.
     fn messages_new_topic(&mut self) {
         let Some(row) = self.selected_messages_row() else {
             return;
@@ -649,7 +582,6 @@ impl App {
         });
     }
 
-    /// `[` and `]`: the previous or next topic on the person's page.
     fn step_topic(&mut self, forward: bool) {
         let Some(row) = self.selected_messages_row() else {
             return;
@@ -678,7 +610,6 @@ impl App {
         state.expanded.clear();
     }
 
-    /// `o`/`v`: the conversation's latest message as sent, in the reader.
     fn messages_as_sent(&mut self) {
         let Some(topic) = self.selected_messages_topic() else {
             return;
@@ -693,9 +624,6 @@ impl App {
         }
     }
 
-    /// Key handling for the Messages lens.
-    /// Keys while the filter picker is open. It applies each choice at once:
-    /// the list refetches with the filter it now holds.
     pub(super) fn messages_filter_picker_key(&mut self, key: crossterm::event::KeyEvent) {
         let Some(picker) = self.modals.messages_filter else {
             return;
@@ -725,7 +653,6 @@ impl App {
         self.modals.messages_filter = Some(MessagesFilterPicker { cursor });
     }
 
-    /// Rows 0 to 3 pick the view; 4 and 5 flip the toggles; 6 resets to attention.
     fn apply_messages_filter_choice(&mut self, cursor: usize) {
         let page = &mut self.mailbox.messages_page;
         let previous_view = page.filter.turn;
@@ -763,7 +690,6 @@ impl App {
             return Some(Action::DismissHint);
         }
         match self.defined_key("messages", key) {
-            // `h` steps back from a person's page to the list first.
             DefinedKey::Inline("inline:focus_sidebar") => {
                 if self.mailbox.messages_page.focus == MessagesFocus::Person {
                     self.mailbox.messages_page.focus = MessagesFocus::List;

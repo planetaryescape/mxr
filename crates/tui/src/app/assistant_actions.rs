@@ -11,9 +11,7 @@ use mxr_protocol::{
 };
 use ratatui::crossterm::event::KeyEvent;
 
-/// How many past conversations the history list asks for.
 const HISTORY_LIMIT: u32 = 30;
-/// Selected ids sent as context, at most (the web sends as many).
 const CONTEXT_SELECTION_LIMIT: usize = 200;
 
 fn error_words(error: &MxrError) -> String {
@@ -35,8 +33,6 @@ impl App {
     /// it gets it. While the pane has focus it takes every key, so typing
     /// never reaches the screen's shortcuts.
     pub(super) fn assistant_key(&mut self, key: KeyEvent) -> Option<Option<Action>> {
-        // `@` opens the pane from the screens behind it, as any other key
-        // does, so a text field there types it instead.
         if !self.assistant.open || self.assistant.focus == AssistantFocus::Away {
             return None;
         }
@@ -48,7 +44,6 @@ impl App {
             self.stop_assistant_turn();
             return Some(None);
         }
-        // A delete confirm can sit over the history list and answers first.
         let confirming = matches!(
             self.assistant.prompt,
             Some(AssistantPrompt::ConfirmDelete(..))
@@ -67,7 +62,6 @@ impl App {
         }
         match self.assistant.focus {
             AssistantFocus::Input => self.assistant_input_key(key),
-            // Off the input, `@` hides the pane again.
             AssistantFocus::Pane if typed_char(&key) == Some('@') => {
                 return Some(Some(Action::ToggleAssistant));
             }
@@ -77,8 +71,6 @@ impl App {
         Some(None)
     }
 
-    /// `a` unfolds every waiting approval's full message list, or folds them
-    /// all back when they are all open already.
     fn toggle_assistant_full_lists(&mut self) {
         let calls: Vec<String> = self
             .assistant
@@ -221,9 +213,6 @@ impl App {
                     );
                     return None;
                 }
-                // Esc and q close without deciding (blueprint 35's overlay
-                // grammar): the pane hands the keys back and the question
-                // keeps waiting.
                 (KeyCode::Esc, _) | (KeyCode::Char('q'), KeyModifiers::NONE) => {
                     self.assistant.focus = AssistantFocus::Away;
                     return None;
@@ -271,7 +260,6 @@ impl App {
             (KeyCode::Char('L'), _) => return Some(Action::OpenAssistantConversations),
             (KeyCode::Char('M'), _) => return Some(Action::OpenAssistantModels),
             (KeyCode::Char('T'), _) => return Some(Action::ToggleAssistantTrust),
-            // `#` deletes, after a preview (blueprint 35).
             (KeyCode::Char('#'), _) => return Some(Action::DeleteAssistantConversation),
             _ => {}
         }
@@ -340,8 +328,6 @@ impl App {
                 else {
                     return;
                 };
-                // A choice that can't run says why, here, instead of
-                // asking the daemon to refuse it.
                 if let Some(reason) = &choice.unavailable_reason {
                     self.assistant.error = Some(reason.clone());
                     return;
@@ -369,7 +355,6 @@ impl App {
             return;
         };
         match prompt {
-            // It opens on Keep, so a bare Enter deletes nothing.
             AssistantPrompt::ConfirmDelete(delete, choice) => match choice.key(key.code) {
                 ConfirmKey::Confirm => {
                     let conversation_id = delete.conversation_id.clone();
@@ -423,8 +408,6 @@ impl App {
         }
     }
 
-    /// One option chosen or unchosen. A single answer is an option or
-    /// typed text, not both.
     fn toggle_assistant_option(&mut self, question: usize, label: &str, multi_select: bool) {
         let Some(answer) = self.assistant.answers.get_mut(question) else {
             return;
@@ -444,8 +427,6 @@ impl App {
         }
     }
 
-    /// The user's own answer for the active question; with every question
-    /// answered, it goes.
     fn save_assistant_other(&mut self, typed: String) {
         let active = self.assistant.active_question;
         let multi_select = self
@@ -508,8 +489,6 @@ impl App {
         let Some(conversation_id) = self.assistant.conversation_id.clone() else {
             return;
         };
-        // One decision per waiting call: a second key press before the
-        // daemon answers must not decide again.
         if self.assistant.busy {
             return;
         }
@@ -551,9 +530,6 @@ impl App {
         assistant.scroll_from_bottom = 0;
     }
 
-    /// Open a link from the latest reply: the email in the reader, or the
-    /// person in Messages. The pane stays open beside it and keys go to the
-    /// screen, where the link now is.
     fn open_assistant_link(&mut self, link: AssistantLinkData) {
         match link {
             AssistantLinkData::Thread { thread_id } => {
@@ -611,7 +587,6 @@ impl App {
 
     pub(super) fn apply_assistant_action(&mut self, action: Action) {
         match action {
-            // Opens the pane, moves the keys back into it, or hides it.
             Action::ToggleAssistant => {
                 if self.assistant.open && self.assistant.focus != AssistantFocus::Away {
                     self.assistant.open = false;
@@ -708,7 +683,6 @@ impl App {
         }
     }
 
-    /// What is open, so "this" and "these" mean something to the assistant.
     pub(crate) fn assistant_view_context(&self) -> AssistantViewContextData {
         let view = match self.screen {
             Screen::Mailbox => match self.mailbox.mailbox_view {
@@ -735,7 +709,6 @@ impl App {
             Screen::Analytics => "analytics".into(),
             Screen::Deliveries => "deliveries".into(),
         };
-        // A reader is showing only outside the two-pane list layout.
         let reading = (self.screen == Screen::Mailbox
             && self.mailbox.layout_mode != LayoutMode::TwoPane)
             .then_some(self.mailbox.viewing_envelope.as_ref())
@@ -766,7 +739,6 @@ impl App {
         }
     }
 
-    /// `AssistantUpdated`: the open conversation changed in the daemon.
     pub(crate) fn assistant_updated(
         &mut self,
         conversation_id: String,
@@ -790,7 +762,6 @@ impl App {
         assistant.refetch();
     }
 
-    /// A daemon answer to one of the pane's requests.
     pub(crate) fn apply_assistant_result(
         &mut self,
         call: AssistantCall,
@@ -856,7 +827,6 @@ impl App {
                     "The assistant uses {} from its next message",
                     crate::ui::sanitize::one_line(&label)
                 )));
-                // The model line under the message box follows the choice.
                 self.assistant.queue(
                     AssistantCall::Availability,
                     Request::GetAssistantAvailability,
@@ -913,7 +883,6 @@ impl App {
                 let assistant = &mut self.assistant;
                 assistant.sending = false;
                 assistant.busy = false;
-                // A send that failed keeps its words, to try again.
                 if let Some(text) = assistant.input_sent.take() {
                     if assistant.input.is_empty() {
                         assistant.input = text;
@@ -940,7 +909,6 @@ impl App {
 
     fn settle_assistant_conversation(&mut self, conversation: AssistantConversationData) {
         let assistant = &mut self.assistant;
-        // The answer for a conversation since left behind changes nothing.
         if assistant
             .conversation_id
             .as_deref()
@@ -985,7 +953,6 @@ impl App {
                 assistant.active_question = 0;
             }
         }
-        // A prompt about a call that no longer waits goes with it.
         let still_waiting = |call: &str| {
             waiting
                 && conversation.pending.iter().any(|pending| match pending {
@@ -1002,7 +969,6 @@ impl App {
             }
             _ => {}
         }
-        // Something waits and nothing is being written: the keys go to it.
         if waiting
             && !conversation.pending.is_empty()
             && assistant.focus == AssistantFocus::Input

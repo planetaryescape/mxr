@@ -9,11 +9,6 @@ impl App {
         match action {
             Action::OpenAnalyticsScreen => {
                 self.close_transient_modals();
-                // Cancel the auto-mark-read timer scheduled by mailbox
-                // preview. Otherwise it fires later while we're in
-                // Analytics, queues a SetRead the user didn't ask for,
-                // and surfaces as a "Mutation Failed" modal if the
-                // daemon's connection pool is busy.
                 self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Analytics;
                 let view = self.analytics.view;
@@ -36,10 +31,6 @@ impl App {
                 self.analytics.view = next;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                // Keep tab cycling instant: only refetch if the
-                // destination view has no cached data or its cache has
-                // gone stale. Manual `r` and filter changes still
-                // refresh unconditionally.
                 if !self.analytics.has_data_for_view(next) || !self.analytics.cache_is_fresh(next) {
                     self.analytics.refresh_pending = true;
                 }
@@ -157,12 +148,6 @@ impl App {
         }
     }
 
-    /// Slice 11: Enter on a row routes to a context-appropriate
-    /// destination — search by sender, open a thread/message, switch
-    /// to a label. No-ops on tiles/views without a sensible
-    /// destination (Volume, ResponseTime summary). The drill-down
-    /// targets are deliberately read-only navigations; mutations live
-    /// behind dedicated keys (`u` for unsubscribe).
     fn handle_analytics_drill_down(&mut self) {
         use crate::app::AnalyticsView;
         match self.analytics.view {
@@ -176,11 +161,6 @@ impl App {
                         return;
                     };
                     use mxr_core::types::StorageGroupBy;
-                    // The lexical engine doesn't index mime types, so
-                    // the mime drill-down falls back to a generic
-                    // `has:attachment` jump and surfaces the chosen
-                    // mime as a status hint. Sender + label both map
-                    // to real query operators.
                     let (query, hint) = match self.analytics.storage_group_by {
                         StorageGroupBy::Sender => (format!("from:{}", row.key), None),
                         StorageGroupBy::Mimetype => (
@@ -205,9 +185,6 @@ impl App {
                     else {
                         return;
                     };
-                    // Jump to the sender's mail (same pattern as
-                    // Storage / Sender). Direct envelope-open left the
-                    // mailbox list out of sync with the preview pane.
                     self.jump_to_search(format!("from:{}", row.from_email));
                 }
             },
@@ -215,9 +192,6 @@ impl App {
                 let Some(row) = self.analytics.stale_rows.get(self.analytics.selected_index) else {
                     return;
                 };
-                // Jump to a counterparty-scoped search (same pattern as
-                // Contacts drill). Opening the envelope directly left the
-                // mailbox list out of sync with the preview pane.
                 self.jump_to_search(format!("from:{}", row.counterparty_email));
             }
             AnalyticsView::Contacts => {
@@ -254,8 +228,6 @@ impl App {
                 else {
                     return;
                 };
-                // Jump to the sender's mail. Direct envelope-open left
-                // the mailbox list out of sync with the preview pane.
                 self.jump_to_search(format!("from:{}", row.sender_email));
             }
             AnalyticsView::SearchAggregation => {
@@ -279,7 +251,6 @@ impl App {
                 ));
             }
             AnalyticsView::ResponseTime => {
-                // ResponseTime is a summary view; no per-row drill.
             }
             AnalyticsView::Wrapped => {
                 self.handle_wrapped_tile_drill_down();
@@ -291,26 +262,15 @@ impl App {
         let Some(summary) = self.analytics.wrapped.as_ref() else {
             return;
         };
-        // Tile order: 0=Volume, 1=When, 2=Contacts, 3=Reply,
-        // 4=Storage, 5=Newsletters. The legacy "Superlatives" strip
-        // (tile 6) was folded into Volume + Contacts; the
-        // most-ghosted search now triggers from tile 2 (Contacts).
         let tile = self.analytics.wrapped_selected_tile;
         match tile {
             2 => {
-                // "Most ghosted" gives an email but no message ID, so
-                // a from:<email> search is the most precise surface —
-                // the lexical engine indexes from-address.
                 if let Some(g) = summary.superlatives.most_ghosted.as_ref() {
                     let email = g.email.clone();
                     self.jump_to_search(format!("from:{email}"));
                 }
             }
             4 => {
-                // Heaviest message: jump to its sender's mail. Direct
-                // envelope-open left the centre mailbox list out of
-                // sync with the preview pane (same fix as the other
-                // analytics drills).
                 if let Some(heaviest) = summary.storage.heaviest_message.as_ref() {
                     self.jump_to_search(format!("from:{}", heaviest.from_email));
                 }
@@ -319,11 +279,6 @@ impl App {
         }
     }
 
-    /// Slice 6: 'u' on a Subscriptions row populates the existing
-    /// unsubscribe-confirm modal with the row's metadata. The
-    /// downstream confirm action (`ConfirmUnsubscribeOnly` /
-    /// `ConfirmUnsubscribeAndArchiveSender`) is the same path the
-    /// mailbox uses, so the IPC + side-effects are shared.
     fn handle_analytics_unsubscribe(&mut self) {
         use crate::app::PendingUnsubscribeConfirm;
         use mxr_core::types::UnsubscribeMethod;
@@ -359,9 +314,6 @@ impl App {
         };
         let view = modal.view;
         let fields = modal.fields.clone();
-        // Each view's modal has a known field order. Parse and write
-        // back; on failure, surface a validation error and leave the
-        // modal open.
         let result = apply_filter_modal_fields(&mut self.analytics, view, &fields);
         match result {
             Ok(()) => {
@@ -377,7 +329,6 @@ impl App {
     }
 
     fn jump_to_search(&mut self, query: String) {
-        // Replicate Action::OpenGlobalSearch but with a preset query.
         self.maybe_preserve_new_account_form_draft();
         self.mailbox.pending_preview_read = None;
         self.search.bar.deactivate();
@@ -386,15 +337,9 @@ impl App {
         self.search.page.query = query;
         self.search.page.editing = false;
         self.search.page.active_pane = crate::app::SearchPane::Results;
-        // Trigger the search.
         self.apply(Action::SubmitSearch);
     }
 
-    /// Build the IPC request for the active analytics view. Storage
-    /// and Contacts dispatch on their respective sub-mode so a single
-    /// `view` value can fire either of two daemon requests. Wrapped
-    /// converts its window state into the same `(since_unix,
-    /// until_unix, label)` tuple the CLI computes.
     pub(crate) fn analytics_request_for_active_view(&self) -> Option<mxr_protocol::Request> {
         match self.analytics.view {
             AnalyticsView::Storage => match self.analytics.storage_mode {
@@ -743,8 +688,6 @@ fn prev_analytics_view(view: AnalyticsView) -> AnalyticsView {
     }
 }
 
-/// Mirrors `crates/daemon/src/commands/wrapped.rs` window logic so
-/// the TUI request matches the CLI byte-for-byte (label included).
 pub(crate) fn wrapped_window_to_request(window: WrappedWindow) -> (i64, i64, String) {
     let now = Utc::now();
     match window {

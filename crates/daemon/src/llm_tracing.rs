@@ -188,6 +188,7 @@ fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanEx
     let credentials = STANDARD.encode(format!("{public_key}:{secret_key}"));
     let headers = HashMap::from([
         ("Authorization".to_string(), format!("Basic {credentials}")),
+        // Without it, Langfuse v4 shows OTel spans up to ten minutes late.
         ("x-langfuse-ingestion-version".to_string(), "4".to_string()),
     ]);
     SpanExporter::builder()

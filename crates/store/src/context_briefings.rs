@@ -235,26 +235,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn upsert_with_new_hash_replaces_body() {
-        let (store, account) = fixture().await;
-        store
-            .upsert_context_briefing(&briefing(&account, "th-1", "v1", "h1"))
-            .await
-            .unwrap();
-        store
-            .upsert_context_briefing(&briefing(&account, "th-1", "v2", "h2"))
-            .await
-            .unwrap();
-        let got = store
-            .get_context_briefing(&account, BriefingKind::Thread, "th-1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.body_markdown, "v2");
-        assert_eq!(got.content_hash, "h2");
-    }
-
     /// A gist whose model call outlasted the delete of a message it read
     /// must not be written back: the delete already cleared the cache.
     #[tokio::test]

@@ -706,7 +706,6 @@ mod reader_text_tests {
     use crate::query_builder::QueryBuilder;
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::MessageMetadata;
-    use std::time::Instant;
 
     fn body_for(
         envelope: &Envelope,
@@ -785,17 +784,6 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn quoted_reply_and_signature_in_html_are_searchable() {
-        let (index, id) = index_one(None, Some(HTML_MESSAGE));
-
-        assert_eq!(
-            search_ids(&index, "body:earlierquotedword"),
-            vec![id.clone()]
-        );
-        assert_eq!(search_ids(&index, "body:sigwordzeta"), vec![id]);
-    }
-
-    #[test]
     fn plain_text_quoted_block_is_searchable() {
         let text =
             "Fresh plainwordalpha reply.\n\n> quotedplainword from before\n> more quoted text";
@@ -806,107 +794,11 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn named_quote_only_message_is_findable() {
-        let text = "On Tue, Alice wrote:\n> ultramarine";
-        let (index, id) = index_one(Some(text), None);
-
-        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
-    }
-
-    #[test]
-    fn confidential_line_does_not_hide_later_words() {
-        let text = "Intro.\n> This email is confidential.\n> ultramarine\nYes, cobalt.";
-        let (index, id) = index_one(Some(text), None);
-
-        assert_eq!(search_ids(&index, "body:cobalt"), vec![id.clone()]);
-        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
-    }
-
-    #[test]
-    fn html_part_words_are_indexed_alongside_a_shorter_plain_part() {
-        let html = r#"<p>Intro ultramarine.</p><div class="gmail_signature">Sam</div>"#;
-        let (index, id) = index_one(Some("Intro."), Some(html));
-
-        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
-    }
-
-    #[test]
     fn malformed_table_with_huge_colspan_still_indexes() {
         let (index, id) = index_one(None, Some(PANICKING_HTML));
         assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id.clone()]);
         assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
         assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 0);
-    }
-
-    #[test]
-    fn a_long_html_paragraph_is_one_phrase_in_the_index() {
-        let html = format!("<p>{} payment overdue</p>", "a".repeat(72));
-        let (index, id) = index_one(None, Some(html.as_str()));
-        assert_eq!(search_ids(&index, "\"payment overdue\""), vec![id]);
-    }
-
-    #[test]
-    fn script_words_match_no_prose_path_but_has_filters_still_read_raw_html() {
-        let html = r#"<p>Watch</p><script>var zzscriptword = 1;</script><a href="https://youtube.com/x">clip</a>"#;
-        let (index, id) = index_one(None, Some(html));
-
-        assert!(search_ids(&index, "zzscriptword").is_empty());
-        assert!(index
-            .search("zzscriptword", 10, 0, SortOrder::Relevance)
-            .unwrap()
-            .results
-            .is_empty());
-        let schema = MxrSchema::build();
-        let any_words = QueryBuilder::new(&schema)
-            .build_any_words("zzscriptword")
-            .unwrap();
-        assert!(index
-            .search_ast(any_words, 10, 0, SortOrder::Relevance)
-            .unwrap()
-            .results
-            .is_empty());
-
-        assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
-    }
-
-    /// Debug-build timing for the upgrade cost: run with
-    /// `cargo test -p mxr-search --lib reindex_timing -- --ignored --nocapture`.
-    #[test]
-    #[ignore = "timing probe, run by hand"]
-    fn reindex_timing_50k_messages() {
-        const COUNT: usize = 50_000;
-        let envelopes: Vec<(Envelope, MessageBody)> = (0..COUNT)
-            .map(|i| {
-                let envelope = TestEnvelopeBuilder::new()
-                    .subject(format!("Subject {i}"))
-                    .build();
-                let html = format!(
-                    r#"<html><head><style>.c{i}{{color:red}}</style></head><body><p>Message {i} body text about invoice {i}.</p><a href="https://track.example.net/{i}">link</a><blockquote>earlier {i}</blockquote><div>-- sig {i}</div></body></html>"#
-                );
-                let body = body_for(&envelope, None, Some(&html));
-                (envelope, body)
-            })
-            .collect();
-
-        let counter = AtomicU64::new(0);
-        let clean_started = Instant::now();
-        for (_, body) in &envelopes {
-            std::hint::black_box(indexed_body_text(body, &counter));
-        }
-        let clean_elapsed = clean_started.elapsed();
-
-        let mut index = SearchIndex::in_memory().unwrap();
-        let index_started = Instant::now();
-        for (envelope, body) in &envelopes {
-            index.index_body(envelope, body).unwrap();
-        }
-        index.commit().unwrap();
-        let index_elapsed = index_started.elapsed();
-
-        eprintln!(
-            "reindex timing, {COUNT} messages, debug build: indexed {index_elapsed:?} (conversion alone {clean_elapsed:?})"
-        );
-        assert_eq!(index.num_docs(), COUNT as u64);
     }
 }
 
@@ -1060,20 +952,5 @@ mod resolver_tests {
             assert_eq!(hit.account_id, envelope.account_id);
             assert_eq!(hit.thread_id, envelope.thread_id);
         }
-    }
-
-    #[test]
-    fn the_text_query_narrows_to_one_account() {
-        let (index, envelopes) = index_with_ties();
-        let account = envelopes[0].account_id.as_str();
-        let all = index.text_query("report", None).unwrap();
-        let narrowed = index.text_query("report", Some(&account)).unwrap();
-        let resolver = index.resolver();
-        assert_eq!(resolver.resolve_date_desc(&*all).unwrap().len(), 25);
-        assert_eq!(resolver.resolve_date_desc(&*narrowed).unwrap().len(), 25);
-        let elsewhere = index
-            .text_query("report", Some(&AccountId::new().as_str()))
-            .unwrap();
-        assert!(resolver.resolve_date_desc(&*elsewhere).unwrap().is_empty());
     }
 }

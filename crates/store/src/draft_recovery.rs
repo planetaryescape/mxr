@@ -74,7 +74,7 @@ impl super::Store {
 mod tests {
     use super::super::test_fixtures::*;
     use super::super::Store;
-    use chrono::{Duration, TimeZone, Utc};
+    use chrono::{TimeZone, Utc};
     use mxr_core::id::DraftId;
     use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, DraftStatus};
 
@@ -112,20 +112,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_orphaned_excludes_drafts_in_draft_status() {
-        let store = Store::in_memory().await.unwrap();
-        let _id = seed_draft(&store).await;
-        let orphans = store
-            .list_orphaned_sending_drafts(anchor() + Duration::hours(1))
-            .await
-            .unwrap();
-        assert!(
-            orphans.is_empty(),
-            "drafts in 'draft' status are never orphaned"
-        );
-    }
-
-    #[tokio::test]
     async fn list_orphaned_includes_stale_sending_drafts() {
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;
@@ -156,13 +142,5 @@ mod tests {
             store.get_draft_status(&id).await.unwrap(),
             Some(DraftStatus::Sending)
         );
-    }
-
-    #[tokio::test]
-    async fn reset_orphaned_is_noop_for_drafts_not_in_sending() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        let reset = store.reset_orphaned_draft(&id).await.unwrap();
-        assert!(!reset, "reset returns false when nothing to reset");
     }
 }

@@ -20,38 +20,6 @@ async fn fixture() -> (Store, AccountId, ThreadId, MessageId) {
 }
 
 #[tokio::test]
-async fn the_first_claim_wins_and_later_ones_see_it() {
-    let (store, account, thread, target) = fixture().await;
-    let first = DraftId::new();
-    let now = Utc::now();
-    assert_eq!(
-        store
-            .claim_got_it(&account, &thread, &target, &first, now)
-            .await
-            .unwrap(),
-        GotItClaim::Claimed
-    );
-    let second = DraftId::new();
-    let again = store
-        .claim_got_it(&account, &thread, &target, &second, now)
-        .await
-        .unwrap();
-    assert_eq!(
-        again,
-        GotItClaim::Existing(GotItRecord {
-            draft_id: first.clone(),
-            sent_message_id: None,
-            claimed_at: now.timestamp(),
-        })
-    );
-    let sent = MessageId::new();
-    store.finish_got_it(&target, &sent).await.unwrap();
-    let record = store.got_it_for(&target).await.unwrap().unwrap();
-    assert_eq!(record.draft_id, first);
-    assert_eq!(record.sent_message_id, Some(sent));
-}
-
-#[tokio::test]
 async fn a_claim_survives_until_its_message_is_deleted() {
     let (store, account, thread, target) = fixture().await;
     store

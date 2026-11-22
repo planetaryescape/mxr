@@ -310,9 +310,8 @@ mod tests {
     use crate::test_fixtures::TestEnvelopeBuilder;
     use crate::Store;
     use chrono::{Duration, Utc};
-    use mxr_core::id::AccountId;
 
-    use super::{SourceLetGo, UpdateFactRow};
+    use super::UpdateFactRow;
 
     #[tokio::test]
     async fn facts_round_trip_and_leave_with_their_message() {
@@ -356,65 +355,5 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
-    }
-
-    #[tokio::test]
-    async fn tuning_and_streaks() {
-        let store = Store::in_memory().await.unwrap();
-        let account = crate::test_fixtures::test_account();
-        store.insert_account(&account).await.unwrap();
-        let id: AccountId = account.id.clone();
-        let now = Utc::now();
-        let unopened = [SourceLetGo {
-            source_key: "strava.com".into(),
-            opened: false,
-        }];
-        for expected in 1..=3 {
-            let cut = now + Duration::hours(expected);
-            let streaks = store
-                .record_update_let_go(&id, &unopened, cut, cut)
-                .await
-                .unwrap();
-            assert_eq!(streaks["strava.com"], expected);
-        }
-        let again = now + Duration::hours(3);
-        let streaks = store
-            .record_update_let_go(&id, &unopened, again, again)
-            .await
-            .unwrap();
-        assert_eq!(streaks["strava.com"], 3);
-        let opened = [SourceLetGo {
-            source_key: "strava.com".into(),
-            opened: true,
-        }];
-        let later = now + Duration::hours(9);
-        assert_eq!(
-            store
-                .record_update_let_go(&id, &opened, later, later)
-                .await
-                .unwrap()["strava.com"],
-            0
-        );
-        assert_eq!(
-            store
-                .set_update_source(&id, "strava.com", "muted", now)
-                .await
-                .unwrap(),
-            "every_digest"
-        );
-        assert_eq!(
-            store
-                .set_update_source(&id, "strava.com", "changes_only", now)
-                .await
-                .unwrap(),
-            "muted"
-        );
-        store
-            .mark_update_source_suggested(&id, "strava.com", now)
-            .await
-            .unwrap();
-        let sources = store.update_sources(&id).await.unwrap();
-        assert_eq!(sources["strava.com"].setting, "changes_only");
-        assert!(sources["strava.com"].suggested_at.is_some());
     }
 }

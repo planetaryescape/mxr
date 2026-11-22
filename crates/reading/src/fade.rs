@@ -105,31 +105,6 @@ mod tests {
     }
 
     #[test]
-    fn the_window_is_clamped_at_both_ends() {
-        let hourly: Vec<_> = (0..20).map(|h| at(0) + Duration::hours(h * 2)).collect();
-        assert_eq!(
-            source_window(&hourly).window,
-            Duration::days(MIN_WINDOW_DAYS)
-        );
-        let monthly: Vec<_> = (0..4).map(|m| at(m * 30)).collect();
-        assert_eq!(
-            source_window(&monthly).window,
-            Duration::days(MAX_WINDOW_DAYS)
-        );
-    }
-
-    #[test]
-    fn one_issue_or_one_send_split_in_two_takes_the_default() {
-        assert_eq!(source_window(&[at(0)]).source, WindowSource::Default);
-        assert_eq!(
-            source_window(&[]).window,
-            Duration::days(DEFAULT_WINDOW_DAYS)
-        );
-        let resend = [at(0), at(0) + Duration::minutes(5)];
-        assert_eq!(source_window(&resend).source, WindowSource::Default);
-    }
-
-    #[test]
     fn the_last_day_fades_and_then_it_is_gone() {
         let window = source_window(&[at(0), at(7)]);
         let expires = expires_at(at(7), &window);

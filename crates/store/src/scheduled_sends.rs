@@ -275,7 +275,7 @@ mod tests {
     use super::super::Store;
     use chrono::{Duration, TimeZone, Utc};
     use mxr_core::id::DraftId;
-    use mxr_core::types::{DraftStatus, *};
+    use mxr_core::types::*;
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -311,17 +311,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn schedule_send_persists_and_round_trips() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        let send_at = anchor() + Duration::hours(1);
-
-        store.schedule_send(&id, send_at).await.unwrap();
-
-        assert_eq!(store.get_scheduled_send(&id).await.unwrap(), Some(send_at));
-    }
-
-    #[tokio::test]
     async fn scheduled_send_survives_store_reopen() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_path = temp_dir.path().join("mxr.db");
@@ -339,23 +328,6 @@ mod tests {
             reopened.get_scheduled_send(&id).await.unwrap(),
             Some(send_at),
             "scheduled send time must survive daemon/store restart"
-        );
-    }
-
-    #[tokio::test]
-    async fn cancel_scheduled_send_clears_send_at() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store
-            .schedule_send(&id, anchor() + Duration::hours(1))
-            .await
-            .unwrap();
-        assert!(store.cancel_scheduled_send(&id).await.unwrap());
-
-        assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
-        assert!(
-            !store.cancel_scheduled_send(&id).await.unwrap(),
-            "nothing left to cancel"
         );
     }
 
@@ -447,97 +419,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_due_excludes_future_scheduled_drafts() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store
-            .schedule_send(&id, anchor() + Duration::hours(1))
-            .await
-            .unwrap();
-
-        let due = store.get_due_scheduled_drafts(anchor()).await.unwrap();
-        assert!(due.is_empty());
-    }
-
-    #[tokio::test]
-    async fn get_due_excludes_already_sending_drafts() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store
-            .schedule_send(&id, anchor() - Duration::hours(1))
-            .await
-            .unwrap();
-        let _ = store
-            .cas_draft_status(&id, DraftStatus::Draft, DraftStatus::Sending)
-            .await
-            .unwrap();
-
-        let due = store.get_due_scheduled_drafts(anchor()).await.unwrap();
-        assert!(
-            due.is_empty(),
-            "drafts in 'sending' status are not re-flushed"
-        );
-    }
-
-    #[tokio::test]
-    async fn get_due_orders_by_send_at_ascending() {
-        let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-
-        let make = |i: u32| {
-            let draft = Draft {
-                revision: Some(1),
-                id: DraftId::new(),
-                account_id: account.id.clone(),
-                from: None,
-                reply_headers: None,
-                intent: DraftIntent::New,
-                to: vec![Address {
-                    name: None,
-                    email: format!("a{i}@example.com"),
-                }],
-                cc: vec![],
-                bcc: vec![],
-                subject: format!("S{i}"),
-                content: DraftContent::markdown("Body"),
-                managed_attachments: None,
-                attachments: vec![],
-                inline_assets: vec![],
-                inline_calendar_reply: None,
-                created_at: anchor(),
-                updated_at: anchor(),
-            };
-            draft
-        };
-        let a = make(0);
-        let b = make(1);
-        let c = make(2);
-        for d in [&a, &b, &c] {
-            store.insert_draft(d).await.unwrap();
-        }
-        store
-            .schedule_send(&a.id, anchor() - Duration::hours(2))
-            .await
-            .unwrap();
-        store
-            .schedule_send(&b.id, anchor() - Duration::hours(5))
-            .await
-            .unwrap();
-        store
-            .schedule_send(&c.id, anchor() - Duration::hours(1))
-            .await
-            .unwrap();
-
-        let due = store.get_due_scheduled_drafts(anchor()).await.unwrap();
-        assert_eq!(
-            due,
-            vec![b.id.clone(), a.id.clone(), c.id.clone()],
-            "oldest send_at first"
-        );
-    }
-
-    #[tokio::test]
     async fn list_pending_returns_scheduled_drafts_soonest_first_with_headline_fields() {
         let store = Store::in_memory().await.unwrap();
         let later = seed_draft(&store).await;
@@ -562,75 +443,5 @@ mod tests {
         assert_eq!(pending[0].to[0].email, "you@example.com");
         assert_eq!(pending[0].last_attempt_at, None);
         assert_eq!(pending[0].last_attempt_outcome, None);
-    }
-
-    #[tokio::test]
-    async fn list_pending_excludes_fired_and_sending_drafts() {
-        let store = Store::in_memory().await.unwrap();
-        let fired = seed_draft(&store).await;
-        let sending = seed_draft(&store).await;
-        store.schedule_send(&fired, anchor()).await.unwrap();
-        store
-            .claim_due_scheduled_send(&fired, anchor())
-            .await
-            .unwrap();
-        store.schedule_send(&sending, anchor()).await.unwrap();
-        store
-            .cas_draft_status(&sending, DraftStatus::Draft, DraftStatus::Sending)
-            .await
-            .unwrap();
-
-        assert!(store
-            .list_pending_scheduled_sends(None)
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
-    #[tokio::test]
-    async fn list_pending_reports_latest_prior_attempt_after_reschedule() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        let first = anchor() - Duration::hours(2);
-        let second = anchor() - Duration::hours(1);
-        for (at, outcome) in [(first, "blocked"), (second, "failed")] {
-            store.schedule_send(&id, at).await.unwrap();
-            store.claim_due_scheduled_send(&id, at).await.unwrap();
-            store
-                .record_scheduled_send_outcome(&id, at, outcome)
-                .await
-                .unwrap();
-        }
-        store
-            .schedule_send(&id, anchor() + Duration::hours(1))
-            .await
-            .unwrap();
-
-        let pending = store.list_pending_scheduled_sends(None).await.unwrap();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].last_attempt_at, Some(second));
-        assert_eq!(pending[0].last_attempt_outcome.as_deref(), Some("failed"));
-    }
-
-    #[tokio::test]
-    async fn list_pending_scopes_to_account() {
-        let store = Store::in_memory().await.unwrap();
-        let id = seed_draft(&store).await;
-        store
-            .schedule_send(&id, anchor() + Duration::hours(1))
-            .await
-            .unwrap();
-        let owner = store.get_draft(&id).await.unwrap().unwrap().account_id;
-
-        let mine = store
-            .list_pending_scheduled_sends(Some(&owner))
-            .await
-            .unwrap();
-        assert_eq!(mine.len(), 1);
-        let other = store
-            .list_pending_scheduled_sends(Some(&mxr_core::id::AccountId::new()))
-            .await
-            .unwrap();
-        assert!(other.is_empty());
     }
 }

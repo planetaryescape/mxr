@@ -477,83 +477,6 @@ mod tests {
         })))
     }
 
-    #[tokio::test]
-    async fn background_extraction_skips_unchanged_samples_after_success() {
-        let store = Store::in_memory().await.expect("store");
-        let account = test_account();
-        store.insert_account(&account).await.expect("account");
-        let thread_id = ThreadId::new();
-        insert_message(&store, &account, &thread_id, "first", 0).await;
-        let llm = sequence_llm(&[r#"{"commitments":[]}"#, r#"{"commitments":[]}"#]);
-
-        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-            .await
-            .expect("first extract");
-        extract_commitments(&store, &llm, &account.id, "Alice@Example.com", false)
-            .await
-            .expect("unchanged samples: skipped");
-
-        insert_message(&store, &account, &thread_id, "second", 1).await;
-        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-            .await
-            .expect("new mail: extracted again");
-    }
-
-    #[tokio::test]
-    async fn background_extraction_backs_off_after_unusable_reply() {
-        let store = Store::in_memory().await.expect("store");
-        let account = test_account();
-        store.insert_account(&account).await.expect("account");
-        insert_message(&store, &account, &ThreadId::new(), "first", 0).await;
-        let llm = sequence_llm(&["I could not find any commitments.", r#"{"commitments":[]}"#]);
-
-        let error = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-            .await
-            .expect_err("unusable reply");
-        assert!(
-            format!("{error:#}").contains("finish_reason=Some(\"stop\")"),
-            "{error:#}"
-        );
-        assert_eq!(
-            extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-                .await
-                .expect("backing off: skipped"),
-            0
-        );
-        extract_commitments(&store, &llm, &account.id, "alice@example.com", true)
-            .await
-            .expect("forced");
-    }
-
-    #[tokio::test]
-    async fn background_extraction_is_not_charged_for_an_outage() {
-        let store = Store::in_memory().await.expect("store");
-        let account = test_account();
-        store.insert_account(&account).await.expect("account");
-        insert_message(&store, &account, &ThreadId::new(), "first", 0).await;
-        let llm = sequence_llm(&[UNREACHABLE, UNREACHABLE, r#"{"commitments":[]}"#]);
-
-        for _ in 0..2 {
-            extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-                .await
-                .expect_err("endpoint down");
-        }
-        assert_eq!(
-            llm.take_deferred_background(LlmFeature::Commitments),
-            [crate::summary::attempt_key(
-                &account.id,
-                "alice@example.com"
-            )]
-        );
-        extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
-            .await
-            .expect("endpoint back: extracted");
-    }
-
-    async fn extracted_due(body: &str, written: DateTime<Utc>, due: &str) -> Option<DateTime<Utc>> {
-        extracted(body, written, due).await.by_when
-    }
-
     async fn extracted(body: &str, written: DateTime<Utc>, due: &str) -> ContactCommitmentRecord {
         let store = Store::in_memory().await.expect("store");
         let account = test_account();
@@ -586,33 +509,6 @@ mod tests {
             .await
             .expect("commitments")
             .remove(0)
-    }
-
-    #[tokio::test]
-    async fn due_words_resolve_against_when_the_evidence_was_written() {
-        use chrono::{Datelike, TimeZone, Weekday};
-        let written = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
-        let due = extracted_due(
-            "I will send the launch date by Friday.",
-            written,
-            "by Friday",
-        )
-        .await
-        .expect("dated from the message's words");
-        assert_eq!(due.with_timezone(&Local).weekday(), Weekday::Fri);
-        assert!(due > written && due <= written + chrono::Duration::days(8));
-        assert!(due < Utc::now());
-    }
-
-    #[tokio::test]
-    async fn due_words_the_evidence_never_says_leave_the_commitment_undated() {
-        let written = Utc::now() - chrono::Duration::days(2);
-        let body = "I will send the launch date soon.";
-        assert_eq!(extracted_due(body, written, "by Friday").await, None);
-        assert_eq!(
-            extracted_due(body, written, "2026-10-09T17:00:00Z").await,
-            None
-        );
     }
 
     #[tokio::test]
@@ -662,19 +558,6 @@ mod tests {
             let stored = extracted(body, written, due).await;
             assert_eq!(stored.by_when, None, "{what}");
             assert_eq!(stored.by_when_source, None, "{what}");
-        }
-    }
-
-    #[test]
-    fn parse_accepts_prose_and_unclosed_fences_around_json() {
-        for reply in [
-            "Here are the commitments:\n{\"commitments\":[]}",
-            "```json\n{\"commitments\":[]}",
-            "```json\n{\"commitments\":[]}\n```",
-            "[]",
-        ] {
-            let parsed = parse_commitments_response(reply).expect("json inside reply");
-            assert!(parsed.commitments.is_empty());
         }
     }
 

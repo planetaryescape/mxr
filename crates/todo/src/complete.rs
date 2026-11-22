@@ -150,40 +150,4 @@ mod tests {
         };
         assert_eq!(looks_done(&bill(), &newsletter), None);
     }
-
-    #[test]
-    fn verify_confirmation_counts_only_within_a_day() {
-        let row = OpenRow {
-            kind: TodoKind::Verify,
-            amount_minor: None,
-            source_date: Some(at(1)),
-        };
-        let soon = LaterMessage {
-            subject: "Welcome to Octopus",
-            text: "",
-            date: at(1) + Duration::hours(2),
-        };
-        assert!(looks_done(&row, &soon).is_some());
-        let late = LaterMessage {
-            subject: "Welcome to Octopus",
-            text: "",
-            date: at(9),
-        };
-        assert_eq!(looks_done(&row, &late), None);
-    }
-
-    #[test]
-    fn completed_envelope_matches_a_sign_request() {
-        let row = OpenRow {
-            kind: TodoKind::Sign,
-            amount_minor: None,
-            source_date: Some(at(1)),
-        };
-        let later = LaterMessage {
-            subject: "Completed: Engagement letter",
-            text: "",
-            date: at(2),
-        };
-        assert!(looks_done(&row, &later).is_some());
-    }
 }

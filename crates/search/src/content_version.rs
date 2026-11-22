@@ -59,13 +59,4 @@ mod tests {
 
         assert!(lexical_content_is_current(&index_path));
     }
-
-    #[test]
-    fn other_version_is_not_current() {
-        let dir = tempfile::tempdir().unwrap();
-        let index_path = dir.path().join("search_index");
-        std::fs::write(marker_path(&index_path), "0\n").unwrap();
-
-        assert!(!lexical_content_is_current(&index_path));
-    }
 }

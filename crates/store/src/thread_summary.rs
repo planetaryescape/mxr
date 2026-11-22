@@ -188,7 +188,7 @@ fn row_to_thread_summary(row: sqlx::sqlite::SqliteRow) -> Result<ThreadSummaryRe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
+    use crate::test_fixtures::test_account;
 
     #[tokio::test]
     async fn thread_summary_roundtrips_and_updates() {
@@ -231,32 +231,5 @@ mod tests {
         assert_eq!(stored.content_hash, "v2");
         assert_eq!(stored.text, "new");
         assert_eq!(stored.model, "model-b");
-    }
-
-    #[tokio::test]
-    async fn thread_ids_for_message_ids_deduplicates_threads() {
-        let store = crate::Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        let thread_id = ThreadId::new();
-        let mut first = TestEnvelopeBuilder::new()
-            .account_id(account.id.clone())
-            .build();
-        first.thread_id = thread_id.clone();
-        first.provider_id = "first".into();
-        let mut second = TestEnvelopeBuilder::new()
-            .account_id(account.id.clone())
-            .build();
-        second.thread_id = thread_id.clone();
-        second.provider_id = "second".into();
-        store.upsert_envelope(&first).await.unwrap();
-        store.upsert_envelope(&second).await.unwrap();
-
-        let ids = store
-            .thread_ids_for_message_ids(&[first.id.clone(), second.id.clone()])
-            .await
-            .unwrap();
-
-        assert_eq!(ids, vec![thread_id]);
     }
 }

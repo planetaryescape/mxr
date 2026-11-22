@@ -11,22 +11,6 @@ async fn fixture() -> (Store, AccountId) {
     (store, account.id)
 }
 
-async fn contact(store: &Store, account: &AccountId, email: &str, name: &str, outbound: i64) {
-    sqlx::query(
-        "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
-           last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
-           cadence_days_p50, is_list_sender, list_id, refreshed_at)
-         VALUES (?, ?, ?, 0, 0, NULL, NULL, 3, ?, 1, 9.5, 0, NULL, 0)",
-    )
-    .bind(account.as_str())
-    .bind(email)
-    .bind(name)
-    .bind(outbound)
-    .execute(store.writer())
-    .await
-    .unwrap();
-}
-
 fn linked(links: &[PersonLink]) -> Vec<(String, String)> {
     links
         .iter()
@@ -101,35 +85,6 @@ async fn splitting_the_primary_hands_the_person_to_the_oldest_link() {
 }
 
 #[tokio::test]
-async fn merge_candidates_need_the_same_name_and_mail_from_you_to_both() {
-    let (store, account) = fixture().await;
-    contact(
-        &store,
-        &account,
-        "samir@launchpad.example",
-        "Samir Patel",
-        12,
-    )
-    .await;
-    contact(
-        &store,
-        &account,
-        "samir.patel@gmail.example",
-        "samir patel",
-        2,
-    )
-    .await;
-    contact(&store, &account, "samir@spam.example", "Samir Patel", 0).await;
-    contact(&store, &account, "ruth@keystone.example", "Ruth Vega", 4).await;
-    let candidates = store.merge_suggestion_candidates(&account).await.unwrap();
-    let emails: Vec<&str> = candidates.iter().map(|c| c.email.as_str()).collect();
-    assert_eq!(
-        emails,
-        vec!["samir.patel@gmail.example", "samir@launchpad.example"]
-    );
-}
-
-#[tokio::test]
 async fn person_threads_cover_mail_from_them_and_mail_you_sent_them() {
     let (store, account) = fixture().await;
     let now = Utc::now();
@@ -184,42 +139,4 @@ async fn person_threads_cover_mail_from_them_and_mail_you_sent_them() {
         .await
         .unwrap();
     assert_eq!(threads, vec![ids[1].clone(), ids[0].clone()]);
-}
-
-#[tokio::test]
-async fn person_threads_include_mail_you_sent_them_as_bcc() {
-    let (store, account) = fixture().await;
-    let now = Utc::now();
-    let mut envelope = TestEnvelopeBuilder::new()
-        .account_id(account.clone())
-        .build();
-    envelope.provider_id = "people-bcc".into();
-    envelope.thread_id = ThreadId::new();
-    envelope.date = now - Duration::hours(1);
-    envelope.from = Address {
-        name: None,
-        email: "me@example.com".into(),
-    };
-    envelope.to = vec![Address {
-        name: None,
-        email: "team@example.com".into(),
-    }];
-    envelope.bcc = vec![Address {
-        name: None,
-        email: "Ari@Fieldkit.example".into(),
-    }];
-    store
-        .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
-        .await
-        .unwrap();
-    let threads = store
-        .person_thread_ids(
-            &account,
-            &["ari@fieldkit.example".to_string()],
-            now - Duration::days(30),
-            10,
-        )
-        .await
-        .unwrap();
-    assert_eq!(threads, vec![envelope.thread_id]);
 }

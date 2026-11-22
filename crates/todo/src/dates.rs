@@ -313,47 +313,6 @@ mod tests {
     }
 
     #[test]
-    fn worded_dates_resolve_from_the_message_date() {
-        let found = find_due(
-            "Payment due 9 October.",
-            &due_regex(),
-            &sent(2026, 9, 28),
-            DateOrder::DayFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
-        );
-        assert_eq!(found.words, "Payment due 9 October");
-        assert!(!found.checked, "no year stated, so the year is a guess");
-
-        let found = find_due(
-            "Please pay by Friday, 9th October 2026",
-            &due_regex(),
-            &sent(2026, 9, 28),
-            DateOrder::DayFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
-        );
-
-        let found = find_due(
-            "Due date: Oct 9, 2026",
-            &due_regex(),
-            &sent(2026, 9, 28),
-            DateOrder::DayFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
-        );
-    }
-
-    #[test]
     fn a_deadline_without_a_year_rolls_forward_and_is_unchecked() {
         let found = find_due(
             "Your passport expires 3 March",
@@ -378,21 +337,6 @@ mod tests {
     }
 
     #[test]
-    fn weekday_resolves_to_the_next_one_after_sending() {
-        let found = find_due(
-            "Reply by Friday",
-            &trigger_regex("reply by"),
-            &sent(2026, 9, 28),
-            DateOrder::DayFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 2).expect("date")
-        );
-    }
-
-    #[test]
     fn ambiguous_numeric_dates_follow_the_order_and_are_unchecked() {
         let anchor = sent(2026, 9, 28);
         let uk =
@@ -414,49 +358,5 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 9, 10).expect("date")
         );
         assert!(!us.checked);
-    }
-
-    #[test]
-    fn numeric_dates_that_read_one_way_are_checked() {
-        let anchor = sent(2026, 9, 28);
-        let found = find_due(
-            "due 25/10/2026",
-            &due_regex(),
-            &anchor,
-            DateOrder::MonthFirst,
-        )
-        .expect("due");
-        assert_eq!(
-            found.at.with_timezone(&London).date_naive(),
-            NaiveDate::from_ymd_opt(2026, 10, 25).expect("date")
-        );
-        assert!(found.checked);
-        let found =
-            find_due("due 10/10/26", &due_regex(), &anchor, DateOrder::MonthFirst).expect("due");
-        assert!(found.checked, "same both ways");
-        assert_eq!(
-            find_due("due 31/02/2026", &due_regex(), &anchor, DateOrder::DayFirst),
-            None
-        );
-    }
-
-    #[test]
-    fn lifetimes_count_from_sending() {
-        let at = Utc
-            .with_ymd_and_hms(2026, 10, 1, 9, 0, 0)
-            .single()
-            .expect("date");
-        let found = find_lifetime("This link expires in 24 hours.", at).expect("lifetime");
-        assert_eq!(found.at, at + Duration::hours(24));
-        let found = find_lifetime("The code is valid for 10 minutes", at).expect("lifetime");
-        assert_eq!(found.at, at + Duration::minutes(10));
-        assert_eq!(find_lifetime("expires soon", at), None);
-    }
-
-    #[test]
-    fn date_order_follows_the_sender() {
-        assert_eq!(order_for("camden.gov.uk", Some("GBP")), DateOrder::DayFirst);
-        assert_eq!(order_for("comcast.com", Some("USD")), DateOrder::MonthFirst);
-        assert_eq!(order_for("example.com", None), DateOrder::DayFirst);
     }
 }

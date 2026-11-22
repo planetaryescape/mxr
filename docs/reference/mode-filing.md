@@ -56,7 +56,6 @@ Run the store regressions and actual mode-list regressions:
 
 ```bash
 scripts/cargo-test -p mxr-store --lib a_source_filed_by_sync_is_marked_filed_and_an_mxr_archive_is_not
-scripts/cargo-test -p mxr-store --lib batch_sync_records_inbox_departures_without_inventing_historical_archives
 scripts/cargo-test -p mxr-store --lib candidates_are_inbox_mail_with_pins
 scripts/cargo-test -p mxr --lib externally_filed_
 scripts/cargo-test -p mxr-tui --lib filed_

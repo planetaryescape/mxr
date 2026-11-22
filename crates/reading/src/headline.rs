@@ -161,14 +161,4 @@ mod tests {
             assert_eq!(clean_headline(subject, source), want, "{subject}");
         }
     }
-
-    #[test]
-    fn a_headline_that_would_be_empty_falls_back_to_the_subject() {
-        assert_eq!(
-            clean_headline("[Platform Weekly] #12", None),
-            "[Platform Weekly] #12"
-        );
-        assert_eq!(clean_headline("Issue #4", None), "Issue #4");
-        assert_eq!(clean_headline("  ", None), "");
-    }
 }

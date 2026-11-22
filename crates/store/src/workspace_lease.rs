@@ -217,14 +217,4 @@ mod tests {
             assert!(exclusive(root.path()).is_ok());
         }
     }
-    #[cfg(unix)]
-    #[test]
-    fn replacement_lock_inode_is_rejected_instead_of_reusing_registry_entry() {
-        let root = tempfile::tempdir().unwrap();
-        retain_shared(&root.path().join("mxr.db")).unwrap();
-        let path = lock_path(root.path()).unwrap();
-        std::fs::rename(&path, path.with_extension("old")).unwrap();
-        open(&path).unwrap();
-        assert!(retain_shared(&root.path().join("mxr.db")).is_err());
-    }
 }

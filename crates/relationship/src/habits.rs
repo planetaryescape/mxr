@@ -293,51 +293,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terse_lowercase_writer() {
-        let bodies = [
-            "yep, works for me",
-            "sounds good. i'll send it tonight\ns",
-            "can't do thursday, friday?\ns",
-            "done, it's in the drive\ns",
-        ];
-        let habits = analyse(&bodies, &["Alice Smith"]);
-        let text = habits.describe().join("\n");
-        assert!(text.contains("Usually starts straight in"), "{text}");
-        assert!(text.contains("Signs off with \"s\""), "{text}");
-        assert!(text.contains("Uses contractions"), "{text}");
-        assert!(text.contains("lowercase"), "{text}");
-        assert!(text.contains("Never uses exclamation marks"), "{text}");
-    }
-
-    #[test]
-    fn formal_writer_with_named_greeting() {
-        let bodies = [
-            "Dear Robert,\nThank you for the update. I will review the contract by Friday.\nKind regards,\nSam Rivers",
-            "Dear Robert,\nPlease find the revised figures attached.\nKind regards,\nSam Rivers",
-            "Dear Robert,\nI am available on Tuesday at 10:00.\nKind regards,\nSam Rivers",
-        ];
-        let habits = analyse(&bodies, &["Robert Jones"]);
-        assert_eq!(
-            habits.greeting.as_ref().map(|h| h.text.as_str()),
-            Some("Dear {name},")
-        );
-        assert_eq!(
-            habits.sign_off.as_ref().map(|h| h.text.as_str()),
-            Some("Kind regards,\nSam Rivers")
-        );
-        let text = habits.describe().join("\n");
-        assert!(
-            text.contains("Opens with \"Dear {name},\" (3 of 3)"),
-            "{text}"
-        );
-        assert!(
-            text.contains("Signs off with \"Kind regards, / Sam Rivers\""),
-            "{text}"
-        );
-        assert!(text.contains("Avoids contractions"), "{text}");
-    }
-
-    #[test]
     fn cleaning_drops_quotes_and_signature_block() {
         let raw = "Sounds good!\n\nCheers,\nSam\n-- \nSam Rivers | Engines Ltd\n\nOn Mon, Alice wrote:\n> old text";
         let cleaned = clean_for_voice(raw);

@@ -99,7 +99,6 @@ impl DeliveryStatus {
     }
 }
 
-/// How a delivery was detected. Persisted as a string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DetectionSource {
@@ -118,14 +117,10 @@ impl DetectionSource {
     }
 }
 
-/// What Stage 1 decided to do with a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
-    /// Persist/merge a delivery directly from deterministic signals.
     Create,
-    /// Plausible but uncertain — hand to the LLM to confirm and enrich.
     ShortlistLlm,
-    /// Not shipment-related (or a post-delivery survey). Do nothing.
     Reject,
 }
 
@@ -135,20 +130,16 @@ pub enum Decision {
 pub struct DetectInput<'a> {
     /// Sender display name (e.g. "Acme Orders").
     pub from_name: &'a str,
-    /// Lowercased sender domain (e.g. "mail.acme.com").
     pub from_domain: &'a str,
     pub subject: &'a str,
-    /// Reader-cleaned plain text (quotes/signatures stripped).
     pub body_text: &'a str,
     /// Raw HTML body, for schema.org JSON-LD only.
     pub body_html: Option<&'a str>,
     pub link_count: u32,
     pub body_word_count: u32,
-    /// Whether the message carried a List-Unsubscribe header.
     pub has_unsubscribe: bool,
 }
 
-/// The result of Stage 1 detection over one message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeliverySignal {
     pub decision: Decision,
@@ -156,7 +147,6 @@ pub struct DeliverySignal {
     pub source: DetectionSource,
     pub stage: Option<DeliveryStatus>,
     pub carrier: Option<String>,
-    /// Checksum-validated tracking numbers (may be empty).
     pub tracking_numbers: Vec<ValidatedTracking>,
     pub tracking_url: Option<String>,
     pub order_number: Option<String>,
@@ -168,28 +158,22 @@ pub struct DeliverySignal {
     pub dedup_key: Option<String>,
     /// Post-delivery review/survey — never create or resurrect from this.
     pub post_delivery_noise: bool,
-    /// Human-readable signals that fired, for `scan --dry-run` explainability.
     pub matched_signals: Vec<&'static str>,
 }
 
 impl DeliverySignal {
-    /// The single best tracking number, if any (schema-derived or validated).
     pub fn primary_tracking_number(&self) -> Option<String> {
         self.tracking_numbers.first().map(|t| t.number.clone())
     }
 }
 
-/// Run the deterministic Stage-1 detector over a message. Pure and local.
 pub fn detect(input: &DetectInput) -> DeliverySignal {
     let assessment = heuristics::assess(input);
     let schema = schema_org::extract(input.body_html);
 
-    // Tracking numbers come from subject + body. The tracking-numbers crate
-    // validates carrier checksums (incl. Amazon TBA), so junk is dropped here.
     let combined = format!("{}\n{}", input.subject, input.body_text);
     let tracking = tracking::extract(&combined);
 
-    // Combine heuristic score with tracking/schema contributions.
     let mut score = assessment.score;
     let mut signals = assessment.signals.clone();
     let schema_present = schema.is_some();
@@ -203,7 +187,6 @@ pub fn detect(input: &DetectInput) -> DeliverySignal {
         signals.push("valid_tracking_number");
     }
 
-    // Field resolution: schema (ground truth) wins, then deterministic signals.
     let tracking_url = schema
         .as_ref()
         .and_then(|s| s.tracking_url.clone())
@@ -262,14 +245,9 @@ pub fn detect(input: &DetectInput) -> DeliverySignal {
     );
     let carrier_sender = assessment.sender == heuristics::SenderClass::Carrier;
 
-    // Decision ladder (precision over recall). Create on a strong, directly
-    // actionable signal; otherwise hand plausible candidates to the LLM.
     let create = schema_present
         || (carrier_sender && valid_tracking)
         || (score >= 0.8 && (valid_tracking || carrier_sender));
-    // Order confirmations from unknown merchant domains (the common case) score
-    // low but are worth an LLM look when there's a lifecycle stage plus an
-    // order number (or a known sender) to correlate on.
     let shortlist = score >= 0.5 || (stage.is_some() && (order_number.is_some() || known_sender));
     let raw = if create {
         Decision::Create
@@ -279,16 +257,8 @@ pub fn detect(input: &DetectInput) -> DeliverySignal {
         Decision::Reject
     };
 
-    // A delivery must have a shipping context, not just a string that happens
-    // to validate as a tracking number. Loose carrier formats (e.g. DHL
-    // eCommerce) match verification codes/hashes in unrelated mail (finance,
-    // crypto, SaaS receipts), so never auto-create on a tracking match alone:
-    // require a carrier/merchant sender, a shipping-stage subject/body, or
-    // schema.org. Uncorroborated candidates are handed to the LLM to judge.
     let corroborated = is_corroborated(&signals);
 
-    // Hard gates: a post-delivery survey never creates; a Create needs a
-    // dedup key, otherwise let the LLM try to recover identifiers.
     let decision = if assessment.post_delivery_noise {
         Decision::Reject
     } else if raw == Decision::Create && dedup_key.is_none() {
@@ -340,7 +310,6 @@ pub const CORROBORATING_SIGNALS: &[&str] = &[
     "schema_org",
 ];
 
-/// True if any corroborating shipping-context signal fired.
 pub fn is_corroborated(signals: &[&str]) -> bool {
     signals.iter().any(|s| CORROBORATING_SIGNALS.contains(s))
 }
@@ -432,12 +401,6 @@ mod tests {
 
     #[test]
     fn order_is_confirmed_phrasing_is_shortlisted_not_rejected() {
-        // Google Store order confirmations say "Your order is confirmed"
-        // (not "order confirmation") and ship from google.com, an unknown
-        // delivery domain. They carry an order number but no carrier tracking,
-        // and the VAT "invoice" boilerplate trips the subscription penalty.
-        // The order-confirmation stage must still route them to the LLM rather
-        // than rejecting outright.
         let sig = detect(&input(
             "Google Store",
             "google.com",
@@ -456,11 +419,6 @@ mod tests {
 
     #[test]
     fn bare_tracking_match_from_unknown_sender_is_not_auto_created() {
-        // A string that validates as a tracking number inside an unrelated
-        // email (no carrier/merchant sender, no shipping subject) must not
-        // auto-create — it goes to the LLM to confirm. Guards against the
-        // CoinTracker/Hostinger-style false positives (loose formats matching
-        // codes/hashes).
         let sig = detect(&input(
             "CoinTracker",
             "cointracker.io",
@@ -507,8 +465,6 @@ mod tests {
 
     #[test]
     fn amazon_tba_is_detected_and_creates() {
-        // Amazon TBA is a high-precision format the checksum library validates,
-        // so it is trusted regardless of sender.
         let sig = detect(&input(
             "Amazon",
             "amazon.com",

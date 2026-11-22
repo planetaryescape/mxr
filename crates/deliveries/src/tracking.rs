@@ -15,14 +15,9 @@ pub struct ValidatedTracking {
     pub tracking_url: Option<String>,
 }
 
-// Contiguous alphanumeric run — catches numbers embedded in prose
-// ("USPS 9400111899560438600329 ships today").
 static CONTIGUOUS: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)[0-9A-Z]{8,35}").expect("valid contiguous-token regex"));
 
-// Space/hyphen-grouped run of short chunks — catches numbers emails wrap into
-// groups ("1Z 5R8 939 03 5756 7127"). Bounded chunk length (<=6) so it does
-// not greedily merge whole sentences of words.
 static GROUPED: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(?:[0-9A-Z]{1,6}[ \-]){2,}[0-9A-Z]{1,6}").expect("valid grouped-token regex")
 });
@@ -42,8 +37,6 @@ pub fn extract(text: &str) -> Vec<ValidatedTracking> {
             .filter(char::is_ascii_alphanumeric)
             .collect::<String>()
             .to_uppercase();
-        // Real tracking numbers contain digits and fit known formats; this
-        // skips pure-word matches and absurdly long concatenations cheaply.
         if normalized.len() < 8
             || normalized.len() > 35
             || !normalized.chars().any(|c| c.is_ascii_digit())
@@ -76,7 +69,6 @@ mod tests {
 
     #[test]
     fn validates_real_ups_and_usps_numbers() {
-        // Valid fixtures from the tracking_number_data dataset.
         let text = "Your UPS tracking is 1Z5R89390357567127 and USPS \
                     9400111899560438600329 — thanks!";
         let found = extract(text);
@@ -87,11 +79,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_checksum_tracking() {
-        // A UPS number with a corrupted check digit must be rejected — the
-        // checksum gate is what keeps precision high. (Note: some bare
-        // digit strings legitimately pass FedEx/USPS checksums; precision for
-        // those is enforced downstream by sender/subject corroboration.)
-        let valid_flipped = "ref 1Z5R89390357567128 here"; // last digit 7 -> 8
+        let valid_flipped = "ref 1Z5R89390357567128 here";
         assert!(
             extract(valid_flipped).is_empty(),
             "{:?}",

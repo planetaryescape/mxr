@@ -39,15 +39,10 @@ pub struct Assessment {
 }
 
 static ORDER_NUMBER: Lazy<Regex> = Lazy::new(|| {
-    // `.` is allowed inside the token so dotted IDs like Google's
-    // "GS.9175-8733-9584" capture whole; a trailing one is trimmed by the
-    // caller. The leading `[A-Z0-9]` still anchors on an alphanumeric.
     Regex::new(r"(?i)\border\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9.\-]{4,})")
         .expect("valid order-number regex")
 });
 
-// ISO date near an ETA cue → eta_until. Conservative on purpose; schema/LLM
-// cover the messier phrasings.
 static ETA_ISO: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)(?:arriv\w*|expected|estimated delivery|deliver(?:y|ed)?\s+by|arrives)\D{0,30}(\d{4}-\d{2}-\d{2})",
@@ -55,7 +50,6 @@ static ETA_ISO: Lazy<Regex> = Lazy::new(|| {
     .expect("valid eta-iso regex")
 });
 
-// Display-name fragments that are roles, not merchants.
 const ROLE_NOISE: &[&str] = &[
     "no-reply",
     "noreply",
@@ -80,7 +74,6 @@ pub fn assess(input: &DetectInput) -> Assessment {
     let mut score = 0.0_f32;
     let mut signals: Vec<&'static str> = Vec::new();
 
-    // --- sender classification ---
     let (sender, carrier_from_sender) = classify_sender(input.from_domain);
     match sender {
         SenderClass::Carrier => {
@@ -94,7 +87,6 @@ pub fn assess(input: &DetectInput) -> Assessment {
         SenderClass::Unknown => {}
     }
 
-    // --- lifecycle stage from subject, then body ---
     let subject_stage = match_stage(&subject_l);
     let body_stage = match_stage(&body_l);
     match subject_stage {
@@ -118,10 +110,6 @@ pub fn assess(input: &DetectInput) -> Assessment {
         }
     }
 
-    // --- order number ---
-    // Scan every "order …" match (subject first, then body) and take the first
-    // that contains a digit. Real order numbers have a digit; this skips prose
-    // like "Order confirmed" → "confirmed" to reach "Order number: GS.9175-…".
     let order_number = ORDER_NUMBER
         .captures_iter(input.subject)
         .chain(ORDER_NUMBER.captures_iter(input.body_text))
@@ -135,7 +123,6 @@ pub fn assess(input: &DetectInput) -> Assessment {
         signals.push("order_number");
     }
 
-    // --- exclusions (negative) ---
     let is_promo =
         contains_any(&subject_l, PROMO_KEYWORDS) || contains_any(&body_l, PROMO_KEYWORDS);
     if is_promo {
@@ -192,13 +179,11 @@ fn classify_sender(domain: &str) -> (SenderClass, Option<&'static str>) {
         return (SenderClass::Carrier, carrier_from_domain(&d));
     }
     if ECOMMERCE_DOMAINS.iter().any(|c| domain_matches(&d, c)) {
-        // Amazon is both a marketplace and (often) the carrier-of-record.
         return (SenderClass::Ecommerce, carrier_from_domain(&d));
     }
     (SenderClass::Unknown, None)
 }
 
-/// Suffix match: the From domain equals the needle or is a subdomain of it.
 fn domain_matches(domain: &str, needle: &str) -> bool {
     domain == needle || domain.ends_with(&format!(".{needle}"))
 }
@@ -217,7 +202,6 @@ fn contains_any(haystack_lower: &str, needles: &[&str]) -> bool {
 }
 
 fn merchant_from_sender(name: &str, domain: &str, sender: SenderClass) -> Option<String> {
-    // A carrier sender isn't the merchant — leave it for schema/LLM.
     if sender == SenderClass::Carrier {
         return None;
     }
@@ -225,7 +209,6 @@ fn merchant_from_sender(name: &str, domain: &str, sender: SenderClass) -> Option
     if !trimmed.is_empty() {
         let lower = trimmed.to_lowercase();
         if !ROLE_NOISE.iter().any(|r| lower.contains(r)) {
-            // Take the part before a separator ("Acme Orders <...>" → "Acme").
             let clean = trimmed
                 .split(['(', ',', '|'])
                 .next()
@@ -236,7 +219,6 @@ fn merchant_from_sender(name: &str, domain: &str, sender: SenderClass) -> Option
             }
         }
     }
-    // Fall back to the registrable label of the domain ("mail.acme.com" → "acme").
     domain_root(domain)
 }
 
@@ -324,7 +306,6 @@ mod tests {
 
     #[test]
     fn order_number_requires_a_digit() {
-        // "...your order. Thank you..." must not yield "Thank" as an order #.
         let a = assess(&input(
             "Acme",
             "acme.com",

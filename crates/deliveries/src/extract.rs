@@ -74,7 +74,6 @@ struct LlmItem {
     quantity: Option<i64>,
 }
 
-/// The text the LLM sees. Built by the caller from the envelope + cleaned body.
 pub struct LlmInput<'a> {
     pub from_name: &'a str,
     pub from_domain: &'a str,
@@ -108,7 +107,6 @@ pub async fn enrich(
     input: &LlmInput<'_>,
     base: DeliverySignal,
 ) -> DeliverySignal {
-    // A message's content doesn't change, so the key alone identifies it.
     const FINGERPRINT: &str = "";
     if !force && !runtime.background_attempt_due(message_key, FINGERPRINT) {
         return base;
@@ -138,8 +136,6 @@ pub async fn enrich(
     let resp = match runtime.complete_background(req).await {
         Ok(r) => r,
         Err(LlmError::Disabled | LlmError::PrivacyBlocked(_)) => return base,
-        // Put off until the endpoint is back, when the message is scanned
-        // again; the heuristic result stands until then.
         Err(error @ LlmError::CircuitOpen { .. }) => {
             runtime.record_background_failure(message_key, FINGERPRINT, &error);
             return base;
@@ -194,13 +190,11 @@ fn merge(
     prefs: TimePrefs,
 ) -> DeliverySignal {
     base.decision = Decision::Create;
-    // Keep schema as the source of record; otherwise credit the LLM.
     if base.source != DetectionSource::Schema {
         base.source = DetectionSource::Llm;
     }
     base.confidence = base.confidence.max(llm.confidence.clamp(0.0, 1.0));
 
-    // Re-validate any LLM tracking number; only adopt if it passes checksum.
     if base.tracking_numbers.is_empty() {
         if let Some(raw) = llm.tracking_number.as_deref() {
             let validated = tracking::extract(raw);
@@ -233,10 +227,6 @@ fn merge(
         base.eta_from = when(llm.eta_from.as_deref());
     }
     if base.eta_until.is_none() {
-        // The parser reads one phrase at a time, so a window's end is resolved
-        // on its own. "Thursday" then "4pm" gives Thursday's start and the next
-        // 4pm, which is before it; an end before its start is that mismatch, so
-        // it is dropped.
         base.eta_until = when(llm.eta_until.as_deref())
             .filter(|until| base.eta_from.is_none_or(|from| *until >= from));
     }
@@ -252,7 +242,6 @@ fn merge(
             .collect();
     }
 
-    // Re-derive the dedup key now that fields may be filled in.
     base.dedup_key = crate::compute_dedup_key(
         base.primary_tracking_number().as_deref(),
         base.merchant.as_deref(),
@@ -376,7 +365,6 @@ mod tests {
         );
     }
 
-    /// Monday 6 May 2024, 10:00 UTC: the email's send time in the tests below.
     fn sent() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2024, 5, 6, 10, 0, 0).unwrap()
     }
@@ -407,7 +395,6 @@ mod tests {
 
     #[test]
     fn eta_words_the_email_says_resolve_against_the_email_date() {
-        // An old email's "Thursday" is the Thursday of its own week.
         let old = Utc.with_ymd_and_hms(2024, 3, 5, 10, 0, 0).unwrap();
         let merged = merge(
             base_signal(),
@@ -465,8 +452,6 @@ mod tests {
 
     #[test]
     fn a_window_end_before_its_start_is_dropped() {
-        // "4pm" alone reads as the next 4pm, which is before Thursday's
-        // start: the day did not carry across, so the end is not stored.
         let merged = when(
             llm_when(Some("arriving Thursday"), Some("4pm")),
             "Arriving Thursday between 2pm and 4pm.",
@@ -562,7 +547,6 @@ mod tests {
             merged.tracking_numbers.is_empty(),
             "checksum-invalid dropped"
         );
-        // Falls back to merchant|order dedup.
         assert_eq!(merged.dedup_key.as_deref(), Some("acme|a-9"));
     }
 
@@ -672,8 +656,6 @@ mod tests {
             time_prefs: TimePrefs::default(),
         };
 
-        // Fewer than the breaker needs to open: every call reaches the model,
-        // so none of them was skipped as backing off.
         for attempt in 1..=3 {
             let signal = enrich(&feature, "msg-1", false, &input, base_signal()).await;
             assert_eq!(signal.decision, Decision::ShortlistLlm);

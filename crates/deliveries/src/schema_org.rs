@@ -99,7 +99,6 @@ fn parse_dt(s: &str) -> Option<DateTime<Utc>> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         return Some(dt.with_timezone(&Utc));
     }
-    // Date-only ("2024-05-10"): treat as end-of-day UTC for an ETA window.
     chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .ok()
         .and_then(|d| d.and_hms_opt(23, 59, 59))
@@ -131,7 +130,6 @@ fn type_matches(t: &Value, wanted: &[&str]) -> bool {
     }
 }
 
-/// DFS for the first string value under `key` anywhere in the document.
 fn find_str(v: &Value, key: &str) -> Option<String> {
     match v {
         Value::Object(map) => {
@@ -140,7 +138,6 @@ fn find_str(v: &Value, key: &str) -> Option<String> {
                     return Some(s.clone());
                 }
             }
-            // Numbers (e.g. orderNumber) coerced to string.
             if let Some(Value::Number(n)) = map.get(key) {
                 return Some(n.to_string());
             }
@@ -199,7 +196,6 @@ fn push_item_node(node: &Value, out: &mut Vec<DeliveryItem>) {
     match node {
         Value::Array(arr) => arr.iter().for_each(|i| push_item_node(i, out)),
         Value::Object(obj) => {
-            // orderedItem may wrap the product under "orderedItem"/"name".
             let name = obj
                 .get("name")
                 .and_then(Value::as_str)

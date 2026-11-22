@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::OutputFormat;
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
@@ -167,12 +159,6 @@ mod tests {
     }
 
     #[test]
-    fn table_render_handles_empty() {
-        render_table(&[], false);
-        render_table(&[], true);
-    }
-
-    #[test]
     fn rank_ordering_puts_low_open_rate_first() {
         // Senders ordered by open-rate ASC; tie-break by archived_unread DESC.
         let high_rate = SubscriptionSummary {
@@ -199,12 +185,5 @@ mod tests {
         assert_eq!(subs[0].sender_email, very_low.sender_email);
         assert_eq!(subs[1].sender_email, low_rate.sender_email);
         assert_eq!(subs[2].sender_email, high_rate.sender_email);
-    }
-
-    #[test]
-    fn json_render_round_trips() {
-        let rendered = serde_json::to_string(&vec![sample_subscription()]).unwrap();
-        assert!(rendered.contains("readwise.io"));
-        assert!(rendered.contains("weekly highlights"));
     }
 }

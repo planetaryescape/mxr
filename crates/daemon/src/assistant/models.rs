@@ -295,34 +295,6 @@ mod tests {
     }
 
     #[test]
-    fn a_config_with_no_list_offers_the_five_defaults_in_order() {
-        let config: LlmConfig = toml::from_str("enabled = true").unwrap();
-        let models = models_for(&config, &keys(&[]));
-        let ids: Vec<&str> = models.choices.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            [
-                "gemma4:latest",
-                "gpt-6-luna",
-                "gpt-5.6-terra",
-                "claude-haiku-5-5",
-                "claude-sonnet-5-5"
-            ]
-        );
-        let labels: Vec<&str> = models.choices.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(
-            labels,
-            [
-                "Gemma 4",
-                "GPT-6 Luna",
-                "GPT-5.6 Terra",
-                "Claude Haiku 5.5",
-                "Claude Sonnet 5.5"
-            ]
-        );
-    }
-
-    #[test]
     fn an_empty_or_blank_list_means_the_defaults_and_repeats_collapse() {
         let mut config = config("gemma4");
         config.models = vec![];

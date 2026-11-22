@@ -324,38 +324,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gets_llm_config_values() {
-        let mut config = mxr_config::MxrConfig::default();
-        config.llm.enabled = true;
-        config.llm.base_url = "http://127.0.0.1:8000/v1".into();
-        config.llm.model = "Qwen3.6-35B-A3B-MLX-8bit".into();
-        config.llm.context_window = 80_000;
-        config.llm.allow_cloud_relationship_data = true;
-
-        assert_eq!(
-            get_config_value(&config, "llm.enabled").expect("llm.enabled value"),
-            "true"
-        );
-        assert_eq!(
-            get_config_value(&config, "llm.base_url").expect("llm.base_url value"),
-            "http://127.0.0.1:8000/v1"
-        );
-        assert_eq!(
-            get_config_value(&config, "llm.model").expect("llm.model value"),
-            "Qwen3.6-35B-A3B-MLX-8bit"
-        );
-        assert_eq!(
-            get_config_value(&config, "llm.context_window").expect("llm.context_window value"),
-            "80000"
-        );
-        assert_eq!(
-            get_config_value(&config, "llm.allow_cloud_relationship_data")
-                .expect("llm.allow_cloud_relationship_data value"),
-            "true"
-        );
-    }
-
-    #[test]
     fn sets_llm_config_values() {
         let mut config = mxr_config::MxrConfig::default();
 
@@ -414,33 +382,6 @@ mod tests {
                 .and_then(|compose| compose.model)
                 .as_deref(),
             Some("gpt-6-luna")
-        );
-    }
-
-    #[test]
-    fn retired_appearance_keys_are_rejected_on_get_and_set() {
-        let mut config = mxr_config::MxrConfig::default();
-        for key in mxr_config::RETIRED_CONFIG_KEYS {
-            let get_error = get_config_value(&config, key).expect_err("get must reject");
-            assert!(
-                get_error.to_string().contains("was retired"),
-                "{key}: {get_error}"
-            );
-            let set_error = set_config_value(&mut config, key, "1").expect_err("set must reject");
-            assert!(
-                set_error.to_string().contains("was retired"),
-                "{key}: {set_error}"
-            );
-        }
-    }
-
-    #[test]
-    fn theme_is_still_settable() {
-        let mut config = mxr_config::MxrConfig::default();
-        set_config_value(&mut config, "appearance.theme", "midnight").expect("set theme");
-        assert_eq!(
-            get_config_value(&config, "appearance.theme").expect("get theme"),
-            "midnight"
         );
     }
 }

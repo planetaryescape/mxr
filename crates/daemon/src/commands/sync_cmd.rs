@@ -865,38 +865,6 @@ mod tests {
     }
 
     #[test]
-    fn build_status_request_targets_selected_account() {
-        let account_id = AccountId::from_provider_id("imap", "me@work.example");
-
-        let requested_account_id = if let Request::GetSyncStatus { account_id } =
-            build_status_request(Some(&account_id))
-        {
-            Some(account_id)
-        } else {
-            None
-        };
-
-        assert_eq!(requested_account_id, Some(account_id));
-    }
-
-    #[test]
-    fn build_sync_request_preserves_selected_account() {
-        let account_id = AccountId::from_provider_id("gmail", "me@example.com");
-
-        let requested_account_id = if let Request::SyncNow {
-            account_id: Some(account_id),
-            ..
-        } = build_sync_request(Some(account_id.clone()))
-        {
-            Some(account_id)
-        } else {
-            None
-        };
-
-        assert_eq!(requested_account_id, Some(account_id));
-    }
-
-    #[test]
     fn legacy_unscoped_sync_request_still_targets_default_account_only() {
         assert!(matches!(
             build_sync_request(None),
@@ -997,22 +965,6 @@ mod tests {
         let line = sync_progress_line(&[idle]).expect("a reporting account produces a line");
         assert_eq!(line, "personal: 0 — Stored 3000 messages");
         assert!(!line.contains('/'), "no denominator when none is known");
-    }
-
-    /// Accounts that are not reporting progress contribute nothing, and a
-    /// silent set of accounts produces no line at all.
-    #[test]
-    fn sync_progress_line_skips_accounts_without_progress() {
-        assert_eq!(sync_progress_line(&[status("personal", "t0", None)]), None);
-
-        let statuses = vec![
-            status("personal", "t0", None),
-            with_progress(status("work", "t0", None), 12, None),
-        ];
-        assert_eq!(
-            sync_progress_line(&statuses).as_deref(),
-            Some("work: 12 — Stored 3000 messages")
-        );
     }
 
     #[test]

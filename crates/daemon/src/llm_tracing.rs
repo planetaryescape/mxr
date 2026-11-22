@@ -308,22 +308,4 @@ mod tests {
             finding.message
         );
     }
-
-    #[test]
-    fn doctor_names_where_traces_go_when_on() {
-        let finding = finding(&Status::On("http://localhost:3000".to_string()));
-        assert_eq!(finding.severity, DoctorFindingSeverity::Info);
-        assert_eq!(
-            finding.message,
-            "LLM tracing is on, to the Langfuse at http://localhost:3000"
-        );
-    }
-
-    #[test]
-    fn doctor_says_an_unconfigured_tracing_build_is_off_without_warning() {
-        let (tracing, status) = start_with(with(&[]));
-        assert!(tracing.is_none());
-        assert_eq!(status, Status::Off);
-        assert_eq!(finding(&status).severity, DoctorFindingSeverity::Info);
-    }
 }

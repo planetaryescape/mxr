@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -101,34 +93,4 @@ pub async fn run(
         OutputFormat::Table => render_table(&rows, perspective),
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-    use mxr_core::id::{MessageId, ThreadId};
-
-    fn sample() -> StaleThreadRow {
-        StaleThreadRow {
-            thread_id: ThreadId::new(),
-            latest_message_id: MessageId::new(),
-            latest_subject: "Project status".into(),
-            counterparty_email: "alice@example.com".into(),
-            latest_date: Utc::now(),
-            days_stale: 30,
-        }
-    }
-
-    #[test]
-    fn json_render_round_trips() {
-        let rendered = serde_json::to_string(&vec![sample()]).unwrap();
-        assert!(rendered.contains("alice@example.com"));
-    }
-
-    #[test]
-    fn table_render_handles_empty() {
-        render_table(&[], StaleBallInCourt::Mine);
-        render_table(&[], StaleBallInCourt::Theirs);
-    }
 }

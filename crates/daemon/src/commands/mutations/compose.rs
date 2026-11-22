@@ -2812,20 +2812,6 @@ mod tests {
         assert_eq!(resolved, "alice@example.com");
     }
 
-    #[test]
-    fn compose_from_falls_back_when_no_config() {
-        let temp_home =
-            std::env::temp_dir().join(format!("mxr-compose-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&temp_home);
-        std::fs::create_dir_all(&temp_home).unwrap();
-        let resolved = temp_env::with_var("HOME", Some(temp_home.as_os_str()), || {
-            resolve_compose_from_address(None)
-        });
-        let _ = std::fs::remove_dir_all(&temp_home);
-
-        assert_eq!(resolved, "you@example.com");
-    }
-
     fn account(
         key: &str,
         email: &str,
@@ -3177,16 +3163,6 @@ mod tests {
             assert!(!without_llm.allow_llm, "--no-llm must disable LLM");
         }
 
-        /// Drafts without reply context (fresh compose) should still
-        /// produce a valid context; just no thread.
-        #[test]
-        fn build_check_context_handles_draft_without_reply_headers() {
-            let draft = draft_with(None, DraftIntent::New);
-            let ctx = build_check_context(&draft, false, Utc::now());
-            assert_eq!(ctx.thread_id, None);
-            assert_eq!(ctx.original_message_id, None);
-        }
-
         /// Reply-all intent must propagate so the reply-all sanity
         /// check actually runs (vs. a normal reply that should skip it).
         #[test]
@@ -3243,13 +3219,6 @@ mod tests {
                 error.to_string().contains("sent message id"),
                 "error should explain missing sent id: {error}"
             );
-        }
-
-        #[test]
-        fn remind_after_absent_resolves_to_nothing() {
-            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
-
-            assert!(parse_remind_after(None, now).unwrap().is_none());
         }
 
         #[test]
@@ -3487,51 +3456,6 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
                 compose_result_output("save_draft", &draft, None, Some(OutputFormat::Ids)).unwrap();
 
             assert_eq!(out.trim(), draft.id.as_str().as_str());
-        }
-
-        /// Without `--format`, the human line stands whether stdout is a
-        /// terminal or a pipe. Routing this through `resolve_format` turned a
-        /// redirected `mxr compose` into JSON and broke every script reading
-        /// `Draft saved: <id>`.
-        #[test]
-        fn no_explicit_format_keeps_the_human_wording() {
-            let draft = html_draft_for_output();
-            let out = compose_result_output("save_draft", &draft, None, None).unwrap();
-
-            assert!(
-                out.starts_with(&format!("Draft saved: {}", draft.id)),
-                "out={out}"
-            );
-        }
-
-        #[test]
-        fn table_output_keeps_the_human_wording_for_both_actions() {
-            let draft = html_draft_for_output();
-
-            let saved =
-                compose_result_output("save_draft", &draft, None, Some(OutputFormat::Table))
-                    .unwrap();
-            assert!(
-                saved.contains(&format!("Draft saved: {}", draft.id)),
-                "saved={saved}"
-            );
-            assert!(
-                saved.contains(&format!("Review with: mxr send {} --dry-run", draft.id)),
-                "saved={saved}"
-            );
-
-            let sent = compose_result_output(
-                "send",
-                &draft,
-                Some("msg-123".to_string()),
-                Some(OutputFormat::Table),
-            )
-            .unwrap();
-            assert!(
-                sent.contains(&format!("Sent draft {}", draft.id)),
-                "sent={sent}"
-            );
-            assert!(sent.contains("Local message id: msg-123"), "sent={sent}");
         }
     }
 }

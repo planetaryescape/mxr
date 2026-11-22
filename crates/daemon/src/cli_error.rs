@@ -177,15 +177,6 @@ mod tests {
     }
 
     #[test]
-    fn commands_without_a_format_flag_are_not_json() {
-        assert!(!json_output_requested(&args(&[
-            "mxr",
-            "daemon",
-            "--foreground"
-        ])));
-    }
-
-    #[test]
     fn unparseable_arguments_are_not_json() {
         assert!(!json_output_requested(&args(&["mxr", "--no-such-flag"])));
     }

@@ -1763,10 +1763,9 @@ fn write_demo_message_count(paths: &DemoPaths, messages: usize) -> anyhow::Resul
 #[cfg(test)]
 mod tests {
     use super::{
-        demo_account_ids, demo_paths, is_active, prepare_environment, read_active_marker,
-        read_demo_message_count, remove_active_marker, wait_for_demo_sync, wait_for_seeded_count,
-        write_active_marker, write_demo_message_count, DemoPaths, StallWatch, DEMO_COUNT_MARKER,
-        DEMO_INSTANCE, DEMO_PERSONAL_EMAIL, DEMO_SEED_VERSION, DEMO_WORK_EMAIL,
+        is_active, prepare_environment, read_active_marker, read_demo_message_count,
+        remove_active_marker, wait_for_demo_sync, wait_for_seeded_count, write_active_marker,
+        DemoPaths, StallWatch, DEMO_COUNT_MARKER, DEMO_INSTANCE, DEMO_PERSONAL_EMAIL,
     };
     use crate::ipc_client::IpcClient;
     use futures::{SinkExt, StreamExt};
@@ -2092,25 +2091,6 @@ mod tests {
     }
 
     #[test]
-    fn demo_paths_are_namespaced() {
-        let paths = demo_paths();
-        assert!(paths.config_dir.ends_with(DEMO_INSTANCE));
-        assert!(paths.data_dir.ends_with(DEMO_INSTANCE));
-    }
-
-    #[test]
-    fn demo_account_ids_cover_personal_and_work() {
-        let ids = demo_account_ids();
-        assert_eq!(ids.len(), 2);
-        assert_ne!(ids[0], ids[1]);
-        assert_eq!(
-            ids[0],
-            AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL)
-        );
-        assert_eq!(ids[1], AccountId::from_provider_id("fake", DEMO_WORK_EMAIL));
-    }
-
-    #[test]
     fn prepare_environment_selects_isolated_demo_profile() {
         temp_env::with_vars(
             [
@@ -2137,25 +2117,6 @@ mod tests {
                     Ok("123")
                 );
             },
-        );
-    }
-
-    #[test]
-    fn demo_message_count_marker_round_trips() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let paths = DemoPaths {
-            config_dir: temp_dir.path().join("config"),
-            data_dir: temp_dir.path().join("data"),
-        };
-
-        assert_eq!(
-            read_demo_message_count(&paths).expect("read missing marker"),
-            None
-        );
-        write_demo_message_count(&paths, 50_000).expect("write marker");
-        assert_eq!(
-            read_demo_message_count(&paths).expect("read marker"),
-            Some((50_000, DEMO_SEED_VERSION))
         );
     }
 

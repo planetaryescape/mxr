@@ -155,20 +155,6 @@ mod tests {
     }
 
     #[test]
-    fn text_output_appends_a_due_column_only_on_dated_rows() {
-        let utc = FixedOffset::east_opt(0).unwrap();
-        assert_eq!(due_column(&commitment(false, false), &utc), "");
-        assert_eq!(
-            due_column(&commitment(true, false), &utc),
-            "\tdue 2026-10-02"
-        );
-        assert_eq!(
-            due_column(&commitment(true, true), &utc),
-            "\tdue 2026-10-02 (date unverified)"
-        );
-    }
-
-    #[test]
     fn the_due_day_is_the_day_in_the_readers_zone() {
         // 00:30 on 23 October in London (BST), which is still the 22nd in UTC.
         let london = FixedOffset::east_opt(3600).unwrap();

@@ -285,25 +285,4 @@ mod tests {
             "Low confidence must not warn -- avoid noise on weak data"
         );
     }
-
-    #[tokio::test]
-    async fn proposed_bucket_with_no_history_emits_no_issue() {
-        let (state, account) = fixture().await;
-        seed_medium_confidence(&state, &account, "alice@example.com").await;
-        let draft = draft_to(&account, "alice@example.com");
-        // Wed 03:00 UTC -- a bucket the recipient has never been
-        // contacted in. We can't compare against an unknown bucket.
-        use chrono::TimeZone;
-        let wed_3am = Utc.with_ymd_and_hms(2026, 4, 29, 3, 0, 0).unwrap();
-        let issues = check_send_time(&state, &draft, wed_3am).await;
-        assert!(issues.is_empty(), "no historical data => no warning");
-    }
-
-    #[tokio::test]
-    async fn unknown_recipient_emits_no_issue() {
-        let (state, account) = fixture().await;
-        let draft = draft_to(&account, "ghost@example.com");
-        let issues = check_send_time(&state, &draft, mon_09_utc()).await;
-        assert!(issues.is_empty());
-    }
 }

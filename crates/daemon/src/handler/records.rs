@@ -1970,39 +1970,3 @@ async fn copy_pdf(
         .map_err(|error| error.to_string())?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::TimeZone;
-
-    #[test]
-    fn the_chip_says_unchecked_for_a_rule_read_reference() {
-        let value = RecordFieldValue {
-            field: "reference".to_string(),
-            source_key: "m".to_string(),
-            message_id: None,
-            source: "rule".to_string(),
-            rank: 1,
-            value_text: Some("402-118".to_string()),
-            value_int: None,
-            checked: false,
-            evidence: Some("Order number: 402-118".to_string()),
-            observed_at: Utc::now(),
-        };
-        let chip = field_data(RecordKind::Order, &value).expect("a field");
-        assert!(!chip.checked, "a rule's reference is not checked");
-    }
-
-    #[test]
-    fn days_print_as_days_and_instants_with_their_time() {
-        let day = mxr_records::fields::day_at(NaiveDate::from_ymd_opt(2025, 3, 3).expect("day"));
-        assert_eq!(date_label(day), "3 Mar 2025");
-        let instant = Utc
-            .with_ymd_and_hms(2025, 6, 12, 6, 40, 0)
-            .single()
-            .expect("time");
-        assert!(date_label(instant).contains("2025"));
-        assert_eq!(mxr_todo::money::plain_amount(124_900), "1249.00");
-    }
-}

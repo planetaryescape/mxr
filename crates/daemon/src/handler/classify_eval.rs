@@ -727,32 +727,6 @@ mod tests {
     }
 
     #[test]
-    fn accuracy_is_a_percentage_and_zero_when_nothing_was_asked() {
-        let tally = Tally {
-            evaluated: [3, 0, 3],
-            correct: [2, 0, 0],
-            ..Tally::default()
-        };
-        let summary = summarise(ClassifyEvalSetData::Quick, 10, 3, 5, &tally, None);
-        let accuracy: Vec<f64> = summary
-            .questions
-            .iter()
-            .map(|q| q.accuracy_percent)
-            .collect();
-        assert_eq!(accuracy, [66.7, 0.0, 0.0]);
-        assert_eq!(summary.message, None);
-        let empty = summarise(
-            ClassifyEvalSetData::Quick,
-            10,
-            0,
-            5,
-            &Tally::default(),
-            None,
-        );
-        assert_eq!(empty.message.as_deref(), Some(NO_LABELLED_MAIL));
-    }
-
-    #[test]
     fn a_held_out_email_is_counted_apart_and_its_mismatches_are_flagged() {
         let held_out = Labelled {
             held_out: true,

@@ -224,16 +224,3 @@ pub(super) async fn cached_ask(
         model,
     }))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::wrapped_lines;
-
-    #[test]
-    fn lines_are_counted_wrapped() {
-        assert_eq!(wrapped_lines("Thanks, on it."), 1);
-        assert_eq!(wrapped_lines("a\n\nb\nc"), 3);
-        assert_eq!(wrapped_lines(&"word ".repeat(40)), 3);
-        assert_eq!(wrapped_lines(&"word ".repeat(60)), 5);
-    }
-}

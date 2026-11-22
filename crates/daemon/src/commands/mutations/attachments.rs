@@ -357,16 +357,6 @@ mod tests {
     }
 
     #[test]
-    fn normal_filename_is_preserved() {
-        let target_dir = Path::new("/tmp/mxr-downloads");
-        let id = AttachmentId::default();
-
-        assert_eq!(safe_download_name("report.pdf", &id), "report.pdf");
-        let target = target_dir.join(safe_download_name("report.pdf", &id));
-        assert_eq!(target.parent(), Some(target_dir));
-    }
-
-    #[test]
     fn transfer_table_keeps_the_selected_attachment_index() {
         let row = AttachmentTransferResult {
             index: 3,

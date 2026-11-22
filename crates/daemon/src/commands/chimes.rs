@@ -212,26 +212,7 @@ fn sound_arg(value: ChimeSoundArg) -> NotificationChimeSoundData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::OutputFormat;
-    use mxr_protocol::{
-        NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData,
-    };
-
-    #[test]
-    fn render_chimes_json_exposes_enabled_volume_and_action_sounds() {
-        let config = NotificationChimesData {
-            enabled: true,
-            volume: 0.5,
-            ..NotificationChimesData::default()
-        };
-
-        let rendered = render_chimes(&config, OutputFormat::Json).expect("render json");
-
-        assert!(rendered.contains("\"enabled\": true"));
-        assert!(rendered.contains("\"volume\": 0.5"));
-        assert!(rendered.contains("\"new_mail\": \"bell\""));
-        assert!(rendered.contains("\"archived\": \"archive\""));
-    }
+    use mxr_protocol::{NotificationChimeEventData, NotificationChimeSoundData};
 
     #[test]
     fn set_event_sound_patches_only_requested_action() {

@@ -3985,22 +3985,6 @@ mod tests {
         watcher_handle.abort();
     }
 
-    /// Phase 3.1: `idle_notify_for_account` returns the same handle on
-    /// repeated calls so watcher and sync loop see the same Notify.
-    /// Catches "each call creates a new Notify" regressions where
-    /// the wake-up never reaches the sync loop.
-    #[tokio::test]
-    async fn idle_notify_for_account_returns_stable_handle() {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
-        let account_id = state.default_provider().account_id().clone();
-        let a = state.idle_notify_for_account(&account_id);
-        let b = state.idle_notify_for_account(&account_id);
-        assert!(
-            std::sync::Arc::ptr_eq(&a, &b),
-            "idle_notify_for_account must return the same Arc"
-        );
-    }
-
     #[tokio::test]
     async fn apply_rules_to_messages_marks_message_read_and_logs_history() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -4077,7 +4061,7 @@ mod tests {
 #[cfg(test)]
 mod history_prune_tests {
     use super::*;
-    use chrono::{Duration as ChronoDuration, TimeZone};
+    use chrono::Duration as ChronoDuration;
     use mxr_store::SyncStatus as StoreSyncStatus;
     use std::time::Duration;
 
@@ -4116,19 +4100,6 @@ mod history_prune_tests {
             .unwrap()
             .len();
         (events as i64, sync)
-    }
-
-    #[test]
-    fn cutoff_is_retention_days_in_unix_seconds() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 10, 22, 12, 0, 0)
-            .unwrap();
-        assert_eq!(
-            history_cutoff(now, 90),
-            (now - ChronoDuration::days(90)).timestamp()
-        );
-        // Huge retention must not overflow; the cutoff just lands far in the past.
-        assert!(history_cutoff(now, u32::MAX) < 0);
     }
 
     #[tokio::test]

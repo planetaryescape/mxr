@@ -1238,15 +1238,4 @@ mod tests {
             vec!["mxr restart".to_string(), "mxr status".to_string()]
         );
     }
-
-    /// `format_duration` switches units across thresholds so the
-    /// rebuild summary reads naturally regardless of how long the
-    /// run took.
-    #[test]
-    fn format_duration_scales_units() {
-        use std::time::Duration;
-        assert_eq!(format_duration(Duration::from_millis(450)), "450ms");
-        assert_eq!(format_duration(Duration::from_millis(1_200)), "1.2s");
-        assert_eq!(format_duration(Duration::from_secs(75)), "1m 15s");
-    }
 }

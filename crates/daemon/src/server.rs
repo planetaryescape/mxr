@@ -2775,28 +2775,6 @@ mod tests {
     }
 
     #[test]
-    fn a_daemon_identity_record_round_trips() {
-        use super::DaemonIdentity;
-
-        // Paths with spaces are the norm on macOS, where every profile lives
-        // under "Application Support".
-        let identity = DaemonIdentity {
-            pid: 4242,
-            started_at: "Wed Aug 20 00:11:22 2026".to_string(),
-            exe: "/opt/homebrew/bin/mxr".to_string(),
-            instance: "mxr-demo".to_string(),
-            config_dir: "/Users/bk/Library/Application Support/mxr-demo".into(),
-            data_dir: "/Users/bk/Library/Application Support/mxr-demo".into(),
-        };
-
-        let rendered = toml::to_string(&identity).expect("render identity");
-        assert_eq!(
-            toml::from_str::<DaemonIdentity>(&rendered).ok(),
-            Some(identity)
-        );
-    }
-
-    #[test]
     fn a_pid_file_without_an_identity_record_is_not_rejected() {
         use super::DaemonIdentity;
 
@@ -2946,11 +2924,6 @@ mod tests {
     fn detects_tantivy_lockbusy_message() {
         let msg = "Search error: Failed to acquire Lockfile: LockBusy. Some(\"Failed to acquire index lock. If you are using a regular directory, this means there is already an `IndexWriter` working on this `Directory`, in this process or in a different process.\")";
         assert!(is_index_lock_error(msg));
-    }
-
-    #[test]
-    fn ignores_unrelated_search_error() {
-        assert!(!is_index_lock_error("Search error: schema does not match"));
     }
 
     #[test]

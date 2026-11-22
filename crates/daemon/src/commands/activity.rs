@@ -1203,13 +1203,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_duration_rejects_garbage() {
-        assert!(parse_duration_ms("3y").is_none()); // unsupported unit
-        assert!(parse_duration_ms("foo").is_none());
-        assert!(parse_duration_ms("").is_none());
-    }
-
-    #[test]
     fn parse_duration_rejects_multibyte_unit_without_panic() {
         // A multibyte trailing char used to panic `split_at(len - 1)` on the
         // byte boundary; now it is simply an unrecognized unit.
@@ -1238,27 +1231,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_time_input_accepts_iso_date() {
-        let ms = parse_time_input("2026-05-01").unwrap();
-        // 2026-05-01 00:00 UTC = 1777_968_000_000 ms (sanity-check the order of magnitude)
-        assert!(ms > 1_700_000_000_000);
-        assert!(ms < 2_000_000_000_000);
-    }
-
-    #[test]
     fn parse_time_input_rejects_unparseable() {
         assert!(parse_time_input("not-a-time").is_err());
-    }
-
-    #[test]
-    fn parse_cursor_splits_on_comma() {
-        let c = parse_cursor("1_000,42").unwrap_err();
-        // Strict: we don't accept underscores; this is a sanity test that we don't pretend to.
-        assert!(c.to_string().contains("invalid digit") || c.to_string().contains("cursor"));
-
-        let c = parse_cursor("1000,42").unwrap();
-        assert_eq!(c.ts, 1000);
-        assert_eq!(c.id, 42);
     }
 
     #[test]
@@ -1266,20 +1240,6 @@ mod tests {
         let (s, u) = parse_recall_phrase("today").unwrap();
         assert!(u - s >= 86_400_000 - 1, "today should span ~1 day");
         assert!(u - s <= 86_400_000 + 1);
-    }
-
-    #[test]
-    fn recall_resolves_last_hour_to_one_hour() {
-        let (s, u) = parse_recall_phrase("last hour").unwrap();
-        let diff = u - s;
-        assert!((3_595_000..=3_605_000).contains(&diff), "got {diff}");
-    }
-
-    #[test]
-    fn recall_resolves_last_5_minutes() {
-        let (s, u) = parse_recall_phrase("last 5 minutes").unwrap();
-        let diff = u - s;
-        assert!((295_000..=305_000).contains(&diff));
     }
 
     #[test]

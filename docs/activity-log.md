@@ -259,7 +259,7 @@ These appear in `STATUS.md`-style checklists but the actual gates are tests and 
 
 1. Activity write failures never propagate to user-facing actions. Tested by recorder unit tests; enforced by `Recorder::record` swallowing errors.
 2. Source enum is set correctly on every IPC request. Verified at the four client construction sites: `crates/tui/src/client.rs` → `Tui`, `crates/web/src/ipc.rs` → `Web`, `crates/daemon/src/ipc_client.rs` → `Cli`, daemon-synthesized markers → `Daemon`.
-3. Heartbeats / polls / internal getters are not logged. Tested by `ping_produces_no_activity` and `list_envelopes_is_a_getter_and_does_not_log` in the mapper tests.
+3. Heartbeats / polls / internal getters are not logged. Tested by `ping_produces_no_activity` in the mapper tests.
 4. No credential material ever lands in `context_json`. Tested by the PII audit integration test.
 5. Only `crates/daemon/src/activity/` writes to `user_activity`. Tested by the structural single-writer integration test.
 

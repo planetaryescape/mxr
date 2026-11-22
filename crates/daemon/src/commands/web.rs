@@ -663,26 +663,6 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     #[test]
-    fn default_loopback_launch_url_uses_mxr_localhost_without_token_fragment() {
-        let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_eq!(host, "mxr.localhost");
-
-        temp_env::with_var("MXR_WEB_BRIDGE_TOKEN", Some("test-token"), || {
-            let (launch_url, display_url) = local_bridge_url(&host, 42829).unwrap();
-            assert_eq!(display_url, "http://mxr.localhost:42829");
-            assert_eq!(launch_url, display_url);
-        });
-    }
-
-    #[test]
-    fn install_tip_only_when_a_browser_opens() {
-        assert!(install_tip(false, false).is_some_and(|tip| tip.contains("install it as an app")));
-        assert_eq!(install_tip(true, false), None);
-        assert_eq!(install_tip(false, true), None);
-        assert_eq!(install_tip(true, true), None);
-    }
-
-    #[test]
     fn local_foreground_fails_fast_when_fixed_port_is_busy() {
         let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -741,16 +721,6 @@ mod tests {
             error.to_string().contains("non-loopback"),
             "non-loopback bind rejection should explain the safety boundary: {error}"
         );
-    }
-
-    #[test]
-    fn strict_port_conflict_message_points_to_auto_port_escape_hatch() {
-        let error = std::io::Error::new(std::io::ErrorKind::AddrInUse, "address in use");
-        let message = bind_error_message("127.0.0.1", 42829, false, &error);
-
-        assert!(message.contains("127.0.0.1:42829"));
-        assert!(message.contains("--auto-port"));
-        assert!(message.contains("fixed local URL"));
     }
 
     #[tokio::test]

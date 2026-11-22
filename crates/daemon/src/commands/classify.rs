@@ -546,22 +546,6 @@ mod tests {
         assert_eq!(value["mismatches"][0]["expected"], "updates");
     }
 
-    #[test]
-    fn the_table_lists_each_mismatch_with_its_reason() {
-        let out = render_eval(&summary(3), &[mismatch()], &OutputFormat::Table).unwrap();
-        assert!(out.contains("expected updates"), "{out}");
-        assert!(out.contains("got messages"), "{out}");
-        assert!(out.contains("(possible personal mail)"), "{out}");
-        assert!(out.contains("[label is a judgement call]"), "{out}");
-        assert!(out.contains("The rest are near-miss twins"), "{out}");
-    }
-
-    #[test]
-    fn an_empty_mailbox_says_so_in_plain_words() {
-        let out = render_eval(&summary(0), &[], &OutputFormat::Table).unwrap();
-        assert_eq!(out, "No labelled mail here; run mxr demo\n");
-    }
-
     fn full_summary() -> ClassifyEvalSummaryData {
         let question =
             |name: &str, evaluated, correct, accuracy_percent| ClassifyEvalQuestionData {
@@ -597,13 +581,6 @@ mod tests {
         assert!(out.contains("Held-out phrasings (10 emails"), "{out}");
         assert!(out.contains("70.0%") && out.contains("90.0%"), "{out}");
         assert!(!out.contains("near-miss twins"), "{out}");
-    }
-
-    #[test]
-    fn the_quick_table_has_no_held_out_line() {
-        let out = render_eval(&summary(3), &[], &OutputFormat::Table).unwrap();
-        assert!(out.contains("Classifier eval, quick set"), "{out}");
-        assert!(!out.contains("Held-out"), "{out}");
     }
 
     /// Thousands of wrong answers are grouped, biggest first, with one

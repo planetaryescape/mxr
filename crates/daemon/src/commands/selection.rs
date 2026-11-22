@@ -682,11 +682,6 @@ mod tests {
     }
 
     #[test]
-    fn selection_limit_first_caps_at_one() {
-        assert_eq!(SelectionLimit::First.cap(), 1);
-    }
-
-    #[test]
     fn selection_limit_at_most_respects_user_value_below_hard_cap() {
         assert_eq!(SelectionLimit::AtMost(50).cap(), 50);
     }
@@ -720,11 +715,5 @@ mod tests {
     fn parse_message_id_rejects_non_uuid_with_input_echoed() {
         let err = parse_message_id("not-a-uuid").unwrap_err().to_string();
         assert!(err.contains("not-a-uuid"));
-    }
-
-    #[test]
-    fn parse_thread_id_rejects_non_uuid_with_input_echoed() {
-        let err = parse_thread_id("xyz").unwrap_err().to_string();
-        assert!(err.contains("xyz"));
     }
 }

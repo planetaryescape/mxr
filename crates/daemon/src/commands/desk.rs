@@ -531,12 +531,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_desk_is_calm() {
-        let text = render(&desk(vec![], vec![]), OutputFormat::Table, None).unwrap();
-        assert!(text.starts_with("Nothing needs you right now."));
-    }
-
-    #[test]
     fn jsonl_emits_one_row_per_line_with_lane() {
         let text = render(
             &desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]),

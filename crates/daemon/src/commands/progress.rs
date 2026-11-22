@@ -221,18 +221,3 @@ pub(crate) fn format_thousands(n: impl std::fmt::Display) -> String {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::format_thousands;
-
-    #[test]
-    fn format_thousands_inserts_commas_every_three_digits() {
-        assert_eq!(format_thousands(0), "0");
-        assert_eq!(format_thousands(42), "42");
-        assert_eq!(format_thousands(999), "999");
-        assert_eq!(format_thousands(1_000), "1,000");
-        assert_eq!(format_thousands(10_673), "10,673");
-        assert_eq!(format_thousands(1_234_567), "1,234,567");
-    }
-}

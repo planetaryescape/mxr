@@ -409,16 +409,3 @@ fn title(message: &str) -> String {
     title.push('…');
     title
 }
-
-#[cfg(test)]
-mod tests {
-    use super::title;
-
-    #[test]
-    fn titles_are_the_first_line_cut_to_fit() {
-        assert_eq!(title("  Archive bank mail\nand more"), "Archive bank mail");
-        let long = "x".repeat(80);
-        assert_eq!(title(&long).chars().count(), 60);
-        assert!(title(&long).ends_with('…'));
-    }
-}

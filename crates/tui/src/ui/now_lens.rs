@@ -1,4 +1,3 @@
-
 use mxr_protocol::{ArrivalsData, NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;

@@ -1,4 +1,3 @@
-
 use mxr_protocol::{AssistantLinkData, AssistantReadoutData};
 use serde_json::Value;
 

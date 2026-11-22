@@ -1,4 +1,3 @@
-
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 

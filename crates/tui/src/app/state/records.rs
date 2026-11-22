@@ -1,4 +1,3 @@
-
 use mxr_core::id::MessageId;
 use mxr_protocol::{
     ModeGuideData, RecordAnswerData, RecordAnswerListData, RecordChangeData, RecordData,

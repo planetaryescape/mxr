@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::AccountFormMode;
 use crate::keybindings::{action_from_name, default_keybindings, KeyBinding};

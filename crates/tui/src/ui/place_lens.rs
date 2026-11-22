@@ -1,4 +1,3 @@
-
 use mxr_protocol::{
     AccountSummaryData, MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData,
 };

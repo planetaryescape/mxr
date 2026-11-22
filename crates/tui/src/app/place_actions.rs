@@ -1,4 +1,3 @@
-
 use super::*;
 use mxr_protocol::{MailPlaceData, SenderKindData};
 

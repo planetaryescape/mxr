@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::NowRow;
 use crate::ui::now_lens::tests::{page, populated};

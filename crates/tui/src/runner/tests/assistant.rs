@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::{AssistantCall, AssistantFocus, AssistantPrompt};
 use mxr_protocol::{

@@ -1,4 +1,3 @@
-
 use crossterm::event::KeyCode;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

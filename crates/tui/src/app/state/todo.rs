@@ -1,4 +1,3 @@
-
 use mxr_core::id::MessageId;
 use mxr_protocol::{
     ModeGuideData, TodoCatchupData, TodoChangeData, TodoData, TodoResolutionActionData,
@@ -33,6 +32,7 @@ pub enum TodoPromptKind {
     Correct {
         todo_id: String,
     },
+    /// `t` on a conversation: what to do, starting with the verb.
     Create {
         message_id: MessageId,
     },

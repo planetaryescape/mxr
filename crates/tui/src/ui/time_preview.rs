@@ -1,4 +1,3 @@
-
 use mxr_config::SnoozeConfig;
 use mxr_core::natural_time::{
     resolve_time_local, TimeResolution, TimeResolveError, TimeResolveErrorKind,

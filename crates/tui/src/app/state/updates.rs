@@ -1,4 +1,3 @@
-
 use mxr_protocol::{
     ModeGuideData, UpdateLineData, UpdateSourceSettingData, UpdatesDigestData, UpdatesLetGoData,
 };

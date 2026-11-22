@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::{FocusItem, FocusPageState, FocusReply, FocusReturn, FocusSource};
 use mxr_core::types::{DraftIntent, Envelope};

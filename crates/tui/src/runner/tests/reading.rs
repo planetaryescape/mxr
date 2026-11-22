@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::ReadingConfirm;
 use crate::ui::reading_lens::tests::edition;

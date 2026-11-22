@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::{PassMenu, RecordFixPrompt, RECORD_KIND_CHIPS};
 use mxr_protocol::{RecordData, RecordEditData, RecordUndoData};

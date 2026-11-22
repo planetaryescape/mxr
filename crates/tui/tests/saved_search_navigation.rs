@@ -1,4 +1,3 @@
-
 use chrono::{TimeZone, Utc};
 use mxr_core::id::SavedSearchId;
 use mxr_core::types::{SavedSearch, SearchMode, SortOrder};

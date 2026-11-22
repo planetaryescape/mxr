@@ -1,4 +1,3 @@
-
 use mxr_protocol::{
     AssistantAvailabilityData, AssistantConversationData, AssistantConversationSummaryData,
     AssistantDeleteData, AssistantItemData, AssistantLinkData, AssistantModelsData,
@@ -17,8 +16,12 @@ pub enum AssistantFocus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssistantPrompt {
+    /// Why an approval is rejected (optional).
     RejectReason { call_id: String, text: String },
+    /// The user's own answer to the active question.
     Other { text: String },
+    /// The daemon's dry run of deleting the open conversation, or the one
+    /// highlighted in the history list, with which option is lit.
     ConfirmDelete(AssistantDeleteData, super::ConfirmChoice),
 }
 
@@ -30,6 +33,7 @@ pub enum AssistantCall {
         conversation_id: String,
     },
     List,
+    /// The model choices, or the choice just set.
     Models,
     SetModel,
     DeletePreview,

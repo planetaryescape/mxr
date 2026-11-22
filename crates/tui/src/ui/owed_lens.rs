@@ -1,4 +1,3 @@
-
 use super::account_mark::AccountMarks;
 use super::desk_lens::short_duration;
 use mxr_protocol::{OwedReplyRowData, PeopleSplitData};

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::UpdatesRow;
 use crate::ui::updates_lens::tests::populated;

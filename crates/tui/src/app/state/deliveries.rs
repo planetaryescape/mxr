@@ -1,4 +1,3 @@
-
 use mxr_protocol::DeliveryData;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

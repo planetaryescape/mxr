@@ -446,6 +446,8 @@ pub(crate) async fn handle_draft_edit_status(
                 Ok(Response::Ok {
                     data: ResponseData::Ack,
                 }) => {
+                    // An older daemon acknowledges without the saved draft; the
+                    // review needs its new revision, so read it back.
                     match ipc_call(bg, Request::GetDraft { draft_id }).await {
                         Ok(Response::Ok {
                             data: ResponseData::Draft { draft: saved },

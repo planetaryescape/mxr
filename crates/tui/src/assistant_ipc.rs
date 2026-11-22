@@ -1,4 +1,3 @@
-
 use crate::app::App;
 use crate::async_result::AsyncResult;
 use crate::ipc::{ipc_call, IpcRequest};

@@ -1,4 +1,3 @@
-
 use crate::theme::Theme;
 use crate::thread_context_rows::{context_rows, ContextRowKind};
 use chrono::{DateTime, Utc};

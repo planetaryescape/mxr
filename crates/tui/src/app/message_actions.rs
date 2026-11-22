@@ -107,8 +107,7 @@ impl App {
                                 self.status_message = Some("Showing full message view".into());
                             }
                         }
-                        MailboxView::Owed => {
-                        }
+                        MailboxView::Owed => {}
                         MailboxView::CalendarInvites => {
                             self.open_selected_invite_message();
                         }

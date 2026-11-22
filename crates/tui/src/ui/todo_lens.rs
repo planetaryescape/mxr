@@ -1,4 +1,3 @@
-
 use chrono::{DateTime, Utc};
 use mxr_protocol::{TodoChangeData, TodoData};
 use ratatui::prelude::*;

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::input::PREFIX_GUIDE_DELAY;
 

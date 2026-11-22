@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::{MessagesFocus, TodoPanel};
 use crate::ui::records_lens::tests::lisbon_answer;

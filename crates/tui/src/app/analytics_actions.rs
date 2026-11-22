@@ -250,8 +250,7 @@ impl App {
                     self.analytics.search_aggregation_query, query
                 ));
             }
-            AnalyticsView::ResponseTime => {
-            }
+            AnalyticsView::ResponseTime => {}
             AnalyticsView::Wrapped => {
                 self.handle_wrapped_tile_drill_down();
             }

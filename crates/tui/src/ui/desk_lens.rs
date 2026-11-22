@@ -1,4 +1,3 @@
-
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;

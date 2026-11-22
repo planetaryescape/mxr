@@ -1,4 +1,3 @@
-
 use super::key_dispatch::DefinedKey;
 use super::*;
 use crate::app::list_advance::next_after_removal;

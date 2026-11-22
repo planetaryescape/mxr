@@ -1,4 +1,3 @@
-
 use super::centered_rect;
 use crate::app::{BriefingModalState, BriefingModalSubject};
 use ratatui::prelude::*;

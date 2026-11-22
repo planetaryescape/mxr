@@ -1,4 +1,3 @@
-
 use mxr_core::types::CalendarPartstat;
 use mxr_protocol::CalendarInviteData;
 use ratatui::prelude::*;

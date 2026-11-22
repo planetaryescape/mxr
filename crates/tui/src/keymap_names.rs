@@ -1,4 +1,3 @@
-
 use crate::action::{Action, PatternKind};
 use crate::app::AnalyticsView;
 use mxr_core::types::SemanticProfile;

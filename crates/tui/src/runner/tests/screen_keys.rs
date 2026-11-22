@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::action::{action_allowed_in_context, UiContext};
 use crate::app::{AccountFormMode, AnalyticsView, AssistantFocus, RulesPanel, StorageMode};
@@ -257,6 +256,7 @@ fn screen_keys_are_what_the_definition_says() {
 }
 
 const NOT_PROBED: &[&str] = &[
+    // Dispatched from the definition itself (`compose_assist.rs`).
     "compose-assist-proof",
 ];
 

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::NowRow;
 use mxr_core::id::ThreadId;

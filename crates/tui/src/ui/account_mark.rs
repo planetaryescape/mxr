@@ -1,4 +1,3 @@
-
 use crate::theme::Theme;
 use mxr_core::{AccountColor, AccountId};
 use mxr_protocol::AccountSummaryData;

@@ -8,9 +8,16 @@ use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountSyncIndicator {
+    /// A sync is currently running — renders an animated spinner, plus the
+    /// live message count when the daemon is reporting one. Pre-formatted
+    /// here so the renderer stays a layout concern: `"3000/16500"` when the
+    /// provider could say how much is left, `"3000"` when it could not.
     Syncing { progress: Option<String> },
+    /// Last sync succeeded; carries the relative age, e.g. "2m ago".
     Synced(String),
+    /// The account is unhealthy or the last sync errored.
     Offline,
+    /// No status known yet (daemon snapshot not loaded).
     Unknown,
 }
 
@@ -212,6 +219,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
         .iter()
         .map(|entry| match entry {
             SidebarEntry::Separator => {
+                // Visual separator line instead of empty spacer
                 ListItem::new(Line::from(Span::styled(
                     "─".repeat(inner_width),
                     Style::default().fg(theme.text_muted),

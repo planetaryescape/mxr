@@ -1,4 +1,3 @@
-
 use mxr_protocol::{RecordData, RecordExportData, RecordMonthData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;

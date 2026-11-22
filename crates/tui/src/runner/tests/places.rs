@@ -1,4 +1,3 @@
-
 use super::*;
 use mxr_protocol::{
     KindRuleData, MailKindData, MailPlaceData, PlaceBundleData, PlaceMessageData, SenderKindData,

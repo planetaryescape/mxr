@@ -101,7 +101,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     }
     widths.extend([
         Constraint::Length(sender_width),
-        Constraint::Fill(1),
+        Constraint::Fill(1), // subject (+ snippet preview)
     ]);
     if chip_width > 0 {
         widths.push(Constraint::Length(chip_width));

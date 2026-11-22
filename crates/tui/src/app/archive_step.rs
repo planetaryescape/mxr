@@ -1,4 +1,3 @@
-
 use super::*;
 
 pub(super) fn archive_request_ids(request: &Request) -> Option<&[MessageId]> {

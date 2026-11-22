@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::{ComposeAction, MessagesFocus};
 use crate::runner::list_messages_request;

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::ui::now_lens::tests::{page, populated};
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, SenderKindData};

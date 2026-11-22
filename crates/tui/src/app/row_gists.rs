@@ -1,4 +1,3 @@
-
 use super::{App, MailboxView};
 use mxr_core::id::ThreadId;
 use mxr_core::types::LabelKind;

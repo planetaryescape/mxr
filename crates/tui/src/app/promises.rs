@@ -1,4 +1,3 @@
-
 use super::{App, MutationEffect};
 use crate::app::{Toast, ToastSeverity};
 use mxr_core::MessageId;

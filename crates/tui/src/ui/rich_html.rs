@@ -1,4 +1,3 @@
-
 use html2text::render::{RichAnnotation, TaggedLine};
 use mxr_html_worker::{AnyJob, Job};
 use serde::{Deserialize, Serialize};

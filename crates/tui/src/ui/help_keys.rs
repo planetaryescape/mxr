@@ -1,4 +1,3 @@
-
 use crate::action::UiContext;
 use crate::keybindings::{parse_key_string, KeybindingConfig, ViewContext};
 use crate::keymap_names::action_named;

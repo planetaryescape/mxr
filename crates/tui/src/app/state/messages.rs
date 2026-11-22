@@ -1,4 +1,3 @@
-
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     AckPlanData, MessagesData, MessagesFilterData, MessagesRowData, ModeGuideData, PersonPageData,

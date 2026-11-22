@@ -1,4 +1,3 @@
-
 use chrono::{DateTime, Utc};
 use mxr_protocol::{
     UpdateLineData, UpdateSectionData, UpdatesDigestData, UpdatesLetGoData, UPDATES_GUIDE,

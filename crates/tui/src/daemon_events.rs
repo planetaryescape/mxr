@@ -192,6 +192,8 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                         "unparseable correlation id on reconciliation failure; forcing refresh"
                     );
                     app.push_toast(Toast::error(format!("Mutation failed: {error_summary}")));
+                    // Same full-resync idiom as the EventsLagged arm below: we can't
+                    // roll back a specific optimistic change, so refetch everything.
                     app.mailbox.pending_labels_refresh = true;
                     app.mailbox.pending_all_envelopes_refresh = true;
                     app.mailbox.pending_subscriptions_refresh = true;

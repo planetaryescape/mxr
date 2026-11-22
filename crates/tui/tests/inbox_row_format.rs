@@ -1,4 +1,3 @@
-
 use chrono::{Duration, TimeZone, Utc};
 use mxr_core::types::Address;
 use mxr_tui::ui::mail_list::{

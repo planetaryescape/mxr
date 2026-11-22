@@ -1,4 +1,3 @@
-
 use crate::app::MutationId;
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;

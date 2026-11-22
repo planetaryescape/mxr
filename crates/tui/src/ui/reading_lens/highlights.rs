@@ -1,4 +1,3 @@
-
 use crate::app::{HighlightStep, ReadingPageState};
 use crate::ui::sanitize::{one_line, truncate};
 use ratatui::prelude::*;

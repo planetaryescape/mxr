@@ -1965,7 +1965,6 @@ fn deliveries_esc_closes_inline_preview() {
     assert!(app.mailbox.viewing_envelope.is_none());
 }
 
-
 fn pending_session() -> mxr_protocol::AuthSessionData {
     mxr_protocol::AuthSessionData {
         session_id: mxr_protocol::AuthSessionId("test-session".into()),

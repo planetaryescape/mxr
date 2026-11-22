@@ -1,4 +1,3 @@
-
 use super::centered_rect;
 use crate::app::{snooze_presets, NotNowTarget, SnoozePanelState, SnoozePreset};
 use mxr_config::SnoozeConfig;

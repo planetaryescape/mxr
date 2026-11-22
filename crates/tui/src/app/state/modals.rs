@@ -33,6 +33,8 @@ pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NotNowTarget {
+    /// An email in a mail list, the reader or Now: Later is the untimed
+    /// reply later; a time snoozes it.
     Mail { message_id: MessageId },
     Conversation {
         thread_id: ThreadId,
@@ -46,6 +48,7 @@ pub enum NotNowTarget {
         link: bool,
         domain: Option<String>,
     },
+    /// A to-do: a time schedules it. A to-do has no untimed later.
     Todo { todo_id: String },
 }
 

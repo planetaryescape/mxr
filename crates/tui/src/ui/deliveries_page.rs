@@ -1,4 +1,3 @@
-
 use crate::app::DeliveriesState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;

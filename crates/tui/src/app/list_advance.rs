@@ -1,4 +1,3 @@
-
 /// The row to select after `removed` left the list. `before` is the list
 /// as it was, in display order; `still_there` says whether a row is in the
 /// list now. `None` when `removed` wasn't in `before` or nothing near it is

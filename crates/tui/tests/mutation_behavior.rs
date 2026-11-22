@@ -1,4 +1,3 @@
-
 #![expect(
     clippy::panic,
     reason = "integration tests panic when an observable action produces the wrong variant"

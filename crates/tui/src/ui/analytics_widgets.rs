@@ -1,4 +1,3 @@
-
 use crate::theme::Theme;
 use ratatui::layout::{Alignment, Direction, Rect};
 use ratatui::prelude::*;

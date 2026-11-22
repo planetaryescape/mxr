@@ -1,4 +1,3 @@
-
 use mxr_core::id::ThreadId;
 use mxr_protocol::{
     ArrivalsData, ModeGuideData, NotSureData, NowData, NowPersonData, NowReadingPickData,

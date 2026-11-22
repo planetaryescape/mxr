@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::ReplyLaterPromptState;
 use mxr_core::id::ThreadId;

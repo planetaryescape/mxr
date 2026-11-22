@@ -153,12 +153,6 @@ fn with_move(app: &mut App, id: &str, key: &str, contexts: &[&str], until: &str)
         .set_keymap(keymap.live_at(mxr_keymap::VERSION));
 }
 
-
-
-
-
-
-
 mod accounts_and_delivery;
 mod assistant;
 mod back_and_quit;

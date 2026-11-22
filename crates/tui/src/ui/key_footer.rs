@@ -1,4 +1,3 @@
-
 use crate::ui::sanitize::truncate;
 
 pub(crate) struct FooterKey {

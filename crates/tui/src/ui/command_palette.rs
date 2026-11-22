@@ -1,4 +1,3 @@
-
 use crate::action::{action_allowed_in_context, Action, UiContext};
 use crate::keybindings::{KeybindingConfig, ViewContext};
 use crate::keymap_names::action_named;

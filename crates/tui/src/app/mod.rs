@@ -209,12 +209,16 @@ const UNDO_HINT_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UndoAction {
+    /// Daemon mutations by id: usually one; a batch job (a sweep) leaves
+    /// one per chunk, all undone together.
     Mutations(Vec<String>),
     SenderKind {
         account_id: mxr_core::AccountId,
         sender_email: String,
         previous: Option<mxr_protocol::SenderKindData>,
     },
+    /// To-dos ticked off or dismissed: put them back on the runway
+    /// (`SetTodoState` undo).
     Todos(Vec<String>),
     TodoCorrection {
         todo_id: String,
@@ -224,15 +228,22 @@ pub enum UndoAction {
         todo_id: String,
         suggestion_id: String,
     },
+    /// Catch-up rows kept or let go: back in the batch, undecided.
     Catchup(Vec<String>),
+    /// An Archive change, reversed as the daemon's `RecordUndoData` says:
+    /// restore or dismiss records, or drop the fields you set.
     Records(mxr_protocol::RecordUndoData),
     UpdateSource {
         account_id: mxr_core::AccountId,
         source_key: String,
         prior: mxr_protocol::UpdateSourceSettingData,
     },
+    /// A pin on an Updates line: restore exactly the previous value.
     UpdatesPin { message_id: MessageId, pinned: bool },
+    /// A move of an email or a sender (`MoveMessage`): put back exactly
+    /// as it was (`UndoMove`).
     Move(i64),
+    /// A local category membership change; the daemon checks pair revisions.
     CategoryMembership(String),
 }
 

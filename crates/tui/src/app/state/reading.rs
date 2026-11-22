@@ -1,4 +1,3 @@
-
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
     ModeDoneOutcomeData, ModeGuideData, ReadingEditionData, ReadingItemData, ReadingItemDetailData,

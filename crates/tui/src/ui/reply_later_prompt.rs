@@ -1,4 +1,3 @@
-
 use super::centered_rect;
 use crate::app::ReplyLaterPromptState;
 use ratatui::prelude::*;

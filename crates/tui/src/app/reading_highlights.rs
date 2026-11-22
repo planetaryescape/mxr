@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::{HighlightStep, HighlightsPanel};
 use mxr_protocol::ReadingHighlightData;

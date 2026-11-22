@@ -1,4 +1,3 @@
-
 use mxr_tui::action::{Action, UiContext};
 use mxr_tui::app::{App, Screen};
 use mxr_tui::ui::command_palette::{CommandPalette, PaletteCommand};

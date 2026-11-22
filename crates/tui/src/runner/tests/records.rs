@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::RECORD_KIND_CHIPS;
 use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, octopus_list, page};

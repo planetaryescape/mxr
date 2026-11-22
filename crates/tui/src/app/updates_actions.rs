@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::state::{UpdatesRow, UpdatesTuneMenu};
 use mxr_protocol::{UpdateLineData, UpdateSignalData, UpdateSourceSettingData, UpdatesDigestData};

@@ -1,4 +1,3 @@
-
 use crate::theme::Theme;
 use crate::ui::help_keys::KeyRows;
 use ratatui::prelude::*;

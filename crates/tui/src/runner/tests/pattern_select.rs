@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::app::bulk_preview::request_message_ids;
 use crate::app::SearchPane;
@@ -58,7 +57,6 @@ fn pending_preview_ids(app: &App) -> Vec<MessageId> {
         .map(|row| row.message_id.clone())
         .collect()
 }
-
 
 #[test]
 fn pattern_keys_select_by_read_state_and_clear() {

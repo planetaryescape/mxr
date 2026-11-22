@@ -1,4 +1,3 @@
-
 use mxr_protocol::{
     ReadingBandData, ReadingItemData, ReadingParagraphData, ReadingUnsubscribeData,
 };

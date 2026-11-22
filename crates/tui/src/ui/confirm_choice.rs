@@ -1,4 +1,3 @@
-
 use crate::app::ConfirmChoice;
 use ratatui::prelude::*;
 

@@ -1,4 +1,3 @@
-
 use mxr_protocol::{RecordSubscriptionData, RecordSubscriptionsData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;

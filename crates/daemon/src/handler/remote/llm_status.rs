@@ -1,4 +1,3 @@
-//! Keep host configuration private when reporting model availability to remote clients.
 pub(super) fn project(
     snapshot: &mut mxr_protocol::LlmStatusSnapshot,
     allow_ai: bool,

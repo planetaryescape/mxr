@@ -255,6 +255,7 @@ fn apply_default_toggle(
     if requested && effective_default != Some(key) {
         config.general.default_account = Some(key.to_string());
     } else if effective_default.is_none() {
+        // No default anywhere: the first account saved becomes it.
         config.general.default_account = Some(key.to_string());
     }
 }

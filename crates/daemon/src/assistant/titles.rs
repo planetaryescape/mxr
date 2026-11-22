@@ -1486,4 +1486,24 @@ mod tests {
         assert_eq!(title.running, "Using an unknown tool");
         assert!(!title.done.contains("Approve"), "{}", title.done);
     }
+
+    #[test]
+    fn send_recovery_titles_never_claim_that_the_message_was_sent() {
+        let tool = "mxr_recover_send_outcome";
+        assert_eq!(
+            titles(tool, &json!({"dry_run": true}), State::Done).done,
+            "Checked send recovery evidence"
+        );
+        for outcome in ["waiting", "unknown", "accepted"] {
+            let result = json!({"outcome": {"state": outcome}}).to_string();
+            let title = step_title(
+                tool,
+                &json!({"dry_run": false}),
+                State::Done,
+                Context::default(),
+                Some(&result),
+            );
+            assert_eq!(title.done, "Ran: resume the original approved send");
+        }
+    }
 }

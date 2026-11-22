@@ -559,4 +559,21 @@ mod tests {
         assert_eq!(n, 0, "a decision citing the trashed message was stored");
         assert_eq!(*stub.calls.lock().unwrap(), 1, "the live messages still go");
     }
+
+    #[tokio::test]
+    async fn rebuild_does_not_send_trashed_threads_to_the_model() {
+        let (state, account, _, ids, stub) = fixture(r#"{"decisions":[]}"#).await;
+        for id in &ids {
+            state
+                .store
+                .move_to_trash(id, mxr_core::types::EventSource::User)
+                .await
+                .unwrap();
+        }
+
+        let summary = rebuild(&state, &account, 365).await.unwrap();
+
+        assert_eq!(summary.extracted + summary.skipped + summary.errors, 0);
+        assert_eq!(*stub.calls.lock().unwrap(), 0);
+    }
 }

@@ -92,6 +92,24 @@ mod tests {
         ));
         assert_eq!(fake.calls(), ["show"]);
     }
+
+    #[tokio::test]
+    async fn old_schema_and_oversized_responses_are_refused_before_a_write() {
+        let fake = FakeCli::new();
+        for task in [
+            serde_json::json!({"schema_version": 1}),
+            serde_json::json!({"schema_version": 2, "title": "x".repeat(1_048_577)}),
+        ] {
+            fake.set_remote_json(&task);
+            assert!(matches!(
+                fake.cli()
+                    .apply("remote-task", &fake.fields(), &fake.fields())
+                    .await,
+                Err(CliError::BeforeWrite(error)) if matches!(*error, CliError::InvalidResponse)
+            ));
+        }
+        assert_eq!(fake.calls(), ["show", "show"]);
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

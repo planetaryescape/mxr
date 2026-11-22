@@ -1040,4 +1040,17 @@ mod tests {
         })
         .to_string()
     }
+
+    #[test]
+    fn a_local_token_cache_failure_keeps_the_grant_and_names_storage() {
+        let finding = classify_sync_error(
+            "work",
+            "Provider error: Local token cache write failed: Permission denied (os error 13)",
+        );
+
+        assert_eq!(finding.category, DoctorFindingCategory::Storage);
+        let advice = finding.remediation.join("\n");
+        assert!(advice.contains("keychain"), "{advice}");
+        assert!(!advice.contains("accounts add"), "{advice}");
+    }
 }

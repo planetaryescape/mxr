@@ -1537,4 +1537,10 @@ mod tests {
             assert!(json.contains("content_kind"));
         }
     }
+
+    #[test]
+    fn ping_produces_no_activity() {
+        assert!(ok_map(&Request::Ping).is_none());
+        assert!(ok_map(&Request::GetStatus).is_none());
+    }
 }

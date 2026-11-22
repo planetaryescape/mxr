@@ -233,8 +233,6 @@ fn search_preview_shift_o_opens_in_browser_and_o_folds_the_message() {
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::OpenInBrowser));
 
-    // `o` folds the message, as in the web reader (blueprint 35); folding
-    // names `O` for anyone who still reaches for `o` to open the original.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
     assert_eq!(action, Some(Action::ToggleMessage));
     app.apply(Action::ToggleMessage);
@@ -706,7 +704,6 @@ fn a_dated_promise_is_offered_and_y_keeps_it_as_a_reminder() {
     }
 }
 
-/// Put every prompt past its answer guard, as if it had been on screen a while.
 fn settle_prompts(app: &mut App) {
     for prompt in &mut app.promise_prompts {
         prompt.shown_at -= crate::app::PROMISE_ANSWER_GUARD * 2;
@@ -721,14 +718,11 @@ fn a_held_y_answers_one_promise_not_the_ones_behind_it() {
     app.offer_promises(MessageId::new(), dated_detection("share the notes"));
     settle_prompts(&mut app);
 
-    // Terminals with key-repeat reporting send Repeat events: ignored.
     let mut held = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
     app.handle_key(held);
     held.kind = crossterm::event::KeyEventKind::Repeat;
     app.handle_key(held);
     app.handle_key(held);
-    // Most terminals send a held key as fresh presses: the next prompt
-    // ignores answers until it has been on screen for a moment.
     app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
 
@@ -739,7 +733,6 @@ fn a_held_y_answers_one_promise_not_the_ones_behind_it() {
     );
     assert_eq!(app.promise_prompts.len(), 2);
 
-    // Once it has been seen, it answers.
     settle_prompts(&mut app);
     app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
     assert_eq!(app.pending_mutation_queue.len(), 2);
@@ -874,8 +867,6 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
     app.apply(action.unwrap());
     assert!(app.pending_draft_operation.is_none());
 
-    // Even if list state changes between preview and confirmation, commit must
-    // use the exact draft captured by the preview.
     app.modals.drafts.selected_index = 1;
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalConfirm));
@@ -903,7 +894,6 @@ fn the_draft_delete_confirm_opens_on_keep_so_a_bare_enter_deletes_nothing() {
     app.apply(action.unwrap());
     assert!(app.pending_draft_operation.is_none());
 
-    // j lights "Delete draft"; Enter then runs it.
     let mut app = open();
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)),
@@ -931,7 +921,6 @@ fn stored_drafts_cancel_a_scheduled_send_but_keep_the_draft() {
         .scheduled
         .insert(scheduled_id.clone(), send_at);
 
-    // `c` on a draft that isn't scheduled says so and queues nothing.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalPreviewCancelSchedule));
     app.apply(action.unwrap());
@@ -951,7 +940,6 @@ fn stored_drafts_cancel_a_scheduled_send_but_keep_the_draft() {
         Some(crate::app::StoredDraftOperation::CancelSchedule { ref draft, send_at: at })
             if draft.id == scheduled_id && at == send_at
     ));
-    // Cancelling the send never touches the drafts list.
     assert_eq!(app.modals.drafts.drafts.len(), 2);
 }
 
@@ -1255,8 +1243,6 @@ fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: Account
     }
 }
 
-/// Esc never destroys (blueprint 35): it goes back to the draft, and only
-/// the option that names the discard throws it away.
 #[test]
 fn escape_returns_to_the_draft_and_only_hash_discards_it() {
     let temp = std::env::temp_dir().join(format!(
@@ -1757,7 +1743,6 @@ fn confirming_bulk_archive_queues_mutation_and_clears_selection() {
 fn local_label_changes_update_open_message() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
-    // A label applies on the message's own account.
     app.mailbox.labels =
         crate::test_fixtures::test_system_labels(&app.mailbox.envelopes[0].account_id);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
@@ -1795,7 +1780,6 @@ fn snooze_action_opens_modal_then_queues_request() {
 
     app.apply(Action::Snooze);
     assert!(app.modals.snooze_panel.visible);
-    // Row 0 is Later (no time); the first time is under it.
     app.modals.snooze_panel.selected_index = 1;
 
     app.apply(Action::Snooze);
@@ -1920,10 +1904,6 @@ fn cached_html_only_body_resolves_ready_state() {
     ));
 }
 
-/// Regression: the Deliveries screen handler used to end in `_ => None`,
-/// swallowing every key except its own (j/k/r/d/D/g). That trapped the user
-/// — no tab switch, no quit, no command palette — which read as a hang.
-/// Global keys must fall through to the shared input handler.
 #[test]
 fn deliveries_screen_does_not_trap_global_navigation() {
     let mut app = App::new();
@@ -1937,7 +1917,6 @@ fn deliveries_screen_does_not_trap_global_navigation() {
     );
 }
 
-/// `o` on a delivery row queues opening its source thread in the mailbox.
 #[test]
 fn deliveries_o_opens_source_thread() {
     let mut app = App::new();
@@ -1973,7 +1952,6 @@ fn deliveries_o_opens_source_thread() {
     assert_eq!(app.pending_delivery_open, Some(thread_id));
 }
 
-/// Esc closes the inline preview and drops the loaded message.
 #[test]
 fn deliveries_esc_closes_inline_preview() {
     let mut app = App::new();
@@ -1987,9 +1965,7 @@ fn deliveries_esc_closes_inline_preview() {
     assert!(app.mailbox.viewing_envelope.is_none());
 }
 
-// ── auth-session poller resilience ──────────────────────────────────────────
 
-/// Helper to build a minimal AuthSessionData for poll testing.
 fn pending_session() -> mxr_protocol::AuthSessionData {
     mxr_protocol::AuthSessionData {
         session_id: mxr_protocol::AuthSessionId("test-session".into()),
@@ -2035,7 +2011,6 @@ fn fake_ipc_channel() -> (
     tokio::sync::mpsc::unbounded_channel()
 }
 
-/// Poller receives Err then Ok(terminal): AuthSession result still delivered.
 #[tokio::test(start_paused = true)]
 async fn auth_session_poller_retries_after_transient_error() {
     use crate::async_result::AsyncResult;
@@ -2044,7 +2019,6 @@ async fn auth_session_poller_retries_after_transient_error() {
     let (ipc_tx, mut ipc_rx) = fake_ipc_channel();
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
-    // Fake account config.
     let account = mxr_protocol::AccountConfigData {
         color: None,
         tag: None,
@@ -2057,29 +2031,24 @@ async fn auth_session_poller_retries_after_transient_error() {
         is_default: false,
     };
 
-    // Respond to StartAuthSession with a pending session.
     let start_resp = session_response(pending_session());
     tokio::spawn(async move {
-        // StartAuthSession
         let req = ipc_rx.recv().await.unwrap();
         let _ = req.reply.send(Ok(start_resp));
         tokio::time::advance(std::time::Duration::from_secs(2)).await;
 
-        // First GetAuthSession: transient error
         let req = ipc_rx.recv().await.unwrap();
         let _ = req
             .reply
             .send(Err(mxr_core::MxrError::Ipc("transient".into())));
         tokio::time::advance(std::time::Duration::from_secs(2)).await;
 
-        // Second GetAuthSession: success with terminal state
         let req = ipc_rx.recv().await.unwrap();
         let _ = req.reply.send(Ok(session_response(authorized_session())));
     });
 
     super::super::spawn_outlook_auth_session(&ipc_tx, result_tx, account, false).await;
 
-    // Collect results: should contain an AuthSession (not just an AccountOperation error).
     let mut got_auth_session = false;
     while let Ok(result) = result_rx.try_recv() {
         if matches!(result, AsyncResult::AuthSession(_)) {
@@ -2092,7 +2061,6 @@ async fn auth_session_poller_retries_after_transient_error() {
     );
 }
 
-/// Poller receives 5 consecutive errors: AccountOperation(Err) is delivered.
 #[tokio::test(start_paused = true)]
 async fn auth_session_poller_aborts_after_max_consecutive_failures() {
     use crate::async_result::AsyncResult;
@@ -2114,11 +2082,9 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
     };
 
     tokio::spawn(async move {
-        // StartAuthSession
         let req = ipc_rx.recv().await.unwrap();
         let _ = req.reply.send(Ok(session_response(pending_session())));
 
-        // 5 consecutive GetAuthSession errors
         for _ in 0..5u32 {
             tokio::time::advance(std::time::Duration::from_secs(2)).await;
             let req = ipc_rx.recv().await.unwrap();

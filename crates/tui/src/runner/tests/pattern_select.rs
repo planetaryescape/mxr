@@ -1,6 +1,3 @@
-//! Pattern select (`*a`, `*u`, ...), counted visual ranges (`V`, `3j`) and
-//! the bulk confirm preview. Keys go through `handle_key` and then `apply`,
-//! as the runner does.
 
 use super::*;
 use crate::app::bulk_preview::request_message_ids;
@@ -42,7 +39,6 @@ fn selected_ids(app: &App) -> HashSet<MessageId> {
     app.mailbox.selected_set.clone()
 }
 
-/// Ids in the order the list shows them, the order a preview must use.
 fn list_order(envelopes: &[Envelope], wanted: &HashSet<MessageId>) -> Vec<MessageId> {
     envelopes
         .iter()
@@ -63,7 +59,6 @@ fn pending_preview_ids(app: &App) -> Vec<MessageId> {
         .collect()
 }
 
-// Flags from make_test_envelopes: even indices are read, odd are unread.
 
 #[test]
 fn pattern_keys_select_by_read_state_and_clear() {
@@ -171,7 +166,6 @@ fn pattern_select_ends_an_open_visual_range() {
     press(&mut app, 'u');
     assert!(!app.mailbox.visual_mode);
 
-    // With the range still open, this j would have rewritten the pattern.
     press(&mut app, 'j');
     assert_eq!(selected_ids(&app).len(), 2);
 }
@@ -217,7 +211,6 @@ fn visual_count_is_dropped_by_escape_and_by_other_keys() {
     assert_eq!(app.mailbox.visual_count, None);
     assert_eq!(app.mailbox.selected_index, 0);
 
-    // A count + G is not rejected: the G runs and the count is gone.
     press(&mut app, '5');
     press(&mut app, 'G');
     assert_eq!(app.mailbox.visual_count, None);
@@ -288,7 +281,6 @@ fn changing_the_mailbox_filter_drops_the_selection() {
     press(&mut app, '*');
     press(&mut app, 'a');
 
-    // Submitting a mailbox filter narrows the list and bumps the filter session.
     app.apply(Action::OpenMailboxFilter);
     app.search.bar.query = "user".into();
     app.apply(Action::SubmitSearch);
@@ -371,8 +363,6 @@ fn confirm_queues_exactly_the_previewed_ids() {
     else {
         panic!("expected an archive request");
     };
-    // The request carries the selection set in its own order; what must match
-    // the preview is the set of messages.
     assert_eq!(message_ids.len(), previewed.len());
     assert_eq!(
         message_ids.into_iter().collect::<HashSet<_>>(),
@@ -459,7 +449,6 @@ fn preview_reports_ids_the_list_does_not_show() {
 
 #[test]
 fn preview_in_threads_mode_and_on_the_search_screen_matches_the_request() {
-    // Threads mode: a visual range over two rows expands to every member.
     let mut threaded = mail_list_app(3);
     let envelopes = threaded.mailbox.envelopes.clone();
     threaded.mailbox.envelopes[1].thread_id = threaded.mailbox.envelopes[0].thread_id.clone();
@@ -478,7 +467,6 @@ fn preview_in_threads_mode_and_on_the_search_screen_matches_the_request() {
     };
     assert_eq!(requested, wanted);
 
-    // Search screen: the preview reads the results, not the mailbox.
     let mut search = App::new();
     search.screen = Screen::Search;
     search.search.page.editing = false;
@@ -553,8 +541,6 @@ fn preview_modal_lists_rows_then_says_how_many_are_left() {
 
 #[test]
 fn default_star_chords_match_the_key_table() {
-    // The table feeds keys.toml and the help text; the handler does the work.
-    // They must name the same action, or a remap would not match its display.
     let table = crate::keybindings::default_keybindings();
     for letter in ['a', 'n', 'r', 'u', 's', 't'] {
         let sequence = [

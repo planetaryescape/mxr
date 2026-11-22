@@ -1,6 +1,3 @@
-//! Thread export in the TUI: Export Thread (from the palette) on a thread
-//! opens the picker, and each key step either moves on or does nothing. Only
-//! the last confirmed step queues a write or a copy.
 
 use super::*;
 use crate::app::{ExportDestination, ExportStage, PendingExport};
@@ -12,7 +9,6 @@ fn press(app: &mut App, code: KeyCode) {
     }
 }
 
-/// Export moved to the palette (blueprint 35); the palette runs this action.
 fn export(app: &mut App) {
     app.apply(Action::ExportThread);
 }
@@ -44,7 +40,6 @@ fn format_key_then_save_queues_the_chosen_format_at_the_prefilled_path() {
         app.modals.export.input,
         format!("~/mxr/exports/mxr-thread-{thread_id}.mbox")
     );
-    // Replace the prefilled path with a file in a scratch directory.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out.mbox");
     app.modals.export.input = path.display().to_string();

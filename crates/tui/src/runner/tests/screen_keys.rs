@@ -1,25 +1,15 @@
-//! The tool screens, Search, the calendar-invites lens and the assistant
-//! pane read keys in their own handlers. Their keys are listed in the key
-//! definition so help and the keybindings page can show them; this probe
-//! holds each list to what its handler does. A key the screen leaves to the
-//! shared input handler needs no entry.
 
 use super::*;
 use crate::action::{action_allowed_in_context, UiContext};
 use crate::app::{AccountFormMode, AnalyticsView, AssistantFocus, RulesPanel, StorageMode};
 use std::collections::BTreeMap;
 
-/// What a key a screen doesn't list does there.
 #[derive(Clone, Copy)]
 enum Unlisted {
-    /// The shared input handler's action, where the screen allows it.
     Shared,
-    /// Nothing: a text field or the assistant pane owns every key.
     Nothing,
 }
 
-/// A screen context, the state that shows it, the place whose moved keys
-/// it announces, and what its unlisted keys do.
 type ScreenProbe = (&'static str, fn(&mut App), &'static str, Unlisted);
 
 const SCREENS: &[ScreenProbe] = &[
@@ -106,7 +96,6 @@ const SCREENS: &[ScreenProbe] = &[
 
 fn rules(app: &mut App) {
     app.screen = Screen::Rules;
-    // The dry-run panel pages with PageUp and PageDown.
     app.rules.page.panel = RulesPanel::DryRun;
 }
 
@@ -123,7 +112,6 @@ fn accounts(app: &mut App) {
 fn accounts_form(app: &mut App) {
     accounts(app);
     app.accounts.page.form.visible = true;
-    // Gmail's form adds `r` to sign in again.
     app.accounts.page.form.mode = AccountFormMode::Gmail;
 }
 
@@ -134,13 +122,11 @@ fn diagnostics(app: &mut App) {
 fn analytics(app: &mut App, view: AnalyticsView) {
     app.screen = Screen::Analytics;
     app.analytics.view = view;
-    // Storage groups its breakdown with `b`.
     app.analytics.storage_mode = StorageMode::Breakdown;
 }
 
 fn deliveries(app: &mut App) {
     app.screen = Screen::Deliveries;
-    // The split preview adds Esc and the scroll keys.
     app.deliveries.preview_active = true;
 }
 
@@ -167,8 +153,6 @@ fn assistant(app: &mut App, focus: AssistantFocus) {
     app.assistant.focus = focus;
 }
 
-/// The definition's places for a screen: an analytics view has the
-/// analytics keys too, except Wrapped, which lists its own.
 fn places(screen: &str) -> Vec<&str> {
     match screen {
         "analytics-wrapped" => vec![screen],
@@ -177,7 +161,6 @@ fn places(screen: &str) -> Vec<&str> {
     }
 }
 
-/// Key → definition name for a screen; a view's own key wins.
 fn defined(screen: &str) -> BTreeMap<String, String> {
     let mut keys = BTreeMap::new();
     for place in places(screen) {
@@ -192,7 +175,6 @@ fn defined(screen: &str) -> BTreeMap<String, String> {
     keys
 }
 
-/// The probe's keys plus the ones only screens read.
 pub(super) fn screen_probe_keys() -> Vec<(KeyEvent, String)> {
     let mut keys = super::keymap::probe_keys();
     keys.push((
@@ -235,14 +217,10 @@ fn screen_keys_are_what_the_definition_says() {
                 Unlisted::Nothing => None,
             }
             .filter(|action| action_allowed_in_context(action, context))
-            // Invites retired n/N with the mailbox lists; an expired notice
-            // does not turn the raw legacy search defaults back into bindings.
             .filter(|action| {
                 *screen != "invites"
                     || !matches!(action, Action::NextSearchResult | Action::PrevSearchResult)
             });
-            // Handlers that ignore Ctrl or Alt make `Ctrl+o` an echo of `o`,
-            // and `q` below the root does what `Esc` does there.
             let echo = (event
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
@@ -265,7 +243,6 @@ fn screen_keys_are_what_the_definition_says() {
                     }
                 }
                 None if echo || keymap.moved_from(moved_place, name).is_some() => {}
-                // A text field or the pane may leave a key unanswered.
                 None if matches!(unlisted, Unlisted::Nothing) && got.is_none() => {}
                 None if got != unlisted_does => {
                     wrong.push(format!(
@@ -279,10 +256,7 @@ fn screen_keys_are_what_the_definition_says() {
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-/// Screens the probe leaves out, and why. Every other place outside the
-/// mail contexts with keys of its own must be in `SCREENS`.
 const NOT_PROBED: &[&str] = &[
-    // Dispatched from the definition itself (`compose_assist.rs`).
     "compose-assist-proof",
 ];
 

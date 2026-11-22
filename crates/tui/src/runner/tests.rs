@@ -103,8 +103,6 @@ fn exit_status(code: i32) -> std::process::ExitStatus {
     std::process::ExitStatus::from_raw(code)
 }
 
-/// Helper for the dormant test: replicates the dormant logic
-/// in mail_list_title without going through the title formatter.
 fn row_to_dormant(row: &crate::app::MailListRow, days: i64) -> Option<String> {
     if row.message_count < 3 || days < 30 {
         return None;
@@ -115,9 +113,6 @@ fn make_test_labels() -> Vec<Label> {
     crate::test_fixtures::test_system_labels(&AccountId::new())
 }
 
-/// Put `app` into an Inbox-active state so optimistic mutation effects
-/// (which only fire when the active label matches the labels the
-/// mutation removes) take effect during tests.
 fn set_active_inbox(app: &mut App) {
     app.mailbox.labels = make_test_labels();
     app.mailbox.active_label = app
@@ -128,10 +123,6 @@ fn set_active_inbox(app: &mut App) {
         .map(|label| label.id.clone());
 }
 
-/// The status line after pressing a moved key in `place`: its notice while
-/// the definition still announces the move, and the line as it was
-/// `before` once the move's `until` release is reached (blueprint 35,
-/// D171). Either way the key runs nothing.
 fn notice_while_announced<'a>(
     place: &str,
     keys: &str,
@@ -144,8 +135,6 @@ fn notice_while_announced<'a>(
     }
 }
 
-/// `app` announcing `id`'s old `key` in `contexts` until `until`, whatever
-/// this release's definition still announces.
 fn with_move(app: &mut App, id: &str, key: &str, contexts: &[&str], until: &str) {
     let mut keymap = app.keybindings.keymap().clone();
     let action = keymap
@@ -164,17 +153,11 @@ fn with_move(app: &mut App, id: &str, key: &str, contexts: &[&str], until: &str)
         .set_keymap(keymap.live_at(mxr_keymap::VERSION));
 }
 
-// --- Navigation tests ---
 
-// --- Back navigation tests ---
 
-// --- Sidebar tests ---
 
-// --- GoTo navigation tests ---
 
-// --- Mutation effect tests ---
 
-// --- Mail list title tests ---
 
 mod accounts_and_delivery;
 mod assistant;

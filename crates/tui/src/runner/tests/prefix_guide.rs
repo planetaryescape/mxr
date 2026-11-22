@@ -1,6 +1,3 @@
-//! The prefix guide (blueprint 35, K4): a pause after a prefix lists the
-//! keys that can follow, from the key definition, and typing faster than
-//! that never shows it.
 
 use super::*;
 use crate::input::PREFIX_GUIDE_DELAY;
@@ -34,12 +31,10 @@ fn mailbox(view: MailboxView) -> App {
     app.screen = Screen::Mailbox;
     app.mailbox.mailbox_view = view;
     app.mailbox.active_pane = ActivePane::MailList;
-    // Prefix timing runs on a clock the test moves, never the wall clock.
     app.freeze_input_clock_for_tests();
     app
 }
 
-/// The guide's row for `key`, if it lists one: the key, then its label.
 fn lists(shown: &str, key: &str, label: &str) -> bool {
     shown
         .lines()
@@ -70,7 +65,6 @@ fn holding_g_for_300ms_lists_the_places() {
                 "{view:?} lacks g {key}:\n{shown}"
             );
         }
-        // Still waiting: the guide teaches, it doesn't cancel.
         assert_eq!(press(&mut app, 'i'), Some(Action::GoToInbox), "{view:?}");
         assert!(!screen(&mut app).contains("g then…"), "{view:?}");
     }
@@ -163,9 +157,6 @@ fn g_still_waits_four_seconds() {
     assert!(!app.input_pending());
 }
 
-/// Dogfood 2026-10-29: with four saved searches the guide listed `g 1` to
-/// `g 9` as "Saved search 1" to "Saved search 9", five of them dead. It
-/// names the saved searches there are, and only those.
 #[test]
 fn the_g_guide_names_the_saved_searches_and_leaves_out_empty_digits() {
     let mut app = mailbox(MailboxView::Messages);

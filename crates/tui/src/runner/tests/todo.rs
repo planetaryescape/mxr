@@ -1,6 +1,3 @@
-//! To do in the TUI: `g x` opens the runway and its guide, the row's verbs
-//! become the daemon requests they name, hints show in the status line at
-//! their row, and `t` makes a to-do from a conversation.
 
 use super::*;
 use crate::app::TodoPanel;
@@ -26,7 +23,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// To do open on a runway of the bill and one undated row.
 fn todo_app(hints_seen: bool) -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -111,7 +107,6 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
     ));
     press(&mut app, KeyCode::Char('3'));
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Expired);
-    // The same task can appear on another panel while a request is in flight.
     app.mailbox.todo_page.expired = vec![council_tax()];
     let fields = mxr_protocol::MicrosoftTodoFieldsData {
         title: "Pay changed title".into(),
@@ -170,7 +165,6 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
     let visible = render_review(&app, 16);
     assert!(visible.contains("Review pending changes"));
     assert!(visible.contains("After sync: Pay changed title"));
-    // Enter syncs once the preview is on screen (S until K3).
     press(&mut app, KeyCode::Enter);
     assert!(
         matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SyncMicrosoftTodos { todo_id: Some(actual), dry_run: false, .. }) if actual == id)
@@ -208,7 +202,6 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             ..
         })
     ));
-    // No second request may escape while the preview is still loading.
     app.apply(Action::TodoSendToMicrosoft);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     let id = app.selected_todo().unwrap().id.clone();
@@ -226,7 +219,6 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             summary: "Shared fields sync both ways".into(),
         },
     });
-    // Enter before the review has actually been rendered cannot commit.
     press(&mut app, KeyCode::Enter);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     mxr_test_support::render_to_string(20, 5, |frame| {
@@ -375,8 +367,6 @@ fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
         status: "pending".into(),
     });
     app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
-    // `,` corrects what mxr read: a waiting resolution is reviewed first
-    // (`v` until K3, blueprint 35).
     press(&mut app, KeyCode::Char(','));
     assert!(app.mailbox.todo_page.pending_resolution.is_some());
     assert!(app.mailbox.todo_page.prompt.is_none());
@@ -610,7 +600,6 @@ fn e_ticks_off_at_once_and_u_puts_it_back() {
         .iter()
         .any(|toast| toast.text == "Ticked off 1 to-do"));
 
-    // The daemon's answer offers undo; `u` sends it.
     app.set_pending_undo(crate::app::PendingUndo {
         action: crate::app::UndoAction::Todos(vec!["todo_1".into()]),
         verb_past: "Ticked off".into(),
@@ -677,7 +666,6 @@ fn x_chooses_a_durable_correction_before_changing_the_row() {
     press_shifted(&mut app, 'X');
     assert!(queued(&app).is_empty());
     assert!(app.mailbox.todo_page.prompt.is_some());
-    // A reason's digit picks it at once, as in any picker (blueprint 35).
     press(&mut app, KeyCode::Char('2'));
     assert!(matches!(
         queued(&app).as_slice(),
@@ -777,7 +765,6 @@ fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
             todo_id: "todo_1".into()
         })
     );
-    // A to-do has no untimed Later, so 1 is the first preset.
     let first = crate::app::resolve_snooze_preset(
         crate::app::snooze_presets()[0],
         &app.modals.snooze_config,
@@ -795,8 +782,6 @@ fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
 fn not_now_schedules_a_typed_time_as_previewed() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char('b'));
-    // The last row types a time. The presets offered depend on the hour:
-    // Tonight leaves once the evening has passed.
     for _ in 1..crate::ui::snooze_modal::rows_count(&app.modals.snooze_panel) {
         press(&mut app, KeyCode::Char('j'));
     }
@@ -812,9 +797,6 @@ fn not_now_schedules_a_typed_time_as_previewed() {
     ));
 }
 
-/// Dogfood 2026-10-29: `m` opened "Might need you" without being in the
-/// definition, borrowing the mail verb Mark read and archive. The review is
-/// in the palette now, and `m` says so.
 #[test]
 fn might_need_you_opens_from_the_palette_and_m_says_where_it_went() {
     let mut app = todo_app(true);
@@ -1005,8 +987,6 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
 }
 
-/// To do's tabs are `1` `2` `3` from any of them; the old `C` and `E`
-/// say where they went and switch nothing.
 #[test]
 fn the_digits_pick_to_dos_tabs_and_the_old_letters_say_so() {
     let mut app = todo_app(true);
@@ -1098,8 +1078,6 @@ fn enter_opens_the_source_message_with_its_link_to_mark() {
     assert_eq!(Some(open.message_id), bill.source_message_id);
     assert_eq!(open.link.as_deref(), Some("https://www.camden.gov.uk/pay"));
 
-    // Once the envelope lands, that message (not the newest) is the one shown,
-    // and its link is the one marked.
     let thread = mxr_core::id::ThreadId::new();
     let mut source = crate::test_fixtures::TestEnvelopeBuilder::new()
         .subject("Your council tax bill")
@@ -1426,7 +1404,6 @@ fn space_peeks_under_the_lit_to_do_with_its_email_and_esc_closes_it_first() {
         "{shown}"
     );
 
-    // Space again closes it; Esc closes an open one before the hint.
     press(&mut app, KeyCode::Char(' '));
     assert_eq!(app.mailbox.todo_page.peek, None);
     press(&mut app, KeyCode::Char(' '));

@@ -1,6 +1,3 @@
-//! Snoozed in the TUI (`g n`): the daemon's snoozed mail as a mail list,
-//! waking soonest first, where the list's keys work and `w` wakes the lit
-//! conversation now. `w` in the reply queue takes the lit message out of it.
 
 use super::*;
 use chrono::{Duration, Utc};
@@ -40,13 +37,10 @@ fn queued(app: &App) -> Vec<Request> {
 
 struct Snoozed {
     app: App,
-    /// Two messages of one conversation, waking in two and in five days.
     thread: Vec<Envelope>,
-    /// One message waking tomorrow, so it lists first.
     soonest: Envelope,
 }
 
-/// `g n` from the inbox, answered with three snoozed messages.
 fn snoozed_app() -> Snoozed {
     let mut app = App::new();
     app.screen = Screen::Mailbox;
@@ -170,7 +164,6 @@ fn the_lists_mail_keys_act_on_the_lit_snoozed_conversation() {
     } = snoozed_app();
     app.mailbox.selected_index = 1;
     press(&mut app, 'e');
-    // Two messages, so the list's usual preview comes first.
     let confirm = app
         .modals
         .pending_bulk_confirm
@@ -233,16 +226,11 @@ fn w_in_the_reply_queue_takes_the_lit_message_out_of_it() {
         .contains(&messages[1].id));
 }
 
-/// Dogfood 2026-10-29: at 18:32 the Not now picker still offered "2 Tonight
-/// (18:00)", which snoozes to tomorrow evening. Once the evening hour has
-/// passed Tonight leaves, as it does in the web app, and the digits number
-/// what is shown.
 #[test]
 fn not_now_leaves_out_tonight_once_the_evening_has_passed() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // Midnight: the evening of today is always past.
     app.modals.snooze_config.evening_hour = 0;
     app.apply(Action::Snooze);
     let rows = crate::ui::snooze_modal::rows_of(&app.modals.snooze_panel);
@@ -264,7 +252,6 @@ fn not_now_leaves_out_tonight_once_the_evening_has_passed() {
         [Request::Snooze { wake_at, .. }] if *wake_at == weekend
     ));
 
-    // With the evening still ahead, Tonight is offered.
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(1);
     app.modals.snooze_config.evening_hour = 23;

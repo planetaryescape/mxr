@@ -1,7 +1,3 @@
-//! Updates in the TUI: `g u` opens the briefing, `A` lets go of the digest
-//! only after the daemon's preview and commits that selection, `e` lets go
-//! of one source, `t` hands a line to To do, `K` tunes a source with undo,
-//! and trackers can't be let go of or tuned.
 
 use super::*;
 use crate::app::UpdatesRow;
@@ -25,7 +21,6 @@ fn queued(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// Updates open on a populated digest, its card already seen.
 fn updates_app() -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
@@ -201,7 +196,6 @@ fn shift_p_tunes_a_source_and_u_sets_it_back() {
     };
     assert_eq!(source, "vercel");
 
-    // The daemon answered with the prior setting: `u` puts it back.
     app.pending_mutation_queue.clear();
     app.pending_undo = Some(crate::app::PendingUndo {
         action: crate::app::UndoAction::UpdateSource {
@@ -268,7 +262,6 @@ fn s_pins_only_the_latest_email_and_u_restores_its_prior_value() {
         Some(crate::app::MutationEffect::RefreshUpdates(_))
     ));
 
-    // A no-op still refreshes the digest, but leaves an older Undo intact.
     let existing = crate::app::PendingUndo {
         action: crate::app::UndoAction::Mutations(vec!["earlier".into()]),
         verb_past: "Archived".into(),
@@ -347,7 +340,6 @@ fn the_sender_sweep_previews_an_account_sender_and_cancel_or_apply_uses_that_pre
         UpdatesRow::Line(line) => (line.account_id.clone(), line.sender_email.clone()),
         _ => unreachable!(),
     };
-    // `S` swept until K3 (blueprint 35); the sweep is in the palette now.
     press(&mut app, KeyCode::Char('S'));
     assert!(app.mailbox.pending_sweep_preview.is_none());
     app.apply(Action::UpdatesSweep);
@@ -597,7 +589,6 @@ fn space_peeks_under_the_lit_line_with_its_email_and_closes_again() {
         "footers stay out: {shown}"
     );
 
-    // The peek stays with its line as the cursor moves, as on the web.
     press(&mut app, KeyCode::Char('j'));
     assert_eq!(
         app.mailbox.updates_page.peek.as_deref(),
@@ -624,8 +615,6 @@ fn esc_closes_an_open_peek_before_anything_else() {
     );
 }
 
-/// Dogfood 2026-10-29: `o` opened the email in a reader Updates never
-/// drew. It opens full width now, and Esc comes back to the line.
 #[test]
 fn o_opens_the_email_full_width_and_esc_comes_back() {
     let mut app = updates_app();

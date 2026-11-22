@@ -1,11 +1,3 @@
-//! The TUI keymap as the dispatcher sees it. Every key is pressed into a
-//! fresh `App` in each mail context and the action it returns is recorded
-//! in `docs/reference/tui-keymap.json`. `cargo test -p mxr-keymap` holds
-//! the key definition to that file and the clients to each other.
-//!
-//! Regenerate after changing a TUI key: `UPDATE_KEYMAP=1` on this test,
-//! then change the key in `crates/keymap/keymap.toml` to match;
-//! `cargo test -p mxr-keymap` fails until the two agree.
 
 use super::*;
 use crate::app::AccountFormMode;
@@ -13,7 +5,6 @@ use crate::keybindings::{action_from_name, default_keybindings, KeyBinding};
 use mxr_protocol::MailPlaceData;
 use std::collections::BTreeMap;
 
-/// Mail contexts shared with the web app's shortcut scopes.
 const CONTEXTS: &[&str] = &[
     "list",
     "reader",
@@ -32,16 +23,11 @@ const CONTEXTS: &[&str] = &[
     "focus",
 ];
 
-/// A key a pane handles in place (scrolling, moving focus) without
-/// returning an action, so the dispatcher probe cannot see it.
 struct InlineKey {
     context: &'static str,
     key: &'static str,
     name: &'static str,
-    /// State the key needs to have a visible effect (a thread to move
-    /// through, a scrolled body to scroll back).
     setup: fn(&mut App),
-    /// The state the key changes.
     observe: fn(&App) -> String,
 }
 
@@ -64,7 +50,6 @@ fn on_second_item(app: &mut App) {
     app.mailbox.sidebar_selected = 1;
 }
 
-/// The cursor below the More header, so `{` has a header to go back to.
 fn under_more(app: &mut App) {
     app.mailbox.sidebar_selected = 9;
 }
@@ -85,8 +70,6 @@ fn sidebar_cursor(app: &App) -> String {
     app.mailbox.sidebar_selected.to_string()
 }
 
-/// Every inline key, each probed through the state it changes
-/// (`inline_keys_change_what_they_say`), so removing a handler fails.
 const INLINE: &[InlineKey] = &[
     inline("reader", "j", "scroll_down", no_setup, scroll),
     inline("reader", "ArrowDown", "scroll_down", no_setup, scroll),
@@ -360,7 +343,6 @@ async fn configured_retired_prefixes_are_bounded() {
             mxr_protocol::CalendarInviteActionData::Tentative
         ))
     );
-    // `z z` retired: `z` is undo now, as in the web app, and waits for nothing.
     let mut defaults = app_in("list");
     assert_eq!(
         press_char(&mut defaults, 'z'),
@@ -443,7 +425,6 @@ fn assert_search_help_matches_dispatch(source: &str, archive_key: char) {
             "missing effective archive key in {pane:?}: {lines:?}"
         );
         if archive_key != 'e' {
-            // The label column, not the Move picker's "Move this email to Archive".
             let label = |line: &str| {
                 line.split("  ")
                     .map(str::trim)
@@ -559,8 +540,6 @@ fn configured_plain_a_unbind_preserves_unrelated_ctrl_a() {
 
 #[test]
 fn configured_modifier_specific_keys_preserve_plain_alt_and_control_defaults() {
-    // These navigation aliases intentionally ignore modifiers in the existing
-    // dispatcher. A different, explicit modified binding must not claim them.
     for (source, rebound, retired) in [
         (
             "[mail_list]\n\"Alt-j\" = \"reply_all\"\n",
@@ -721,8 +700,6 @@ fn configured_chord_beats_mail_keys_and_retires_old_chord() {
         "retired gi must not navigate"
     );
     assert_eq!(press_char(&mut app, ';'), Some(Action::GoToInbox));
-    // A default chord with the same prefix still works, including the
-    // dynamic saved-search chords not present in the display registry.
     assert_eq!(press_char(&mut app, 'g'), None);
     assert_eq!(press_char(&mut app, 's'), Some(Action::GoToStarred));
     assert_eq!(press_char(&mut app, 'g'), None);
@@ -854,7 +831,6 @@ fn configured_uppercase_modifiers_unbinds_and_context_changes_are_safe() {
     );
     assert_eq!(press_char(&mut app, 'w'), None);
     app.mailbox.active_pane = ActivePane::MessageView;
-    // q in the reader closes it (it sits below the root), not `w q`.
     assert_eq!(press_char(&mut app, 'q'), Some(Action::Back));
     assert_eq!(
         press_char(&mut app, ';'),
@@ -877,8 +853,6 @@ fn configured_help_render_and_palette_take_the_apps_effective_snapshot() {
         "reader",
         "[message_view]\n\";\" = \"archive\"\n[mail_list]\n\"w\" = \"archive\"\n",
     );
-    // Closing an already-open palette avoids reading archive recovery state
-    // from the developer's data directory, while exercising App's wiring.
     app.command_palette.palette.visible = true;
     app.apply(Action::OpenCommandPalette);
     app.command_palette
@@ -931,7 +905,6 @@ fn configured_actions_retire_unlisted_mail_aliases_without_stealing_navigation()
     );
 }
 
-/// A key and its name in the web app's chord grammar (`lib/keys/chord.ts`).
 pub(super) fn probe_keys() -> Vec<(KeyEvent, String)> {
     let mut keys = Vec::new();
     for c in '!'..='~' {
@@ -972,8 +945,6 @@ pub(super) fn probe_keys() -> Vec<(KeyEvent, String)> {
     keys
 }
 
-/// Press `sequence` into a fresh app in `context`. Returns the action, or
-/// `Err(())` when the last key left a chord waiting for more.
 fn press(context: &str, sequence: &[KeyEvent]) -> Result<Option<Action>, ()> {
     let mut app = app_in(context);
     let mut action = None;
@@ -990,10 +961,6 @@ fn action_name(action: &Action) -> String {
     format!("{action:?}")
 }
 
-/// Every key and chord in `context` that returns an action. Leaves out
-/// what is only an echo of another key: a pending chord that gives up and
-/// re-reads its second key (`g V` is just `V`), and handlers that ignore
-/// modifiers (`Ctrl+j` is just `j`).
 fn dispatched(context: &str) -> BTreeMap<String, String> {
     let keys = probe_keys();
     let singles: Vec<Result<Option<Action>, ()>> = keys
@@ -1018,8 +985,6 @@ fn dispatched(context: &str) -> BTreeMap<String, String> {
             }
             Ok(None) => {}
             Err(()) => {
-                // Chords end in a printable key; named and Ctrl keys only
-                // cancel the chord.
                 let printable = keys.iter().filter(|(key, _)| {
                     matches!(key.code, KeyCode::Char(c) if c != ' ')
                         && key.modifiers != KeyModifiers::CONTROL
@@ -1038,8 +1003,6 @@ fn dispatched(context: &str) -> BTreeMap<String, String> {
         }
     }
     if context == "sidebar" {
-        // Enter opens whichever item is selected, so its action depends on
-        // the sidebar's contents. Name the key, not today's first item.
         let open =
             alone(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)).map(|a| action_name(&a));
         for (key, action) in &mut map {
@@ -1087,7 +1050,6 @@ fn tui_keymap_json_matches_the_dispatcher() {
     );
 }
 
-/// The key events for a key name from the inventory, such as `g g`.
 fn events_for(name: &str) -> Vec<KeyEvent> {
     let keys = probe_keys();
     name.split(' ')
@@ -1130,8 +1092,6 @@ fn sequence_of(binding: &KeyBinding) -> Vec<KeyEvent> {
         .collect()
 }
 
-/// Help, the hint bar and the palette show the default binding tables;
-/// every key they show must do what they say.
 #[test]
 fn shown_bindings_do_what_help_says() {
     let config = default_keybindings();
@@ -1167,9 +1127,6 @@ fn shown_bindings_do_what_help_says() {
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-/// A prefix followed by a key that completes nothing is cancelled and says
-/// so (blueprint 35): a mistyped `g U` must not mark mail unread, in the
-/// mailbox or in a mode.
 #[test]
 fn a_dead_end_prefix_runs_nothing_and_names_the_keys() {
     for context in ["list", "reader", "todo"] {
@@ -1226,9 +1183,6 @@ fn mail_list_remaps_stay_out_of_the_modes() {
     assert_eq!(press_char(&mut app, ';'), None);
 }
 
-/// A key that moved in a recent release says where its action went and
-/// runs nothing (blueprint 35, D171), without breaking a sequence that
-/// starts with a prefix.
 #[test]
 fn a_moved_key_names_its_new_key_and_runs_nothing() {
     let todo = |until| {
@@ -1265,11 +1219,8 @@ fn a_moved_key_names_its_new_key_and_runs_nothing() {
     assert_eq!(press_char(&mut app, 'b'), Some(Action::Snooze));
 }
 
-/// From its `until` release on, a move is ignored: the old key shows
-/// nothing and still runs nothing (D171).
 #[test]
 fn an_expired_moved_key_does_nothing() {
-    // `Q` is free in To do and no shipped move names it.
     let mut app = app_in("todo");
     with_move(
         &mut app,
@@ -1284,19 +1235,15 @@ fn an_expired_moved_key_does_nothing() {
     assert_eq!(app.status_message, before, "no notice");
     assert!(!app.input_pending());
 
-    // A moved sequence holds its first key only while it is announced.
     for (until, waits) in [("999.0.0", true), ("0.0.1", false)] {
         let mut app = app_in("todo");
         with_move(&mut app, "todo.catchup", "y y", &["todo"], until);
         assert_eq!(press_char(&mut app, 'y'), None);
         assert_eq!(app.input_pending(), waits, "until {until}");
     }
-    // And the clients start from the definition as this release uses it.
     assert_eq!(app_in("list").keybindings.keymap(), mxr_keymap::defaults());
 }
 
-/// Blueprint 35's `g` table: tools take `g` and a capital, in the mailbox
-/// panes and in the modes alike.
 #[test]
 fn tools_open_with_g_and_a_capital_everywhere() {
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
@@ -1330,8 +1277,6 @@ fn press_of(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
 }
 
-/// Ctrl-k is the palette on the tool screens too, though their lists move
-/// with `k` whatever the modifiers; a form's text field keeps it.
 #[test]
 fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     let ctrl_k = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
@@ -1355,8 +1300,6 @@ fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
 }
 
-/// Enter on a sidebar section's header folds or unfolds it, and `{` / `}`
-/// jump between headers (blueprint 35).
 #[test]
 fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     let mut app = app_in("sidebar");
@@ -1382,9 +1325,6 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     );
 }
 
-/// D171: an action with a key run from the palette names its key, once per
-/// action and profile. The daemon keeps the seen state with the mode hints;
-/// a second run in this session asks it nothing.
 #[test]
 fn the_palette_names_a_keyed_actions_key_next_time() {
     let mut app = app_in("todo");
@@ -1428,7 +1368,6 @@ fn the_palette_names_a_keyed_actions_key_next_time() {
     app.offer_next_time(&catchup);
     assert_eq!(app.pending_mutation_queue.len(), before, "asked once");
 
-    // A palette-only action has no key to teach.
     let config = app
         .command_palette
         .palette
@@ -1467,10 +1406,6 @@ fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
     assert_eq!(app.mailbox.selected_index, 0);
 }
 
-/// `n` and `N` step through search results in the reader only. In the
-/// list, sidebar and place they run nothing, and while a move announces
-/// them they say where it went (D171). The move here is made up, so the
-/// test holds whichever moves this release still ships.
 #[test]
 fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
     for context in ["list", "sidebar", "place"] {
@@ -1528,7 +1463,6 @@ fn action_keys_from_keys_toml_apply_in_the_mail_panes_and_the_modes() {
     let mut app = remapped_app("todo", toml);
     assert_eq!(press_char(&mut app, '%'), Some(Action::TodoDone));
     assert_eq!(press_char(&mut app, 'e'), None);
-    // An action left to the palette loses its keys.
     let mut app = remapped_app("list", "[actions]\n\"mail.star\" = []\n");
     assert_eq!(press_char(&mut app, 's'), None);
     assert_eq!(press_char(&mut app, 'e'), Some(Action::Archive));
@@ -1596,8 +1530,6 @@ fn with_single_keys_off_the_account_form_types_letters_into_its_text_fields() {
     app.screen = Screen::Accounts;
     app.accounts.page.form.visible = true;
     app.accounts.page.form.mode = AccountFormMode::ImapSmtp;
-    // The name field, which is text. `s` saves and `r` reauthorises when
-    // single keys are on, so the word below also proves they stay text here.
     app.accounts.page.form.active_field = 2;
     for c in "shark".chars() {
         assert_eq!(press_char(&mut app, c), None, "{c} is text, not a command");
@@ -1619,9 +1551,6 @@ fn with_single_keys_off_a_tool_screen_ignores_its_letters() {
     );
 }
 
-/// Dogfood 2026-10-29: help's "How do I…" questions ran into their
-/// answers ("Repair an unhealthy accountgC → …") because the first column
-/// was 20 characters whatever it held.
 #[test]
 fn help_questions_never_run_into_their_answers() {
     let mut app = App::new();

@@ -10,7 +10,6 @@ fn sidebar_system_labels_in_correct_order() {
         .filter(|l| l.kind == LabelKind::System)
         .map(|l| l.name.as_str())
         .collect();
-    // INBOX should be first, then STARRED, SENT, etc.
     assert_eq!(system_names[0], "INBOX");
     assert_eq!(system_names[1], "STARRED");
     assert_eq!(system_names[2], "SENT");
@@ -24,12 +23,10 @@ fn sidebar_empty_system_labels_hidden_except_primary() {
     app.mailbox.labels = make_test_labels();
     let ordered = app.ordered_visible_labels();
     let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
-    // CHAT has 0 total, 0 unread — should be hidden
     assert!(
         !names.contains(&"CHAT"),
         "Empty non-primary system labels should be hidden"
     );
-    // DRAFT has 0 total but is primary — should be shown
     assert!(
         names.contains(&"DRAFT"),
         "Primary system labels shown even if empty"
@@ -38,7 +35,6 @@ fn sidebar_empty_system_labels_hidden_except_primary() {
         names.contains(&"ARCHIVE"),
         "Archive should be shown as a primary system label even if empty"
     );
-    // IMPORTANT has 5 total — should be shown (non-primary but non-empty)
     assert!(
         names.contains(&"IMPORTANT"),
         "Non-empty system labels should be shown"
@@ -303,7 +299,7 @@ fn clear_filter_restores_all_envelopes() {
         .id
         .clone();
     app.mailbox.active_label = Some(inbox_id);
-    app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()]; // Simulate filtered
+    app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()];
     app.mailbox.selected_index = 0;
     app.apply(Action::ClearFilter);
     assert!(app.mailbox.active_label.is_none());
@@ -338,15 +334,11 @@ fn archive_in_threads_mode_targets_every_message_in_thread() {
     envelopes[4].thread_id = shared_thread.clone();
     app.mailbox.envelopes = envelopes.clone();
     app.mailbox.all_envelopes = envelopes;
-    // Threads mode is the default; sanity-check it.
     assert_eq!(app.mailbox.mail_list_mode, MailListMode::Threads);
-    // Cursor is on the row representing the 3-message thread.
     app.mailbox.selected_index = 0;
 
     app.apply(Action::Archive);
 
-    // 3 targets triggers the bulk-confirm modal before the mutation
-    // is dispatched. Inspect the staged request there.
     let pending = app
         .modals
         .pending_bulk_confirm
@@ -397,8 +389,6 @@ fn archive_response_loss_keeps_the_row_without_a_fresh_identity_retry() {
 #[test]
 fn archive_outside_inbox_does_not_remove_optimistically() {
     let mut app = App::new();
-    // Active label = STARRED (not INBOX). Archive removes INBOX, so the
-    // message still belongs in the Starred view and should NOT vanish.
     app.mailbox.labels = make_test_labels();
     app.mailbox.active_label = app
         .mailbox
@@ -424,7 +414,6 @@ fn star_updates_flags_in_place() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(3);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // First envelope is READ (even index), not starred
     assert!(!app.mailbox.envelopes[0]
         .flags
         .contains(MessageFlags::STARRED));
@@ -595,11 +584,6 @@ fn invite_response_action_requires_calendar_metadata() {
     );
 }
 
-/// `Action::RespondInvite` no longer opens a modal — it arms
-/// `pending_invite_send` with a 1s hold window. The tick loop later
-/// drains it into `pending_mutation_queue`. Pressing `u` within the
-/// window cancels without ever talking to the daemon, so no email is
-/// sent on a mistaken keystroke.
 #[test]
 fn invite_response_action_arms_pending_send_with_undo_window() {
     let mut app = App::new();
@@ -661,8 +645,6 @@ fn invite_response_action_arms_pending_send_with_undo_window() {
         "the daemon RPC must not fire until the 1s window elapses"
     );
 
-    // Tick past the dispatch deadline and confirm the request drains
-    // into the mutation queue.
     let future = pending.dispatch_at + std::time::Duration::from_millis(1);
     app.tick_pending_invite_send(future);
 
@@ -682,8 +664,6 @@ fn invite_response_action_arms_pending_send_with_undo_window() {
     }
 }
 
-/// Pressing `u` while `pending_invite_send` is armed cancels the RSVP
-/// before any daemon RPC fires — no email goes out.
 #[test]
 fn invite_response_undo_within_window_prevents_send() {
     let mut app = App::new();
@@ -767,7 +747,6 @@ fn archive_viewing_message_effect() {
     set_active_inbox(&mut app);
     app.mailbox.envelopes = make_test_envelopes(3);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-    // Open first message
     app.apply(Action::OpenSelected);
     let viewing_id = app
         .mailbox
@@ -776,11 +755,8 @@ fn archive_viewing_message_effect() {
         .expect("open selected should populate viewing envelope")
         .id
         .clone();
-    // The pending_mutation_queue is empty — Archive wasn't pressed yet
-    // Press archive while viewing
     app.apply(Action::Archive);
     let effect = app.pending_mutation_queue.remove(0).effect;
-    // Verify the effect targets the viewing envelope
     match &effect {
         MutationEffect::RemoveFromList(id) => {
             assert_eq!(*id, viewing_id);
@@ -1073,8 +1049,6 @@ fn reopening_same_message_does_not_queue_duplicate_read_mutation() {
     assert_eq!(app.pending_mutation_queue.len(), 1);
 }
 
-/// Phase 4 hygiene: below the 80x20 minimum the renderer shows a
-/// placeholder instead of collapsing the full layout into slivers.
 #[test]
 fn tiny_terminal_renders_too_small_placeholder() {
     let mut app = App::new();
@@ -1085,7 +1059,6 @@ fn tiny_terminal_renders_too_small_placeholder() {
     );
     assert!(output.contains("80x20"));
 
-    // At or above the minimum, the normal layout renders.
     let output = mxr_test_support::render_to_string(80, 20, |frame| app.draw(frame));
     assert!(
         !output.contains("Terminal too small"),
@@ -1098,8 +1071,6 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
     use crate::async_result::StatusSnapshot;
 
     let mut app = App::new();
-    // A capped window of envelopes is already loaded — 5000 is the ceiling, so
-    // its length is a floor, not a total.
     app.mailbox.all_envelopes = make_test_envelopes(10);
 
     app.apply_status_snapshot(StatusSnapshot {
@@ -1117,8 +1088,6 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         "a degraded first snapshot must leave the total unknown, not fall back to the loaded window"
     );
 
-    // Once a real reading lands it is used, and a later degraded snapshot does
-    // not undo it.
     app.apply_status_snapshot(StatusSnapshot {
         uptime_secs: 6,
         daemon_pid: Some(42),
@@ -1146,7 +1115,6 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
     );
 }
 
-/// The demo names the system mailboxes `Inbox`, `Sent`, `Starred`.
 fn titlecase_labels() -> Vec<Label> {
     let mut labels = make_test_labels();
     for label in &mut labels {
@@ -1160,8 +1128,6 @@ fn titlecase_labels() -> Vec<Label> {
     labels
 }
 
-/// Dogfood 2026-10-29: on the demo `g i`, `g t`, `g d`, `g #` and `g !`
-/// did nothing, because the system label was `Inbox`, not `INBOX`.
 #[test]
 fn g_keys_find_system_mailboxes_whatever_their_case() {
     for (action, name) in [
@@ -1188,8 +1154,6 @@ fn g_keys_find_system_mailboxes_whatever_their_case() {
     }
 }
 
-/// Dogfood 2026-10-29: with no Starred label, `g s` listed starred mail
-/// under the title "All Mail".
 #[test]
 fn starred_by_flag_is_titled_starred() {
     let mut app = App::new();
@@ -1202,9 +1166,6 @@ fn starred_by_flag_is_titled_starred() {
     assert!(app.mail_list_title().starts_with("All Mail "));
 }
 
-/// Dogfood 2026-10-29: in Search's results at 160 columns the subject
-/// column was four characters ("Re:… +1"); a full-width sender column took
-/// the room. A narrow list gives the subject the width.
 #[test]
 fn search_results_keep_room_for_the_subject() {
     let mut app = App::new();

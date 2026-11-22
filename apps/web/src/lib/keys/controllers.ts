@@ -1,10 +1,3 @@
-/*
- * Scope controllers. A mounted view (mail list, reader, sidebar, screener)
- * registers the commands it can perform; registry actions bound to that
- * scope call them by name. This keeps every key in one table while the
- * behaviour stays with the view that owns the state.
- */
-
 import { useEffect, useRef } from "react";
 
 import type { ActionScope } from "@/lib/actions/types";
@@ -27,7 +20,6 @@ export function hasCommand(scope: ActionScope, command: string): boolean {
   return typeof controllers.get(scope)?.[command] === "function";
 }
 
-/** Run a command on a scope's controller. Returns false when unavailable. */
 export function runCommand(scope: ActionScope, command: string): boolean {
   const run = controllers.get(scope)?.[command];
   if (typeof run !== "function") return false;
@@ -35,11 +27,6 @@ export function runCommand(scope: ActionScope, command: string): boolean {
   return true;
 }
 
-/**
- * Register `controller` for `scope` while mounted. The latest controller
- * object is read at call time, so callers can pass a fresh object every
- * render without re-registering.
- */
 export function useScopeController(scope: ActionScope, controller: ScopeController): void {
   const ref = useRef(controller);
   ref.current = controller;

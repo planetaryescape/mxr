@@ -38,7 +38,6 @@ describe("overlay keys", () => {
     expect(pressedOverlayKey(press("n", { ctrlKey: true }), "overlay.filter-down", true)).toBe(
       true,
     );
-    // Ctrl+N is the browser's New Window off macOS.
     expect(pressedOverlayKey(press("n", { ctrlKey: true }), "overlay.filter-down", false)).toBe(
       false,
     );
@@ -53,8 +52,6 @@ describe("overlay keys", () => {
     expect(announceMovedOverlayKey(press("u"), "unsubscribe", true)).toBe(false);
   });
 
-  // A dialog reads each of its keys by id, so no key the definition gives a
-  // dialog can go unread, unless the browser or the dialog primitive gives it.
   test("every web overlay key the browser doesn't give is read by a dialog", () => {
     const src = join(__dirname, "../..");
     const files = (dir: string): string[] =>

@@ -56,7 +56,6 @@ const requireConnection: WorkboxPlugin = {
 };
 
 const privateReads: WorkboxPlugin = {
-  // Cache only the read URL, never its bearer-token request headers.
   cacheKeyWillBeUsed: async ({ request }) => request.url,
   handlerWillStart: async ({ state }) => {
     if (state) state.generation = cacheGeneration;
@@ -65,7 +64,6 @@ const privateReads: WorkboxPlugin = {
     if (isUnavailableResponse(response)) throw new Error("Mail host unavailable");
     if (response.status === 401 || response.status === 403) {
       await clearMail();
-      // A slow authority response may arrive after NetworkFirst used offline data.
       if (response.status === 401) {
         for (const client of await self.clients.matchAll({ type: "window" })) {
           // oxlint-disable-next-line unicorn/require-post-message-target-origin -- Service-worker Client.postMessage has no targetOrigin parameter.
@@ -87,7 +85,6 @@ const privateReads: WorkboxPlugin = {
     return state.generation === cacheGeneration ? response : null;
   },
   handlerDidComplete: async ({ state }) => {
-    // A read finishing after sign-out must not recreate the private cache.
     if (state && state.generation !== cacheGeneration) await caches.delete(OFFLINE_MAIL_CACHE);
   },
   cachedResponseWillBeUsed: async ({ cachedResponse, request }) => {
@@ -95,8 +92,6 @@ const privateReads: WorkboxPlugin = {
     const owner = request.headers.get("x-mxr-workspace");
     const cachedOwner = cachedResponse.headers.get("x-mxr-workspace");
     if (owner && cachedOwner && owner !== cachedOwner) {
-      // A different workspace is reading now. Drop every saved read rather
-      // than serve another owner's mail for URLs this request did not touch.
       await clearMail();
       return undefined;
     }
@@ -125,7 +120,6 @@ registerRoute(
   }),
 );
 
-// All other API reads stay online-only; an offline miss is a useful JSON error.
 registerRoute(
   ({ url }) =>
     url.origin === self.location.origin &&
@@ -147,9 +141,6 @@ for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
 }
 
 registerRoute(
-  // Do not keep old HTML per URL: after an update its hashed assets may be
-  // gone. Offline navigations fall through to the catch handler, which returns
-  // the current precached shell.
   new NavigationRoute(new NetworkOnly({ plugins: [requireConnection] }), {
     denylist: [/^\/api\//],
   }),

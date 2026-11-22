@@ -1,5 +1,3 @@
-/* Sender history panel: recent emails, volume, storage and timeline. */
-
 import { Paperclip, UserSearch } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

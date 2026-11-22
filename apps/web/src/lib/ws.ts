@@ -1,14 +1,3 @@
-/*
- * Reconnecting WebSocket client for the daemon event stream.
- *
- * - Auth via `Sec-WebSocket-Protocol: bearer, <token>` (browsers can't set
- *   custom headers on WS upgrades; the bridge accepts this subprotocol form).
- * - Exponential backoff with jitter, 250ms → 30s.
- * - Heartbeat ping every 25s.
- * - Reconnect triggers: online event, window focus, manual reconnect.
- * - Multi-subscriber: handlers fan out from a single connection.
- */
-
 import type { DaemonEvent, DaemonEventHandler } from "@/api/events";
 import { getBridgeWsUrl, getToken, onTokenChange } from "@/lib/tokenStorage";
 
@@ -31,12 +20,6 @@ type StatusListener = (status: ConnectionStatus) => void;
 const HEARTBEAT_MS = 25_000;
 const MIN_BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 30_000;
-/**
- * A socket that closes sooner than this counts as a failed attempt. The
- * bridge accepts the upgrade even when it can't reach the daemon, sends
- * one error frame and closes; resetting the backoff on open turned that
- * into a reconnect every 250ms.
- */
 const STABLE_CONNECTION_MS = 5_000;
 const PATH = "/api/v1/events";
 
@@ -129,9 +112,7 @@ class DaemonEventClient {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         try {
           this.socket.send(JSON.stringify({ type: "ping" }));
-        } catch {
-          // ignore; close handler will deal
-        }
+        } catch {}
       }
     }, HEARTBEAT_MS);
   };
@@ -141,7 +122,6 @@ class DaemonEventClient {
     const frame = parseFrame(ev.data);
     if (frame.kind === "ignore") return;
     if (frame.kind === "bridge-error") {
-      // The bridge couldn't reach the daemon; the close follows.
       this.setStatus({
         state: "reconnecting",
         errorMessage: frame.error,
@@ -172,9 +152,7 @@ class DaemonEventClient {
     this.scheduleReconnect(ev.reason || `closed (${ev.code})`);
   };
 
-  private onError = (): void => {
-    // The browser doesn't surface useful error data; the close event will follow.
-  };
+  private onError = (): void => {};
 
   private onOnline = (): void => {
     this.reconnectNow();
@@ -211,9 +189,7 @@ class DaemonEventClient {
       this.socket.removeEventListener("error", this.onError);
       try {
         this.socket.close();
-      } catch {
-        /* noop */
-      }
+      } catch {}
       this.socket = undefined;
     }
   }
@@ -246,13 +222,6 @@ export type Frame =
   | { kind: "bridge-error"; error: string }
   | { kind: "ignore" };
 
-/**
- * Sort one WebSocket frame. Daemon events name themselves in `event` (or
- * `type`); the bridge's "can't reach the daemon" frame is a bare
- * `{ "error": … }`. `SyncError` and `OperationFailed` also carry an
- * `error`, so only a frame that names no event is the bridge's: reading
- * them as one dropped every sync failure and flickered the pill.
- */
 export function parseFrame(data: string): Frame {
   let parsed: unknown;
   try {

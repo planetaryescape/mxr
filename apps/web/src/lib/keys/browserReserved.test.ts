@@ -8,10 +8,6 @@ import { getRegistry } from "@/lib/actions/registry";
 import { BROWSER_RESERVED, type Platform } from "./browserReserved";
 import { parseChord } from "./chord";
 
-/**
- * Keys a dialog reads itself: an overlay's, in the key definition, which
- * the registry doesn't hold (`isOverlayKey`).
- */
 const LITERAL_BINDINGS: { chord: string; source: string; macOnly: boolean }[] = (
   keymap.action as {
     id: string;
@@ -30,11 +26,6 @@ const LITERAL_BINDINGS: { chord: string; source: string; macOnly: boolean }[] = 
       ),
   );
 
-/**
- * Registry bindings that do use a reserved combo, kept because this rung of
- * the keyboard plan changes no key (blueprint 35, K1). Each moves when the
- * key map does (K3), and the list must then be empty.
- */
 const KNOWN_CONFLICTS: { id: string; chord: string; reason: string }[] = [
   {
     id: "compose.save",
@@ -54,10 +45,6 @@ function isKnownConflict(id: string, chord: string): boolean {
 
 const ORDER = ["Cmd", "Ctrl", "Win", "Alt", "Shift"];
 
-/**
- * The physical key combo a chord asks for on one platform, so `Mod` and
- * `Meta` mean what the browser will read them as.
- */
 function physicalCombo(chord: string, platform: Platform): string {
   const tokens = parseChord(chord);
   return tokens
@@ -165,8 +152,6 @@ describe("browser-reserved shortcuts", () => {
     for (const binding of macOnly) {
       expect(getRegistry().resolve(binding.chord, [binding.scope], false)).toBeUndefined();
     }
-    // The filters need a mounted controller, so only the palette's alias
-    // can be resolved here.
     expect(getRegistry().resolve("Ctrl+p", ["global"], true)?.action.id).toBe(
       "shell.command-palette",
     );

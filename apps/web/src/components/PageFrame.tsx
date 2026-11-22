@@ -15,87 +15,45 @@ import { usePublishPageTitle } from "@/state/pageTitleStore";
 import { choiceIndex } from "@/lib/keys/choiceNavigation";
 import { KeyChip } from "@/components/KeyChip";
 
-/** One entry in a page's ⋯ menu. */
 export interface PageAction {
   label: string;
   onSelect: () => void;
   icon?: LucideIcon;
-  /** Destructive verbs are danger-coloured text, never filled (docs/blueprint/27). */
   destructive?: boolean;
   disabled?: boolean;
 }
 
-/**
- * Whether a list and a detail pane are side by side, so their headers can
- * line up. A list's frame then uses Title (not Display) and reserves `inset`
- * pixels for the detail pane's toolbar, which sits above the detail's frame;
- * the detail's frame keeps Display and stays on one line. `detail` on a frame
- * marks it as the detail pane's.
- */
 export interface FramePanes {
   split: boolean;
   inset: number;
 }
 
-/**
- * Whether the list frame beside a detail has tabs. Its header is then 32px
- * taller than a tab-less one, so the detail's frame grows to match and the two
- * rules stay on one line. A list registers while it is mounted beside a detail.
- */
 const useListTabs = create<{ tabs: boolean }>(() => ({ tabs: false }));
 
 export const FramePanesContext = createContext<FramePanes>({ split: false, inset: 0 });
 
-/** The height of a reader's toolbar row: what a list frame beside it reserves. */
 export const READER_TOOLBAR_HEIGHT = 40;
 
 export interface PageFrameProps {
-  /** A short label above the title: the section, or a count ("1 due today"). */
   eyebrow?: ReactNode;
-  /** The page's one title. The item's name on a detail page. */
   title: string;
-  /** The title as drawn, for a heading that holds links; `title` stays its plain text. */
   titleContent?: ReactNode;
-  /** One line saying what this page is for, 12 words or fewer. */
   purpose?: ReactNode;
-  /** The page's one filled action. At most one (check-frames.mjs). */
   primary?: ReactNode;
-  /** Everything else the page can do, in a ⋯ menu. */
   overflow?: readonly PageAction[];
-  /** Underline tabs for the sections of this page. */
   tabs?: ReactNode;
-  /** The shortcut that focuses this page's controls, when available. */
   tabsShortcut?: string;
-  /** When this page's data was last true, in meta type. */
   freshness?: ReactNode;
-  /** The column the header shares with the content under it. */
   width?: FrameWidth;
-  /**
-   * A detail pane's title (an email subject, an article headline) can run past
-   * one line, and cutting it would hide what the person came to read: it wraps
-   * to two lines and the frame grows to fit. Pages keep one line.
-   */
   wrapTitle?: boolean;
-  /** This is the detail pane's frame, beside a list's. */
   detail?: boolean;
-  /** Hand the title to the Topbar so it drops a crumb that repeats it. */
   publishTitle?: boolean;
   className?: string;
   titleTestId?: string;
   titleId?: string;
-  /** Defaults to "mode-header", which the mode pages' tests read. */
   purposeTestId?: string;
 }
 
-/**
- * The one header every page wears (docs/blueprint/27 "The page frame", D128):
- * eyebrow, title, a one-line purpose, at most one primary action and a ⋯
- * menu, then optional tabs. Its height is fixed (88px, or 120px with tabs) so
- * moving between pages never shifts the content, and nothing else goes in it.
- * The title is Display from 1024px and Title below. Under 640px the purpose
- * line and the freshness note go (the top bar carries freshness) and the
- * height drops to 64px, or 96px with tabs.
- */
 export function PageFrame({
   eyebrow,
   title,
@@ -118,7 +76,6 @@ export function PageFrame({
   usePublishPageTitle(publishTitle ? title : null);
   const panes = useContext(FramePanesContext);
   const listBesideDetail = panes.split && !detail;
-  // Beside a list, a wrapping title would push its rule off the list's.
   const wrapTitle = wrapWanted && !(panes.split && detail);
   const inset = listBesideDetail ? panes.inset : 0;
   const listHasTabs = useListTabs((s) => s.tabs);
@@ -128,7 +85,6 @@ export function PageFrame({
     useListTabs.setState({ tabs: true });
     return () => useListTabs.setState({ tabs: false });
   }, [registersTabs]);
-  // The detail's frame stands as tall as a tabbed list's (120px) beside one.
   const matchTabbedList = panes.split && detail && listHasTabs && !tabs;
   const baseHeight = tabs ? 120 : 88;
   const hasActions = Boolean(primary) || (overflow?.length ?? 0) > 0;

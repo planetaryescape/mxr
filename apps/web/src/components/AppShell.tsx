@@ -34,9 +34,6 @@ import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { routeTitleForPath } from "@/lib/routePresentation";
 
-// Everything below only exists while open, so it loads on first use and
-// stays out of the entry chunk (compose alone pulls in editors, the HTML
-// sanitizer and address parsing).
 const loadPalette = () => import("@/features/command-palette/CommandPalette");
 const loadSearchPalette = () => import("@/features/search/SearchPalette");
 const HelpDialog = lazyNamed(() => import("@/components/HelpDialog"), "HelpDialog");
@@ -51,11 +48,6 @@ const MailDialogs = lazyNamed(() => import("@/features/mail-actions/MailDialogs"
 const PromiseTray = lazyNamed(() => import("@/features/promises/PromiseTray"), "PromiseTray");
 const SearchPalette = lazyNamed(loadSearchPalette, "SearchPalette");
 
-/**
- * The palettes open from a key and the user types straight on, so their
- * chunks must be ready before the first ⌘K or /: letters typed while a
- * chunk is still loading have nowhere to go.
- */
 function usePreloadPalettes(): void {
   useEffect(() => {
     const preload = () => {
@@ -76,7 +68,6 @@ function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
   return lazy(async () => ({ default: (await load())[name] as ComponentType<Props> }));
 }
 
-/** Mount once first needed, then keep mounted so state and focus survive. */
 function useOnceTrue(value: boolean): boolean {
   const [seen, setSeen] = useState(value);
   if (value && !seen) setSeen(true);
@@ -84,14 +75,9 @@ function useOnceTrue(value: boolean): boolean {
 }
 
 export function AppShell() {
-  // Fetch the model status once, early, so an opened thread (from any route)
-  // already knows whether to reserve its gist slot. A prefetch, not a
-  // subscription: its answer must never re-render the shell (and the list
-  // under it). Nothing waits on it.
   const queryClient = useQueryClient();
   useEffect(() => {
     void queryClient.prefetchQuery(llmStatusQuery);
-    // The sound setting, read by the player from the cache when it plays.
     void queryClient.prefetchQuery(chimeSettingsQuery);
   }, [queryClient]);
   useEffect(() => installSoundFeedback(), []);
@@ -130,16 +116,12 @@ export function AppShell() {
   }
 
   useEffect(() => {
-    // A target with a query string ("/focus?from=...") goes by href, which
-    // the router parses; `to` is a path only.
     setRuntimeNavigate({
       navigate: (to) => void navigate(to.includes("?") ? { href: to } : { to }),
     });
   }, [navigate]);
   useKeyDispatcher();
 
-  // A rail shows context for what was on screen; leaving that page (not
-  // just opening another thread in the same lens) closes it.
   const railSection = path.split("/").slice(0, 3).join("/");
   const lastSection = useRef(railSection);
   useEffect(() => {
@@ -172,11 +154,6 @@ export function AppShell() {
   const mountPromises = useOnceTrue(promiseOffered);
   const mountMore = useOnceTrue(useModals((s) => s.moreSheetOpen));
 
-  // With no account, every mail action fails ("No runtime account
-  // configured"), so the shell offers only the way to add one. Hooks stay
-  // above this return; the help dialog still opens on `?`.
-  // Keep this frame until onboarding navigates away: saving the first account
-  // refetches the list before step 4 has finished.
   const onboardingOnlyShell = noAccounts || (keepOnboardingFrame && path === "/onboarding");
 
   return (
@@ -209,7 +186,6 @@ export function AppShell() {
           </a>
           <ResizablePanelGroup
             className="app-frame"
-            // Inline: the group's own inline height (100%) beats a class.
             style={{ height: "100dvh" }}
             data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
             elementRef={sidebar.frameRef}

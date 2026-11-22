@@ -1,8 +1,3 @@
-/*
- * Bulk-selection state, keyed by the current mailbox URL.
- * Cleared automatically on mailbox change.
- */
-
 import { create } from "zustand";
 
 export interface SelectionState {

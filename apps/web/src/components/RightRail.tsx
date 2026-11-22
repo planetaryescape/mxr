@@ -18,8 +18,6 @@ export function RightRail() {
   const rail = useModals((s) => s.rightRail);
   const close = useModals((s) => s.closeRightRail);
 
-  // Escape closes the innermost thing first: the rail, before the key
-  // dispatcher sees it and closes the conversation underneath.
   useEffect(() => {
     if (!rail) return;
     function onKeyDown(event: KeyboardEvent) {

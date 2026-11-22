@@ -1,9 +1,3 @@
-/*
- * The web keybindings reference, rendered from the action registry. A test
- * compares it with site/src/content/docs/reference/keybindings.md, so the
- * published table cannot drift from what the dispatcher does.
- */
-
 import { parseChord } from "@/lib/keys/chord";
 
 import "./catalog";
@@ -44,7 +38,6 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
     title: "Sidebar",
     intro:
       "Keys for the mail list and the reader reach them from here, as in the TUI: mail verbs act on the list's selection or its lit row.",
-    // Every key that works from the sidebar, mail verbs included.
     match: (action) => scopesOf(action).includes("sidebar"),
   },
   {
@@ -73,9 +66,7 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   { title: "To do", intro: "", match: (action) => inScope(action, "todo") },
   {
     title: "To do: catch-up",
-    intro:
-      // The tab keys come from the definition, so a moved tab can't leave this stale again.
-      `The first run's older undated tasks: keep each one, or let it go to the Expired list. \`${definedShortcut("todo.catchup")}\` on To do opens it.`,
+    intro: `The first run's older undated tasks: keep each one, or let it go to the Expired list. \`${definedShortcut("todo.catchup")}\` on To do opens it.`,
     match: (action) => inScope(action, "catchup"),
   },
   {
@@ -110,11 +101,6 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
 ];
 
-/**
- * The dialogs, in page order. An open dialog owns every key and reads its
- * own from the key definition (`isOverlayKey`), so these keys are no
- * registry binding; their tables come from the definition itself.
- */
 const OVERLAYS: { scope: string; title: string; intro: string }[] = [
   { scope: "help", title: "Help", intro: "`?` opens it. Letters type into its filter." },
   {
@@ -230,7 +216,6 @@ const OVERLAYS: { scope: string; title: string; intro: string }[] = [
   },
 ];
 
-/** The definition's keys for the web's dialogs, by dialog. */
 function overlayActions(scope: string): DefinedAction[] {
   return (keymap.action as DefinedAction[]).filter(
     (action) =>
@@ -241,7 +226,6 @@ function overlayActions(scope: string): DefinedAction[] {
   );
 }
 
-/** Dialogs with web keys that no table lists. */
 export function undocumentedOverlays(): string[] {
   const scopes = new Set(
     (keymap.action as DefinedAction[])
@@ -261,18 +245,15 @@ function isGoTo(action: Action): boolean {
   return action.id.startsWith("nav.");
 }
 
-/** A mail verb: in both the list and the reader, and not a pane's own key. */
 function isMailAction(action: Action): boolean {
   if (action.id.startsWith("list.") || action.id.startsWith("reader.")) return false;
   return scopesOf(action).includes("list") && scopesOf(action).includes("reader");
 }
 
-/** Live in `scope`; mail actions are left to their own table. */
 function inScope(action: Action, scope: ActionScope): boolean {
   return scopesOf(action).includes(scope) && !isMailAction(action);
 }
 
-/** Platform-neutral key label for docs: "Mod+k" → "⌘K / Ctrl+K", "Mod+Shift+c" → "⌘⇧C / Ctrl+Shift+C". */
 export function docChord(chord: string): string {
   return parseChord(chord)
     .map((token) => {
@@ -280,7 +261,6 @@ export function docChord(chord: string): string {
         const rest = token.slice(4);
         const shift = rest.startsWith("Shift+");
         const name = shift ? rest.slice(6) : rest;
-        // Letters print as capitals; named keys (Enter, Backspace) as they are.
         const key = name.length === 1 ? name.toUpperCase() : name;
         return shift ? `⌘⇧${key} / Ctrl+Shift+${key}` : `⌘${key} / Ctrl+${key}`;
       }
@@ -301,7 +281,6 @@ function boundActions(): Action[] {
     .filter((action) => !action.paletteOnly && chordsOf(action).length > 0);
 }
 
-/** Bound actions that no table lists, such as every key of a scope without a section. */
 export function undocumentedActionIds(): string[] {
   return boundActions()
     .filter((action) => !SECTIONS.some((section) => section.match(action)))

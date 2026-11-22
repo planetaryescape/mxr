@@ -1,26 +1,18 @@
 import DOMPurify from "dompurify";
 
-/** Class of the note that stands in for a blocked remote image. */
 export const BLOCKED_IMAGE_CLASS = "mxr-image-blocked";
 
-/**
- * Whether an image source would be fetched from the network. Only inline
- * sources (`data:`, `blob:`, `cid:`) are local; everything else, including
- * protocol-relative `//host/…` and relative paths, counts as remote.
- */
 export function isRemoteSrc(src: string): boolean {
   const value = src.trim();
   return value !== "" && !/^(data|blob|cid):/i.test(value);
 }
 
-/** The host a remote source would be fetched from, when it names one. */
 export function remoteHost(src: string): string | null {
   return parseRemote(src)?.hostname ?? null;
 }
 
 const RELATIVE_BASE = "relative.invalid";
 
-/** The URL a remote source names, or null for inline or relative ones. */
 function parseRemote(src: string): URL | null {
   if (!isRemoteSrc(src)) return null;
   try {
@@ -33,12 +25,6 @@ function parseRemote(src: string): URL | null {
 
 interface SanitizeOpts {
   allowRemoteImages?: boolean;
-  /**
-   * Markup that will sit in the app's own DOM rather than a sandboxed frame:
-   * no style, class, id or name attributes (they could restyle or shadow the
-   * app), links only to web and mail addresses, images only from the web or
-   * inline.
-   */
   inline?: boolean;
   stripLightBackgrounds?: boolean;
   stripDarkTextColors?: boolean;
@@ -62,12 +48,6 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
   return sanitizeHtmlWithDesign(html, opts).html;
 }
 
-/**
- * The cleaned article HTML for the Reading reader, which renders it inline
- * (not in a frame) so highlights can be drawn on it. Same tag allowlist, remote
- * image gate and tracker removal as email, minus everything that could affect
- * the page around it.
- */
 export function sanitizeReaderHtml(html: string, opts: { allowRemoteImages: boolean }): string {
   return sanitizeHtmlWithDesign(html, { allowRemoteImages: opts.allowRemoteImages, inline: true })
     .html;
@@ -95,8 +75,6 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
   const dom = DOMPurify(window);
   let designed = false;
   const beforeSanitizeAttributes = (node: Element) => {
-    // Legacy color attributes are deliberately not added to the allowlist;
-    // observe their presence only to choose a sender-preserving canvas.
     designed ||= node instanceof window.Element && node.hasAttribute("bgcolor");
   };
   const hook = (node: Element) => {
@@ -104,7 +82,6 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
       node.setAttribute("rel", "noopener noreferrer");
       node.setAttribute("target", "_blank");
       if (opts.inline && !isWebOrMailHref(node.getAttribute("href") ?? "")) {
-        // A relative or fragment link would navigate the app itself.
         node.removeAttribute("href");
       }
     }
@@ -134,9 +111,6 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
       opts.allowRemoteImages === false &&
       isRemoteSrc(node.getAttribute("src") ?? "")
     ) {
-      // A small inline note instead of an empty box the image's size: the
-      // sender learns nothing, and the text around it doesn't reflow twice.
-      // (Showing images re-renders from the original HTML.)
       const note = node.ownerDocument.createElement("span");
       note.className = BLOCKED_IMAGE_CLASS;
       note.textContent = "Image blocked";
@@ -145,8 +119,6 @@ function sanitizeHtmlWithDesign(html: string, opts: SanitizeOpts = {}): Sanitize
       node.replaceWith(note);
     }
   };
-  // Inline markup keeps no classes of its own, but the "Image blocked" note needs its class.
-  // DOMPurify visits the note after the hook creates it, so allow that exact value.
   const keepBlockedNoteClass = (
     _node: Element,
     data: { attrName: string; attrValue: string; forceKeepAttr?: boolean },
@@ -528,7 +500,6 @@ function isUnsafeStyleValue(value: string): boolean {
   return /url\s*\(|expression\s*\(|@import|javascript:|vbscript:|data:|-moz-binding/i.test(value);
 }
 
-/** Tracking pixels: tiny images and known open-tracking URLs. Always removed. */
 export function isTrackerImage(node: Element): boolean {
   return isTinyImage(node) || isKnownTrackerSrc(node.getAttribute("src") ?? "");
 }

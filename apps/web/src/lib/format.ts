@@ -1,22 +1,11 @@
-/*
- * Display formatting shared by every surface, so counts, dates and names
- * read the same in the list, the reader, toasts and dashboards.
- */
-
 const pluralRules = new Intl.PluralRules("en");
 
-/** "1 message", "3 messages". Pass `many` for irregular plurals. */
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${pluralRules.select(count) === "one" ? one : many}`;
 }
 
 const timeFormats = new Map<string | undefined, Intl.DateTimeFormat>();
 
-/**
- * Hours are padded in 24-hour locales ("00:08", as the locale writes them) and
- * left bare in 12-hour ones ("12:08 AM"). Intl's `numeric` hour alone gives
- * "0:08" in en-GB.
- */
 function timeFormatFor(locale: string | undefined): Intl.DateTimeFormat {
   let format = timeFormats.get(locale);
   if (!format) {
@@ -56,29 +45,14 @@ export function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-/** "4:26 PM" (or "16:26", by locale): a time of day, the same everywhere. */
 export function formatTime(value: Date): string {
   return formatTimeIn(undefined, value);
 }
 
-/** `formatTime` for a named locale (or the viewer's, for undefined). */
 export function formatTimeIn(locale: string | undefined, value: Date): string {
   return timeFormatFor(locale).format(value);
 }
 
-/**
- * When a message arrived (or a promise is due), worded the same in the
- * list, the reader, the desk, places and focus mode:
- *
- * - "Just now" within a minute either way (clocks drift);
- * - "12m" earlier this hour (as the desk's durations read), then the time
- *   today ("4:26 PM");
- * - "Yesterday", then the weekday ("Mon") within the week;
- * - "Sep 3" this year, "Sep 3, 2024" before.
- *
- * Ahead of now (future-dated mail, a due date): the time today, then
- * "Tomorrow", the weekday within the week, then the date.
- */
 export function formatWhen(value: string | Date | null | undefined, now = new Date()): string {
   const date = parse(value);
   if (!date) return "";
@@ -106,11 +80,6 @@ const receivedDayYearFormat = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
 });
 
-/**
- * When an open email arrived, always in plain sight (D148): "Today, 14:02 ·
- * 2h ago", "Tue 21 Oct, 14:02", and "Tue 21 Oct 2025, 14:02" outside this
- * year. The date and time words come from the viewer's locale and time zone.
- */
 export function formatReceived(value: string | Date | null | undefined, now = new Date()): string {
   const date = parse(value);
   if (!date) return "";
@@ -123,13 +92,11 @@ export function formatReceived(value: string | Date | null | undefined, now = ne
   return `${day}, ${time}`;
 }
 
-/** Reader header date: "Sat, Sep 26, 2026, 10:11 PM". */
 export function formatLongDate(value: string | Date | null | undefined): string {
   const date = parse(value);
   return date ? longFormat.format(date) : "";
 }
 
-/** "2 hours ago", "in 3 days". */
 export function formatRelative(value: string | Date | null | undefined, now = new Date()): string {
   const date = parse(value);
   if (!date) return "";
@@ -154,7 +121,6 @@ export interface ParsedAddress {
   email: string | null;
 }
 
-/** Split "Ada Lovelace <ada@example.com>" into parts. */
 export function parseAddress(value: string | null | undefined): ParsedAddress {
   if (!value) return { name: null, email: null };
   const angle = value.match(/^\s*"?([^"<]*?)"?\s*<([^>]+@[^>]+)>\s*$/);
@@ -163,7 +129,6 @@ export function parseAddress(value: string | null | undefined): ParsedAddress {
   return bare ? { name: null, email: bare[0] } : { name: value.trim() || null, email: null };
 }
 
-/** Initials for an avatar: "Ada Lovelace" → "AL", "ada@x.com" → "A". */
 export function initials(nameOrEmail: string): string {
   const cleaned = nameOrEmail.replace(/<.*>/, "").replace(/["']/g, "").trim();
   const words = cleaned.split(/[\s._-]+/).filter(Boolean);

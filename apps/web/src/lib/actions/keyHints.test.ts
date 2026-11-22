@@ -18,7 +18,6 @@ const trash: Action = { ...archive, id: "mail.trash", label: "Move to Trash", sh
 const keyless: Action = { ...archive, id: "mail.keyless", shortcut: undefined };
 const paletteOnly: Action = { ...archive, id: "mail.export", paletteOnly: true };
 
-/** A daemon that marks each hint seen once, like `SetHintSeen`. */
 function setup(seenElsewhere: string[] = []) {
   let time = 1_000_000;
   const seen = new Set(seenElsewhere);

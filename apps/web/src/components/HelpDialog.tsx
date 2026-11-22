@@ -20,11 +20,6 @@ interface HelpDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/**
- * Keyboard reference generated from the action registry: the current
- * view's keys first, then mail actions, global keys, and other views.
- * Keys that differ from the TUI say so inline.
- */
 export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
   const [query, setQuery] = useState("");
   const openerRef = useRef<HTMLElement | null>(null);
@@ -86,10 +81,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
           aria-label="Filter shortcuts"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          // `?` opened help, so it closes it while nothing is typed
-          // (blueprint 35's toggle); in a filter it types.
           onKeyDown={(event) => {
-            // Esc closes the dialog itself; `?` closes it only from here.
             if (event.key === "Escape" || !pressedOverlayKey(event, "help.close")) return;
             if (query !== "") return;
             event.preventDefault();
@@ -100,7 +92,6 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
         />
         <div
           className="min-h-0 flex-1 overflow-auto rounded-sm pr-1 focus-visible:outline-2 focus-visible:outline-ring"
-          // Scrollable, so it must be reachable by keyboard (arrow keys scroll it).
           tabIndex={0}
           role="region"
           aria-label="Shortcuts"

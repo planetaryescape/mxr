@@ -21,11 +21,6 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { SyncHealthDot } from "@/features/freshness/AccountSyncHealth";
 import { isRestoredProfile, useRecoveryStatus } from "@/features/recovery/RecoveryNotice";
 
-/**
- * Scopes every mail view to one account, or all of them. Unlike the TUI,
- * which switches by rewriting the default account, this changes nothing
- * on disk: it only filters what the web shows.
- */
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
   const recoveryStatus = useRecoveryStatus();
@@ -41,7 +36,6 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
     : rows.length > 1
       ? "All accounts"
       : (rows[0]?.name ?? "mxr");
-  // A scope pointing at a removed or disabled account would hide all mail.
   useEffect(() => {
     if (
       scope &&
@@ -58,7 +52,6 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
     scoped,
     setScope,
   ]);
-  // The trigger names the one account it shows, with its chip, whatever the count.
   const triggerAccount = scoped ?? (rows.length === 1 ? rows[0] : undefined);
   const triggerIdentity = triggerAccount
     ? identities.byId.get(triggerAccount.account_id)

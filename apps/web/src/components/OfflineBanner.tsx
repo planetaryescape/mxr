@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 import { getBridgeBaseUrl } from "@/lib/tokenStorage";
 
-/** The event stream alone dropping only matters once it stays down. */
 const STREAM_BANNER_DELAY_MS = 30_000;
 
 function clockTime(at: number): string {
@@ -18,7 +17,6 @@ function clockTime(at: number): string {
   });
 }
 
-/** A floating notice: the shell never makes room for it, so nothing moves. */
 function Banner({
   kind,
   role,
@@ -43,23 +41,11 @@ function Banner({
   );
 }
 
-/** How long a leaving banner is held so it can fade (the fast motion duration). */
 const FADE_OUT_MS = 120;
 
-/**
- * The banner renders nothing when all is well, so a fade out needs the last
- * banner kept on screen while it goes: it fades in on mount and, once there
- * is nothing to say, fades out and unmounts. Reduced motion keeps the fades.
- *
- * It floats under the top bar instead of sitting in the main column's flow:
- * a daemon outage or a paused stream must not shove the list and reader down
- * the moment it starts, or back up when it ends. The band still covers the
- * page's own header while it shows, but no mail row moves.
- */
 export function OfflineBanner() {
   const banner = useBannerContent();
   const present = banner !== null;
-  // The last banner, kept on screen while it fades out.
   const last = useRef<ReactNode>(null);
   if (banner) last.current = banner;
   const [gone, setGone] = useState(!present);

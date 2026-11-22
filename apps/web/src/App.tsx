@@ -67,11 +67,9 @@ function RealtimeBootstrap() {
   useConnectionStatusBootstrap();
   useProtocolCompatibilityBootstrap();
   useDaemonEventInvalidation();
-  // The full key definition lands after the first paint; keys are live then.
   useEffect(() => {
     void scheduleActionCatalog();
   }, []);
-  // Before the socket starts, so its first drop is heard.
   useEffect(() => startDaemonAvailability(queryClient), []);
   useEffect(() => {
     daemonEvents.start();

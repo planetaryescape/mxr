@@ -1,26 +1,8 @@
-/*
- * The generated key definition (`keymap.generated.json`, written from
- * `crates/keymap/keymap.toml`) reaches the app as two modules, both built
- * here from that one file so neither can drift from it:
- *
- * - `virtual:mxr-key-index` (small, in the entry): the keys, aliases and
- *   scopes a label or an overlay needs. The sidebar, the topbar and the page
- *   chrome paint before the catalog arrives, so their key labels must be
- *   right in the first frame.
- * - `virtual:mxr-action-catalog` (large, loaded after the first paint): what
- *   the registry needs to be built — labels, descriptions, groups and
- *   palette data. Keys do nothing until it lands.
- *
- * `tui` is the TUI's own command mapping; the web never reads it, so it stays
- * out of the catalog module (290 kB → 94 kB) and off the wire.
- */
-
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 import type { Plugin } from "vite";
 
-/** The keys and aliases a synchronous label or overlay read needs. */
 export interface IndexedAction {
   id: string;
   keys?: string[];
@@ -42,7 +24,6 @@ export interface KeyIndex {
   strip?: { id: string; actions: string[] }[];
 }
 
-/** The full definition as the web uses it: everything but the TUI's mapping. */
 export interface ActionCatalog {
   action: (Omit<IndexedAction, "moved"> & {
     label: string;
@@ -94,7 +75,6 @@ function webActions(keymap: RawKeymap): RawAction[] {
   return keymap.action.filter((action) => !action.clients || action.clients.includes("web"));
 }
 
-/** Keep only the fields a side reads, in a stable order, dropping empty ones. */
 function pick<T extends object>(value: T, fields: readonly (keyof T)[]): Partial<T> {
   const out: Partial<T> = {};
   for (const field of fields) {
@@ -104,7 +84,6 @@ function pick<T extends object>(value: T, fields: readonly (keyof T)[]): Partial
   return out;
 }
 
-/** A module whose default export is the value, so Rollup can drop it when unused. */
 function moduleSource(value: unknown): string {
   return `export default ${JSON.stringify(value)};\n`;
 }
@@ -119,18 +98,12 @@ function indexModule(keymap: RawKeymap): string {
 
 function catalogModule(keymap: RawKeymap): string {
   const catalog: ActionCatalog = {
-    // Everything the web reads. `tui` is the only field left out.
     action: webActions(keymap).map(({ tui: _tui, ...action }) => action),
     ...(keymap.strip ? { strip: keymap.strip } : {}),
   };
   return moduleSource(catalog);
 }
 
-/**
- * Serve the two keymap modules. Read on first use and kept for the build, so
- * a keymap regenerated mid-build can't give the entry and the catalog
- * different data.
- */
 export function keymapModules(): Plugin {
   let index: string | undefined;
   let catalog: string | undefined;

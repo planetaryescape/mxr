@@ -1,8 +1,3 @@
-/*
- * "Install as app" in the palette, present only while the browser can
- * install mxr. The offer itself lives in the status bar.
- */
-
 import { Download } from "lucide-react";
 
 import { promptInstall, useInstallPrompt } from "@/features/install/installPrompt";

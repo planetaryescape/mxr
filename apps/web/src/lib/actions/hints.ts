@@ -1,9 +1,3 @@
-/*
- * Help, palette and status-bar views of the registry. Help groups bindings
- * by where they work, current view first, so what it shows is exactly
- * what the dispatcher will do.
- */
-
 import { useMemo } from "react";
 
 import { formatChord, isMacPlatform } from "@/lib/keys/chord";
@@ -17,10 +11,8 @@ export interface ShortcutHint {
   id: string;
   keys: string[];
   label: string;
-  /** What the status bar shows. */
   shortLabel: string;
   note?: string;
-  /** Available right now (scope mounted, predicate true). */
   live: boolean;
 }
 
@@ -77,10 +69,6 @@ function hint(action: Action, ctx: ActionContext): ShortcutHint {
   };
 }
 
-/**
- * Sections for the help dialog: the active view's keys first, then mail
- * verbs, then global keys, then the other views' keys for discovery.
- */
 export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
   const bound = getRegistry()
     .all()
@@ -92,8 +80,6 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
     const scopes = scopesOf(action);
     if (scopes.includes("list") && scopes.includes("reader")) {
       mailVerbs.push(action);
-      // A mail verb that also works in a mode (`b` and `X` in Now) is one of
-      // that mode's own keys too, so its "this view" section lists it.
       for (const scope of scopes) {
         if (scope === "list" || scope === "reader") continue;
         byScope.set(scope, [...(byScope.get(scope) ?? []), action]);
@@ -104,7 +90,6 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
   }
 
   const sections: ShortcutSection[] = [];
-  // The panes first, then the modes' own scopes (To do, Updates, ...): `?` lists a page's own keys.
   const paneScopes = (Object.keys(SCOPE_TITLE) as (keyof typeof SCOPE_TITLE)[])
     .toSorted((a, b) => PANE_ORDER.indexOf(a) - PANE_ORDER.indexOf(b))
     .filter((scope) => byScope.has(scope));
@@ -122,9 +107,6 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
     mailVerbs.length > 0
       ? { id: "mail", title: "Mail actions", hints: mailVerbs.map((action) => hint(action, ctx)) }
       : null;
-  // Mail actions are this view's keys only beside a mail list or reader. In
-  // Now or a mode, `e` there would read as Archive where it means Done, so
-  // they go with the other places' keys.
   const mailHere = ctx.scopes.includes("list") || ctx.scopes.includes("reader");
   if (mailSection && mailHere) sections.push(mailSection);
 
@@ -150,13 +132,11 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
 }
 
 export function useShortcutSections(ctx: ActionContext): ShortcutSection[] {
-  // `version` changes when the person's keys arrive or change.
   const version = useKeymapStore((state) => state.version);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the registry is rebuilt when version changes
   return useMemo(() => shortcutSections(ctx), [ctx, version]);
 }
 
-/** A few live hints for the status bar: the current view's keys first. */
 export function useActionPrimaryHints(ctx: ActionContext, limit = 5): ShortcutHint[] {
   const sections = useShortcutSections(ctx);
   return useMemo(
@@ -169,11 +149,6 @@ export function useActionPrimaryHints(ctx: ActionContext, limit = 5): ShortcutHi
   );
 }
 
-/**
- * The status bar's strip for a page that named its verbs (`usePageKeys`):
- * each id's first key and short label, in the page's order. An id the
- * registry doesn't know is skipped, so a renamed action never blanks the bar.
- */
 export function pageKeyHints(ids: readonly string[], ctx: ActionContext): ShortcutHint[] {
   const registry = getRegistry();
   return ids.flatMap((id) => {

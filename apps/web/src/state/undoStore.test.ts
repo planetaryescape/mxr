@@ -18,7 +18,7 @@ describe("undo ordering", () => {
   test("a newer change without undo stops u reaching back to an older archive", () => {
     const undoArchive = vi.fn<() => Promise<boolean>>(async () => true);
     useUndo.getState().recordUndo(undoArchive, "mut-archive");
-    useUndo.getState().recordNoUndo(); // e.g. a star after the archive
+    useUndo.getState().recordNoUndo();
 
     expect(runLatestUndo()).toBeNull();
     expect(undoArchive).not.toHaveBeenCalled();

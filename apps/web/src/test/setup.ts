@@ -12,17 +12,13 @@ import { afterEach, beforeEach, vi } from "vitest";
 // (the "--localstorage-file was not provided" warning) that masks the leak,
 // while Node 24 — the version CI runs — uses jsdom's working one.
 beforeEach(() => {
-  // The DOM lib types `window` as always present, but test files that opt into
-  // the node environment have no such global.
   if (typeof window === "undefined") return;
   try {
     if (!window.localStorage || typeof window.localStorage.setItem !== "function")
       vi.stubGlobal("localStorage", privateStorage());
     window.localStorage.clear();
     window.sessionStorage.clear();
-  } catch {
-    // Opaque test origins disable storage entirely; nothing to clear.
-  }
+  } catch {}
 });
 
 // Radix's FocusScope (every modal dialog and sheet) queues a 0ms timer when it

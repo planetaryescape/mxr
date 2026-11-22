@@ -10,7 +10,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 const IME_KEY_CODE = 229;
 
-/** True when the key belongs to an IME composition, not to the app. */
 export function isComposingKey(event: KeyboardEvent | ReactKeyboardEvent): boolean {
   const native = "nativeEvent" in event ? event.nativeEvent : event;
   return native.isComposing || native.keyCode === IME_KEY_CODE;

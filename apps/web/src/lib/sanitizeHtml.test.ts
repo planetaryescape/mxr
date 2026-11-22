@@ -208,7 +208,6 @@ describe("sanitizeReaderHtml", () => {
     expect(blocked).not.toContain("cdn.example");
     expect(blocked).not.toContain("<img");
     expect(blocked).toContain("Image blocked");
-    // The note keeps its own class (for styling) while the sender's classes go.
     expect(blocked).toContain('class="mxr-image-blocked"');
 
     const allowed = sanitizeReaderHtml(html, { allowRemoteImages: true });

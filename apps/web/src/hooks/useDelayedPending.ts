@@ -1,17 +1,8 @@
-/*
- * The loading-state rule: local data usually lands in well under 150 ms, and
- * a skeleton that flashes for a frame is worse than nothing. So a load shows
- * nothing at first ("quiet"), a skeleton only once it has taken 150 ms, and
- * a skeleton that did appear stays at least 400 ms so it never flickers.
- * While a skeleton holds, the caller keeps showing it even if data is ready.
- */
-
 import { useEffect, useState } from "react";
 
 export const PENDING_DELAY_MS = 150;
 export const PENDING_MINIMUM_MS = 400;
 
-/** "quiet": loading, show an empty frame; "skeleton": show it; "ready": show the content. */
 export type PendingPhase = "ready" | "quiet" | "skeleton";
 
 export function useDelayedPending(
@@ -36,12 +27,6 @@ export function useDelayedPending(
   return pending ? "quiet" : "ready";
 }
 
-/**
- * For a page that swaps its content for `PageSkeleton` while a query loads:
- * true while pending, and while a skeleton that appeared is still held its 400
- * ms. Use it in place of `query.isPending` so content never replaces a
- * skeleton after a blink. (The skeleton's own 150 ms delay matches the hook's.)
- */
 export function useHeldPending(pending: boolean): boolean {
   return useDelayedPending(pending) !== "ready";
 }

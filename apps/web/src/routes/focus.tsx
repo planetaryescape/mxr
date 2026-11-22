@@ -4,12 +4,8 @@ import { FocusRoute } from "@/features/focus/FocusRoute";
 import { optionalEnum, optionalString } from "@/lib/searchParams";
 
 export interface FocusRouteParams {
-  /** The page to return to on Esc. */
   from?: string;
-  /** "owed": only the replies you owe (the desk's You owe lane), without
-   * the reply-later queue. */
   lane?: "owed";
-  /** The conversation on screen. */
   at?: string;
 }
 

@@ -1,16 +1,3 @@
-/*
- * Chords the browser keeps for itself: tabs, windows, reload, find, print,
- * and the OS's quit and hide keys. A page's keydown handler is not told
- * about these reliably, because the browser acts first or the page can't
- * cancel them, so a binding on one of them silently does nothing for some
- * users. `browserReserved.test.ts` fails if any declared binding uses one.
- *
- * Written in the app's chord grammar. `Mod` is Cmd on macOS and Ctrl
- * elsewhere; `Meta` is Cmd on macOS and the Windows key elsewhere.
- * `platforms` says where the browser keeps it. Add an entry when a browser
- * shortcut is confirmed in its docs, and say which docs in the reason.
- */
-
 export type Platform = "mac" | "other";
 
 export interface ReservedChord {

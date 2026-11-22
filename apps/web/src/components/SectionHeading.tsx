@@ -4,11 +4,6 @@ import { cn } from "@/lib/utils";
 
 const LABEL = "type-eyebrow text-text-3";
 
-/**
- * A section or band label: mono caps, an optional count and an optional
- * right-hand slot. `as` keeps the heading level the page's outline needs.
- * The count is shown at 0 too: an empty section should still say so.
- */
 export function SectionHeading({
   as: Tag = "h2",
   id,
@@ -21,11 +16,9 @@ export function SectionHeading({
   id?: string;
   count?: number;
   actions?: ReactNode;
-  /** Spacing and layout belong to the caller; the label recipe is fixed here. */
   className?: string;
   children: ReactNode;
 }) {
-  // With an actions slot the spacing moves to the row, so the slot sits on the label's line.
   const label = (
     <Tag id={id} className={actions ? LABEL : cn(LABEL, className)}>
       {children}

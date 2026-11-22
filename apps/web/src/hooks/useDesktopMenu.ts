@@ -7,11 +7,6 @@ import type { ActionContext } from "@/lib/actions/types";
 
 import { shortcutsSuspended } from "./useKeyDispatcher";
 
-/**
- * The desktop app's menu (apps/desktop/src-tauri/src/menu.rs) dispatches
- * this with an action id once `mxrMenuReady` is set. A page script can only
- * run an action a key press could run.
- */
 export const MENU_ACTION_EVENT = "mxr:menu-action";
 
 declare global {
@@ -20,12 +15,6 @@ declare global {
   }
 }
 
-/**
- * Run a menu command the way its key would: through the registry, with the
- * same previews and confirms, and not while a dialog or compose owns the
- * keyboard. A command with nothing to act on here says so, since a menu
- * click that does nothing looks broken.
- */
 export function runMenuAction(
   id: string,
   registry: ActionRegistry = getRegistry(),
@@ -42,7 +31,6 @@ export function runMenuAction(
   invokeAction(action, ctx, "pointer");
 }
 
-/** Mounted in AppShell, so menu commands work on every page. */
 export function useDesktopMenu(): void {
   useEffect(() => {
     const run = (event: Event) => {

@@ -1,12 +1,3 @@
-/*
- * Key chords. A chord is one or more space-separated tokens ("g i", "?",
- * "Mod+k", "Shift+Enter"). Tokens come from `KeyboardEvent.key`, not
- * `code`, so "?" and "/" are different keys on every layout and the table
- * reads like the TUI's help. Shift is implied in printable characters
- * ("G", "#") and spelled out only for named keys ("Shift+Enter") or with
- * other modifiers ("Mod+Shift+p").
- */
-
 export type KeyToken = string;
 
 const NAMED_KEYS = new Set([
@@ -37,11 +28,6 @@ export function isMacPlatform(): boolean {
   return /mac|iphone|ipad/i.test(platform);
 }
 
-/**
- * Normalise a keydown into a token, or null for a bare modifier press.
- * `Mod` is Cmd on macOS and Ctrl elsewhere; a literal Ctrl on macOS stays
- * "Ctrl" so TUI chords like Ctrl-d work there without stealing Cmd.
- */
 export function tokenFromEvent(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
   mac = isMacPlatform(),
@@ -65,8 +51,6 @@ export function tokenFromEvent(
     return [...modifiers, key].join("+");
   }
   if (modifiers.length > 0) {
-    // With Ctrl/Cmd the browser reports an uppercase letter for Shift;
-    // spell Shift out so "Mod+Shift+p" is unambiguous.
     const lower = key.toLowerCase();
     if (event.shiftKey && lower !== key) modifiers.push("Shift");
     return [...modifiers, lower].join("+");
@@ -74,13 +58,6 @@ export function tokenFromEvent(
   return key;
 }
 
-/**
- * A character the layout made with Option (macOS) or AltGr (elsewhere,
- * reported as Ctrl+Alt): `#` is Option-3 on a UK Mac, `[` and `{` need
- * AltGr on German and French keyboards. The modifier picked the character,
- * so the character is the key. A plain letter or digit with Alt is still a
- * chord ("Alt+a"), and so is plain Alt off macOS, which is not AltGr.
- */
 function isAltComposed(
   event: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "altKey">,
   key: string,
@@ -107,7 +84,6 @@ const DISPLAY: Record<string, string> = {
   Tab: "Tab",
 };
 
-/** Human label for a chord: "g i" → "g i", "Mod+k" → "⌘K" on macOS. */
 export function formatChord(chord: string, mac = isMacPlatform()): string {
   return parseChord(chord)
     .map((token) => formatToken(token, mac))
@@ -116,7 +92,6 @@ export function formatChord(chord: string, mac = isMacPlatform()): string {
 
 function formatToken(token: KeyToken, mac: boolean): string {
   const parts = token.split("+");
-  // "+" itself as a key arrives as a trailing empty part.
   const key = parts.at(-1) === "" ? "+" : (parts.at(-1) ?? "");
   const modifiers = parts.slice(0, parts.at(-1) === "" ? -2 : -1);
   const label = DISPLAY[key] ?? (modifiers.length > 0 ? key.toUpperCase() : key);

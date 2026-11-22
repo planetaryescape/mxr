@@ -1,15 +1,5 @@
 /* @vitest-environment node */
 
-/*
- * The escape hatch from the key definition (blueprint 35, "Both clients
- * dispatch by action id, never by key"). Every page-level key lives in
- * `crates/keymap/keymap.toml` and reaches the page through the dispatcher,
- * so help, the docs and the reserved-key check see it. Raw key handling is
- * allowed only in the files below, each for one of the rule's reasons. A
- * new listener fails here until it moves into the definition or earns a
- * place on the list.
- */
-
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -17,7 +7,6 @@ import { describe, expect, test } from "vitest";
 
 const SRC = join(__dirname, "../..");
 
-/** Raw key handling: DOM listeners, React handlers, and editor keymaps. */
 const RAW_KEYS =
   /addEventListener\(\s*["']keydown["']|onKeyDown(Capture)?=|keymap\.of\(|handleKeyDown\s*:|domEventHandlers|tinykeys\(/;
 
@@ -29,12 +18,7 @@ type Rule =
   | "compose"
   | "page shortcut not yet moved";
 
-/**
- * Paths under `src`. "page shortcut not yet moved" is debt, not a rule: each
- * such entry says why it hasn't moved yet, and no new one joins it.
- */
 const ALLOWED = {
-  // Text fields and editors: keys there are typing.
   "components/HelpDialog.tsx": {
     rule: "text field or editor",
     why: "? closes help from its empty filter field, which otherwise types it",
@@ -100,7 +84,6 @@ const ALLOWED = {
     why: "the time picker's field and its which-time-did-you-mean choices",
   },
 
-  // Overlays that print their option letters, or close on Esc.
   "components/ui/alert-dialog.tsx": {
     rule: "overlay with its own letters",
     why: "a yes-or-no confirm's y and n, read from the key definition",
@@ -202,7 +185,6 @@ const ALLOWED = {
     why: "the search palette's arrows and Ctrl+j/k move through results",
   },
 
-  // Arrow-key widgets.
   "components/Segmented.tsx": {
     rule: "arrow-key widget",
     why: "a segmented control's arrows move the choice",
@@ -224,7 +206,6 @@ const ALLOWED = {
     why: "the provider tiles' arrows, Home and End",
   },
 
-  // The dispatcher and what watches it.
   "lib/keys/dispatcher.ts": { rule: "dispatcher or observer", why: "the one key dispatcher" },
   "lib/keys/typeAhead.ts": {
     rule: "dispatcher or observer",
@@ -243,8 +224,6 @@ const ALLOWED = {
     why: "forwards keys typed in the message frame to the dispatcher",
   },
 
-  // Compose owns the keyboard and runs its definition chords itself
-  // (`composeShortcuts.ts`; the dispatcher stands aside while it is open).
   "features/compose/ComposeEditorPanel.tsx": {
     rule: "compose",
     why: "runs the compose chords, by id, and the discard dialog's y and n",
@@ -268,7 +247,6 @@ function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(path);
-    // Declaration files hold types, never a listener.
     if (!/\.tsx?$/.test(entry.name) || /\.(test|d)\.tsx?$/.test(entry.name)) return [];
     return [path];
   });
@@ -280,8 +258,6 @@ const withRawKeys = sourceFiles(SRC)
 
 describe("key listeners outside the definition", () => {
   test("live only in the allowed files", () => {
-    // A file here should move its key into crates/keymap/keymap.toml and
-    // dispatch it by action id, or join ALLOWED with its reason.
     const unexplained = withRawKeys.filter((path) => !Object.hasOwn(ALLOWED, path));
     expect(unexplained).toEqual([]);
   });

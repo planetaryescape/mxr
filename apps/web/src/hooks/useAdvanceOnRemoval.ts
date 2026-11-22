@@ -1,45 +1,17 @@
-/*
- * Keep a detail pane off a row that has left its list, and bring it back
- * on undo. When the selected row disappears (done, archived elsewhere,
- * removed by sync), open its neighbour by `nextAfterRemoval`, or call
- * `onEmpty` when nothing near it is left. When a row the selection just
- * moved away from comes back while the selection is still where it went
- * (`u`, the toast's Undo), open it again. Verbs that move on by themselves
- * (the reader's archive, Messages' done) change the selection first; this
- * then only remembers the move for undo.
- */
-
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { nextAfterRemoval } from "@/lib/listAdvance";
 
-/** A move counts as the row leaving when the row goes within this long. */
 const LEAVE_WINDOW_MS = 2_000;
-/** As long as an undo is offered (the result toast's duration). */
 const UNDO_WINDOW_MS = 60_000;
 
 export interface AdvanceOnRemoval {
-  /** Row ids in display order. */
   ids: readonly string[];
   selectedId: string | null;
-  /**
-   * Whether a row still exists when it can sit outside `ids` (a folded
-   * band). Defaults to membership in `ids`.
-   */
   isPresent?: (id: string) => boolean;
-  /**
-   * What `isPresent` reads, by identity (the set it looks in). While it and
-   * `ids` are unchanged, no row can have left, so the scan over every row is
-   * skipped. Without it `isPresent` is assumed to change on any render.
-   */
   presenceSource?: unknown;
-  /** False while the list is loading or belongs to another scope. */
   ready?: boolean;
-  /**
-   * Open `to`, moving off `from`: a neighbour of a row that left, or a row
-   * undo brought back (`from` is null when the pane had closed).
-   */
   onAdvance: (to: string, from: string | null) => void;
   onEmpty: (removed: string) => void;
 }
@@ -48,7 +20,6 @@ export type ExpectRemoval = (id: string, direction: 1 | -1) => (keepForRemoval?:
 
 interface Move {
   from: string;
-  /** Where the selection went; null when the pane closed. */
   to: string | null;
   at: number;
 }
@@ -64,10 +35,7 @@ export function useAdvanceOnRemoval({
 }: AdvanceOnRemoval): ExpectRemoval {
   const previous = useRef<readonly string[]>([]);
   const previousSelected = useRef<string | null>(null);
-  // The row already moved on from, so a render before the new selection
-  // lands doesn't move twice.
   const handled = useRef<string | null>(null);
-  // The latest selection change, and the one that followed a row leaving.
   const moved = useRef<Move | null>(null);
   const restore = useRef<Move | null>(null);
   const expected = useRef(
@@ -77,10 +45,7 @@ export function useAdvanceOnRemoval({
     >(),
   );
   const [expectedRevision, setExpectedRevision] = useState(0);
-  // Rows that just left, with the list they left: a selection that lands
-  // on one a moment later (a click racing the verb) still moves on.
   const gone = useRef(new Map<string, { list: readonly string[]; at: number }>());
-  // The list and presence source the last scan for departed rows covered.
   const scanned = useRef<{ list: readonly string[]; source: unknown } | null>(null);
   const latest = useRef({ isPresent, onAdvance, onEmpty });
   latest.current = { isPresent, onAdvance, onEmpty };
@@ -92,7 +57,6 @@ export function useAdvanceOnRemoval({
       if (intent?.token !== token) return;
       if (!keepForRemoval) expected.current.delete(id);
       intent.completed = true;
-      // A fallback can move first; keep its removal linked to Undo only while Undo is available.
       intent.expiresAt = Date.now() + UNDO_WINDOW_MS;
       setExpectedRevision((revision) => revision + 1);
     };
@@ -111,7 +75,6 @@ export function useAdvanceOnRemoval({
     for (const [id, left] of gone.current) {
       if (now - left.at > LEAVE_WINDOW_MS || present(id)) gone.current.delete(id);
     }
-    // Presence only changes with the list or its source, so a selection move alone skips this walk.
     const source = latest.current.isPresent ? presenceSource : ids;
     const last = scanned.current;
     const unchanged =
@@ -134,11 +97,9 @@ export function useAdvanceOnRemoval({
         ? null
         : { from: wasSelected, to: selectedId, at: now };
     }
-    // Moving anywhere else gives up the way back.
     const way = restore.current;
     if (way && selectedId !== way.to && selectedId !== way.from) restore.current = null;
 
-    // A verb moved on first and its row has now gone: remember it for undo.
     const move = moved.current;
     if (
       move &&
@@ -152,7 +113,6 @@ export function useAdvanceOnRemoval({
       expected.current.delete(move.from);
     }
 
-    // Undo brought back the row we moved off: open it again.
     const back = restore.current;
     if (back && back.to === selectedId && present(back.from)) {
       restore.current = null;
@@ -165,7 +125,6 @@ export function useAdvanceOnRemoval({
       handled.current = null;
       return;
     }
-    // Never in this list (opened from a link, another band): not ours to move.
     const list = before.includes(selectedId) ? before : gone.current.get(selectedId)?.list;
     if (handled.current === selectedId || !list) return;
     handled.current = selectedId;
@@ -181,11 +140,6 @@ export function useAdvanceOnRemoval({
   return expectRemoval;
 }
 
-/**
- * Whether the URL still ends at this conversation, read from history so a
- * navigation already on its way counts: the reader's archive-and-advance
- * moves first, and a list's follow-up must not override where it went.
- */
 export function useRouteStillShows(): (threadId: string) => boolean {
   const router = useRouter();
   return useCallback(

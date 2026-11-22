@@ -22,7 +22,6 @@ describe("useAdvanceOnRemoval", () => {
     const { rerender, onAdvance, onEmpty } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
     rerender({ ids: ["a", "c"], selectedId: "b" });
     expect(onAdvance).toHaveBeenCalledExactlyOnceWith("c", "b");
-    // A refetch before the new selection lands moves nothing again.
     rerender({ ids: ["a", "c"], selectedId: "b" });
     expect(onAdvance).toHaveBeenCalledOnce();
     expect(onEmpty).not.toHaveBeenCalled();
@@ -89,7 +88,6 @@ describe("useAdvanceOnRemoval", () => {
       isPresent: (id) => withoutB.has(id),
       presenceSource: withoutB,
     });
-    // A click racing the verb lands on the row that just left: move on from it.
     rerender({
       ids,
       selectedId: "b",
@@ -109,7 +107,6 @@ describe("useAdvanceOnRemoval", () => {
 
   test("undo reopens after a verb moved on by itself (the reader's archive)", () => {
     const { rerender, onAdvance } = setup({ ids: ["a", "b", "c"], selectedId: "b" });
-    // The reader moved to c and its row left in the same render.
     rerender({ ids: ["a", "c"], selectedId: "c" });
     expect(onAdvance).not.toHaveBeenCalled();
     rerender({ ids: ["a", "b", "c"], selectedId: "c" });
@@ -140,7 +137,6 @@ describe("useAdvanceOnRemoval", () => {
     const release = expectRemoval("b", -1);
     release();
 
-    // The action promise can settle before React commits the refetched list.
     rerender({ ids: ["a", "b", "c"], selectedId: "b" });
     expect(onAdvance).not.toHaveBeenCalled();
     rerender({ ids: ["a", "c"], selectedId: "b" });
@@ -159,13 +155,10 @@ describe("useAdvanceOnRemoval", () => {
     const release = expectRemoval("b", -1);
     release();
 
-    // The list still contains b, so the reader performs its completion fallback.
     rerender({ ids: ["a", "b", "c"], selectedId: "a" });
     expect(onAdvance).not.toHaveBeenCalled();
-    // React commits the removal after that fallback navigation.
     rerender({ ids: ["a", "c"], selectedId: "a" });
     expect(onAdvance).not.toHaveBeenCalled();
-    // Undo returns b to the same list and should reopen it.
     rerender({ ids: ["a", "b", "c"], selectedId: "a" });
     expect(onAdvance).toHaveBeenCalledExactlyOnceWith("b", "a");
   });

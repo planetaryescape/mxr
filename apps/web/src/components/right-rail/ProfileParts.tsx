@@ -1,5 +1,3 @@
-/* Stat tile and label/value row used by the sender and relationship panels. */
-
 export function ProfileStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-muted/30 px-3 py-2">

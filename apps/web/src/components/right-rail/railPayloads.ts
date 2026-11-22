@@ -1,9 +1,3 @@
-/*
- * Shapes of the payloads the right rail is opened with, and the guards that
- * read them. Payloads arrive as `unknown` from the modal store, so every
- * panel narrows through these before rendering.
- */
-
 import type { AttachmentView } from "@/features/mailbox/types";
 
 export function isThreadContext(value: unknown): value is { title?: string; items?: string[] } {

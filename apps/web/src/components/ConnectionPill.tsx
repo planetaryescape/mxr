@@ -18,8 +18,6 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
   const errorMessage = useConnectionStore((s) => s.errorMessage);
   const protocolMismatch = useConnectionStore((s) => s.protocolMismatch);
   const daemonDown = useDaemonDown();
-  // Connected to the daemon is not the same as mail arriving: a failing or
-  // stale account turns the pill amber and its tooltip says which.
   const { data: freshness } = useAllAccountsFreshness();
   const syncIssue = useClockLabel((now) => {
     const worst = freshness ? worstAccount(freshness, now) : undefined;

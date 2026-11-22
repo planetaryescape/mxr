@@ -37,28 +37,19 @@ export function useDaemonEventInvalidation(): void {
           }
           return;
         }
-        // Event names are the daemon's DaemonEvent variants
-        // (crates/protocol/src/types.rs); mail views all refresh through
-        // the same invalidation the mutation layer uses.
         switch (event.type) {
           case "NewMessages":
-            // What arrived wears the landing mark where it shows (a sync, or another client).
             useLanding.getState().land(arrivedIds(event.envelopes));
             void invalidateMailQueries(qc);
             break;
           case "MessageUnsnoozed":
-          // A move in any client: every mode, Now's line and Inbox's chips.
           case "ModesChanged":
             void invalidateMailQueries(qc);
             break;
-          // An address change moves stored mail between sent and received, so
-          // the mail views and the analytics that count it both refresh.
           case "AccountAddressesChanged":
             void invalidateMailQueries(qc);
             void qc.invalidateQueries({ queryKey: ["analytics"] });
             break;
-          // The debounced contacts rebuild committed. Analytics queries do not
-          // poll, so a view left open would keep counts from before it.
           case "ContactsRefreshed":
             void qc.invalidateQueries({ queryKey: ["analytics"] });
             break;
@@ -84,36 +75,20 @@ export function useDaemonEventInvalidation(): void {
             void invalidateMailQueries(qc);
             break;
           case "SyncError":
-            // A sync failed. Stop any sync-progress spinner. The failure
-            // itself shows through freshness (the status bar, the pill and
-            // the accounts), which toasts only when an account's health
-            // changes, never on every retry of a failing account.
             clearSyncProgressSoon();
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
           case "ReminderTriggered":
           case "ReplyLaterReturned":
-            // A time the user set came: nobody replied, or reply later is
-            // due. The conversation is back on the desk and in the reply
-            // queue.
             void invalidateMailQueries(qc);
             break;
           case "MutationReconciliationFailed":
-            // Optimistic UI rollback hint: the provider/store rejected a
-            // mutation we already reflected locally. Refetch the affected
-            // surfaces so the UI converges back to server truth, and tell
-            // the user the action didn't stick.
             void invalidateMailQueries(qc);
             if (isReconciliationFailedEvent(event)) {
               toast.error(`Action didn't stick: ${event.error_summary}`);
             }
             break;
           case "EventsLagged":
-            // The daemon dropped events for this client during a burst, so
-            // any cached view could be stale. Invalidate everything (bar open
-            // drafts) and let React Query refetch what's on screen:
-            // correctness over a targeted diff we can't compute from missed
-            // events.
             void refetchAfterGap(qc);
             break;
         }
@@ -123,7 +98,6 @@ export function useDaemonEventInvalidation(): void {
   );
 }
 
-/** Message and thread ids of the newest arrivals; the event carries a capped sample. */
 function arrivedIds(envelopes: unknown): string[] {
   if (!Array.isArray(envelopes)) return [];
   return (envelopes as ReadonlyArray<Record<string, unknown>>)
@@ -131,11 +105,6 @@ function arrivedIds(envelopes: unknown): string[] {
     .filter((id): id is string => typeof id === "string");
 }
 
-/**
- * A sync that has said nothing for this long has ended without telling us
- * (a dropped frame, a daemon restart): stop showing it as running, or every
- * later "Sync now" is refused as already running.
- */
 const SYNC_PROGRESS_STALE_MS = 60_000;
 
 function setSyncProgress(syncProgress: SyncProgress): void {

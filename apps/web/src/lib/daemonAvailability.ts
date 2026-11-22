@@ -1,22 +1,3 @@
-/*
- * Whether mxr's daemon can answer right now, as one app-wide state.
- *
- * Any request that gets no answer, or the event socket dropping, makes this
- * probe the daemon once. Only a failed probe marks it down, so one lost
- * request doesn't pause the app. While down:
- *
- * - React Query's online flag is off, so queries keep their cached data and
- *   pause instead of failing (lists and open threads stay readable).
- * - Mutations don't queue: callers check `isDaemonDown()` and say plainly
- *   what can't run yet.
- * - The probe repeats on a bounded backoff, and again whenever the event
- *   socket reconnects or the window regains focus.
- *
- * When a probe (or any request) gets an answer, queries resume, everything
- * shown is refetched (events sent while down were lost), and the event
- * socket reconnects without waiting out its own backoff.
- */
-
 import { onWorkspaceChanged } from "./workspaceOwner";
 import { clearOfflineMail } from "@/pwa/offlineReads";
 import { requestCoordinator } from "./requestCoordinator";
@@ -32,10 +13,6 @@ import {
 import { daemonEvents } from "@/lib/ws";
 import { useConnectionStore } from "@/state/connectionStore";
 
-/**
- * Goes all the way to the daemon, not just the bridge (which can be up
- * without it). Sent only to check a suspected outage and while one lasts.
- */
 const PROBE_PATH = "/api/v1/admin/status";
 const PROBE_MIN_DELAY_MS = 1_000;
 const PROBE_MAX_DELAY_MS = 8_000;
@@ -49,13 +26,10 @@ export function isDaemonDown(): boolean {
   return useConnectionStore.getState().daemonDown;
 }
 
-/** True while the daemon is unreachable. Changes only when that flips. */
 export function useDaemonDown(): boolean {
   return useConnectionStore((state) => state.daemonDown);
 }
 
-// Kept out of the store: every answered request moves it, and only an outage
-// reads it.
 let lastAnsweredAt = Date.now();
 
 function setDown(daemonDown: boolean): void {
@@ -66,14 +40,8 @@ function setDown(daemonDown: boolean): void {
   });
 }
 
-/**
- * Refuse a change while the daemon is down, and say so, rather than let it
- * fail late or wait in a hidden queue. `what` completes "Can't … while";
- * `kept` says what is safe when something is (a draft's text).
- */
 export function refuseWhileDaemonDown(what: string, kept?: string): boolean {
   if (!isDaemonDown()) return false;
-  // One id: a held or repeated key replaces the toast instead of stacking.
   toast.warning(`Can't ${what} while mxr is unavailable`, {
     id: "daemon-down-refusal",
     description: kept ?? "Nothing changed. Try again once it's back.",
@@ -88,14 +56,12 @@ function scheduleProbe(): void {
   probeTimer = setTimeout(() => void probeDaemon(), base + Math.random() * 0.2 * base);
 }
 
-/** Ask the daemon directly; mark it down only if nothing answers. */
 export function probeDaemon(): Promise<void> {
   probing ??= apiFetch(PROBE_PATH)
     .then(
       () => undefined,
       (error: unknown) => {
         const offline = error instanceof BridgeRequestError && error.code === "offline_not_cached";
-        // Worker fallback errors are local; other structured failures reach the daemon.
         if (!(error instanceof DaemonUnavailableError) && !offline) return;
         setDown(true);
         scheduleProbe();
@@ -107,10 +73,6 @@ export function probeDaemon(): Promise<void> {
   return probing;
 }
 
-/**
- * Keep lists and open threads on screen through a daemon outage and bring
- * everything back when it returns. Call once, with the app's query client.
- */
 function retainedPrivateQuery(query: Query): boolean {
   return query.meta?.keepThroughGaps === true;
 }
@@ -134,15 +96,11 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     }
     clearTimeout(probeTimer);
     probeAttempt = 0;
-    // Mark what is shown stale first, so going online refetches it once:
-    // events sent while down were lost.
     void refetchAfterGap(queryClient, "none");
     setDown(false);
     if (daemonEvents.getStatus().state !== "connected") daemonEvents.reconnectNow();
   };
 
-  // Replaces the browser's online/offline events: for mail on this machine
-  // (or on a host the bridge serves), the daemon is what "online" means.
   onlineManager.setEventListener((setOnline) => {
     setOnline(!isDaemonDown());
     return useConnectionStore.subscribe((state, previous) => {
@@ -157,8 +115,6 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     } else if (!isDaemonDown()) void probeDaemon();
   });
 
-  // A restored socket closes an event gap even when HTTP stayed healthy.
-  // While down, the probe timer still controls reachability checks.
   let lastSocketState = daemonEvents.getStatus().state;
   let eventGapOpen = false;
   const offSocket = daemonEvents.onStatus(({ state }) => {
@@ -168,9 +124,6 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
     if (dropped) eventGapOpen = true;
     if (recovered) {
       eventGapOpen = false;
-      // HTTP can stay healthy while events are missed. Keep the interval open
-      // until the socket is usable so this refresh includes changes made while
-      // HTTP was already back.
       void refetchAfterGap(queryClient);
     }
     if (isDaemonDown() ? state === "connected" : dropped) void probeDaemon();
@@ -201,12 +154,6 @@ export function startDaemonAvailability(queryClient: QueryClient): () => void {
   };
 }
 
-/**
- * Refresh every query after a gap in the event stream (an outage, lagged
- * events), except those that opt out with `meta.keepThroughGaps`: an open
- * compose session, whose refetch would put the saved file back over text
- * typed since.
- */
 export function refetchAfterGap(
   queryClient: QueryClient,
   refetchType: "active" | "none" = "active",
@@ -217,7 +164,6 @@ export function refetchAfterGap(
   });
 }
 
-/** Tests only: start from "up" with nothing scheduled. */
 export function resetDaemonAvailabilityForTest(): void {
   clearTimeout(probeTimer);
   probeAttempt = 0;

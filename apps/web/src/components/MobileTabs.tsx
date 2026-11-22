@@ -15,11 +15,6 @@ interface Tab {
   Icon: LucideIcon;
 }
 
-/**
- * The five phone tabs (Apple and Material both stop at five). The four
- * modes that are worked daily get a tab; More opens the sheet with every
- * other page, and is lit for all of them (D133, `phoneTabFor`).
- */
 export const TABS: Tab[] = [
   { key: "now", to: "/now", label: "Now", Icon: MODE_GLYPHS.now },
   { key: "messages", to: "/messages", label: "Messages", Icon: MODE_GLYPHS.messages },

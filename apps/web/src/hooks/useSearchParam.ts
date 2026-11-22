@@ -1,9 +1,3 @@
-/*
- * A list's selection kept in the URL, so a copied link reopens the same
- * row. The route declares the key in its validateSearch; this reads it and
- * rewrites it in place (`replace`), so moving the cursor adds no history.
- */
-
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -11,7 +5,6 @@ import { optionalString } from "@/lib/searchParams";
 
 type Search = Record<string, unknown>;
 
-/** Patch the current URL's search params in place; `undefined` drops a key. */
 export function useReplaceSearch(): (patch: Search) => void {
   const navigate = useNavigate();
   const router = useRouter();
@@ -29,7 +22,6 @@ export function useReplaceSearch(): (patch: Search) => void {
   );
 }
 
-/** One string search param as state: `null` when absent. */
 export function useSearchParam(key: string): [string | null, (next: string | null) => void] {
   const value = useSearch({
     strict: false,
@@ -43,7 +35,6 @@ export function useSearchParam(key: string): [string | null, (next: string | nul
   return [value, set];
 }
 
-/** The keys of `search` a list keeps across opening and closing an email. */
 export function pickSearch(search: Search, keys: readonly string[]): Search {
   return Object.fromEntries(keys.flatMap((key) => (key in search ? [[key, search[key]]] : [])));
 }

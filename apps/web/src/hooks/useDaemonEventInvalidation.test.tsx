@@ -10,8 +10,6 @@ import { useConnectionStore } from "@/state/connectionStore";
 
 import { useDaemonEventInvalidation } from "./useDaemonEventInvalidation";
 
-// Capture the handler the hook registers so tests can drive events
-// through it directly, the way the WebSocket stream would.
 const events = vi.hoisted(() => ({ handler: undefined as DaemonEventHandler | undefined }));
 vi.mock("@/hooks/useDaemonEvents", () => ({
   useDaemonEvents: (handler: DaemonEventHandler) => {
@@ -39,8 +37,6 @@ function setup() {
   );
   render(wrapper(<Harness />));
   const emit = (event: DaemonEvent) => events.handler?.(event);
-  // Mail events invalidate by predicate (the shared mail query families),
-  // so report which of a representative set of cached keys each call hits.
   const mailKeys = [["mailbox"], ["thread"], ["search"], ["reply-queue"], ["shell"], ["settings"]];
   const invalidatedKeys = () =>
     invalidate.mock.calls.flatMap((call) => {
@@ -53,7 +49,6 @@ function setup() {
       }
       return [];
     });
-  /** Whether any invalidation call covers `queryKey`. */
   const invalidates = (queryKey: unknown[], meta?: Record<string, unknown>) =>
     invalidate.mock.calls.some(
       ([filters]) =>
@@ -118,8 +113,6 @@ describe("useDaemonEventInvalidation", () => {
     const { emit, invalidatedKeys } = setup();
     emit({ type: "SyncError", account_id: "acct-1", error: "imap handshake failed" });
 
-    // Freshness owns the failure: it toasts once when the account's health
-    // changes, not on every retry of an account that is already failing.
     expect(toastMock.error).not.toHaveBeenCalled();
     expect(useConnectionStore.getState().errorMessage).toBeUndefined();
     expect(invalidatedKeys()).toContain(JSON.stringify(["shell"]));
@@ -212,8 +205,6 @@ describe("useDaemonEventInvalidation", () => {
     for (const key of [["mailbox"], ["thread"], ["settings"], ["desk"], ["gists", "x"]]) {
       expect(invalidates(key)).toBe(true);
     }
-    // Refetching an open compose session would put its saved file back
-    // over text typed since.
     expect(invalidates(["compose-session", "reply:1"], { keepThroughGaps: true })).toBe(false);
     expect(toastMock.error).not.toHaveBeenCalled();
   });

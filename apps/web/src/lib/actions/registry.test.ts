@@ -160,7 +160,6 @@ describe("invokeAction", () => {
     const archive = command("mail.archive", "archive", "e", ["list"]);
     invokeAction(archive, ctx(["list", "global"]), "palette");
     invokeAction(archive, ctx(["list", "global"]), "key");
-    // Nothing ran, so nothing is heard.
     invokeAction(archive, ctx(["reader", "global"]), "pointer");
     stop();
     invokeAction(archive, ctx(["list", "global"]), "palette");
@@ -184,7 +183,6 @@ describe("a key pressed beside the pane that owns it", () => {
     setController("reader", { scrollDown: () => {} });
     setController("sidebar", { down: () => {} });
 
-    // No list mounted: the key can't be swallowed by a pane that can't run it.
     expect(reg.resolve("x", ["reader", "global"])).toBeUndefined();
 
     setController("list", { toggleSelect: toggle });
@@ -209,7 +207,6 @@ describe("a key pressed beside the pane that owns it", () => {
     const readerArchive = vi.fn<() => void>();
     setController("list", { archive: listArchive });
     setController("reader", { archive: readerArchive });
-    // A read-only list has no archive; the reader beside it isn't archive's own pane.
     const archive = command("mail.archive", "archive", "e", ["list", "reader"]);
     invokeAction(archive, ctx(["reader", "global"]), "key");
     expect(readerArchive).toHaveBeenCalledTimes(1);

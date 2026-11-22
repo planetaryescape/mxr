@@ -4,7 +4,6 @@ import { ThreadPane } from "@/features/thread/ThreadPane";
 import { optionalString } from "@/lib/searchParams";
 
 export interface OpenThreadParams {
-  /** A message to open and bring into view, e.g. a draft's cited source. */
   message?: string;
 }
 

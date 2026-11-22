@@ -45,9 +45,6 @@ describe("daemonEvents reconnect", () => {
     vi.useRealTimers();
   });
 
-  // A bridge that can't reach the daemon still accepts the upgrade, sends one
-  // error frame and closes. Resetting the backoff on that open once turned
-  // into a reconnect every 250ms.
   test("a stream that opens and closes at once backs off instead of retrying every 250ms", () => {
     vi.useFakeTimers();
     let attempts = 0;
@@ -74,7 +71,6 @@ describe("daemonEvents reconnect", () => {
     daemonEvents.start();
     vi.advanceTimersByTime(6_000);
 
-    // 250ms doubling with jitter: about five tries in six seconds, not 24.
     expect(attempts).toBeGreaterThan(1);
     expect(attempts).toBeLessThanOrEqual(7);
     expect(daemonEvents.getStatus().state).toBe("reconnecting");

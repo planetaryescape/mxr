@@ -2,20 +2,11 @@ import { isAvailable, type ActionRegistry } from "@/lib/actions/registry";
 import type { ActionContext } from "@/lib/actions/types";
 
 export interface Continuation {
-  /** The primary chord, e.g. "g i". */
   chord: string;
-  /** Every next key that runs this action here, primary first ("i", "0"). */
   next: string[];
   label: string;
 }
 
-/**
- * The order the guide lists next keys in, after scope precedence: blueprint
- * 35's `g` table puts mail places and modes (lowercase) before tools
- * (capitals), and saved searches (digits) last. Without it the guide's first
- * rows were whatever the registry defined first, and To do and Reading fell
- * past its cut.
- */
 function keyClass(next: string): number {
   if (/^[a-z]$/.test(next)) return 0;
   if (/^[A-Z]$/.test(next)) return 2;
@@ -23,7 +14,6 @@ function keyClass(next: string): number {
   return 1;
 }
 
-/** Only the bindings the dispatcher would actually choose in this context, one row per action. */
 export function shortcutContinuations(
   registry: ActionRegistry,
   prefix: string,
@@ -42,7 +32,6 @@ export function shortcutContinuations(
     const next = binding.chord.slice(start.length);
     const row = rows.get(binding.action.id);
     if (row) {
-      // An alias (`g 0` beside `g i`) joins its action's row instead of taking one.
       row.next.push(next);
       continue;
     }

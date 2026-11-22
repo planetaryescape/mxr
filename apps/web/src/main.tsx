@@ -1,15 +1,3 @@
-/*
- * The entry module. Two ordering rules matter here:
- *
- * 1. `servedKeymap` is imported first. Its module body puts the last keymap
- *    the daemon served into the registry, and modules that build their key
- *    labels once (navMap, sidebarRail) are evaluated while `@/App` loads,
- *    before this file's body runs. A later import order would paint the
- *    definition's keys and then leave them there.
- * 2. Nothing waits for a network answer before the first render. Auth, UI
- *    prefs and the keymap cache are synchronous local reads; the keymap
- *    request runs in the background and re-renders what reads it.
- */
 import { loadServedKeymap } from "@/lib/actions/servedKeymap";
 
 import { StrictMode } from "react";
@@ -33,7 +21,6 @@ import {
 } from "@/state/uiPrefsStore";
 import "@/styles/app.css";
 
-// Bootstrap auth + UI prefs synchronously so we don't flash unstyled UI.
 bootstrapFromHash();
 const prefs = useUiPrefs.getState();
 applyThemeAttribute(prefs.theme);
@@ -66,7 +53,6 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (controlled) return;
     controlled = true;
-    // The first page may have loaded before its worker finished installing.
     void getActiveQueryClient()?.refetchQueries({
       type: "active",
       predicate: (query) => query.meta?.keepThroughGaps !== true,
@@ -93,11 +79,6 @@ createRoot(root).render(
   </StrictMode>,
 );
 
-// The person's keys (keys.toml) arrive after the first paint; the store's
-// version bumps, so hints, the palette and the dispatcher take the new keys
-// without a reload. The refresh starts once the first screen has painted, so
-// its 184 kB answer can't take bandwidth from the chunks and queries the
-// first screen needs. A browser that never reports the paint still asks.
 function refreshKeys(): void {
   let started = false;
   const start = () => {

@@ -56,7 +56,6 @@ vi.mock("@/lib/ws", () => ({
 const toast = vi.hoisted(() => ({ warning: vi.fn<(message: string, options?: object) => void>() }));
 vi.mock("sonner", () => ({ toast }));
 
-/** Every fetch answers from `daemon`: up (200) or gone (no response). */
 let daemonUp = true;
 const fetchMock = vi.fn<(input: string) => Promise<Response>>(async () => {
   if (!daemonUp) throw new TypeError("Failed to fetch");
@@ -83,7 +82,6 @@ afterEach(() => {
 });
 
 async function settle(): Promise<void> {
-  // Let the probe's fetch and its handlers run.
   await vi.advanceTimersByTimeAsync(0);
 }
 
@@ -111,7 +109,6 @@ describe("daemon availability", () => {
       "http://127.0.0.1:7777/api/v1/admin/status",
     );
     expect(isDaemonDown()).toBe(true);
-    // Queries pause (keeping their data) instead of failing.
     expect(onlineManager.isOnline()).toBe(false);
   });
 
@@ -160,7 +157,6 @@ describe("daemon availability", () => {
     expect(isDaemonDown()).toBe(false);
     expect(onlineManager.isOnline()).toBe(true);
     expect(queryClient.getQueryState(["mailbox", "inbox"])?.isInvalidated).toBe(true);
-    // Refetching it would put the saved file back over text typed since.
     expect(queryClient.getQueryState(["compose-session", "reply:1"])?.isInvalidated).toBe(false);
     expect(socket.reconnectNow).toHaveBeenCalledOnce();
   });

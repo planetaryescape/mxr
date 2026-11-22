@@ -39,7 +39,6 @@ const DialogContent = React.forwardRef<
       onCloseAutoFocus={(event) => {
         onCloseAutoFocus?.(event);
         if (event.defaultPrevented) return;
-        // Opened from a shortcut there is no trigger to return to.
         requestAnimationFrame(() => {
           if (document.activeElement === document.body) focusActivePane();
         });

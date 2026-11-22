@@ -5,7 +5,6 @@ import { DeskRoute } from "@/features/desk/DeskRoute";
 import { optionalEnum } from "@/lib/searchParams";
 
 export interface DeskRouteParams {
-  /** One lane in full, e.g. everything you are waiting on. */
   lane?: DeskLaneKind;
 }
 

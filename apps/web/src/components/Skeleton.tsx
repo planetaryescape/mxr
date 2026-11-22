@@ -4,7 +4,6 @@ import { AvatarSkeleton } from "@/components/Avatar";
 import { Row } from "@/components/Row";
 import { cn } from "@/lib/utils";
 
-/** Presentation only: no placeholder links, controls or invented values. */
 export function Skeleton({
   shown,
   label,
@@ -41,7 +40,6 @@ export interface SkeletonRowProps {
   metadataClassName?: string;
 }
 
-/** Keep the shared row height and line boxes, with the mode's actual lead. */
 export function SkeletonRow({
   lead = "none",
   secondary = true,

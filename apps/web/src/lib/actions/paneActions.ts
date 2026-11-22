@@ -1,10 +1,3 @@
-/*
- * Motion, selection and view keys inside the sidebar, the mail list and
- * the reader. Bindings follow the TUI's panes; the mounted view registers
- * the commands (`useScopeController`), so these only fire where they make
- * sense and help lists exactly what the current pane supports.
- */
-
 import { Maximize2, Shuffle, SquareStack } from "lucide-react";
 
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -17,7 +10,6 @@ export const sidebarActions: ActionBehavior[] = [
   { id: "sidebar.top", command: "top" },
   { id: "sidebar.bottom", command: "bottom" },
   { id: "sidebar.open", command: "open" },
-  // Enter on a header folds it now; these keep their moved-key notices.
   { id: "sidebar.collapse", command: "collapse" },
   { id: "sidebar.expand", command: "expand" },
   { id: "sidebar.prev-section", command: "prevSection" },
@@ -35,8 +27,6 @@ export const listActions: ActionBehavior[] = [
   { id: "list.viewport-top", command: "viewportTop" },
   { id: "list.viewport-middle", command: "viewportMiddle" },
   { id: "list.open", command: "open" },
-  // From the mail list and from each mode's list alike: no view has to
-  // register it, as the sidebar is beside all of them.
   { id: "list.sidebar", run: () => useMailboxPane.getState().setActivePane("sidebar") },
   { id: "list.row-action", command: "rowAction" },
   { id: "list.toggle-select", command: "toggleSelect" },

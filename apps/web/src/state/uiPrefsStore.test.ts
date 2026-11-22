@@ -19,8 +19,6 @@ import {
 
 describe("compose editor preference", () => {
   test("a saved Rich text choice is kept, not migrated to the new default", async () => {
-    // Written through the store's own storage so the test holds whether the
-    // runtime exposes a working localStorage or the in-memory fallback.
     await useUiPrefs.persist
       .getOptions()
       .storage?.setItem("mxr.uiPrefs", { state: { composeEditor: "tiptap" }, version: 2 });
@@ -102,7 +100,6 @@ describe("contrast preference", () => {
 
   test("system resolves only increased contrast; explicit choices ignore the OS", () => {
     const original = window.matchMedia;
-    // The test only exercises the MediaQueryList members the resolver reads.
     window.matchMedia = ((query: string) => ({
       matches: query === "(prefers-contrast: more)",
       media: query,
@@ -124,7 +121,6 @@ describe("contrast preference", () => {
     let listener: (() => void) | undefined;
     let matches = false;
     const original = window.matchMedia;
-    // Capture change listeners to exercise subscribe, explicit override, and cleanup.
     window.matchMedia = ((query: string) => ({
       matches,
       media: query,
@@ -213,7 +209,6 @@ describe("reading display preference", () => {
 
   test("a change is written to storage", async () => {
     useUiPrefs.getState().setReadingDisplay({ theme: "ink", size: 24, spacing: "snug" });
-    // Through the store's own storage: it falls back to memory where localStorage is disabled.
     const saved = await useUiPrefs.persist.getOptions().storage?.getItem("mxr.uiPrefs");
     // SAFETY: the store wrote this state itself in the line above.
     const state = (saved?.state ?? {}) as Partial<UiPrefsState>;
@@ -226,9 +221,6 @@ describe("reading display preference", () => {
   });
 
   test("agrees with the reader package's schema for every field", () => {
-    // `readReadingDisplay` mirrors `parseReaderSettings` for these four fields
-    // so the entry chunk does not pull zod in. If the package's schema moves,
-    // this fails instead of letting the two drift apart.
     const samples: unknown[] = [
       null,
       [],

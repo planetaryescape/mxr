@@ -7,7 +7,6 @@ describe("optionalFlag", () => {
     expect(optionalFlag(true)).toBe(true);
     expect(optionalFlag("true")).toBe(true);
     expect(optionalFlag("1")).toBe(true);
-    // `?unread=1` reaches the route as a number.
     expect(optionalFlag(1)).toBe(true);
   });
 

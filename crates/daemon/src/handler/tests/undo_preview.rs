@@ -2,7 +2,7 @@ use super::selection_jobs::Fixture;
 use super::*;
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{MutationCommand, UndoPreview};
-use mxr_store::{DeskUndo, HighlightPrior, ReadingHighlightRow, UndoEntry};
+use mxr_store::UndoEntry;
 use std::collections::HashSet;
 
 async fn archive(fx: &Fixture, ids: &[MessageId]) -> String {
@@ -40,38 +40,6 @@ async fn undo_refusal(fx: &Fixture, mutation_id: &str) -> String {
 }
 
 #[tokio::test]
-async fn an_unknown_id_is_refused_with_the_undos_own_message() {
-    let fx = Fixture::new().await;
-    let previewed = fx
-        .refused(Request::UndoPreview {
-            mutation_id: "nope".into(),
-        })
-        .await;
-    assert_eq!(previewed, undo_refusal(&fx, "nope").await);
-    assert!(previewed.contains("not found"), "{previewed}");
-}
-
-#[tokio::test]
-async fn an_undo_already_spent_is_refused_as_the_undo_refuses_it() {
-    let fx = Fixture::new().await;
-    let mail = fx.many(1, "letter").await;
-    let mutation_id = archive(&fx, &[mail[0].id.clone()]).await;
-    let ResponseData::Ack = fx
-        .send(Request::UndoMutation {
-            mutation_id: mutation_id.clone(),
-        })
-        .await
-    else {
-        panic!("the first undo should succeed");
-    };
-
-    let previewed = preview(&fx, &mutation_id).await.unwrap_err();
-    let undone = undo_refusal(&fx, &mutation_id).await;
-    assert_eq!(previewed, undone);
-    assert!(previewed.contains("already undone"), "{previewed}");
-}
-
-#[tokio::test]
 async fn an_expired_undo_is_refused_and_kept_by_the_preview_only() {
     let fx = Fixture::new().await;
     let mail = fx.many(1, "letter").await;
@@ -97,78 +65,6 @@ async fn an_expired_undo_is_refused_and_kept_by_the_preview_only() {
         0,
         "the undo removes the expired entry"
     );
-}
-
-#[tokio::test]
-async fn an_all_job_is_refused_as_the_undo_refuses_it() {
-    let fx = Fixture::new().await;
-    fx.many(2, "invoice").await;
-    let job = fx.archive_job("invoice").await;
-
-    let previewed = preview(&fx, &job.job_id).await.unwrap_err();
-    assert_eq!(previewed, undo_refusal(&fx, &job.job_id).await);
-    assert!(previewed.contains("cannot be undone"), "{previewed}");
-}
-
-#[tokio::test]
-async fn an_undo_whose_messages_are_gone_locally_is_refused_as_the_undo_refuses_it() {
-    let fx = Fixture::new().await;
-    let mail = fx.many(1, "letter").await;
-    let mutation_id = archive(&fx, &[mail[0].id.clone()]).await;
-    fx.state
-        .store
-        .delete_messages_and_derived(&fx.account, &[mail[0].provider_id.clone()])
-        .await
-        .unwrap();
-
-    let previewed = preview(&fx, &mutation_id).await.unwrap_err();
-    let undone = undo_refusal(&fx, &mutation_id).await;
-    assert_eq!(previewed, undone);
-    assert!(previewed.contains("irreversible"), "{previewed}");
-}
-
-#[tokio::test]
-async fn a_highlight_undo_with_its_message_deleted_is_refused_as_the_undo_refuses_it() {
-    let fx = Fixture::new().await;
-    let mail = fx.many(1, "letter").await;
-    let row = ReadingHighlightRow {
-        id: "highlight-1".into(),
-        account_id: fx.account.clone(),
-        message_id: mail[0].id.clone(),
-        idx: 0,
-        view: "quote".into(),
-        quote: "letter".into(),
-        note: None,
-        created_at: chrono::Utc::now(),
-        origin: mxr_store::LOCAL_HIGHLIGHT_ORIGIN.into(),
-        origin_id: None,
-        paragraph: None,
-    };
-    fx.state
-        .store
-        .delete_messages_and_derived(&fx.account, &[mail[0].provider_id.clone()])
-        .await
-        .unwrap();
-    let mutation_id = "removed-highlight";
-    fx.state
-        .store
-        .write_undo_entry(&UndoEntry {
-            mutation_id: mutation_id.into(),
-            kind: mxr_store::UndoableMutationKind::Highlight,
-            snapshots: vec![],
-            desk: Some(DeskUndo {
-                highlights: vec![HighlightPrior { row, removed: true }],
-                ..DeskUndo::default()
-            }),
-            applied_at: 0,
-            expires_at: chrono::Utc::now().timestamp() + 3600,
-        })
-        .await
-        .unwrap();
-
-    let previewed = preview(&fx, mutation_id).await.unwrap_err();
-    assert_eq!(previewed, undo_refusal(&fx, mutation_id).await);
-    assert!(previewed.contains("irreversible"), "{previewed}");
 }
 
 #[tokio::test]

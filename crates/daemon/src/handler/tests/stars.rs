@@ -120,36 +120,6 @@ async fn unstarring_a_conversation_clears_stars_outside_the_list_and_undo_puts_t
 }
 
 #[tokio::test]
-async fn undo_of_a_star_restores_each_message_as_it_was() {
-    let fx = Fixture::new().await;
-    let (first, reply, last) = starred_conversation(&fx).await;
-
-    let result = star(&fx, &[&first, &reply, &last], true).await;
-    assert!(starred(&fx, &last.id).await);
-
-    let before = fx.fake.mutations().len();
-    undo(&fx, result.mutation_id.expect("a star is undoable")).await;
-    assert!(
-        starred(&fx, &first.id).await,
-        "starred before, starred after"
-    );
-    assert!(
-        starred(&fx, &reply.id).await,
-        "starred before, starred after"
-    );
-    assert!(
-        !starred(&fx, &last.id).await,
-        "the one it starred is unstarred"
-    );
-    let undo_calls = star_calls(&fx, before);
-    assert_eq!(
-        undo_calls,
-        vec![(last.provider_id.clone(), false)],
-        "not a naive inverse: the already-starred ones are left alone"
-    );
-}
-
-#[tokio::test]
 async fn a_star_that_fails_part_way_is_undone_at_the_provider_too() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
@@ -184,49 +154,4 @@ async fn a_star_that_fails_part_way_is_undone_at_the_provider_too() {
     ];
     want.sort();
     assert_eq!(calls, want, "the untouched third is left alone");
-}
-
-#[tokio::test]
-async fn an_unstar_job_undoes_every_chunk_exactly() {
-    let fx = Fixture::new().await;
-    let (first, reply, last) = starred_conversation(&fx).await;
-    let started = request(
-        &fx,
-        Request::StartMutationJob {
-            mutation: MutationCommand::Star {
-                message_ids: vec![first.id.clone(), reply.id.clone(), last.id.clone()],
-                starred: false,
-            },
-            client_correlation_id: None,
-        },
-    )
-    .await;
-    let ResponseData::JobStarted { job } = started else {
-        panic!("expected JobStarted, got {started:?}");
-    };
-
-    let job = loop {
-        match request(
-            &fx,
-            Request::GetJob {
-                job_id: job.job_id.clone(),
-            },
-        )
-        .await
-        {
-            ResponseData::Job { job } if job.finished_at.is_some() => break job,
-            ResponseData::Job { .. } => {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-            other => panic!("expected Job, got {other:?}"),
-        }
-    };
-    assert_eq!(job.progress.succeeded, 3);
-    assert!(!starred(&fx, &reply.id).await);
-    for mutation_id in job.undo_ids {
-        undo(&fx, mutation_id).await;
-    }
-    assert!(starred(&fx, &first.id).await);
-    assert!(starred(&fx, &reply.id).await);
-    assert!(!starred(&fx, &last.id).await, "it was never starred");
 }

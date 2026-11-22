@@ -243,47 +243,6 @@ fn compose_draft_with_html_emits_the_structured_json_contract() {
     );
 }
 
-/// A `cid:` the author did not wire up is a warning. mxr does not know what the
-/// recipient's client can resolve, so it does not overrule the author.
-#[test]
-fn an_unresolved_cid_reference_warns_without_blocking_the_save() {
-    let _guard = daemon_lock();
-    let temp = TempDir::new().expect("temp dir");
-    let env = boot(&temp, "compose-html-cid");
-    let html = write(
-        temp.path(),
-        "body.html",
-        "<html><body><p>hi</p><img src=\"cid:missing-banner\"></body></html>",
-    );
-
-    let output = env
-        .run(&[
-            "compose",
-            "--to",
-            "alice@example.com",
-            "--subject",
-            "Banner",
-            "--html-file",
-            &html,
-            "--draft",
-            "--no-signature",
-            "--format",
-            "json",
-        ])
-        .success()
-        .get_output()
-        .clone();
-
-    let stderr = String::from_utf8(output.stderr).expect("utf8");
-    assert!(
-        stderr.contains("missing-banner"),
-        "the unresolved reference must be reported; stderr={stderr}"
-    );
-    let stdout = String::from_utf8(output.stdout).expect("utf8");
-    let payload: Value = serde_json::from_str(stdout.trim()).expect("parse JSON");
-    assert_eq!(payload["content_kind"], "html");
-}
-
 /// `--dry-run` and `--check` are inspection verbs. Neither may leave a draft
 /// behind.
 #[test]

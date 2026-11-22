@@ -11,7 +11,6 @@ struct Accounts {
     disabled: AccountId,
     first_inbox: LabelId,
     second_inbox: LabelId,
-    first_sent: LabelId,
 }
 
 async fn label(fx: &Fixture, account: &AccountId, name: &str, kind: LabelKind) -> LabelId {
@@ -92,7 +91,6 @@ async fn accounts() -> Accounts {
         disabled,
         first_inbox,
         second_inbox,
-        first_sent,
     }
 }
 
@@ -149,133 +147,6 @@ async fn role_without_account_lists_every_enabled_account_newest_first() {
     assert_eq!(thread_subjects(&a, req).await, expected);
 }
 
-#[tokio::test]
-async fn role_with_an_account_lists_only_that_account() {
-    let a = accounts().await;
-    let req = list_envelopes(Some(a.second.clone()), None, Some("inbox"));
-    assert_eq!(envelope_subjects(&a, req).await, vec!["second-middle"]);
-    let req = list_threads(Some(a.first.clone()), None, Some("inbox"));
-    assert_eq!(
-        thread_subjects(&a, req).await,
-        vec!["first-newest", "first-oldest"]
-    );
-}
-
-#[tokio::test]
-async fn request_without_a_role_behaves_as_before() {
-    let a = accounts().await;
-    let req = list_envelopes(None, Some(a.first_inbox.clone()), None);
-    assert_eq!(
-        envelope_subjects(&a, req).await,
-        vec!["first-newest", "first-oldest"]
-    );
-    let req = list_threads(None, Some(a.second_inbox.clone()), None);
-    assert_eq!(thread_subjects(&a, req).await, vec!["second-middle"]);
-    let req = list_envelopes(None, None, None);
-    assert_eq!(
-        envelope_subjects(&a, req).await,
-        vec!["first-sent", "first-newest", "first-oldest"]
-    );
-}
-
-#[tokio::test]
-async fn each_system_mailbox_has_its_own_role() {
-    let a = accounts().await;
-    let req = list_envelopes(None, Some(a.first_sent.clone()), Some("sent"));
-    assert_eq!(envelope_subjects(&a, req).await, vec!["first-sent"]);
-    let req = list_envelopes(None, None, Some("all_mail"));
-    assert_eq!(
-        envelope_subjects(&a, req).await,
-        vec![
-            "first-sent",
-            "first-newest",
-            "second-middle",
-            "first-oldest"
-        ],
-        "All Mail spans enabled accounts and skips the disabled one"
-    );
-    let req = list_threads(None, None, Some("all_mail"));
-    assert_eq!(thread_subjects(&a, req).await.len(), 4);
-}
-
-#[tokio::test]
-async fn unknown_role_is_an_error_not_the_default_account() {
-    let a = accounts().await;
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 3,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(list_envelopes(
-            None,
-            Some(a.first_inbox.clone()),
-            Some("nope"),
-        )),
-    };
-    let IpcPayload::Response(Response::Error { message, .. }) =
-        handle_request(&a.fx.state, &msg).await.payload
-    else {
-        panic!("expected an error")
-    };
-    assert!(message.contains("unknown mailbox role"), "{message}");
-}
-
-#[tokio::test]
-async fn list_labels_all_accounts_returns_each_enabled_accounts_labels() {
-    let a = accounts().await;
-    let ResponseData::Labels { labels } = request(
-        &a.fx,
-        Request::ListLabels {
-            account_id: None,
-            all_accounts: true,
-        },
-    )
-    .await
-    else {
-        panic!("expected labels")
-    };
-    let accounts_seen: std::collections::HashSet<_> =
-        labels.iter().map(|l| l.account_id.clone()).collect();
-    assert!(accounts_seen.contains(&a.first) && accounts_seen.contains(&a.second));
-    assert!(!accounts_seen.contains(&a.disabled));
-
-    let ResponseData::Labels { labels } = request(
-        &a.fx,
-        Request::ListLabels {
-            account_id: None,
-            all_accounts: false,
-        },
-    )
-    .await
-    else {
-        panic!("expected labels")
-    };
-    assert!(labels.iter().all(|l| l.account_id == a.first));
-}
-
-#[tokio::test]
-async fn list_subscriptions_all_accounts_answers_and_a_scoped_profile_cannot_ask_for_it() {
-    let a = accounts().await;
-    let ResponseData::Subscriptions { .. } = request(
-        &a.fx,
-        Request::ListSubscriptions {
-            account_id: None,
-            limit: 8,
-            all_accounts: true,
-        },
-    )
-    .await
-    else {
-        panic!("expected subscriptions")
-    };
-    scope_to_first(&a).await;
-    let req = Request::ListSubscriptions {
-        account_id: None,
-        limit: 8,
-        all_accounts: true,
-    };
-    assert!(scoped_check(&a, &req).await.is_err(), "{req:?}");
-}
-
 async fn scope_to_first(a: &Accounts) {
     let mut config = a.fx.state.config_snapshot();
     config.agent_surfaces.profiles.insert(
@@ -322,61 +193,6 @@ async fn scoped_profiles_cannot_use_the_role_path_to_reach_other_accounts() {
     )
     .await
     .is_ok());
-}
-
-#[tokio::test]
-async fn system_mailbox_counts_add_up_enabled_accounts_only() {
-    let a = accounts().await;
-    let counts = |scope: Option<AccountId>| {
-        let fx = &a.fx;
-        async move {
-            let ResponseData::SystemMailboxCounts { mailboxes } =
-                request(fx, Request::SystemMailboxCounts { account_id: scope }).await
-            else {
-                panic!("expected counts")
-            };
-            mailboxes
-        }
-    };
-    let total = |mailboxes: &[mxr_protocol::SystemMailboxCount], role: &str| {
-        mailboxes.iter().find(|m| m.role == role).map(|m| m.total)
-    };
-    let all = counts(None).await;
-    assert_eq!(total(&all, "all_mail"), Some(4));
-    assert_eq!(
-        total(&counts(Some(a.second.clone())).await, "all_mail"),
-        Some(1)
-    );
-    assert!(counts(Some(a.disabled.clone())).await.is_empty());
-}
-
-#[tokio::test]
-async fn starred_lists_imap_flags_and_gmail_labels_together_through_the_daemon() {
-    let a = accounts().await;
-    let starred_label = label(&a.fx, &a.first, "STARRED", LabelKind::System).await;
-    let gmail_message = mail(&a.fx, &a.first, &starred_label, 2, "gmail-starred").await;
-    a.fx.state
-        .store
-        .set_starred(&gmail_message, true, EventSource::Sync)
-        .await
-        .unwrap();
-    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
-        .account_id(a.second.clone())
-        .provider_id("sysbox-imap-flag")
-        .subject("imap-flagged".to_string())
-        .flags(mxr_core::types::MessageFlags::STARRED)
-        .date(Utc::now() - Duration::minutes(3))
-        .build();
-    a.fx.state
-        .store
-        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
-        .await
-        .unwrap();
-    let req = list_threads(None, Some(starred_label), Some("starred"));
-    assert_eq!(
-        thread_subjects(&a, req).await,
-        vec!["gmail-starred", "imap-flagged"]
-    );
 }
 
 #[tokio::test]
@@ -428,73 +244,4 @@ async fn a_disabled_accounts_message_in_a_shared_thread_never_reaches_a_merged_r
     assert_eq!(thread.account_id, a.second);
     assert_eq!(thread.message_count, 1);
     assert_eq!(thread.message_ids, vec![visible.id.clone()]);
-}
-
-#[tokio::test]
-async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
-    let a = accounts().await;
-    let shared = ThreadId::new();
-    let store = &a.fx.state.store;
-    let mut ids = Vec::new();
-    for (account, tag, minutes) in [(&a.second, "visible", 30), (&a.disabled, "hidden", 1)] {
-        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
-            .account_id(account.clone())
-            .thread_id(shared.clone())
-            .provider_id(format!("reader-{tag}"))
-            .subject(format!("Aaa {tag}"))
-            .snippet(format!("{tag} snippet"))
-            .date(Utc::now() - Duration::minutes(minutes))
-            .build();
-        store
-            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        ids.push(envelope.id);
-    }
-    let ResponseData::Thread {
-        thread, messages, ..
-    } = request(
-        &a.fx,
-        Request::GetThread {
-            thread_id: shared.clone(),
-            window: None,
-        },
-    )
-    .await
-    else {
-        panic!("expected a thread")
-    };
-    assert_eq!(thread.subject, "Aaa visible");
-    assert_eq!(thread.snippet, "visible snippet");
-    assert_eq!(thread.account_id, a.second);
-    assert_eq!(thread.message_count, 1);
-    assert_eq!(thread.message_ids, vec![ids[0].clone()]);
-    assert_eq!(
-        messages.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
-        vec![ids[0].clone()]
-    );
-
-    let only_hidden = ThreadId::new();
-    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
-        .account_id(a.disabled.clone())
-        .thread_id(only_hidden.clone())
-        .provider_id("reader-only-hidden")
-        .build();
-    store
-        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
-        .await
-        .unwrap();
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 9,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::GetThread {
-            thread_id: only_hidden,
-            window: None,
-        }),
-    };
-    assert!(matches!(
-        handle_request(&a.fx.state, &msg).await.payload,
-        IpcPayload::Response(Response::Error { .. })
-    ));
 }

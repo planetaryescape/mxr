@@ -507,30 +507,3 @@ pub(super) async fn restore_desk_state(
     super::deferral::restore_timers(state, desk, applied_at).await
 }
 
-#[cfg(test)]
-pub(super) async fn run_messages_for_test(
-    state: &AppState,
-    items: Vec<(ThreadId, AccountId, DeskLaneKind, Vec<MessageId>)>,
-) -> HandlerResult {
-    let plans = items
-        .into_iter()
-        .map(|(thread_id, account_id, lane, messages)| Plan {
-            thread_id,
-            account_id: Some(account_id),
-            lane,
-            archive: if lane_archives(lane) {
-                messages.clone()
-            } else {
-                Vec::new()
-            },
-            unread: messages,
-            mark: None,
-            commitment: None,
-            reply_later: Vec::new(),
-            reminders: Vec::new(),
-            thread_messages: Vec::new(),
-            error: None,
-        })
-        .collect();
-    run(state, plans).await
-}

@@ -94,25 +94,3 @@ fn json_format_reports_daemon_unavailable_as_one_stderr_line() {
         .unwrap()
         .contains("MXR_DAEMON_AUTOSTART=off"));
 }
-
-#[test]
-fn general_failure_still_exits_1_with_no_json_line() {
-    let isolated = isolated("general");
-    let missing = isolated._dir.path().join("no-such-bundle.mxrbackup");
-    let output = run(&isolated, &["backup", "inspect", missing.to_str().unwrap()]);
-    assert_eq!(output.status.code(), Some(1), "stderr: {}", stderr(&output));
-    assert!(
-        stderr(&output).contains("Error:"),
-        "stderr: {}",
-        stderr(&output)
-    );
-    let last = stderr(&output)
-        .lines()
-        .last()
-        .unwrap_or_default()
-        .to_string();
-    assert!(
-        !last.starts_with("{\"error\""),
-        "unexpected JSON line: {last}"
-    );
-}

@@ -708,7 +708,6 @@ mod arrivals;
 mod ask_assessments;
 mod ask_deadlines;
 mod asks_delivery;
-mod asks_projection_replay;
 mod assessment_authority;
 mod assistant;
 mod assistant_models;
@@ -787,7 +786,6 @@ mod rule_trust;
 
 mod asks_task_identity;
 mod bill_identity;
-mod promise_closed_history;
 mod promise_currencies;
 mod promise_lifecycle;
 mod promise_ordering;

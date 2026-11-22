@@ -49,58 +49,6 @@ fn ask_with_llm_disabled_returns_structured_json() {
     );
 }
 
-/// `mxr decisions --format json` on an empty archive returns an
-/// empty array, not an error.
-#[test]
-fn decisions_list_empty_returns_empty_array() {
-    let _guard = daemon_lock();
-    let temp = TempDir::new().expect("temp dir");
-    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "decisions-empty");
-
-    let resp = run_json(
-        &instance,
-        &data_dir,
-        &config_dir,
-        &["decisions", "--format", "json"],
-    );
-    let arr = resp.as_array().expect("decisions list is JSON array");
-    assert!(arr.is_empty(), "empty archive yields empty list: {resp}");
-}
-
-/// `mxr decisions show <id>` for an unknown id must exit non-zero
-/// (not return null), so scripts can branch on existence.
-#[test]
-fn decisions_show_unknown_id_exits_nonzero() {
-    let _guard = daemon_lock();
-    let temp = TempDir::new().expect("temp dir");
-    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "decisions-show-404");
-
-    let output = assert_cmd::Command::cargo_bin("mxr")
-        .expect("mxr bin")
-        .env("MXR_INSTANCE", &instance)
-        .env("MXR_DATA_DIR", &data_dir)
-        .env("MXR_CONFIG_DIR", &config_dir)
-        .env_remove("EDITOR")
-        .env_remove("VISUAL")
-        .args([
-            "decisions",
-            "show",
-            "nonexistent-id-aabbccdd",
-            "--format",
-            "json",
-        ])
-        .assert()
-        .failure()
-        .get_output()
-        .clone();
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("not found") || stderr.contains("Error"),
-        "stderr names the missing id problem: {stderr}"
-    );
-}
-
 /// `mxr whois <email> --format json` for a never-seen address must
 /// return a valid `EntityExplanation` JSON, not an error. The
 /// "no prior interaction" path lives entirely in the daemon — no

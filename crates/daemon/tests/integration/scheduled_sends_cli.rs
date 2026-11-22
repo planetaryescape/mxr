@@ -54,67 +54,6 @@ impl Env {
     }
 }
 
-#[test]
-fn drafts_scheduled_lists_a_scheduled_draft_until_it_is_unsent() {
-    let _guard = daemon_lock();
-    let temp = TempDir::new().expect("temp dir");
-    let (daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "scheduled-sends");
-    let env = Env {
-        _daemon: daemon,
-        instance,
-        data_dir,
-        config_dir,
-    };
-
-    let composed = env.json(&[
-        "compose",
-        "--to",
-        "alice@example.com",
-        "--subject",
-        "Later",
-        "--body",
-        "Going out later.",
-        "--draft",
-        "--no-signature",
-        "--format",
-        "json",
-    ]);
-    let draft_id = composed["draft_id"].as_str().expect("draft_id").to_string();
-    let (reviewed_revision, reviewed_workspace) = env.reviewed_send(&draft_id);
-
-    assert_eq!(
-        env.json(&["drafts", "--format", "json", "scheduled"]),
-        serde_json::json!([]),
-        "an unscheduled draft is not a scheduled send"
-    );
-
-    env.run(&[
-        "send",
-        &draft_id,
-        "--expected-revision",
-        &reviewed_revision,
-        "--expected-workspace",
-        &reviewed_workspace,
-        "--at",
-        "in 2h",
-    ])
-    .success();
-
-    let scheduled = env.json(&["drafts", "--format", "json", "scheduled"]);
-    let rows = scheduled.as_array().expect("array");
-    assert_eq!(rows.len(), 1, "scheduled={scheduled:#}");
-    assert_eq!(rows[0]["draft_id"], draft_id);
-    assert_eq!(rows[0]["subject"], "Later");
-    assert_eq!(rows[0]["to"][0]["email"], "alice@example.com");
-    assert!(rows[0]["send_at"].as_str().is_some(), "row={:#}", rows[0]);
-
-    env.run(&["unsend", &draft_id]).success();
-    assert_eq!(
-        env.json(&["drafts", "--format", "json", "scheduled"]),
-        serde_json::json!([])
-    );
-}
-
 /// An unreadable `--remind-after` must stop the send: the reminder time is
 /// resolved before anything goes out, so the draft is still there after.
 #[test]

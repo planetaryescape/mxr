@@ -153,16 +153,6 @@ impl GistQueue {
     fn failed_len(&self) -> usize {
         self.inner.lock().failed.len()
     }
-
-    #[cfg(test)]
-    pub(crate) fn snapshot(&self) -> (Vec<ThreadId>, Vec<ThreadId>, usize) {
-        let state = self.inner.lock();
-        (
-            state.pending.iter().cloned().collect(),
-            state.in_flight.iter().cloned().collect(),
-            state.writers,
-        )
-    }
 }
 
 fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: Instant) {

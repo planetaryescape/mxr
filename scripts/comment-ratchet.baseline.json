@@ -98,7 +98,6 @@
   "crates/daemon/src/logging.rs": 1,
   "crates/daemon/src/process_probe.rs": 3,
   "crates/daemon/src/server.rs": 6,
-  "crates/daemon/tests/integration/daemon_lifecycle.rs": 1,
   "crates/daemon/tests/integration/demo_cli.rs": 1,
   "crates/export/src/mbox.rs": 1,
   "crates/html-worker/src/limits.rs": 6,

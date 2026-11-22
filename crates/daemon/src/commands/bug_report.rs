@@ -652,6 +652,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sanitize_redacts_inline_authorization_assignments() {
+        let sanitized = sanitize(
+            r#"request headers authorization="Bearer secret-token" status=401
+request headers Authorization="Bearer capital-token" status=403
+headers={ authorization: Bearer secret-token, accept: */* }"#,
+        );
+
+        assert!(sanitized.contains(r#"authorization="[REDACTED_SECRET]" status=401"#));
+        assert!(sanitized.contains(r#"Authorization="[REDACTED_SECRET]" status=403"#));
+        assert!(sanitized.contains("authorization: [REDACTED_SECRET], accept: */*"));
+        assert!(!sanitized.contains("secret-token"));
+        assert!(!sanitized.contains("capital-token"));
+    }
+
+    #[test]
     fn sanitize_redacts_common_sensitive_values() {
         let sanitized = sanitize(
             "email=user@example.com\npassword_ref=secret\nauthorization: Bearer line-token\nsubject: hi\nbody_text: hello\nip=10.0.0.1",

@@ -50,6 +50,12 @@ pub struct TerminalImageSupport {
     protocol_type: ProtocolType,
 }
 
+/// Whether ratatui-image's capability query timed out with nobody
+/// answering. It then falls back to halfblocks with no capabilities, but its
+/// reader thread is still blocked on stdin, and the first key the person
+/// presses goes to it instead of the TUI. Inside tmux the query goes
+/// through passthrough, which tmux drops when `allow-passthrough` is off
+/// (its default) or the pane isn't visible, so there it is never answered.
 fn query_went_unanswered(
     elapsed: std::time::Duration,
     timeout: std::time::Duration,

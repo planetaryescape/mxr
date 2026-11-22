@@ -308,6 +308,9 @@ impl App {
         )
     }
 
+    /// A system mailbox by its Gmail name (`INBOX`, `SENT`, …). The demo
+    /// names them `Inbox` and `Sent`, so the match ignores case,
+    /// as `resolve_desired_system_mailbox` does; an exact match wins.
     pub(crate) fn system_label(&self, name: &str) -> Option<&Label> {
         let labels = &self.mailbox.labels;
         labels.iter().find(|label| label.name == name).or_else(|| {

@@ -11,6 +11,12 @@ use std::borrow::Cow;
 /// Returns `Cow::Borrowed` when nothing needs stripping so the common
 /// (safe) path is allocation-free.
 pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
+    // Fast path: scan for any ASCII-range byte that needs stripping before
+    // allocating. We check only bytes < 0x80 here because multi-byte UTF-8
+    // sequences use bytes 0x80..=0xFF as continuation/lead bytes — those
+    // are safe and must not trigger stripping. C1 controls (U+0080–U+009F)
+    // are encoded as two-byte sequences in valid UTF-8; we catch them in
+    // the char-level slow path below.
     let needs_strip = input.bytes().any(|b| {
         matches!(b,
             0x00..=0x08

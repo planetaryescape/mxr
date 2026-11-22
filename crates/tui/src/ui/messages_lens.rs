@@ -311,6 +311,14 @@ fn topic_strip(
     .collect()
 }
 
+/// Paragraphs: blocks of consecutive non-blank lines, whatever the break
+/// is written as (`\n\n`, or a raw message's own `\r\n\r\n`). A naive
+/// split on the literal two bytes `"\n\n"` never finds a break inside
+/// `"\r\n\r\n"` and folds the whole letter into one paragraph, which
+/// misreports "+N paragraphs" and can leave a long letter unfolded with
+/// nothing to cut. Matches the daemon's own count (`paragraphs` in
+/// `crates/daemon/src/handler/messages.rs`), so the two never disagree on
+/// the same message.
 fn paragraph_blocks(text: &str) -> Vec<&str> {
     let mut blocks = Vec::new();
     let mut block_start: Option<usize> = None;

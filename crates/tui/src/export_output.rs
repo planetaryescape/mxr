@@ -152,6 +152,8 @@ pub fn run_clipboard_command(program: &str, args: &[&str], content: &str) -> Res
             _ => format!("could not start {program}: {error}"),
         })?;
 
+    // Dropping stdin at the end of the arm closes the pipe so the program sees
+    // EOF. The write error is held until the child is reaped.
     let write_result = match child.stdin.take() {
         Some(mut stdin) => stdin.write_all(content.as_bytes()),
         None => Ok(()),

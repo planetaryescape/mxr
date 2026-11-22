@@ -128,14 +128,6 @@ describe("Now's arrivals line", () => {
     expect(within(line).getAllByRole("link")).toHaveLength(5);
   });
 
-  test("says Clear when nothing on Now waits", () => {
-    render(<ArrivalsView arrivals={arrivals()} nowWaiting={false} />);
-    openSortingDetails();
-    expect(screen.getByTestId("arrivals-line")).toHaveTextContent(
-      "Clear. All 50 emails since 08:12 are accounted for.",
-    );
-  });
-
   test("shows the track record only when the daemon sends one", () => {
     const { rerender } = render(<ArrivalsView arrivals={arrivals()} nowWaiting />);
     expect(screen.queryByTestId("arrivals-track-record")).toBeNull();

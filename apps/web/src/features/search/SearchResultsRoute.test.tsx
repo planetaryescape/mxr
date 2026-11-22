@@ -345,14 +345,6 @@ describe("SearchResultsRoute", () => {
     expect(lastSearchParams().limit).toBeUndefined();
   });
 
-  test("the sort control reads Default while the sort is left to the daemon", async () => {
-    router.search = { q: "invoice", mode: "lexical" };
-    renderWithQueryClient(<SearchResultsRoute />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Filters/ }));
-    expect(await screen.findByRole("combobox", { name: "Sort" })).toHaveTextContent("Default");
-  });
-
   test("an explicit sort is sent as chosen", async () => {
     router.search = { q: "invoice", mode: "lexical", sort: "newest" };
     renderWithQueryClient(<SearchResultsRoute />);

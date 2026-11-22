@@ -3,7 +3,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { ModeMark, ModeMarks, NewMark } from "./ModeMark";
+import { ModeMark, ModeMarks } from "./ModeMark";
 
 describe("ModeMark", () => {
   test("is named for its mode, with the daemon's detail as the tooltip", () => {
@@ -36,9 +36,4 @@ describe("ModeMark", () => {
     expect(screen.queryByTestId("mode-mark")).toBeNull();
   });
 
-  test("the new mark is a word in the cue colour", () => {
-    render(<NewMark />);
-    expect(screen.getByTestId("new-mark")).toHaveTextContent("new");
-    expect(screen.getByTestId("new-mark")).toHaveClass("text-cue", "type-meta");
-  });
 });

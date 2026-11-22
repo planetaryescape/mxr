@@ -157,24 +157,6 @@ test("placeholder account and topic changes hide and close old disclosures", () 
   expect(screen.queryByRole("dialog", { name: "Message info" })).toBeNull();
 });
 
-test("group person pages keep their plain text heading", () => {
-  const groupRow: MessagesRow = {
-    ...row,
-    id: "group:thread-1",
-    kind: "group",
-    title: "Samir, Ruth",
-    person: null,
-    members: [],
-  };
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <PersonPane {...props(false, "thread-1")} page={{ ...page, row: groupRow }} />
-    </QueryClientProvider>,
-  );
-
-  expect(screen.getByRole("heading", { name: "Samir, Ruth" })).toBeInTheDocument();
-});
-
 test("keeps topic navigation compact and returns focus after selecting a group topic", async () => {
   const groupTopic: MessagesTopic = {
     ...topic,

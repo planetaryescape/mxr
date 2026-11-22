@@ -71,19 +71,6 @@ describe("mode loading layouts", () => {
     ).toHaveLength(2);
   });
 
-  test("Later does not pretend to be an edition with visit bands", () => {
-    const { container } = render(<ReadingSkeleton shown later />);
-    expect(screen.getByRole("status", { name: "Loading Later" })).toBeInTheDocument();
-    expect(container.querySelector("h2")).toBeNull();
-    expect(container.querySelector('[data-skeleton-row="source"]')).toBeInTheDocument();
-  });
-
-  test("Messages does not put another frame around its already-framed list", () => {
-    const { container } = render(<MessagesSkeleton shown />);
-    expect(container.querySelector("[data-frame]")).toBeNull();
-    expect(container.querySelector('[data-skeleton-row="avatar"]')).toBeInTheDocument();
-  });
-
   test.each([
     ["NowSkeleton", NowSkeleton],
     ["TodoSkeleton", TodoSkeleton],

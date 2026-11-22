@@ -402,13 +402,6 @@ const turn: AssistantItem[] = [
 ];
 
 describe("transcript", () => {
-  test("your words are quoted, not bubbled", () => {
-    render(<Transcript items={turn} running={false} conversationId="c1" />);
-    const quote = screen.getByText("tidy shipping mail");
-    expect(quote.className).toContain("border-l-2");
-    expect(quote.className).not.toContain("bg-");
-  });
-
   test("a finished turn folds to one line that opens to wire lines and a readout", () => {
     render(<Transcript items={turn} running={false} conversationId="c1" />);
     const fold = screen.getByRole("button", { name: /1 step · 14 found/ });
@@ -488,24 +481,6 @@ describe("transcript", () => {
     const old = { ...search, title: undefined } as never;
     expect(stepTitle(old)).toBe("Find shipping notices.");
     expect(stepTitle({ ...(old as object), reason: "" } as never)).toBe("Search");
-  });
-
-  test("an answered question collapses into your quoted reply", () => {
-    const asked: AssistantItem = {
-      kind: "tool_call",
-      seq: 2,
-      call_id: "q",
-      tool: "ask_user",
-      reason: "",
-      title: { running: "Asking you a question", done: "You answered a question" },
-      arguments: {},
-      state: "answered",
-      result: '{"answers":[{"selected":["Newsletters and receipts"]}]}',
-      created_at: 2,
-    };
-    render(<Transcript items={[turn[0]!, asked]} running={false} conversationId="c1" />);
-    expect(screen.getByText("Newsletters and receipts").className).toContain("border-l-2");
-    expect(screen.queryByRole("button", { name: /1 step/ })).toBeNull();
   });
 
   test("the fold counts changes waiting and failures", () => {

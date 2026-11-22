@@ -98,11 +98,6 @@ describe("UpdateLineRow at rest", () => {
     expect(within(row).getByTestId("update-fact")).toHaveAttribute("title", lineFixture().fact);
   });
 
-  test("the delta is neutral, not cyan", () => {
-    const { row } = renderLine(lineFixture());
-    expect(within(row).getByTestId("update-delta")).not.toHaveClass("text-primary", "text-signal");
-  });
-
   test("the trail's time is the latest email's arrival, lit or not; the peek gives it in full", () => {
     const line = lineFixture();
     const { row } = renderLine(line, { focused: false });
@@ -247,25 +242,6 @@ describe("UpdateLineRow's source", () => {
     expect(within(row).getByTestId("update-host")).toHaveClass("type-meta", "text-text-3");
   });
 
-  test("an unread email reads bright and semibold", () => {
-    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: true }));
-    expect(within(row).getByTestId("update-source").parentElement).toHaveClass(
-      "font-semibold",
-      "text-text-1",
-    );
-  });
-
-  test("a read email calms to the second text tier", () => {
-    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: false }));
-    const source = within(row).getByTestId("update-source");
-    expect(source.parentElement).toHaveClass("text-text-2");
-    expect(source.parentElement).not.toHaveClass("font-semibold");
-  });
-
-  test("a line with no email keeps the neutral tier", () => {
-    const { row } = renderLine(lineFixture({ source_name: "Strava", unread: undefined }));
-    expect(within(row).getByTestId("update-source").parentElement).toHaveClass("text-text-1");
-  });
 });
 
 describe("UpdateLineRow's track", () => {

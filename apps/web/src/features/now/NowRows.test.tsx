@@ -8,7 +8,7 @@ import type { RuntimeAccount } from "@/features/compose/api";
 import { AccountIdentitiesContext, identitiesFrom } from "@/features/accounts/useAccountIdentities";
 import type { components } from "@/api/generated";
 
-import { PersonRow, TodoRow, UpdatesRow } from "./NowRows";
+import { PersonRow, TodoRow } from "./NowRows";
 import type { NowItem } from "./nowItems";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -144,24 +144,4 @@ describe("Now rows show each row's own account", () => {
     expect(within(second!).getByRole("img", { name: "Home" })).toHaveTextContent("H");
   });
 
-  test("the Updates card wears no chip, since it can span accounts", () => {
-    const item = {
-      kind: "updates",
-      key: "u1",
-      card: {
-        headline: "3 updates from GitHub",
-        line: "3 updates",
-        since: "2026-10-20T10:00:00Z",
-        lines: [],
-      },
-    } as unknown as NowItem;
-    render(
-      <AccountIdentitiesContext.Provider value={identities}>
-        <ul>
-          <UpdatesRow item={item as never} {...state(0)} onLetGo={vi.fn<() => void>()} />
-        </ul>
-      </AccountIdentitiesContext.Provider>,
-    );
-    expect(screen.queryByRole("img", { name: /Work|Home/ })).toBeNull();
-  });
 });

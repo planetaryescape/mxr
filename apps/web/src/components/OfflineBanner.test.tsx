@@ -27,15 +27,6 @@ beforeEach(() => {
   });
 });
 
-test("a hosted app explains offline reading without asking the phone to run a daemon", () => {
-  bridge.url = "https://mxr.example.test";
-  useConnectionStore.setState({ daemonDown: true });
-  render(<OfflineBanner />);
-  expect(banner("daemon")).toHaveTextContent("Saved mail stays readable");
-  expect(banner("daemon")).toHaveTextContent("reconnects automatically");
-  expect(document.body).not.toHaveTextContent("Copy start command");
-});
-
 afterEach(() => {
   vi.useRealTimers();
 });

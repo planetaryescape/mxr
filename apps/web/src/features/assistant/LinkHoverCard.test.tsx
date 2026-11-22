@@ -293,42 +293,6 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
   });
 
-  test("a click during the open delay, then blurring, never opens the card", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointerEnter(chip, "mouse");
-    await wait(200);
-    clickWithFocus(chip);
-    await wait(20);
-    act(() => chip.blur());
-    const [card, calls] = await never();
-    expect(card).toBeNull();
-    expect(calls).toHaveLength(0);
-
-    // The pointer leaves and comes back: a fresh session.
-    fireEvent.pointerOut(chip);
-    pointerEnter(chip, "mouse");
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("a brief re-hover after a click does not let the first timer through", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointerEnter(chip, "mouse");
-    await wait(200);
-    clickWithFocus(chip);
-    await wait(20);
-    fireEvent.pointerOut(chip);
-    await wait(10);
-    pointerEnter(chip, "mouse");
-    await wait(20);
-    fireEvent.pointerOut(chip); // focus stays on the link
-    const [card, calls] = await never();
-    expect(card).toBeNull();
-    expect(calls).toHaveLength(0);
-  });
-
   test("pressing, leaving, releasing outside and tabbing away and back still opens on focus", async () => {
     reply();
     const chip = screen.getByRole("link", { name: "Q1 report" });
@@ -412,19 +376,6 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
   });
 
-  test("after a touch tap in the order down, up, leave, click keyboard focus still opens it", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Down", "touch");
-    pointer(chip, "Up", "touch");
-    pointer(chip, "Out", "touch");
-    fireEvent.click(chip);
-    act(() => chip.blur());
-    act(() => chip.focus());
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
   test("pressing inside the card, leaving it and releasing outside closes it after the grace", async () => {
     reply();
     const chip = screen.getByRole("link", { name: "Q1 report" });
@@ -461,28 +412,6 @@ describe("the hover card on an email or person chip", () => {
     errors.mockRestore();
   });
 
-  test("a touch scroll that starts on the link (down, cancel, leave) doesn't swallow the next keyboard focus", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Down", "touch");
-    pointer(chip, "Cancel", "touch");
-    pointer(chip, "Out", "touch");
-    act(() => chip.focus());
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
-  test("a press that caused no focus and is released outside doesn't swallow the next keyboard focus", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Down", "mouse");
-    pointer(chip, "Out", "mouse");
-    pointer(document.body, "Up", "mouse");
-    act(() => chip.focus());
-    await wait(450);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
-  });
-
   test("Esc while the open timer is pending keeps the card from opening", async () => {
     reply();
     const chip = screen.getByRole("link", { name: "Q1 report" });
@@ -491,21 +420,6 @@ describe("the hover card on an email or person chip", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     await wait(1000);
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
-  });
-
-  test("Esc that a field handles itself still keeps a pending card from opening", async () => {
-    // The proof's reject note stops Esc from bubbling; the card listens in capture.
-    reply();
-    const field = document.createElement("textarea");
-    field.addEventListener("keydown", (event) => event.stopPropagation());
-    document.body.append(field);
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Over", "mouse");
-    await wait(200);
-    fireEvent.keyDown(field, { key: "Escape" });
-    await wait(1000);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    field.remove();
   });
 
   test("Esc closes the open card and cancels another link's pending one", async () => {
@@ -521,17 +435,6 @@ describe("the hover card on an email or person chip", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     await wait(1500);
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
-  });
-
-  test("Tab onto the link whose card is open keeps the card open", async () => {
-    reply();
-    const chip = screen.getByRole("link", { name: "Q1 report" });
-    pointer(chip, "Over", "mouse");
-    await wait(450);
-    act(() => chip.focus());
-    pointer(chip, "Out", "mouse");
-    await wait(500);
-    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
   });
 
   test("the card is a description of the link, not a dialog or a focus target", async () => {

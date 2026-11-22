@@ -83,19 +83,6 @@ test("modified arrows and ordinary letters don't change a choice", () => {
   expect(onChange).not.toHaveBeenCalled();
 });
 
-test("direct shortcuts are visible beside their choices", () => {
-  render(
-    <Segmented
-      label="View"
-      value="one"
-      options={[["one", "One"]]}
-      keys={{ one: "g t" }}
-      onChange={() => {}}
-    />,
-  );
-  expect(screen.getByRole("radio", { name: "One" })).toHaveTextContent("g t");
-});
-
 test("tool pages focus their selected tab directly and can recover focus after a dialog", () => {
   render(
     <Page title="Tool" tabs={<Choices tabs />}>

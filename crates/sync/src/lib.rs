@@ -30,7 +30,6 @@ mod tests {
     }
 
     impl LoadedAddressLookup {
-        /// Single-account lookup: `emails` are owned by `account_id` only.
         fn for_account(
             account_id: AccountId,
             emails: impl IntoIterator<Item = impl Into<String>>,
@@ -44,7 +43,6 @@ mod tests {
             }
         }
 
-        /// Multi-account lookup: each account owns its own address set.
         fn multi(entries: impl IntoIterator<Item = (AccountId, Vec<&'static str>)>) -> Self {
             Self {
                 by_account: entries
@@ -72,7 +70,6 @@ mod tests {
         }
     }
 
-    /// A provider that always returns errors from sync_messages, for testing error handling.
     struct ErrorProvider {
         account_id: AccountId,
     }
@@ -130,7 +127,6 @@ mod tests {
             move |milestone| self.milestones.lock().unwrap().push(milestone)
         }
 
-        /// One entry per `PageFetched`, in the order the pages arrived.
         fn remaining_estimates(&self) -> Vec<Option<u32>> {
             self.milestones
                 .lock()
@@ -160,7 +156,6 @@ mod tests {
         }
     }
 
-    /// Provider that returns label_changes on delta sync for testing the label change code path.
     struct DeltaLabelProvider {
         account_id: AccountId,
         messages: Vec<SyncedMessage>,

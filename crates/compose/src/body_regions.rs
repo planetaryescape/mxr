@@ -3,7 +3,6 @@
 /// The line that opens the forwarded part of a body (`mxr-compose` writes it).
 pub const FORWARD_HEADER: &str = "---------- Forwarded message ----------";
 
-/// A body split into the user's text and what follows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BodyRegions<'a> {
     /// The blank space before the text, as it was written.

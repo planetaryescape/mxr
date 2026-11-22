@@ -117,7 +117,6 @@ pub fn write_private(path: &Path, content: &[u8]) -> std::io::Result<()> {
     }
 }
 
-/// Async variant of [`write_private`].
 pub async fn write_private_async(path: &Path, content: &[u8]) -> std::io::Result<()> {
     #[cfg(unix)]
     {

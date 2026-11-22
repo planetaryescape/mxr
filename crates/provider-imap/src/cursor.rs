@@ -39,7 +39,6 @@ pub(crate) enum ImapCursor {
     V2(ImapCursorV2),
 }
 
-/// Per-folder newest-first backfill state, in the order folders are fetched.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ImapCursorV2 {
     #[serde(default)]
@@ -328,7 +327,6 @@ mod tests {
         assert!(matches!(err, MxrError::SyncCursorExpired { .. }));
     }
 
-    /// The enum as the previous release shipped it: only `"1"`.
     #[derive(Deserialize)]
     #[serde(tag = "v")]
     enum PreviousReleaseCursor {

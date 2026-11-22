@@ -6,12 +6,9 @@ use std::path::PathBuf;
 /// Build with `OUTLOOK_CLIENT_ID` env var set, or users provide their own in config.
 pub const BUNDLED_CLIENT_ID: Option<&str> = option_env!("OUTLOOK_CLIENT_ID");
 
-/// Whether this Outlook account is a personal Microsoft account or a work/org account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutlookTenant {
-    /// Personal @outlook.com / @hotmail.com / @live.com — uses /consumers endpoint.
     Personal,
-    /// Work / Microsoft 365 / Exchange Online — uses /organizations endpoint.
     Work,
 }
 
@@ -31,7 +28,6 @@ impl OutlookTenant {
     }
 }
 
-/// Scopes needed for IMAP sync and SMTP send.
 const SCOPES: &str =
     "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access";
 
@@ -77,7 +73,6 @@ fn oauth_http_client() -> reqwest::Client {
 pub struct OutlookTokens {
     pub access_token: String,
     pub refresh_token: String,
-    /// Unix timestamp (seconds) when the access token expires.
     pub expires_at: i64,
 }
 
@@ -271,7 +266,6 @@ impl OutlookAuth {
         }
     }
 
-    /// Refresh an expired access token using the stored refresh token.
     pub async fn refresh_access_token(
         &self,
         tokens: &OutlookTokens,

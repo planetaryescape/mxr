@@ -4,7 +4,6 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MutateCaps, MxrError, SyncCapabilities, SyncCaps};
 
-/// A provider that always returns errors from sync_messages, for testing error handling.
 pub(crate) struct ErrorProvider {
     pub account_id: AccountId,
 }
@@ -50,7 +49,6 @@ impl MailSyncProvider for ErrorProvider {
     }
 }
 
-/// Provider that returns label_changes on delta sync for testing the label change code path.
 pub(crate) struct DeltaLabelProvider {
     pub account_id: AccountId,
     pub messages: Vec<SyncedMessage>,

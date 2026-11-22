@@ -83,7 +83,6 @@ impl ImapProvider {
         }
     }
 
-    /// Constructor that accepts a custom session factory (e.g. XOAuth2ImapSessionFactory).
     pub fn with_session_factory(
         account_id: AccountId,
         config: ImapConfig,
@@ -502,7 +501,6 @@ impl ImapProvider {
         Ok(())
     }
 
-    /// Initial sync: first page of the newest-first backfill (see `generic_backfill`).
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
@@ -685,7 +683,6 @@ impl ImapProvider {
         })
     }
 
-    /// Delta sync: fetch new messages per mailbox since the last known UIDNEXT.
     async fn delta_sync(
         &self,
         old_mailboxes: &[ImapMailboxCursor],
@@ -3222,11 +3219,6 @@ mod tests {
         assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
     }
 
-    /// Phase 3.1 / Behavior 4: a factory whose `create_idle_watcher`
-    /// returns `Ok(None)` (the default — IDLE not enabled / not
-    /// supported) means the provider's `idle_watch` returns None,
-    /// signalling the daemon to stay poll-only. Catches "watcher
-    /// spawned for non-IDLE servers" regressions.
     #[tokio::test]
     async fn idle_watch_returns_none_when_factory_does_not_enable_idle() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
@@ -3239,10 +3231,6 @@ mod tests {
         );
     }
 
-    /// Phase 3.1 / Behavior 1: when IDLE is enabled on the factory and
-    /// the test fires the trigger, the watcher's `next_event` returns
-    /// Ok(()) within the timeout. End-to-end test of the IMAP
-    /// provider's IDLE path through the trait abstraction.
     #[tokio::test]
     async fn idle_watch_returns_watcher_that_wakes_on_trigger() {
         let mut factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);

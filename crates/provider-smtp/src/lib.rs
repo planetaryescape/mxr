@@ -61,7 +61,6 @@ impl SmtpSendProvider {
         Ok(())
     }
 
-    /// Resolve SMTP credentials, or `None` when the server needs no auth.
     fn resolve_credentials(&self) -> Result<Option<Credentials>, SmtpError> {
         if self.config.auth_required {
             let password = self.config.resolve_password()?;

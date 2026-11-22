@@ -9,7 +9,6 @@
 use mxr_core::DraftIntent;
 use serde::{Deserialize, Serialize};
 
-/// YAML frontmatter for compose files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ComposeFrontmatter {
@@ -30,7 +29,6 @@ pub struct ComposeFrontmatter {
     pub intent: DraftIntent,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
-    /// Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread.
     #[serde(default, rename = "thread-id", skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
     #[serde(default)]
@@ -79,7 +77,6 @@ pub fn parse_compose_file(content: &str) -> Result<(ComposeFrontmatter, String),
     Ok((frontmatter, body))
 }
 
-/// Generate a compose file string from frontmatter + body + optional context.
 pub fn render_compose_file(
     frontmatter: &ComposeFrontmatter,
     body: &str,

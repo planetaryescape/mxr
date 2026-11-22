@@ -68,8 +68,6 @@ pub fn flags_and_keywords_from_imap(
     (bits, keywords)
 }
 
-/// Convert IMAP flags into the system bitfield only (drops custom
-/// keywords). Kept for callers that don't yet thread keywords through.
 pub fn flags_from_imap(flags: &[String]) -> MessageFlags {
     flags_and_keywords_from_imap(flags).0
 }
@@ -95,8 +93,6 @@ pub fn parse_imap_date(date_str: &str) -> Result<DateTime<Utc>, ImapProviderErro
     )))
 }
 
-/// Convert a FetchedMessage (from IMAP FETCH with BODY.PEEK[]) into a SyncedMessage
-/// containing both envelope and body parsed from the raw RFC822 message.
 pub fn imap_fetch_to_synced_message(
     msg: &FetchedMessage,
     mailbox: &str,
@@ -269,7 +265,6 @@ pub(crate) fn imap_fetch_from_receiver(
     })
 }
 
-/// Parse raw RFC822 message body into mxr MessageBody.
 pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
     let parsed = mail_parser::MessageParser::default().parse(raw);
 
@@ -391,7 +386,6 @@ fn mailbox_leaf_flags(mailbox: &str) -> MessageFlags {
     flags
 }
 
-/// Whether a part's declared content-type is `text/calendar`.
 fn is_calendar_part(part: &mail_parser::MessagePart<'_>) -> bool {
     part.content_type().is_some_and(|content_type| {
         content_type.ctype().eq_ignore_ascii_case("text")

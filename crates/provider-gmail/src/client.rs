@@ -54,7 +54,6 @@ pub struct GmailClient {
     http: reqwest::Client,
     auth: GmailAuth,
     base_url: String,
-    /// Named in the rate-limit warning. Set by `GmailProvider::new`.
     account: String,
     requests: RequestLog,
     gate: RateLimitGate,
@@ -151,7 +150,6 @@ impl GmailClient {
         self
     }
 
-    /// Override base URL (used for testing with wiremock).
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
         self
@@ -352,7 +350,6 @@ impl GmailClient {
         Ok(resp.json().await?)
     }
 
-    /// Modify labels on a single message.
     pub async fn modify_message(
         &self,
         message_id: &str,
@@ -377,7 +374,6 @@ impl GmailClient {
         Ok(())
     }
 
-    /// Batch modify labels on multiple messages.
     pub async fn batch_modify_messages(
         &self,
         message_ids: &[String],
@@ -403,7 +399,6 @@ impl GmailClient {
         Ok(())
     }
 
-    /// Trash a message.
     pub async fn trash_message(&self, message_id: &str) -> Result<(), GmailError> {
         let url = format!("{}/messages/{message_id}/trash", self.base_url);
 
@@ -498,7 +493,6 @@ impl GmailClient {
         Ok(draft_id)
     }
 
-    /// Replace a Gmail draft's message while preserving the stable draft ID.
     pub async fn update_draft(
         &self,
         draft_id: &str,
@@ -820,7 +814,6 @@ impl GmailApi for GmailClient {
     }
 }
 
-/// URL encoding helper — minimal, just for query params.
 mod urlencoding {
     pub fn encode(input: &str) -> String {
         let mut encoded = String::with_capacity(input.len());
@@ -1152,8 +1145,6 @@ mod tests {
         client.trash_message("msg-123").await.unwrap();
     }
 
-    /// Storage holding an expired token; `fail_writes` makes saving a refreshed
-    /// one fail.
     #[derive(Clone)]
     struct ExpiredTokens {
         fail_writes: bool,

@@ -26,8 +26,6 @@ const TOKEN_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 /// HTTP client request, so slow first-time authorizations are unaffected.
 pub(crate) const TOKEN_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// yup-oauth2 client builder with `TOKEN_HTTP_TIMEOUT` applied — used for
-/// every authenticator this module constructs.
 fn oauth_hyper_client_builder() -> DefaultHyperClientBuilder {
     DefaultHyperClientBuilder::default().with_timeout(TOKEN_HTTP_TIMEOUT)
 }
@@ -595,11 +593,9 @@ impl AuthFlow {
     }
 }
 
-/// Caller-provided hooks for one explicit authorization.
 struct Delegates {
     installed: Option<Box<dyn InstalledFlowDelegate>>,
     device: Option<Box<dyn DeviceFlowDelegate>>,
-    /// Test seam: Google's device-code endpoint when `None`.
     device_code_url: Option<String>,
 }
 
@@ -611,7 +607,6 @@ pub const BUNDLED_CLIENT_ID: Option<&str> = option_env!("GMAIL_CLIENT_ID");
 pub const BUNDLED_CLIENT_SECRET: Option<&str> = option_env!("GMAIL_CLIENT_SECRET");
 
 impl GmailAuth {
-    /// Create with bundled credentials, falling back to error if not compiled in.
     pub fn with_bundled(token_ref: String) -> Result<Self, AuthError> {
         let client_id = BUNDLED_CLIENT_ID
             .ok_or_else(|| AuthError::OAuth2("no bundled client_id — rebuild with GMAIL_CLIENT_ID env var, or provide credentials in config.toml".into()))?;
@@ -631,7 +626,6 @@ pub struct GmailAuth {
     token_ref: String,
     token_root: std::path::PathBuf,
     keychain_service: String,
-    /// Cached and explicit refresh-token sources share this acquisition surface.
     token_fn: Option<Box<dyn Fn() -> TokenFuture + Send + Sync>>,
 }
 

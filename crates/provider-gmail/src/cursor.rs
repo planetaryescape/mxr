@@ -30,7 +30,6 @@ pub(crate) enum GmailCursor {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct GmailCursorV1 {
     pub(crate) history_id: u64,
-    /// Present iff a multi-page initial backfill is mid-flight.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) page_token: Option<String>,
 }
@@ -50,8 +49,6 @@ impl GmailCursor {
         })
     }
 
-    /// Encode this cursor for persistence. Infallible — `serde_json`
-    /// cannot fail on owned plain-data types.
     pub(crate) fn encode(&self) -> SyncCursor {
         let bytes = serde_json::to_vec(self).expect("GmailCursor serialises infallibly");
         SyncCursor::from_bytes(bytes)

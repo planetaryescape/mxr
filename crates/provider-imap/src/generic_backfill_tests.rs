@@ -34,13 +34,9 @@ struct FakeMailbox {
 #[derive(Default)]
 struct World {
     mailboxes: HashMap<String, FakeMailbox>,
-    /// (mailbox, uid set) of every UID FETCH, in order.
     fetches: Vec<(String, String)>,
-    /// Mailboxes SELECTed, in order.
     selects: Vec<String>,
-    /// Every UID SEARCH query, in order.
     searches: Vec<String>,
-    /// Fail the Nth (1-based) FETCH once.
     fail_fetch_number: Option<usize>,
 }
 

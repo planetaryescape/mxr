@@ -174,7 +174,6 @@ enum Verify {
     InspectOnly,
 }
 
-/// Either a TLS stream or, for loopback bridges, the bare socket.
 pub(crate) enum ImapStream {
     Plain(TcpStream),
     Tls(async_native_tls::TlsStream<TcpStream>),

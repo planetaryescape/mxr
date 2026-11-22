@@ -2247,10 +2247,6 @@ END:VCALENDAR\r\n";
         );
     }
 
-    /// Phase E: Gmail has no native keyword surface. The adapter advertises
-    /// `mutate.custom_keywords = false`, and any SetKeywords mutation
-    /// returned by an outdated client must surface as a typed provider error
-    /// rather than silently dropping.
     #[tokio::test]
     async fn gmail_rejects_set_keywords_mutation() {
         let provider = gmail_provider();

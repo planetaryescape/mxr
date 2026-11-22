@@ -1,5 +1,3 @@
-//! Reply and forward markers on subject lines, shared by every client that drafts mail.
-
 /// Prefix a subject for a reply without stacking `Re:` on an existing one.
 ///
 /// A thread that has been replied to repeatedly must not accumulate
@@ -22,7 +20,6 @@ pub enum SubjectMarker {
     Forward,
 }
 
-/// Strip every leading `Re:` / `Fwd:` / `Fw:` marker, in any order or casing.
 pub fn strip_reply_forward_prefixes(subject: &str) -> String {
     let mut current = subject.trim();
     loop {

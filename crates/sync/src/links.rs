@@ -40,9 +40,7 @@ const TRACKER_HOSTNAME_SUFFIXES: &[&str] = &[
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BodyLinkMetrics {
-    /// External URLs that survived the deny-list filter.
     pub link_count: u32,
-    /// Whitespace-split word count of the plain-text body (or stripped HTML).
     pub body_word_count: u32,
 }
 

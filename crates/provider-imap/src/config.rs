@@ -95,7 +95,6 @@ impl ImapConfig {
         Ok(self)
     }
 
-    /// The parsed pin, if one is configured.
     pub(crate) fn pinned_fingerprint(&self) -> Result<Option<CertFingerprint>, ImapProviderError> {
         self.tls_cert_sha256
             .as_deref()
@@ -118,7 +117,6 @@ impl ImapConfig {
         self
     }
 
-    /// Retrieve the IMAP password through the daemon-provided credential resolver.
     pub fn resolve_password(&self) -> Result<String, ImapProviderError> {
         self.password_cache
             .get_or_try_init(|| (self.password_reader)(&self.password_ref, &self.username))

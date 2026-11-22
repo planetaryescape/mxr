@@ -257,7 +257,6 @@ struct ExtractedBodyData {
     calendar: Option<mxr_core::types::CalendarMetadata>,
 }
 
-/// Extract text_plain and text_html from a GmailMessage payload.
 pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<AttachmentMeta>) {
     let account_id = AccountId::from_provider_id("gmail", "legacy");
     let body_data = extract_body_data(msg, &account_id);
@@ -468,7 +467,6 @@ fn find_header_value<'a>(headers: Option<&'a [GmailHeader]>, name: &str) -> Opti
         .map(|header| header.value.as_str())
 }
 
-/// Parse iCalendar metadata from raw `.ics` attachment bytes.
 pub(crate) fn calendar_metadata_from_attachment_bytes(bytes: &[u8]) -> Option<CalendarMetadata> {
     let text = std::str::from_utf8(bytes).ok()?;
     calendar_metadata_from_text(text)

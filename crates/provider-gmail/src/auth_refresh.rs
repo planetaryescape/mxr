@@ -43,7 +43,6 @@ struct TokenResponse {
     error: Option<String>,
 }
 
-/// A successful token-endpoint response that has passed validation.
 pub(crate) struct RefreshedToken {
     pub(crate) access_token: String,
     pub(crate) expires_in: u32,

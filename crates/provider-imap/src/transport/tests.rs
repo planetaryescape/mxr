@@ -122,7 +122,6 @@ fn test_cert() -> TestCert {
     }
 }
 
-/// A well-formed fingerprint that is not the fixture's.
 fn other_fingerprint(real: CertFingerprint) -> CertFingerprint {
     let mut bytes = real.0;
     bytes[0] ^= 0xff;
@@ -161,7 +160,6 @@ async fn rejects_starttls_response_with_excessive_untagged_lines() {
     assert!(error.to_string().contains("oversized response"), "{error}");
 }
 
-/// Serve one implicit-TLS connection: handshake, greet, then answer one read.
 fn serve_implicit_tls(listener: TcpListener, cert: &TestCert) {
     let acceptor = cert.acceptor.clone();
     async_std::task::spawn(async move {

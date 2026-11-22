@@ -22,7 +22,6 @@ pub use mxr_mail_parse::subject::{prefix_subject, strip_reply_forward_prefixes, 
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-/// The kind of compose action.
 pub enum ComposeKind {
     New {
         to: String,
@@ -32,12 +31,10 @@ pub enum ComposeKind {
         reply_all: bool,
         in_reply_to: String,
         references: Vec<String>,
-        /// Provider-native thread hint (e.g. Gmail thread id).
         thread_id: Option<String>,
         to: String,
         cc: String,
         subject: String,
-        /// Reader-mode-cleaned thread content for context block.
         thread_context: String,
     },
     Forward {
@@ -54,7 +51,6 @@ pub struct ComposeSignature {
     pub body: String,
 }
 
-/// Create a draft file on disk and return its path + the cursor line.
 pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usize), ComposeError> {
     create_draft_file_with_signature(kind, from, None)
 }
@@ -273,7 +269,6 @@ fn signature_block(signature_body: &str) -> String {
     }
 }
 
-/// Validate a parsed draft before sending.
 pub fn validate_draft(frontmatter: &ComposeFrontmatter, body: &str) -> Vec<ComposeValidation> {
     validate_draft_with_mode(frontmatter, body, ComposeValidationMode::Send)
 }
@@ -693,7 +688,6 @@ mod tests {
         assert!(!path.exists());
     }
 
-    /// Plan 005: draft files land in the private scratch dir with 0600 perms.
     #[cfg(unix)]
     #[test]
     fn create_draft_file_with_signature_uses_private_dir_and_0600_perms() {

@@ -20,7 +20,6 @@ use crate::types::{
 
 pub type Result<T> = std::result::Result<T, ImapProviderError>;
 
-/// Abstraction over an IMAP session for testability.
 #[async_trait]
 pub trait ImapSession: Send {
     async fn capabilities(&mut self) -> Result<ImapCapabilities>;
@@ -59,7 +58,6 @@ pub trait ImapSession: Send {
     async fn logout(&mut self) -> Result<()>;
 }
 
-/// Factory that creates fresh IMAP sessions (connection-per-call pattern).
 #[async_trait]
 pub trait ImapSessionFactory: Send + Sync {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>>;
@@ -260,7 +258,6 @@ impl XOAuth2ImapSessionFactory {
     }
 }
 
-/// Production session factory that connects via TLS to an IMAP server.
 pub struct RealImapSessionFactory {
     config: ImapConfig,
 }
@@ -535,7 +532,6 @@ impl mxr_core::IdleWatcher for RealImapIdleWatcher {
     }
 }
 
-/// Production IMAP session wrapping async_imap::Session.
 struct RealImapSession {
     session: async_imap::Session<ImapTlsStream>,
 }
@@ -1127,7 +1123,6 @@ pub mod mock {
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
-        /// Simulate `SELECT (QRESYNC)` hitting its command deadline.
         pub qresync_times_out: bool,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
@@ -1369,7 +1364,6 @@ pub mod mock {
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
-        /// Simulate `SELECT (QRESYNC)` hitting its command deadline.
         pub qresync_times_out: bool,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
@@ -1405,8 +1399,6 @@ pub mod mock {
             }
         }
 
-        /// Phase 3.1: enable IDLE on this mock factory and return the
-        /// trigger handle test code uses to simulate events.
         pub fn enable_idle(&mut self) -> std::sync::Arc<tokio::sync::Notify> {
             let trigger = std::sync::Arc::new(tokio::sync::Notify::new());
             self.idle_trigger = Some(trigger.clone());
@@ -1428,15 +1420,11 @@ pub mod mock {
             self
         }
 
-        /// Make `SELECT (QRESYNC)` fail with a command timeout, for tests
-        /// asserting the caller does NOT reuse the session afterwards.
         pub fn with_qresync_timeout(mut self) -> Self {
             self.qresync_times_out = true;
             self
         }
 
-        /// Inject the UID set returned by `UID SEARCH ALL` for a mailbox.
-        /// Used by tests that exercise the QRESYNC/CONDSTORE-less delete-detection path.
         pub fn with_uid_search(self, mailbox: &str, uids: Vec<u32>) -> Self {
             self.state
                 .lock()
@@ -1446,8 +1434,6 @@ pub mod mock {
             self
         }
 
-        /// Simulate a UIDPLUS server that reports `uid` as the APPENDUID for
-        /// the next `uid_append`. Used by the Sent-APPEND tests.
         pub fn with_append_uid(self, uid: u32) -> Self {
             self.state.lock().unwrap().append_uid = Some(uid);
             self
@@ -1631,16 +1617,12 @@ mod tests {
         assert!(error.is_malformed_fetch_response());
     }
 
-    /// APPEND's deadline scales with upload size so large-but-progressing
-    /// uploads on slow uplinks are not cut off.
     #[test]
     fn append_timeout_scales_with_body_size() {
         assert_eq!(append_timeout(0).as_secs(), 300);
         assert_eq!(append_timeout(25 * 1024 * 1024).as_secs(), 700);
     }
 
-    /// A command future that never resolves (dead connection) must fail
-    /// with a timeout error instead of hanging the sync.
     #[tokio::test]
     async fn bounded_times_out_hung_command() {
         let result: Result<()> = bounded(
@@ -1653,8 +1635,6 @@ mod tests {
         assert!(err.contains("timed out"), "unexpected error: {err}");
     }
 
-    /// The stream bound is per item, not total: a transfer that keeps
-    /// making progress may exceed the limit overall and still succeed.
     #[tokio::test]
     async fn collect_bounded_allows_slow_but_progressing_stream() {
         let limit = std::time::Duration::from_millis(50);
@@ -1669,8 +1649,6 @@ mod tests {
         assert_eq!(items, vec![0, 1, 2, 3, 4]);
     }
 
-    /// A stream that stops producing items (stalled connection) fails
-    /// once the inactivity limit elapses.
     #[tokio::test]
     async fn collect_bounded_times_out_stalled_stream() {
         use futures::StreamExt;

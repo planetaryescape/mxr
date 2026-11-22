@@ -63,7 +63,6 @@ pub enum SyncProgress {
 /// the sink across await points.
 pub type ProgressSink<'a> = &'a (dyn Fn(SyncProgress) + Send + Sync);
 
-/// Discards every milestone. Used by callers that only want the outcome.
 fn ignore_progress(_: SyncProgress) {}
 
 /// No-op lookup used when the engine is constructed without an explicit
@@ -758,7 +757,6 @@ impl SyncEngine {
         Ok(touched)
     }
 
-    /// Read body from store. Bodies are always available after sync.
     pub async fn get_body(&self, message_id: &MessageId) -> Result<MessageBody, MxrError> {
         self.store
             .get_body(message_id)

@@ -118,6 +118,99 @@ async fn assert_completed_history(state: &AppState, operation: &ArchiveOperation
     }
 }
 
+async fn overwrite(state: &AppState, operation: &ArchiveOperationData) {
+    let key = key(operation);
+    let expected = state.store.get_mutation_job(&key).await.unwrap().unwrap();
+    assert!(state
+        .store
+        .compare_exchange_archive_job(&key, &expected, &serde_json::to_string(operation).unwrap())
+        .await
+        .unwrap());
+}
+
+fn key(operation: &ArchiveOperationData) -> String {
+    format!(
+        "recoverable_archive:{}:{}",
+        operation.identity.caller_id, operation.identity.operation_id
+    )
+}
+
+#[tokio::test]
+async fn archive_acceptance_and_dispatch_persistence_failures_prevent_effects() {
+    for boundary in ["$.accepted", "$.items[0].state"] {
+        let (state, provider, operation) = fixture().await;
+        let sql = if boundary == "$.accepted" {
+            "CREATE TRIGGER archive_failure BEFORE UPDATE ON mutation_jobs WHEN json_extract(NEW.data_json, '$.accepted') = 1 BEGIN SELECT RAISE(FAIL, 'injected persistence failure'); END"
+        } else {
+            "CREATE TRIGGER archive_failure BEFORE UPDATE ON mutation_jobs WHEN json_extract(NEW.data_json, '$.items[0].state') = 'unknown' BEGIN SELECT RAISE(FAIL, 'injected persistence failure'); END"
+        };
+        sqlx::query(sql)
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        let result = submit(&state, &operation).await;
+        if boundary == "$.accepted" {
+            assert!(result.is_err());
+        } else {
+            result.unwrap();
+        }
+        let outcome = wait(&state, &operation).await;
+        assert!(outcome
+            .items
+            .iter()
+            .all(|item| item.state == ItemState::Pending));
+        assert_eq!(provider.mutations().len(), 0);
+    }
+}
+
+#[tokio::test]
+async fn archive_interrupted_dispatch_is_unknown_and_query_never_resumes_pending_work() {
+    let (state, provider, mut operation) = fixture().await;
+    operation.accepted = true;
+    operation.items[0].state = ItemState::Unknown;
+    overwrite(&state, &operation).await;
+    let queried = query(&state, &operation).await;
+    assert_eq!(queried.items[0].state, ItemState::Unknown);
+    assert_eq!(queried.items[1].state, ItemState::Pending);
+    assert_eq!(provider.mutations().len(), 0);
+    submit(&state, &operation).await.unwrap();
+    let outcome = wait(&state, &operation).await;
+    assert_eq!(outcome.items[0].state, ItemState::Unknown);
+    assert_eq!(outcome.items[1].state, ItemState::Completed);
+    assert_eq!(provider.mutations().len(), 1);
+    state.store.prune_mutation_jobs(0).await.unwrap();
+    state
+        .store
+        .prune_expired_mutation_dedup(chrono::Utc::now().timestamp() + 100_000)
+        .await
+        .unwrap();
+    submit(&state, &operation).await.unwrap();
+    wait(&state, &operation).await;
+    assert_eq!(provider.mutations().len(), 1);
+}
+
+#[tokio::test]
+async fn archive_failed_success_receipt_never_repeats_accepted_provider_effect() {
+    let (state, provider, operation) = fixture().await;
+    sqlx::query("CREATE TRIGGER archive_receipt_failure BEFORE UPDATE ON mutation_jobs WHEN json_extract(NEW.data_json, '$.items[0].state') = 'provider_succeeded' BEGIN SELECT RAISE(FAIL, 'injected receipt failure'); END")
+        .execute(state.store.writer()).await.unwrap();
+    submit(&state, &operation).await.unwrap();
+    let outcome = wait(&state, &operation).await;
+    assert_eq!(outcome.items[0].state, ItemState::Unknown);
+    assert_eq!(outcome.items[1].state, ItemState::Pending);
+    assert_eq!(provider.mutations().len(), 1);
+    sqlx::query("DROP TRIGGER archive_receipt_failure")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    submit(&state, &operation).await.unwrap();
+    let outcome = wait(&state, &operation).await;
+    assert_eq!(outcome.items[0].state, ItemState::Unknown);
+    assert_eq!(outcome.items[1].state, ItemState::Completed);
+    assert_eq!(provider.mutations().len(), 2);
+    assert_completed_history(&state, &outcome).await;
+}
+
 #[tokio::test]
 async fn archive_lost_acceptance_and_completion_replies_concurrent_replays_never_repeat() {
     let (state, provider, operation) = fixture().await;

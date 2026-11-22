@@ -1,6 +1,75 @@
 use crate::state::AppState;
 
 #[tokio::test]
+async fn dry_run_remove_reports_the_real_counts_and_changes_nothing() {
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+    let sent_from_alias = store_mail_from(
+        &state,
+        &account_id,
+        "alias@example.com",
+        MessageDirection::Outbound,
+        "alias-out-dry",
+    )
+    .await;
+    let arrivals_before = arrival_rows(&state).await;
+    let mut events = state.event_tx.subscribe();
+
+    let preview = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        true,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        preview,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 0,
+            to_inbound: 1
+        }
+    ));
+    assert!(state
+        .store
+        .list_account_addresses(&account_id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|address| address.email == "alias@example.com"));
+    assert_eq!(direction_of(&state, &sent_from_alias).await, "outbound");
+    assert_eq!(arrival_rows(&state).await, arrivals_before);
+    assert!(events.try_recv().is_err());
+
+    let applied = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&preview).unwrap(),
+        serde_json::to_value(&applied).unwrap()
+    );
+    assert_eq!(direction_of(&state, &sent_from_alias).await, "inbound");
+}
+
+#[tokio::test]
 async fn alias_registered_through_the_handler_counts_in_every_owned_reader_at_once() {
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();

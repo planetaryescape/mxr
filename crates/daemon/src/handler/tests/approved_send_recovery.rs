@@ -81,6 +81,126 @@ impl mxr_core::MailSendProvider for RecoveringSender {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn approved_send_recovery_scheduled_wait_is_not_reported_as_sent() {
+    let sender = Arc::new(RecoveringSender::default());
+    let (state, _, draft) = fixture_with_sender(Some(sender.clone())).await;
+    let now = chrono::Utc::now();
+    state
+        .store
+        .schedule_send(&draft.id, now - chrono::Duration::minutes(1))
+        .await
+        .unwrap();
+    assert_eq!(
+        crate::loops::process_due_scheduled_sends(&state, now)
+            .await
+            .unwrap(),
+        1
+    );
+    let waiting = state
+        .store
+        .get_draft_send_outcome(&draft.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(waiting.state, SendOutcomeState::Waiting);
+    let attempt: String =
+        sqlx::query_scalar("SELECT outcome FROM scheduled_send_attempts WHERE draft_id=?")
+            .bind(draft.id.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(attempt, "waiting");
+    assert_eq!(sender.submissions.load(Ordering::SeqCst), 0);
+    super::super::send_recovery::process_due(&state, waiting.recovery.unwrap().retry_at.unwrap())
+        .await
+        .unwrap();
+    let attempt: String =
+        sqlx::query_scalar("SELECT outcome FROM scheduled_send_attempts WHERE draft_id=?")
+            .bind(draft.id.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(attempt, "sent");
+    assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn approved_send_recovery_local_ingestion_repairs_acceptance_without_resending() {
+    let sender = Arc::new(RecoveringSender {
+        calls: AtomicUsize::new(1),
+        ..Default::default()
+    });
+    let (state, _, draft) = fixture_with_sender(Some(sender.clone())).await;
+    let identity = SendIdentity::for_draft(&draft);
+    sqlx::query("CREATE TRIGGER fail_ingest BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT,'ingest failure'); END").execute(state.store.writer()).await.unwrap();
+    call(&state, send(&draft, identity.clone())).await;
+    let accepted = outcome(&state, &draft, &identity).await;
+    assert_eq!(accepted.state, SendOutcomeState::Accepted);
+    assert!(accepted.local_message_id.is_none());
+    sqlx::query("DROP TRIGGER fail_ingest")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    super::super::send_recovery::process_due(
+        &state,
+        chrono::Utc::now() + chrono::Duration::minutes(5),
+    )
+    .await
+    .unwrap();
+    let repaired = outcome(&state, &draft, &identity).await;
+    assert_eq!(repaired.state, SendOutcomeState::Accepted);
+    assert!(repaired.local_message_id.is_some());
+    assert_eq!(repaired.rfc2822_message_id, accepted.rfc2822_message_id);
+    assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn approved_send_recovery_ambiguous_submission_needs_positive_evidence_and_never_resends() {
+    let sender = Arc::new(RecoveringSender {
+        ambiguous: true,
+        ..Default::default()
+    });
+    let (state, _, draft) = fixture_with_sender(Some(sender.clone())).await;
+    let identity = SendIdentity::for_draft(&draft);
+    assert!(matches!(
+        call(&state, send(&draft, identity.clone())).await,
+        Response::Error { .. }
+    ));
+    let unknown = state
+        .store
+        .get_send_outcome(&identity.operation_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(unknown.state, SendOutcomeState::Unknown);
+    let future = chrono::Utc::now() + chrono::Duration::hours(1);
+    super::super::send_recovery::process_due(&state, future)
+        .await
+        .unwrap();
+    assert_eq!(
+        state
+            .store
+            .get_send_outcome(&identity.operation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SendOutcomeState::Unknown
+    );
+    assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
+    sender.evidence.store(true, Ordering::SeqCst);
+    super::super::send_recovery::process_due(&state, future + chrono::Duration::hours(1))
+        .await
+        .unwrap();
+    let accepted = outcome(&state, &draft, &identity).await;
+    assert_eq!(accepted.state, SendOutcomeState::Accepted);
+    assert_eq!(accepted.rfc2822_message_id, unknown.rfc2822_message_id);
+    assert_eq!(sender.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn approved_send_recovery_transient_file_and_store_failures_preserve_approval() {
     use std::os::unix::fs::PermissionsExt;
     for failure in ["file", "store"] {

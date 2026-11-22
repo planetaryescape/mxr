@@ -7,7 +7,6 @@
 //! These tests are intentionally LLM-free — Track 4 is statistical.
 
 #![expect(
-    clippy::panic,
     clippy::unwrap_used,
     reason = "integration tests use panic and unwrap to keep fixture failures direct"
 )]

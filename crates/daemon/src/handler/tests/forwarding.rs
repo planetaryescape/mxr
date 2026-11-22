@@ -109,6 +109,63 @@ fn draft(source: ForwardSource, intro: &str) -> Draft {
 }
 
 #[tokio::test]
+async fn forwarding_corrupt_managed_bytes_block_preview_and_send_before_transport() {
+    let sender = Arc::new(MimeTransport::default());
+    let (state, _, id) = fixture(sender.clone()).await;
+    state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("Original".into()),
+            text_html: None,
+            attachments: vec![AttachmentMeta {
+                id: mxr_core::AttachmentId::new(),
+                message_id: id.clone(),
+                filename: "required.pdf".into(),
+                mime_type: "application/pdf".into(),
+                disposition: AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 23,
+                local_path: None,
+                provider_id: "required".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+    let outgoing = draft(source(&state, &id).await, "For review.");
+    let ResponseData::Draft { draft: saved } =
+        mutations::save_draft(&state, &outgoing).await.unwrap()
+    else {
+        panic!("saved");
+    };
+    let resolved = draft_attachments::resolve(&state, &saved).await.unwrap();
+    let path = &resolved.attachments[0];
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::write(path, b"corrupt").unwrap();
+    let preview_error = draft_preview::preview(&state, &saved, &Default::default(), &[])
+        .await
+        .unwrap_err()
+        .to_string();
+    let send_error = mutations::send_draft(&state, &saved, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        preview_error.contains("length does not match"),
+        "{preview_error}"
+    );
+    assert!(send_error.contains("length does not match"), "{send_error}");
+    assert!(sender.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn forwarding_preview_saved_draft_and_test_transport_preserve_original_and_all_mime_parts() {
     use mail_parser::MimeHeaders;
     let sender = Arc::new(MimeTransport::default());

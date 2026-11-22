@@ -8,6 +8,8 @@ use mxr_protocol::{
 use std::sync::Arc;
 
 mod runner;
+#[cfg(test)]
+pub(super) use runner::run as run_for_test;
 
 const KIND: &str = "recoverable_archive";
 

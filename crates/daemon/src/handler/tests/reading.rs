@@ -140,6 +140,68 @@ async fn weekly(fx: &Fixture, now: DateTime<Utc>) -> Vec<(MessageId, ThreadId)> 
 }
 
 #[tokio::test]
+async fn opening_reading_records_a_visit_per_account_and_not_while_activity_is_paused() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let open = |account: &mxr_core::AccountId| Request::GetReadingEdition {
+        account_id: Some(account.clone()),
+        mark_visit: true,
+    };
+    request(&fx, open(&fx.account)).await;
+    let mine = fx
+        .state
+        .store
+        .reading_visit(&fx.account)
+        .await
+        .expect("visit");
+    assert!(mine.last_seen.is_some(), "opening Reading is a visit");
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "another account's visit is its own"
+    );
+
+    fx.state.activity.pause(None);
+    for _ in 0..200 {
+        if fx.state.activity.pause_status().0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(fx.state.activity.pause_status().0);
+    request(&fx, open(&other.id)).await;
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "no visit while activity is paused"
+    );
+}
+
+#[tokio::test]
 async fn bands_follow_the_visit_and_each_sources_window() {
     let fx = Fixture::new().await;
     let now = Utc::now();

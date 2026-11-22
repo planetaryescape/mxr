@@ -111,9 +111,6 @@ pub async fn enrich(
     if !force && !runtime.background_attempt_due(message_key, FINGERPRINT) {
         return base;
     }
-    // From/subject/body are all attacker-controllable; wrap the whole
-    // block in untrusted-content delimiters. Strict-JSON parsing plus the
-    // checksum re-validation of any tracking number are the boundary.
     let email_block = format!(
         "From: {} <{}>\nSubject: {}\n\nBody:\n{}",
         input.from_name,

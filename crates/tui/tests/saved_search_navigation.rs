@@ -1,9 +1,3 @@
-//! Behavior tests for fast saved-search navigation.
-//!
-//! Power users keep a small constellation of saved searches as their
-//! workspace and jump between them by index. The keyboard surface uses
-//! the `g` prefix (`g 1` ... `g 9`) to avoid conflicting with the
-//! existing single-digit screen tabs (1=Mailbox, 2=Search, etc.).
 
 use chrono::{TimeZone, Utc};
 use mxr_core::id::SavedSearchId;
@@ -55,14 +49,12 @@ fn open_saved_search_by_index_zero_clears_active_filter() {
     let mut app = App::new();
     app.mailbox.saved_searches = vec![fixture_saved_search("Unread", "is:unread", 0)];
 
-    // Activate a saved-search tab first.
     app.apply(Action::OpenSavedSearchByIndex(1));
     assert!(
         app.search.active,
         "precondition: a tab is active before clearing"
     );
 
-    // Index 0 means "default inbox" — clear any saved-search filter.
     app.apply(Action::OpenSavedSearchByIndex(0));
 
     assert!(
@@ -74,7 +66,6 @@ fn open_saved_search_by_index_zero_clears_active_filter() {
 #[test]
 fn open_saved_search_with_empty_registry_is_noop() {
     let mut app = App::new();
-    // No saved searches configured.
     app.apply(Action::OpenSavedSearchByIndex(1));
 
     assert!(

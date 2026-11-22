@@ -1,15 +1,3 @@
-//! Render-level checks for the saved-search tab strip above the inbox.
-//!
-//! These tests pin two pieces of contract:
-//!
-//! 1. **Top-of-strip is bounded to nine tabs.** Adding a tenth saved
-//!    search must not push it into the strip; the `g0..g9` keyboard
-//!    surface only addresses positions 0–9.
-//! 2. **The user-facing label is the saved-search name, not the
-//!    underlying query.** Names are how the user named their workspace;
-//!    the query is the implementation behind it. Swapping the rendered
-//!    label to the query would silently regress the UX even though the
-//!    state machine looks fine.
 
 use chrono::{TimeZone, Utc};
 use mxr_core::id::SavedSearchId;
@@ -33,13 +21,8 @@ fn fixture_saved_search(name: &str, query: &str, position: i32) -> SavedSearch {
     }
 }
 
-/// Phase 1.5: at most nine saved-search tabs appear in the strip. The
-/// keybinding registry only maps `g0..g9`, so anything beyond `g9` is
-/// inaccessible from the keyboard and must not be rendered.
 #[test]
 fn tab_strip_renders_first_nine_saved_searches() {
-    // Twelve searches with deliberately distinct names so we can spot
-    // which ones made the cut.
     let searches: Vec<SavedSearch> = (0..12)
         .map(|i| {
             fixture_saved_search(
@@ -51,8 +34,6 @@ fn tab_strip_renders_first_nine_saved_searches() {
         .collect();
 
     let theme = Theme::default();
-    // The strip widget draws a 1-row bottom border, so we need at least
-    // two rows for the labels to land above it.
     let rendered = render_to_string(160, 2, |frame| {
         draw(
             frame,
@@ -67,7 +48,6 @@ fn tab_strip_renders_first_nine_saved_searches() {
         );
     });
 
-    // The strip always prefixes a `g0 Inbox` slot, then `g1`..`g9`.
     assert!(
         rendered.contains("g0 Inbox"),
         "strip starts with the `g0 Inbox` default slot. got: {rendered}"
@@ -80,9 +60,6 @@ fn tab_strip_renders_first_nine_saved_searches() {
         );
     }
     for i in 10..=12 {
-        // The strip stops at g9, so g10/g11/g12 must not appear at all —
-        // both because no keybinding addresses them and because letting
-        // them render would visually imply otherwise.
         let needle = format!("g{i} search-{i:02}");
         assert!(
             !rendered.contains(&needle),
@@ -92,10 +69,6 @@ fn tab_strip_renders_first_nine_saved_searches() {
     }
 }
 
-/// Phase 1.5: each tab shows its unread match count. The user's
-/// inbox is the home base; saved-search tabs are workspaces. They
-/// need to surface "new stuff arrived for me" the same way Gmail
-/// surfaces unread counts next to labels.
 #[test]
 fn tab_unread_count_reflects_search_match_count() {
     let searches = vec![
@@ -107,7 +80,6 @@ fn tab_unread_count_reflects_search_match_count() {
     let mut counts = std::collections::HashMap::new();
     counts.insert(searches[0].id.clone(), 12);
     counts.insert(searches[1].id.clone(), 3);
-    // searches[2] intentionally absent / zero → bare label.
 
     let theme = Theme::default();
     let rendered = render_to_string(120, 2, |frame| {
@@ -132,7 +104,6 @@ fn tab_unread_count_reflects_search_match_count() {
         rendered.contains("g2 From Alice (3)"),
         "second saved search count appears too. got: {rendered}"
     );
-    // Zero / missing count renders bare label — no `(0)` clutter.
     assert!(
         rendered.contains("g3 Quiet"),
         "tab with no unread count keeps the bare label. got: {rendered}"

@@ -1,8 +1,3 @@
-//! Behavior tests for inbox-row formatting helpers.
-//!
-//! These pin the relative-time ladder ("5m" / "3h" / "Tue" / "Mar 4")
-//! that appears in the inbox row's date column. Tests use a fixed `now`
-//! anchor so they're deterministic regardless of when they're run.
 
 use chrono::{Duration, TimeZone, Utc};
 use mxr_core::types::Address;
@@ -12,8 +7,6 @@ use mxr_tui::ui::mail_list::{
 };
 
 fn anchor() -> chrono::DateTime<Utc> {
-    // A fixed Tuesday afternoon, May 7 2024. Avoids weekday/calendar
-    // boundary surprises during local debugging.
     Utc.with_ymd_and_hms(2024, 5, 7, 14, 30, 0).unwrap()
 }
 
@@ -32,7 +25,6 @@ fn at_one_hour_boundary_switches_to_hours() {
 fn at_one_day_boundary_switches_to_weekday() {
     let now = anchor();
     let t = now - Duration::hours(24);
-    // 24 hours before a Tuesday afternoon is a Monday afternoon.
     assert_eq!(
         format_date_relative(&t, &now),
         "Mon",
@@ -44,7 +36,6 @@ fn at_one_day_boundary_switches_to_weekday() {
 fn at_seven_day_boundary_switches_to_month_day() {
     let now = anchor();
     let t = now - Duration::days(7);
-    // 7 days before May 7 is April 30.
     assert_eq!(
         format_date_relative(&t, &now),
         "Apr 30",
@@ -65,8 +56,6 @@ fn older_than_a_year_includes_year() {
 
 #[test]
 fn future_date_falls_back_to_absolute_format() {
-    // Future-dated email shouldn't say "now" or weird negative tenses;
-    // fall back to a stable absolute format.
     let now = anchor();
     let t = now + Duration::days(2);
     let formatted = format_date_relative(&t, &now);
@@ -116,19 +105,16 @@ fn thread_count_badge_marks_conversations_only() {
 
 #[test]
 fn attachment_chip_uses_kibibytes_at_one_thousand_twenty_four() {
-    // Boundary: exactly 1024 bytes is the KiB threshold.
     assert_eq!(format_attachment_chip(true, 1024), "📎 1K");
 }
 
 #[test]
 fn attachment_chip_uses_mebibytes_at_one_megabyte() {
-    // Boundary: exactly 1 MiB.
     assert_eq!(format_attachment_chip(true, 1024 * 1024), "📎 1M");
 }
 
 #[test]
 fn subject_line_includes_snippet_when_room_available() {
-    // 80 chars is plenty of room for "Project update" + " · " + snippet.
     let (subject, snippet) = format_subject_line(
         "Project update",
         "Status meeting moved to Tuesday at 10am.",
@@ -144,7 +130,6 @@ fn subject_line_includes_snippet_when_room_available() {
 
 #[test]
 fn subject_line_truncates_long_snippet_with_ellipsis() {
-    // Width 30: "Project update" (14) + " · " (3) = 17, leaves 13 for snippet.
     let (subject, snippet) = format_subject_line(
         "Project update",
         "Status meeting moved to Tuesday at 10am.",

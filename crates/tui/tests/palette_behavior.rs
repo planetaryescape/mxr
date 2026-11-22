@@ -1,8 +1,3 @@
-//! Behavior tests for the command palette.
-//!
-//! Tests the discovery surface power users rely on: ranking, dispatch,
-//! recent-command memory. The palette is constructed directly (it has no
-//! daemon dependency), so these tests stay tight and fast.
 
 use mxr_tui::action::{Action, UiContext};
 use mxr_tui::app::{App, Screen};
@@ -22,9 +17,6 @@ fn type_query(palette: &mut CommandPalette, query: &str) {
 
 #[test]
 fn palette_opens_from_any_screen() {
-    // The palette is the discovery surface for every action — no matter
-    // which screen the user is on. If it only opens on the inbox, power
-    // users learn to invoke it inconsistently or stop using it.
     for screen in [
         Screen::Mailbox,
         Screen::Search,
@@ -51,9 +43,6 @@ fn palette_opens_from_any_screen() {
 
 #[test]
 fn confirm_returns_selected_command_action() {
-    // The palette is the dispatcher: a query plus Enter must yield the
-    // matching command's Action. Without that, no keyboard discovery
-    // path can drive a mutation.
     let mut palette = palette_with(vec![
         PaletteCommand {
             id: None,
@@ -85,10 +74,6 @@ fn confirm_returns_selected_command_action() {
 
 #[test]
 fn recently_used_commands_surface_to_top_with_empty_query() {
-    // Power users return to the same handful of commands constantly
-    // (compose, reply, archive, star). The palette should learn that
-    // pattern and surface recently-used commands at the top of the
-    // empty-query list, ahead of registration order.
     let mut palette = palette_with(vec![
         PaletteCommand {
             id: None,
@@ -113,11 +98,9 @@ fn recently_used_commands_surface_to_top_with_empty_query() {
         },
     ]);
 
-    // Use Star — confirming it should record it as recently used.
     type_query(&mut palette, "star");
     let _ = palette.confirm();
 
-    // Reopen the palette with no query.
     palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
 
     let labels: Vec<_> = palette
@@ -134,9 +117,6 @@ fn recently_used_commands_surface_to_top_with_empty_query() {
 
 #[test]
 fn prefix_match_ranks_above_substring_match() {
-    // The user types "rep" expecting "Reply" — not "Mark for Reply" —
-    // even though the latter is registered earlier. A user-friendly
-    // palette ranks prefix matches above mid-word substring matches.
     let mut palette = palette_with(vec![
         PaletteCommand {
             id: None,

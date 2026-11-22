@@ -110,8 +110,6 @@ const BENCH_PAGE_SIZE: usize = 500;
 
 fn bench_demo_seed(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    // Clamped the way the provider clamps, so the throughput denominator is
-    // the number of messages it will really generate.
     let messages: usize = std::env::var("MXR_BENCH_SEED_MESSAGES")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())

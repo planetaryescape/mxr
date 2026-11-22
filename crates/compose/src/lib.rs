@@ -222,7 +222,13 @@ fn build_draft_file(
         .lines()
         .enumerate()
         .skip(1)
-        .find_map(|(i, line)| if line == "---" { Some(i + 2) } else { None })
+        .find_map(|(i, line)| {
+            if line == "---" {
+                Some(i + 2) // line after ---, 1-indexed, +1 for blank line
+            } else {
+                None
+            }
+        })
         .unwrap_or(1);
 
     Ok((path, cursor_line, content))

@@ -96,9 +96,6 @@ mod tests {
 
     #[test]
     fn owned_addresses_fold_ascii_only_so_unicode_spellings_stay_distinct() {
-        // `From` validation and reply membership fold ASCII only. If the set
-        // folded Unicode, one spelling would be dropped and the other would
-        // stop validating as a sender.
         let owned = owned(
             "user@example.com",
             &["user@BÜCHER.example", "user@bücher.example"],
@@ -119,8 +116,6 @@ mod tests {
             owned.canonical("USER@BÜCHER.EXAMPLE"),
             Some("user@BÜCHER.example")
         );
-        // ASCII folding only: the Ü stays as it is, so the uppercase ASCII
-        // spelling matches the stored one and the lowercase Unicode one does not.
         assert!(owned.contains("user@BÜCHER.EXAMPLE"));
         assert!(!owned.contains("user@bucher.example"));
     }
@@ -140,8 +135,6 @@ mod tests {
         lookup.replace([(account_a.clone(), owned("me@example.com", &[]))]);
         assert!(!lookup.owned(&account_a).contains("alias@example.com"));
 
-        // An alias registered at runtime is visible on the next replace, with
-        // no restart and no per-caller reload.
         lookup.replace([(
             account_a.clone(),
             owned("me@example.com", &["alias@example.com"]),
@@ -156,7 +149,6 @@ mod tests {
         let account_a = AccountId::new();
         let account_b = AccountId::new();
         let lookup = InMemoryAccountAddressLookup::new();
-        // Empty cache: not loaded; everything reads as not-account.
         assert!(!lookup.is_loaded());
         assert!(!lookup.is_account_address(&account_a, "anyone@example.com"));
 
@@ -169,22 +161,16 @@ mod tests {
         ]);
         assert!(lookup.is_loaded());
 
-        // Case-insensitive match against the receiving account's own set.
         assert!(lookup.is_account_address(&account_a, "a@example.com"));
         assert!(lookup.is_account_address(&account_a, "A@EXAMPLE.COM"));
         assert!(lookup.is_account_address(&account_a, "alias@example.com"));
         assert!(lookup.is_account_address(&account_b, "b@other.com"));
 
-        // Account B's address is NOT an owned address of account A, so a
-        // message received in A from B's address stays inbound.
         assert!(!lookup.is_account_address(&account_a, "b@other.com"));
         assert!(!lookup.is_account_address(&account_b, "a@example.com"));
-        // Outside every set.
         assert!(!lookup.is_account_address(&account_a, "other@example.com"));
-        // Unknown account id never matches.
         assert!(!lookup.is_account_address(&AccountId::new(), "a@example.com"));
 
-        // Replacing with a different set discards the previous one.
         lookup.replace([(account_a.clone(), owned("fresh@example.com", &[]))]);
         assert!(lookup.is_loaded());
         assert!(lookup.is_account_address(&account_a, "fresh@example.com"));
@@ -198,8 +184,6 @@ mod tests {
         lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
         assert!(lookup.is_account_address(&account, "a@example.com"));
 
-        // A failed rebuild keeps the old sets in memory. The readiness gate
-        // reads false, so sync writes Unknown rather than a guess.
         lookup.mark_stale();
         assert!(lookup.is_stale());
         assert!(!lookup.is_loaded());
@@ -217,9 +201,6 @@ mod tests {
 
     #[test]
     fn stale_lookup_still_answers_from_the_held_set_for_a_pass_already_running() {
-        // A pass that started while the set was current keeps answering from
-        // that set. Only the readiness gate (`is_loaded`) reads staleness, so
-        // a pass that finds the gate closed writes Unknown rather than Inbound.
         let account = AccountId::new();
         let lookup = InMemoryAccountAddressLookup::new();
         lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
@@ -234,8 +215,6 @@ mod tests {
 
     #[test]
     fn sync_cursor_round_trips_arbitrary_bytes() {
-        // The struct is opaque — any byte sequence the adapter produces
-        // must round-trip through serde unchanged.
         for payload in [
             br#"{"v":1,"history_id":12345}"#.to_vec(),
             br#"{"v":2,"mailboxes":[]}"#.to_vec(),

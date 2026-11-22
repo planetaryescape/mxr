@@ -63,7 +63,6 @@ pub fn find_normalized(
     wanted: &[char],
     fold: impl Fn(char) -> char,
 ) -> Option<std::ops::Range<usize>> {
-    // Each normalized char with the byte range of the original it stands for.
     let mut normalized: Vec<(char, usize, usize)> = Vec::new();
     for (index, c) in text.char_indices() {
         let end = index + c.len_utf8();
@@ -97,12 +96,10 @@ mod tests {
 
     #[test]
     fn backs_off_mid_codepoint_cut() {
-        // "é" is two bytes; a budget of 3 lands mid-character.
         let mut s = "aaéé".to_string();
         truncate_to_char_boundary(&mut s, 3);
         assert_eq!(s, "aa");
 
-        // Four-byte emoji; every interior offset must be safe.
         let base = "x🦀y".to_string();
         for budget in 0..=base.len() {
             let mut s = base.clone();

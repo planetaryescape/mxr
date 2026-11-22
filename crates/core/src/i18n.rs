@@ -42,28 +42,21 @@ pub struct InviteStrings {
     pub subject_prefix_declined: &'static str,
     pub subject_prefix_tentative: &'static str,
 
-    // text/plain body templates for outgoing REPLY emails. `{email}` is
-    // substituted with the responding attendee's address. Keep the
-    // placeholder syntax simple — no Fluent / ICU dependency.
     pub body_template_accepted: &'static str,
     pub body_template_declined: &'static str,
     pub body_template_tentative: &'static str,
 
-    // Action chip labels for the un-responded card.
     pub chip_label_accept: &'static str,
     pub chip_label_tentative: &'static str,
     pub chip_label_decline: &'static str,
 
-    // State row labels for the responded card.
     pub state_label_accepted: &'static str,
     pub state_label_tentative: &'static str,
     pub state_label_declined: &'static str,
 
-    // Hint lines under the action row.
     pub hint_change_response: &'static str,
     pub hint_comment: &'static str,
 
-    // Variant banners.
     pub banner_cancelled: &'static str,
     pub banner_publish: &'static str,
     pub banner_parse_warning: &'static str,
@@ -210,7 +203,6 @@ mod tests {
             let l = **locale;
             assert!(!l.code.is_empty(), "locale code must not be empty");
 
-            // Invite strings
             let i = l.invite;
             for (field_name, value) in [
                 ("card_title", i.card_title),

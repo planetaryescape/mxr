@@ -1,11 +1,3 @@
-//! `FetchArticle`: the article an item links to, fetched only when asked,
-//! saved so Later reads offline.
-//!
-//! The fetch goes through `mxr_reading::fetch`, which refuses this machine,
-//! private networks and redirects into them, and names every site it
-//! contacted. The demo mailbox never touches the network: its links point
-//! at made-up sites, so their articles come from the demo's own fixtures.
-
 use super::item::{article_data, load_item, paragraph_data};
 use super::{item_key, Context};
 use crate::handler::{HandlerError, HandlerResult};
@@ -55,7 +47,6 @@ pub(in crate::handler) async fn fetch_article(
             .map(|html| (url.clone(), Vec::new(), html.to_string()))
             .ok_or_else(|| format!("the demo has no copy of {domain}; nothing was fetched"))
     } else {
-        // fetch_page refuses an off-limits link before anything is sent.
         fetch_page(&url, &FetchPolicy::default())
             .await
             .map(|page| (page.final_url.to_string(), page.contacted, page.html))

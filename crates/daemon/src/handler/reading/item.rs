@@ -1,6 +1,3 @@
-//! One item in the reader, Later, engagement, highlights and per-source
-//! choices.
-
 use super::sources::Sources;
 use super::{ensure_items, item_data, item_key, parse_item_key, Context, Issue};
 use crate::handler::places::AccountKinds;
@@ -17,7 +14,6 @@ use mxr_reading::{pace, Paragraph, ParagraphKind};
 use mxr_store::{ReadingArticleRow, ReadingEngagementReport, ReadingHighlightRow, ReadingItemRow};
 use std::collections::HashMap;
 
-/// The longest passage a highlight keeps.
 const MAX_QUOTE_CHARS: usize = 4000;
 const MAX_NOTE_CHARS: usize = 2000;
 
@@ -34,7 +30,6 @@ pub(super) fn paragraph_data(paragraph: &Paragraph) -> ReadingParagraphData {
     }
 }
 
-/// A saved article as the reader shows it, or why it failed.
 pub(super) fn article_data(
     row: &ReadingArticleRow,
     wpm: u32,
@@ -64,7 +59,6 @@ pub(super) fn article_data(
     })
 }
 
-/// The issue behind an item key, its stored classification and cached items.
 pub(super) async fn load_item(
     state: &AppState,
     key: &str,
@@ -180,7 +174,6 @@ pub(super) fn highlight_data(
     }
 }
 
-/// Items on Later in the accounts the request touched.
 async fn later_count(state: &AppState, accounts: &[AccountId]) -> Result<u32, HandlerError> {
     Ok(u32::try_from(state.store.reading_later(accounts).await?.len()).unwrap_or(u32::MAX))
 }
@@ -270,7 +263,6 @@ pub(in crate::handler) async fn record_engagement(
         .get_envelope(&message_id)
         .await?
         .ok_or_else(|| HandlerError::Message(format!("No message for Reading item {key}")))?;
-    // Recorder disablement (config or environment) and pause stop engagement too.
     if !state.activity.is_enabled() || state.activity.pause_status().0 {
         return Ok(ResponseData::ReadingEngagement {
             item_key: item_key(&message_id, idx),
@@ -289,7 +281,6 @@ pub(in crate::handler) async fn record_engagement(
     })
 }
 
-/// A note as kept: trimmed, and none at all when nothing is left.
 pub(super) fn clean_note(note: Option<&str>) -> Result<Option<&str>, HandlerError> {
     let note = note.map(str::trim).filter(|n| !n.is_empty());
     if note.is_some_and(|n| n.chars().count() > MAX_NOTE_CHARS) {
@@ -344,7 +335,6 @@ pub(in crate::handler) async fn save_highlight(
         paragraph,
     };
     state.store.insert_reading_highlight(&row).await?;
-    // Search finds highlights through the message's semantic chunks.
     if let Err(error) = state
         .semantic
         .enqueue_ingest_messages(std::slice::from_ref(&issue.id))

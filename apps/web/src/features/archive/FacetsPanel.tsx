@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { useLedger, type RecordFilter, type RecordKind, type RecordLedger } from "./api";
 import { KNOWN_KINDS } from "./archiveSearch";
 
-/** "99.50" to minor units; empty or unreadable is no bound. */
 export function toMinor(text: string): number | undefined {
   const cleaned = text.replace(/[^0-9.]/g, "");
   if (!cleaned) return undefined;
@@ -53,12 +52,6 @@ function Choice({
   );
 }
 
-/**
- * Filters (`g f`): kind, issuer, year, amount, PDF and checked. Set several,
- * then apply once: the button says how many records the set matches, as
- * NN/g's batch pattern does on a phone, where every reload costs. On a
- * phone it is a tray at the bottom of the screen.
- */
 export function FacetsPanel({
   ledger,
   filter,

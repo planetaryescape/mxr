@@ -24,13 +24,6 @@ import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "@/lib/
 
 const IRREVERSIBLE = "This can't be undone from mxr; you'd resubscribe on their site.";
 
-/**
- * `D`: unsubscribe, with the evidence first. Two choices: just unsubscribe
- * (Enter or u, keeps the mail already there) or unsubscribe and clear the
- * sender's issues (a). The daemon's dry run counts the mail the second
- * choice would clear, and nothing is sent until one of the buttons is
- * pressed.
- */
 export function ReadingUnsubscribeDialog({
   source,
   onClose,
@@ -49,8 +42,6 @@ export function ReadingUnsubscribeDialog({
       }),
     staleTime: 0,
   });
-  // Only a finished preview with a token and a method can be committed,
-  // and the method shown is the one in that preview.
   const ready = preview.isFetching ? null : unsubscribePreview(preview);
   const count = ready?.count ?? preview.data?.result?.message_count;
 
@@ -96,7 +87,6 @@ export function ReadingUnsubscribeDialog({
         className="max-w-md grid-cols-[minmax(0,1fr)]"
         data-testid="reading-unsubscribe"
         onKeyDown={(event) => {
-          // Enter on a focused button is that button's click, not a shortcut.
           if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
           if (pressedOverlayKey(event, "unsubscribe.confirm")) {
             event.preventDefault();
@@ -105,7 +95,6 @@ export function ReadingUnsubscribeDialog({
             event.preventDefault();
             void commitUnsubscribe(true);
           } else if (pressedOverlayKey(event, "overlay.no")) {
-            // n is Esc, as in the TUI (blueprint 35).
             event.preventDefault();
             onClose();
           } else if (announceMovedOverlayKey(event, "unsubscribe")) {
@@ -189,10 +178,6 @@ export function ReadingUnsubscribeDialog({
   );
 }
 
-/**
- * `A`: let go of everything the edition shows. The daemon's dry run lists
- * exactly the conversations; confirming sends those same ids.
- */
 export function LetGoAllDialog({
   threadIds,
   titles,

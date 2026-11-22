@@ -60,9 +60,6 @@ vi.mock("@/features/recovery/RecoveryNotice", () => ({
   }),
 }));
 
-// The list-and-reader layout has its own tests (MailboxList); here we only
-// check what the search route hands it: projected rows, meta, toolbar,
-// paging and the empty state.
 vi.mock("@/features/mailbox/ListWithReader", () => ({
   ListWithReader: (props: {
     title: string;
@@ -242,7 +239,6 @@ describe("SearchResultsRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
     expect(screen.getByTestId("search-filters")).toBeVisible();
     expect(await screen.findByRole("combobox", { name: "Narrow by" })).toBeVisible();
-    // Facet counts are messages, so beside conversation rows they are left off.
     expect(screen.getByRole("button", { name: /Ada/ }).textContent).not.toMatch(/\d/);
   });
 
@@ -301,7 +297,6 @@ describe("SearchResultsRoute", () => {
       expect.objectContaining({ offset: 100 }),
       expect.anything(),
     );
-    // Page size is the daemon's [search] max_results, so the page sends none.
     expect(lastSearchParams().limit).toBeUndefined();
   });
 
@@ -348,7 +343,6 @@ describe("SearchResultsRoute", () => {
       },
     });
     await waitFor(() => expect(document.activeElement).not.toBe(input));
-    // Control moves to the results list so j/k/o work without a click.
     expect(useMailboxPane.getState().activePane).toBe("mailbox");
   });
 

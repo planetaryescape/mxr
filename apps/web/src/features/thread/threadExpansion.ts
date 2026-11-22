@@ -1,11 +1,7 @@
-/* Which messages of a conversation start expanded, and where focus lands. */
-
-/** What landing needs of a conversation (a `ThreadResponse` is one). */
 interface Conversation {
   messages: readonly { id: string; unread: boolean }[];
 }
 
-/** Newest message and every unread one start open; the rest fold. */
 export function initialExpanded(data: Conversation): Set<string> {
   const open = new Set(
     data.messages.filter((message) => message.unread).map((message) => message.id),
@@ -15,10 +11,6 @@ export function initialExpanded(data: Conversation): Set<string> {
   return open;
 }
 
-/**
- * Where the reader opens: on `focusMessageId` when the conversation has it
- * (expanded, and `cited`), else the default landing.
- */
 export function initialLanding(
   data: Conversation,
   focusMessageId?: string,

@@ -28,7 +28,6 @@ import { useResolvedPresets } from "@/features/time/useNaturalTime";
 import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
 
-/** "Send and remind me if no reply in..." presets (TUI `n` parity). */
 const REMIND_PRESETS = [
   { label: "1 day", input: "in 1 day" },
   { label: "3 days", input: "in 3 days" },
@@ -38,7 +37,6 @@ const REMIND_PRESETS = [
 interface ComposeActionBarProps {
   onSend: () => void;
   onSendLater: () => void;
-  /** Present only for replies: a new message has no conversation to archive. */
   onSendAndArchive?: () => void;
   onSendAndRemind: (at: Date, label: string) => void;
   onSendAndRemindCustom: () => void;
@@ -192,11 +190,6 @@ export function ComposeActionBar({
   );
 }
 
-/**
- * The remind presets with the exact time each resolves to. Mounted only while
- * the submenu is open, so the daemon is asked only then; choosing one sends
- * the instant shown.
- */
 function RemindPresetItems({
   onSendAndRemind,
 }: {

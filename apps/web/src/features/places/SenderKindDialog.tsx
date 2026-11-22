@@ -15,10 +15,6 @@ import { KIND_LABELS, KIND_OPTIONS, kindOptionForKey, type KindOption } from "./
 import { correctSender } from "./senderKind";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/**
- * "Move sender to…": one key per place, on the `g` letters. The current kind is marked; when
- * the user chose it, Automatic is how to undo the choice for good.
- */
 export function SenderKindDialog({
   accountId,
   senderEmail,
@@ -49,8 +45,6 @@ export function SenderKindDialog({
         data-testid="sender-kind-dialog"
         onKeyDown={(event) => {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
-          // j, k and the arrows move the highlight; Enter (the focused
-          // button) runs it, as in every picker (blueprint 35).
           const down = pressedOverlayKey(event, "overlay.down");
           if (down || pressedOverlayKey(event, "overlay.up")) {
             event.preventDefault();

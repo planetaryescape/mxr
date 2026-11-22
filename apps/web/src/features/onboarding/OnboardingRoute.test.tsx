@@ -89,7 +89,6 @@ describe("OnboardingRoute auth step", () => {
       session({ auth_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" }),
     );
 
-    // Loopback: a button to open the consent URL, and NO device-code framing.
     expect(await screen.findByRole("button", { name: /open .*sign.?in/i })).toBeVisible();
     expect(screen.queryByText(/device code/i)).toBeNull();
   });
@@ -115,9 +114,7 @@ describe("OnboardingRoute auth step", () => {
     fireEvent.click(complete);
 
     await waitFor(() => expect(api.completeAuthSession).toHaveBeenCalledWith("sess-1"));
-    // Step 4 (initial sync) takes the user to the app's starting page.
     expect(await screen.findByRole("button", { name: /open now/i })).toBeVisible();
-    // No sync progress has arrived yet, so it must not claim to be ready.
     expect(screen.getByText(/waiting for the first sync to start/i)).toBeVisible();
     expect(screen.queryByText(/^ready$/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /open now/i }));

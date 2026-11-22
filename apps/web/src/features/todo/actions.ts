@@ -1,10 +1,3 @@
-/*
- * To do's web keys. The mounted runway, catch-up or Expired list registers
- * what each command does (`useScopeController`); the reader keeps its own
- * keys while it has focus. `g x` opens To do from anywhere and `t` (in
- * verbActions) makes a to-do from a conversation.
- */
-
 import { CalendarClock, Check, PenLine, X } from "lucide-react";
 
 import { MODE_GLYPHS } from "@/components/ModeMark";

@@ -35,7 +35,6 @@ import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const SEARCH_PAGE_LIMIT = 100;
-/** What a result row is, so the count above them names the same thing. */
 const UNIT: Record<Scope, string> = {
   threads: "conversation",
   messages: "message",
@@ -49,11 +48,6 @@ const MODE_PURPOSE: Record<SearchMode, string> = {
 };
 const SEARCH_LENS = { kind: "search" } as const;
 
-/**
- * Search results behave like a mailbox: same rows, keys and actions, and
- * a result opens beside the list at /search/<thread>?<query>, so Escape
- * comes back to the same results.
- */
 export function SearchResultsRoute() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -61,7 +55,6 @@ export function SearchResultsRoute() {
   const accountScope = useUiPrefs((s) => s.accountScope);
   const q = search.q ?? "";
   const mode = search.mode ?? "lexical";
-  // Undefined is the Default choice: the daemon picks the order.
   const sort = search.sort;
   const scope: Scope = (search.scope as Scope | undefined) ?? "threads";
   const verdict = search.verdict as Verdict | undefined;
@@ -75,12 +68,10 @@ export function SearchResultsRoute() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setDraft(q), [q]);
-  // Arriving with no query puts the cursor in the box.
   useEffect(() => {
     if (!q) inputRef.current?.focus();
   }, [q]);
 
-  // Search takes its page size from [search] max_results. Triage keeps its own page.
   const limit = scope === "triage" ? SEARCH_PAGE_LIMIT : undefined;
   const request = { q, mode, sort, scope, account, limit, verdict };
   const results = useInfiniteQuery({
@@ -158,7 +149,6 @@ export function SearchResultsRoute() {
     (row) => row.enabled !== false || isRestoredProfile(recoveryStatus.data),
   );
 
-  // Any page counts: once one page was limited, the list is not the full answer.
   const degraded = results.data?.pages.find((page) => page.degraded)?.degraded;
 
   const toolbar = (
@@ -196,7 +186,6 @@ export function SearchResultsRoute() {
       <ListWithReader
         basePath="/search"
         preserveSearch
-        // The query is the page's name, as a mode's cut is: what you asked for.
         title={q.trim() || "Search"}
         purpose={q.trim() ? MODE_PURPOSE[mode] : "Find mail by words or by meaning."}
         meta={
@@ -269,13 +258,6 @@ export function SearchResultsRoute() {
   );
 }
 
-/**
- * In conversation scope each row stands for its thread, represented by its
- * best-matching message. Which message that is can change on a refetch
- * (an archive or read elsewhere shifts scores), so the row takes the
- * thread's identity and the cursor stays on the conversation. Actions still
- * cover the representing message only, as before.
- */
 function asConversation(row: MessageRowView): MessageRowView {
   return row.kind === "message"
     ? { ...row, kind: "thread", message_ids: row.message_ids ?? [row.id] }

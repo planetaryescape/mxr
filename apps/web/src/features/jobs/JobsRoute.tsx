@@ -18,7 +18,6 @@ export function JobsRoute() {
   const jobs = useQuery({
     queryKey: ["jobs"],
     queryFn: fetchJobs,
-    // Poll only while something is in flight.
     refetchInterval: (query) =>
       (query.state.data ?? []).some((job) => job.status === "queued" || job.status === "running")
         ? 2_000

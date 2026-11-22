@@ -1,7 +1,6 @@
 import { BridgeRequestError, DaemonUnavailableError } from "@/api/client";
 import type { components } from "@/api/generated";
 
-/** Only this request's confirmed local persistence may advance its editor token. */
 export function acceptedDraftRevision(
   error: unknown,
 ): components["schemas"]["AcceptedComposeDraft"] | undefined {

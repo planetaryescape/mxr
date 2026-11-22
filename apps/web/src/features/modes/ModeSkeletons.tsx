@@ -116,7 +116,6 @@ export function ReadingSkeleton({ shown, later = false }: { shown: boolean; late
   );
 }
 
-/** Same band inset and heading line box as MessagesList, inside its existing panes. */
 export function MessagesSkeleton({ shown }: { shown: boolean }) {
   return (
     <Skeleton shown={shown} label="Loading Messages" className="pt-2">

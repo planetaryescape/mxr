@@ -7,11 +7,6 @@ import { cn } from "@/lib/utils";
 import { otherModes, type ModeKind, type ThreadModes } from "./membership";
 import { RAIL_PATHS } from "./rail";
 
-/**
- * "Also in To do: Sign the lease, act by Mon 13 Oct": the other modes
- * holding this thread, in the daemon's words, each a link to that mode with
- * its `g` key beside it. Nothing shows when no other mode holds it.
- */
 export function AlsoInLine({
   modes,
   here,
@@ -21,17 +16,10 @@ export function AlsoInLine({
   chips = false,
 }: {
   modes: ThreadModes | null | undefined;
-  /** The mode on screen, left out of the line. */
   here: ModeKind | null;
   className?: string;
-  /** Show each mode's `g` key; rows leave it out to stay one line. */
   keys?: boolean;
-  /**
-   * Plain text inside a listbox option, which can't hold links (the row
-   * opens on Enter and the mode's `g` key jumps there).
-   */
   links?: boolean;
-  /** Each mode as a neutral Chip instead of an underlined link. */
   chips?: boolean;
 }) {
   const others = otherModes(modes, here);

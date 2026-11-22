@@ -18,7 +18,6 @@ describe("inline images", () => {
     expect(logo?.getAttribute("src")).toBe("data:image/png;base64,AA==");
     expect(chart?.hasAttribute("src")).toBe(false);
     expect(chart?.getAttribute("alt")).toBe("Chart");
-    // Remote images are the sanitizer's and the remote-image gate's business.
     expect(remote?.getAttribute("src")).toBe("https://x.test/c.png");
   });
 });

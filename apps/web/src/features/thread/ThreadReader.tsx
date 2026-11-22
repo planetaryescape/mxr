@@ -47,10 +47,8 @@ import { ThreadSummaryAccordion, ThreadSummaryLoading } from "./ThreadInsights";
 import { useThreadSiblings } from "./useThreadSiblings";
 import { useThreadSummary } from "./useThreadSummary";
 
-/** How much of the landing message must show before the reader scrolls to it. */
 const LANDING_MARGIN_PX = 160;
 
-/** One loaded conversation: context, messages, the reply field and reader keys. */
 export function ThreadReader({
   data,
   focusMessageId,
@@ -69,9 +67,6 @@ export function ThreadReader({
   const setReaderLayout = useUiPrefs((s) => s.setReaderLayout);
   const defaultView = useUiPrefs((s) => s.readerView);
   const setDefaultView = useUiPrefs((s) => s.setReaderView);
-  // Pages of the same conversation loaded on demand: older pages prepended
-  // in reverse load order, newer pages (a deep link starts in the middle)
-  // appended in load order.
   const [olderPages, setOlderPages] = useState<ThreadResponse[]>([]);
   const [newerPages, setNewerPages] = useState<ThreadResponse[]>([]);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -102,10 +97,6 @@ export function ThreadReader({
   const hasEarlier = oldestPage.has_earlier ?? false;
   const hasLater = newestPage.has_later ?? false;
   const totalMessages = data.total_messages ?? data.thread.message_count;
-  // A prepended page must not move the message the reader is looking at:
-  // remember where the scroller was, then restore that offset plus the new
-  // content's height. Reading `scrollTop` after the update is too late — the
-  // inserted page can reset it to 0.
   const prependAnchor = useRef<{ height: number; top: number } | null>(null);
 
   const [view, setView] = useState<ReaderView>(defaultView);
@@ -124,15 +115,11 @@ export function ThreadReader({
   const listHidden = singlePane || readerLayout === "full";
   useShortcutScope("reader", readerFocused);
 
-  // A link to one message (a draft's source) is there to be read: the
-  // reader takes the keys, with that message under the cursor.
   useEffect(() => {
     if (landing.cited) setActivePane("reader");
-    // Only when this conversation first opens on the cited message.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // DOM focus follows the pane, so the page scrolls with the keyboard.
   useEffect(() => {
     if (!readerFocused) return;
     const active = document.activeElement;
@@ -145,9 +132,6 @@ export function ThreadReader({
     scrollRef.current?.focus({ preventScroll: true });
   }, [readerFocused]);
 
-  // Land on the newest unread message, like a mail client, but only scroll
-  // when it starts below the fold: otherwise the top of the thread, with its
-  // context block, stays in view.
   useEffect(() => {
     const target = messages[focusIndex];
     const node = target ? cardRefs.current.get(target.id) : undefined;
@@ -155,14 +139,9 @@ export function ThreadReader({
     if (!node || !container || focusIndex === 0) return;
     const foldTop = container.getBoundingClientRect().bottom - LANDING_MARGIN_PX;
     if (node.getBoundingClientRect().top > foldTop) node.scrollIntoView({ block: "start" });
-    // Only on first render of this thread.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Mark read after a short dwell: at once when the reader has focus, after
-  // two seconds when the list is previewing threads under the cursor. Once
-  // per opening: after it fires, or after the user marks read or unread
-  // themselves, pane changes never mark the thread read again.
   const autoReadSettled = useRef(false);
   const archivePending = useRef(false);
   const routeStillShows = useRouteStillShows();
@@ -191,8 +170,6 @@ export function ThreadReader({
       : null;
     try {
       const page = await fetchThread(threadId, { before, limit: THREAD_PAGE_SIZE });
-      // The page is now above everything rendered; keep the same message
-      // under the reader's eye and the same message focused.
       setFocusIndex((index) => index + page.messages.length);
       setOlderPages((pages) => [...pages, page]);
     } catch (error) {
@@ -224,8 +201,6 @@ export function ThreadReader({
     const container = scrollRef.current;
     if (!anchor || !container) return;
     prependAnchor.current = null;
-    // Wait one frame so message heights that depend on layout are final;
-    // `overflow-anchor: none` on the scroller keeps the browser out of it.
     requestAnimationFrame(() => {
       container.scrollTop = anchor.top + (container.scrollHeight - anchor.height);
     });
@@ -233,7 +208,6 @@ export function ThreadReader({
   const queryClient = useQueryClient();
   const context = useQuery(threadContextQuery(threadId));
   const policy = llmPolicyKey(llm.data?.status);
-  // Still fetched for short threads: the ask's highlight in the body needs it.
   const gist = useQuery({ ...threadGistQuery(threadId, policy), enabled: llm.enabled });
   const longThread = useMemo(() => isLongThread(data), [data]);
   const resolve = useMutation({
@@ -246,8 +220,6 @@ export function ThreadReader({
   });
   const askQuote = gist.data?.status === "ready" ? (gist.data.ask?.quote ?? null) : null;
 
-  // Opened from a To do row: the link the row is about is marked in its
-  // message, which opens, and the reader scrolls to it. Nothing opens it.
   const link = linkHighlight ?? null;
   const linkMessageId = link
     ? messages.some((message) => message.id === link.messageId)
@@ -260,8 +232,6 @@ export function ThreadReader({
       current.has(linkMessageId) ? current : new Set(current).add(linkMessageId),
     );
     const reveal = () => scrollToMark(linkMessageId, `[${LINK_MARK_ATTRIBUTE}]`, "auto");
-    // A link written as plain text in the formatted view has no anchor to
-    // mark there; the reader view links it, so fall back to that.
     const timers = [
       window.setTimeout(reveal, 150),
       window.setTimeout(() => {
@@ -270,13 +240,9 @@ export function ThreadReader({
       window.setTimeout(reveal, 900),
     ];
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-    // Once per link: a view change must not undo the reader's choice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkMessageId]);
 
-  // "Show in message": expand the message, then scroll to its mark. The
-  // formatted view marks inside the frame when the quote's text survives
-  // sanitizing; when it doesn't, fall back to the reader view.
   const pendingReveal = useRef(false);
   const scrollToMark = (
     messageId: string,
@@ -321,7 +287,6 @@ export function ThreadReader({
     if (!pendingReveal.current) return;
     pendingReveal.current = false;
     requestAnimationFrame(() => scrollToAskMark());
-    // Only after the view switch that revealAsk asked for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   const { position, step, leave } = useThreadSiblings(data.thread.id, nav);
@@ -420,15 +385,12 @@ export function ThreadReader({
     archivePrev: () => {
       archiveAndAdvance(-1);
     },
-    // With the list hidden (narrow screen, full-width reader), going back to
-    // it means closing the conversation, not focusing an invisible list.
     focusList: () => (listHidden ? nav?.close() : setActivePane("mailbox")),
     moveSender: () => {
       const newestMessage = messages.at(-1);
       if (newestMessage) void openMoveSenderFor(newestMessage.id, newestMessage.sender);
     },
     close: () => nav?.close(),
-    // Toggles, as in the TUI: R or H again drops back to plain text.
     viewReader: () => setViewAndRemember(view === "reader" ? "plain" : "reader"),
     viewHtml: () => setViewAndRemember(view === "formatted" ? "plain" : "formatted"),
     viewPlain: () => setViewAndRemember("plain"),

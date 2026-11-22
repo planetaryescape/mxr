@@ -1,11 +1,3 @@
-/*
- * Not now (`b`, D173): one picker everywhere, "Later (no time)" first,
- * then times. Each place says what Later and a time do there, with the
- * daemon request it always sent: the untimed reply later and snooze for
- * mail and Now, reply later and a desk time for Messages, the Later shelf
- * and snooze for Reading, a scheduled day for To do.
- */
-
 import { toast } from "sonner";
 
 import { deferThreadsAt, deskLaneOf } from "@/features/desk/deskLater";
@@ -16,21 +8,14 @@ import { invalidateMailQueries } from "./mailQueryInvalidation";
 import type { MailTarget } from "./target";
 import { toneFor, VERB_FEEDBACK } from "./verbFeedback";
 
-/** What the Not-now picker offers and does, built by the place that opens it. */
 export interface NotNowPicker {
-  /** The dialog's title: "Not now". */
   title: string;
-  /** What leaves and how it comes back. */
   description: string;
-  /** The first option, with no time. Absent where nothing untimed applies. */
   later?: { label: string; hint: string; run: () => Promise<unknown> | void };
-  /** The button for a typed time: "Snooze", "Set", "Schedule". */
   timeVerb: string;
-  /** A time: the instant the dialog showed, and how the toast names it. */
   at: (until: string, label: string) => Promise<unknown> | void;
 }
 
-/** The untimed reply later: into the reply queue now. Undo from the toast. */
 export async function replyLaterNow(messageId: string): Promise<void> {
   try {
     await setReplyLater(messageId, true);
@@ -54,16 +39,10 @@ const REPLY_LATER = {
   hint: "No time: it joins your reply queue now",
 } as const;
 
-/** Snooze these messages until the instant shown. */
 function snooze(messageIds: string[], until: string, label: string) {
   return performMailAction("snooze", messageIds, { until, payload: { untilLabel: label } });
 }
 
-/**
- * Mail and Focus: Later is the untimed reply later (one conversation, not
- * on Waiting on, which needs a time); a time snoozes. On the desk a time
- * takes the conversation off the desk instead, as `b` always did there.
- */
 export function mailNotNow(
   target: MailTarget,
   subject: string,
@@ -82,7 +61,6 @@ export function mailNotNow(
   });
 }
 
-/** Now's lit row, or any one email: Later is the untimed reply later; a time snoozes. */
 export function messageNotNow({
   messageIds,
   replyLaterId,
@@ -91,7 +69,6 @@ export function messageNotNow({
   onLater,
 }: {
   messageIds: string[];
-  /** The message the untimed reply later flags; none hides Later. */
   replyLaterId?: string;
   subject: string;
   onSnoozed?: () => void;
@@ -117,12 +94,6 @@ export function messageNotNow({
   };
 }
 
-/**
- * Messages: Later is the untimed reply later; a time takes the conversation
- * off the desk until then (`DeferThreads`, what `b` always sent). On
- * Waiting on a time brings it back only if nobody replied, and there is no
- * untimed choice.
- */
 export function conversationNotNow({
   threadId,
   messageId,
@@ -146,7 +117,6 @@ export function conversationNotNow({
   };
 }
 
-/** Reading's Later: on the shelf, or kept there when Later is the view. */
 export const READING_LATER = {
   label: "Later",
   hint: "No time: it stays on your Later shelf",
@@ -156,10 +126,6 @@ export const READING_KEEP = {
   hint: "No time: it stays on the shelf",
 } as const;
 
-/**
- * Reading: Later puts the item on the Later shelf (the place says how); a
- * time snoozes the issue's email.
- */
 export function readingNotNow({
   messageId,
   title,

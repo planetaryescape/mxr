@@ -1,9 +1,3 @@
-/*
- * Snippet picker (cmd+;): fuzzy Command list over the saved snippets the
- * controller already fetches for `;name ` inline expansion. Selecting one
- * appends its body to the end of the message.
- */
-
 import { TextQuote } from "lucide-react";
 
 import {

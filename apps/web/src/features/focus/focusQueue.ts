@@ -1,28 +1,12 @@
-/*
- * The focus & reply queue: everyone you owe a reply, one conversation per
- * entry. The desk's You owe lane comes first in its order (people only, in
- * the inbox, people you have written to, furthest past your usual pace
- * first), then the reply-later queue in its order, skipping conversations
- * already listed.
- *
- * The session is a pure reducer so its rules are tested without React:
- * the order is fixed when you start, so a refetch never reshuffles what's
- * next; new arrivals join the end; handled conversations never come back
- * unless a send is undone; the one on screen stays put even if a refetch
- * drops it (you may be halfway through the reply).
- */
-
 import type { DeskRow } from "@/features/desk/api";
 import { rowAge } from "@/features/desk/deskCopy";
 import type { ReplyQueueMessage } from "@/features/reply-queue/api";
 
 export interface FocusItem {
   threadId: string;
-  /** The message a reply answers: the newest from them. */
   messageId: string;
   sender: string;
   subject: string;
-  /** Why it is here, in the daemon's words. */
   reason: string;
   source: "owed" | "reply-later";
 }
@@ -47,7 +31,6 @@ export function buildFocusQueue(
     });
   }
   for (const message of replyLater) {
-    // The reply-later list isn't account scoped on the wire; scope it here.
     if (accountScope && message.account_id && message.account_id !== accountScope) continue;
     if (seen.has(message.thread_id)) continue;
     seen.add(message.thread_id);
@@ -64,15 +47,10 @@ export function buildFocusQueue(
 }
 
 export interface FocusSession {
-  /** Every conversation seen this session, by thread id. */
   items: Record<string, FocusItem>;
-  /** Still to do, in order; the first is on screen. */
   queue: string[];
-  /** Sent (or in its undo window) or snoozed, in the order handled. */
   handled: string[];
-  /** Skipped when nothing else was left: set aside until you come back. */
   deferred: string[];
-  /** The source has answered at least once. */
   loaded: boolean;
 }
 
@@ -81,9 +59,7 @@ export type FocusEvent =
   | { kind: "skip" }
   | { kind: "handled"; threadId: string }
   | { kind: "restore"; threadId: string }
-  /** Put a queued conversation on screen: a link that named it. */
   | { kind: "front"; threadId: string }
-  /** Bring the set-aside conversations back into the queue. */
   | { kind: "revisit" };
 
 export const emptyFocusSession: FocusSession = {
@@ -108,8 +84,6 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
       const known = new Set([...kept, ...session.handled, ...session.deferred]);
       const arrivals = event.items.map((item) => item.threadId).filter((id) => !known.has(id));
       const queue = [...kept, ...arrivals];
-      // A refetch that changes nothing keeps the same session, so the page
-      // and the conversation on screen don't re-render.
       if (
         session.loaded &&
         sameIds(queue, session.queue) &&
@@ -122,7 +96,6 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
     case "skip": {
       const [current, ...rest] = session.queue;
       if (current === undefined) return session;
-      // The last one left is set aside rather than shown again.
       if (rest.length === 0)
         return { ...session, queue: [], deferred: [...session.deferred, current] };
       return { ...session, queue: [...rest, current] };
@@ -159,7 +132,6 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
 }
 
 export interface FocusProgress {
-  /** 1-based position of the one on screen; equals `total` when done. */
   position: number;
   total: number;
   done: number;
@@ -186,7 +158,6 @@ function sameItem(a: FocusItem | undefined, b: FocusItem): boolean {
   );
 }
 
-/** "Replied to your message · 2d · usually 4h", as the desk row reads. */
 function owedReason(row: DeskRow): string {
   const age = rowAge(row);
   const parts = [row.reason.charAt(0).toUpperCase() + row.reason.slice(1), age.label, age.usual];

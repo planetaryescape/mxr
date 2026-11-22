@@ -15,7 +15,6 @@ type ComposeStep = "to" | "subject";
 interface RecipientContact {
   email: string;
   display_name?: string | null;
-  /** Mail exchanged both ways; people you write with most rank first. */
   volume: number;
 }
 
@@ -54,8 +53,6 @@ export function ComposeLauncher() {
     setStep("subject");
   }
 
-  // Hands off to the one compose surface; the launcher is only a fast way
-  // to fill To and Subject first.
   function openCompose() {
     close();
     useComposeUi.getState().openCompose(prefilledMessageIntent(to, subject), "overlay");
@@ -204,7 +201,6 @@ async function fetchRecipientContacts(): Promise<RecipientContact[]> {
       display_name: row.display_name,
       volume: row.total_inbound + row.total_outbound,
     })),
-    // Fading contacts carry no counts; they still belong in suggestions.
     ...(decay.status === "fulfilled" ? decay.value.rows : []).map((row) => ({
       email: row.email,
       display_name: row.display_name,

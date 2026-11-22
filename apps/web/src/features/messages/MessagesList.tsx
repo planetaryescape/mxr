@@ -26,12 +26,6 @@ import { rowTime, type Arrival } from "./messagesView";
 import { SectionHeading } from "@/components/SectionHeading";
 import { StatusDot } from "@/components/StatusDot";
 
-/**
- * The people, in the daemon's bands: Your turn (closest first, then most
- * overdue), Pinned as a strip of faces, Recent with "You: …" when you wrote
- * last, and Quiet folded with its count. The row is a person; the preview
- * is what they asked; the state is the turn, never read or unread.
- */
 export function MessagesList({
   data,
   selectedId,
@@ -51,17 +45,12 @@ export function MessagesList({
   via: LampVia;
   quietOpen: boolean;
   onToggleQuiet: () => void;
-  /** The element that scrolls the list: bands window their rows against it. */
   scroller: HTMLElement | null;
-  /** Must be stable (not re-created per render), so a lamp move leaves other rows alone. */
   onSelect: (id: string) => void;
   onReply: () => void;
   onDone: () => void;
-  /** Which modes hold each row's first topic, for "Also in" and a new sender's question. */
   memberships?: ReadonlyMap<string, ThreadModes>;
-  /** Threads whose done is on its way: no longer counted on their row. */
   hidden: ReadonlySet<string>;
-  /** The row a verb just moved to, marked once. */
   arrival: Arrival | null;
 }) {
   const renderPerson = (row: MessagesRow, slot?: RowSlot) => (
@@ -194,16 +183,9 @@ function Band({
   );
 }
 
-/** Estimate only: rows are measured once drawn. */
 const ROW_ESTIMATE_PX = 52;
 const OVERSCAN = 12;
 
-/**
- * A band's people, drawn only near the screen. On 5,000 people the browser's
- * style and layout of the DOM, not React, was the cost of a j (spike S4), so
- * a long band mounts a screenful and a lamp move touches two rows of it.
- * The lit row is scrolled to by index, since it may not be mounted yet.
- */
 function VirtualRows({
   rows,
   selectedId,
@@ -217,9 +199,6 @@ function VirtualRows({
 }) {
   const listRef = useRef<HTMLUListElement>(null);
   const [margin, setMargin] = useState(0);
-  // Where this band starts inside the scroller (the bands above it, the empty state).
-  // On every render, since a band above can resize without this band's rows changing;
-  // setMargin bails out when the offset is the same, so it cannot loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const element = scroller;
@@ -243,8 +222,6 @@ function VirtualRows({
   useEffect(() => {
     if (litIndex !== undefined) virtualizer.scrollToIndex(litIndex, { align: "auto" });
   }, [litIndex, virtualizer]);
-  // The lit row stays mounted wherever it is: a phone hides the list while a person's
-  // page is open (no height, so no window), and the row must still be there on return.
   const windowed = virtualizer.getVirtualItems();
   const litItem =
     litIndex !== undefined && !windowed.some((item) => item.index === litIndex)
@@ -255,7 +232,6 @@ function VirtualRows({
       {(litItem ? [...windowed, litItem] : windowed).map((item) => {
         const row = rows[item.index];
         if (!row) return null;
-        // The row's own <li> carries the window's place, so the list holds only list items.
         return renderRow(row, {
           index: item.index,
           top: item.start - margin,
@@ -267,7 +243,6 @@ function VirtualRows({
   );
 }
 
-/** Where a windowed row sits: its index, offset, the band's size and the virtualizer's measure. */
 export interface RowSlot {
   index: number;
   top: number;
@@ -276,7 +251,6 @@ export interface RowSlot {
 }
 
 function Face({ title, group = false }: { title: string; group?: boolean }) {
-  // A group has no one sender to colour, so it gets the neutral people glyph.
   if (!group) return <Avatar name={title} size="lg" />;
   return (
     <AvatarGlyph size="lg">
@@ -285,11 +259,6 @@ function Face({ title, group = false }: { title: string; group?: boolean }) {
   );
 }
 
-/**
- * One person. Memoised on primitives and stable callbacks, so moving the lamp
- * re-renders the row that lost it and the row that gained it, not the list
- * (spike S4, docs/blueprint/31).
- */
 const PersonRow = memo(function PersonRow({
   row,
   memberships,
@@ -306,18 +275,14 @@ const PersonRow = memo(function PersonRow({
   measure,
 }: {
   row: MessagesRow;
-  /** Looked up here, not by the list, so a lamp move doesn't walk every row. */
   memberships?: ReadonlyMap<string, ThreadModes>;
-  /** The lamp is on this row: its person page is the one open. */
   lit: boolean;
   via: LampVia;
   onSelect: (id: string) => void;
   onReply: () => void;
   onDone: () => void;
   hidden: ReadonlySet<string>;
-  /** Set while this row is the one a verb just moved to. */
   arrival: number | null;
-  /** Its place in a windowed band, as plain values so the memo holds on a lamp move. */
   slotIndex?: number;
   slotTop?: number;
   setSize?: number;
@@ -328,7 +293,6 @@ const PersonRow = memo(function PersonRow({
   const topicCount = row.topics.filter(
     (topic) => topic.state !== "done" && !hidden.has(topic.thread_id),
   ).length;
-  // Every topic done: the row is leaving. It folds if the done asked for that, else it is gone.
   const allGone =
     row.topics.some((topic) => hidden.has(topic.thread_id)) &&
     row.topics.every((topic) => topic.state === "done" || hidden.has(topic.thread_id));
@@ -363,7 +327,6 @@ const PersonRow = memo(function PersonRow({
       onAnimationEnd={
         allGone
           ? (event) => {
-              // The row's own fold, not an arrival glow inside it.
               if (event.target !== event.currentTarget) return;
               settle(
                 "messages",
@@ -387,8 +350,6 @@ const PersonRow = memo(function PersonRow({
       }
       secondary={
         row.draft ? (
-          // Your unsent reply replaces the preview, as a chat app shows it. The
-          // label is a word, not only a colour.
           <span data-testid="row-preview" data-kind="draft">
             <span className="font-medium text-signal">Draft:</span> {row.draft.text}
           </span>

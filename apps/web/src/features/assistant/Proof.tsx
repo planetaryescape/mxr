@@ -1,12 +1,3 @@
-/*
- * A change waiting for signature, set out as a proof on the overlay
- * surface: the change in the daemon's words, why, exactly what it touches
- * as rows, and one Apply. Approving runs exactly the call stored in the
- * transcript (D122); the exact call is under "x". The card collapses to a
- * wire line, with Undo where there is one, once the conversation shows it
- * applied.
- */
-
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import type { AssistantDecision, AssistantPending } from "./api";
@@ -38,15 +29,12 @@ export function Proof({
   const [note, setNote] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [showCall, setShowCall] = useState(false);
-  // A held or doubled key must not decide twice before the conversation answers.
   const decided = useRef(false);
   useEffect(() => {
-    // A failed decision leaves the proof to try again.
     if (!busy) decided.current = false;
   }, [busy]);
   const messages = previewMessages(item.preview);
   const draft = messages.length === 0 ? previewDraft(item.preview) : null;
-  // The daemon's line; the client's own rule only for a daemon that sends none.
   const warning = item.warning || irreversibleWarning(item.tool, item.arguments);
   const title = item.title || "Change waiting for you";
 

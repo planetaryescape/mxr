@@ -1,8 +1,3 @@
-/*
- * Turning a partial or failed mutation response into an error, and toasting
- * it with a re-authorize shortcut when the failure looks like expired auth.
- */
-
 import { createElement } from "react";
 import { toast } from "sonner";
 import { UNDO_TOAST_DURATION_MS, UndoLabel } from "@/components/ui/sonner";
@@ -48,7 +43,6 @@ function describeFailure(response: MutationResponse, requestedFallback: number):
   return accountErrors.length > 0 ? `${summary}. ${accountErrors.join("; ")}` : `${summary}.`;
 }
 
-/** The daemon's answer behind a partial or failed mutation, if there was one. */
 export function failedResponse(error: Error): MutationResponse | null {
   return error instanceof MutationFailureError ? error.response : null;
 }
@@ -65,10 +59,6 @@ function reauthableAccount(error: Error): AccountMutationResult | null {
   );
 }
 
-/**
- * Say it failed, or partly failed when some messages changed. With `undo`
- * (the daemon kept one for what changed), the toast offers it, as `u` does.
- */
 export function announceFailure(
   action: MailAction,
   error: Error,
@@ -78,7 +68,6 @@ export function announceFailure(
 ): void {
   const account = reauthableAccount(error);
   const result = failedResponse(error)?.result;
-  // "Archived 2 of 3 messages; the rest failed", or "Couldn't archive 3 messages".
   const partial = Boolean(result && result.succeeded > 0);
   const total = result?.requested || requested;
   const title = partial
@@ -88,7 +77,6 @@ export function announceFailure(
         `${result!.succeeded} of ${plural(result!.requested, "message")}`,
       )
     : failureTitle(action, payload, total ? plural(total, "message") : "the messages");
-  // Part done is a warning (amber); nothing done is an error (red).
   toast[partial ? "warning" : "error"](title, {
     description: undo
       ? `${error.message.replace(/\.?$/, ".")} Press u to undo what changed.`

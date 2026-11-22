@@ -1,10 +1,3 @@
-/*
- * The left side of focus mode: what this conversation needs from you
- * (the reader's context block: gist, ask, how you know them, promises) and
- * the latest message, with earlier ones folded. The same components as the
- * reader, so the ask is highlighted in the same place.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -28,7 +21,6 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { plural } from "@/lib/format";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
-/** Earlier messages shown folded above the newest; the rest are counted. */
 const EARLIER_SHOWN = 1;
 
 export function FocusThread({ threadId }: { threadId: string }) {

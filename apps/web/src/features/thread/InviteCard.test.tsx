@@ -108,7 +108,6 @@ describe("InviteCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /accept/i }));
     expect(replies()).toHaveLength(0);
 
-    // The hold lives outside the component, so it survives navigation.
     await vi.advanceTimersByTimeAsync(RSVP_HOLD_MS);
     expect(replies()).toHaveLength(1);
   });

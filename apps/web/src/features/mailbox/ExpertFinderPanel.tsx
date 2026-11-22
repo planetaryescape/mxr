@@ -7,10 +7,6 @@ import { findExpert, type ExpertSuggestion } from "@/features/mailbox/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-/**
- * Finds people in the local archive who have answered questions like the
- * one typed. Rendered in the right rail from a command-palette action.
- */
 export function ExpertFinderPanel() {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountId = accounts.data?.accounts[0]?.account_id ?? "";

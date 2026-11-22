@@ -1,10 +1,3 @@
-/*
- * Compose session lifecycle: the single hook every compose surface uses.
- * The heavy lifting lives in ./session/ (autosave, send pipeline,
- * attachments, draft assist, shortcuts); this file wires them together
- * and owns the draft buffer itself.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
@@ -89,11 +82,7 @@ export function useComposeSession(
     queryFn: () => loadInitialComposeSession(intent, canonicalReopenRef.current),
     retry: false,
     staleTime: Infinity,
-    // Reopening an intent (undoing a send, a reply closed and reopened)
-    // must read the saved file, not the session as it was first loaded.
     gcTime: 0,
-    // Loading it again resets the editor to the saved file, dropping text
-    // typed since: never as part of a refresh after an outage.
     meta: { keepThroughGaps: true },
   });
 
@@ -104,7 +93,6 @@ export function useComposeSession(
   const [snippetPickerOpen, setSnippetPickerOpen] = useState(false);
   const [signaturePickerOpen, setSignaturePickerOpen] = useState(false);
   const [signatureFoldOpen, setSignatureFoldOpen] = useState(false);
-  // Fetched lazily when the signature fold or picker opens.
   const signatures = useQuery({
     queryKey: ["signatures"],
     queryFn: () => apiFetch<{ signatures: Signature[] }>("/api/v1/mail/signatures"),
@@ -117,8 +105,6 @@ export function useComposeSession(
   const [changingAudience, setChangingAudience] = useState(false);
   const [audiencePreview, setAudiencePreview] = useState<ComposeSessionResponse | null>(null);
   const audiencePreviewFingerprintRef = useRef<string | null>(null);
-  // Validation stays quiet until it can help: after the first send attempt,
-  // or (for malformed addresses only) once a recipient field is left.
   const [sendAttempted, setSendAttempted] = useState(false);
   const [recipientsTouched, setRecipientsTouched] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -197,7 +183,6 @@ export function useComposeSession(
           ? `Your rejected edits remain in ${next.preservedRecoveryPath}`
           : null,
     );
-    // Loading a session is not a save: nothing is claimed until one lands.
     setLastSavedAt(null);
     lastSavedFingerprintRef.current =
       sessionQuery.data?.retainedSnapshot || next.recoverySourcePath
@@ -257,8 +242,6 @@ export function useComposeSession(
   const recipientCount = draft ? countRecipients(draft.frontmatter) : 0;
   const canServerSave =
     !draft?.recoverySourcePath && Boolean(selectedAccount?.capabilities?.supports_server_drafts);
-  // A send in flight (including its undo window) counts as busy so Send,
-  // Send later and the shortcuts cannot start a second one.
   const busy =
     autosave.saving ||
     changingAudience ||
@@ -564,8 +547,6 @@ export function useComposeSession(
     }
   }
 
-  /** Close the surface without losing the debounce window: save first, and
-   * stay open with the error if the save fails. */
   async function requestClose() {
     try {
       await saveCurrentDraft();
@@ -696,10 +677,6 @@ export function useComposeSession(
   };
 }
 
-/**
- * What the action bar says about saving. An untouched draft says nothing:
- * there is no work to be saved or lost yet.
- */
 export function saveStatusLabel({
   saving,
   dirty,
@@ -717,7 +694,6 @@ export function saveStatusLabel({
   return lastSavedAt ? savedLabel(lastSavedAt) : "";
 }
 
-/** "Saved just now" for the first minute (never "Saved 0s ago"), then "Saved 4m ago". */
 export function savedLabel(at: Date, now = Date.now()): string {
   if (now - at.getTime() < 60_000) return "Saved just now";
   return `Saved ${formatRelativeAge(at)} ago`;

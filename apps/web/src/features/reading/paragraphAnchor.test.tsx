@@ -86,7 +86,6 @@ describe("the paragraph at the top of the reader", () => {
     placeAt(first!, 20, 100);
     placeAt(heading!, 100, 130);
     placeAt(second!, 130, 200);
-    // The first ends where the viewport starts: scrolled away.
     expect(paragraphAtTop(root, viewport)).toEqual({ index: 1, text: "A heading" });
     placeAt(heading!, 60, 90);
     placeAt(second!, 90, 160);

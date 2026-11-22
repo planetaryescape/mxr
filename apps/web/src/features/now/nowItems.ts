@@ -1,10 +1,3 @@
-/*
- * Now's rows in their fixed order (People, Due soon, the Updates card, the
- * evening Reading pick), as one list the keyboard walks. The daemon has
- * already capped each section; this only flattens them and leaves out
- * rows whose done is in flight.
- */
-
 import type { HiddenByMode } from "@/features/modes/modeDone";
 import { formatTime } from "@/lib/format";
 
@@ -45,13 +38,6 @@ export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] 
   return items;
 }
 
-/**
- * Where the lamp is: the row with `key`, found by id and never by position, so
- * a refetch that reorders the list keeps the lamp on the same row. A key that
- * is no longer here (its row left, or a stale link) falls to the first row,
- * where exactly one row is always lit, until the page moves the lamp to the
- * row's neighbour (`useAdvanceOnRemoval`).
- */
 export function litIndex(items: readonly { key: string }[], key: string | null): number {
   return Math.max(
     0,
@@ -64,11 +50,6 @@ export interface ItemTarget {
   search?: { row: string };
 }
 
-/**
- * Where Enter takes an item: into its own mode, on that item, so the
- * mode's cursor (and a copied link) is on it. `email` is `o`: the
- * Reading pick's email rather than its reader.
- */
 export function itemTarget(item: NowItem, { email = false } = {}): ItemTarget {
   switch (item.kind) {
     case "person":
@@ -91,12 +72,10 @@ export function itemTarget(item: NowItem, { email = false } = {}): ItemTarget {
   }
 }
 
-/** The Reading item for a whole issue: the daemon keys items `<message id>:<index>`, the issue itself at 0. */
 function issueItemKey(messageId: string): string {
   return `${messageId}:0`;
 }
 
-/** "since 4:30 PM", or "since Fri 8:00 AM" before today, as times read everywhere. */
 export function sinceLabel(iso: string): string {
   const at = new Date(iso);
   const sameDay = at.toDateString() === new Date().toDateString();
@@ -104,7 +83,6 @@ export function sinceLabel(iso: string): string {
   return `since ${day}${formatTime(at)}`;
 }
 
-/** The account a Now row's mail came to. Undefined for the Updates card, which can span accounts. */
 export function nowRowAccount(item: NowItem): string | undefined {
   switch (item.kind) {
     case "person":

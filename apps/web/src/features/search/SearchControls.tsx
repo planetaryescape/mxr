@@ -1,5 +1,3 @@
-/* Compact option controls for the search toolbar. */
-
 import {
   Select,
   SelectContent,

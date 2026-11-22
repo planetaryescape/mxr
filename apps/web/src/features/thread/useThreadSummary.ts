@@ -1,8 +1,3 @@
-/*
- * The conversation overview: the daemon's cached summary and on-demand
- * summarize (`y`).
- */
-
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";

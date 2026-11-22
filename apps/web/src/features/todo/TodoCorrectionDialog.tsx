@@ -13,7 +13,6 @@ import type { Todo } from "./api";
 import { correctRow } from "./todoVerbs";
 import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/** Each reason, its label and its key's id in the key definition. */
 const REASONS = [
   ["not_a_todo", "Not a to-do", "correct-todo.not-a-todo"],
   ["not_mine", "Not mine", "correct-todo.not-mine"],

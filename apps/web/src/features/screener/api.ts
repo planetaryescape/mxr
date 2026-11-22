@@ -10,11 +10,6 @@ export interface ScreenerEntry {
 
 export type ScreenerDisposition = "allow" | "deny" | "feed" | "paper_trail" | "unknown";
 
-/**
- * By default the senders the desk's Screener count counts (first seen in
- * the last 14 days, mail in the inbox); `allSenders` is everyone without a
- * decision, however old.
- */
 export function fetchScreenerQueue(accountId: string, allSenders = false) {
   const all = allSenders ? "&all_senders=true" : "";
   return apiFetch<{ entries: ScreenerEntry[] }>(

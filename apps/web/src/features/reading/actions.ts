@@ -1,11 +1,3 @@
-/*
- * Reading's keys, per blueprint 35's verb table: Enter read, L the linked
- * article, b later, e let go, D unsubscribe, R the sender's layout, E let
- * go of everything shown, O open in Marginalia, and the tabs 1 Edition,
- * 2 Later, 3 Highlights. The mounted edition and reader register what each
- * command does (`useScopeController`); `g r` opens Reading from anywhere.
- */
-
 import {
   Bookmark,
   BookOpenText,
@@ -35,7 +27,6 @@ export const readingActions: ActionBehavior[] = [
   { id: "reading.highlights", command: "highlights", icon: Highlighter },
   { id: "reading.marginalia", command: "marginalia", icon: BookOpenText },
   { id: "reading.close-hint", command: "closeHint" },
-  // The reader.
   { id: "reading.reader-down", command: "down" },
   { id: "reading.reader-up", command: "up" },
   { id: "reading.reader-article", command: "article", icon: ExternalLink },

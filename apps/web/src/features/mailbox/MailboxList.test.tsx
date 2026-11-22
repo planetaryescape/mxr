@@ -70,7 +70,6 @@ function row(n: number, overrides: Partial<MessageRowView> = {}): MessageRowView
 const rows = [row(1), row(2, { unread: true }), row(3), row(4, { unread: true })];
 const groups: MessageGroupView[] = [{ id: "today", label: "Today", rows }];
 
-/** The list as the inbox renders it: pending ops projected over server rows. */
 function Inbox(props: Omit<MailboxListProps, "scopeKey" | "empty" | "label">) {
   const projected = useProjectedGroups(props.groups, { kind: "inbox" });
   return (
@@ -203,7 +202,6 @@ describe("MailboxList keyboard", () => {
     expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
 
     type({ key: "Escape" });
-    // Visual mode ends; the selection stays and j no longer extends it.
     type({ key: "j" });
     expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
 
@@ -258,8 +256,6 @@ describe("MailboxList keyboard", () => {
 
     await vi.waitFor(() => expect(api.archiveMessagesRecoverably).toHaveBeenCalledWith(["msg-2"]));
     expect(api.archiveMessages).not.toHaveBeenCalled();
-    // Archive enters the reviewed recovery path and stays visible until the
-    // confirmed server result is reflected in the mailbox query.
     expect(screen.getByRole("option", { name: /Subject 2/ })).toBeInTheDocument();
     expect(cursor()).toBe("mail-row-thread-thread-2");
 

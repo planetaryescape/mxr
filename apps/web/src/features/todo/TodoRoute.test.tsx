@@ -39,7 +39,6 @@ vi.mock("@/features/hints/useHint", () => ({
   useHint: () => ({ hint: undefined, dismiss: () => undefined }),
   useActiveHintDismiss: () => closeHint,
 }));
-// The open peek is the `source` search param; keep it in component state here.
 vi.mock("@/hooks/useSearchParam", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useSearchParam")>()),
   useSearchParam: () => useState<string | null>(null),

@@ -19,10 +19,6 @@ const SETTINGS: ChimeSettings = {
   error: "alert",
 };
 
-/**
- * A daemon that applies each patch when it arrives and answers only when
- * the test says so, so answers can come back late.
- */
 let server: ChimeSettings = { ...SETTINGS };
 const pending: { answer: () => void }[] = [];
 const saveChimeSettings = vi.fn<(patch: ChimesPatch) => Promise<ChimeSettings>>(
@@ -63,16 +59,12 @@ describe("SoundSection", () => {
     );
     const shown = () => client.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey);
 
-    // 1. Turn sound on; its save is in flight.
     fireEvent.click(await screen.findByRole("switch", { name: "Sound" }));
     await waitFor(() => expect(saveChimeSettings).toHaveBeenCalledTimes(1));
-    // 2. Move the volume; its save waits behind the first.
     fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.8" } });
     await waitFor(() => expect(shown()?.volume).toBe(0.8), { timeout: 1000 });
-    // 3. The toggle's answer arrives late, still saying volume 0.35.
     await answerNext();
     expect(shown()).toMatchObject({ enabled: true, volume: 0.8 });
-    // 4. Pick a new sound for snooze.
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Snooze sound" }), { key: "Enter" });
     fireEvent.keyDown(await screen.findByRole("option", { name: "Glass" }), { key: "Enter" });
     expect(shown()).toMatchObject({ enabled: true, volume: 0.8, snoozed: "glass" });
@@ -114,10 +106,8 @@ describe("SoundSection", () => {
     saveChimeSettings.mockImplementationOnce(async () => {
       throw new Error("Couldn't reach mxr's daemon.");
     });
-    // The app's client: mutations don't pause while offline.
     const client = createQueryClient();
     client.setQueryData(chimeSettingsQuery.queryKey, SETTINGS);
-    // Refetches pause, as they do while the daemon is unreachable.
     onlineManager.setOnline(false);
     try {
       render(

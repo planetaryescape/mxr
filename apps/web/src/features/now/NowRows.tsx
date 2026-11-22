@@ -22,25 +22,17 @@ type Due = Extract<NowItem, { kind: "todo" }>;
 type Card = Extract<NowItem, { kind: "updates" }>;
 type Pick = Extract<NowItem, { kind: "reading" }>;
 
-/** What every Now row is told; the page keeps these stable so a lamp move re-renders two rows. */
 interface RowState {
   index: number;
   lit: boolean;
   via: LampVia;
-  /** The row is folding away after a pointer done. */
   leaving: boolean;
   onSelect: (item: NowItem, via: LampVia) => void;
   onOpen: (item: NowItem) => void;
   onDone: (item: NowItem, via: LampVia) => void;
-  /** The hint anchored to this row, while it shows. */
   hint?: ReactNode;
 }
 
-/**
- * The shared shell of Now's rows: the row's text is a real link into the
- * row's own mode (Tab reaches it, Enter follows it, a screen reader names
- * it); a click anywhere else on the row only lights it.
- */
 function NowRow({
   item,
   state,
@@ -56,7 +48,6 @@ function NowRow({
 }: {
   item: NowItem;
   state: RowState;
-  /** The link's accessible name: where it opens and what the row says. */
   label: string;
   lead?: ReactNode;
   leadControl?: boolean;
@@ -70,7 +61,6 @@ function NowRow({
   const mark = useRowAccountMark(nowRowAccount(item));
   return (
     <Row
-      // The Updates card can hold lines from several accounts, so it wears no single chip.
       accountId={nowRowAccount(item)}
       data-index={state.index}
       data-testid="now-row"
@@ -171,7 +161,6 @@ export const PersonRow = memo(function PersonRow({
   );
 });
 
-/** True when a to-do is due today or earlier: the one place the cue colour belongs on a date. */
 function dueByToday(due: Due["todo"]["todo"]): boolean {
   if (due.overdue) return true;
   const at = due.due_at ?? due.act_by_at;
@@ -237,10 +226,6 @@ export const TodoRow = memo(function TodoRow({
   );
 });
 
-/**
- * The latest Updates digest as one row: its headline, and the lines that need
- * a look or changed, run together on the one secondary line.
- */
 export const UpdatesRow = memo(function UpdatesRow({
   item,
   onLetGo,
@@ -248,7 +233,6 @@ export const UpdatesRow = memo(function UpdatesRow({
 }: RowState & { item: Card; onLetGo: () => void }) {
   const card = item.card;
   const lines = card.lines ?? [];
-  // Only this count is cue-coloured: names in cue blew the 3% yellow budget.
   const needsLook = lines.filter((line) => line.section === "needs_a_look").length;
   return (
     <NowRow

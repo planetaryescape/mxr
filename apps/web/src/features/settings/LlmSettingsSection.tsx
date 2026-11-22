@@ -1,8 +1,3 @@
-/*
- * LLM provider settings: the base provider plus per-feature overrides.
- * mxr stores the name of an environment variable, never the key itself.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -45,7 +40,6 @@ interface LlmStatus {
   context_window: number;
   supports_streaming: boolean;
   request_timeout_secs: number;
-  /** Absent from daemons that predate model routing. */
   features?: LlmFeatureStatus[];
   keys?: LlmKeyStatus[];
 }
@@ -106,7 +100,6 @@ export function LlmSettingsSection() {
       void qc.invalidateQueries({ queryKey: ["llm-config"] });
       void qc.invalidateQueries({ queryKey: ["compose-models"] });
       void qc.invalidateQueries({ queryKey: ["llm-status"] });
-      // Gists written under the old model or privacy setting are stale.
       void qc.invalidateQueries({ predicate: isGistQuery });
     },
     onError: (error) =>
@@ -444,7 +437,6 @@ function emptyToNull(value?: string | null): string | null {
 }
 
 function isNotFoundError(error: unknown): boolean {
-  // BridgeRequestError carries the HTTP status; older errors put it in the text.
   if (error instanceof Error && "status" in error && typeof error.status === "number")
     return error.status === 404;
   return error instanceof Error && /^404\b/.test(error.message);

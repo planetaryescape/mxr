@@ -1,10 +1,3 @@
-/*
- * Sweep: archive everything unpinned in a place or one sender's bundle.
- * The dialog shows the daemon's dry run; confirming hands back its preview
- * token, so the daemon archives only the messages that preview listed (and
- * that are still here and unpinned) as an undoable job.
- */
-
 import { toast } from "sonner";
 
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -46,7 +39,6 @@ export async function runSweep(
     const archived = response.result?.succeeded ?? 0;
     const undoIds = response.result?.undo_ids ?? [];
     if (!response.ok) {
-      // What did land stays undoable: its chunks' undo ids came back too.
       claim.settle(undoIds.length > 0 ? () => undoAll(undoIds) : null);
       const error = response.result?.accounts?.[0]?.error ?? "The daemon stopped the sweep";
       toast.error(`Swept ${plural(archived, "message")} before it stopped`, {
@@ -57,7 +49,6 @@ export async function runSweep(
       });
       return false;
     }
-    // Pinned (or moved away) after the preview: the daemon leaves those.
     const left = response.result?.skipped ?? 0;
     const leftNote =
       left > 0 ? `; ${plural(left, "message")} changed since the preview and stayed` : "";
@@ -76,7 +67,6 @@ export async function runSweep(
   } catch (caught) {
     claim.settle(null);
     if (isStalePreview(caught)) {
-      // A preview is good once, for a few minutes: nothing was archived.
       toast.error("That preview has expired", {
         description: "Nothing was archived. Preview again to see what the sweep covers now.",
         action: {

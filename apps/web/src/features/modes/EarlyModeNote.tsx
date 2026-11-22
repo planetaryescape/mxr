@@ -2,10 +2,6 @@ import { plural } from "@/lib/format";
 
 import { useRailQuery } from "./rail";
 
-/**
- * The line under an early mode's name: what the mode is for, and that this
- * view is an early version built on an existing one, in the rail's words.
- */
 export function EarlyModeNote({ mode }: { mode: string }) {
   const entry = useRailQuery().data?.entries.find((candidate) => candidate.id === mode);
   if (!entry) return null;

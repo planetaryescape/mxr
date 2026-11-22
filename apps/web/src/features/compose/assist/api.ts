@@ -1,8 +1,3 @@
-/*
- * The writing-help request. The bridge route is named once here, so a
- * rename is a one-line change.
- */
-
 import { apiFetch } from "@/api/client";
 import type { WorkspaceBinding } from "@/lib/workspaceOwner";
 import type { ComposeAssistRequest, ComposeAssistResponse } from "./types";

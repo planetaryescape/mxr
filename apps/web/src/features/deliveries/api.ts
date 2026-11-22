@@ -49,7 +49,6 @@ export function dismissDelivery(id: string) {
   });
 }
 
-/** `DeliveryScanSummary` from the daemon. */
 export interface DeliveryScanSummary {
   scanned: number;
   created: number;
@@ -58,7 +57,6 @@ export interface DeliveryScanSummary {
   dry_run: boolean;
 }
 
-/** Re-run delivery detection over recent mail (the daemon also runs it after sync). */
 export function scanDeliveries(input: { sinceDays?: number; dryRun?: boolean } = {}) {
   return apiFetch<{ summary: DeliveryScanSummary }>("/api/v1/mail/deliveries/scan", {
     method: "POST",

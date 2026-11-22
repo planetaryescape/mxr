@@ -77,7 +77,6 @@ import { useGotIt } from "./useGotIt";
 import { FramePanesContext, PageFrame } from "@/components/PageFrame";
 import { listMotions } from "@/features/modes/listMotions";
 
-/** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
 const PEOPLE_PANE_SIZE = {
   defaultSize: "22rem",
@@ -85,23 +84,13 @@ const PEOPLE_PANE_SIZE = {
   maxSize: "40rem",
 };
 
-/** How long an arrival is marked; the glow itself is the scene duration. */
 const ARRIVAL_MS = 2_000;
 
 export interface MessagesSearch extends FilterSearch {
-  /** The selected row's id: `person:<email>` or `group:<thread>`. */
   person?: string;
-  /** The selected topic's thread. */
   topic?: string;
 }
 
-/**
- * Messages: people you talk with, one row each, with your conversations
- * inside as topics. The daemon builds the bands, order, previews and each
- * message's new text (`ListMessages`, `GetPerson`); this page lays them out
- * as a list beside one person's page (two screens on a phone) and wires the
- * mode's verbs: reply, got it, done here.
- */
 export function MessagesRoute({
   search,
   threadId,
@@ -112,8 +101,6 @@ export function MessagesRoute({
 }) {
   const navigate = useNavigate();
   const messages = useMessagesQuery(filterOf(search));
-  // The view shortcut belongs to the route, not its result. It remains live
-  // while a different view is loading, or the queue is empty or unavailable.
   useShortcutScope("messages-filters");
   useScopeController("messages-filters", {
     cycleFilter: () => {
@@ -125,7 +112,6 @@ export function MessagesRoute({
         topic: previous.topic ?? threadId,
         ...searchOf(cycleMessagesFilter(filterOf(previous))),
       });
-      // Keep an unresolved thread link until its person can be found.
       if (threadId && !person) {
         void navigate({
           to: "/messages/$threadId",
@@ -190,14 +176,11 @@ function MessagesHeader({
   return (
     <PageFrame
       title={waiting ? "Waiting on" : "Messages"}
-      // Waiting on is its own page: Messages' header line describes the other turn.
       purpose={waiting ? "People you're waiting to hear from." : header || guide?.header}
     />
   );
 }
 
-/** The keys the Messages foot line shows, in the mode's own words. */
-/** The thread whose membership a row's marks and new-sender question read. */
 function firstThread(row: MessagesRow | undefined): string {
   return row?.topics[0]?.thread_id ?? "";
 }
@@ -212,7 +195,6 @@ function MessagesBody({
   threadId,
 }: {
   data: MessagesData;
-  /** The list is the previous filter's or account's answer, still loading. */
   stale: boolean;
   loading: boolean;
   skeleton: boolean;
@@ -222,16 +204,13 @@ function MessagesBody({
 }) {
   const navigate = useNavigate();
   const [quietOpen, setQuietOpen] = useState(false);
-  // A phone shows the list or the person page, never both.
   const [pageOpen, setPageOpen] = useState(Boolean(search.person || threadId));
-  // `g f` counts up: each request focuses the filter line once it is on screen.
   const [filterFocusRequest, setFilterFocusRequest] = useState(0);
   useEffect(() => {
     if (filterFocusRequest > 0) focusFilterBar();
   }, [filterFocusRequest]);
   const [asSent, setAsSent] = useState<string | null>(null);
   const rows = useMemo(() => cursorRows(data, quietOpen), [data, quietOpen]);
-  // "Also in To do: …" and a new sender's question on each shown row.
   const firstTopics = useMemo(
     () =>
       [...data.your_turn, ...data.recent]
@@ -241,20 +220,15 @@ function MessagesBody({
   );
   const memberships = useThreadModesMap(firstTopics).data;
 
-  // Opening Messages alone never selects or fetches a conversation.
   const linked = threadId ? rowForThread(data, threadId) : undefined;
   const allRows = useMemo(
     () => [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet],
     [data],
   );
-  // A set, not `allRows.some`: the removal check runs for every row on each lamp move,
-  // and a scan per row made one `j` quadratic on a long list (spike S4).
   const allRowIds = useMemo(() => new Set(allRows.map((row) => row.id)), [allRows]);
   const selectedId = search.person ?? linked?.id ?? null;
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
-  // The filter bar writes the filter into the URL and keeps the open
-  // conversation, whether it was named in the query or in the path.
   const setFilter = useCallback(
     (next: MessagesFilter) => {
       void navigate({
@@ -299,7 +273,6 @@ function MessagesBody({
     setAsSent(null);
   }, [conversation?.thread_id]);
 
-  // Only a pointer fades the lamp (D101): j and k must feel instant.
   const via = useRef<LampVia>("key");
   const select = useCallback(
     (id: string, options: { topic?: string; open?: boolean } = {}) => {
@@ -316,8 +289,6 @@ function MessagesBody({
     },
     [navigate, search],
   );
-  // A conversation Messages doesn't hold (archived, a newsletter) opens
-  // where every email can: All Mail.
   useEffect(() => {
     if (!stale && threadId && !linked) {
       void navigate({
@@ -328,28 +299,21 @@ function MessagesBody({
     }
   }, [linked, navigate, stale, threadId]);
 
-  // A person opened without a topic shows their default one: name it in
-  // the URL, so a copied link opens that topic even after the default moves.
   const shownTopic =
     person.isPlaceholderData || page?.row.id !== selectedId ? undefined : conversation?.thread_id;
   useEffect(() => {
     if (threadId || !search.person || search.topic || !shownTopic || !page) return;
-    // A default page may be cached from before Done. Only name/cache it if
-    // the current list still holds that topic; otherwise fetch the open one.
     const current = stillOpen.has(shownTopic) ? shownTopic : stillOpen.values().next().value;
     if (!current) return;
     if (current === shownTopic) rememberTopicPage(search.person, current, page);
     select(search.person, { topic: current });
   }, [page, search.person, search.topic, select, shownTopic, stillOpen, threadId]);
 
-  // A person who still has topics left stays in view, even when the
-  // daemon moves their row into the folded Quiet band.
   useEffect(() => {
     const id = search.person;
     if (id && data.quiet.some((row) => row.id === id)) setQuietOpen(true);
   }, [data.quiet, search.person]);
 
-  /** Open a row (and topic) a verb moved to, marked so the move is seen. */
   const advanceTo = useCallback(
     (id: string, topicId?: string) => {
       select(id, { topic: topicId });
@@ -357,7 +321,6 @@ function MessagesBody({
     },
     [select],
   );
-  /** Nobody left to open: the page shows the empty state. */
   const clearSelection = useCallback(() => {
     setPageOpen(false);
     void navigate({
@@ -367,8 +330,6 @@ function MessagesBody({
     });
   }, [navigate, search]);
 
-  // A sync can close the displayed topic without removing the person. Move
-  // only a topic that was open here: deliberately browsing history stays put.
   const previousTopic = useRef<{
     person: string | null;
     topic: string | null;
@@ -415,8 +376,6 @@ function MessagesBody({
     else clearSelection();
   }, [clearSelection, excludedDone, loading, select, selected, selectedId, stillOpen, topic]);
 
-  // A row that leaves the list some other way (sync, another client) takes
-  // the page with it to its neighbour.
   const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
   const listRef = useRef<HTMLDivElement>(null);
   // A callback ref into state, not a ref object: React attaches a parent's ref after its
@@ -425,10 +384,7 @@ function MessagesBody({
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
   const pane = useSplitPane("messages", PEOPLE_PANE_SIZE, { active: split });
-  // A person's page beside the list: the list's title steps down so one Display title shows.
   const frames = useMemo(() => ({ split: split && pageOpen, inset: 0 }), [pageOpen, split]);
-  // Into view when it is chosen, and when the daemon moves it to another
-  // band (done here can send a person from Your turn to Recent).
   const selectedBand = selected?.band;
   useEffect(() => {
     if (!selectedId) return;
@@ -437,7 +393,6 @@ function MessagesBody({
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedId, selectedBand, quietOpen]);
 
-  // The person pane shows beside the list from md up, or alone once opened.
   const paneVisible = useMediaQuery("(min-width: 768px)") || pageOpen;
   const topicsHint = useHint("messages", "messages.topics", {
     ready: paneVisible && (page?.topics.length ?? 0) > 1,
@@ -449,7 +404,6 @@ function MessagesBody({
   const { dismiss: dismissGotItHint } = gotItHint;
   const closeHint = useActiveHintDismiss();
 
-  // After a reply or Got it, the next person whose turn it is.
   const nextYourTurn = useCallback(() => {
     const next = data.your_turn.find((row) => row.id !== selectedId);
     if (next) advanceTo(next.id);
@@ -458,13 +412,10 @@ function MessagesBody({
   const gotIt = useGotIt(`${selectedId ?? ""}|${conversation?.thread_id ?? ""}`, nextYourTurn);
   const startGotIt = () => {
     if (!conversation) return;
-    // The daemon dismisses it too once the note is sent, from any client.
     dismissGotItHint();
     void gotIt.start(conversation.thread_id);
   };
 
-  // A reply sent from this page's composer (its own ⌘Enter or Send) moves
-  // on to the next person whose turn it is, as Focus & reply does.
   const replyKeys = useRef(new Set<string>());
   useEffect(
     () =>
@@ -492,9 +443,6 @@ function MessagesBody({
     [conversation],
   );
 
-  // Opening a row with an unsent reply opens the conversation it answers and
-  // brings the reply back inline, focused, as a chat app does. Only an
-  // explicit open does: moving the lamp with j and k never takes the keys.
   const [resume, setResume] = useState<{
     person: string;
     thread: string;
@@ -509,8 +457,6 @@ function MessagesBody({
     [allRows, select],
   );
   const pageReady = Boolean(page && page.row.id === selectedId && !person.isPlaceholderData);
-  // The URL reaches the person a render after the open; leaving them after
-  // that drops the resume, so a later return by j or k never fires it.
   const resumeReached = useRef(false);
   useEffect(() => {
     if (!resume) {
@@ -528,7 +474,6 @@ function MessagesBody({
     openReply(resume.replyAll);
   }, [conversation?.thread_id, openReply, pageReady, resume, selectedId]);
 
-  // Where the page is now, read when an undo lands (after any later move).
   const here = useRef({
     mounted: true,
     person: search.person,
@@ -544,10 +489,6 @@ function MessagesBody({
     };
   }, []);
 
-  // Done here moves on at once, as the reader's archive does: to the
-  // person's next topic still in Messages, else the next person. While a
-  // topic's page is still loading, `e` waits: the page on screen is the
-  // one just done.
   const done = useCallback(
     (how: LeaveVia = "key") => {
       if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
@@ -574,7 +515,6 @@ function MessagesBody({
                 .values()
                 .next().value
             : undefined;
-      // Where the move leaves the page: undo goes back only from there.
       const landed =
         next.kind === "topic"
           ? { person: from, topic: next.topic.thread_id }
@@ -597,9 +537,6 @@ function MessagesBody({
             return nextSet;
           });
           const now = here.current;
-          // Back on the person already counts as staying: the list's own
-          // undo watcher can reopen them before this runs, depending on
-          // which list refresh lands first.
           const stayed =
             now.mounted &&
             useUiPrefs.getState().accountScope === account &&
@@ -608,7 +545,6 @@ function MessagesBody({
             advanceTo(from, thread);
             return;
           }
-          // They moved on: the undo puts it back without pulling them away.
           toast.info(`Restored: ${label}`, {
             action: {
               label: "Open",
@@ -677,7 +613,6 @@ function MessagesBody({
     if (refuseWhileDaemonDown("set reply later")) return;
     const found = await target();
     if (!found?.threadId) return;
-    // Not now (`b`): Later is the untimed reply later, a time takes it off the desk until then.
     openMailDialog({
       kind: "not-now",
       picker: conversationNotNow({
@@ -732,20 +667,15 @@ function MessagesBody({
     via.current = "key";
     select(next.id);
   };
-  // The lit row's reason goes to the status bar; a new sender adds the key choices.
   const newSender = selectedId ? memberships?.get(firstThread(selected))?.new_sender : undefined;
   useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null, selected?.account_id);
-  // A new sender's choice keys are spelled out in the status note, so the strip keeps the common verbs.
   usePageKeys(stripKeys(selectedId ? "messages" : "messages.empty"));
   useShortcutScope("messages", true);
   useScopeController("messages", {
     down: () => move(1),
     up: () => move(-1),
     ...listMotions(move),
-    // With nothing lit, a step up wraps to the last row; the first is the top.
     top: () => move(rows.length > 0 && index < 0 ? 1 : -Number.MAX_SAFE_INTEGER),
-    // Below the split the filter line sits in the people list, which the
-    // person's page covers: reveal the list first.
     filter: () => {
       setPageOpen(false);
       setFilterFocusRequest((request) => request + 1);
@@ -789,12 +719,8 @@ function MessagesBody({
         return;
       }
       setPageOpen(false);
-      // Back from the person page `p` went into: on a wide screen it stays
-      // in view, so the keys' focus has to come back to Messages by itself.
       if (document.activeElement?.closest('[data-testid="person-page"]')) focusActivePane();
     },
-    // X and P act on the newest email the other side sent; on a new
-    // sender's row their capitals answer its question.
     ...moveCommands(() => {
       const theirs = conversation?.messages.findLast((message) => !message.from_me);
       return theirs && conversation
@@ -811,7 +737,6 @@ function MessagesBody({
     }),
   });
 
-  // Stable for the memoised rows: the handlers read the latest closure through a ref.
   const latest = useRef({ openRow, openReply, done, replyAll });
   latest.current = { openRow, openReply, done, replyAll };
   const onSelectRow = useCallback((id: string) => {
@@ -821,9 +746,6 @@ function MessagesBody({
   const onReplyRow = useCallback(() => latest.current.openReply(latest.current.replyAll), []);
   const onDoneRow = useCallback(() => latest.current.done("pointer"), []);
 
-  // The daemon says when the view being shown is empty (Waiting on has its
-  // own line), so Your turn's rows are not the test.
-  // A stale answer describes the previous filter, so its count and empty line wait.
   const empty = !stale && data.empty_state != null;
   const filter = filterOf(search);
   const filterBar = (
@@ -833,10 +755,6 @@ function MessagesBody({
       onChange={setFilter}
     />
   );
-  // Your turn is the work; Waiting on is a view of its own and has no finish.
-  // Completion follows Your turn as it is unfiltered. A toggle that narrows
-  // the list to nothing has not finished the work: the count it can't see is
-  // the desk's Your turn split.
   const narrowed = filter.unread || filter.pastPace;
   const yourTurnSplit = data.your_turn_split;
   const yourTurnPeople = (yourTurnSplit?.write_with ?? 0) + (yourTurnSplit?.others ?? 0);
@@ -862,8 +780,6 @@ function MessagesBody({
       }
     />
   ) : null;
-  // Loading, empty and populated lists share the same pane/header/filter
-  // geometry. Swapping the whole page reset focus and shifted the splitter.
   return (
     <FramePanesContext.Provider value={frames}>
       <SelectionAdvance
@@ -984,8 +900,6 @@ function MessagesBody({
   );
 }
 
-/** Changing a view is not a sync removing its selected conversation. Only
- * reset removal bookkeeping, never the pane or its keyboard/filter state. */
 function SelectionAdvance({
   ids,
   ready,
@@ -1007,9 +921,6 @@ function SelectionAdvance({
     selectedId,
     isPresent: (id) => present.has(id),
     presenceSource: present,
-    // The hook's second argument is the row it moved off, not a topic.
-    // Passed on, `advanceTo` opened that row id as the topic, which the
-    // bridge refuses, and the page said it couldn't find the person.
     onAdvance: (id) => onAdvance(id),
     onEmpty,
   });

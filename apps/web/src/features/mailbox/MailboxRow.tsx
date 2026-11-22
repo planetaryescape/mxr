@@ -16,7 +16,6 @@ import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
-/** The verbs a lit row offers, with their keys; the rest are one `?` away. */
 const QUICK_VERBS: readonly { action: RowQuickAction; keys: string; label: string }[] = [
   { action: "archive", keys: "e", label: "archive" },
   { action: "snooze", keys: "b", label: "not now" },
@@ -27,31 +26,18 @@ interface MailboxRowProps {
   row: MessageRowView;
   domId: string;
   selected: boolean;
-  /** 1-based place among the list's rows, and how many there are: the window shows only some. */
   position: number;
   setSize: number;
-  /** The cursor is on this row: the one lit row. */
   lit: boolean;
-  /** Only a pointer fades the lamp (D101). */
   via: LampVia;
-  /** Any row selected: every lead shows its checkbox. */
   selecting: boolean;
   readOnly?: boolean;
   onOpen: (row: MessageRowView) => void;
   onToggleSelection: (row: MessageRowView, shift: boolean) => void;
   onQuickAction: (row: MessageRowView, action: RowQuickAction) => void;
-  /** The list's own verb for a row, shown first among the lit row's verbs. */
   rowAction?: RowAction;
 }
 
-/**
- * One conversation or message, on the shared `Row` (D129): avatar, sender
- * with the message count in meta, subject and snippet on the second line,
- * mode marks in the trail and the time after them, which the lit row keeps.
- * The lit row's trail becomes its verbs. Inner verbs are mouse affordances only (rows are listbox options,
- * which can't hold controls); the listbox owns keyboard focus and every
- * action has a key.
- */
 export const MailboxRow = memo(function MailboxRow({
   row,
   domId,
@@ -74,7 +60,6 @@ export const MailboxRow = memo(function MailboxRow({
       ? row.open_commitment_count
       : null;
   const who = displaySender(row);
-  // This row's own line: when it lands, only this row re-renders.
   const gist = useRowGist(row.thread_id);
   const when = useWhen(row.date);
   const mark = useRowAccountMark(row.account_id);
@@ -98,7 +83,6 @@ export const MailboxRow = memo(function MailboxRow({
       lit={lit}
       via={via}
       unread={row.unread}
-      // A `li` outside a `ul` still draws its disc marker; the virtual list wraps rows in divs.
       className={cn("cursor-default select-none list-none", selected && "bg-primary-muted/70")}
       land={[row.thread_id, row.id]}
       onClick={(event) => {
@@ -116,8 +100,6 @@ export const MailboxRow = memo(function MailboxRow({
         readOnly ? (
           <Avatar name={who} size="lg" />
         ) : (
-          // Mouse-only: rows are listbox options, which can't hold controls;
-          // x selects from the keyboard.
           <span
             aria-hidden
             onClick={stop(() => onToggleSelection(row, false))}
@@ -239,7 +221,6 @@ export const MailboxRow = memo(function MailboxRow({
 export interface RowAction {
   label: string;
   icon: LucideIcon;
-  /** Accessible name for one row, e.g. "Wake Budget review now". */
   describe: (row: MessageRowView) => string;
   run: (row: MessageRowView) => void;
 }
@@ -289,7 +270,6 @@ function LabelChip({ name }: { name: string }) {
 
 function TriageChip({ verdict, reason }: { verdict: string; reason?: string | null }) {
   const normalized = verdict.toUpperCase();
-  // FYI is information, not a call to act: the neutral chip, not the accent.
   if (normalized === "FYI") {
     return (
       <Chip title={reason ?? "Triage: FYI"} className="font-mono">

@@ -35,8 +35,6 @@ describe("startAuthSession flow selection", () => {
 
     await startAuthSession(outlookAccountConfig("user@outlook.com"));
 
-    // provider-outlook implements only the device-code flow; switching it
-    // to loopback would break Outlook onboarding.
     expect(startBody().flow).toBe("device");
   });
 });

@@ -11,8 +11,6 @@ export interface SeenRow {
   seen_revision?: string | null;
 }
 
-/** Called on opening/peeking only, never on selection or list fetch. A late
- * response acknowledges only the revision shown, not newly arrived content. */
 export function useMarkRowSeen(mode: "todo" | "updates") {
   const client = useQueryClient();
   const { mutate } = useMutation({
@@ -27,7 +25,6 @@ export function useMarkRowSeen(mode: "todo" | "updates") {
   });
   return useCallback(
     (row: SeenRow) => {
-      // Older daemons have no row revision and must not receive a new request.
       if (row.unread && row.seen_revision) mutate(row);
     },
     [mutate],

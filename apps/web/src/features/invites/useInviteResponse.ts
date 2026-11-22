@@ -1,8 +1,3 @@
-/*
- * React view of the module-level RSVP hold (inviteResponse.ts), for the
- * thread's invite card and the invites page.
- */
-
 import { inviteReplyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 
 import {
@@ -26,7 +21,6 @@ export function useInviteResponse({ messageId }: { messageId: string }) {
   };
 }
 
-/** "Accept with comment": open the composer on a reply that carries the RSVP. */
 export function openInviteComment(
   messageId: string,
   action: InviteAction,

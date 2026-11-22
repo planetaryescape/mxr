@@ -26,7 +26,6 @@ describe("Archive's cards and rows", () => {
     expect(card).toHaveTextContent("e-ticket-K7QX2M.pdf");
     fireEvent.click(within(card).getByRole("button", { name: /copy/ }));
     expect(onCopy).toHaveBeenCalledWith("K7QX2M");
-    // The other matches are one click away, never out of sight.
     fireEvent.click(within(card).getByRole("button", { name: "Show all 2 matches" }));
     expect(onShowAll).toHaveBeenCalledOnce();
   });
@@ -102,7 +101,6 @@ describe("Archive's cards and rows", () => {
     expect(row).toHaveTextContent("ordered · shipped");
     expect(within(row).queryByRole("img", { name: "amount unchecked" })).toBeNull();
     expect(row).toHaveAttribute("data-lit", "true");
-    // The lit row's verbs: o email.
     expect(within(row).getByTestId("record-open-email")).toHaveAccessibleName("email");
     expect(row).not.toHaveAttribute("data-best");
   });

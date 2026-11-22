@@ -8,12 +8,6 @@ import {
   utf8Offset,
 } from "./textRegion";
 
-/*
- * Mirrors the cases in crates/composer/src/check/regions.rs (`split_body`),
- * so the web and the daemon cut a body in the same place. The web keeps the
- * blank space after the text in the suffix, where the daemon keeps it in its
- * gap; both give the same text and the same bytes after it.
- */
 describe("splitTextRegion mirrors the daemon's split_body", () => {
   test.each([
     {
@@ -140,7 +134,6 @@ describe("accepting keeps the user's spacing byte for byte", () => {
 describe("UTF-8 offsets", () => {
   test("a selection after a multi-byte character is counted in bytes", () => {
     const text = "café au lait";
-    // "é" is two bytes in UTF-8 but one UTF-16 unit.
     expect(utf8Offset(text, text.indexOf("au"))).toBe(6);
     expect(utf16Index(text, 6)).toBe(text.indexOf("au"));
   });

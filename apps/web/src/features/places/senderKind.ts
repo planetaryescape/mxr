@@ -1,10 +1,3 @@
-/*
- * One-key correction: move a sender to People, Reading, Paper trail or
- * Screened out (or back to automatic). The daemon remembers it for the
- * sender's future mail. The sender's bundle leaves the place it no longer
- * belongs to at once; Undo puts back the kind the daemon says it had.
- */
-
 import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -19,14 +12,11 @@ import { mapPlaceData } from "./placePaging";
 export interface SenderRef {
   accountId: string;
   senderEmail: string;
-  /** How toasts name the sender. */
   label: string;
 }
 
-/** Take the sender's bundle out of every cached place it no longer belongs in. */
 export function dropSenderFromPlaces(qc: QueryClient, sender: SenderRef, kind: SenderKind | null) {
   const email = sender.senderEmail.toLowerCase();
-  // Automatic: the daemon decides where it goes; wait for the refetch.
   if (kind === null) return;
   qc.setQueriesData({ queryKey: ["place"] }, (data: unknown) =>
     mapPlaceData(data, (page) => {

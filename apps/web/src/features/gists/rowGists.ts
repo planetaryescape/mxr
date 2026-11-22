@@ -1,19 +1,3 @@
-/*
- * List-row gists: one line per conversation saying what it is about and
- * what it asks of you, so a row can be triaged without opening it.
- *
- * A small store outside React, keyed by thread id. Lists ask for the rows
- * on screen (`requestRowGists`); the daemon answers with the gists it has
- * cached for each conversation as it is now, and queues the rest,
- * announcing each as a `ThreadGistReady` event (never one that went stale
- * while it was written). Each row subscribes to its own thread id only
- * (`useRowGist`), so a line arriving re-renders that row and nothing else.
- *
- * Freshness is one epoch: every invalidation bumps it, and an answer to a
- * request sent in an older epoch is dropped, so a slow response can't put
- * back what an invalidation took away. Lists watch the epoch and ask again.
- */
-
 import { useCallback, useSyncExternalStore } from "react";
 
 import type { DaemonEvent } from "@/api/events";
@@ -28,34 +12,20 @@ import { provenanceLabel } from "@/features/thread/context/contextFormat";
 import { isDaemonDown } from "@/lib/daemonAvailability";
 import { daemonEvents } from "@/lib/ws";
 
-/** What a row shows. `ask` is the model's summary of the ask, not a quote. */
 export interface RowGist {
   about: string;
   ask: string | null;
-  /** "Local model gemma4 · from this thread": where the words came from. */
   source: string;
-  /** The raw provenance, for lists that word the source in their own nouns. */
   provenance: AiProvenance | null;
-  /** The message the gist answers for: lists show it only for that message. */
   newest: string | null;
 }
 
-/** Most ids one request may carry (the daemon's `THREAD_GISTS_MAX_BATCH`). */
 export const MAX_BATCH = 100;
-/** Most rows remembered, shown or asked about; the oldest go first. */
 export const STATE_CAP = 500;
-/** A row asked about recently isn't asked about again until this passes. */
 const REQUEST_TTL_MS = 60_000;
-/** With no model, lists stop asking for this long. */
 const NO_MODEL_RECHECK_MS = 5 * 60_000;
 
-/** Insertion-ordered maps, so the first key is the oldest. */
 const gists = new Map<string, RowGist>();
-/**
- * When each row was last asked about, per kind of ask: a conversation list's
- * request skips automated mail, so Updates asking for the same thread a
- * moment later is a different question.
- */
 const requestedAt = new Map<string, number>();
 const askedKey = (threadId: string, automated: boolean) =>
   `${automated ? "automated" : "people"}:${threadId}`;
@@ -67,12 +37,10 @@ const listeners = new Map<string, Set<() => void>>();
 let epoch = 0;
 const epochListeners = new Set<() => void>();
 let noModelUntil = 0;
-/** What the daemon last said about its model; `undefined` until it has. */
 let model: GistModel | undefined;
 const modelListeners = new Set<() => void>();
 let unsubscribeEvents: (() => void) | undefined;
 
-/** Model text and daemon payloads are typed loosely at runtime; only strings are words. */
 const words = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 export function toRowGist(data: ThreadGist): RowGist | null {
@@ -91,7 +59,6 @@ function notify(threadId: string): void {
   for (const listener of listeners.get(threadId) ?? []) listener();
 }
 
-/** Set as the newest entry, dropping the oldest past the cap. */
 function remember<T>(map: Map<string, T>, key: string, value: T): string[] {
   map.delete(key);
   map.set(key, value);
@@ -105,7 +72,6 @@ function remember<T>(map: Map<string, T>, key: string, value: T): string[] {
   return evicted;
 }
 
-/** Store a gist from the daemon (a batch answer or an event). */
 export function putGist(data: ThreadGist): void {
   const gist = toRowGist(data);
   if (!gist) return;
@@ -116,7 +82,6 @@ export function putGist(data: ThreadGist): void {
     shown.source === gist.source &&
     shown.newest === gist.newest;
   for (const evicted of remember(gists, data.thread_id, same ? shown : gist)) notify(evicted);
-  // Same words: nothing to redraw.
   if (!same) notify(data.thread_id);
 }
 
@@ -125,7 +90,6 @@ function bumpEpoch(): void {
   for (const listener of epochListeners) listener();
 }
 
-/** New messages changed these conversations: drop their lines; ask again. */
 export function forgetGists(threadIds: Iterable<string>): void {
   for (const threadId of threadIds) {
     forgetAsked(threadId);
@@ -134,10 +98,6 @@ export function forgetGists(threadIds: Iterable<string>): void {
   bumpEpoch();
 }
 
-/**
- * Nothing shown can be trusted (missed or sampled events, a reconnect):
- * drop every line and let the lists on screen ask again.
- */
 export function invalidateRowGists(): void {
   requestedAt.clear();
   const shown = [...gists.keys()];
@@ -151,7 +111,6 @@ function subscribeEpoch(listener: () => void): () => void {
   return () => epochListeners.delete(listener);
 }
 
-/** Changes on every invalidation; lists re-ask for their rows. */
 export function useGistEpoch(): number {
   return useSyncExternalStore(
     subscribeEpoch,
@@ -171,7 +130,6 @@ function subscribeModel(listener: () => void): () => void {
   return () => modelListeners.delete(listener);
 }
 
-/** The daemon's last word on its model, for reserving row space. */
 export function useGistModel(): GistModel | undefined {
   return useSyncExternalStore(
     subscribeModel,
@@ -197,7 +155,6 @@ function subscribe(threadId: string, listener: () => void): () => void {
   };
 }
 
-/** The row's gist, re-rendering only this row when it arrives or goes. */
 export function useRowGist(threadId: string): RowGist | undefined {
   const subscribeToRow = useCallback(
     (listener: () => void) => subscribe(threadId, listener),
@@ -210,7 +167,6 @@ export function useRowGist(threadId: string): RowGist | undefined {
 function onDaemonEvent(event: DaemonEvent): void {
   switch (event.type) {
     case "ThreadGistReady":
-      // The daemon never announces a gist that went stale while written.
       if (isGistEvent(event)) putGist(event.gist);
       break;
     case "NewMessages": {
@@ -218,7 +174,6 @@ function onDaemonEvent(event: DaemonEvent): void {
         envelopes?: Array<{ thread_id?: unknown }>;
         total?: number;
       };
-      // A capped event is only a sample: any conversation may have changed.
       if (total > envelopes.length) {
         invalidateRowGists();
         break;
@@ -231,16 +186,11 @@ function onDaemonEvent(event: DaemonEvent): void {
       break;
     }
     case "EventsLagged":
-      // A missed NewMessages could leave a stale line up.
       invalidateRowGists();
       break;
   }
 }
 
-/**
- * The event stream is typed loosely (any `type` string passes), so check
- * the fields `putGist` reads before trusting the payload.
- */
 function isGistEvent(event: DaemonEvent): event is { type: string; gist: ThreadGist } {
   const gist = (event as { gist?: unknown }).gist;
   if (typeof gist !== "object" || gist === null) return false;
@@ -255,8 +205,6 @@ function isGistEvent(event: DaemonEvent): event is { type: string; gist: ThreadG
 function listen(): void {
   if (unsubscribeEvents) return;
   const offEvents = daemonEvents.subscribe(onDaemonEvent);
-  // Events sent while the stream was down are lost: on reconnecting, what
-  // is shown may be stale.
   let last = daemonEvents.getStatus().state;
   const offStatus = daemonEvents.onStatus(({ state }) => {
     if (state === "connected" && last !== "connected") invalidateRowGists();
@@ -268,13 +216,6 @@ function listen(): void {
   };
 }
 
-/**
- * Ask for the gists of rows on screen, in the order given (visible rows
- * first). Rows already shown, or asked about a moment ago, are skipped, so
- * calling this on every scroll is cheap. When the daemon says it has no
- * model, nothing is asked for a while. `automated` also asks for automated
- * senders' mail (receipts, alerts), which Updates shows.
- */
 export async function requestRowGists(
   threadIds: readonly string[],
   now = Date.now(),
@@ -282,7 +223,6 @@ export async function requestRowGists(
 ): Promise<void> {
   if (now < noModelUntil) return;
   listen();
-  // Nothing to ask while the daemon is down; reconnecting re-asks.
   if (isDaemonDown()) return;
   const wanted: string[] = [];
   for (const threadId of new Set(threadIds)) {
@@ -300,13 +240,10 @@ export async function requestRowGists(
   try {
     batch = await fetchThreadGists(wanted, true, automated);
   } catch {
-    // Quiet: rows keep their snippets, and the next scroll asks again.
     for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
     return;
   }
   if (sentIn !== epoch) {
-    // Invalidated while the request was out: this answer may be stale.
-    // The list asks again for what is still on screen.
     for (const threadId of wanted) requestedAt.delete(askedKey(threadId, automated));
     return;
   }
@@ -318,7 +255,6 @@ export async function requestRowGists(
   for (const gist of batch.gists) putGist(gist);
 }
 
-/** Tests only: start from nothing. */
 export function resetRowGistsForTest(): void {
   gists.clear();
   requestedAt.clear();

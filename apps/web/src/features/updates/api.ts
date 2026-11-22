@@ -1,10 +1,3 @@
-/*
- * Updates over the bridge. The daemon builds the digest: the cut, the
- * sections, every line's fact, numbers and delta, and the let-go selection
- * (`GetUpdatesDigest`); letting go and tuning answer with what they did.
- * This file only moves them.
- */
-
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 
@@ -27,10 +20,6 @@ type LetGo = Extract<Schemas["ResponseData"], { kind: "UpdatesLetGo" }>;
 type Source = Extract<Schemas["ResponseData"], { kind: "UpdateSource" }>;
 type Codes = Extract<Schemas["ResponseData"], { kind: "OneTimeCodes" }>;
 
-/**
- * The bridge passes any daemon response through with a 200, so a reply of
- * another kind would otherwise surface later as a missing field in render.
- */
 function expectKind<T extends { kind: string }>(answer: { kind?: unknown }, kind: T["kind"]): T {
   if (answer?.kind !== kind) {
     throw new Error(`The daemon answered ${String(answer?.kind)} where ${kind} was expected`);
@@ -38,7 +27,6 @@ function expectKind<T extends { kind: string }>(answer: { kind?: unknown }, kind
   return answer as T;
 }
 
-/** Every Updates query starts with this, so one invalidation refreshes them. */
 export const UPDATES_KEY = ["updates"] as const;
 
 export async function fetchDigest(
@@ -55,11 +43,6 @@ export async function fetchDigest(
   return expectKind<Digest>(answer, "UpdatesDigest").digest;
 }
 
-/**
- * The digest for the account scope. The first fetch of each visit records
- * that Updates was opened, so "expired since you last looked" starts again
- * and the mute question counts as asked.
- */
 export function useDigest() {
   const account = useUiPrefs((s) => s.accountScope);
   const scope = account ?? "all";
@@ -83,11 +66,6 @@ export async function fetchCodes(account: string | null): Promise<OneTimeCode[]>
   return expectKind<Codes>(answer, "OneTimeCodes").codes;
 }
 
-/**
- * The newest one-time code still in its window, for the account scope. A
- * code arrives between cuts, where no digest line shows it yet, and lasts
- * minutes, so it is asked for on its own and often.
- */
 export function useLatestCode() {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
@@ -102,11 +80,8 @@ export function useLatestCode() {
 
 export interface LetGoInput {
   account: string | null;
-  /** The cut the digest showed (RFC 3339). */
   cut?: string;
-  /** One source only. */
   sourceKey?: string;
-  /** From the digest or the dry run: the run refuses if the cut changed. */
   selectionToken?: string;
   dryRun: boolean;
 }

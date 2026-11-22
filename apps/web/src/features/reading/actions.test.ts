@@ -5,7 +5,6 @@ import { describe, expect, test } from "vitest";
 import "@/lib/actions/catalog";
 import { getRegistry } from "@/lib/actions/registry";
 
-/** Reading's effective keys: its own scope over the global one. */
 function readingKeys(): Map<string, string> {
   const keys = new Map<string, string>();
   for (const scope of ["global", "reading"]) {
@@ -29,7 +28,6 @@ describe("Reading's keys", () => {
     expect(keys.get("A")).toBeUndefined();
     expect(keys.get("o")).toBe("reading.open-email");
     expect(keys.get("j")).toBe("reading.down");
-    // g r opens Reading from anywhere.
     expect(keys.get("g r")).toBe("nav.reading");
   });
 

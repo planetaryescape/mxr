@@ -1,5 +1,3 @@
-/* Test rows shaped like the daemon's, for To do's unit tests. */
-
 import type { Todo, TodoRunway } from "./api";
 
 export function todoFixture(overrides: Partial<Todo> = {}): Todo {

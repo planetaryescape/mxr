@@ -1,11 +1,3 @@
-/*
- * Promises found in outgoing mail, offered as reminders while the send's
- * undo window runs. The send never waits: the check runs beside it, and an
- * answer given before the message has gone out is held until it has (it
- * needs the sent message's id). Undoing or failing the send takes its
- * offers with it, so nothing is kept for mail that never went out.
- */
-
 import { toast } from "sonner";
 import { create } from "zustand";
 
@@ -25,14 +17,10 @@ export interface PromiseOffer {
   id: string;
   sendId: string;
   what: string;
-  /** The due words as the message wrote them ("by Friday"). */
   duePhrase: string | null;
-  /** The parser's reading of them, for "Change" to start from. */
   resolution: TimeResolution;
-  /** The time the reminder is for: the default reading until changed. */
   choice: TimeChoice;
   provenance: AiProvenance | null;
-  /** Accepted while the send was still in its undo window. */
   accepted: boolean;
 }
 
@@ -50,8 +38,6 @@ export const usePromiseOffers = create<PromiseOffersState>(() => ({ offers: [], 
 
 let nextId = 0;
 
-/** Turn a detection into offers, one per promise with a date. Ignored once
- * the send is gone, and for anything other than a ready answer. */
 export function offerPromises(sendId: string, detection: PromiseDetection): void {
   const send = usePromiseOffers.getState().sends[sendId];
   if (!send || send.status === "gone" || detection.status !== "ready") return;
@@ -75,7 +61,6 @@ export function offerPromises(sendId: string, detection: PromiseDetection): void
   usePromiseOffers.setState((state) => ({ offers: [...state.offers, ...offers] }));
 }
 
-/** The message went out: keep every promise already accepted for it. */
 function sendCompleted(sendId: string, messageId: string | undefined): void {
   usePromiseOffers.setState((state) => ({
     sends: { ...state.sends, [sendId]: { status: "sent", messageId } },
@@ -85,7 +70,6 @@ function sendCompleted(sendId: string, messageId: string | undefined): void {
   }
 }
 
-/** Undone or failed: nothing was sent, so nothing is offered or kept. */
 function sendAbandoned(sendId: string): void {
   usePromiseOffers.setState((state) => ({
     sends: { ...state.sends, [sendId]: { status: "gone" } },
@@ -93,7 +77,6 @@ function sendAbandoned(sendId: string): void {
   }));
 }
 
-/** "Remind me", at the offer's time or at `choice` when the user changed it. */
 export function acceptOffer(offerId: string, choice?: TimeChoice): void {
   const offer = findOffer(offerId);
   if (!offer) return;
@@ -151,13 +134,11 @@ async function keep(offer: PromiseOffer, messageId: string | undefined): Promise
   });
 }
 
-/** Thread context (under "thread") and commitment lists show promises. */
 function refreshPromiseViews(): void {
   void invalidateMailQueries();
   void getActiveQueryClient()?.invalidateQueries({ queryKey: ["commitments"] });
 }
 
-// Offers follow the send they came from, whichever view started it.
 onSendEvent((event) => {
   switch (event.kind) {
     case "queued":

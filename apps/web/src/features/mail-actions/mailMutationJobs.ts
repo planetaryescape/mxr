@@ -6,10 +6,6 @@ import { plural } from "@/lib/format";
 import { verb } from "./actionPastTense";
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
 
-/**
- * Batches this large run as a daemon job (TUI parity): the daemon chunks
- * the provider calls and reports progress, instead of one long request.
- */
 export const JOB_THRESHOLD = 200;
 
 type JobMutationCommand = Record<string, unknown> & { mutation: string; message_ids: string[] };
@@ -90,19 +86,12 @@ export async function runAsJob(
   });
 }
 
-/**
- * Follow a daemon job the bridge already started (a mutation job, or the
- * archive behind a sweep) to its end, with a progress toast, and answer in
- * the same shape as a direct mutation so the caller's undo and failure
- * handling stay the same.
- */
 export async function awaitJob(
   jobId: string,
   copy: { start: string; progress: (completed: number, total: number) => string },
 ): Promise<MutationResponse> {
   const toastId = `job-${jobId}`;
   toast.loading(copy.start, { id: toastId, description: "Running in the background" });
-  // Polling is sequential by nature: each check waits for the last.
   for (;;) {
     // oxlint-disable-next-line no-await-in-loop
     await new Promise((resolve) => setTimeout(resolve, 600));
@@ -126,7 +115,6 @@ export async function awaitJob(
         skipped: job.progress.skipped,
         failed: job.progress.failed,
       }),
-      // One undo id per daemon chunk; Undo reverses them all.
       undo_ids: job.undo_ids ?? [],
     };
     if (job.status === "failed" && job.error) {

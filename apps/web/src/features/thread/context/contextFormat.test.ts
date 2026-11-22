@@ -73,8 +73,6 @@ describe("context copy", () => {
       evidence_msg_id: "m1",
       extracted_at: NOW.toISOString(),
     });
-    // A group thread: Maya is the main counterparty, but the promises are
-    // Alice's and Bob's.
     const facts = context({
       owed_reply: {
         message_id: "m1",

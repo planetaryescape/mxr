@@ -1,11 +1,3 @@
-/*
- * Low tide: the moment a cleared desk, reply queue or place earns. A small
- * drawn shore in the theme's own colours: the water's edge draws back, the
- * wet sand dries, a few tide pools catch the light, and then it is still.
- * Under two seconds, once per clearing, and a still frame (the same final
- * picture) with reduced motion. No points, no streaks, nothing to keep up.
- */
-
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { playSound } from "@/features/sound/player";
@@ -18,12 +10,9 @@ export function LowTide({
   sound = false,
   className,
 }: {
-  /** "full" for the desk; "small" for a swept place. */
   size?: "full" | "small";
   line: string;
-  /** Quiet lines under the main one (what's next). */
   children?: ReactNode;
-  /** Play the cleared-desk sound once, if sound is on. */
   sound?: boolean;
   className?: string;
 }) {
@@ -57,7 +46,6 @@ export function LowTide({
   );
 }
 
-/** Just the drawing, for a view that writes its own words (focus mode). */
 export function LowTideScene({
   size = "full",
   sound = false,
@@ -74,7 +62,6 @@ export function LowTideScene({
   return <Shore size={size} />;
 }
 
-/** The drawing. Every colour is a theme token, so each theme gets its own shore. */
 function Shore({ size }: { size: "full" | "small" }) {
   return (
     <svg

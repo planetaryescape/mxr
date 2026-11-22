@@ -1,10 +1,3 @@
-/*
- * Updates' verbs: let go of the digest or one source, this needs me, and
- * tune a source. Letting go is one `LetGoDigest`; its undo is the daemon's
- * by mutation id, as for any done. Tuning's undo sets the setting it had.
- * Lines fold up as they go, or drop at once under reduced motion.
- */
-
 import { toast } from "sonner";
 import { create } from "zustand";
 
@@ -32,9 +25,7 @@ import {
 import { displaySourceName, tuneToast } from "./digestView";
 
 interface UpdatesHiddenState {
-  /** Lines folding up: still drawn, animating out. */
   leaving: ReadonlySet<string>;
-  /** Lines gone until the digest is refetched. */
   hidden: ReadonlySet<string>;
   leave: (ids: readonly string[]) => void;
   hide: (ids: readonly string[]) => void;
@@ -58,14 +49,12 @@ export const useUpdatesHidden = create<UpdatesHiddenState>((set) => ({
     ),
 }));
 
-/** Fold lines up (the row hides itself when its fold ends), or drop them at once. */
 function startLeaving(ids: readonly string[]): void {
   const store = useUpdatesHidden.getState();
   if (foldsFor("pointer")) store.leave(ids);
   else store.hide(ids);
 }
 
-/** Refetch Updates and everything a let go or a new to-do can change. */
 export async function refreshUpdates(): Promise<void> {
   const qc = getActiveQueryClient();
   await Promise.all([
@@ -80,11 +69,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Let go for real, with the line ids that fold while it runs. The toast
- * is the daemon's own line ("Let go of 31 updates from 12 sources"), and
- * Undo reverses the whole run by its mutation id.
- */
 export async function letGo(
   input: Omit<LetGoInput, "dryRun">,
   lineIds: readonly string[],
@@ -134,17 +118,12 @@ export async function letGo(
   }
 }
 
-/**
- * `e`: let go of one source in the shown cut, after the same preview as
- * the whole digest, with the token that preview returned.
- */
 export function letGoSource(line: UpdateLine, cut: string, selectionToken: string) {
   return letGo({ account: line.account_id, cut, sourceKey: line.source_key, selectionToken }, [
     line.id,
   ]);
 }
 
-/** `t`: this needs me. A to-do from the message the line's fact came from. */
 export async function needsMe(line: UpdateLine): Promise<void> {
   const messageId = line.fact_message_id ?? line.latest_message_id;
   if (!messageId) {
@@ -155,7 +134,6 @@ export async function needsMe(line: UpdateLine): Promise<void> {
   await refreshUpdates();
 }
 
-/** `K`: tune a source. Undo sets back the setting it had. */
 export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Promise<void> {
   if (refuseWhileDaemonDown("tune it")) return;
   const claim = claimUndo();
@@ -186,8 +164,6 @@ export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Prom
             }
           };
     claim.settle(
-      // Tuning moves a source's mail between digest and hidden, as moving a
-      // sender moves it between places: the same toast tone and undo.
       offerUndo(
         "move-sender",
         tuneToast(displaySourceName(line.source_name), setting),
@@ -204,11 +180,6 @@ export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Prom
   }
 }
 
-/**
- * `S`: sweep the line's sender out of Paper trail, after the same dry run
- * the place sweeps show. Confirming runs the sweep and its undo as in the
- * places, and the sender's line leaves Updates on the refetch.
- */
 export function sweepSource(line: UpdateLine): void {
   if (!line.sender_email) return;
   openMailDialog({
@@ -218,10 +189,6 @@ export function sweepSource(line: UpdateLine): void {
   });
 }
 
-/**
- * `p`: pin the line's latest email, or unpin it. A sweep of the sender then
- * leaves that email in place. Undo is the same toggle back.
- */
 export async function setSourcePin(line: UpdateLine, pinned: boolean): Promise<void> {
   const messageId = line.latest_message_id;
   if (!messageId) return;
@@ -230,8 +197,6 @@ export async function setSourcePin(line: UpdateLine, pinned: boolean): Promise<v
   try {
     const result = await pinMessages([messageId], pinned);
     await refreshUpdates();
-    // Nothing changed (already pinned, or not pinned to begin with): the
-    // toggle back would reverse a state this change never made.
     const changed = result.changed > 0;
     const reverse = !changed
       ? null
@@ -267,7 +232,6 @@ export async function setSourcePin(line: UpdateLine, pinned: boolean): Promise<v
   }
 }
 
-/** `p` as a toggle, from the label the line shows. */
 export function togglePinSource(line: UpdateLine): Promise<void> {
   return setSourcePin(line, !line.latest_message_pinned);
 }

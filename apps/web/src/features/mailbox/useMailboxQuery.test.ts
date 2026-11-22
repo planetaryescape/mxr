@@ -61,7 +61,6 @@ describe("mergeMailboxPages", () => {
       true,
       2,
     );
-    // New mail pushed t2 down; the second page repeats it with a newer message id.
     const second = page(
       [
         { id: "today", label: "Today", rows: [row("m2b", "t2"), row("m3", "t3")] },
@@ -77,7 +76,6 @@ describe("mergeMailboxPages", () => {
       ["today", ["m1", "m2", "m3"]],
       ["older", ["m4"]],
     ]);
-    // Paging state comes from the last page.
     expect(merged?.mailbox.has_more).toBe(false);
     expect(merged?.mailbox.next_offset).toBeNull();
   });

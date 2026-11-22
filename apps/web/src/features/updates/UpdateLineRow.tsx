@@ -49,17 +49,10 @@ import { useUpdatesHidden } from "./updatesVerbs";
 /** A fact this long may not fit on the row's one line. */
 const LONG_FACT = 70;
 
-/** A phone taps the row to peek, and its width belongs to the source's name: these verbs wait for sm. */
 const PHONE_HIDDEN = "hidden sm:inline-flex";
 
 const NOT_ROW_BODY = "button, a, [role='menu'], [role='region'], [role='status']";
 
-/**
- * One source line in the reel, on the shared `Row`: the source and its fact
- * on one line, one trailing value, and the verbs when lit. The rest (why,
- * numbers, references, the suggestion, the links) sits in the peek that Space
- * opens under the row.
- */
 export const UpdateLineRow = memo(function UpdateLineRow({
   line,
   index,
@@ -91,7 +84,6 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onSweep: (line: UpdateLine) => void;
   onPin: (line: UpdateLine) => void;
   onTogglePeek: (line: UpdateLine) => void;
-  /** A hint anchored under this line's actions. */
   hint?: ReactNode;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
@@ -108,7 +100,6 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const hide = useUpdatesHidden((s) => s.hide);
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLLIElement>(null);
-  // Actions that open a dialog keep focus with the dialog when the menu closes.
   const returnFocus = useRef(true);
   const toDialog = (action: () => void) => () => {
     returnFocus.current = false;
@@ -122,9 +113,6 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   const delivered = parcel && line.tracker?.state === "delivered";
   const track = parcel ? trackLabel(line) : null;
   const trackStands = trackReplacesFact(line, track);
-  // The model's one-line gist stands in for a subject-only fact once it has
-  // arrived, and only for the email the line is about. Until then (or with no
-  // model) the subject shows exactly as it did.
   const gistThreadId = gistThread(line);
   const stored = useRowGist(gistThreadId ?? "");
   const gist =
@@ -155,7 +143,6 @@ export const UpdateLineRow = memo(function UpdateLineRow({
       unreadLabel="Unseen"
       leaving={leaving}
       land={landIds}
-      // Focus comes back here when the menu closes, so Space peeks in the normal flow.
       tabIndex={-1}
       onClick={(event) => {
         const target = event.target;
@@ -354,7 +341,6 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   );
 });
 
-/** The source's initials on a square tile: a mark for the source, not a person. */
 function SourceMark({ name }: { name: string }) {
   return (
     <span
@@ -366,7 +352,6 @@ function SourceMark({ name }: { name: string }) {
   );
 }
 
-/** The one trailing value; the to-do suggestion is a control, the rest are text. */
 function TrailingValue({
   item,
   todoTitle,
@@ -417,11 +402,6 @@ function TrailingValue({
   }
 }
 
-/**
- * What the reel leaves out, opened with Space: why, the numbers as the mail
- * quoted them, a tracker's state, a parcel's items and references, the
- * suggestion with its two answers, and the link and the email.
- */
 function Peek({
   line,
   gist,
@@ -430,9 +410,7 @@ function Peek({
   onTuneTo,
 }: {
   line: UpdateLine;
-  /** The gist the row shows in place of the subject, if it does. */
   gist: RowGist | undefined;
-  /** The fact doesn't fit the row's one line, or the track stands in for it. */
   showFact: boolean;
   onOpenEmail: (line: UpdateLine) => void;
   onTuneTo: (line: UpdateLine, setting: SuggestedSetting) => void;
@@ -480,7 +458,6 @@ function Peek({
       {parcelItems.length > 0 ? (
         <ul aria-label="Available parcel items" className="list-inside list-disc">
           {parcelItems.map((item, itemIndex) => (
-            // DTOs allow duplicate records and provide no stable item ID; this list is static.
             // oxlint-disable-next-line react/no-array-index-key
             <li key={`${itemIndex}:${item.name}:${item.quantity ?? ""}`}>
               {item.name}
@@ -545,7 +522,6 @@ function Peek({
   );
 }
 
-/** "gemma4 · local · from this email": where the line's words came from. */
 function EmailSource({ gist }: { gist: RowGist }) {
   const provenance = gist.provenance;
   if (!provenance) return <span className="type-meta text-text-3">{gist.source}</span>;
@@ -561,12 +537,6 @@ function EmailSource({ gist }: { gist: RowGist }) {
   );
 }
 
-/**
- * The first lines of the line's latest email. The thread is fetched only
- * once the peek is open, through the request the reader uses, so opening the
- * email afterwards finds it cached. Shown as plain text; a failed or empty
- * fetch shows nothing, since the peek's other lines stand on their own.
- */
 function EmailPreview({ line }: { line: UpdateLine }) {
   const threadId = line.latest_thread_id;
   const thread = useQuery({

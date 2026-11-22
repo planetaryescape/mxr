@@ -1,15 +1,3 @@
-/*
- * The one compose surface (inline / overlay / fullscreen). Every entry
- * point opens it: `c`, the compose launcher, reply/forward, drafts, and the
- * /compose/* deep links. Mounted once in AppShell so the compose session
- * survives surface switches and route changes. The inline surface portals the
- * editor into the thread reader's slot (#inline-composer-slot). Leaving the
- * conversation removes the slot, and the reply saves and closes, as a chat
- * app keeps a draft on its conversation; Messages shows it on the person's
- * row and opening them brings it back. A reply that can't save stays open in
- * the sheet, and an inline reply whose slot never appeared opens there.
- */
-
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Maximize2, Minimize2, PictureInPicture2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -30,8 +18,6 @@ import { useComposeSession, type ComposeIntent } from "./useComposeSession";
 export function ComposeHost() {
   const intent = useComposeUi((s) => s.intent);
   if (!intent) return null;
-  // Key by intent so a new reply target starts a fresh session while the
-  // host itself stays mounted.
   return <ComposeHostInner key={intent.key} intent={intent} />;
 }
 
@@ -44,13 +30,8 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const closeCompose = useComposeUi((s) => s.closeCompose);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
 
-  // A send finishes after its undo window, possibly once the user has moved
-  // on to another composer; only close the surface if it still shows this
-  // session.
   const closeThisSession = () => {
     if (useComposeUi.getState().intent?.key === intent.key) closeCompose();
-    // Messages marks a conversation's unsent reply on its row: show the
-    // reply just left, or drop the mark once it is sent or discarded.
     if (intent.kind === "reply" || intent.kind === "reply_all") void refreshMessages();
   };
   const controller = useComposeSession(intent, {
@@ -62,12 +43,8 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const inThread = surface === "inline" && inlineAvailable;
   const visibleSurface = inThread ? "inline" : surface === "fullscreen" ? "fullscreen" : "overlay";
 
-  // Commands for a page that hosts this session inline (focus mode). The
-  // latest controller is read at call time.
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
-  // Registered once the session has loaded, so "the reply is ready" and
-  // "its commands exist" are the same fact for a host page.
   const sessionReady = !controller.sessionLoading && controller.draft !== null;
   useEffect(() => {
     if (!sessionReady) return;
@@ -75,7 +52,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       intentKey: intent.key,
       send: () => controllerRef.current.requestSend(),
       sendAndRemind: () => controllerRef.current.setRemindDialogOpen(true),
-      // Opens the help line for the user to ask; nothing is sent until they submit.
       draftForMe: () => controllerRef.current.openHelp(),
     };
     useComposeUi.getState().setCommands(commands);
@@ -84,19 +60,12 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     };
   }, [intent.key, sessionReady]);
 
-  // The inline slot lives at the bottom of the thread reader. Re-resolve it
-  // whenever the DOM changes, not only the route: a pane can unmount and
-  // remount on the same path (Messages on a phone goes back to the people
-  // and reopens the person), and a portal into a detached slot would hide
-  // the draft for good. A slot that goes away means the user left the
-  // conversation: the reply saves and closes (below).
   const [leftConversation, setLeftConversation] = useState(false);
   useEffect(() => {
     if (surface !== "inline") {
       setSlot(null);
       return;
     }
-    // Typing in the editor mutates the DOM too: only a new slot re-renders.
     let current: HTMLElement | null | undefined;
     const resolve = () => {
       const slotId = intent.contextThreadId
@@ -115,10 +84,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     return () => observer.disconnect();
   }, [intent.contextThreadId, surface]);
 
-  // Leaving the conversation leaves the reply on it, saved, the way Back in a
-  // chat app does; no sheet is thrown over the list (a phone's Back would
-  // seem to do nothing). Only a failed save keeps it open, in the sheet,
-  // with its error and the text.
   useEffect(() => {
     if (!leftConversation) return;
     let current = true;
@@ -132,8 +97,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     };
   }, [intent.key, leftConversation, setSurface]);
 
-  // Bring the inline composer into view once it has content: the slot is
-  // hidden while empty, so scrolling to it any earlier does nothing.
   const sessionLoading = controller.sessionLoading;
   useEffect(() => {
     if (!slot || sessionLoading) return;
@@ -141,8 +104,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     return () => cancelAnimationFrame(frame);
   }, [slot, sessionLoading]);
 
-  // An HTML-bodied draft is a permanent refusal, not a transient failure:
-  // retrying can only fail again. Show the document instead.
   const htmlDraft = htmlDraftRefusal(controller.sessionError);
   const body = controller.sessionLoading ? (
     <div role="status" className="type-body flex h-40 items-center justify-center text-text-2">
@@ -225,13 +186,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   if (inThread && slot) {
     return createPortal(chrome, slot);
   }
-  // Saving on the way out of the conversation: nothing to show meanwhile.
   if (leftConversation && surface === "inline") return null;
 
   const fullscreen = surface === "fullscreen";
-  // The sheet is modal: focus stays inside it, Esc leaves (the draft is
-  // saved first), and focus returns to where it was. The scrim and the sheet fade and rise
-  // like every overlay (docs/blueprint/26 "Motion").
   return (
     <DialogPrimitive.Root
       open
@@ -250,7 +207,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         <DialogPrimitive.Content
           aria-label={surfaceTitle}
           aria-describedby={undefined}
-          // The editor focuses itself (useComposeAutofocus); the trap only has to hold it.
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={() => {
             // Radix puts focus back where it was; when that is gone (a key opened the sheet
@@ -261,7 +217,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           }}
           onInteractOutside={(event) => event.preventDefault()}
           onEscapeKeyDown={(event) => {
-            // Esc belongs to vim inside the Markdown editor, and to an open suggestion list.
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest(".cm-editor, [aria-expanded='true']")) {
               event.preventDefault();
@@ -324,5 +279,4 @@ function SurfaceButton({
   );
 }
 
-/** Surface switch helper for ComposeSurface validation at call sites. */
 export type { ComposeSurface };

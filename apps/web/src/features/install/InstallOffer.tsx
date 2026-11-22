@@ -10,11 +10,6 @@ import {
   writeDismissed,
 } from "./installPrompt";
 
-/**
- * A small offer in the status bar, shown only when the browser can install
- * the app. It is not a banner: it sits beside the other status items and
- * goes away when dismissed, and the dismissal is remembered.
- */
 export function InstallOffer() {
   const installable = useInstallPrompt((s) => s.deferred !== null);
   const [dismissed, setDismissed] = useState(readDismissed);

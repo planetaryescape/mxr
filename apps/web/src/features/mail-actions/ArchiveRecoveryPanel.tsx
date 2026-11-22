@@ -16,7 +16,6 @@ export function ArchiveRecoveryPanel() {
   useEffect(() => {
     const refresh = () => {
       try {
-        // A finished Archive is journalled too; the panel is for the ones that aren't.
         setOperations(retainedArchives().filter(needsRecovery));
       } catch (caught) {
         setError(String(caught));

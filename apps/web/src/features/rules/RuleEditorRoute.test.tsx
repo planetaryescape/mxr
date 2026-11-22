@@ -74,16 +74,6 @@ function mount(categoryError = false, multipleCategories = false) {
   });
 }
 
-/**
- * The editor waits 350 ms after the last edit before it previews, then holds
- * any skeleton that appeared for 400 ms. On real timers that wait came out of
- * `findBy*`'s 1 s budget, leaving too little for the fetch, the renders and the
- * role queries when a full-suite run starved the worker. Fake timers make the
- * wait free, so the result no longer depends on machine load. The clock moves
- * in short steps, each in its own `act`, because one long step left the
- * preview unrendered: its result, and then the skeleton's release, each landed
- * only on a later step.
- */
 async function settlePreview() {
   for (let elapsed = 0; elapsed < 1_000; elapsed += 50)
     // oxlint-disable-next-line no-await-in-loop -- each step needs the previous step's commit
@@ -96,7 +86,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  // Before setup.ts's afterEach, which waits on a real 0 ms timer.
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });

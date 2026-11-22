@@ -1,11 +1,3 @@
-/*
- * Archive's verbs: copy a reference or amount, open the document, fix or
- * confirm a field, not a record, file an email, and export. Each change is
- * one daemon request whose toast is the daemon's own words ("Filed in
- * Archive.", never "Archived", which is the provider's), and `u` reverses
- * it with the request the daemon's undo hint names.
- */
-
 import { toast } from "sonner";
 
 import { claimUndo, offerUndo } from "@/features/mail-actions/mailUndo";
@@ -31,7 +23,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Refetch every Archive view, and the guide whose card an answer retires. */
 export async function refreshRecords(): Promise<void> {
   const qc = getActiveQueryClient();
   if (!qc) return;
@@ -41,7 +32,6 @@ export async function refreshRecords(): Promise<void> {
   ]).catch(() => undefined);
 }
 
-/** Copy text and say what was copied, so it can be read out on a call. */
 export async function copyText(text: string | null, what: string): Promise<void> {
   if (!text) {
     toast.info(`This record has no ${what}`);
@@ -58,7 +48,6 @@ export async function copyText(text: string | null, what: string): Promise<void>
 export const copyReference = (record: RecordData) => copyText(referenceCopy(record), "reference");
 export const copyAmount = (record: RecordData) => copyText(amountCopy(record), "amount");
 
-/** `Enter`: the record's PDF, opened by the daemon (downloaded first if needed). */
 export async function openDocument(record: RecordData): Promise<void> {
   const pdf = record.pdf;
   if (!pdf) {
@@ -74,7 +63,6 @@ export async function openDocument(record: RecordData): Promise<void> {
   }
 }
 
-/** The request that reverses a change, from the daemon's undo hint. */
 function reverseOf(change: RecordChange): (() => Promise<boolean>) | null {
   const undo = change.undo;
   if (!undo) return null;
@@ -110,7 +98,6 @@ function reverseOf(change: RecordChange): (() => Promise<boolean>) | null {
   }
 }
 
-/** Run a change, toast the daemon's message, and offer its undo on `u`. */
 async function withUndo(
   verb: Verb,
   run: () => Promise<RecordChange>,
@@ -138,7 +125,6 @@ async function withUndo(
   }
 }
 
-/** `X`: not a record. The email is untouched and never filed again. */
 export function markNotRecord(record: RecordData) {
   if (refuseWhileDaemonDown("change it")) return;
   return withUndo(
@@ -148,7 +134,6 @@ export function markNotRecord(record: RecordData) {
   );
 }
 
-/** `v`: confirm every unchecked amount and date, so the card is checked. */
 export function markChecked(record: RecordData) {
   if (refuseWhileDaemonDown("change it")) return;
   if (record.checked) {
@@ -162,7 +147,6 @@ export function markChecked(record: RecordData) {
   );
 }
 
-/** `,`: a correction; it wins over every re-run. */
 export function editField(record: RecordData, edit: RecordEdit, applyToSender = false) {
   if (refuseWhileDaemonDown("change it")) return;
   return withUndo(
@@ -172,28 +156,23 @@ export function editField(record: RecordData, edit: RecordEdit, applyToSender = 
   );
 }
 
-/** The card a correction would leave, from the daemon's dry run. */
 export function previewEdit(record: RecordData, edit: RecordEdit, applyToSender = false) {
   return setRecordField(record.id, edit, { dryRun: true, applyToSender });
 }
 
-/** Pass to a mode (the palette) then Archive: the card filing would make, from the daemon's dry run. */
 export function previewFile(messageId: string) {
   return fileRecord(messageId, true);
 }
 
-/** File an email as a record by hand: exactly what the preview showed. */
 export function fileMessage(messageId: string) {
   if (refuseWhileDaemonDown("file it")) return;
   return withUndo("record-file", () => fileRecord(messageId, false), "Couldn't file it in Archive");
 }
 
-/** The export's dry run: rows, totals, unchecked rows, missing PDFs. */
 export function previewExport(account: string | null, filter: RecordFilter) {
   return exportRecords(account, filter, true);
 }
 
-/** Export, after the preview: the CSV, saved by the browser. */
 export async function downloadExport(account: string | null, filter: RecordFilter): Promise<void> {
   if (refuseWhileDaemonDown("export")) return;
   try {

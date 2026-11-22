@@ -78,18 +78,9 @@ import { OtherAccountLine } from "@/features/thread/OtherAccountLine";
 
 import type { ReadingEdition } from "./api";
 
-/** How often reading time is reported while the page is visible. */
 const REPORT_EVERY_MS = 10_000;
-/** A page that fits on screen is read after this long on screen. */
 const FITS_READ_AFTER_MS = 8_000;
 
-/**
- * The reader: one item in a book-like column about 66 characters wide,
- * with time left at your pace and a thin progress line. The issue is the
- * email's own text, cleaned; Article is the linked page, fetched only when
- * you ask, naming the site first. R shows the sender's layout instead,
- * remembered per source.
- */
 export function ReadingReader({ itemKey }: { itemKey: string }) {
   const item = useItemQuery(itemKey);
   if (item.isLoading) {
@@ -118,8 +109,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const hasArticle = Boolean(item.url);
-  // Issue or Article is in the URL, so a copied link opens the same one. A
-  // link never fetches the article by itself: that tells its site you came.
   const [shown, setShown] = useSearchParam("as");
   const view: "issue" | "article" =
     shown === "issue" || (shown === "article" && hasArticle)
@@ -134,14 +123,12 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const [progress, setProgress] = useState(item.progress);
   const columnRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
-  // The article's own text: only a selection inside it offers to highlight.
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const article = detail.article ?? null;
   const showingArticle = view === "article" && article !== null;
   const words = showingArticle ? article.words : item.words;
   const paragraphs = showingArticle ? article.paragraphs : detail.paragraphs;
-  // Remote images follow email: held back until asked for, or the sender is trusted.
   const [remoteAllowed, setRemoteAllowed] = useState(false);
   const trustedSenders = useUiPrefs((state) => state.remoteImageSenders);
   const allowSender = useUiPrefs((state) => state.allowRemoteImagesFrom);
@@ -154,7 +141,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   const left = minutesLeft(words, progress, detail.pace_wpm);
   useEngagement(item.item_key, columnRef, setProgress);
 
-  // Back on the list, the cursor is on the item that was open.
   const back = useCallback(
     () =>
       void navigate({
@@ -204,8 +190,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     void rememberLayout(source.account_id, source.sender_email, value);
   }, [original, setView, source.account_id, source.sender_email]);
 
-  // With nothing selected, `"` takes the paragraph at the top of the
-  // reader, as the TUI does: a keyboard has no other way to pick one.
   const highlight = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";
     void highlightSelection(
@@ -229,14 +213,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
       }),
     [item.item_key, marginaliaStatus.data?.connected, navigate, sentTo?.read_url],
   );
-  // Highlights made in Marginalia come back when a sent item opens.
   const sentArticle = sentTo?.article_id;
   useEffect(() => {
     if (sentArticle) void refreshMarginaliaHighlights(item.item_key);
   }, [item.item_key, sentArticle]);
 
-  // The Highlights tab (`3`) lands on this item's highlights; there is no
-  // page of every highlight yet.
   const highlightsRef = useRef<HTMLElement>(null);
   const highlightCount = detail.highlights.length;
   const showHighlights = useCallback(() => {
@@ -259,7 +240,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   useScopeController("reading-reader", {
     down: () => columnRef.current?.scrollBy({ top: 80 }),
     up: () => columnRef.current?.scrollBy({ top: -80 }),
-    // `L` switches between the issue and its article, as in the TUI.
     article: () => (showingArticle ? setView("issue") : void openArticle()),
     issue: () => {
       setView("issue");
@@ -275,7 +255,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
       }),
     laterShelf: () => void navigate({ to: "/reading", search: { view: "later" } }),
     highlights: showHighlights,
-    // Not now (`b`): Later first, then a time that snoozes the issue's email.
     later: () =>
       openMailDialog({
         kind: "not-now",
@@ -338,7 +317,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <Segmented
               label="What to read"
               value={view}
-              // `L` switches between the two, as in the TUI.
               keys={{
                 issue: definedShortcut("reading.reader-article"),
                 article: definedShortcut("reading.reader-article"),
@@ -467,10 +445,8 @@ function Reader({ detail }: { detail: ReadingDetail }) {
         ) : (
           <article
             ref={textRef}
-            // The title above and the text share one column, so the page has a single left edge.
             data-frame="reading"
             className="reading-page mode-frame px-5 pb-16 pt-8"
-            // The measure is in ch of the reader's own face and size, so a larger text keeps its line length.
             style={{ fontSize: "var(--reader-size)", fontFamily: "var(--reader-font)" }}
           >
             <div className="max-w-[var(--reading-measure)]">
@@ -559,7 +535,6 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   );
 }
 
-/** "Fetching from sqlite.org…", the failure with the browser, or where it came from. */
 function ArticleStatus({
   fetching,
   detail,
@@ -634,7 +609,6 @@ function ArticleStatus({
   );
 }
 
-/** One saved highlight: its note, and edit and remove (or where to change it, if made in Marginalia). */
 function HighlightRow({
   highlight: h,
   itemKey,
@@ -703,7 +677,6 @@ function HighlightRow({
   );
 }
 
-/** The text, paragraph by paragraph, with your highlights marked. */
 export function Paragraphs({
   paragraphs,
   marks,
@@ -718,7 +691,6 @@ export function Paragraphs({
     >
       {paragraphs.map((paragraph, index) => {
         const key = `${index}-${paragraph.text.slice(0, 12)}`;
-        // The anchor a highlight made here is saved with and drawn by.
         const tag = { [PARAGRAPH_ATTRIBUTE]: index };
         const content = (
           <Marked text={paragraph.text} marks={marksForParagraph(paragraphs, marks, index)} />
@@ -759,24 +731,18 @@ export function Paragraphs({
   );
 }
 
-/**
- * Draws each mark in `text`: wherever its words appear, or only the first
- * match for an anchored one. Text only, no markup built.
- */
 function Marked({ text, marks }: { text: string; marks: ParagraphMark[] }) {
   const hit = marks
     .map((mark) => ({ mark, at: text.indexOf(mark.quote) }))
     .filter((found) => found.mark.quote.length > 0 && found.at >= 0)
     .toSorted((a, b) => a.at - b.at)[0];
   if (!hit) return <>{text}</>;
-  // An anchored mark is spent once drawn; the rest of the paragraph can't show it again.
   const rest = hit.mark.once ? marks.filter((mark) => mark !== hit.mark) : marks;
   return (
     <>
       {text.slice(0, hit.at)}
       <mark
         className="reading-mark cursor-pointer"
-        // Selecting it is how the toolbar finds the highlight to edit.
         onClick={(event) => window.getSelection()?.selectAllChildren(event.currentTarget)}
       >
         {hit.mark.quote}
@@ -786,7 +752,6 @@ function Marked({ text, marks }: { text: string; marks: ParagraphMark[] }) {
   );
 }
 
-/** A digest's links under its text, each a reader item of its own. */
 function IssueLinks({ detail }: { detail: ReadingDetail }) {
   const navigate = useNavigate();
   const links = detail.item.links ?? [];
@@ -817,7 +782,6 @@ function IssueLinks({ detail }: { detail: ReadingDetail }) {
   );
 }
 
-/** The sender's own layout: the email's HTML through the reader's sandboxed frame. */
 function OriginalLayout({
   threadId,
   messageId,
@@ -866,11 +830,6 @@ function OriginalLayout({
   );
 }
 
-/**
- * Local engagement: opened once on arrival, then time read and how far,
- * every ten seconds while the page is visible and once on leaving. With
- * MXR_ACTIVITY=off the daemon records nothing.
- */
 function useEngagement(
   itemKey: string,
   column: React.RefObject<HTMLDivElement | null>,
@@ -880,8 +839,6 @@ function useEngagement(
   const since = useRef(Date.now());
   useEffect(() => {
     const node = column.current;
-    // A page that fits on screen counts as read only once it has been on
-    // screen for a while: opening it is not reading it.
     const fits = () => Boolean(node && node.scrollHeight <= node.clientHeight);
     const measure = () => {
       if (!node || fits()) return;

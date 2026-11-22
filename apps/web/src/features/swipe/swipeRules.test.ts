@@ -37,20 +37,17 @@ describe("swipe rules", () => {
     expect(releaseAt(SWIPE.flickDistance, SWIPE.flickVelocity, MAIL)).toBe("archive");
     expect(releaseAt(-SWIPE.flickDistance, -SWIPE.flickVelocity, MAIL)).toBe("snooze");
     expect(releaseAt(SWIPE.flickDistance - 1, 5, MAIL)).toBeNull();
-    // However hard the flick, trash needs the long throw.
     expect(releaseAt(SWIPE.long - 1, 10, MAIL)).toBe("archive");
   });
 
   it("gives a Waiting row done instead of archive, and no trash", () => {
     expect(pendingAt(SWIPE.long + 50, 0, WAITING)?.action).toBe("done");
     expect(releaseAt(SWIPE.long + 50, 0, WAITING)).toBe("done");
-    // Past the commit distance the row resists: nothing further waits there.
     expect(followDistance(SWIPE.commit + 100, WAITING)).toBeLessThan(SWIPE.commit + 100);
     expect(followDistance(SWIPE.commit + 100, MAIL)).toBe(SWIPE.commit + 100);
   });
 
   it.each([
-    // [dx, velocity px/ms, expected]
     [189, 0, "archive"],
     [190, 0, "trash"],
     [300, 0, "trash"],

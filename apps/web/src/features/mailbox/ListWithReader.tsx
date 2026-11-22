@@ -52,36 +52,22 @@ interface ListWithReaderProps extends Pick<
   | "rowGists"
   | "modeChips"
 > {
-  /** URL of the list; an open conversation lives at `${basePath}/<thread>`. */
   basePath: string;
   title: string;
-  /** The title as rendered, when it holds links (the desk's counts). `title` still names the list. */
   titleContent?: ReactNode;
-  /** One line saying what this list is for. */
   purpose?: ReactNode;
-  /** A count or short label above the title ("12 conversations"). */
   meta?: ReactNode;
   primary?: ReactNode;
   overflow?: readonly PageAction[];
-  /** Filters and notes between the page frame and the list. */
   toolbar?: ReactNode;
-  /** A line under the list, outside the listbox (the desk's everything-else links). */
   footer?: ReactNode;
   groups: MessageGroupView[];
   scopeKey: string;
   status: ListStatus;
-  /** Keep the list's query string when a conversation opens (search). */
   preserveSearch?: boolean;
-  /** What `g f` does instead of filtering the loaded rows (search opens its own filters). */
   onFilterKey?: () => void;
 }
 
-/**
- * A list of conversations with the reader beside it (or in its place on
- * narrow screens and in full-width mode). Mail lenses, the reply queue,
- * owed replies and snoozed mail all share this, so opening, closing and
- * stepping through conversations behaves the same everywhere.
- */
 export function ListWithReader({
   basePath,
   title,
@@ -112,7 +98,6 @@ export function ListWithReader({
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
-  // Leaving the list (another lens, another query) drops the filter.
   useEffect(() => {
     setFilter("");
     setFilterOpen(false);
@@ -133,12 +118,8 @@ export function ListWithReader({
   const hideList = threadOpen && (singlePane || readerLayout === "full");
   const split = threadOpen && !hideList;
   const panes = useMemo(() => ({ split, inset: READER_TOOLBAR_HEIGHT }), [split]);
-  // One saved width for every mail list, so Inbox, labels and search match.
   const pane = useSplitPane("mail-list", LIST_PANE_SIZE, { active: split });
 
-  // When the conversation closes by any route (Esc, back button), hand the
-  // keyboard back to the list. Keyed on the transition only: opening sets
-  // the reader pane before the route has changed.
   useEffect(() => {
     if (!threadOpen && useMailboxPane.getState().activePane === "reader") setActivePane("mailbox");
   }, [setActivePane, threadOpen]);
@@ -164,9 +145,6 @@ export function ListWithReader({
     (row: MessageRowView, options: { focusReader: boolean }) => open(row.thread_id, options),
     [open],
   );
-  // The open conversation left the list from somewhere other than the
-  // reader (the list's own archive, sync): open its neighbour. The list
-  // as loaded, not as filtered, so typing a filter never moves the reader.
   const loadedIds = useMemo(
     () => [...new Set(groups.flatMap((group) => group.rows.map((row) => row.thread_id)))],
     [groups],
@@ -189,7 +167,6 @@ export function ListWithReader({
   });
   const nav = useMemo<ReaderNav>(
     () => ({
-      // Step through what the list shows, so n/N respect the filter.
       threadIds: () => [
         ...new Set(visibleGroups.flatMap((group) => group.rows.map((row) => row.thread_id))),
       ],
@@ -363,10 +340,6 @@ export function ListWithReader({
   );
 }
 
-/**
- * TUI Ctrl-f: an instant filter over what is already loaded. Every word must
- * appear in the sender, subject or snippet; a full search is one key away.
- */
 function filterGroups(groups: MessageGroupView[], filter: string): MessageGroupView[] {
   const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return groups;

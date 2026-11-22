@@ -1,10 +1,3 @@
-/*
- * Test double for the daemon's ResolveTime, for component tests that can't
- * reach a daemon. It covers only the phrases the tests type: offsets
- * ("in 2 hours", "in 3 days"), the ambiguous "fri 3", and fixed day phrases.
- * The real grammar is tested in Rust (mxr_core::natural_time).
- */
-
 import type { ResolvedTime, TimeChoice } from "./api";
 
 const HOUR = 3_600_000;

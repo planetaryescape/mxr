@@ -51,9 +51,6 @@ function actionableWarnings(metadata: CalendarMetadataView): string[] {
   return (metadata.warnings ?? []).filter((w) => !w.toLowerCase().includes("could not be parsed"));
 }
 
-/// State-driven calendar-invite card rendered above the message body. Mirrors
-/// the TUI variant in `crates/tui/src/ui/message_view.rs` so both surfaces
-/// stay in lockstep — change one, change the other.
 export function InviteCard({
   messageId,
   metadata,

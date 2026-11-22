@@ -19,17 +19,10 @@ import type { MailTarget } from "../target";
 interface ReplyLaterDialogProps {
   target: MailTarget;
   subject: string;
-  /** On a Waiting on row: the time brings it back if nobody replies. */
   waiting: boolean;
   onClose: () => void;
 }
 
-/**
- * Reply later at a time, from the palette (`b` is Not now): type when ("tue 9", "in 2d"), see the
- * exact time before anything is stored, and the conversation comes back
- * then. On a thread you wrote last it comes back only if nobody replied.
- * Enter with no time is the plain reply later: the queue, now.
- */
 export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLaterDialogProps) {
   const time = useNaturalTime();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,7 +34,6 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
     return deferThreads([target.threadId], choice).then(() => undefined);
   }
 
-  /** No time: the untimed flag, as Later in the Not-now picker. */
   async function untimed(): Promise<void> {
     const messageId = target.primary?.id;
     if (!messageId) return;
@@ -61,9 +53,6 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
     >
       <DialogContent
         className="max-w-md grid-cols-[minmax(0,1fr)]"
-        // Capture, ahead of the field: its Enter would take the submission
-        // guard with nothing to store. With nothing typed, Enter is the
-        // plain reply later (not on Waiting on, which needs a time).
         onKeyDownCapture={(event) => {
           if (event.key !== "Enter" || waiting || time.value.trim()) return;
           if (!(event.target instanceof HTMLInputElement)) return;

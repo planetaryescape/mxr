@@ -19,30 +19,18 @@ interface CodeMirrorComposeEditorProps {
   onSave: () => void;
   onSend: () => void;
   onDiscard: () => void;
-  /** Close the composer chrome (`:q` / `:wq`); optional for hosts without
-   * a closable surface. */
   onClose?: () => void;
   autoFocus?: boolean;
-  /** Focus mode: a one-word mode indicator instead of the status row. */
   quiet?: boolean;
-  /** Inline replies grow with their text so the conversation scrolls. */
   inline?: boolean;
-  /** The selection in the body (UTF-16), or null when there is none. */
   onSelectionChange?: (selection: { from: number; to: number } | null) => void;
-  /** Ranges the model wrote that the user has not edited; drawn with a hairline. */
   modelSpans?: readonly ModelSpan[];
-  /** Changes when the editor should take focus back, e.g. after a proof closes. */
   focusNonce?: number;
   readOnly?: boolean;
 }
 
 const setModelSpans = StateEffect.define<readonly ModelSpan[]>();
 
-/**
- * Hairline marks under model-written text. The spans are owned by the
- * draft, which maps them through each edit; this only draws them, clipped
- * to the document so a stale range can't throw.
- */
 const modelSpanField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(marks, transaction) {
@@ -81,16 +69,13 @@ const tokenTheme = EditorView.theme({
     lineHeight: "1.65",
     fontFamily: "var(--font-mono)",
   },
-  // The whole writing area is the editor: a click anywhere in it lands the caret.
   ".cm-content": {
     minHeight: "100%",
     padding: "20px 20px 56px 20px",
     fontFamily: "var(--font-mono)",
     caretColor: "var(--foreground)",
   },
-  // Line numbers mean nothing in an email; the vim status line is enough.
   ".cm-gutters": { display: "none" },
-  // An email is prose, not code: a highlighted line made an empty body read as a one-line strip.
   ".cm-activeLine": { backgroundColor: "transparent" },
   ".cm-cursor": { borderLeftColor: "var(--foreground)" },
   "&.cm-focused": { outline: "none" },
@@ -106,8 +91,6 @@ const inlineTheme = EditorView.theme({
   ".cm-content": { minHeight: "320px" },
 });
 
-// The vim block cursor ships hard-coded red at the highest precedence; only
-// a theme at that precedence replaces it with the theme's own ink.
 const vimCursorTheme = Prec.highest(
   EditorView.theme({
     ".cm-fat-cursor": {
@@ -150,8 +133,6 @@ export function CodeMirrorComposeEditor({
 
   useEffect(() => {
     if (!hostRef.current) return;
-    // Only a real selection is reported; a caret moving is not a change the
-    // compose surface acts on, and reporting it re-renders the whole panel.
     let lastSelection: { from: number; to: number } | null = null;
     const reportSelection = (state: EditorState) => {
       const main = state.selection.main;
@@ -160,8 +141,6 @@ export function CodeMirrorComposeEditor({
       lastSelection = next;
       callbacksRef.current.onSelectionChange?.(next);
     };
-    // Ex commands live in a global vim registry; redefining on mount keeps
-    // them routed at the latest callbacks via callbacksRef.
     Vim.defineEx("write", "w", () => {
       callbacksRef.current.onSave();
     });
@@ -179,13 +158,9 @@ export function CodeMirrorComposeEditor({
       state: EditorState.create({
         doc: initialValueRef.current,
         extensions: [
-          // Ahead of vim, which takes Ctrl-Enter in insert mode: off macOS
-          // (Mod is Ctrl) the send key must still send.
           Prec.highest(
             EditorView.domEventHandlers({
               keydown: (event) => {
-                // Held send, save and discard chords run once; the keymap
-                // below never sees their repeats.
                 if (event.repeat && isComposeChord(event)) {
                   event.preventDefault();
                   return true;
@@ -199,7 +174,6 @@ export function CodeMirrorComposeEditor({
           ),
           basicSetup,
           markdown(),
-          // Ahead of vim(): between equal precedences the earlier theme wins.
           vimCursorTheme,
           vim(),
           tokenTheme,
@@ -270,14 +244,10 @@ export function CodeMirrorComposeEditor({
       });
   }, [editableLayout, readOnly]);
 
-  // Each change of `focusNonce` asks for the editor back (after a proof).
   useEffect(() => {
     if (focusNonce > 0) viewRef.current?.focus();
   }, [focusNonce]);
 
-  // The document and its marks change in one transaction. Marks installed
-  // first would be checked against the old document, where text that is
-  // only in the new one is out of range, and be dropped.
   const appliedSpans = useRef<readonly ModelSpan[] | undefined>(undefined);
   useEffect(() => {
     const view = viewRef.current;
@@ -297,7 +267,6 @@ export function CodeMirrorComposeEditor({
     <div className="relative flex h-full min-h-0 flex-col">
       <div ref={hostRef} className="min-h-0 flex-1" />
       {quiet ? (
-        // Focus mode: the mode as one small word, nothing else.
         <span
           aria-live="polite"
           data-testid="vim-mode"
@@ -318,8 +287,6 @@ export function CodeMirrorComposeEditor({
   );
 }
 
-/** The send chord (⌘Enter or Ctrl+Enter) without Alt. With Shift it is
- * send and archive, which the compose surface handles. */
 function isSendChord(event: KeyboardEvent): boolean {
   return composeCommandOf(event) === "requestSend" && !event.altKey;
 }

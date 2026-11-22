@@ -14,19 +14,11 @@ import { SENDER_MODES, type ModeId, type NotSure } from "./types";
 import { useTrustHint } from "./useTrustHint";
 import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/** An answer that moved mail somewhere a sender's mail can go: ask once. */
 interface PendingAsk {
   question: NotSure;
   mode: ModeId;
 }
 
-/**
- * "2 emails I wasn't sure about. Where should these go?" At most three a
- * day, chosen by the daemon: emails two of its rules disagreed about. `X`
- * on a row answers in the move picker, on the mode's `g` letter (blueprint
- * 35); keeping it where it is answers too. After a move to Messages,
- * Updates or Reading, one question: always for this sender?
- */
 export function NotSureSection({
   questions,
   heading,
@@ -36,9 +28,6 @@ export function NotSureSection({
   heading?: string;
   hint?: string;
 }) {
-  // Hidden while their answer is on its way. Once the daemon has stopped
-  // listing a question that was answered, it is forgotten, so an Undo that
-  // brings the question back shows it again.
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const settled = useRef(new Set<string>());
   useEffect(() => {
@@ -59,8 +48,6 @@ export function NotSureSection({
       { messageId: question.message_id, mode, sender, source: "not_sure" },
       { askInToast: false },
     ).then((outcome) => {
-      // A move that failed (the toast says why) answered nothing: the
-      // question comes back.
       if (!outcome) {
         setAnswered((current) => {
           const next = new Set(current);
@@ -69,11 +56,8 @@ export function NotSureSection({
         });
         return;
       }
-      // The answer is in and the lists have refreshed: from here the
-      // daemon's own list says whether the question is still open.
       settled.current.add(question.message_id);
       setAnswered((current) => new Set(current));
-      // Keeping it where it was moved nothing, so there is nothing to repeat.
       const moved = outcome.correction_id != null && outcome.from !== outcome.to;
       if (moved && !sender && SENDER_MODES.includes(mode)) {
         setAsk({ question, mode });
@@ -118,12 +102,7 @@ export function NotSureSection({
   );
 }
 
-/** The move picker's key, which answers a question now. */
 const MOVE_KEY = definedShortcut("modes.move");
-/**
- * Now's own verbs, which act on the question's email as on any Now row
- * (one verb per key, blueprint 35). The row owns its keys, so it runs them.
- */
 const NOW_KEYS: ReadonlyMap<string, (question: NotSure) => void> = new Map([
   [definedShortcut("now.done"), doneWithEmail],
   [
@@ -133,7 +112,6 @@ const NOW_KEYS: ReadonlyMap<string, (question: NotSure) => void> = new Map([
   ],
 ]);
 
-/** Done with the email where it is for now; only an answer settles the question. */
 function doneWithEmail(question: NotSure) {
   if (question.mode === "archive") {
     toast.info("Archive has no done: records stay filed.");
@@ -151,8 +129,6 @@ function NotSureRow({
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    // The row owns its keys, so it opens the move picker itself, as the
-    // answer (blueprint 35: Not-sure answers go through `X`).
     if (event.key === MOVE_KEY) {
       event.preventDefault();
       openMovePicker({
@@ -205,7 +181,6 @@ function NotSureRow({
   );
 }
 
-/** "Always for this sender?", once per answer: y or Enter, n or Esc. */
 function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
   const who = ask.question.sender_name || ask.question.sender_email;
   const yes = () => {

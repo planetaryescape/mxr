@@ -1,8 +1,3 @@
-/*
- * Text snippets, expanded in compose by typing ;name. Stored in the daemon
- * so the CLI and TUI share them.
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";

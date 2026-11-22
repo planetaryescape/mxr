@@ -50,20 +50,10 @@ import { PersonRow, ReadingRow, TodoRow, UpdatesRow } from "./NowRows";
 import { SectionHeading } from "@/components/SectionHeading";
 import { listMotions } from "@/features/modes/listMotions";
 
-/**
- * Now: the front page. At most ten things in four fixed sections (People,
- * Due soon, the latest Updates as one card, and an evening Reading pick),
- * capped and worded by the daemon (`GetNow`) so every client shows the same
- * Now. Acting on a row does it in that row's own mode: Enter opens it
- * there, `e` is done here.
- */
-/** The "and 8 more in Messages" link, inside the People eyebrow. */
 const MORE_LINK = "hover:text-text-1 hover:underline";
 
-/** How long a row folds after a pointer done (`--duration-fast`). */
 const FOLD_MS = 120;
 
-/** The lit item's reason for the status bar. The Updates digest has none of its own. */
 function reasonOf(item: NowItem | undefined): string | null {
   switch (item?.kind) {
     case "person":
@@ -77,7 +67,6 @@ function reasonOf(item: NowItem | undefined): string | null {
   }
 }
 
-/** The status strip for the lit item (`[[strip]]` in crates/keymap/keymap.toml). */
 function keysOf(item: NowItem | undefined): readonly string[] {
   switch (item?.kind) {
     case "person":
@@ -125,7 +114,6 @@ export function NowRoute() {
   );
 }
 
-/** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
   const headline = now && now.item_count > 0 ? now.headline : null;
   return (
@@ -146,20 +134,12 @@ function NowBody({ now }: { now: Now }) {
   const navigate = useNavigate();
   const hidden = useModeDone((s) => s.hidden);
   const items = useMemo(() => nowItems(now, hidden), [hidden, now]);
-  // Now is put to bed when it has no items (docs/blueprint/27). A Now still
-  // on its first run is sorting, not finished.
   const finished = useLowTide("now", !now.first_run.complete, items.length > 0, { daily: true });
-  // Every row, done or not: a row done with the pointer stays in the list while it folds.
   const everyItem = useMemo(() => nowItems(now, NONE_HIDDEN), [now]);
-  // In the URL, so coming back to Now (or a copied link) lands on the same row.
   const [cursorKey, setCursorKey] = useSearchParam("row");
   const [letGo, setLetGo] = useState(false);
-  // The row is found by its id, never by position, so a refetch that reorders
-  // the list keeps the lamp on the same row. A row that left falls to the first
-  // until `useAdvanceOnRemoval` moves it to the neighbour.
   const index = litIndex(items, cursorKey);
   const current: NowItem | undefined = items[index];
-  // Only a pointer fades the lamp or folds a row (D101): a key never animates.
   const via = useRef<LampVia>("key");
   const [folding, setFolding] = useState<ReadonlySet<string>>(new Set());
   const fold = useCallback((key: string) => {
@@ -175,7 +155,6 @@ function NowBody({ now }: { now: Now }) {
       FOLD_MS + 20,
     );
   }, []);
-  // A row done here leaves: the cursor takes the next one.
   const itemKeys = useMemo(() => items.map((item) => item.key), [items]);
   useAdvanceOnRemoval({
     ids: itemKeys,
@@ -188,16 +167,12 @@ function NowBody({ now }: { now: Now }) {
     listRef.current?.querySelector(`[data-focused="true"]`)?.scrollIntoView({ block: "nearest" });
   }, [current?.key]);
 
-  // The mode marks on each row, from the daemon's membership. Keyed on every
-  // row, hidden or not, so a done in flight doesn't refetch it.
   const threadIds = useMemo(
     () => everyItem.flatMap((item) => ("threadId" in item && item.threadId ? [item.threadId] : [])),
     [everyItem],
   );
   const memberships = useThreadModesMap(threadIds).data;
 
-  // "Each row comes from a mode" sits under the first row; letting go of the
-  // digest is explained when the cursor reaches its card.
   const firstWhy = items.find((item) => item.kind !== "updates");
   const fromMode = useHint("now", "now.from_mode", {
     ready: firstWhy !== undefined,
@@ -238,14 +213,10 @@ function NowBody({ now }: { now: Now }) {
     },
     [dismissFromMode, dismissLetGo, fold],
   );
-  // `r`, `a` and `f` answer or forward a person's conversation; the other
-  // rows are a to-do, a digest or a reading pick, which `o` opens first.
   const reply = useCallback((item: NowItem, mode: "single" | "all" | "forward" = "single") => {
     if (item.kind !== "person") return;
     useComposeUi.getState().openCompose(replyIntent(item.person.row.message_id, mode), "overlay");
   }, []);
-  // `t` on a person or the reading pick, as in the TUI: a to-do and an
-  // email are already one each on the other rows.
   const makeTodo = useCallback((item: NowItem) => {
     if (item.kind !== "person" && item.kind !== "reading") return;
     if (refuseWhileDaemonDown("add a to-do")) return;
@@ -273,8 +244,6 @@ function NowBody({ now }: { now: Now }) {
     },
     [setCursorKey],
   );
-  // `b`, Not now: a time snoozes the row's email; Later (a person's row
-  // only) is the untimed reply later. The digest card is many emails.
   const notNow = useCallback((item: NowItem) => {
     const subject = nowMoveSubject(item);
     if (!subject) {
@@ -305,13 +274,11 @@ function NowBody({ now }: { now: Now }) {
   };
   const litPerson = current?.kind === "person" ? current : null;
   const litSender = litPerson?.person.new_sender;
-  // The status bar says why the lit row is here; the row itself never grows a line.
   useLitReason(
     reasonOf(current),
     litSender ? NEW_SENDER_NOTE : null,
     current ? nowRowAccount(current) : undefined,
   );
-  // The status strip names the verbs of whatever is lit.
   usePageKeys(keysOf(current));
   useShortcutScope("now", true);
   useScopeController("now", {
@@ -473,10 +440,6 @@ function NowBody({ now }: { now: Now }) {
   );
 }
 
-/**
- * Nothing on Now. Before the first run finishes, the never-had-any line;
- * after it, the empty state with the low tide scene as its finishing moment.
- */
 function NowEmpty({ now, finished }: { now: Now; finished: boolean }) {
   if (!now.first_run.complete) {
     return (

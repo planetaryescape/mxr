@@ -1,10 +1,3 @@
-/*
- * Freshness over the bridge (`GetFreshness`): the newest arrival, each
- * account's sync health and the last arrivals with their modes. Fetched
- * at the rail's pace and refreshed live by the daemon's own events, so a
- * new message or a failed sync shows without polling faster.
- */
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
@@ -29,23 +22,19 @@ function freshnessQuery(account: string | null) {
     queryKey: [...freshnessKey, account ?? "all"],
     queryFn: () => fetchFreshness(account),
     staleTime: 15_000,
-    // The rail's interval: events carry the news, this only catches drift.
     refetchInterval: 60_000,
   };
 }
 
-/** Freshness for the account scope the user picked. */
 export function useFreshnessQuery() {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery(freshnessQuery(account));
 }
 
-/** Every account's freshness, for surfaces that list accounts. */
 export function useAllAccountsFreshness() {
   return useQuery(freshnessQuery(null));
 }
 
-/** Events after which the newest arrival or a sync state may have moved. */
 export function changesFreshness(event: DaemonEvent): boolean {
   switch (event.type) {
     case "NewMessages":
@@ -61,7 +50,6 @@ export function changesFreshness(event: DaemonEvent): boolean {
   }
 }
 
-/** Refetch freshness when the daemon says mail arrived or a sync ended. */
 export function useFreshnessLive(): void {
   const qc = useQueryClient();
   useDaemonEvents(

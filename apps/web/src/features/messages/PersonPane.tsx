@@ -33,13 +33,9 @@ import type { PendingAck } from "./useGotIt";
 export interface PersonPaneProps {
   page: PersonPage;
   topic: string | null;
-  /** Topics on this page still in Messages. */
   left: number;
-  /** Threads whose done is on its way: they fold out of the topics. */
   hidden: ReadonlySet<string>;
-  /** What a verb just moved to on this page, marked once. */
   arrival: Arrival | null;
-  /** The page shown is the previous topic's while this one loads. */
   loading: boolean;
   asSent: string | null;
   replyAll: boolean;
@@ -51,21 +47,14 @@ export interface PersonPaneProps {
   onReplyAllChange: (on: boolean) => void;
   onReply: () => void;
   onGotIt: () => void;
-  /** Got it gained focus or the pointer: its hint's moment of need. */
   onGotItFocus: () => void;
   onUndoGotIt: () => void;
   onDone: () => void;
   onTodo: () => void;
-  /** Hints anchored under the topic list and above the footer's verbs. */
   topicsHint?: React.ReactNode;
   gotItHint?: React.ReactNode;
 }
 
-/**
- * One person's page: how you know them, every topic with them (groups as
- * "with Ruth: …"), the selected topic as a conversation, and the reply box
- * at the bottom, already addressed.
- */
 export function PersonPane(props: PersonPaneProps) {
   const { page } = props;
   const row = page.row;
@@ -208,7 +197,6 @@ export function PersonPane(props: PersonPaneProps) {
                 >
                   <MessageSquareReply className="size-4 shrink-0" aria-hidden />
                   {draft ? (
-                    // The reply you left here, ready to carry on.
                     <span className="min-w-0 flex-1 truncate text-text-1">
                       <span className="font-medium text-signal">Draft:</span> {draft.text}
                     </span>
@@ -287,7 +275,6 @@ function FooterButton({
 }: {
   testId: string;
   onClick: () => void;
-  /** Focus or pointer arrived: about to be used. */
   onNeed?: () => void;
   disabled?: boolean;
   icon: React.ReactNode;
@@ -311,7 +298,6 @@ function FooterButton({
   );
 }
 
-/** "Same person? Samir Patel (2 addresses)": previewed, then merged on confirm. */
 function MergeLine({ suggestion }: { suggestion: MergeSuggestion }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [into, ...rest] = suggestion.addresses;

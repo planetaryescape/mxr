@@ -192,7 +192,6 @@ function cachePage(person: MessagesRow, requested: string | null, shown: string)
     personPage(person, shown),
   );
 }
-/** The query the real `/messages` and `/messages/$threadId` routes validate. */
 function validateMessagesSearch(search: Record<string, unknown>): MessagesSearch {
   return {
     person: optionalString(search.person),
@@ -251,7 +250,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Messages with a person who left a reply unsent on their second topic. */
 function withDraft() {
   const drafted = {
     ...row("person:a", [topic("a-first"), topic("a-drafted")]),
@@ -361,7 +359,6 @@ test("Done advances to the next person's current open topic, not their cached cl
   await screen.findByText("b-live");
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   await waitFor(() => expect(posts).toEqual([["a-live"], ["b-live"]]));
-  // Complete both real action requests without launching post-test refreshes.
   await act(async () => {
     done.resolve({ items: [] });
   });
@@ -529,7 +526,6 @@ test("a person Done took out of the list reopens on their own topic when undo br
     if (url.pathname.endsWith("/people/page")) {
       const requested = url.searchParams.get("topic");
       asked.push(requested);
-      // The bridge refuses a topic that isn't a thread id, as the real one does.
       if (requested?.startsWith("person:")) {
         throw new BridgeRequestError(400, "topic: UUID parsing failed");
       }
@@ -544,11 +540,8 @@ test("a person Done took out of the list reopens on their own topic when undo br
   await waitFor(() =>
     expect(router.state.location.search).toMatchObject({ person: b.id, topic: "b-live" }),
   );
-  // Done's own refresh lands first: a has left the list.
   await waitFor(() => expect(screen.queryByText(a.id)).toBeNull());
   await waitFor(() => expect(useUndo.getState().lastMutationId).toBe("synthetic-done"));
-  // Undo's list refresh brings a back before the undo's own follow-up runs,
-  // so the list watcher reopens a first (the order the e2e run caught).
   await act(async () => {
     client.setQueryData(listKey, listOf(a, b));
   });
@@ -559,8 +552,6 @@ test("a person Done took out of the list reopens on their own topic when undo br
   await act(async () => {
     expect(await useUndo.getState().lastUndo?.()).toBe(true);
   });
-  // Already looking at a: the same "Undone" as when the undo itself reopens it,
-  // not a "Restored" toast offering to open what's on screen.
   expect(success).toHaveBeenCalledWith("Undone");
   expect(info).not.toHaveBeenCalled();
   await waitFor(() =>
@@ -722,7 +713,6 @@ test("a filter change keeps the list but hides the count and empty line until it
       expect.stringMatching(/unread=true/),
     ),
   );
-  // The previous filter's rows stay, but no count or empty line describes them.
   expect(screen.getByTestId("listed-row").textContent).toBe("person:a");
   expect(screen.queryByText(/shown ·/)).toBeNull();
 
@@ -853,7 +843,6 @@ test("g f below the split reveals the people list before focusing the filter lin
     throw new Error(`Unexpected synthetic request: ${path}`);
   });
   await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
-  // The person's page covers the list on a phone.
   expect(await screen.findByTestId("shown-topic")).toBeTruthy();
 
   act(() => {
@@ -913,12 +902,10 @@ test("Esc after p brings focus back from the person page to Messages", async () 
 
   act(() => expect(runCommand("messages", "escape")).toBe(true));
 
-  // Enter now opens the lit person instead of pressing the topic picker.
   expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
 });
 
 test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {
-  // Four people still owe a reply; none is unread, so the filtered view is empty.
   const empty = listWith({
     your_turn: [],
     row_count: 4,
@@ -976,6 +963,5 @@ test("filtering from a conversation's path keeps that conversation open", async 
   expect(router.state.location.search).toEqual(
     expect.objectContaining({ person: "person:a", topic: "a-live", turn: "mine" }),
   );
-  // Once the filtered answer lands, the same conversation is open.
   expect((await screen.findByTestId("shown-topic")).textContent).toBe("a-live");
 });

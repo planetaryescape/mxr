@@ -1,9 +1,3 @@
-/*
- * The Activity table shows what happened in words. The raw action code
- * ("mail.archive") stays in the cell's title and in the prefix filter, so
- * nothing is lost; it just isn't the first thing a person has to decode.
- */
-
 const WORDS: Record<string, string> = {
   "mail.archive": "Archived",
   "mail.trash": "Moved to Trash",
@@ -47,7 +41,6 @@ const WORDS: Record<string, string> = {
   "messages.got_it": "Marked a conversation as handled",
 };
 
-/** An action code as a short sentence; codes without a known wording become one mechanically. */
 export function describeAction(action: string): string {
   const known = WORDS[action];
   if (known) return known;
@@ -55,11 +48,6 @@ export function describeAction(action: string): string {
   return plain ? plain.charAt(0).toUpperCase() + plain.slice(1) : action;
 }
 
-/**
- * Whether recording is paused, from the newest pause or resume marker (they
- * are written even while paused, so the log always knows). A pause with an
- * end time that has passed is over.
- */
 export function isRecordingPaused(
   marker: { action: string; context: Record<string, unknown> | null } | undefined,
   now: number,

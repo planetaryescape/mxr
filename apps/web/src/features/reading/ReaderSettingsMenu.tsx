@@ -21,7 +21,6 @@ const SPACINGS: { id: Spacing; label: string }[] = [
   { id: "airy", label: "Airy" },
 ];
 
-/** Theme, typeface, size and line spacing for the reading column; kept in this browser. */
 export function ReaderSettingsMenu() {
   const display = useUiPrefs((state) => state.readingDisplay);
   const set = useUiPrefs((state) => state.setReadingDisplay);

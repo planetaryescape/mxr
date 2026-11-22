@@ -1,12 +1,3 @@
-/*
- * The swipe gesture on list rows, for touch only. One set of listeners on
- * the list (delegation), not per row, and every callback is read through a
- * ref: the list and its virtualizer never see a new function, and nothing
- * re-renders while a finger moves. The row follows the finger through its
- * own style; only the layer under it (colour, icon, words) re-renders, and
- * only when the pending action changes.
- */
-
 import { Archive, Bookmark, Check, Clock, Trash2, type LucideIcon } from "lucide-react";
 import {
   forwardRef,
@@ -63,10 +54,6 @@ const TONES: Record<SwipeAction, string> = {
   letgo: "swipe-tone-primary",
 };
 
-/**
- * What shows under a moving row. Portaled into a host placed just before the
- * row, sized to it, so the row (later in the DOM, positioned) paints on top.
- */
 export const SwipeLayer = forwardRef<SwipeLayerHandle>(function SwipeLayer(_props, ref) {
   const [state, setState] = useState<{ host: HTMLElement; pending: Pending | null } | null>(null);
   const hostRef = useRef<HTMLElement | null>(null);
@@ -146,10 +133,6 @@ interface Gesture {
   background: { color: string; image: string };
 }
 
-/**
- * Swipe rows inside `container`. `rowSelector` finds the row under a touch;
- * `resolve` says what that row does (null: not swipeable).
- */
 export function useRowSwipe(
   container: RefObject<HTMLElement | null>,
   options: {
@@ -157,7 +140,6 @@ export function useRowSwipe(
     resolve: (row: HTMLElement) => SwipeTarget | null;
     layer: RefObject<SwipeLayerHandle | null>;
   },
-  /** False while the list isn't rendered (loading, empty). */
   enabled = true,
 ): void {
   const optionsRef = useRef(options);
@@ -212,7 +194,6 @@ export function useRowSwipe(
           return;
         }
         if (active.axis === "pending") return;
-        // Opaque while it moves, keeping any selection tint on top.
         const tint = getComputedStyle(active.row).backgroundColor;
         active.row.style.backgroundImage = `linear-gradient(${tint}, ${tint})`;
         active.row.style.backgroundColor = "var(--background)";
@@ -255,19 +236,16 @@ export function useRowSwipe(
         window.setTimeout(settle, 200);
         return;
       }
-      // Later keeps the item where it is; let go and the mail verbs take it.
       const leaves = action !== "snooze" && action !== "sweep" && action !== "later";
       if (!leaves || reduced()) {
         settle();
         active.target.commit(action);
         return;
       }
-      // Off it goes in the direction of the throw, then the list takes it.
       row.style.transition = "transform var(--motion-duration-fast) var(--ease-out)";
       row.style.transform = `translate3d(${Math.sign(active.dx) * row.offsetWidth}px, 0, 0)`;
       window.setTimeout(() => {
         active.target.commit(action);
-        // If the row is still here (a failed or confirmed action), put it back.
         window.setTimeout(settle, 250);
       }, 120);
     };

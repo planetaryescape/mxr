@@ -56,7 +56,6 @@ describe("paging a place", () => {
     const first = page([bundle("a@x", []), bundle("b@x", [])], 3);
     expect(nextBundleOffset([first])).toBe(2);
     expect(nextBundleOffset([first, page([bundle("c@x", [])], 3)])).toBeUndefined();
-    // An empty page ends paging even if the total says otherwise.
     expect(nextBundleOffset([first, page([], 5)])).toBeUndefined();
   });
 

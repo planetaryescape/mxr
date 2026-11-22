@@ -57,7 +57,6 @@ function when(delivery: Delivery): string | null {
   return `${delivery.delivered_at ? "Delivered" : "Expected"} ${dayFormat.format(date)}`;
 }
 
-/** Carrier names come from the heuristic in lower case ("ups"). */
 function carrierName(carrier: string): string {
   return carrier.length <= 4 ? carrier.toUpperCase() : carrier[0]!.toUpperCase() + carrier.slice(1);
 }

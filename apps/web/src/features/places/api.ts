@@ -1,9 +1,3 @@
-/*
- * Reading and Paper trail over the bridge. Shapes come from the daemon's
- * OpenAPI schema; every rule (kinds, reasons, the sweep's selection) lives
- * in the daemon, so the web only asks and shows.
- */
-
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
 
@@ -21,22 +15,18 @@ export type MessageKindResponse = Extract<Schemas["ResponseData"], { kind: "Mess
 export type SenderKindSet = Extract<Schemas["ResponseData"], { kind: "SenderKindSet" }>;
 export type MessagesPinned = Extract<Schemas["ResponseData"], { kind: "MessagesPinned" }>;
 
-/** URL segment for each place, as the bridge and the app routes spell it. */
 export const PLACE_SLUG: Record<Place, "reading" | "paper-trail"> = {
   reading: "reading",
   paper_trail: "paper-trail",
 };
 
-/** Senders per page of a place; "Load more" fetches the next page. */
 export const PLACE_PAGE_SIZE = 50;
 
 export interface PlacePageRequest {
-  /** Omitted: every account (or the one `sender` belongs to). */
   account?: string | null;
   sender?: string;
   offset?: number;
   messagesPerBundle: number;
-  /** Skip this many of each bundle's messages (pinned first, then newest). */
   messageOffset?: number;
 }
 
@@ -54,22 +44,14 @@ export function fetchPlace(place: Place, request: PlacePageRequest): Promise<Pla
 
 export interface SweepScope {
   place: Place;
-  /** Omitted: every account (the app's scope decides). */
   accountId?: string | null;
-  /** Omitted: the whole place. */
   senderEmail?: string;
 }
 
-/** The dry run: what a sweep would archive, and the token to commit it. */
 export function previewSweep(scope: SweepScope): Promise<PlaceSwept> {
   return postSweep(scope, { dry_run: true });
 }
 
-/**
- * The sweep itself: archives exactly what the preview behind `previewToken`
- * listed that is still here and unpinned. The daemon refuses an expired or
- * used token, or one from another scope.
- */
 export function commitSweep(scope: SweepScope, previewToken: string): Promise<PlaceSwept> {
   return postSweep(scope, { dry_run: false, preview_token: previewToken });
 }
@@ -116,7 +98,6 @@ function fetchMessageKind(messageId: string): Promise<MessageKindResponse> {
   );
 }
 
-/** Shared by the reader's "why here" line and its Move sender command. */
 export function messageKindQuery(messageId: string) {
   return {
     queryKey: messageKindKey(messageId),

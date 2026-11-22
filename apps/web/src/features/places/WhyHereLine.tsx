@@ -11,11 +11,6 @@ const ICONS: Partial<Record<SenderKind, typeof Newspaper>> = {
   screened_out: ShieldOff,
 };
 
-/**
- * In the reader, for mail that isn't from a person: which place it belongs
- * to and why, with the way to move the sender. Sits where reading ends,
- * so a late answer never shifts the conversation above it.
- */
 export function WhyHereLine({
   messageId,
   senderLabel,

@@ -35,7 +35,6 @@ import { useHeldPending } from "@/hooks/useDelayedPending";
 
 type Tab = "queue" | "decisions";
 
-/** The lit row's choice, a letter in both clients (blueprint 35, "Pick"). */
 const DECISIONS: {
   disposition: ScreenerDisposition;
   label: string;
@@ -59,14 +58,10 @@ const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {
 export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
   const [tab, setTab] = useState<Tab>("queue");
   const [accountId, setAccountId] = useState<string | null>(null);
-  // The app's account scope, so the desk's screener count and this queue
-  // are the same account's.
   const scope = useUiPrefs((s) => s.accountScope);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountsHeld = useHeldPending(accounts.isPending);
   const accountList = accounts.data?.accounts ?? [];
-  // The user's pick, else the account a link named, else the app's scope,
-  // else the first account.
   const activeAccountId = accountId ?? linked ?? scope ?? accountList[0]?.account_id ?? null;
   const account = accountList.find((item) => item.account_id === activeAccountId);
 
@@ -172,8 +167,6 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
     decide.mutate({ entry, disposition });
   };
 
-  // The keys live in the action registry (features/screener/actions.ts);
-  // this view supplies what they do while the queue is on screen.
   useShortcutScope("screener", rows.length > 0);
   useScopeController("screener", {
     allow: () => decideFocused("allow"),

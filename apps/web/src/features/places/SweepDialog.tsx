@@ -17,10 +17,6 @@ import { previewSweep, type SweepScope } from "./api";
 import { bundleSender, sweepConfirmLabel, sweepNote, sweepTitle } from "./placeCopy";
 import { runSweep } from "./sweep";
 
-/**
- * The sweep preview. Its numbers are the daemon's dry run of the very
- * request the confirm button sends, so what you confirm is what runs.
- */
 export function SweepDialog({
   scope,
   senderLabel,
@@ -40,8 +36,6 @@ export function SweepDialog({
   });
   const data = preview.data?.preview;
   const senders = data?.senders ?? [];
-  // `A` sits next to `S`: a slip to the whole place followed by Enter must
-  // not archive it, so that sweep opens on Cancel and takes Tab, Enter.
   const wholePlace = !scope.senderEmail;
   return (
     <AlertDialog open onOpenChange={(open) => !open && onClose()}>
@@ -87,7 +81,6 @@ export function SweepDialog({
               className="grid gap-0.5 border-l border-border pl-3 text-muted-foreground"
             >
               {data.sample_subjects.map((subject, index) => (
-                // Subjects can repeat (a weekly receipt); position keeps them apart.
                 // oxlint-disable-next-line react/no-array-index-key
                 <li key={`${index}-${subject}`} className="truncate">
                   {subject || "(no subject)"}

@@ -1,11 +1,3 @@
-/*
- * The model mark under the message box, as a menu: which model the
- * assistant uses now and where it runs (D136), and the choices. A choice
- * that can't be used yet stays in the list, disabled, with what to do about
- * it; the daemon decides, so a client never offers what it would refuse.
- * The choice applies to every conversation, from the next message.
- */
-
 import { Check, ChevronDown } from "lucide-react";
 
 import { assistantToast } from "./assistantToast";
@@ -21,14 +13,10 @@ export function ModelMenu() {
   const availability = useAvailability().data;
   const models = useModels().data;
   const pickModel = usePickModel();
-  // An older daemon has no picker: the plain mark stays.
   if (!models) return <PlainMark />;
 
   const current = models.choices.find((choice) => choice.id === models.current);
   const name = current?.label ?? availability?.model ?? models.current ?? null;
-  // Where it runs comes from the same choice as its name, so the two can't
-  // disagree while the availability behind them is being refreshed. A model
-  // set by hand in config.toml isn't in the list: availability says.
   const leavesMachine = current ? current.cloud : availability?.leaves_machine;
   const modelId = current?.id ?? availability?.model;
   const where = modelId && leavesMachine !== undefined ? (leavesMachine ? "cloud" : "local") : null;
@@ -95,7 +83,6 @@ export function ModelMenu() {
   );
 }
 
-/** The model and where it runs, said once, when there is no picker. */
 function PlainMark() {
   const data = useAvailability().data;
   if (!data?.available || !data.model) return null;

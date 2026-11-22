@@ -1,11 +1,3 @@
-/*
- * Where the assistant sits: a resizable pane beside the whole app, so it
- * stays put as you move between pages, or an overlay drawer on narrow
- * windows. Closed until opened. The pane and its handle stay mounted and
- * parked while closed (app.css), as the mail list's reader does:
- * registering a panel with the library on open reads layout mid-commit.
- */
-
 import { lazy, Suspense, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -25,7 +17,6 @@ const PANE_SIZE: SidePaneSize = {
   maxSize: "720px",
 };
 
-/** Slides in for a pointer only; a key opens it at once (D134). Reports when the slide is over. */
 function Arrival({
   via,
   onSettled,
@@ -44,7 +35,6 @@ function Arrival({
         via === "pointer" && "assistant-arrive",
         className,
       )}
-      // Children animate too (the live dot); only this wrapper's own slide ends it.
       onAnimationEnd={(event) => {
         if (event.target === event.currentTarget) onSettled();
       }}
@@ -59,11 +49,9 @@ export function AssistantSplit({ children }: { children: ReactNode }) {
   const setOpen = useAssistantUi((s) => s.setOpen);
   const via = useAssistantUi((s) => s.via);
   const settle = useAssistantUi((s) => s.settle);
-  // Where list and reader stop sharing the screen, the assistant overlays it.
   const drawer = useMediaQuery(SINGLE_PANE_QUERY);
   const beside = open && !drawer;
   const pane = useSplitPane("assistant", PANE_SIZE, { active: beside });
-  // Load the sidebar's code on first open, then keep it.
   const [loaded, setLoaded] = useState(open);
   if (open && !loaded) setLoaded(true);
 

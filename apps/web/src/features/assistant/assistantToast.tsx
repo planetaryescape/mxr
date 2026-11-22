@@ -1,10 +1,3 @@
-/*
- * The assistant's toasts wear its glyph, the one in the top bar and the
- * panel header (docs/blueprint/29), so a toast says who spoke. Sonner's
- * `icon` replaces the status icon only: an error keeps its colour, and
- * the one-at-a-time and timing rules stay the Toaster's (D140).
- */
-
 import { CircleDot } from "lucide-react";
 import { toast, type ExternalToast } from "sonner";
 

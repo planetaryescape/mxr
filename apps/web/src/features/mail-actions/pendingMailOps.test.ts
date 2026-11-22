@@ -47,7 +47,6 @@ const SPAM: LensIdentity = { kind: "spam" };
 const WORK: LensIdentity = { kind: "label", labelName: "Work" };
 const RECEIPTS: LensIdentity = { kind: "label", labelName: "Receipts" };
 
-/** Ids left visible after projecting `ops` onto rows a, b in `lens`. */
 function visible(ops: PendingMailOp[], lens: LensIdentity): string[] {
   return projectRows([row("a"), row("b")], ops, lens).map((item) => item.id);
 }

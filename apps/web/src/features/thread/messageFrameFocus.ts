@@ -1,15 +1,3 @@
-/**
- * The page side of keyboard focus for a sandboxed message frame.
- *
- * WebKit (Safari, the macOS desktop app's WKWebView) runs no event listeners
- * inside a frame sandboxed without `allow-scripts`, not even ones the page
- * attached. Once a click puts focus in the message, keys go to the frame and
- * never reach the app's dispatcher. So focus goes back to the page right
- * after a click lands in the frame, and ⌘C, which the page now receives,
- * copies the text selected in the message.
- */
-
-/** The frame whose selection ⌘C copies while the page has none of its own. */
 let selectionFrame: HTMLIFrameElement | null = null;
 
 export function returnFocusFromFrame(frame: HTMLIFrameElement, onReturn?: () => void): () => void {
@@ -25,8 +13,6 @@ export function returnFocusFromFrame(frame: HTMLIFrameElement, onReturn?: () => 
     timer = view.setTimeout(() => {
       if (doc.activeElement !== frame) return;
       selectionFrame = frame;
-      // Tab reached a link in the message: leave it there so the link can be
-      // followed from the keyboard.
       const inner = frame.contentDocument?.activeElement;
       if (inner && inner !== frame.contentDocument?.body) return;
       onReturn?.();

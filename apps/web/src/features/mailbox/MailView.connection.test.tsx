@@ -177,9 +177,6 @@ beforeEach(() => {
       const requestUrl = input;
       const path = new URL(requestUrl).pathname;
       if (path === "/api/v1/admin/status") {
-        // Hold only the first probe. A later one (the backoff retry) held the
-        // same way would never settle, and every probe after it would wait on
-        // it, so recovery could never be seen.
         if (daemonDown && holdProbe) {
           holdProbe = false;
           return new Promise<Response>((resolve) => {
@@ -210,7 +207,6 @@ describe("cold mailbox connection state", () => {
     renderInbox();
 
     await waitForPausedColdQueries();
-    // Query state can pause before React finishes the minimum skeleton display.
     expect(await screen.findByText("mxr isn't running", {}, { timeout: 5_000 })).toBeVisible();
     expect(screen.getByText(/nothing from this page was loaded/i)).toBeVisible();
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();

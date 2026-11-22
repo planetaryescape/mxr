@@ -1,14 +1,3 @@
-/*
- * Recipient field for compose (To / Cc / Bcc).
- *
- * Renders the comma-joined address string as inline chips with a pending-token
- * input and a contacts autocomplete dropdown. The comma-joined string stays the
- * single source of truth (see ComposeRoute draftFingerprint): chips are a pure
- * render of `splitAddresses(value)` and every commit/removal rebuilds the string
- * via `join(", ")`. The component never calls `onChange` on mount, so loading an
- * existing draft does not mark it dirty.
- */
-
 import { useQuery } from "@tanstack/react-query";
 import emailAddresses from "email-addresses";
 import { X } from "lucide-react";
@@ -36,9 +25,7 @@ interface RecipientFieldProps {
   value: string;
   onChange: (value: string) => void;
   inputRef?: Ref<HTMLInputElement>;
-  /** Optional controls rendered at the trailing edge of the row (e.g. Cc/Bcc toggles). */
   trailing?: ReactNode;
-  /** Fired when the address input loses focus (after any dangling token commits). */
   onBlur?: () => void;
 }
 
@@ -91,8 +78,6 @@ export function RecipientField({
   function addToken(token: string) {
     const trimmed = token.trim();
     if (!trimmed) return;
-    // RFC 5322 parse normalises "Name <addr>" forms; unparseable input is
-    // kept verbatim and rendered as an invalid chip.
     const normalized = normalizeAddress(trimmed) ?? trimmed;
     const exists = chips.some((chip) => chip.toLowerCase() === normalized.toLowerCase());
     onChange((exists ? chips : [...chips, normalized]).join(", "));
@@ -131,7 +116,6 @@ export function RecipientField({
         addToken(pending);
         return;
       case "Tab":
-        // Commit the in-progress token but let focus advance normally.
         if (pending.trim()) commit();
         return;
       case "Backspace":
@@ -191,7 +175,6 @@ export function RecipientField({
               "focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/30",
             )}
             onMouseDown={(event) => {
-              // Clicking blank space focuses the input without stealing chip clicks.
               if (event.target === event.currentTarget) innerRef.current?.focus();
             }}
           >
@@ -255,7 +238,6 @@ export function RecipientField({
                 setFocused(true);
               }}
               onBlur={() => {
-                // Commit a dangling token so addresses are not silently dropped.
                 if (pending.trim()) addToken(pending);
                 blurTimer.current = setTimeout(() => setFocused(false), 120);
                 onBlur?.();
@@ -314,10 +296,6 @@ function isValidAddress(value: string): boolean {
   return emailAddresses.parseOneAddress(value) !== null;
 }
 
-/** RFC 5322 parse → canonical chip text ("Name <email>" or bare email).
- * Returns null when the input isn't a parseable single mailbox. Names that
- * contain a comma fall back to the bare address — the comma-joined field
- * value is the source of truth and must stay splittable on commas. */
 function normalizeAddress(value: string): string | null {
   const parsed = emailAddresses.parseOneAddress(value);
   if (!parsed || parsed.type !== "mailbox") return null;
@@ -325,9 +303,6 @@ function normalizeAddress(value: string): string | null {
   return parsed.address;
 }
 
-/** Pasted text → chip tokens. Tries a full RFC 5322 address-list parse first
- * (handles quoted names, groups); falls back to separator splitting so partial
- * garbage still lands as editable chips. */
 function parseAddressTokens(text: string): string[] {
   const parsed = emailAddresses.parseAddressList(text.replace(/[;\n]+/g, ","));
   if (parsed) {

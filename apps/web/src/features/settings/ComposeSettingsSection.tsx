@@ -1,8 +1,3 @@
-/*
- * Compose preferences: editor, undo-send window, default sending account
- * and signature blocks (stored in the daemon, shared with CLI compose).
- */
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";

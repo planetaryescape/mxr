@@ -82,7 +82,6 @@ describe("Now's rows", () => {
     const hidden: HiddenByMode = {
       ...NONE_HIDDEN,
       messages: new Set(["t1"]),
-      // Done in another mode doesn't hide the row here: t2 is a person row.
       todo: new Set(["t3", "t2"]),
       updates: new Set(["u1"]),
     };
@@ -101,7 +100,6 @@ describe("Now's rows", () => {
     expect(itemTarget(maya!)).toEqual({ to: "/messages/t1" });
     expect(itemTarget(due!)).toEqual({ to: "/todo/t3", search: { row: "a" } });
     expect(itemTarget(dueWithoutEmail!)).toEqual({ to: "/todo", search: { row: "b" } });
-    // A card without lines can only open Updates.
     expect(itemTarget(card!)).toEqual({ to: "/updates" });
     expect(itemTarget(pick!)).toEqual({
       to: "/reading/item/r-m%3A0",

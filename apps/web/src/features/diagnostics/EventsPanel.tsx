@@ -195,8 +195,6 @@ export function EventsPanel() {
             </thead>
             <tbody>
               {entries.map((entry, index) => {
-                // Identical events in the same second exist (repeated sync), so the
-                // row position disambiguates.
                 const key = `${eventEntryKey(entry)}|${page * pageSize + index}`;
                 const isOpen = expanded === key;
                 return (

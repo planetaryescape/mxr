@@ -1,9 +1,3 @@
-/*
- * Split a plain-text body into what the sender wrote, what they quoted,
- * and their signature, so the reader can fold the last two (TUI reader
- * mode and `S`). Pure string work; no DOM.
- */
-
 export type SegmentKind = "text" | "quote" | "signature";
 
 export interface Segment {
@@ -12,7 +6,6 @@ export interface Segment {
   lines: number;
 }
 
-/** Quotes shorter than this stay inline; longer ones fold. Matches the TUI. */
 export const FOLD_QUOTE_MIN_LINES = 4;
 
 const ATTRIBUTION = [
@@ -25,15 +18,12 @@ const ORIGINAL_MESSAGE = /^-{2,}\s*(Original Message|Forwarded message)\s*-{2,}\
 const OUTLOOK_FROM = /^\*?From:\*?\s+\S/;
 const OUTLOOK_FIELD = /^\*?(Sent|Date|To|Cc|Subject):\*?\s/;
 const SIGNATURE = /^-- ?$/;
-// RFC 3676 asks for four lines; allow some slack, but a long run after
-// "--" is body text using it as a divider, not a signature to fold away.
 const SIGNATURE_MAX_LINES = 10;
 
 function isQuoted(line: string): boolean {
   return /^\s*>/.test(line);
 }
 
-/** An attribution may wrap across two lines ("On Mon, … at 10:02 AM,\nAda <a@b> wrote:"). */
 function attributionLength(lines: string[], index: number): number {
   const line = lines[index]?.trim() ?? "";
   if (ATTRIBUTION.some((pattern) => pattern.test(line))) return 1;
@@ -74,8 +64,6 @@ export function splitMessageText(input: string): Segment[] {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
 
-    // Everything after a quote attribution or an Outlook/forward header is
-    // the quoted conversation (top-posting), however it is formatted.
     const attribution = attributionLength(lines, index);
     if (attribution > 0 || ORIGINAL_MESSAGE.test(line.trim()) || isOutlookHeader(lines, index)) {
       flush();
@@ -93,7 +81,6 @@ export function splitMessageText(input: string): Segment[] {
 
     const quoted = isQuoted(line);
     if (kind === "signature") {
-      // A signature ends where quoted text starts.
       if (quoted) {
         flush();
         kind = "quote";
@@ -103,7 +90,6 @@ export function splitMessageText(input: string): Segment[] {
     }
     const next: SegmentKind = quoted ? "quote" : "text";
     if (next !== kind) {
-      // Blank lines inside a quote block belong to it.
       if (kind === "quote" && line.trim() === "" && isQuoted(lines[index + 1] ?? "")) {
         buffer.push(line);
         continue;
@@ -115,7 +101,6 @@ export function splitMessageText(input: string): Segment[] {
   }
   flush();
 
-  // Short quotes read better inline than folded.
   for (const segment of segments) {
     if (
       segment.kind === "quote" &&
@@ -128,7 +113,6 @@ export function splitMessageText(input: string): Segment[] {
   return segments;
 }
 
-/** Non-blank lines from `start` until quoted text or the end. */
 function signatureLength(lines: string[], start: number): number {
   let count = 0;
   for (let index = start; index < lines.length; index += 1) {
@@ -148,7 +132,6 @@ function startsWithAttribution(text: string): boolean {
   );
 }
 
-/** Merge adjacent text segments after the short-quote pass. */
 export function normalizeSegments(segments: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const segment of segments) {

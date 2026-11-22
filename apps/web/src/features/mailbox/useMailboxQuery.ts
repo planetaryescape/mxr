@@ -11,14 +11,8 @@ export function useShellQuery() {
   return useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 30_000 });
 }
 
-/**
- * Paged rows for one lens, honouring the account scope and list mode. The
- * cache keeps TanStack's `{pages, pageParams}` shape; optimistic changes are
- * projected at render time (see pendingMailOps), never written into it.
- */
 export function useMailboxQuery(lens: MailLens | null) {
   const scope = useUiPrefs((s) => s.accountScope);
-  // A label listed from every account opens in its own account.
   const account = lens?.accountId ?? scope;
   const view = useUiPrefs((s) => s.listMode);
   const params = lens ? { ...lens.params, view, limit: MAILBOX_PAGE_SIZE, account } : null;
@@ -35,7 +29,6 @@ export function useMailboxQuery(lens: MailLens | null) {
     enabled: params !== null,
     staleTime: 10_000,
     placeholderData: (previous, previousQuery) =>
-      // Keep rows on screen while the mode or scope changes within a lens.
       previousQuery?.queryKey[1] &&
       (previousQuery.queryKey[1] as { lens_kind?: string; label_id?: string }).lens_kind ===
         params?.lens_kind &&
@@ -45,10 +38,6 @@ export function useMailboxQuery(lens: MailLens | null) {
   });
 }
 
-/**
- * Join pages into one grouped list. Thread views dedupe by thread: a busy
- * conversation can surface on two pages as new mail shifts the offsets.
- */
 export function mergeMailboxPages(
   pages: MailboxResponse[],
   view: "threads" | "messages",

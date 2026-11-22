@@ -40,7 +40,6 @@ function plan(extra: Partial<AckPlan> = {}): AckPlan {
   };
 }
 
-/** A promise the test resolves when it chooses. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {

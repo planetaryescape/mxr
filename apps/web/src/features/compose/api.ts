@@ -37,7 +37,6 @@ export interface RuntimeAccount {
   send?: unknown;
   enabled: boolean;
   is_default: boolean;
-  /** Absent from a daemon older than docs/blueprint/33: such an account draws no mark. */
   identity?: components["schemas"]["AccountIdentityData"] | null;
   capabilities?: {
     supports_send?: boolean;
@@ -55,14 +54,10 @@ export type ComposeAttachmentUploadResponse =
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
-/** Stored draft intent added by the restore route beside its editable `kind`. */
 export type ComposeDraftIntent = components["schemas"]["DraftIntent"];
 
-/** Calendar invite response carried by an `invite_reply` compose session. */
 export type InviteReplyAction = "accept" | "tentative" | "decline";
 
-/** Kinds the bridge can open a compose session for. `invite_reply` is a
- * reply with an attached iCal REPLY; it is not a stored-draft intent. */
 export type ComposeSessionKind = ComposeKind | "invite_reply";
 
 export async function startComposeSession(
@@ -159,8 +154,6 @@ export async function fetchContactsAutocomplete(
   const data = await composeFetch<components["schemas"]["ContactsAutocompleteResponse"]>(
     `/api/v1/mail/contacts/autocomplete?${params.toString()}`,
   );
-  // Drop rows without an address here, at the boundary, so the dropdown only
-  // ever receives suggestions it can list and filter.
   return (data.contacts ?? []).filter((contact) => typeof contact.email === "string");
 }
 
@@ -170,8 +163,6 @@ export interface ComposeSendResponse {
   retry_at?: string | null;
   ok: boolean;
   draft_id?: string;
-  /** Local id of the message just sent (the daemon's send receipt). Needed
-   * to set a no-reply reminder; null when the daemon only acknowledged. */
   message_id?: string | null;
 }
 
@@ -240,11 +231,6 @@ export function suggestComposeCollaborators(
   );
 }
 
-/**
- * Store the open compose session as a local draft and schedule it, in one
- * call. The bridge parses the compose file the same way send does, so reply
- * headers, invite replies, attachments and the From alias carry over.
- */
 export function scheduleComposeSession(input: {
   draftPath: string;
   accountId: string;
@@ -264,7 +250,6 @@ export function scheduleComposeSession(input: {
   });
 }
 
-/** "Remind me if no reply by `remindAt`" for a message already sent. */
 export function setAutoReminder(
   sentMessageId: string,
   remindAt: Date,
@@ -287,21 +272,12 @@ export function cancelAutoReminder(
   });
 }
 
-/** Cancel a scheduled send. The stored draft itself is kept. */
 export function cancelScheduledSend(draftId: string): Promise<unknown> {
   return composeFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
     method: "DELETE",
   });
 }
 
-/**
- * Store the compose session as a draft.
- *
- * `draftId` is the stored draft this session was restored from, when it was
- * one — passing it updates that local draft in place before the provider copy.
- * Reusing the id is what stops an edit from becoming a second local row the
- * user then has to tell apart.
- */
 export function saveComposeSession(
   draftPath: string,
   accountId: string,

@@ -1,7 +1,3 @@
-/*
- * Analytics-related palette actions.
- */
-
 import { BarChart3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 

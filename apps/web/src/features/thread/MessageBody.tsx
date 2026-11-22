@@ -17,14 +17,8 @@ interface MessageBodyProps {
   html: string;
   allowRemoteImages?: boolean;
   theme?: EmailHtmlTheme;
-  /**
-   * The ask's quote. Marked by walking the sanitized frame's text nodes, so
-   * no markup is ever built from it.
-   */
   highlight?: string;
-  /** A link a to-do is about: marked where it sits, never opened. */
   highlightLink?: string;
-  /** Clicks inside the frame never reach the page; this reports them. */
   onInteract?: () => void;
 }
 
@@ -50,8 +44,6 @@ export function MessageBody({
   const darkScheme =
     appTheme === "system" ? !prefersLight : document.documentElement.dataset.scheme === "dark";
   const appPalette = readPalette();
-  // A message-local Dark choice must remain dark when the surrounding app is
-  // light. Reuse the product's Midnight tokens for that cross-scheme case.
   const palette = theme === "dark" && !darkScheme ? MIDNIGHT_EMAIL_PALETTE : appPalette;
   const rendered = useMemo(
     () => renderHtmlDocument(html, allowRemoteImages, theme, darkScheme, palette),
@@ -91,8 +83,6 @@ export function MessageBody({
     resizeTimeoutsRef.current = [];
   }
 
-  // The gist can land after the frame has loaded; mark (or unmark) then.
-  // Frames that never had a quote are left alone.
   const marked = useRef(false);
   useEffect(() => {
     if (!loaded || (!highlight && !marked.current)) return;
@@ -146,14 +136,10 @@ export function MessageBody({
       // app's dispatcher; the frame runs no scripts of its own. WebKit runs
       // none of these listeners: returnFocusFromFrame covers it.
       doc?.addEventListener("keydown", forwardKeydown);
-      // A click in the message makes the reader the active pane, or keys
-      // forwarded from here would act on the list.
       const interact = () => onInteractRef.current?.();
       doc?.addEventListener("mousedown", interact);
       doc?.addEventListener("focusin", interact);
-    } catch {
-      // The iframe still renders; fixed fallback height comes from resizeToContent.
-    }
+    } catch {}
     resizeTimeoutsRef.current = [
       window.setTimeout(resizeToContent, 100),
       window.setTimeout(resizeToContent, 500),
@@ -183,7 +169,6 @@ export function MessageBody({
 
 function forwardKeydown(event: KeyboardEvent) {
   if (event.metaKey || event.ctrlKey) {
-    // Leave copy (⌘C) and select-all inside the message alone.
     if (["c", "a", "x"].includes(event.key.toLowerCase())) return;
   }
   const forwarded = new KeyboardEvent("keydown", {
@@ -276,23 +261,15 @@ function renderHtmlDocument(
   };
 }
 
-/** A standalone copy for "Open original in a new tab" (TUI `O`). */
 export function standaloneHtmlDocument(html: string, allowRemoteImages: boolean): string {
   return renderHtmlDocument(html, allowRemoteImages, "original", false, readPalette()).srcDoc;
 }
 
-/**
- * The frame's own policy: no scripts, and no network fetches except remote
- * images once the reader allows them. The sanitizer already strips remote
- * sources; this blocks whatever it might miss (a new attribute, an odd
- * URL form) at the network layer.
- */
 function frameCsp(allowRemoteImages: boolean): string {
   const images = allowRemoteImages ? "data: blob: https: http:" : "data: blob:";
   return `default-src 'none'; img-src ${images}; style-src 'unsafe-inline'; font-src data:`;
 }
 
-/** Light-theme colours for the always-light "original" email view. */
 const PAPER_BACKGROUND = "#f1eee9";
 
 const LIGHT_EMAIL = {
@@ -313,7 +290,6 @@ const MIDNIGHT_EMAIL_PALETTE: EmailPalette = {
   askMarkRule: "rgb(248 202 101 / 0.85)",
 };
 
-/** The quiet note that stands in for a blocked remote image. */
 function blockedImageCss(theme: EmailHtmlCanvas, p: EmailPalette): string {
   const [color, rule] =
     theme === "dark" ? [p.muted, p.rule] : [LIGHT_EMAIL.muted, LIGHT_EMAIL.rule];
@@ -326,13 +302,6 @@ function askMarkCss(theme: EmailHtmlCanvas, p: EmailPalette): string {
   return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}a[${LINK_MARK_ATTRIBUTE}]{background:${background};outline:2px solid ${rule};outline-offset:2px;border-radius:2px}`;
 }
 
-/*
- * A readable measure for running text. Prose outside tables (a plain HTML
- * reply, Gmail's bare divs) stops at about 72 characters: 34em, because
- * system-ui averages about 0.47em a character and its wide zero makes "ch"
- * a poor unit here. Anything inside a table belongs to the email's own
- * layout (600px templates) and keeps its width.
- */
 const MEASURE_CSS = `:is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6),body>div:not(:has(table)){max-width:34em}table :is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6,div){max-width:none}`;
 
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;

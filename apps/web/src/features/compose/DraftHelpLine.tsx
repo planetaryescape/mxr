@@ -1,9 +1,3 @@
-/*
- * "Draft for me" as one line above the page: an instruction field whose
- * placeholder says what will happen, four adjust chips and a quiet Polish.
- * Closed, it is a single text button. It sends nothing until submitted.
- */
-
 import { PenLine } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -35,7 +29,6 @@ interface DraftHelpLineProps {
   onSubmit: () => void;
   onPolish: () => void;
   generating: boolean;
-  /** Changes each time the line should take focus (⌘J, opening from a reader). */
   focusNonce: number;
   disabled: boolean;
   model?: string;

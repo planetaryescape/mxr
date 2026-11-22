@@ -1,5 +1,3 @@
-/* What the results pane shows with no query yet, or no matches. */
-
 import { Button } from "@/components/ui/button";
 import { PageEmpty } from "@/components/PageParts";
 import { searchSyntaxRows } from "@/lib/searchSyntax";

@@ -22,7 +22,7 @@ test.each(["todo", "updates"] as const)(
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(() => useMarkRowSeen(mode), { wrapper });
-    expect(fetch).not.toHaveBeenCalled(); // Mounting/selecting a list is not seeing a row.
+    expect(fetch).not.toHaveBeenCalled();
     act(() =>
       result.current({
         id: "row",

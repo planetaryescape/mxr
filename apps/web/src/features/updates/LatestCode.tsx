@@ -3,17 +3,12 @@ import { formatTime } from "@/lib/format";
 import type { OneTimeCode } from "./api";
 import { copyCode } from "./copyCode";
 
-/** "Google (accounts.google.com)": a borrowed brand shows beside its host. */
 export function codeSender(code: OneTimeCode): string {
   return code.sender_host && code.sender_host.toLowerCase() !== code.sender_name.toLowerCase()
     ? `${code.sender_name} (${code.sender_host})`
     : code.sender_name;
 }
 
-/**
- * The newest current one-time code, above the digest: it arrived between
- * cuts and expires in minutes, so it cannot wait for a line. Click or `y`.
- */
 export function LatestCode({ code }: { code: OneTimeCode }) {
   const from = codeSender(code);
   return (

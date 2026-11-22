@@ -109,7 +109,6 @@ for (const disconnected of [false, true]) {
         },
       },
     );
-    // Every attempted canonical save would return a real-shaped recovery response.
     const failure = disconnected ? new DaemonUnavailableError({ cause: conflict }) : conflict;
     update.mockRejectedValue(failure);
     const hook = setup();

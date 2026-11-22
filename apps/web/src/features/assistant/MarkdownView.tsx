@@ -1,12 +1,3 @@
-/*
- * A reply's markdown as React. The text is model text built from other
- * people's mail, so it goes through the sanitiser first (markdown.ts), and
- * the result is walked into elements here rather than set as HTML: only a
- * short list of tags and the `href` and `title` the sanitiser allowed come
- * through, text is escaped by React, and a link to an email or a person
- * becomes a chip drawn from its data (docs/blueprint/29 "The copy").
- */
-
 import { createElement, Fragment, useMemo, type ReactNode } from "react";
 
 import { APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE, renderMarkdown } from "./markdown";
@@ -47,7 +38,6 @@ export function MarkdownView({
   className,
 }: {
   text: string;
-  /** Only for a stored reply: the daemon has checked its links against what its tools returned. */
   appLinks?: boolean;
   className?: string;
 }) {
@@ -55,7 +45,6 @@ export function MarkdownView({
     () => new DOMParser().parseFromString(renderMarkdown(text, { appLinks }), "text/html").body,
     [text, appLinks],
   );
-  // One request for every email chip in the reply, not one per chip.
   const threadIds = useMemo(
     () =>
       [...body.querySelectorAll(`a[${APP_LINK_ATTRIBUTE}="thread"]`)].flatMap((link) => {

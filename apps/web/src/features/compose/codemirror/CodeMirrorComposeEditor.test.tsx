@@ -30,7 +30,6 @@ describe("CodeMirrorComposeEditor held keys", () => {
       ["i", false],
       ["ArrowLeft", true],
     ] as const;
-    // fireEvent returns false when a handler prevented the default.
     const press = (key: string, shiftKey: boolean, repeat: boolean) =>
       fireEvent.keyDown(content, { key, shiftKey, ctrlKey: true, metaKey: true, repeat });
     const first = chords.map(([key, shiftKey]) => press(key, shiftKey, false));
@@ -50,7 +49,6 @@ describe("CodeMirrorComposeEditor model marks", () => {
         onDiscard={vi.fn<() => void>()}
       />,
     );
-    // The accept replaces the text and marks the added words in one render.
     rerender(
       <CodeMirrorComposeEditor
         value="Hi there"

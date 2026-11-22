@@ -22,10 +22,6 @@ const VERB: Partial<Record<MailAction, string>> = {
   snooze: "Snooze",
 };
 
-/**
- * Preview before a large or destructive batch. It lists the very rows the
- * action will receive, so what you confirm is what runs.
- */
 export function ConfirmDialog({
   target,
   action,

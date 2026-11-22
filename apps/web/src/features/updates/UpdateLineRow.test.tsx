@@ -15,7 +15,6 @@ vi.mock("@/api/client", () => ({
 
 beforeEach(() => {
   apiFetch.mockReset();
-  // The peek's preview reads the thread; most tests have no body to show.
   apiFetch.mockResolvedValue({ thread: {}, messages: [], bodies: [] });
   resetRowGistsForTest();
 });
@@ -85,7 +84,6 @@ describe("UpdateLineRow at rest", () => {
       "title",
       "Computed from 21.3 km and 19.0 km",
     );
-    // A resting row's verbs wait for the lamp or a hover (Row hides them in CSS); the menu is among them.
     expect(row).not.toHaveAttribute("data-lit");
     expect(view.getByRole("button", { name: "More actions for Strava" })).toBeInTheDocument();
     expect(view.queryByText("Why this update?")).toBeNull();
@@ -153,7 +151,6 @@ describe("UpdateLineRow's trailing slot", () => {
     expect(view.queryByRole("button", { name: "This needs me" })).toBeNull();
     fireEvent.click(affordance);
     expect(h.onNeedsMe).toHaveBeenCalledTimes(1);
-    // It replaces the other trailing values.
     expect(view.queryByTestId("update-delta")).toBeNull();
     expect(view.queryByTestId("update-amount")).toBeNull();
   });
@@ -170,7 +167,6 @@ describe("UpdateLineRow's track", () => {
       source_key: "parcel:1",
       source_name: "Bookshop",
       fact: "Parcel on its way",
-      // The daemon's own generic parcel line is a rule fact, not a subject.
       fact_source: "rule",
       message_ids: [],
       latest_message_id: undefined,
@@ -200,7 +196,6 @@ describe("UpdateLineRow's track", () => {
       "Shipped · next: out for delivery",
     );
     expect(within(row).queryByText("Parcel on its way")).toBeNull();
-    // The references and the items wait for the peek.
     expect(within(row).queryByTestId("parcel-identity")).toBeNull();
     expect(row).not.toHaveTextContent("A-VERY-LONG-TRACKING-REFERENCE");
   });
@@ -464,9 +459,7 @@ describe("UpdateLineRow's gist", () => {
     expect(fact).toHaveTextContent("Receipt: $24.00 for Perplexity Pro, renews 14 Nov");
     expect(fact).not.toHaveTextContent("Your receipt from Perplexity");
     expect(fact).toHaveAttribute("data-gist", "true");
-    // The subject is still one hover away.
     expect(fact).toHaveAttribute("title", "Your receipt from Perplexity");
-    // No spinner.
     expect(within(row).queryByRole("progressbar")).toBeNull();
   });
 
@@ -539,7 +532,6 @@ describe("UpdateLineRow's gist", () => {
         "Questions? Reply to this email.",
       ].join("\n"),
     );
-    // Text, never markup.
     expect(preview.querySelector("img")).toBeNull();
     expect(apiFetch).toHaveBeenCalledWith("/api/v1/mail/threads/t1");
   });
@@ -565,7 +557,6 @@ describe("UpdateLineRow with a one-time code", () => {
     fireEvent.click(code);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("882308"));
     expect(handlers.onTogglePeek).not.toHaveBeenCalled();
-    // The code itself and the `y` verb beside the others.
     expect(within(row).getAllByRole("button", { name: /copy code/i })).toHaveLength(2);
   });
 

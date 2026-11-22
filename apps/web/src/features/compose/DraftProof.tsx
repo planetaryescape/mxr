@@ -1,10 +1,3 @@
-/*
- * The proof replaces the page while it is open. The user's words are in
- * plain ink, additions are underlined in the signal colour, cuts are struck
- * through in text-3, and gaps are in the cue colour. Nothing is written
- * into the draft until Accept.
- */
-
 import { useEffect, useRef, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,7 +10,6 @@ import type { components } from "@/api/generated";
 
 type ModelChoice = components["schemas"]["ModelChoiceData"];
 
-/** How a run is drawn outside a gap. */
 const RUN_CLASS = {
   kept: "text-foreground",
   added: "text-foreground underline decoration-signal decoration-1 underline-offset-4",
@@ -27,12 +19,10 @@ const utf8Encoder = new TextEncoder();
 
 interface DraftProofProps {
   runs: ProofRun[];
-  /** One Tab stop and one count per gap in the proposal, however the diff split it. */
   gapCount: number;
   provenance: DraftProvenance | null;
   versionIndex: number;
   versionCount: number;
-  /** The text changed since the proof was made, so it cannot be applied. */
   stale: boolean;
   onAccept: () => void;
   onKeep: () => void;
@@ -75,8 +65,6 @@ export function DraftProof({
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (isComposingKey(event)) return;
-    // Enter and Tab belong to the proof only while it or one of its gaps has
-    // focus; on a focused button they keep their own meaning (activate, move).
     const target = event.target;
     const onProofSurface =
       target === containerRef.current ||
@@ -96,7 +84,6 @@ export function DraftProof({
       event.preventDefault();
       onStep(1);
     } else if (event.key === "Tab" && gapCount > 0 && onProofSurface) {
-      // Tab moves gap to gap; with no gap it is ordinary focus movement.
       const gaps = Array.from(
         containerRef.current?.querySelectorAll<HTMLElement>("[data-gap]") ?? [],
       );
@@ -133,7 +120,6 @@ export function DraftProof({
                   />
                 ))
               ) : (
-                // One focusable gap, however many runs the word diff put inside it.
                 <span key={group.key} data-gap tabIndex={0} className="text-cue">
                   {group.items.map((item) => (
                     <RunText
@@ -238,10 +224,6 @@ interface RunGroup {
   items: RunItem[];
 }
 
-/**
- * Runs in order, with the runs of one gap kept together. Each run starts at a
- * distinct offset, so the offset keys it without an index.
- */
 function groupRuns(runs: readonly ProofRun[]): RunGroup[] {
   const groups: RunGroup[] = [];
   let offset = 0;
@@ -273,7 +255,6 @@ function RunText({
   inGap?: boolean;
   styleMarks?: readonly { name: string; context: string; start: number; end: number }[];
 }) {
-  // Inside a gap the colour is the gap's; the run keeps its own addition or strike.
   const className = inGap ? cn("text-cue", decorationOnly(run.kind)) : RUN_CLASS[run.kind];
   if (run.kind === "removed" || styleMarks.length === 0)
     return <span className={className}>{run.text}</span>;

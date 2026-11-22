@@ -1,8 +1,3 @@
-/*
- * Plain-language status for an OAuth sign-in session. The daemon reports
- * machine states ("waiting_for_user"); people should read what to do.
- */
-
 import type { AuthSession } from "./api";
 
 export type AuthTone = "pending" | "ready" | "error";

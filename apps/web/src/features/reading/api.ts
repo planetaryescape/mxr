@@ -1,10 +1,3 @@
-/*
- * Reading over the bridge. The daemon cuts each newsletter into readable
- * items, bands and ranks them (`GetReadingEdition`), and owns the article
- * fetch and its guards; this file only moves them. Let go is the modes'
- * done (`POST /modes/reading/done`), and unsubscribe the existing purge.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -41,7 +34,6 @@ type StatusResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaStatus
 type SendResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaSend" }>;
 type SyncResponse = Extract<Schemas["ResponseData"], { kind: "MarginaliaSync" }>;
 
-/** Every Reading query starts with this, so one invalidation refreshes them. */
 export const READING_KEY = ["reading"] as const;
 
 const itemPath = (key: string) => `/api/v1/mail/reading/items/${encodeURIComponent(key)}`;
@@ -83,7 +75,6 @@ export function recordEngagement(input: {
   });
 }
 
-/** Contacts the link's site: only ever called on an explicit key or button. */
 export async function fetchArticle(key: string, refresh = false): Promise<ReadingFetch> {
   const answer = await apiFetch<ArticleResponse>(`${itemPath(key)}/article`, {
     method: "POST",
@@ -97,7 +88,6 @@ export async function saveHighlight(input: {
   quote: string;
   view: "issue" | "article";
   note?: string;
-  /** The paragraph it was selected in; absent marks the first match. */
   paragraph?: number | null;
 }): Promise<ReadingHighlight> {
   const answer = await apiFetch<HighlightResponse>("/api/v1/mail/reading/highlights", {
@@ -115,11 +105,6 @@ export async function saveHighlight(input: {
 
 const highlightPath = (id: string) => `/api/v1/mail/reading/highlights/${encodeURIComponent(id)}`;
 
-/**
- * Replaces a highlight's note. Always sends a string: blank clears it, and
- * the bridge refuses null rather than guessing. Refused for a highlight
- * made in Marginalia.
- */
 export async function updateHighlightNote(
   id: string,
   note: string,
@@ -172,7 +157,6 @@ export async function fetchMarginaliaStatus(): Promise<MarginaliaStatus> {
   return (await apiFetch<StatusResponse>("/api/v1/mail/reading/marginalia")).status;
 }
 
-/** Connect with a site and a token (checked by Marginalia first), or disconnect with null. */
 export async function setMarginaliaConnection(
   connection: { url: string; token: string } | null,
 ): Promise<MarginaliaStatus> {
@@ -183,7 +167,6 @@ export async function setMarginaliaConnection(
   return answer.status;
 }
 
-/** Gives the item's text to Marginalia: only on an explicit key or button. */
 export async function sendToMarginalia(key: string, dryRun = false): Promise<MarginaliaSend> {
   const answer = await apiFetch<SendResponse>(`${itemPath(key)}/marginalia`, {
     method: "POST",

@@ -16,15 +16,6 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const NO_KEYS: readonly string[] = [];
 
-/**
- * A place's list with the reader beside it, as the mail lists have it: an
- * open conversation lives at `${basePath}/<thread>`, Esc closes it and n/N
- * step through the conversations the place shows. `wideReader` gives the
- * reader the whole width (Reading's issues are already open in the feed).
- * `keepSearch` names the list's own search params (its view and cursor),
- * which stay in the URL while a conversation opens and closes; the
- * reader's own params don't carry over to the next one.
- */
 export function PlaceLayout({
   basePath,
   label,
@@ -35,7 +26,6 @@ export function PlaceLayout({
 }: {
   basePath: "/reading" | "/updates" | "/todo" | "/archive";
   label: string;
-  /** Conversations in the order the place shows them. */
   threadIds: () => string[];
   wideReader?: boolean;
   keepSearch?: readonly string[];
@@ -70,7 +60,6 @@ export function PlaceLayout({
   );
   const close = useCallback(() => {
     setActivePane("mailbox");
-    // The focused reader goes with the navigation; the mode's view takes the keys' focus.
     void refocusPaneAfter(
       navigate({
         to: basePath,
@@ -79,11 +68,6 @@ export function PlaceLayout({
     );
   }, [basePath, keepSearch, navigate, setActivePane]);
 
-  // Esc steps back from an open conversation. The reader's own scope handles
-  // it while the reader has focus; opened from a link (or with the list
-  // focused) only the list's scope is live and it has no Esc, so catch the
-  // key the dispatcher left alone. The light is still on the row, which
-  // `keepSearch` holds in the URL.
   useEffect(() => {
     if (!threadOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -97,8 +81,6 @@ export function PlaceLayout({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close, threadOpen]);
 
-  // The open conversation left the place (done from the list, sync): open
-  // its neighbour, keeping the keys where they were.
   const ids = useMemo(() => threadIds(), [threadIds]);
   const idsRef = useRef(ids);
   idsRef.current = ids;

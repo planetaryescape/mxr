@@ -1,20 +1,10 @@
-/*
- * The assistant's wire: the words and marks for what the desk is doing and
- * did. The daemon writes the words (a step's two tenses, a change's title,
- * the live line's call); these pick the tense from the state and fall back
- * to the model's reason and describe.ts only for a daemon that predates
- * them. Nothing here shows a tool name unless a daemon sends nothing else.
- */
-
 import { toolWords } from "./describe";
 import type { AssistantCallState, AssistantItem, AssistantProgress } from "./api";
 
 export type ToolCallItem = Extract<AssistantItem, { kind: "tool_call" }>;
 
-/** After this long on one step the live line names the model, so a slow local one doesn't look stuck. */
 export const SLOW_STEP_SECONDS = 20;
 
-/** The step as one line, in the tense its state calls for. */
 export function stepTitle(item: ToolCallItem): string {
   const words = item.title
     ? item.state === "running"
@@ -28,7 +18,6 @@ export function stepTitle(item: ToolCallItem): string {
   return words;
 }
 
-/** An older daemon sends no titles: the model's reason, else the tool as words. */
 function fallbackTitle(item: ToolCallItem): string {
   if (item.tool === "ask_user") {
     const answered = answeredWith(item.result);
@@ -38,7 +27,6 @@ function fallbackTitle(item: ToolCallItem): string {
   return item.reason || toolWords(item.tool);
 }
 
-/** "Work, plus a note" from an ask_user result the user wrote. */
 export function answeredWith(result: string | null | undefined): string | null {
   if (!result) return null;
   try {
@@ -58,7 +46,6 @@ export function answeredWith(result: string | null | undefined): string | null {
 
 export type WireTone = "running" | "done" | "failed" | "waiting" | "quiet";
 
-/** The one glyph a step wears, and the tone it is drawn in. */
 export function stepGlyph(state: AssistantCallState): { glyph: string; tone: WireTone } {
   switch (state) {
     case "running":
@@ -89,7 +76,6 @@ export const GLYPH_WORDS: Record<AssistantCallState, string> = {
   interrupted: "Interrupted",
 };
 
-/** What the desk is doing now, the daemon's phrase when it sent one. */
 export function liveLine(progress: AssistantProgress | { kind: "writing" } | null): string {
   switch (progress?.kind) {
     case "calling":
@@ -105,7 +91,6 @@ export function liveLine(progress: AssistantProgress | { kind: "writing" } | nul
   }
 }
 
-/** "gemma4 is slow on this; 24s", once one step has run long enough to need it. */
 export function slowNote(model: string | null | undefined, stepSeconds: number): string | null {
   if (!model || stepSeconds < SLOW_STEP_SECONDS) return null;
   return `${model} is slow on this; ${stepSeconds}s`;
@@ -119,7 +104,6 @@ export interface FoldSummary {
   failed: number;
 }
 
-/** What a finished turn's steps came to, for the one folded line. */
 export function foldSummary(items: ToolCallItem[]): FoldSummary {
   let found: number | null = null;
   for (const item of items) {
@@ -137,7 +121,6 @@ export function foldSummary(items: ToolCallItem[]): FoldSummary {
   };
 }
 
-/** Changes whose effect the user can't take back from mxr. */
 const IRREVERSIBLE_TOOLS = new Set([
   "mxr_send_draft",
   "mxr_got_it",
@@ -151,7 +134,6 @@ const IRREVERSIBLE_TOOLS = new Set([
 ]);
 const SENDING_TOOLS = new Set(["mxr_send_draft", "mxr_got_it"]);
 
-/** The warning above Apply, or null for a change that can be put back. */
 export function irreversibleWarning(tool: string, args: unknown): string | null {
   const action =
     args && typeof args === "object" ? (args as Record<string, unknown>).action : undefined;
@@ -160,7 +142,6 @@ export function irreversibleWarning(tool: string, args: unknown): string | null 
   return SENDING_TOOLS.has(tool) ? "Sends an email. Can't be undone." : "Can't be undone.";
 }
 
-/** Message and thread ids a mail change names, for the landing mark in the page beside. */
 export function changedIds(item: ToolCallItem): string[] {
   const args = item.arguments;
   if (!args || typeof args !== "object") return [];

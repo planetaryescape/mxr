@@ -101,7 +101,6 @@ describe("HighlightToolbar", () => {
     fireEvent.click(screen.getByTestId("toolbar-highlight-note"));
     const input = screen.getByTestId("highlight-note-input");
     fireEvent.change(input, { target: { value: "for the talk" } });
-    // Typing moved the selection away; the picked text is kept.
     window.getSelection()?.removeAllRanges();
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
@@ -140,7 +139,6 @@ describe("HighlightToolbar", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("highlight-note-save"));
     });
-    // A blank note is sent as "", which clears it.
     expect(verbs.editHighlightNote).toHaveBeenCalledWith("m:0", "own", "");
   });
 

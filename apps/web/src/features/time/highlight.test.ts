@@ -11,7 +11,6 @@ describe("highlightSegments", () => {
   });
 
   test("converts UTF-8 byte offsets to string indices", () => {
-    // "é" is two bytes in UTF-8 and one code unit in JavaScript.
     const text = "é fri";
     expect(byteOffsetToIndex(text, 3)).toBe(2);
     expect(highlightSegments(text, [{ start: 3, end: 6 }])).toEqual([

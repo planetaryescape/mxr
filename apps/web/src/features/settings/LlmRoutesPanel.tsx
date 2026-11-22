@@ -1,10 +1,3 @@
-/*
- * Read-only view of which model each AI feature uses, which providers a
- * Claude model goes through, and whether they are working. Keys are never
- * entered here: a secret does not travel over the bridge, so the panel says
- * which CLI command stores one.
- */
-
 import { ArrowRight } from "lucide-react";
 
 import type { components } from "@/api/generated";
@@ -138,7 +131,6 @@ function routeLabel(route: LlmRouteStatus): string {
     case "probing":
       return `being retried${reason}`;
     default:
-      // A newer daemon may report a state this build doesn't know.
       return String(route.state);
   }
 }

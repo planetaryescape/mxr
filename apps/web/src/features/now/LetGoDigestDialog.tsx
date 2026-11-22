@@ -4,11 +4,6 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import type { NowUpdatesCard } from "./api";
 
-/**
- * Let go of the Updates card: the same dry run and commit as `A` in
- * Updates, for the cut the card shows. What stays in To do is named
- * before you confirm, and Undo puts it all back.
- */
 export function LetGoDigestDialog({
   card,
   open,

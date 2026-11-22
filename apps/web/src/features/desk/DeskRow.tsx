@@ -18,33 +18,13 @@ import { useClockLabel } from "@/lib/minuteClock";
 type DeskRowProps = RowRenderState & {
   row: MessageRowView;
   desk: DeskRowData;
-  /** Done: put the conversation away. Must be stable, the row is memoized. */
   onDone: (row: MessageRowView) => void;
-  /**
-   * A model is configured: reserve a line for the gist (what the
-   * conversation is about) so nothing moves when it lands.
-   */
   gistLine: boolean;
-  /** Messages: the other modes holding the thread, and a new sender's question. */
   modes?: ThreadModes;
 };
 
-/**
- * Lanes where the other person's ask says why the row is here; the
- * daemon's `DeskLaneKind::shows_ask`, which the CLI and TUI use.
- */
 const ASK_LANES = new Set(["owed", "people_new"]);
 
-/**
- * One line of the desk: who, what and why, and how long. Wide lists read
- * as three columns; the narrow list beside the reader stacks the reason
- * under the person. No hover or focus transitions: the cursor moves on
- * every j and k, and movement there should be instant.
- *
- * Every row ends in a check, Done. With a mouse it shows on hover and on
- * the cursor's row; on touch it is always there, quiet. Its slot is always
- * reserved, so nothing shifts when it appears.
- */
 export const DeskRow = memo(function DeskRow({
   row,
   desk,
@@ -55,12 +35,9 @@ export const DeskRow = memo(function DeskRow({
 }: DeskRowProps) {
   const who = rowPerson(desk);
   const mark = useRowAccountMark(desk.account_id);
-  // The label is kept current; the rest of the age doesn't change on its own.
   const age = { ...rowAge(desk), label: useClockLabel((now) => rowAge(desk, now).label) };
   const subject = desk.subject.trim();
-  // This row's own gist: when it lands, only this row re-renders.
   const gist = useRowGist(desk.thread_id);
-  // A row a time brought back keeps its reason: that is why it's here.
   const ask = gist?.ask && ASK_LANES.has(desk.lane) && !desk.back_at ? gist.ask : null;
   const askTitle = ask && gist ? gistTitle(gist) : undefined;
   return (
@@ -110,8 +87,6 @@ export const DeskRow = memo(function DeskRow({
       <span
         className={cn(
           "col-span-2 col-start-1 row-start-2 min-w-0 text-sm text-muted-foreground @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1 @2xl:truncate",
-          // With a gist line the reason may turn into the ask: one line, so
-          // the row keeps its height when it does.
           gistLine ? "truncate" : "line-clamp-2 @2xl:line-clamp-none",
         )}
         title={askTitle}
@@ -188,8 +163,6 @@ export const DeskRow = memo(function DeskRow({
           className={cn(
             "relative -my-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground",
             "hover:bg-accent hover:text-foreground",
-            // On touch: a bigger target than it looks, so a tap on the
-            // check never opens the row instead.
             "pointer-coarse:size-8 pointer-coarse:opacity-60 pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5",
             state.focused || state.selected
               ? "pointer-fine:opacity-100"

@@ -28,7 +28,6 @@ describe("proofRuns", () => {
   });
 
   test("a gap split by the word diff stays one gap across its runs", () => {
-    // "[[?: the date]]" became "[[?: the exact date]]": kept, added, kept.
     const proposal = "Meet at [[?: the exact date]] tomorrow";
     const start = bytes("Meet at ");
     const gaps = [{ label: "the exact date", start, end: start + bytes("[[?: the exact date]]") }];
@@ -46,7 +45,6 @@ describe("proofRuns", () => {
   });
 
   test("a gap after non-ASCII text is found by its UTF-8 byte range", () => {
-    // "é" and "—" are multi-byte: the gap's byte offsets are not character offsets.
     const proposal = "Café — [[?: when]] ok";
     const start = bytes("Café — ");
     const gaps = [{ label: "when", start, end: start + bytes("[[?: when]]") }];

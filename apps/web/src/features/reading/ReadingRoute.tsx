@@ -66,11 +66,6 @@ import { listMotions } from "@/features/modes/listMotions";
 
 export const EDITION_KEY = (scope: string) => [...READING_KEY, "edition", scope] as const;
 
-/**
- * The edition for the account scope. The first fetch on each visit
- * records that Reading was opened, so the next visit's "Since you were
- * last here" starts from this one.
- */
 export function useEdition() {
   const account = useAccountScope();
   const scope = account ?? "all";
@@ -87,19 +82,12 @@ export function useEdition() {
   });
 }
 
-/** The source behind an item, from the edition's sources. */
 export function sourceOf(edition: ReadingEdition | undefined, item: ReadingItem) {
   return edition?.sources.find(
     (source) => source.account_id === item.account_id && source.sender_email === item.sender_email,
   );
 }
 
-/**
- * Reading: newsletters you chose, as an edition you visit. Three bands by
- * time, ranked inside by how much you read each source; Later is the only
- * count. An item opens in the reader (`/reading/item/<key>`), the email as
- * sent at `/reading/<thread>`.
- */
 export function ReadingRoute({ view }: { view?: "later" }) {
   const params = useParams({ strict: false }) as { itemKey?: string; threadId?: string };
   const edition = useEdition();
@@ -120,7 +108,6 @@ export function ReadingRoute({ view }: { view?: "later" }) {
   );
 }
 
-/** The item an entry belongs to: itself, or a link's issue. */
 const itemOf = (entry: EditionEntry | undefined) =>
   entry?.kind === "item" ? entry.item : entry?.parent;
 
@@ -135,9 +122,6 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
   const data = status.data;
   const [dialog, setDialog] = useState<Dialog>(null);
   const hidden = useModeDone((s) => s.hidden.reading);
-  // Reading is put to bed when its edition is let go (docs/blueprint/27). Read
-  // items stay listed until they are let go or expire, so an emptied edition
-  // is the finish.
   const finished = useLowTide(
     "reading",
     view === "later" || !data,
@@ -272,10 +256,7 @@ function Bands({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hidden = useModeDone((s) => s.hidden.reading);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  // In the URL, so a copied link (and coming back from the reader) lands
-  // on the same entry.
   const [cursorKey, setCursorKey] = useSearchParam("row");
-  // Only a pointer fades the lamp (D101): a key must feel instant.
   const via = useRef<LampVia>("key");
 
   const bands = useMemo(
@@ -288,7 +269,6 @@ function Bands({
     [edition, hidden, view],
   );
   const entries = useMemo(() => editionEntries(bands, expanded), [bands, expanded]);
-  // A link to one of a digest's links unfolds that digest, once.
   const linkedEntry = useRef(cursorKey);
   useEffect(() => {
     const linked = linkedEntry.current;
@@ -309,8 +289,6 @@ function Bands({
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
-  // Each hint shows when the cursor first reaches its element: the Fading
-  // band, and a link under a digest. Acting there dismisses it.
   const onEdition = view !== "later";
   const fadingHint = useHint("reading", "reading.fading", {
     ready: onEdition && current?.band === "fading",
@@ -395,7 +373,6 @@ function Bands({
     [later, letGoItem, read, setCursorKey, unsubscribe],
   );
 
-  // Touch: swipe right keeps it for later, left lets it go.
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const swipeLayer = useRef<SwipeLayerHandle>(null);
@@ -422,11 +399,9 @@ function Bands({
     via.current = "key";
     setCursorKey(next.key);
   };
-  // The lit entry's reason goes to the status bar; the row itself never grows a line.
   useLitReason(itemOf(current)?.why, null, itemOf(current)?.account_id);
   const litItem = itemOf(current);
   usePageKeys(
-    // The email's reader owns the keys while it has focus, as it owns the scope.
     entries.length === 0 || (params.threadId && activePane === "reader")
       ? []
       : stripKeys(
@@ -434,7 +409,6 @@ function Bands({
           litItem?.unsubscribe_offer && view !== "later" ? [] : ["reading.unsubscribe"],
         ),
   );
-  // The marks for "also in" modes, from the daemon's membership.
   const memberThreads = useMemo(
     () =>
       [
@@ -467,7 +441,6 @@ function Bands({
         if (fetched && !fetched.error) read(current.key);
       });
     },
-    // Not now (`b`): Later first, then a time that snoozes the issue's email.
     later: () => {
       if (!current) return;
       const subject = readingMoveSubject(current);
@@ -503,7 +476,6 @@ function Bands({
       void rememberLayout(item.account_id, item.sender_email, true).then(() => read(item.item_key));
     },
     letGoAll: () => view !== "later" && openLetGoAll(edition, setDialog),
-    // `t`: a to-do from the item's email, as in the TUI.
     makeTodo: () => {
       const subject = current ? readingMoveSubject(current) : null;
       if (!subject || refuseWhileDaemonDown("add a to-do")) return;
@@ -514,7 +486,6 @@ function Bands({
         subject: subject.label,
       });
     },
-    // `K` stays "move sender to a kind"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? readingMoveSubject(current) : null)).moveToMode,
     openEmail: () => {
       const item = itemOf(current);
@@ -526,14 +497,11 @@ function Bands({
       const item = itemOf(current);
       if (item) void openMoveSenderFor(item.message_id, item.source);
     },
-    // The tabs: `1` the edition, `2` Later, `3` the lit item's highlights
-    // (there is no page of every highlight yet).
     edition: () => void navigate({ to: "/reading", search: {} }),
     laterShelf: () => void navigate({ to: "/reading", search: { view: "later" } }),
     highlights: () => {
       if (current) read(current.key, "highlights");
     },
-    // The daemon knows whether it was sent before; then it only opens.
     marginalia: () => {
       if (!current) return;
       void openInMarginalia(current.key, null, {

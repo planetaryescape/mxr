@@ -27,7 +27,6 @@ import {
   type Band,
 } from "./todoRows";
 
-/** Under a row on `Space`: reason and source email first, field evidence and diagnostics on demand. */
 function Details({
   todo,
   onOpenEmail,
@@ -163,7 +162,6 @@ function FieldLine({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
-/** A later email that may complete or move this row: review it, accept it or dismiss it. */
 function Resolution({
   todo,
   onOpenResolution,
@@ -196,7 +194,6 @@ function Resolution({
     const requested = identity;
     try {
       const result = await resolveSuggestion(todo, action);
-      // A late answer for an offer that is no longer the selected one must not authorise this one.
       if (
         action === "preview" &&
         result &&
@@ -286,12 +283,9 @@ export interface TodoRowProps {
   todo: Todo;
   band: Band;
   index: number;
-  /** The lamp is on this row. */
   lit: boolean;
   via: LampVia;
-  /** The details are open under the row (`Space`). */
   details: boolean;
-  /** The other modes holding this row's email, for its marks. */
   modes?: ThreadModes;
   onSelect: (todo: Todo) => void;
   onDone: (todo: Todo, via: LampVia) => void;
@@ -299,17 +293,9 @@ export interface TodoRowProps {
   onOpenEmail: (todo: Todo) => void;
   onToggleDetails: (todo: Todo) => void;
   onOpenResolution: (todo: Todo, threadId: string, messageId: string) => void;
-  /** The hint anchored under this row, while it shows. */
   hint?: ReactNode;
 }
 
-/**
- * One thing to do, on the shared `Row`: a checkbox at Body size, the title
- * (with the amount), who it is from, and the window in words ("act by Fri",
- * in the cue colour once it is today or past). The lit row's trail becomes
- * `Space done` and `o email`. Why it is here is the status bar's; the field
- * sources and a later email's offer are one key (`Space`) away.
- */
 export const TodoRow = memo(function TodoRow({
   todo,
   band,
@@ -338,7 +324,6 @@ export const TodoRow = memo(function TodoRow({
   }, [details, todo, markRowSeen]);
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
-  // One subscription to the minute clock: the due-today flag, then the secondary line.
   const clock = useClockLabel(
     (now) => `${dueByToday(todo, now) ? "1" : "0"}${rowSecondary(todo, now) ?? ""}`,
   );

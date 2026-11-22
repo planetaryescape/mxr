@@ -1,21 +1,13 @@
-/*
- * Copy for the reader's context block. Pure functions over the daemon's
- * facts so the wording is testable: correct plurals, no em dashes, relative
- * when recent and absolute when older.
- */
-
 import { plural, startOfDay } from "@/lib/format";
 
 import type { AiProvenance, ThreadContext, ThreadCounterparty } from "./api";
 
-/** "Maya" from "Maya Ortiz"; the address when there is no name. */
 export function firstName(person: Pick<ThreadCounterparty, "display_name" | "email">): string {
   const name = person.display_name?.trim();
   if (!name) return person.email;
   return name.split(/\s+/)[0] ?? name;
 }
 
-/** A median reply time at a glance: "35m", "4h", "2d". */
 export function shortDuration(seconds: number): string {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
   if (minutes < 60) return `${minutes}m`;
@@ -23,7 +15,6 @@ export function shortDuration(seconds: number): string {
   return `${Math.ceil(minutes / (24 * 60))}d`;
 }
 
-/** "today", "yesterday", "Thu", "12 Sep", "12 Sep 2025". */
 export function dayLabel(value: string, now = new Date()): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -38,10 +29,6 @@ export function dayLabel(value: string, now = new Date()): string {
   });
 }
 
-/**
- * How you know this person, in one line: "You and Maya: 41 emails · you
- * usually reply within 4h · last spoke 12 Sep". Parts with no data drop out.
- */
 export function relationshipParts(person: ThreadCounterparty, now = new Date()): string[] {
   const name = firstName(person);
   const total = person.messages_from_them + person.messages_from_you;
@@ -63,7 +50,6 @@ export function relationshipParts(person: ThreadCounterparty, now = new Date()):
   return parts;
 }
 
-/** The facts line: how you know them, then whether you owe a reply. */
 export function contextFacts(context: ThreadContext, now = new Date()): string[] {
   const owed = owedReplyLabel(context, now);
   return [
@@ -82,11 +68,6 @@ export interface PromiseView {
   text: string;
 }
 
-/**
- * "You promised: send the runbook link, due Fri" / "Alice promised: …".
- * Each promise names its own owner (the daemon resolves it from the
- * thread), so in a group thread Alice's promise never reads as Bob's.
- */
 export function promiseViews(context: ThreadContext, now = new Date()): PromiseView[] {
   return (context.promises ?? []).map(({ owner, commitment }) => {
     const who = ownerLabel(owner);
@@ -96,10 +77,6 @@ export function promiseViews(context: ThreadContext, now = new Date()): PromiseV
   });
 }
 
-/**
- * What the model read, for the line after its mark: "from this thread",
- * "from this thread only" when it ran off this machine.
- */
 export function provenanceScope(provenance: AiProvenance, personName: string | null): string {
   const withHistory = provenance.sources.includes("relationship_history");
   if (withHistory)
@@ -107,17 +84,11 @@ export function provenanceScope(provenance: AiProvenance, personName: string | n
   return provenance.locality === "local" ? "from this thread" : "from this thread only";
 }
 
-/**
- * Where the model text came from, in one string for the places that can't
- * draw a mark: "Local model qwen2.5 · from this thread", "Cloud model
- * gpt-4o-mini · from this thread only".
- */
 export function provenanceLabel(provenance: AiProvenance, personName: string | null): string {
   const place = provenance.locality === "local" ? "Local model" : "Cloud model";
   return `${place} ${provenance.model} · ${provenanceScope(provenance, personName)}`;
 }
 
-/** "Alice" from "Alice Park"; an address stays whole. */
 function ownerLabel(owner: string): string {
   if (owner.includes("@")) return owner;
   const first = firstName({ display_name: owner, email: owner });

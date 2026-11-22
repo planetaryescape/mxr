@@ -279,7 +279,6 @@ describe("useDraftAssist", () => {
     expect(result.current.assist.proofOpen).toBe(false);
     expect(result.current.assist.canUndoAccept).toBe(true);
 
-    // Only the model's added words are marked.
     const [span] = result.current.draft?.modelSpans ?? [];
     expect(span && accepted.slice(span.start, span.end)).toBe(" Any time after 2.");
 

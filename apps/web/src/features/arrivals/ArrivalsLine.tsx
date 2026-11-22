@@ -8,10 +8,6 @@ import { countLink, lineParts, linkedCounts, shownLine } from "./arrivalLine";
 import { NotSureSection } from "./NotSureSection";
 import type { Arrivals } from "./types";
 
-/**
- * A compact arrival count under Now's headline; the linked buckets,
- * "Not sure" questions and weekly track record stay in its disclosure.
- */
 export function ArrivalsSection({ nowWaiting }: { nowWaiting: boolean }) {
   const arrivals = useArrivalsQuery();
   if (!arrivals.data) return null;
@@ -26,8 +22,6 @@ export function ArrivalsView({
   nowWaiting: boolean;
 }) {
   const notSureCount = arrivals.not_sure?.length ?? 0;
-  // Zero counts say nothing: with nothing new the daemon's own line stands in,
-  // and otherwise only the buckets that received mail are named (D119).
   const received = arrivals.counts.filter((count) => count.count > 0).map((count) => count.label);
   return (
     <details

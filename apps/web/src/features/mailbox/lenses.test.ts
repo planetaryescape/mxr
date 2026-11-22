@@ -3,9 +3,6 @@ import { describe, expect, test } from "vitest";
 import { lensesFromShell, resolveLens, savedSearchLenses, slugify } from "./lenses";
 import type { ShellResponse, SidebarItem } from "./types";
 
-// Mirrors the bridge's sidebar (crates/web/src/chrome.rs): item ids are the
-// ASCII slug of the name, user labels carry their provider label id.
-/** Mirrors the bridge's `slugify` (crates/web/src/envelope_list.rs). */
 function bridgeSlug(value: string): string {
   return value
     .toLowerCase()
@@ -163,8 +160,6 @@ describe("resolveLens", () => {
     expect(byName?.key).toBe(bySlug?.key);
   });
 
-  // Label paths come from a Unicode-aware slug, so non-ASCII names get
-  // distinct paths that resolve back to the right label.
   test("labels whose names are non-ASCII get distinct, resolvable paths", () => {
     const cjk = lensesFromShell({
       sidebar: {

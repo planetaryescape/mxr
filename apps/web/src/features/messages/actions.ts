@@ -1,11 +1,3 @@
-/*
- * Messages' keys, from blueprint 22's key table and the daemon's Messages
- * guide. The mounted Messages page registers what each command does
- * (`useScopeController("messages", …)`). Archive, label and move are not
- * on this surface; `u` stays the global undo, which also cancels a Got it
- * still counting down.
- */
-
 import {
   Check,
   Clock,
@@ -40,6 +32,5 @@ export const messagesActions: ActionBehavior[] = [
   { id: "messages.cycle-filter", command: "cycleFilter", icon: Filter },
   { id: "messages.send-next", command: "sendNext" },
   { id: "messages.escape", command: "escape" },
-  // Last, so the status strip (first five live keys) keeps the page's own verbs.
   ...newSenderActions("messages"),
 ];

@@ -69,7 +69,6 @@ vi.mock("./api", () => ({
   uploadComposeAttachment: api.uploadComposeAttachment,
 }));
 
-// Stand-ins for the editors (see testing/EditorStub.tsx).
 vi.mock("./tiptap/TiptapComposeEditor", async () => ({
   TiptapComposeEditor: (await import("./testing/EditorStub")).EditorStub,
 }));
@@ -172,8 +171,6 @@ describe("Compose keyboard flow", () => {
   });
 
   afterEach(async () => {
-    // Unmounting flushes an edited draft through the async save queue; let
-    // that settle before clearing so it can't count against the next test.
     cleanup();
     act(() => useComposeUi.setState({ intent: null }));
     await act(async () => {
@@ -229,9 +226,6 @@ describe("Compose keyboard flow", () => {
     });
     renderCompose();
 
-    // Rendering recipient chips for a loaded draft must not flip the autosave
-    // fingerprint to "Unsaved changes"; loading is not a save either, so the
-    // status claims nothing.
     await screen.findByLabelText("To");
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();
@@ -285,8 +279,6 @@ describe("Compose saving to a stored draft", () => {
     act(() => useComposeUi.setState({ intent: null }));
   });
 
-  // Without the id the daemon has nothing to update and stores a second copy,
-  // so every save of an opened draft leaves another indistinguishable row.
   test("saves back into the draft it opened instead of storing another copy", async () => {
     renderCompose(draftIntent("draft-42"));
 
@@ -349,7 +341,6 @@ describe("Compose opening a saved draft that has an HTML body", () => {
     renderCompose(draftIntent("draft-42"));
 
     expect(await screen.findByText(/This draft has an HTML body/i)).toBeVisible();
-    // Retrying a permanent refusal can only fail again.
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
 
     const frame = screen.getByTitle("HTML message body") as HTMLIFrameElement;
@@ -367,13 +358,11 @@ describe("Compose opening a saved draft that has an HTML body", () => {
     renderCompose(draftIntent("draft-42"));
 
     expect(await screen.findByRole("button", { name: /try again/i })).toBeVisible();
-    // The raw error sits under Details, not in the headline.
     expect(screen.getByText(/failed to connect to mxr daemon/i)).not.toBeVisible();
     expect(screen.queryByText(/This draft has an HTML body/i)).not.toBeInTheDocument();
   });
 });
 
-/** A proof that adds " there" to "Hi". */
 const hiThereProposal = {
   proposal: {
     proposal_id: "p-1",
@@ -391,7 +380,6 @@ const hiThereProposal = {
   },
 };
 
-/** Open the help line with ⌘J and submit it with ↵. */
 async function askForHelp() {
   const editor = await screen.findByRole("textbox", { name: "Message body" });
   fireEvent.keyDown(editor, { key: "j", metaKey: true });
@@ -418,7 +406,6 @@ describe("Draft for me in the sheet", () => {
         },
       ],
     });
-    // A new message needs a recipient before it can be drafted.
     api.startComposeSession.mockResolvedValue({
       session: {
         ...composeSession.session,
@@ -519,7 +506,6 @@ describe("Draft for me in the sheet", () => {
   });
 
   test("Esc on a proof keeps the user's text and leaves the sheet open", async () => {
-    // A saved body that nobody has touched: dismissing it would close the sheet at once.
     api.startComposeSession.mockResolvedValue({
       session: {
         ...composeSession.session,
@@ -533,7 +519,6 @@ describe("Draft for me in the sheet", () => {
     fireEvent.keyDown(proof, { key: "Escape" });
 
     expect(screen.queryByRole("region", { name: "Draft proof" })).not.toBeInTheDocument();
-    // A dismissal would save and close; give that path time to finish.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });

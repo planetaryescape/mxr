@@ -1,9 +1,3 @@
-/*
- * What waits for the user: proofs to sign and questions to answer. The
- * daemon keeps them; approving runs exactly the stored call, not anything
- * this page sends back.
- */
-
 import { Proof } from "./Proof";
 import { QuestionCard } from "./Question";
 import type { AssistantDecision, AssistantPending } from "./api";

@@ -1,16 +1,11 @@
 import type { TimeSpan } from "./api";
 
 export interface HighlightSegment {
-  /** Index of the segment's first character in the text; unique per run. */
   start: number;
   text: string;
   understood: boolean;
 }
 
-/**
- * The daemon reports spans as UTF-8 byte offsets (Rust string indices);
- * JavaScript strings index UTF-16 code units. Walk code points to convert.
- */
 export function byteOffsetToIndex(text: string, byteOffset: number): number {
   let bytes = 0;
   let index = 0;
@@ -22,7 +17,6 @@ export function byteOffsetToIndex(text: string, byteOffset: number): number {
   return index;
 }
 
-/** Split `text` into runs the parser understood and runs it didn't. */
 export function highlightSegments(text: string, spans: readonly TimeSpan[]): HighlightSegment[] {
   const ranges = spans
     .map((span) => ({

@@ -1,9 +1,3 @@
-/*
- * Right-rail "Who is this?": what the archive knows about a person or
- * term (on the person page, `p`, and in the palette). Works without a language model, which only adds the
- * written summary and topics.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchWhois } from "./api";

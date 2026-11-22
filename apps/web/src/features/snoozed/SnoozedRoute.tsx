@@ -11,12 +11,10 @@ import { definedShortcut } from "@/lib/actions/definition";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { formatLongDate, formatRelative, plural } from "@/lib/format";
 
-/** Snoozed's empty state names Not now's key from the definition (it moved from `Z` to `b`). */
 export function snoozedEmptyBody(): string {
   return `Press ${definedShortcut("mail.snooze")} on a conversation to send it away until later.`;
 }
 
-/** One row per conversation: waking it wakes every snoozed message in it. */
 function toRows(entries: SnoozedEntry[]): MessageRowView[] {
   const byThread = new Map<string, SnoozedEntry[]>();
   for (const entry of entries) {
@@ -51,7 +49,6 @@ function toRows(entries: SnoozedEntry[]): MessageRowView[] {
 
 const LENS = { kind: "other" } as const;
 
-/** Snoozed mail, next to wake first, with a manual wake (the TUI has no unsnooze). */
 export function SnoozedRoute() {
   const snoozed = useQuery({ queryKey: ["snoozed"], queryFn: fetchSnoozed });
   const rows = toRows(snoozed.data?.snoozed ?? []);

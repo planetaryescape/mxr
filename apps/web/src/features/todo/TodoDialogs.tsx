@@ -43,11 +43,6 @@ import {
 } from "./todoVerbs";
 import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
-/**
- * Not now in To do (`b`): show the row on your own day. The Not-now picker
- * with its presets and the same natural-time field snooze uses; there is no
- * untimed Later for a to-do. The due date stays as it is.
- */
 export function TodoScheduleDialog({ todo, onClose }: { todo: Todo; onClose: () => void }) {
   return (
     <NotNowDialog
@@ -84,7 +79,6 @@ const EDIT_FIELDS = [
   { field: "kind", label: "Kind", hint: "" },
 ] as const;
 
-/** The due date as a phrase the daemon reads back: "9 Oct 2026". */
 function dueValue(todo: Todo): string {
   if (!todo.due_at) return "";
   const date = new Date(todo.due_at);
@@ -93,7 +87,6 @@ function dueValue(todo: Todo): string {
     : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** `,`: correct the fields mxr read. Only changed fields are sent. */
 export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => void }) {
   const initial: Record<(typeof EDIT_FIELDS)[number]["field"], string> = {
     title: currentValue(todo, "title"),
@@ -192,7 +185,6 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
   );
 }
 
-/** `t` on a conversation: what to do about it, and when, in your words. */
 export function MakeTodoDialog({
   messageId,
   suggestion,
@@ -248,10 +240,6 @@ export function MakeTodoDialog({
   );
 }
 
-/**
- * "Let go of all" in the catch-up. The list is the daemon's dry run, and
- * the confirm button lets go of exactly those rows.
- */
 export function LetGoAllDialog({
   account,
   onClose,
@@ -276,7 +264,6 @@ export function LetGoAllDialog({
         data-testid="let-go-all-dialog"
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
-          // A preview's yes or no, as in the TUI (blueprint 35).
           if (pressedOverlayKey(event, "overlay.yes") && rows.length > 0) {
             event.preventDefault();
             commit();

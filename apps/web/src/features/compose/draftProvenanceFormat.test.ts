@@ -31,8 +31,6 @@ function provenance(overrides: Partial<DraftProvenance> = {}): DraftProvenance {
   };
 }
 
-// The same wording as `DraftProvenanceData::summary_line` in mxr-protocol,
-// so the CLI, TUI and web say one thing.
 describe("draftProvenanceDetail", () => {
   test("names the person when every example was to them", () => {
     const line = draftProvenanceDetail(

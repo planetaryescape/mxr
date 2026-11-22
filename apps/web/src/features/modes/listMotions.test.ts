@@ -4,7 +4,6 @@ import { expect, test } from "vitest";
 
 import { halfPageRows, listMotions } from "./listMotions";
 
-/** A mode's cursor over `rows` rows, clamped the way every mode's `move` is. */
 function cursor(rows: number, start: number) {
   const state = { index: start };
   const move = (delta: number) => {

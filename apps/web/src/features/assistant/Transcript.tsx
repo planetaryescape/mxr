@@ -1,10 +1,3 @@
-/*
- * The conversation as a copy desk's page: your words quoted, the wire of
- * steps between (folded to one line once the turn is done), and the copy.
- * No bubbles. Emails and people the reply names open in the app, beside
- * the assistant.
- */
-
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, type MouseEvent } from "react";
 
@@ -27,7 +20,6 @@ function blocks(items: AssistantItem[]): Block[] {
   const out: Block[] = [];
   for (const item of items) {
     if (item.kind === "tool_call") {
-      // An answered question reads as your own reply, so the page reads like a conversation.
       const answer =
         item.tool === "ask_user" && item.state === "answered" ? answeredWith(item.result) : null;
       if (answer) {
@@ -57,16 +49,12 @@ export function Transcript({
 }: {
   items: AssistantItem[];
   running: boolean;
-  /** The conversation the steps belong to, for opening what a step found. */
   conversationId: string;
-  /** The reply being written now, shown until it is stored. */
   writing?: string | null;
   provenance?: Provenance;
 }) {
   const grouped = useMemo(() => blocks(items), [items]);
   const navigate = useNavigate();
-  // Reply links to an email or a person open in the app, beside the
-  // assistant; a modified click is left to the browser (a new tab).
   const openAppLink = (event: MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;

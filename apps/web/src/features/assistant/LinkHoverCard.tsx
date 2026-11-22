@@ -1,13 +1,3 @@
-/*
- * The preview an email or person chip (or a reply row's link) shows on
- * hover or keyboard focus, only inside the assistant panel (docs/blueprint/29
- * "The copy"). The trigger stays the plain link, so a click or Enter still
- * navigates; the card has no buttons. It opens at once with what the chip
- * knows (a subject or a name) and fills in as the data arrives, with no
- * spinner. Touch never opens it, so a tap just follows the link. Everything
- * here is mail or model text and is only ever set as text.
- */
-
 import { Paperclip } from "lucide-react";
 import { useId, useRef, type ReactNode } from "react";
 
@@ -31,17 +21,13 @@ export function LinkHoverCard({
   children,
 }: {
   link: AssistantLink;
-  /** The subject or name the chip already shows. */
   title: string;
-  /** Where each email lives, already looked up for the reply or rows. */
   modes: ModesByThread;
-  /** The link itself: one element that takes a ref and props. */
   children: ReactNode;
 }) {
   const { open, dismiss, linkProps, cardProps } = usePreviewOpen();
   const { thread, person } = useLinkPreview(link, open);
   const cardId = useId();
-  // The ref's type is the anchor's, though it holds the link; only `contains` is used.
   const anchor = useRef<HTMLDivElement>(null);
   return (
     // Popover, not a hover library: when it opens is decided by usePreviewOpen.
@@ -50,9 +36,6 @@ export function LinkHoverCard({
       <PopoverAnchor
         asChild
         ref={anchor}
-        // The card adds to what the link says (sender, date, snippet), so while
-        // it is open it describes the link, as a tooltip does. Hidden from
-        // assistive tech instead, that detail would exist only for sighted users.
         aria-describedby={open ? cardId : undefined}
         {...linkProps}
       >
@@ -74,7 +57,6 @@ export function LinkHoverCard({
         tabIndex={undefined}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        // Focus landing on the link that anchors the card is not "outside".
         onInteractOutside={(event) => {
           if (event.target instanceof Node && anchor.current?.contains(event.target)) {
             event.preventDefault();

@@ -94,12 +94,10 @@ describe("SearchPalette", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    // j and e now act on the opened conversation, not the list's lit row.
     expect(useMailboxPane.getState().activePane).toBe("reader");
   });
 
   test("Cmd/Ctrl+Enter opens the full search page even with a result selected", async () => {
-    // Cmd is macOS's Mod.
     const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     renderWithQueryClient(<SearchPalette />);
 
@@ -107,8 +105,6 @@ describe("SearchPalette", () => {
     fireEvent.change(input, { target: { value: "invoice" } });
 
     expect(await screen.findByText("Subject 1")).toBeVisible();
-    // Highlight the first result, then Cmd+Enter — should bypass the
-    // selected row and go to full search, not open the thread.
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter", metaKey: true });
 

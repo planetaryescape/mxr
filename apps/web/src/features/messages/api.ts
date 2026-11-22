@@ -1,10 +1,3 @@
-/*
- * Messages over the bridge. The daemon builds the bands, the rows, each
- * message's new text and Got it's exact words (`ListMessages`,
- * `GetPerson`, `AckMessage`); this file only moves them. Routes live under
- * /people because /messages is the per-message API.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -32,10 +25,8 @@ type PageResponse = Extract<Schemas["ResponseData"], { kind: "PersonPage" }>;
 type AckResponse = Extract<Schemas["ResponseData"], { kind: "MessagesAck" }>;
 type MergeResponse = Extract<Schemas["ResponseData"], { kind: "PersonMerge" }>;
 
-/** Every Messages query starts with this, so one invalidation refreshes them. */
 export const MESSAGES_KEY = ["messages-mode"] as const;
 
-/** Empty data reserves the real pane/filter layout before the first answer. */
 export const LOADING_MESSAGES: MessagesData = {
   generated_at: "",
   header: "",
@@ -76,7 +67,6 @@ export async function fetchMessages(
   return answer.messages;
 }
 
-/** Index of the account segment in a list key: `[...MESSAGES_KEY, "list", account, ...]`. */
 const LIST_ACCOUNT_AT = MESSAGES_KEY.length + 1;
 
 export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
@@ -92,8 +82,6 @@ export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
       ...(filter.pastPace ? ["pace"] : []),
     ],
     queryFn: ({ signal }) => fetchMessages(account, filter, signal),
-    // Preserve the pane tree and open conversation across views, but never
-    // present history rows as attention or one account's mail as another's.
     placeholderData: (previous, previousQuery) => {
       if (previousQuery?.queryKey[LIST_ACCOUNT_AT] !== scope) return undefined;
       return previousQuery.queryKey[LIST_ACCOUNT_AT + 1] === (filter.turn ?? "attention")
@@ -121,10 +109,6 @@ export async function fetchPerson(
 const personKey = (account: string | null, person: string | null, topic: string | null) =>
   [...MESSAGES_KEY, "person", account ?? "all", person, topic] as const;
 
-/**
- * The page fetched for a person's default topic is also that topic's page:
- * naming the topic in the URL reuses it instead of fetching it again.
- */
 export function rememberTopicPage(person: string, topic: string, page: PersonPage): void {
   const account = useUiPrefs.getState().accountScope;
   getActiveQueryClient()?.setQueryData(personKey(account, person, topic), page);
@@ -138,16 +122,10 @@ export function usePersonQuery(person: string | null, topic: string | null) {
     enabled: person !== null,
     staleTime: 15_000,
     placeholderData: (previous, previousQuery) =>
-      // Keep the page while switching topics on the same person, so the
-      // header and topic list don't flash.
       previousQuery?.queryKey[3] === person ? previous : undefined,
   });
 }
 
-/**
- * Got it's preview: the exact text and a token for sending it. `signal`
- * lets a view that goes away drop the answer.
- */
 export async function previewAck(threadId: string, signal?: AbortSignal): Promise<AckPlan> {
   const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
     method: "POST",
@@ -157,10 +135,6 @@ export async function previewAck(threadId: string, signal?: AbortSignal): Promis
   return answer.ack;
 }
 
-/**
- * Send exactly what `plan` previewed. The daemon refuses a send without
- * the preview's token and text, or after the token's minute is up.
- */
 export async function sendAck(plan: AckPlan): Promise<AckPlan> {
   const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
     method: "POST",
@@ -187,7 +161,6 @@ export async function mergePeople(
   return answer.merge;
 }
 
-/** Pin or unpin a person: Messages' pins are the cadence watchlist. */
 export async function setPinned(accountId: string, email: string, pinned: boolean): Promise<void> {
   await apiFetch(`/api/v1/platform/cadence/${pinned ? "watch" : "unwatch"}`, {
     method: "POST",

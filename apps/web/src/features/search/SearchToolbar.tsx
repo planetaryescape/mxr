@@ -1,8 +1,3 @@
-/*
- * Search box, operator chips, mode/scope/sort/verdict/account pickers and
- * the "narrow by" facet chips above the results list.
- */
-
 import { Bookmark, BookmarkPlus, ListFilter, Search, X } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 
@@ -47,7 +42,6 @@ export function SearchToolbar({
   setDraft: (value: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
   mode: SearchMode;
-  /** Undefined is Default: the daemon's `[search] default_sort` applies. */
   sort: SearchSort | undefined;
   scope: Scope;
   verdict: Verdict | undefined;
@@ -56,7 +50,6 @@ export function SearchToolbar({
   realAccounts: RuntimeAccount[];
   facetGroups: SearchAggregationRow[] | undefined;
   update: (next: SearchUpdate) => void;
-  /** The scope, sort, account and narrow-by controls are shown. */
   filtersOpen: boolean;
   filterFocusRequest: number;
   onFiltersToggle: () => void;
@@ -71,7 +64,6 @@ export function SearchToolbar({
       filtersRef.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
   }, [filtersOpen, filterFocusRequest]);
   const tokens = parseSearchTokens(q);
-  // What the filters have been moved off, so a closed panel still says it is narrowing.
   const narrowed = [
     scope !== "threads",
     sort !== undefined && sort !== (scope === "triage" ? "verdict" : "relevance"),

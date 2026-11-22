@@ -21,7 +21,6 @@ describe("a To do row", () => {
       domain: "camden.gov.uk",
       messageId: "msg_bill",
     });
-    // Even a row an older daemon marked trusted only opens the email.
     const trusted = todoFixture({
       action: { label: "Pay on camden.gov.uk", url: "https://x.example", trusted: true },
     });
@@ -50,7 +49,7 @@ describe("a To do row", () => {
 });
 
 describe("a To do row's words", () => {
-  const now = new Date(2026, 9, 14, 15, 0); // Wed 14 Oct 2026, local
+  const now = new Date(2026, 9, 14, 15, 0);
 
   test("says the day an email arrived, in the fewest words", () => {
     expect(arrivedDay(new Date(2026, 9, 14, 8), now)).toBe("today");

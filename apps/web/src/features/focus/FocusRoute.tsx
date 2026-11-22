@@ -1,11 +1,3 @@
-/*
- * Focus & reply: everyone you owe a reply, one conversation at a time. The
- * conversation and what it asks of you on the left, your reply on the
- * right; send and the next one is up, skip it for later, snooze it, or
- * mark it done when no reply is needed.
- * Progress is a count and a thin bar; the end says what's next.
- */
-
 import { useNavigate } from "@tanstack/react-router";
 import { MessageSquareReply } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -35,8 +27,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   const navigate = useNavigate();
   const focus = useFocusSession(lane, at);
   const { current, progress } = focus;
-  // The conversation on screen is in the URL, so a copied link (or a
-  // reload) comes back to it.
   const replaceSearch = useReplaceSearch();
   const shownId = current?.threadId;
   useEffect(() => {
@@ -52,7 +42,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   useShortcutScope("focus");
 
   const leave = () => void navigate({ href: safeReturnPath(from) });
-  /** The open reply's commands, only while it is this conversation's. */
   const replyCommands = () => {
     const commands = useComposeUi.getState().commands;
     return commands && commands.intentKey === replyKey ? commands : null;
@@ -75,15 +64,10 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   const focusReply = () =>
     replyRef.current?.querySelector<HTMLElement>(".cm-content, .ProseMirror")?.focus();
 
-  // A held key, or a skip while the next reply is still opening, would spin
-  // through the queue faster than anyone reads it.
   const skip = () => {
     if (replyOpen && !replyCommands()) return;
     focus.skip();
   };
-  // Done, no reply needed: put it away (archive, mark read, off the desk
-  // until someone writes again) and move on. Undo, or a Done that fails,
-  // puts it back in front.
   const done = () => {
     if (!current || (replyOpen && !replyCommands())) return;
     const threadId = current.threadId;
@@ -115,9 +99,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
     leave,
   });
 
-  // Esc inside the reply steps out to focus mode's keys (skip, snooze)
-  // instead of leaving. The composer is portaled here, so this listens on
-  // the DOM; an editor that uses Esc itself (vim mode) keeps it.
   useEffect(() => {
     const node = replyRef.current;
     if (!node) return;
@@ -133,8 +114,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
     return () => node.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // A failed source can't prove nobody is waiting: that is an error to
-  // retry, never a finish.
   const failed = !focus.loading && !current && focus.error !== null;
   const finished = !focus.loading && !current && !failed;
 
@@ -144,8 +123,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
       tabIndex={-1}
       data-mode-pane=""
       aria-label="Focus and reply"
-      // Tab skips only from the page itself (where Esc leaves you); from a
-      // button or link it still moves focus.
       onKeyDown={(event) => {
         if (event.key !== "Tab" || event.shiftKey || event.target !== event.currentTarget) return;
         event.preventDefault();
@@ -270,11 +247,6 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   );
 }
 
-/**
- * The ways through the queue, on screen as buttons with their keys. In the
- * reply, ⌘↵ sends; Tab (or Esc in the rich-text editor) steps out of it so
- * the single keys work.
- */
 function FocusKeys({
   disabled,
   run,
@@ -287,7 +259,6 @@ function FocusKeys({
     ["skip", "j", "Skip"],
     ["done", "e", "Done, no reply needed"],
     ["snooze", "b", "Not now"],
-    // Palette-only: w is Wake.
     ["remind", null, "Send, remind if no reply"],
     ["draft", "d", "Draft in your voice"],
   ] as const;
@@ -313,7 +284,6 @@ function FocusKeys({
   );
 }
 
-/** Only a path inside the app, never another origin. */
 export function safeReturnPath(from: string | undefined): string {
   if (!from || !from.startsWith("/") || from.startsWith("//") || from.startsWith("/focus")) {
     return "/m/inbox";

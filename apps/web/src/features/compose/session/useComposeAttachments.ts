@@ -1,5 +1,4 @@
 /* eslint-disable no-await-in-loop -- Sequential offsets and draft revision CAS require ordered upload requests. */
-/* Bounded uploads persist immutable daemon resources for this compose session. */
 
 import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
@@ -8,7 +7,6 @@ import { supportsDraftAttachmentUpload, uploadComposeAttachment } from "../api";
 import { errorMessage, type ComposeDraftState } from "./composeDraft";
 
 export interface ComposeUploadProgress {
-  /** Stable render key — duplicate filenames are legal within a batch. */
   id: string;
   name: string;
   done: boolean;
@@ -116,7 +114,6 @@ export function useComposeAttachments({ draftRef, setDraft, setDirty }: ComposeA
       toast.error("Attachment failed", { description: errorMessage(error) });
     } finally {
       setUploading((value) => Math.max(0, value - fileList.length));
-      // Drop this batch's entries; another concurrent batch keeps its own.
       const batchIds = new Set<string>(batch.map((entry) => entry.id));
       setUploadProgress((items) => items.filter((item) => !batchIds.has(item.id)));
     }

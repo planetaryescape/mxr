@@ -11,7 +11,6 @@ export interface SnoozePreset {
   label?: string;
   wakeAt?: string;
   wake_at?: string;
-  /** The daemon's wording of the wake time, "Friday 3 October, 15:00". */
   description?: string;
 }
 
@@ -27,7 +26,6 @@ export interface MailboxQueryParams extends MailboxLensParams {
   limit?: number;
   offset?: number;
   view?: "threads" | "messages";
-  /** Scope to one account; omitted means every account. */
   account?: string | null;
 }
 
@@ -55,24 +53,15 @@ export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxR
   return apiFetch<MailboxResponse>(`/api/v1/mail/mailbox?${query.toString()}`);
 }
 
-/** The reader's page size. The daemon clamps to its own maximum. */
 export const THREAD_PAGE_SIZE = 50;
 
 export interface ThreadPageRequest {
   limit?: number;
-  /** Page ending just before this message. */
   before?: string | null;
-  /** Page starting just after this message. */
   after?: string | null;
-  /** Page ending at this message, for a deep link. */
   focus?: string | null;
 }
 
-/**
- * Read a conversation. With `page`, the bridge returns one bounded page and
- * the reader loads the rest on demand; without it, the whole thread (used by
- * dialogs and surfaces that need a known message's body).
- */
 export function fetchThread(
   threadId: string,
   page?: ThreadPageRequest,
@@ -123,7 +112,6 @@ export function fetchSenderProfile(input: { accountId: string; email: string }):
   return apiFetch<unknown>(`/api/v1/mail/sender?${query.toString()}`);
 }
 
-/** The bridge passes the daemon's `CommitmentList` answer through. */
 export type CommitmentList = Extract<
   components["schemas"]["ResponseData"],
   { kind: "CommitmentList" }
@@ -482,7 +470,6 @@ export interface UnsubscribePurgeResponse {
     archived_count: number;
     mutation_id?: string | null;
     error?: string | null;
-    /** A dry run's token: commit exactly that preview with it. */
     preview_token?: string | null;
   };
 }

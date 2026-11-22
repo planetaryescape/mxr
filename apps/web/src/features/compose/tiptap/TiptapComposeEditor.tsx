@@ -14,9 +14,7 @@ interface TiptapComposeEditorProps {
   onSend: () => void;
   onDiscard: () => void;
   autoFocus?: boolean;
-  /** Inline replies grow with their text so the conversation scrolls. */
   inline?: boolean;
-  /** Changes when the editor should take focus back, e.g. after a proof closes. */
   focusNonce?: number;
   readOnly?: boolean;
 }
@@ -44,8 +42,6 @@ export function TiptapComposeEditor({
         "aria-label": "Message body",
       },
       handleKeyDown: (_view, event) => {
-        // mxr's compose chords, from the one table: held ones run once, and
-        // the editor runs the three it owns (the compose surface the rest).
         const command = composeCommandOf(event);
         if (!command) return false;
         if (event.repeat) {
@@ -216,7 +212,6 @@ function ToolbarButton({
       disabled={disabled}
       aria-pressed={active ?? false}
       title={label}
-      // Keep the selection in the editor — formatting acts on it.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >

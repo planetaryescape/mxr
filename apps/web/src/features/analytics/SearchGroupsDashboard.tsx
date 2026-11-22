@@ -17,12 +17,10 @@ const GROUPS: { id: SearchGroupBy; label: string }[] = [
   { id: "category", label: "Category" },
 ];
 
-/** The TUI's drill: the original query narrowed by the group's operator. */
 function drillQuery(query: string, groupBy: SearchGroupBy, key: string): string {
   return `${query} ${groupBy}:${searchValue(key)}`.trim();
 }
 
-/** TUI "Search groups": aggregate any query by sender, list or category. */
 export function SearchGroupsDashboard() {
   const drill = useDrillToSearch();
   const account = useUiPrefs((state) => state.accountScope) ?? undefined;

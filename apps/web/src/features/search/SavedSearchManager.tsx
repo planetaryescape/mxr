@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 
 import { deleteSavedSearch, updateSavedSearch, type SavedSearch } from "./api";
 
-/** Pin, colour and delete saved searches (TUI sidebar c / e / #). */
 export function SavedSearchManager({
   searches,
   onChange,

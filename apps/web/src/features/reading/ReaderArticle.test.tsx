@@ -47,7 +47,6 @@ afterEach(() => {
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
-/** The reader re-tags and re-places highlights on the next animation frame after a render. */
 async function settle() {
   await act(async () => {
     await nextFrame();
@@ -81,7 +80,6 @@ describe("the reader path for untrusted article HTML", () => {
     const body = view!.container.querySelector("[data-article-body]") as HTMLElement;
     expect(body.querySelector("script, style, iframe, form, input")).toBeNull();
     expect(body.querySelector("[onclick], [onerror], [class]:not(.reader-prose)")).toBeNull();
-    // Only the reader's own paragraph-indent variable may appear in a style attribute.
     for (const el of body.querySelectorAll("[style]"))
       expect(el.getAttribute("style")).toMatch(/^--para-indent: [\d.]+px;?$/);
     expect(body.querySelector("#app")).toBeNull();
@@ -125,7 +123,6 @@ describe("the reader path for untrusted article HTML", () => {
 
   test("draws highlights on the rendered article, in any storage order", async () => {
     const html = "<p>The bins move to Tuesdays.</p><p>Recycling is unchanged.</p>";
-    // Stored newest-first, so the second paragraph's quote comes first.
     const { view } = show(html, {
       marks: [
         { quote: "Recycling is unchanged" },

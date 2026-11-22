@@ -42,17 +42,9 @@ import { SectionHeading } from "@/components/SectionHeading";
 import { listMotions } from "@/features/modes/listMotions";
 import { useMarkRowSeen } from "@/features/modes/rowSeen";
 
-/**
- * The runway for the account scope. The first fetch on each visit records
- * that To do was opened, so "expired since you last looked" starts again;
- * the count it answered with is kept for the visit, since later refetches
- * count from that moment and say zero.
- */
 export function useRunway() {
   const account = useUiPrefs((s) => s.accountScope);
   const scope = account ?? "all";
-  // The scopes whose first look this visit has recorded: each account's
-  // "last looked" moves only when that account's To do is opened.
   const seen = useRef(new Set<string>());
   const [expired, setExpired] = useState<Record<string, number>>({});
   const runway = useQuery({
@@ -72,15 +64,8 @@ export function useRunway() {
   return { runway, expiredOnOpen: expired[scope] ?? 0 };
 }
 
-/** The list's view, row cursor and open source, kept while an email opens. */
 const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
 
-/**
- * To do: things email asked you to do, as a runway of instructions
- * ordered by when to act. Not a list of emails: each row is an action titled
- * verb plus object, with its dates and primary action visible; supporting
- * details peek under the row on `Space`, and `o` opens the source email.
- */
 export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
   const { runway, expiredOnOpen } = useRunway();
   const threadIds = useCallback(() => {
@@ -132,7 +117,6 @@ function Runway({
   );
 }
 
-/** The mode's name, its job in one line, and the day's headline. */
 function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide }) {
   return (
     <>
@@ -164,7 +148,6 @@ function BandHeading({ children, count }: { children: ReactNode; count?: number 
   );
 }
 
-/** "Whenever 2 ›": a band folded to one line until opened. */
 function FoldLine({
   label,
   count,
@@ -208,15 +191,11 @@ function Bands({
   const navigate = useNavigate();
   const hidden = useTodoHidden((s) => s.hidden);
   const leaving = useTodoHidden((s) => s.leaving);
-  // Only a pointer fades the lamp (D101): a key never animates.
   const via = useRef<LampVia>("key");
   const [open, setOpen] = useState({ whenever: false, done: false });
-  // In the URL, so a copied link lands on the same to-do.
   const [cursorId, setCursorId] = useSearchParam("row");
   const [expandedId, setExpandedId] = useSearchParam("source");
   const items = useMemo(() => runwayItems(runway, open, hidden), [runway, open, hidden]);
-  // A link to a to-do in a folded band opens that band, once: a row ticked
-  // off later moves to Done without opening it.
   const linkedRow = useRef(cursorId);
   useEffect(() => {
     const linked = linkedRow.current;
@@ -227,15 +206,12 @@ function Bands({
     )?.band;
     if (band === "whenever" || band === "done") setOpen((was) => ({ ...was, [band]: true }));
   }, [hidden, items, runway]);
-  // A row folding away after a pointer done is still drawn but no longer counts: the lamp is
-  // already on its neighbour while it folds. Found by id, never by position.
   const live = useMemo(() => items.filter((item) => !leaving.has(item.todo.id)), [items, leaving]);
   const index = Math.max(
     0,
     live.findIndex((item) => item.todo.id === cursorId),
   );
   const current: RunwayItem | undefined = live[index];
-  // A row ticked off or dismissed leaves: the cursor takes the next one.
   const itemIds = useMemo(() => live.map((item) => item.todo.id), [live]);
   useAdvanceOnRemoval({
     ids: itemIds,
@@ -248,7 +224,6 @@ function Bands({
   useEffect(() => {
     listRef.current?.querySelector(`[data-focused="true"]`)?.scrollIntoView({ block: "nearest" });
   }, [currentId]);
-  // The mode marks on each row, from the daemon's membership.
   const markedThreads = useMemo(
     () => items.flatMap((item) => (item.todo.thread_id ? [item.todo.thread_id] : [])),
     [items],
@@ -256,8 +231,6 @@ function Bands({
   const memberships = useThreadModesMap(markedThreads).data;
 
   const hasItems = openCount(runway) > 0;
-  // The runway hint sits under the first bar; the catch-up hint under the
-  // catch-up line. Only one shows at a time (features/hints).
   const firstRow = items.find((item) => item.band !== "done");
   const runwayHint = useHint("todo", "todo.runway", {
     ready: firstRow !== undefined,
@@ -286,7 +259,6 @@ function Bands({
   }, [params.threadId, current, live, markRowSeen]);
   const openEmail = useCallback(
     (todo: Todo) => {
-      // The hint names `e` and `o`; doing either is what it asked for.
       dismissRunwayHint();
       if (todo.thread_id) {
         openedThread.current = todo.thread_id;
@@ -317,7 +289,6 @@ function Bands({
     (todo: Todo) => {
       const action = primaryAction(todo);
       if (!action) return;
-      // Doing what the button says is what the runway hint names.
       dismissRunwayHint();
       if (action.kind === "reply") {
         useComposeUi.getState().openCompose(replyIntent(action.messageId, "single"), "overlay");
@@ -326,8 +297,6 @@ function Bands({
       if (action.kind === "email" && todo.thread_id) {
         openedThread.current = todo.thread_id;
         markRowSeen(todo);
-        // The link rides in the URL, so the mark lasts exactly as long as
-        // this opening of the email.
         setActivePane("reader");
         void navigate({
           to: "/todo/$threadId",
@@ -362,7 +331,6 @@ function Bands({
     },
     [setCursorId],
   );
-  // The details panel reads the latest open id through a ref so the memoised rows keep one callback.
   const expandedRef = useRef(expandedId);
   expandedRef.current = expandedId;
   const toggleDetails = useCallback(
@@ -382,7 +350,6 @@ function Bands({
     getRuntimeNavigate().navigate(`/todo?view=${view}`);
   };
 
-  // The reader keeps its own keys while it has focus.
   useShortcutScope("todo", !params.threadId || activePane !== "reader");
   useScopeController("todo", {
     down: () => move(1),
@@ -399,20 +366,16 @@ function Bands({
     edit: () => actionable && openMailDialog({ kind: "todo-edit", todo: actionable }),
     openEmail: () => current?.todo.thread_id && openEmail(current.todo),
     details: () => current && toggleDetails(current.todo),
-    // `1` is this tab already; `2` and `3` open the others.
     runway: () => undefined,
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
-    // Escape closes an open peek first, then a hint, as in Updates.
     closeHint: () => {
       if (expandedId !== null) setExpandedId(null);
       else closeHint?.();
     },
   });
 
-  // The status bar says why the lit row is here and which keys work on it.
   useLitReason(current?.todo.why, null, current?.todo.account_id);
-  // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   const listLive = !params.threadId || activePane !== "reader";
   usePageKeys(current && listLive ? stripKeys(current.band === "done" ? "todo.done" : "todo") : []);
 
@@ -432,7 +395,6 @@ function Bands({
   }, [items]);
   const { now: nowItems, coming: comingItems, whenever: wheneverItems, done: doneItems } = byBand;
   const neverHadAny = !hasItems && runway.done_this_week.length === 0 && runway.catchup_count === 0;
-  // To do is put to bed when nothing is due today or earlier (docs/blueprint/27).
   const finished = useLowTide(
     "todo",
     neverHadAny,
@@ -479,7 +441,6 @@ function Bands({
     );
   }
 
-  // Coming up, by week, with "Later" for what shows up after 30 days.
   const groups: { label: string; items: RunwayItem[] }[] = [];
   for (const item of comingItems) {
     const label = item.group ?? "";

@@ -95,9 +95,6 @@ vi.mock("@/features/time/api", async (importOriginal) => {
 });
 vi.mock("sonner", () => ({ toast: toasts }));
 
-// The mocked editor exposes the editor's own send hotkey (CodeMirror's
-// Mod-Enter), which calls onSend directly and bypasses the surface's
-// `busy` gate. Only the send pipeline itself can stop a second send there.
 function MockEditor({
   value,
   onChange,
@@ -123,7 +120,6 @@ function MockEditor({
 vi.mock("./tiptap/TiptapComposeEditor", () => ({ TiptapComposeEditor: MockEditor }));
 vi.mock("./codemirror/CodeMirrorComposeEditor", () => ({ CodeMirrorComposeEditor: MockEditor }));
 
-/** Subjects the daemon was asked to save, in order. */
 function savedSubjects(): string[] {
   return api.updateComposeSession.mock.calls.map(
     ([input]) => (input as { frontmatter: { subject: string } }).frontmatter.subject,
@@ -216,9 +212,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  // Unmount first: tearing a session down legitimately flushes its draft
-  // (asynchronously, through the save queue), and that call must not leak
-  // into the next test's mock history.
   cleanup();
   act(() => useComposeUi.setState({ intent: null, surface: "overlay" }));
   act(() => useConnectionStore.getState().setState({ daemonDown: false }));
@@ -238,7 +231,6 @@ describe("ComposeHost send safety", () => {
 
     const send = await screen.findByRole("button", { name: "Send⌘↵" });
     fireEvent.click(send);
-    // The countdown toast: live seconds as its title, the 5s window as its life.
     await waitFor(() =>
       expect(toasts).toHaveBeenCalledWith(
         expect.anything(),
@@ -246,7 +238,6 @@ describe("ComposeHost send safety", () => {
       ),
     );
 
-    // Every other way to send while the undo countdown runs.
     expect(send).toBeDisabled();
     fireEvent.keyDown(screen.getByLabelText("To"), { key: "Enter", metaKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Editor send hotkey" }));
@@ -452,7 +443,6 @@ describe("ComposeHost never loses typing on the way out", () => {
         '"preservedRecoveryPath":"/tmp/host-recovery-copy-1"',
       );
       expect(api.discardComposeSession).not.toHaveBeenCalled();
-      // Re-enter the preserved text through its explicit action, then discard locally.
       const actions = screen.getByRole("button", { name: "More compose actions" });
       fireEvent.keyDown(actions, { key: "Enter" });
       fireEvent.click(await screen.findByRole("menuitem", { name: "Open preserved edits" }));
@@ -865,7 +855,6 @@ describe("ComposeHost send confirmation", () => {
     renderHost();
     openNewMessage();
 
-    // The header row offers the same suggestion once recipients settle.
     expect(
       await screen.findByRole("button", { name: "Add carol@example.com to Cc" }, { timeout: 3000 }),
     ).toBeVisible();
@@ -936,13 +925,10 @@ describe("ComposeHost send later", () => {
         expect.anything(),
       ),
     );
-    // The bridge stores and schedules the compose file itself, so reply
-    // headers and the From alias carry over.
     const request = api.scheduleComposeSession.mock.calls[0]?.[0];
     expect(request?.draftPath).toBeTruthy();
     expect(request?.sendAt).toBeInstanceOf(Date);
     const scheduledId = "stored-1";
-    // The composer closes like a send.
     await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
 
     const options = toasts.success.mock.calls.find(([title]) =>
@@ -976,7 +962,6 @@ describe("ComposeHost send and remind", () => {
       name: /Send and remind me if no reply in/,
     });
     fireEvent.keyDown(submenu, { key: "ArrowRight" });
-    // Each preset shows the exact time it resolves to before it is chosen.
     const item = await screen.findByRole("menuitem", { name: new RegExp(`^${label}`) });
     await waitFor(() => expect(item).toHaveTextContent(/\d\d:\d\d$/));
     fireEvent.click(item);
@@ -1035,8 +1020,6 @@ describe("ComposeHost invite replies", () => {
     expect((await screen.findAllByText("Tentative with comment"))[0]).toBeVisible();
     expect(api.startComposeSession).toHaveBeenCalledWith("invite_reply", "m-3", "tentative");
 
-    // Scheduling goes through the compose session, which carries the RSVP,
-    // so invite replies can be sent later like any other reply.
     await openSendLater();
     fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
     await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
@@ -1141,7 +1124,6 @@ describe("saved draft discard preview", () => {
         }),
       );
       api.updateComposeSession.mockImplementation(async (input) => {
-        // This mock receives the typed compose update payload through the host.
         const request = input as Parameters<typeof import("./api").updateComposeSession>[0];
         if (request.retryRecovery && conflict)
           throw new BridgeRequestError(409, "Draft revision conflict", "draft_conflict", {

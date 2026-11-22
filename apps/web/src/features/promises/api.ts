@@ -1,9 +1,3 @@
-/*
- * Promises on send: what an outgoing compose session promises (asked while
- * its undo window runs), and keeping one as a dated commitment once the
- * message has sent. Types come from the generated protocol schema.
- */
-
 import { apiFetch } from "@/api/client";
 import type { components, operations } from "@/api/generated";
 import { browserTimeZone } from "@/features/time/api";
@@ -20,7 +14,6 @@ type RecordBody =
 type DetectResponse = Extract<Schemas["ResponseData"], { kind: "Promises" }>;
 type RecordResponse = Extract<Schemas["ResponseData"], { kind: "RecordedPromise" }>;
 
-/** Due words resolve in the browser's zone: "by Friday" is where you are. */
 export async function detectComposePromises(
   draftPath: string,
   accountId: string,
@@ -37,7 +30,6 @@ export async function detectComposePromises(
   return response.detection;
 }
 
-/** Keep a promise from a sent message, due at the instant the user chose. */
 export async function recordPromise(
   messageId: string,
   what: string,

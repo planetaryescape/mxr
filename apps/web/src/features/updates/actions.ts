@@ -1,10 +1,3 @@
-/*
- * Updates' keys, from blueprint 22's key table and the daemon's Updates
- * guide. The mounted briefing registers what each command does
- * (`useScopeController("updates", …)`); the reader keeps its own keys
- * while it has focus. `g u` opens Updates from anywhere.
- */
-
 import { Archive, BellOff, Check, Copy, ExternalLink, ListPlus, Mail, Pin } from "lucide-react";
 
 import type { ActionBehavior } from "@/lib/actions/types";

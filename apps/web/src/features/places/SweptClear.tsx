@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { LowTide } from "@/features/low-tide/LowTide";
 
-/** A place or queue you cleared: the small low tide, once per clearing. */
 export function SweptClear({
   place,
   line = `${place} is clear.`,

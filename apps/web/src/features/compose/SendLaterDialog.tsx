@@ -1,12 +1,3 @@
-/*
- * Send-later dialog: a natural-language time field resolved live by the
- * daemon (the parser the CLI and TUI use), plus a few presets that show the
- * time they resolve to. Confirm hands the previewed instant back to the
- * compose controller, which materialises the session into a stored draft and
- * schedules it. The same dialog, with its copy swapped, picks a custom time
- * for "send and remind me".
- */
-
 import { Clock, Loader2 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -34,7 +25,6 @@ interface SendLaterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scheduling: boolean;
-  /** Return the submission's promise so repeated presses wait for it. */
   onConfirm: (at: Date, label: string) => void | Promise<void>;
   title?: string;
   description?: string;

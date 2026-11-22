@@ -250,7 +250,6 @@ test("the reply box shows the reply left on this conversation, and Reply resumes
   fireEvent.click(box);
   expect(onReply).toHaveBeenCalled();
 
-  // A reply left on another of their conversations isn't this one's.
   rerender(
     <QueryClientProvider client={new QueryClient()}>
       <PersonPane

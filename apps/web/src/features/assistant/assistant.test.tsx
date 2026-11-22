@@ -43,13 +43,11 @@ vi.mock("@/features/mail-actions/mailQueryInvalidation", () => ({
   invalidateMailQueries: () => invalidate(),
 }));
 
-// Email chips look up where their thread lives; each test gets its own cache.
 const apiFetch = vi.hoisted(() => vi.fn<(path: string, init?: unknown) => Promise<unknown>>());
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   apiFetch,
 }));
-/** What the membership lookups asked for, one entry per request. */
 const lookups = () =>
   apiFetch.mock.calls.map(
     ([, init]) => (init as { body: { thread_ids: string[] } }).body.thread_ids,
@@ -149,7 +147,6 @@ describe("proof", () => {
     );
     expect(screen.getByText("From the daemon.")).toBeVisible();
     unmount();
-    // An older daemon: no field, so the client's own rule for a trash.
     cards([{ ...approval, arguments: { action: "trash", message_ids: ["m1"] } }]);
     expect(screen.getByText("Can't be undone.")).toBeVisible();
   });
@@ -158,7 +155,6 @@ describe("proof", () => {
     const onDecide = cards([approval]);
     const apply = screen.getByRole("button", { name: /^Apply/ });
     expect(apply).toHaveAttribute("data-slot", "button");
-    // Everything else on the card is quiet: no second filled button.
     const filled = screen
       .getAllByRole("button")
       .filter((button) => button.className.includes("bg-primary"));
@@ -860,12 +856,10 @@ describe("landing", () => {
 });
 
 const rowsOf = (count: number) => Array.from({ length: count }, (_, n) => ({ title: `Mail ${n}` }));
-/** Answers every request but the step's rows, which each test answers itself. */
 const answerOthers = (path: string) =>
   path.includes("/steps/") ? undefined : { kind: "ModeMembership", threads: [] };
 
 describe("step rows", () => {
-  // A step whose result lists 12 emails; the readout shows the first five.
   const wide: AssistantItem = { ...search, readout: { total: 12, rows: rowsOf(5) } };
   const stepCalls = () => apiFetch.mock.calls.filter(([path]) => String(path).includes("/steps/"));
   const open = () => {
@@ -925,7 +919,6 @@ describe("step rows", () => {
     fireEvent.click(screen.getByRole("button", { name: /Searched your mail/ }));
     fireEvent.click(screen.getByRole("button", { name: "and 7 more" }));
 
-    // The sidebar keys the transcript by conversation, so the switch remounts it.
     rerender(<Transcript key="c2" items={[turn[0]!, wide]} running={false} conversationId="c2" />);
     expect(screen.getByRole("button", { name: /1 step/ })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /1 step/ }));

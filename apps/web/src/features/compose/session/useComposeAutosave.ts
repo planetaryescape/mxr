@@ -1,9 +1,3 @@
-/*
- * Autosave for a compose session: a trailing 3s debounce after the last
- * edit, flushed when the tab is hidden. Saves go through the request
- * coordinator so only the latest snapshot per draft file commits.
- */
-
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -79,8 +73,6 @@ export function useComposeAutosave({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const updateSession = useMutation({ mutationFn: updateComposeSession });
-  // Set once the draft file is gone (sent, scheduled, discarded) so the
-  // unmount flush below never writes to a file that no longer exists.
   const sessionFinishedRef = useRef(false);
 
   const saveCurrentDraft = useCallback(async () => {
@@ -225,8 +217,6 @@ export function useComposeAutosave({
                   );
                 if (belongsToActive)
                   setSaveError(`${errorMessage(error)} Your edits are preserved locally.`);
-                // The bridge confirmed this exact snapshot was preserved locally.
-                // Its token is still the observed canonical token, never acceptance.
                 const preserved: ComposeSessionResponse = {
                   session: {
                     draftPath: recovery.draft_path,
@@ -390,8 +380,6 @@ export function useComposeAutosave({
     }
   }, [draftRef, intentKey, queryClient, setDirty, setDraft, updateSession]);
 
-  // While the daemon is down nothing can save: say so and keep the text,
-  // which stays dirty, so the debounce below runs again once it's back.
   const daemonDown = useDaemonDown();
   useEffect(() => {
     if (!daemonDown) {
@@ -410,8 +398,6 @@ export function useComposeAutosave({
     const handle = window.setTimeout(() => {
       if (activeOperationLockRef.current) return;
       void saveCurrentDraft().catch((error: Error) => {
-        // The daemon just went away; the note above replaces this once
-        // that's confirmed, and a toast per keystroke pause would nag.
         if (error instanceof DaemonUnavailableError) return;
         toast.error("Autosave failed", { description: error.message });
       });
@@ -419,24 +405,17 @@ export function useComposeAutosave({
     return () => window.clearTimeout(handle);
   }, [daemonDown, dirty, draft, operationPaused, activeOperationLockRef, saveCurrentDraft]);
 
-  // Flush the autosave debounce the moment the tab is hidden — a closed tab
-  // never comes back for the 3s timer.
   useEffect(() => {
     const flush = () => {
       if (document.visibilityState !== "hidden") return;
       if (activeOperationLockRef.current) return;
       if (!draftRef.current) return;
-      void saveCurrentDraft().catch(() => {
-        // beforeunload below still warns about the unsaved state.
-      });
+      void saveCurrentDraft().catch(() => {});
     };
     document.addEventListener("visibilitychange", flush);
     return () => document.removeEventListener("visibilitychange", flush);
   }, [draftRef, activeOperationLockRef, saveCurrentDraft]);
 
-  // Tearing the session down (closing the surface, switching reply target)
-  // must not drop edits still inside the debounce window. The save is fired
-  // on the way out; the coordinator keeps it ordered with any in-flight one.
   const saveOnUnmountRef = useRef(saveCurrentDraft);
   saveOnUnmountRef.current = saveCurrentDraft;
   useEffect(

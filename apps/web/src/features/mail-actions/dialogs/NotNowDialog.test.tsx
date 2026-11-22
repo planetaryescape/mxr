@@ -42,7 +42,6 @@ vi.mock("../mailMutations", async (importOriginal) => ({
 
 vi.mock("@/features/reply-queue/api", () => ({ setReplyLater: api.setReplyLater }));
 
-/** The mail Not-now picker for these messages, as `b` on a list row opens it. */
 function SnoozeDialog({
   messageIds,
   onOpenChange,
@@ -99,7 +98,6 @@ describe("NotNowDialog", () => {
         ["msg-1"],
         expect.objectContaining({
           until: "2026-05-12T09:00:00Z",
-          // The toast names the time the row showed.
           payload: { untilLabel: expect.stringMatching(/\d/) },
         }),
       ),
@@ -119,7 +117,6 @@ describe("NotNowDialog", () => {
     await waitFor(() => expect(api.performMailAction).toHaveBeenCalledTimes(1));
     const [, ids, options] = api.performMailAction.mock.calls[0] ?? [];
     expect(ids).toEqual(["msg-2"]);
-    // An RFC3339 instant, not the words, so the daemon can't re-resolve it.
     expect(new Date(options?.until ?? "").getTime() - Date.now()).toBeGreaterThan(7_000_000);
   });
 
@@ -187,7 +184,6 @@ describe("NotNowDialog", () => {
     );
     const later = screen.getByTestId("not-now-later");
     await waitFor(() => expect(later).toHaveFocus());
-    // Enter on a focused button clicks it.
     fireEvent.click(later);
     await waitFor(() => expect(api.setReplyLater).toHaveBeenCalledWith("msg-7", true));
     expect(api.performMailAction).not.toHaveBeenCalled();

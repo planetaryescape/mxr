@@ -1,9 +1,3 @@
-/*
- * To do over the bridge. The daemon builds the bands, labels and why lines
- * (`GetTodoRunway`), and every mutation answers with the rows as they are
- * after it (`TodoChange`); this file only moves them.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
@@ -26,7 +20,6 @@ type Catchup = Extract<Schemas["ResponseData"], { kind: "TodoCatchup" }>;
 type Todos = Extract<Schemas["ResponseData"], { kind: "Todos" }>;
 type Change = Extract<Schemas["ResponseData"], { kind: "TodoChange" }>;
 
-/** Every To do query starts with this, so one invalidation refreshes them. */
 export const TODO_KEY = ["todos"] as const;
 
 export type MicrosoftTodoLink = Schemas["MicrosoftTodoSendData"];
@@ -132,7 +125,6 @@ export function resolveTodoSuggestion(
   });
 }
 
-/** `when` is a phrase or the RFC 3339 instant the time field resolved; null clears it. */
 export function scheduleTodo(id: string, when: string | null) {
   return change(`/api/v1/mail/todos/${encodeURIComponent(id)}/schedule`, {
     when,

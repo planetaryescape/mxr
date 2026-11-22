@@ -95,8 +95,6 @@ describe("DraftProof keys", () => {
   });
 
   test("a gap the word diff split into three runs is one gap with one Tab stop", () => {
-    // "[[?: the date]]" became "[[?: the exact date]]": the diff split the gap
-    // into kept, added and kept runs, and all three carry the gap's index.
     const gapRuns: ProofRun[] = [
       { kind: "kept", text: "Meet at ", gap: null },
       { kind: "kept", text: "[[?: the ", gap: 0 },

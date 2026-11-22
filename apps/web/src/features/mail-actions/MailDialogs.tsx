@@ -27,7 +27,6 @@ import { useMailDialogs } from "./mailDialogStore";
 import { describeTarget } from "./mailVerbs";
 import { mailNotNow } from "./notNow";
 
-/** Mounted once in the shell; renders whichever mail dialog is open. */
 export function MailDialogs() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();

@@ -25,7 +25,6 @@ export function SearchPalette() {
   const [debounced, setDebounced] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Set when a result opens: the reader, not the list behind, gets the keys.
   const openedConversation = useRef(false);
 
   useEffect(() => {
@@ -71,13 +70,10 @@ export function SearchPalette() {
     const trimmed = query.trim();
     if (!trimmed) return;
     close();
-    // No sort: the full page starts at Default, the configured order.
     void navigate({ to: "/search", search: { q: trimmed, mode: "lexical" } });
   }
 
   function openRow(row: MessageRowView) {
-    // As Enter on a list row does: j, e and r now act on this conversation,
-    // not on whatever row the list behind the palette had lit.
     openedConversation.current = true;
     useMailboxPane.getState().setActivePane("reader");
     close();
@@ -108,16 +104,12 @@ export function SearchPalette() {
       event.stopPropagation();
       move(-1);
     } else if (pressedOverlayKey(event, "search-palette.all")) {
-      // Mod+Enter always opens the full search page, even when a quick
-      // result is highlighted.
       event.preventDefault();
       event.stopPropagation();
       goToSearch();
     } else if (pressedOverlayKey(event, "search-palette.open")) {
       event.preventDefault();
       event.stopPropagation();
-      // Enter opens the highlighted result, or falls back to full search
-      // when nothing is selected.
       const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
       if (row) openRow(row);
       else goToSearch();

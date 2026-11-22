@@ -42,7 +42,7 @@ test("duplicate tick-off cannot reveal the task before its original request sett
     .mockResolvedValue(false);
   const todo = todoFixture();
   const first = tickOff(todo);
-  useTodoHidden.getState().hide([todo.id]); // The exit animation has finished.
+  useTodoHidden.getState().hide([todo.id]);
   await tickOff(todo);
   const hiddenWhilePending = useTodoHidden.getState().hidden.has(todo.id);
   finish(true);

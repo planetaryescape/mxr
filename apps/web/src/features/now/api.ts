@@ -1,9 +1,3 @@
-/*
- * Now over the bridge (`GetNow`). The daemon caps every section and writes
- * every line, so the web, the TUI and `mxr now` show the same ten things;
- * this file only moves them.
- */
-
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";

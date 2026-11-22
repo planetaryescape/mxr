@@ -33,7 +33,6 @@ describe("applyPrefill", () => {
     const { draft: next, changed } = applyPrefill(draft("> Can you do Friday?"), intent);
     expect(changed).toBe(true);
     expect(next.bodyMarkdown).toBe("yep, friday works\n\n> Can you do Friday?");
-    // Resuming the same session does not insert it twice.
     expect(applyPrefill(next, intent).changed).toBe(false);
   });
 

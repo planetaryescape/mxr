@@ -1,8 +1,3 @@
-/*
- * Compose-related palette actions, plus the composer's own chords
- * (`composeKeyActions`), which compose runs itself.
- */
-
 import { FileText, Mail } from "lucide-react";
 import { toast } from "sonner";
 

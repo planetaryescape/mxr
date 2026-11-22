@@ -1,12 +1,3 @@
-/*
- * Pre-send confirmation, opened when the daemon's safety check found issues
- * (or could not run). States exactly who receives the message and from
- * which address, shows the verdict and each issue, and never sends a
- * blocked draft without an explicit override. The override is O in both the
- * TUI and the web; the TUI keeps Ctrl-O as an alias, since the browser reserves
- * it for Open File.
- */
-
 import { AlertTriangle, Loader2, Send, ShieldAlert, ShieldCheck, UserPlus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
@@ -32,14 +23,12 @@ interface SendConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   frontmatter: ComposeFrontmatter;
-  /** Address the message goes out from (the selected alias or account). */
   fromAddress: string;
   sending: boolean;
   safetyReport: DraftSafetyReport | null;
   safetyCheckError: string | null;
   collaborators: SuggestedCollaborator[];
   onAddCc: (email: string) => void;
-  /** `override` is true only after the user explicitly overrode a block. */
   onConfirm: (override: boolean) => void;
 }
 
@@ -86,8 +75,6 @@ export function SendConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
         onKeyDown={(event) => {
-          // Enter on Cancel keeps its own meaning (blueprint 35: Enter runs
-          // the highlighted option).
           const onCancel =
             event.target instanceof Element && event.target.closest("[data-send-cancel]");
           if (
@@ -98,14 +85,11 @@ export function SendConfirmDialog({
             if (canSend) confirm(overridden);
             return;
           }
-          // A yes or no question: n is Esc.
           if (pressedOverlayKey(event, "overlay.no")) {
             event.preventDefault();
             onOpenChange(false);
             return;
           }
-          // The dialog traps focus and holds no text field, so a bare letter
-          // is safe, and Ctrl+O is the browser's Open File.
           if (overridable && pressedOverlayKey(event, "send-confirm.override")) {
             event.preventDefault();
             setOverridden(true);

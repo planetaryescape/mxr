@@ -26,7 +26,6 @@ function row(overrides: Partial<MessageRowView>): MessageRowView {
 
 describe("targetFromRows", () => {
   test("a conversation starred outside the list unstars that message too", () => {
-    // The inbox lists a-1 and a-2; the star is on the reply in Sent (a-sent).
     const target = targetFromRows(
       [row({ starred: true, message_ids: ["a-1", "a-2"], starred_message_ids: ["a-sent"] })],
       "list",
@@ -52,7 +51,6 @@ describe("targetFromThread", () => {
         subject: "Launch checklist",
         unread_count: 0,
       },
-      // Only the newest page is loaded.
       messages: [row({ id: "m-3", thread_id: "thread-1" }), row({ id: "m-4", thread_id: "thread-1" })],
       bodies: [],
       total_messages: 4,

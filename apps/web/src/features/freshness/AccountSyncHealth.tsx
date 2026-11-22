@@ -1,10 +1,3 @@
-/*
- * One account's sync health wherever an account is shown: a dot in the
- * account switcher, a dot and words on the Accounts page, and the Sync
- * section of the account's own page. All read the same freshness reply
- * the status bar does, so every surface agrees.
- */
-
 import { useNavigate } from "@tanstack/react-router";
 import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
@@ -45,16 +38,12 @@ function useAccount(accountId: string) {
   return { account: data?.accounts.find((item) => item.account_id === accountId), data };
 }
 
-/** Health and words for one account, at the clock's time. */
 function useHealth(account: AccountFreshness | undefined, staleAfterSecs: number) {
-  // The words change whenever the health does, so they alone drive the
-  // re-render and the health is read at render time.
   const words = useClockLabel((now) => (account ? shortHealth(account, staleAfterSecs, now) : ""));
   const health: SyncHealth = account ? effectiveHealth(account, staleAfterSecs, new Date()) : "ok";
   return { health, words };
 }
 
-/** A coloured dot that also says its words to a screen reader and on hover. */
 export function SyncHealthDot({ accountId, className }: { accountId: string; className?: string }) {
   const { account, data } = useAccount(accountId);
   const { health, words } = useHealth(account, data?.stale_after_secs ?? 0);
@@ -72,7 +61,6 @@ export function SyncHealthDot({ accountId, className }: { accountId: string; cla
   );
 }
 
-/** The dot and its words, never colour alone. */
 export function SyncHealthWords({ accountId }: { accountId: string }) {
   const { account, data } = useAccount(accountId);
   const { health, words } = useHealth(account, data?.stale_after_secs ?? 0);
@@ -90,7 +78,6 @@ export function SyncHealthWords({ accountId }: { accountId: string }) {
   );
 }
 
-/** Start signing the account in again on its own page. */
 export function useSignInAgain(): (accountId: string) => void {
   const navigate = useNavigate();
   return useCallback(
@@ -102,11 +89,6 @@ export function useSignInAgain(): (accountId: string) => void {
   );
 }
 
-/**
- * The Sync section of an account's page: the last good sync, the next
- * try, why it is failing in plain words, and the provider's own words
- * behind Details.
- */
 export function AccountSyncDetails({
   accountId,
   onSignIn,
@@ -156,11 +138,6 @@ export function AccountSyncDetails({
   );
 }
 
-/**
- * Toast when an account starts failing and when it recovers, once each,
- * keyed by account so a toast never stacks. Retries of an account that is
- * already failing say nothing new, so they toast nothing.
- */
 export function useSyncHealthToasts(): void {
   const { data } = useAllAccountsFreshness();
   const signInAgain = useSignInAgain();
@@ -172,7 +149,6 @@ export function useSyncHealthToasts(): void {
     const previous = seen.current;
     const next = new Map(data.accounts.map((account) => [account.account_id, failing(account)]));
     seen.current = next;
-    // The first reading is how things are, not a change.
     if (!previous) return;
     for (const account of data.accounts) {
       const was = previous.get(account.account_id);

@@ -58,9 +58,6 @@ const FALLBACK_LOCALE: LocaleBundle = {
   },
 };
 
-/// Fetches the daemon's active locale bundle once at mount and caches it via
-/// TanStack Query. The bundle never changes within a daemon session, so a
-/// long stale-time and infinite gcTime are appropriate.
 export function useLocale(): LocaleBundle {
   const { data } = useQuery({
     queryKey: ["i18n"],

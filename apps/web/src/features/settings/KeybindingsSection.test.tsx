@@ -29,10 +29,6 @@ function answer(update: Partial<KeysUpdate>): KeysUpdate {
   return { saved: false, file: "/c/keys.toml", problems: [], keymap: served(), ...update };
 }
 
-/**
- * Open the Archive editor. The page lists every key, so queries go by
- * label and stay inside the editor: role queries over the whole list are slow.
- */
 function editArchive() {
   fireEvent.click(screen.getAllByLabelText("Change keys for Archive")[0]!);
   const input = screen.getByLabelText(/Keys for Archive/);
@@ -103,7 +99,6 @@ describe("KeybindingsSection", () => {
     fireEvent.keyDown(input, { key: "Escape" });
 
     expect(screen.queryByLabelText(/Keys for Archive/)).toBeNull();
-    // Without this, a keyboard user starts again from the top of the page.
     await waitFor(() => expect(document.activeElement).toBe(pencil));
     expect(updateKeys).not.toHaveBeenCalledWith(expect.anything(), false);
   });

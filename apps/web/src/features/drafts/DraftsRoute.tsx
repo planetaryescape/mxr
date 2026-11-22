@@ -177,8 +177,6 @@ function DraftRow({
   );
 }
 
-/** A plain click opens the draft in the compose surface over this list;
- * modified clicks keep the link's deep-link behaviour (new tab, etc.). */
 function openDraftInPlace(event: MouseEvent<HTMLAnchorElement>, draftId: string) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
     return;

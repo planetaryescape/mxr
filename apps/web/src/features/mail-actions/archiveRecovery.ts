@@ -65,12 +65,6 @@ export function retainedArchives(): ArchiveOperation[] {
   }
   return operations.toSorted((a, b) => a.started_at - b.started_at);
 }
-/**
- * True while an operation may still need a person: not yet accepted, still
- * running, or with an item whose outcome isn't confirmed. Every Archive stays
- * in the journal, so a finished one can still be queried; only these are
- * offered as Archive recovery.
- */
 export function needsRecovery(operation: ArchiveOperation): boolean {
   return (
     !operation.accepted ||
@@ -144,7 +138,6 @@ export async function queryArchive(operation: ArchiveOperation): Promise<Archive
 }
 export async function submitArchive(operation: ArchiveOperation): Promise<ArchiveOperation> {
   const binding = archiveBinding(operation);
-  // Retention is part of submission, including a user-triggered retry from recovery.
   retainArchive(operation);
   const response = await apiFetch<{ kind: string; operation: ArchiveOperation }>(
     "/api/v1/mail/archive-operations/submit",

@@ -1,10 +1,3 @@
-/*
- * The assistant's reply, set as copy: the reading voice, the emails and
- * people it names as chips, the rows it refers to under it, and the mark
- * that says which model wrote it (D136). When steps before it failed and
- * weren't redone, the note under it says so, whatever the reply claims.
- */
-
 import { MarkdownView } from "./MarkdownView";
 import { ReadoutRows } from "./ReadoutRows";
 import { stepTitle, type ToolCallItem } from "./wire";
@@ -13,7 +6,6 @@ import { ModelMark } from "@/components/ModelMark";
 
 type ReplyItem = Extract<AssistantItem, { kind: "assistant" }>;
 
-/** Which model is answering now, so a reply's mark can say where it ran. */
 export interface Provenance {
   model: string | null;
   leavesMachine: boolean;
@@ -29,9 +21,6 @@ export function Reply({
   provenance?: Provenance;
 }) {
   const model = item.model ?? provenance?.model ?? null;
-  // The daemon records where each reply ran, so it still says so after the
-  // model is switched. A reply from before that was recorded is placed only
-  // when the model that wrote it is the one in use now.
   const where =
     item.leaves_machine ??
     (provenance && model === provenance.model ? provenance.leavesMachine : undefined);
@@ -49,11 +38,6 @@ export function Reply({
   );
 }
 
-/**
- * Small models sometimes say they did what failed. The steps are mxr's
- * record, not the model's, so the daemon names the ones before a reply
- * that failed and weren't redone, and they show under it.
- */
 function FailedNote({ items }: { items: ToolCallItem[] }) {
   return (
     <div role="note" className="mt-3 border-l border-danger pl-3">

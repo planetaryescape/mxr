@@ -1,5 +1,3 @@
-/* The daemon request behind each mail action, for runs below the job threshold. */
-
 import {
   markReadMessages,
   modifyLabels,
@@ -65,10 +63,6 @@ export async function runAction(
   }
 }
 
-/**
- * The bridge snoozes one message per request. Report partial failure in the
- * same shape as batch mutations so the caller's accounting stays honest.
- */
 async function snoozeAll(ids: string[], until?: string): Promise<MutationResponse> {
   if (!until) throw new Error("Choose when to snooze until");
   const results = await Promise.allSettled(

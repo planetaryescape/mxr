@@ -11,9 +11,7 @@ import type { ReadingItem, ReadingLink } from "./api";
 import { domainLabel, minutesLabel } from "./readingView";
 
 export interface RowHandlers {
-  /** A pointer chose the row (the lamp fades to it). */
   onPoint: (key: string) => void;
-  /** Keyboard focus reached the row's link. */
   onFocus: (key: string) => void;
   onRead: (key: string) => void;
   onLater: (key: string) => void;
@@ -22,7 +20,6 @@ export interface RowHandlers {
   onToggleLinks: (key: string) => void;
 }
 
-/** The row's one interactive element: its text is a real link, as Now's rows are. */
 function readLink(key: string, handlers: RowHandlers, label: string) {
   return (content: ReactNode, className: string) => (
     <a
@@ -40,11 +37,6 @@ function readLink(key: string, handlers: RowHandlers, label: string) {
   );
 }
 
-/**
- * One issue of the edition as a `Row` (D129): the headline, its standfirst on
- * the one secondary line, and in the trail the source and minutes. The keys
- * show on the lit row only; the reason goes to the status bar.
- */
 export const ReadingIssueRow = memo(function ReadingIssueRow({
   item,
   index,
@@ -56,12 +48,10 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
   handlers,
 }: {
   item: ReadingItem;
-  /** Cursor position of the item itself. */
   index: number;
   lit: boolean;
   via: LampVia;
   fading: boolean;
-  /** On the Later shelf: no fade. */
   shelf?: boolean;
   modes?: ThreadModes;
   handlers: RowHandlers;
@@ -154,7 +144,6 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
   );
 });
 
-/** A digest's link, as a row indented under its issue. */
 export const ReadingLinkRow = memo(function ReadingLinkRow({
   link,
   index,

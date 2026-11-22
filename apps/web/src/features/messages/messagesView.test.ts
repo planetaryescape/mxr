@@ -194,14 +194,12 @@ describe("done here moves on", () => {
   const jon = row("person:jon", { title: "Jon Bell" });
   const iris = row("person:iris", { title: "Iris Chen" });
   const list = data({ your_turn: [samir, jon], recent: [iris] });
-  // The page lists history the list doesn't: an old quiet thread.
   const page = [...samir.topics, topic("history", { subject: "Old invoice" })];
 
   test("a row's open threads leave out done and in-flight ones", () => {
     expect([...openThreads(samir, new Set())]).toEqual(["contract", "launch"]);
     expect([...openThreads(samir, new Set(["launch"]))]).toEqual(["contract"]);
     expect([...openThreads(undefined, new Set())]).toEqual([]);
-    // The page lists history and group topics; only the row's count.
     expect(topicsLeft(page, openThreads(samir, new Set())).map((t) => t.thread_id)).toEqual([
       "contract",
       "launch",
@@ -267,7 +265,6 @@ describe("done here moves on", () => {
   test("never opens a person whose own done is still on its way", () => {
     const open = openThreads(samir, new Set(["launch"]));
     const rows = cursorRows(list, false);
-    // Jon's only topic is being done: the next person is Iris.
     expect(
       afterDone({
         topics: page,
@@ -278,7 +275,6 @@ describe("done here moves on", () => {
         hidden: new Set(["launch", "t-person:jon"]),
       }),
     ).toEqual({ kind: "person", row: iris });
-    // Nobody else left but people on their way out: nothing opens.
     expect(
       afterDone({
         topics: page,

@@ -88,7 +88,6 @@ const withWork = {
   item_count: 1,
 } as unknown as Now;
 
-/** One visit: Now mounts with `now`, and its data is the fixture passed to `show`. */
 function visit(now: Now | undefined) {
   state.now = now;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -126,8 +125,6 @@ describe("Now's finishing scene", () => {
     expect(screen.getByRole("status", { name: "Loading Now" })).toBeInTheDocument();
     expect(screen.getByText("Due soon")).toBeInTheDocument();
     visitState.show(withWork);
-    // A response arriving during the minimum hold must not append the real
-    // headline above the summary that the skeleton already reserves.
     expect(screen.queryByTestId("now-headline")).toBeNull();
     await waitFor(() => expect(screen.queryByTestId("page-skeleton")).toBeNull());
     expect(screen.getByTestId("now-headline")).toHaveTextContent("One person is waiting on you.");

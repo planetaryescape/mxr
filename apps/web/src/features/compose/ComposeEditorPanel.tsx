@@ -73,14 +73,10 @@ export function ComposeEditorPanel({
 
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
-  // Focus mode is about the words: From, To and Subject fold into one line
-  // until asked for, and the editor's status row shrinks to a word.
   const quiet = controller.intent.quiet === true;
   const [headersOpen, setHeadersOpen] = useState(false);
   const headersId = useId();
   const editRecipientsButton = useRef<HTMLButtonElement>(null);
-  // Only the Markdown editor reports a selection. A selection left from it must
-  // not steer the help after switching to the rich editor, which sends the whole text.
   const setSelection = controller.setSelection;
   useEffect(() => {
     if (editorPreference === "tiptap") setSelection(null);
@@ -350,8 +346,6 @@ export function ComposeEditorPanel({
             : "relative min-h-0 flex-1 overflow-hidden"
         }
         onKeyDownCapture={(event) => {
-          // ⌘Z takes back an accepted proof while the text is still that
-          // proof; the editor's own undo cannot tell the accept apart.
           if (!controller.canUndoAccept || !isUndoChord(event)) return;
           event.preventDefault();
           event.stopPropagation();
@@ -704,8 +698,6 @@ function DiscardConfirmDialog({
       <AlertDialogContent
         onKeyDown={(event) => {
           if (discarding || event.ctrlKey || event.metaKey || event.altKey) return;
-          // A yes or no question (blueprint 35): y discards and n keeps it.
-          // Enter runs the focused option, so it never destroys from Cancel.
           if (pressedOverlayKey(event, "overlay.yes")) {
             event.preventDefault();
             onConfirm();
@@ -763,7 +755,6 @@ function basename(path: string): string {
   return path;
 }
 
-/** ⌘Z without Shift, for the one-step undo of an accepted proof. */
 function isUndoChord(event: KeyboardEvent<HTMLElement>): boolean {
   return (
     (event.metaKey || event.ctrlKey) &&

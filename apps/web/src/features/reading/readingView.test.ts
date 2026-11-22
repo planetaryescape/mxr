@@ -169,7 +169,6 @@ describe("marksForParagraph", () => {
   });
 });
 
-/** A daemon unsubscribe preview with this method and token. */
 const purgePreview = (method: UnsubscribeMethod, token: string | null = "tok") => ({
   ok: true,
   result: {

@@ -39,11 +39,6 @@ import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 type Presence = "all" | "some" | "none";
 
-/**
- * Add and remove labels in one go, like Gmail's label menu: each label
- * shows whether all, some or none of the target has it; Enter
- * toggles; ⌘Enter applies. Typing a new name offers to create it.
- */
 export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose: () => void }) {
   const shell = useShellQuery();
   const qc = useQueryClient();

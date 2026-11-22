@@ -207,7 +207,7 @@ fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanEx
 
 #[cfg(test)]
 mod tests {
-    use super::{finding, settings, start_with, Settings, Status};
+    use super::{finding, settings, start_with, Settings};
     use mxr_protocol::DoctorFindingSeverity;
 
     fn with(vars: &[(&str, &str)]) -> Settings {

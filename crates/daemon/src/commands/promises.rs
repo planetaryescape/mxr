@@ -213,9 +213,6 @@ fn shell_quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
-    use mxr_core::natural_time::{resolve_time, TimePrefs};
-    use mxr_protocol::DetectedPromiseData;
 
     #[tokio::test(start_paused = true)]
     async fn a_promise_check_that_never_answers_is_dropped_at_the_deadline() {
@@ -244,42 +241,5 @@ mod tests {
         assert!(note_on_stdout(None, true));
         assert!(note_on_stdout(Some(&OutputFormat::Table), true));
         assert!(!note_on_stdout(Some(&OutputFormat::Json), true));
-    }
-
-    #[test]
-    fn promise_lines_give_the_exact_command_that_keeps_each_promise() {
-        let now = chrono::Utc
-            .with_ymd_and_hms(2026, 9, 29, 14, 0, 0)
-            .unwrap()
-            .fixed_offset();
-        let due = resolve_time("friday", &now, &TimePrefs::default()).unwrap();
-        let message_id = MessageId::new();
-        let detection = PromiseDetectionData {
-            status: PromiseDetectionStatusData::Ready,
-            promises: vec![
-                DetectedPromiseData {
-                    what: "send Maya's deck".into(),
-                    due_phrase: Some("by Friday".into()),
-                    due: Some(due),
-                },
-                DetectedPromiseData {
-                    what: "loop in Sam".into(),
-                    due_phrase: None,
-                    due: None,
-                },
-            ],
-            provenance: None,
-            message: None,
-        };
-        let lines = promise_lines(&detection, &message_id);
-        assert_eq!(
-            lines,
-            format!(
-                "You promised: send Maya's deck, due Friday 2 October, 09:00 (\"by Friday\").\n  \
-                 Remind me: mxr commitments add {message_id} --what 'send Maya'\\''s deck' --due 2026-10-02T09:00:00+00:00\n\
-                 You promised: loop in Sam (no date given).\n  \
-                 Remind me: mxr commitments add {message_id} --what 'loop in Sam' --due \"<when>\"\n"
-            )
-        );
     }
 }

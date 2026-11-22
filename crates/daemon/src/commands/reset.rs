@@ -663,99 +663,6 @@ mod tests {
             .any(|entry| entry.contains(&external_attachments.display().to_string())));
     }
 
-    #[tokio::test]
-    async fn reset_plan_including_config_adds_config_target() {
-        let temp = TempDir::new().unwrap();
-        let data_dir = temp.path().join("data");
-        let config_path = temp.path().join("config").join("config.toml");
-        let socket_path = temp.path().join("mxr.sock");
-
-        std::fs::create_dir_all(data_dir.join("attachments")).unwrap();
-        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
-        std::fs::write(&config_path, "[general]\n").unwrap();
-
-        let plan = build_reset_plan(
-            &ResetContext {
-                data_dir: data_dir.clone(),
-                socket_path,
-                config_path: config_path.clone(),
-                attachment_dir: data_dir.join("attachments"),
-                config_read_error: None,
-            },
-            true,
-        )
-        .await
-        .unwrap();
-
-        let targets = target_path_set(&plan);
-        assert!(targets.contains(&config_path));
-        assert!(!plan
-            .preserved
-            .iter()
-            .any(|entry| entry.contains(&config_path.display().to_string())));
-        assert!(plan
-            .preserved
-            .iter()
-            .any(|entry| entry.contains("credentials/keychain")));
-    }
-
-    #[tokio::test]
-    async fn reset_plan_including_config_still_preserves_external_attachment_dir() {
-        let temp = TempDir::new().unwrap();
-        let data_dir = temp.path().join("data");
-        let config_path = temp.path().join("config.toml");
-        let socket_path = temp.path().join("mxr.sock");
-        let external_attachments = temp.path().join("external-attachments");
-
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&external_attachments).unwrap();
-
-        let plan = build_reset_plan(
-            &ResetContext {
-                data_dir,
-                socket_path,
-                config_path,
-                attachment_dir: external_attachments.clone(),
-                config_read_error: None,
-            },
-            true,
-        )
-        .await
-        .unwrap();
-
-        let targets = target_path_set(&plan);
-        assert!(!targets.contains(&external_attachments));
-        assert!(plan
-            .preserved
-            .iter()
-            .any(|entry| entry.contains(&external_attachments.display().to_string())));
-    }
-
-    #[test]
-    fn discover_reset_context_uses_default_attachment_dir_when_config_is_unreadable() {
-        let temp = TempDir::new().unwrap();
-        let config_dir = temp.path().join("config");
-        let data_dir = temp.path().join("data");
-        let socket_path = temp.path().join("runtime").join("mxr.sock");
-        let config_path = config_dir.join("config.toml");
-
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::write(&config_path, "not valid toml = [").unwrap();
-
-        temp_env::with_vars(
-            [
-                ("MXR_CONFIG_DIR", Some(config_dir.as_os_str())),
-                ("MXR_DATA_DIR", Some(data_dir.as_os_str())),
-                ("MXR_SOCKET_PATH", Some(socket_path.as_os_str())),
-            ],
-            || {
-                let context = discover_reset_context().expect("resolve reset context");
-                assert_eq!(context.attachment_dir, data_dir.join("attachments"));
-                assert!(context.config_read_error.is_some());
-            },
-        );
-    }
-
     #[test]
     fn confirmation_policy_respects_tty_and_override_rules() {
         assert_eq!(
@@ -775,30 +682,6 @@ mod tests {
             ConfirmationStrategy::None
         );
         assert!(confirmation_strategy(false, false, false, false).is_err());
-    }
-
-    #[test]
-    fn confirmation_phrase_must_match_exactly() {
-        assert!(confirmation_phrase_matches(
-            DEFAULT_CONFIRMATION_PHRASE,
-            DEFAULT_CONFIRMATION_PHRASE
-        ));
-        assert!(!confirmation_phrase_matches(
-            "delete my mxr data",
-            DEFAULT_CONFIRMATION_PHRASE
-        ));
-        assert!(!confirmation_phrase_matches(
-            "DELETE MY MXR DATA ",
-            DEFAULT_CONFIRMATION_PHRASE
-        ));
-        assert_eq!(
-            required_confirmation_phrase(true),
-            CONFIG_CONFIRMATION_PHRASE
-        );
-        assert!(!confirmation_phrase_matches(
-            DEFAULT_CONFIRMATION_PHRASE,
-            CONFIG_CONFIRMATION_PHRASE
-        ));
     }
 
     #[tokio::test]

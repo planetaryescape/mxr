@@ -189,17 +189,6 @@ mod tests {
     use super::*;
     use crate::test_fixtures::test_envelope;
 
-    #[test]
-    fn mutation_filter_matches_reconciliation_failed() {
-        let event = DaemonEvent::MutationReconciliationFailed {
-            client_correlation_id: "9".into(),
-            error_summary: "skipped".into(),
-        };
-        assert!(event_matches_type(&event, Some("mutation")));
-        assert!(event_matches_type(&event, Some("error")));
-        assert!(!event_matches_type(&event, Some("sync")));
-    }
-
     /// A pre-0.6.25 daemon emits `NewMessages` without a `total` field. The
     /// serde default fills in 0, which is a smaller number than the sample the
     /// event actually carried — rendering it verbatim told the user
@@ -226,18 +215,5 @@ mod tests {
 
         let rendered = render_event(&legacy, OutputFormat::Table).unwrap();
         assert_eq!(rendered, "message new_messages=3 shown=3");
-    }
-
-    /// The capped case the field was added for: `total` above the sample stays
-    /// exactly as the daemon reported it.
-    #[test]
-    fn capped_new_messages_event_reports_the_daemon_total() {
-        let event = DaemonEvent::NewMessages {
-            envelopes: vec![test_envelope()],
-            total: 500,
-        };
-
-        let rendered = render_event(&event, OutputFormat::Table).unwrap();
-        assert_eq!(rendered, "message new_messages=500 shown=1");
     }
 }

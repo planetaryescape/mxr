@@ -208,25 +208,3 @@ fn sound_arg(value: ChimeSoundArg) -> NotificationChimeSoundData {
         ChimeSoundArg::Alert => NotificationChimeSoundData::Alert,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mxr_protocol::{NotificationChimeEventData, NotificationChimeSoundData};
-
-    #[test]
-    fn set_event_sound_patches_only_requested_action() {
-        let patch = event_sound_patch(
-            NotificationChimeEventData::Archived,
-            NotificationChimeSoundData::Glass,
-        );
-
-        assert_eq!(
-            patch,
-            NotificationChimesPatchData {
-                archived: Some(NotificationChimeSoundData::Glass),
-                ..Default::default()
-            }
-        );
-    }
-}

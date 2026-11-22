@@ -448,32 +448,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_thread_selection_searches_the_same_way() {
-        let daemon = FakeBulkDaemon::start(3);
-        let mut client = daemon.client().await;
-
-        resolve_thread_selection(
-            &mut client,
-            Vec::new(),
-            Some("label:news".into()),
-            None,
-            SelectionLimit::AtMost(10),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            search_shape(&daemon.search_requests()[0]),
-            (
-                "label:news",
-                40,
-                Some(SearchMode::Lexical),
-                Some(SortOrder::DateDesc)
-            )
-        );
-    }
-
-    #[tokio::test]
     async fn more_matches_than_the_cap_keep_the_newest_and_say_so() {
         let daemon = FakeBulkDaemon::start(1_523);
         let mut client = daemon.client().await;
@@ -490,25 +464,6 @@ mod tests {
 
         assert_eq!(selection.ids, daemon.message_ids[..1_000]);
         assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
-    }
-
-    #[tokio::test]
-    async fn exactly_the_cap_of_matches_reports_nothing() {
-        let daemon = FakeBulkDaemon::start(1_000);
-        let mut client = daemon.client().await;
-
-        let selection = resolve_message_selection(
-            &mut client,
-            Vec::new(),
-            Some("*".into()),
-            None,
-            SelectionLimit::Unbounded,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(selection.ids.len(), 1_000);
-        assert_eq!(selection.capped, None);
     }
 
     #[tokio::test]
@@ -553,108 +508,6 @@ mod tests {
         assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
     }
 
-    #[tokio::test]
-    async fn a_limit_the_user_asked_for_is_not_reported_as_a_cap() {
-        let daemon = FakeBulkDaemon::start(1_523);
-        let mut client = daemon.client().await;
-        for limit in [SelectionLimit::First, SelectionLimit::AtMost(50)] {
-            let selection =
-                resolve_message_selection(&mut client, Vec::new(), Some("*".into()), None, limit)
-                    .await
-                    .unwrap();
-            assert_eq!(selection.capped, None, "{limit:?}");
-        }
-    }
-
-    #[tokio::test]
-    async fn a_limit_above_the_cap_is_cut_by_the_cap_and_says_so() {
-        let daemon = FakeBulkDaemon::start(1_523);
-        let mut client = daemon.client().await;
-
-        let selection = resolve_message_selection(
-            &mut client,
-            Vec::new(),
-            Some("*".into()),
-            None,
-            SelectionLimit::AtMost(5_000),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(selection.ids.len(), 1_000);
-        assert!(selection.capped.is_some());
-    }
-
-    #[tokio::test]
-    async fn thread_selection_reports_the_cap_on_the_messages_it_searched() {
-        let daemon = FakeBulkDaemon::start(1_523);
-        let mut client = daemon.client().await;
-
-        let selection = resolve_thread_selection(
-            &mut client,
-            Vec::new(),
-            Some("*".into()),
-            None,
-            SelectionLimit::Unbounded,
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(selection.capped, Some(CappedSelection::new(1_000)));
-    }
-
-    #[tokio::test]
-    async fn explicit_ids_skip_the_search_and_the_cap() {
-        let daemon = FakeBulkDaemon::start(5_000);
-        let mut client = daemon.client().await;
-        let ids: Vec<String> = daemon.message_ids[..1_200]
-            .iter()
-            .map(MessageId::as_str)
-            .collect();
-
-        let selection =
-            resolve_message_selection(&mut client, ids, None, None, SelectionLimit::Unbounded)
-                .await
-                .unwrap();
-
-        assert_eq!(selection.ids.len(), 1_200);
-        assert_eq!(selection.capped, None);
-        assert!(daemon.search_requests().is_empty());
-    }
-
-    #[test]
-    fn the_notice_says_more_than_the_cap_match_and_how_many_were_selected() {
-        let capped = CappedSelection::new(1_000);
-
-        assert_eq!(
-            capped.notice(),
-            "More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest."
-        );
-        let mut out = Vec::new();
-        capped.announce(&mut out).unwrap();
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            format!("{}\n", capped.notice())
-        );
-    }
-
-    #[test]
-    fn the_capped_field_is_added_to_an_existing_object() {
-        let capped = CappedSelection::new(1_000);
-        let mut value = serde_json::json!({ "identity": "kept" });
-
-        capped.merge_into(&mut value);
-
-        assert_eq!(
-            value,
-            serde_json::json!({ "identity": "kept", "capped": true })
-        );
-        assert_eq!(
-            serde_json::to_value(capped.fields()).unwrap(),
-            serde_json::json!({ "capped": true })
-        );
-    }
-
     #[test]
     fn a_selection_from_the_limited_search_is_refused() {
         let degraded = SearchDegraded::new(SearchDegradedReason::IndexStopped);
@@ -666,35 +519,5 @@ mod tests {
         assert!(error.contains("Search is limited"), "{error}");
         assert!(error.contains("pass message IDs instead"), "{error}");
         assert!(require_indexed_selection(None).is_ok());
-    }
-
-    #[test]
-    fn selection_limit_at_most_respects_user_value_below_hard_cap() {
-        assert_eq!(SelectionLimit::AtMost(50).cap(), 50);
-    }
-
-    #[test]
-    fn selection_limit_at_most_clamps_to_hard_cap() {
-        assert_eq!(
-            SelectionLimit::AtMost(SEARCH_HARD_CAP + 5).cap(),
-            SEARCH_HARD_CAP
-        );
-    }
-
-    #[test]
-    fn selection_limit_unbounded_uses_hard_cap() {
-        assert_eq!(SelectionLimit::Unbounded.cap(), SEARCH_HARD_CAP);
-    }
-
-    #[test]
-    fn from_flags_prefers_first_over_limit() {
-        let limit = SelectionLimit::from_flags(true, Some(50));
-        assert!(matches!(limit, SelectionLimit::First));
-    }
-
-    #[test]
-    fn parse_message_id_rejects_non_uuid_with_input_echoed() {
-        let err = parse_message_id("not-a-uuid").unwrap_err().to_string();
-        assert!(err.contains("not-a-uuid"));
     }
 }

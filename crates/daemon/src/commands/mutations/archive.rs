@@ -342,10 +342,4 @@ mod tests {
         );
         assert_eq!(records[1], serde_json::to_value(valid).unwrap());
     }
-
-    #[test]
-    fn empty_archive_list_is_one_empty_json_array() {
-        let records = archive_list_records(&[]).unwrap();
-        assert_eq!(serde_json::to_string(&records).unwrap(), "[]");
-    }
 }

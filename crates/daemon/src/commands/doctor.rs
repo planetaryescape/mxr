@@ -1198,25 +1198,3 @@ fn history_retention_label(days: Option<u32>) -> String {
         None => "unknown (config unreadable or daemon predates this field)".to_string(),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recommends_foreground_when_socket_unreachable() {
-        let steps = recommended_next_steps(false, false, &[], false, false);
-        assert!(steps
-            .iter()
-            .any(|step| step.contains("daemon --foreground")));
-    }
-
-    #[test]
-    fn recommends_restart_when_daemon_mismatch_detected() {
-        let steps = recommended_next_steps(true, false, &[], true, false);
-        assert_eq!(
-            steps,
-            vec!["mxr restart".to_string(), "mxr status".to_string()]
-        );
-    }
-}

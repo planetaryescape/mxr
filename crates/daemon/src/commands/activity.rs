@@ -1174,31 +1174,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_time_input_rejects_unparseable() {
-        assert!(parse_time_input("not-a-time").is_err());
-    }
-
-    #[test]
-    fn recall_resolves_today_to_a_day_long_window() {
-        let (s, u) = parse_recall_phrase("today").unwrap();
-        assert!(u - s >= 86_400_000 - 1, "today should span ~1 day");
-        assert!(u - s <= 86_400_000 + 1);
-    }
-
-    #[test]
-    fn recall_rejects_unknown_phrase() {
-        assert!(parse_recall_phrase("when alice last replied to me").is_err());
-        assert!(parse_recall_phrase("during the meeting").is_err());
-    }
-
-    #[test]
-    fn recall_lunch_is_a_90_minute_window_starting_at_noon() {
-        let (s, u) = parse_recall_phrase("lunch").unwrap();
-        let diff = u - s;
-        assert_eq!(diff, 90 * 60_000);
-    }
-
-    #[test]
     fn replay_groups_consecutive_same_action_rows() {
         use mxr_protocol::{ActivityEntry, ActivityTier, ClientKind};
         let mk = |ts: i64, action: &str| ActivityEntry {

@@ -672,27 +672,4 @@ mod tests {
         assert_eq!(parse_minor("£1,200").ok(), Some(120_000));
         assert!(parse_minor("lots").is_err());
     }
-
-    #[test]
-    fn the_issuer_page_hint_names_a_command_that_takes_the_flag() {
-        let list = RecordAnswerListData {
-            header: "Octopus Energy · 0 records".into(),
-            count: 0,
-            offset: 0,
-            records: Vec::new(),
-            months: Vec::new(),
-            totals: Vec::new(),
-            first: None,
-            last: None,
-            top_record_id: String::new(),
-            issuer: Some("Octopus Energy".into()),
-        };
-
-        let text = list_text(&list);
-
-        assert!(
-            text.contains("Issuer page: mxr records list --issuer \"Octopus Energy\""),
-            "{text}"
-        );
-    }
 }

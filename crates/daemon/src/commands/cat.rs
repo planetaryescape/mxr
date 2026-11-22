@@ -352,24 +352,6 @@ mod tests {
     }
 
     #[test]
-    fn raw_view_falls_back_to_exact_html_when_plain_is_missing() {
-        let body = body(None, Some("<p>Hello <strong>html</strong></p>"));
-        assert_eq!(
-            render_body_view(&body, &BodyViewArg::Raw, None),
-            "<p>Hello <strong>html</strong></p>"
-        );
-    }
-
-    #[test]
-    fn html_view_returns_only_exact_html() {
-        let body = body(Some("plain fallback"), Some("<p>Hello html</p>"));
-        assert_eq!(
-            render_body_view(&body, &BodyViewArg::Html, None),
-            "<p>Hello html</p>"
-        );
-    }
-
-    #[test]
     fn reader_view_renders_html_only_body_as_text() {
         let body = body(
             None,

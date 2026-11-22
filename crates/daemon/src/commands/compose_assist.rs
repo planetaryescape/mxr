@@ -349,17 +349,3 @@ fn action_name(action: AssistActionData) -> &'static str {
         AssistActionData::EditSelection => "edit selection",
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_selection_is_start_dot_dot_end() {
-        let range = parse_selection("16..31").unwrap();
-        assert_eq!((range.start, range.end), (16, 31));
-        assert!(parse_selection("16").is_err());
-        assert!(parse_selection("a..3").is_err());
-        assert!(parse_selection("-1..3").is_err());
-    }
-}

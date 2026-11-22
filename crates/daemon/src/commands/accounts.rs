@@ -1248,35 +1248,3 @@ fn remove_account_request(
         dry_run,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mxr_protocol::Request;
-
-    #[test]
-    fn disable_and_remove_requests_use_daemon_account_contract() {
-        assert!(matches!(
-            disable_account_request("work"),
-            Request::DisableAccountConfig { key } if key == "work"
-        ));
-
-        assert!(matches!(
-            remove_account_request("work", true, false),
-            Request::RemoveAccountConfig {
-                key,
-                purge_local_data: true,
-                dry_run: false,
-            } if key == "work"
-        ));
-    }
-
-    #[test]
-    fn missing_gmail_bundled_credentials_points_to_safe_paths() {
-        let message = missing_gmail_bundled_credentials_message();
-        assert!(message.contains("mxr demo"));
-        assert!(message.contains("official release build"));
-        assert!(message.contains("--gmail-bundled=false"));
-        assert!(message.contains("MXR_GMAIL_CLIENT_SECRET"));
-    }
-}

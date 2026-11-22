@@ -23,13 +23,11 @@ const REFERRER_POLICY: &str = "referrer-policy";
 
 /// Strip an optional `:port` suffix from a Host header value.
 fn host_only(raw: &str) -> &str {
-    // IPv6 literals: `[::1]:7777` -> `[::1]`
     if raw.starts_with('[') {
         if let Some(close) = raw.find(']') {
             return &raw[..=close];
         }
     }
-    // IPv4 / hostname: `localhost:7777` -> `localhost`
     raw.rsplit_once(':').map_or(raw, |(host, _)| host)
 }
 
@@ -190,7 +188,6 @@ fn is_cross_site_request(headers: &axum::http::HeaderMap, config: &crate::WebSer
     {
         return false;
     }
-    // A same-origin request from the hosted browser names the bridge itself.
     let origin_host = origin
         .strip_prefix("http://")
         .or_else(|| origin.strip_prefix("https://"))
@@ -271,7 +268,6 @@ mod tests {
             &headers(&[host, ("sec-fetch-site", "same-origin")]),
             &config
         ));
-        // No browser metadata at all: a CLI or native client.
         assert!(!is_cross_site_request(&headers(&[host]), &config));
 
         let configured = config.with_cors_allowlist(vec!["https://app.example.com".into()]);

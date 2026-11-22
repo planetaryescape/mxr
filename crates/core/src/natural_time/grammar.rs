@@ -124,8 +124,6 @@ pub(super) fn parse(input: &str) -> Result<Parsed, GrammarError> {
         }
     }
 
-    // ASCII-only rewrites keep byte offsets identical to the input, so spans
-    // computed here index straight into what the user typed.
     let normalized: String = input
         .chars()
         .map(|c| match c {
@@ -257,7 +255,6 @@ impl<'a> Parser<'a> {
         let phrase = if !self.offsets.is_empty() {
             Phrase::Offset(self.offsets)
         } else if self.date.is_none() && self.time.is_none() && self.period.is_none() {
-            // Only filler words such as "at" or "this".
             return Err(GrammarError::Unrecognized {
                 token: self
                     .tokens
@@ -454,7 +451,6 @@ fn clock_with_meridiem(stem: &str, pm: bool) -> Option<TimeSpec> {
     if !(1..=12).contains(&hour) {
         return None;
     }
-    // 12am is midnight and 12pm is noon.
     let hour = match (hour, pm) {
         (12, false) => 0,
         (12, true) => 12,

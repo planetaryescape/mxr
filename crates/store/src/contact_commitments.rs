@@ -238,8 +238,6 @@ impl super::Store {
             sql.push_str(" AND direction = 'yours' AND by_when >= ? AND by_when <= ? AND ");
             sql.push_str(crate::commitment_date_source::ACTIONABLE_BY_WHEN_SQL);
         }
-        // History reads retain legacy evidence. Only the active view depends on
-        // current stored asks; retiring an extractor must not hide old records.
         if status == Some(CommitmentStatus::Open) {
             sql.push_str(" AND (direction != 'yours' OR NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id = contact_commitments.account_id AND t.source_message_id = contact_commitments.evidence_msg_id AND t.reason = contact_commitments.what AND t.state IN ('done', 'dismissed'))) AND (status != 'open' OR (id GLOB evidence_msg_id || '::????????-????-????-????-????????????' OR id GLOB evidence_msg_id || '::promise::?*' OR by_when_source = 'user') AND NOT EXISTS (SELECT 1 FROM messages evidence WHERE evidence.id = contact_commitments.evidence_msg_id AND evidence.account_id != contact_commitments.account_id) OR (id LIKE 'ask_%' AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.account_id = contact_commitments.account_id AND a.message_id = contact_commitments.evidence_msg_id AND a.policy_version = ? AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?)))");
         }
@@ -271,7 +269,6 @@ impl super::Store {
         account_id: &AccountId,
         thread_id: &ThreadId,
     ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
-        // Thread context retains the recorded history; it does not select active work.
         let rows = sqlx::query("SELECT id, account_id, email, thread_id, direction, status, who_owes, what, by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at FROM contact_commitments WHERE account_id = ? AND thread_id = ? AND status = 'open' ORDER BY by_when IS NULL, by_when, extracted_at DESC")
             .bind(account_id.as_str()).bind(thread_id.as_str()).fetch_all(self.reader()).await?;
         rows.into_iter().map(row_to_commitment).collect()
@@ -305,9 +302,6 @@ impl super::Store {
         .bind(&record.who_owes)
         .bind(&record.what)
         .bind(record.by_when.map(|value| value.timestamp()))
-        // The user's latest answer wins, so a repeat over a detected row
-        // makes that row's date theirs, whoever wrote it first. A promise
-        // with no date has no source to record.
         .bind(record.by_when.map(|_| ByWhenSource::User.as_str()))
         .bind(record.evidence_msg_id.as_str())
         .bind(record.extracted_at.timestamp())

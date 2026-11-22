@@ -75,8 +75,6 @@ pub(crate) async fn write(
                 answer.account_id, tags.action
             ))
         );
-        // The natural key may already belong to an explicitly accepted promise.
-        // Keep that row's identity rather than competing with its UNIQUE tuple.
         let existing: Option<String> = sqlx::query_scalar("SELECT id FROM contact_commitments WHERE account_id=? AND email=? COLLATE NOCASE AND thread_id=? AND direction=? AND what=? AND evidence_msg_id=?")
             .bind(answer.account_id.as_str()).bind(&email).bind(&thread).bind(direction)
             .bind(quote).bind(answer.message_id.as_str()).fetch_optional(&mut **tx).await?;
@@ -90,8 +88,6 @@ pub(crate) async fn write(
             .bind(if direction == "yours" { "you" } else { &email }).bind(quote).bind(due.map(|d| d.at.timestamp())).bind(due.map(|_| "words"))
             .bind(answer.message_id.as_str()).bind(date).execute(&mut **tx).await?;
     }
-    // Retractions withdraw only automatically projected open rows for this
-    // source; resolved and explicit manual history stay intact.
     sqlx::query("UPDATE contact_commitments SET status = 'expired' WHERE account_id = ? AND evidence_msg_id = ? AND id LIKE 'ask_%' AND status = 'open' AND by_when_source IS NOT 'user' AND id NOT IN (SELECT value FROM json_each(?))")
         .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(encode_json(&current_ids)?).execute(&mut **tx).await?;
     Ok(())
@@ -110,7 +106,6 @@ impl crate::Store {
         } else {
             "AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id=todos.source_message_id AND (m.account_id != todos.account_id OR m.direction != 'outbound'))"
         };
-        // Timing uses record.kind; a concurrent kind correction must win.
         let sql = format!("UPDATE todos SET due_at=?1, due_words=?2, act_by_at=?3, surface_at=?4, relevant_until=?5, window_source=?6, field_sources=json_set(field_sources, '$.due_at', json_extract(?7, '$.due_at')), user_edited=1, updated_at=?8
             WHERE id=?9 AND account_id=?10 AND state='open' AND commitment_id=?11 AND kind=?12
             AND (due_at IS NOT ?1 OR json_extract(field_sources, '$.due_at.source') IS NOT 'user' OR act_by_at IS NOT ?3 OR surface_at IS NOT ?4 OR relevant_until IS NOT ?5 OR window_source IS NOT ?6)

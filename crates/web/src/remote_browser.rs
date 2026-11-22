@@ -62,7 +62,6 @@ pub(super) fn router(socket: std::path::PathBuf, origin: &str) -> Result<Router,
     }
     let origin = url.origin().ascii_serialization();
     let authority = origin.trim_start_matches("https://").to_string();
-    // Only middleware can supply this private bridge credential. It is never returned.
     let token = format!(
         "{}{}",
         uuid::Uuid::now_v7().simple(),
@@ -77,7 +76,6 @@ pub(super) fn router(socket: std::path::PathBuf, origin: &str) -> Result<Router,
         origin,
         authority,
     });
-    // Use one AppState for compose locks and sessions, shared across requests.
     Ok(crate::router::app_with_state(app)
         .route(
             "/api/v1/remote/browser-session",
@@ -89,8 +87,6 @@ pub(super) fn router(socket: std::path::PathBuf, origin: &str) -> Result<Router,
 
 async fn browser_security_headers(request: Request, next: Next) -> Response {
     let mut response = crate::middleware::security_headers(request, next).await;
-    // Fetch serializes a form POST's Origin as null under no-referrer. Keep
-    // same-origin form login compatible with the exact Origin admission check.
     response.headers_mut().insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("same-origin"),
@@ -143,7 +139,6 @@ async fn authorize(
     mut request: Request,
     next: Next,
 ) -> Response {
-    // The proxy must preserve Host. Forwarded headers never establish browser trust.
     if request
         .headers()
         .get(header::HOST)
@@ -166,15 +161,12 @@ async fn authorize(
         return StatusCode::FORBIDDEN.into_response();
     }
     if request.method() == Method::GET && request.uri().path() == "/api/v1/remote/browser-launch" {
-        // A clean form only: the single-use code is typed into the page, never
-        // carried in the URL, fragment or request query.
         return login();
     }
     if request.uri().path() == "/api/v1/remote/browser-session" {
         return next.run(request).await;
     }
     if !request.uri().path().starts_with("/api/") {
-        // Static assets are public, while the document is the login form until authenticated.
         if let Some(proof) = cookie(&request) {
             if authenticate(&state, &proof).await.is_ok() {
                 return next.run(request).await;
@@ -201,13 +193,11 @@ async fn authorize(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     if request.uri().path() == "/api/v1/auth/local-token" {
-        // This public marker only wakes the existing SPA auth state. The cookie is the credential.
         return axum::Json(
             serde_json::json!({"token":"browser-session","source":"cookie-session"}),
         )
         .into_response();
     }
-    // Editor shell, filesystem helpers and host administration have no remote authority.
     let path = request.uri().path();
     if path.contains("/attachments/open")
         || path.contains("/attachments/download")
@@ -220,7 +210,6 @@ async fn authorize(
         HeaderValue::from_str(&format!("Bearer {}", state.app.config.auth_token))
             .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
     );
-    // URL token values are untrusted; handlers prefer the middleware's private header.
     if request.method() != Method::GET
         && request
             .headers()

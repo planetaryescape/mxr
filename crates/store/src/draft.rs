@@ -55,9 +55,6 @@ fn decode_content(row: &sqlx::sqlite::SqliteRow) -> DraftContent {
             html,
             text: row.get("body_text"),
         },
-        // `content_kind = 'html'` with a NULL body should be unreachable (the
-        // writer always pairs them). Falling back to markdown keeps the draft
-        // readable instead of erroring the whole list out.
         _ => DraftContent::Markdown {
             source: row.get("body_markdown"),
         },
@@ -218,9 +215,6 @@ impl super::Store {
             .transpose()?;
         let updated_at = draft.updated_at.timestamp();
 
-        // `created_at` is intentionally absent from SET so the original
-        // creation time survives the edit. Plain UPDATE (not INSERT OR
-        // REPLACE) so the account_id FK's ON DELETE CASCADE is never armed.
         let result = sqlx::query(
             "UPDATE drafts
                 SET account_id = ?, from_addr = ?, in_reply_to = ?, intent = ?,

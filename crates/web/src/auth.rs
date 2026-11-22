@@ -128,9 +128,6 @@ impl BridgeError {
                 }
                 IpcErrorKind::NotFound => StatusCode::NOT_FOUND,
                 IpcErrorKind::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-                // The daemon's `Auth` kind is the mail provider rejecting its
-                // credentials, not this HTTP caller; a 401 here would make the
-                // SPA drop a valid bridge token.
                 IpcErrorKind::Auth | IpcErrorKind::Provider => StatusCode::BAD_GATEWAY,
                 IpcErrorKind::Store | IpcErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             },
@@ -146,8 +143,6 @@ impl BridgeError {
             Self::DraftConflict { .. } => "draft_revision_conflict",
             Self::UnsupportedProtocol { .. } => "protocol_mismatch",
             Self::Daemon { kind, .. } => kind.as_code(),
-            // Same code the daemon uses for its own draft validation, so a
-            // client handles "fix your draft" once whichever side caught it.
             Self::InvalidDraft(_) => IpcErrorKind::InvalidRequest.as_code(),
             other => bridge_error_kind(other),
         }
@@ -222,8 +217,6 @@ pub(super) fn ensure_authorized(
     _query_token: Option<&str>,
     expected_token: &str,
 ) -> Result<(), BridgeError> {
-    // Handlers still deserialize `token` for compatibility with older query
-    // shapes, but regular HTTP routes must not authenticate from it.
     if token_matches(extract_token(headers), expected_token) {
         return Ok(());
     }

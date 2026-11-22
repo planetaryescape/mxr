@@ -52,9 +52,6 @@ impl Membership<'_> {
             Membership::Label(Some(label)) => envelope_has_label(envelope, label),
             Membership::Label(None) | Membership::Everything => true,
             Membership::Role { role, labels } => {
-                // A star is the flag on every provider (Gmail sync sets it
-                // from the label; IMAP has no label), and a local unstar
-                // clears only the flag.
                 if *role == Role::Starred {
                     return envelope.flags.contains(MessageFlags::STARRED);
                 }
@@ -145,7 +142,6 @@ fn thread_lens<'a>(
         }
         MailboxLensKind::Starred => ThreadLens {
             label_filter: None,
-            // The role lists by the starred flag in every account, scoped or not.
             label_role: Role::Starred.system_mailbox_wire_name().map(str::to_string),
             membership: Membership::Role {
                 role: Role::Starred,
@@ -207,7 +203,6 @@ pub(crate) async fn load_thread_page(
         dropped,
     } = thread_rows(&threads, &envelopes_by_id, &thread_lens.membership);
     if !dropped.is_empty() {
-        // Ids only: the envelopes behind them are mail content.
         tracing::debug!(
             dropped = dropped.len(),
             thread_ids = ?dropped.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -300,8 +295,6 @@ fn thread_row<'a>(
     } else {
         members
     };
-    // `max_by_key` keeps the last of equal dates, matching the store's
-    // `date ASC, id ASC` member order.
     let latest = *in_lens.iter().max_by_key(|envelope| envelope.date)?;
 
     let mut row = message_row_view(latest);

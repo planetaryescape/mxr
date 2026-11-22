@@ -48,9 +48,6 @@ impl super::Store {
         let send_config = account.send_backend.as_ref().map(encode_json).transpose()?;
         let now = chrono::Utc::now().timestamp();
 
-        // The colour and tag are picked and written in one transaction, so two
-        // new accounts cannot take the same ones. ON CONFLICT leaves them alone,
-        // so re-inserting an account (a rename, say) never moves them.
         let mut tx = self.writer().begin().await?;
         let others: Vec<(Option<String>, Option<String>)> =
             sqlx::query_as("SELECT identity_color, identity_tag FROM accounts WHERE id <> ?1")
@@ -68,7 +65,6 @@ impl super::Store {
         let tag = derive_account_tag(&account.name, &taken_tags, &id)
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
 
-        // Unchecked on purpose: a checked query! here would need a fresh .sqlx entry.
         sqlx::query(
             "INSERT INTO accounts (id, name, email, sync_provider, send_provider, sync_config, send_config, enabled, created_at, updated_at, identity_color, identity_tag)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -98,9 +94,6 @@ impl super::Store {
         .await?;
         tx.commit().await?;
 
-        // Seed the canonical account email as the primary address. Idempotent
-        // via INSERT OR IGNORE — re-inserting an existing account does not
-        // duplicate or demote.
         if !account.email.is_empty() {
             sqlx::query!(
                 "INSERT OR IGNORE INTO account_addresses (account_id, email, is_primary)
@@ -126,8 +119,6 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         let aid = account_id.as_str();
         if is_primary {
-            // Demote any existing primary in the same transaction-like step
-            // before inserting the new one.
             sqlx::query!(
                 "UPDATE account_addresses SET is_primary = 0 WHERE account_id = ?",
                 aid,
@@ -378,7 +369,6 @@ impl super::Store {
         if missing.is_empty() {
             return tx.commit().await;
         }
-        // The values already held decide what the new ones must avoid.
         let held: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT identity_color, identity_tag FROM accounts
              WHERE identity_color IS NOT NULL OR identity_tag IS NOT NULL",
@@ -583,7 +573,6 @@ mod tests {
         let newer = account("Newer");
         store.insert_account(&older).await.unwrap();
         store.insert_account(&newer).await.unwrap();
-        // A row restored from a bundle written before migration 094.
         sqlx::query("UPDATE accounts SET identity_color = NULL, created_at = CASE WHEN id = ?1 THEN 20 ELSE 10 END")
             .bind(older.id.as_str())
             .execute(store.writer())
@@ -610,8 +599,6 @@ mod tests {
 
     #[tokio::test]
     async fn backfill_takes_the_first_free_colour_beside_a_stored_one() {
-        // The older account has no colour and the newer one holds sky. Absolute
-        // rank would give the older one sky too; first-free gives it amber.
         let store = Store::in_memory().await.unwrap();
         let older = account("Older");
         let newer = account("Newer");
@@ -664,8 +651,6 @@ mod tests {
         assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("W"));
         assert_eq!(tag_of(&store, &wedding.id).await.as_deref(), Some("WE"));
 
-        // Renaming Work to Office used to re-derive W from the new name, which
-        // is the change that moved other accounts. Now the stored tag stays.
         let renamed = Account {
             name: "Office".to_string(),
             ..work.clone()
@@ -677,7 +662,6 @@ mod tests {
 
         assert_eq!(tag_of(&store, &work.id).await.as_deref(), Some("W"));
         assert_eq!(tag_of(&store, &travel.id).await.as_deref(), Some("T"));
-        // The removed account's WE is free again, so the new one takes it.
         assert_eq!(tag_of(&store, &fourth.id).await.as_deref(), Some("WE"));
     }
 
@@ -704,7 +688,6 @@ mod tests {
             .execute(store.writer())
             .await
             .unwrap();
-        // A complete row must not be written again on open. Any UPDATE to it fails.
         sqlx::query(
             "CREATE TRIGGER refuse_complete_identity_write BEFORE UPDATE ON accounts
              WHEN OLD.identity_color IS NOT NULL AND OLD.identity_tag IS NOT NULL
@@ -762,7 +745,6 @@ mod tests {
             let store = Store::new(&path).await.unwrap();
             store.insert_account(&older).await.unwrap();
             store.insert_account(&newer).await.unwrap();
-            // Put the database back to before 108 with a duplicate tag in it.
             sqlx::query("DROP INDEX idx_accounts_identity_tag")
                 .execute(store.writer())
                 .await

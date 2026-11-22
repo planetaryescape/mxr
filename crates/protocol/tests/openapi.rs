@@ -52,8 +52,6 @@ fn protocol_top_level_types_register_in_openapi() {
 
 #[test]
 fn request_schema_uses_serde_tag() {
-    // Request is `#[serde(tag = "cmd")]` — the OpenAPI schema must reflect
-    // that so generated clients know how to discriminate variants.
     let doc = ProtocolDoc::openapi();
     let json = serde_json::to_value(&doc).expect("doc serializes");
     let request_schema = json
@@ -99,9 +97,6 @@ fn mutation_command_schema_uses_serde_tag_mutation() {
 
 #[test]
 fn daemon_event_schema_includes_operation_variants() {
-    // DaemonEvent must include OperationStarted/Progress/Completed since the
-    // bridge's WebSocket stream emits those for long-running ops (see slice 6
-    // analytics rebuild + semantic reindex).
     let doc = ProtocolDoc::openapi();
     let json = serde_json::to_value(&doc).expect("doc serializes");
     let event_schema = json

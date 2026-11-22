@@ -67,7 +67,6 @@ async fn arrival_routes_forward_their_requests() {
         client.get(format!(
             "http://{addr}/api/v1/mail/corrections?account={account}&limit=5"
         )),
-        // An open Now names the window it holds.
         client.get(format!(
             "http://{addr}/api/v1/mail/arrivals?since=2026-10-07T08:00:00Z"
         )),

@@ -204,9 +204,6 @@ fn rows(json: &serde_json::Value) -> Vec<serde_json::Value> {
 async fn trashing_a_sent_row_targets_only_the_sent_message_on_another_provider() {
     let temp = TempDir::new().unwrap();
     let world = World::new();
-    // The IMAP thread holds an older message in "Sent Items" and a newer
-    // reply in the inbox. The default (Gmail) SENT label is `SENT`, which
-    // matches neither.
     let thread = ThreadId::new();
     let mut sent = envelope(&world.imap, &thread, "Sent note", 30);
     sent.label_provider_ids = vec!["Sent Items".into()];
@@ -264,8 +261,6 @@ async fn trashing_a_sent_row_targets_only_the_sent_message_on_another_provider()
 async fn a_role_view_never_falls_back_to_the_whole_thread() {
     let temp = TempDir::new().unwrap();
     let world = World::new();
-    // Listed by the daemon, but no message carries a Sent label of its own
-    // account: the row is dropped instead of targeting everything.
     let thread = ThreadId::new();
     let mut unlabelled = envelope(&world.imap, &thread, "Not sent", 5);
     unlabelled.label_provider_ids = vec!["INBOX".into()];
@@ -346,16 +341,12 @@ async fn navigation_comes_from_roles_and_counts_from_the_daemon() {
     let json = get_json(addr, "view=messages").await;
     let items = json["sidebar"]["sections"][0]["items"].as_array().unwrap();
     let item = |label: &str| items.iter().find(|item| item["label"] == label);
-    // Gmail's `DRAFT` label is reachable as Drafts.
     assert_eq!(item("Drafts").unwrap()["total"], 3);
-    // Spam exists only on the IMAP account, not the default one.
     let spam = item("Spam").expect("a mailbox only another account has");
     assert_eq!(spam["total"], 4);
     let spam_label = &world.imap_labels[2];
     assert_eq!(spam["lens"]["labelId"], spam_label.id.to_string());
     assert_eq!(item("Inbox").unwrap()["total"], 50);
-    // All Mail counts messages, not labels: no account here has an All Mail
-    // label at all.
     assert_eq!(item("All Mail").unwrap()["total"], 9124);
     assert_eq!(item("All Mail").unwrap()["unread"], 9);
     let all_mail = get_json(addr, "lens_kind=all_mail&view=messages").await;
@@ -367,7 +358,6 @@ async fn navigation_comes_from_roles_and_counts_from_the_daemon() {
 async fn user_labels_list_every_accounts_with_its_own_counts_and_chip_key() {
     let temp = TempDir::new().unwrap();
     let mut world = World::new();
-    // "Work" is on both accounts, "Travel" only on the second one.
     world.gmail_labels.push(user_label(&world.gmail, "Work", 4));
     world.imap_labels.push(user_label(&world.imap, "Work", 7));
     world.imap_labels.push(user_label(&world.imap, "Travel", 2));
@@ -388,7 +378,6 @@ async fn user_labels_list_every_accounts_with_its_own_counts_and_chip_key() {
         .expect("a labels section");
     let items = labels["items"].as_array().unwrap();
     assert_eq!(items.len(), 3, "{items:?}");
-    // Same-name labels sit together, and each keeps its own account and counts.
     assert_eq!(items[0]["label"], "Travel");
     assert_eq!(items[0]["accountId"], world.imap.to_string());
     assert_eq!(items[0]["id"], "travel");
@@ -402,7 +391,6 @@ async fn user_labels_list_every_accounts_with_its_own_counts_and_chip_key() {
     };
     assert_eq!(by_account(&world.gmail)["total"], 4);
     assert_eq!(by_account(&world.imap)["total"], 7);
-    // Two labels with one name need distinct lens ids, or the lenses collide.
     assert_ne!(work[0]["id"], work[1]["id"]);
     assert_eq!(
         by_account(&world.gmail)["lens"]["labelId"],
@@ -448,7 +436,6 @@ async fn categories_and_subscriptions_span_every_account_when_none_is_chosen() {
 async fn starred_is_listed_by_role_when_no_account_has_a_starred_label() {
     let temp = TempDir::new().unwrap();
     let mut world = World::new();
-    // IMAP-only set of accounts: no STARRED label anywhere.
     world.gmail_labels.retain(|label| label.name != "STARRED");
     let thread = ThreadId::new();
     let mut starred = envelope(&world.imap, &thread, "Flagged", 30);
@@ -494,8 +481,6 @@ async fn starred_is_listed_by_role_when_no_account_has_a_starred_label() {
 #[test]
 fn a_role_view_lists_only_threads_with_a_message_in_the_mailbox_and_counts_the_rest() {
     let account = AccountId::new();
-    // A German IMAP folder that the provider reports as Sent: the stored role
-    // places it, not the name.
     let sent = Label {
         id: LabelId::from_scoped_provider_id(&account, "imap", "Gesendete Elemente"),
         account_id: account.clone(),
@@ -513,7 +498,6 @@ fn a_role_view_lists_only_threads_with_a_message_in_the_mailbox_and_counts_the_r
     let mut in_inbox = sample_envelope();
     in_inbox.account_id = account.clone();
     in_inbox.label_provider_ids = vec!["INBOX".into()];
-    // A thread the daemon listed whose message the page did not fetch.
     let unfetched = sample_envelope();
     let missing = sample_thread(&unfetched);
 
@@ -538,7 +522,6 @@ fn a_role_view_lists_only_threads_with_a_message_in_the_mailbox_and_counts_the_r
     assert_eq!(built.rows.len(), 1);
     assert_eq!(built.row_envelopes.len(), 1);
     assert_eq!(built.row_envelopes[0].id, in_sent.id);
-    // The Inbox-only thread and the unfetched one are counted, not shown.
     assert_eq!(
         built.dropped,
         vec![threads[1].id.clone(), missing.id.clone()]

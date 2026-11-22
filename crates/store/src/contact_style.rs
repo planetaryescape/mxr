@@ -133,9 +133,6 @@ impl super::Store {
                 let account_id: AccountId = decode_id(row.get::<String, _>("account_id").as_str())?;
                 let account_id_str = account_id.as_str();
                 if !owned_by_account.contains_key(&account_id_str) {
-                    // Same rule as the daemon's owned set: the accounts row's
-                    // email is always owned, even after another address is
-                    // made primary and its row removed.
                     let configured = self
                         .get_account(&account_id)
                         .await?
@@ -185,8 +182,6 @@ impl super::Store {
         limit: u32,
     ) -> Result<Vec<RelationshipMessageSample>, sqlx::Error> {
         let started_at = std::time::Instant::now();
-        // Trash and Spam stay out: these samples feed the relationship
-        // summary, which a model writes.
         let sql = format!(
             r#"SELECT m.id, m.account_id, m.thread_id, m.direction, m.from_email,
                       CASE WHEN m.list_id IS NOT NULL THEN 1 ELSE 0 END AS is_list_sender,

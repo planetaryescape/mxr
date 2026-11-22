@@ -49,10 +49,6 @@ impl super::Store {
         let started_at = Instant::now();
         let now_unix = chrono::Utc::now().timestamp();
 
-        // Phase 1: aggregate on the reader pool. The single statement
-        // below is the inner SELECT from the prior implementation,
-        // promoted to a top-level query. Returns one row per (account,
-        // email).
         let aggregated: Vec<ContactAggregateRow> = sqlx::query_as(
             r#"WITH contact_events AS (
                 SELECT
@@ -182,9 +178,6 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        // Phase 2: chunked UPSERT on the writer. Each chunk is its own
-        // transaction; `yield_now()` between chunks lets other writers
-        // grab the lock instead of starving behind one giant write.
         let mut affected: u32 = 0;
         for chunk in aggregated.chunks(CHUNK_SIZE) {
             let mut tx = self.writer().begin().await?;
@@ -235,10 +228,6 @@ impl super::Store {
             tokio::task::yield_now().await;
         }
 
-        // A stored contact the aggregate did not produce may have no mail
-        // left. The aggregate is a snapshot, though: mail that arrived since
-        // can make it a live contact again, so the snapshot only nominates
-        // and the prune decides against the messages table itself.
         let produced = aggregated
             .iter()
             .map(|row| (row.account_id.as_str(), row.email.as_str()))
@@ -254,10 +243,6 @@ impl super::Store {
             })
             .collect::<Vec<_>>();
         self.prune_contacts_without_mail(&candidates).await?;
-        // The aggregate produces a contact only from inbound or outbound mail,
-        // so a candidate that survives the prune has none of either. Its
-        // direction counters must read zero, not the values from before the
-        // mail changed direction.
         self.zero_direction_counters(&candidates).await?;
         trace_query("contacts.refresh", started_at, affected as usize);
         Ok(affected)
@@ -276,10 +261,6 @@ impl super::Store {
         }
         let mut tx = self.writer().begin().await?;
         for (account_id, email) in candidates {
-            // The candidates are an earlier snapshot. Mail that arrived since
-            // can name this contact again, so its counters are reset only while
-            // no qualifying inbound or outbound event exists. The predicate is
-            // the aggregate's, for this one contact.
             sqlx::query(
                 r#"UPDATE contacts
                    SET total_inbound = 0, total_outbound = 0,
@@ -457,15 +438,9 @@ impl super::Store {
         let lim = limit as i64;
         let cutoff = now_unix - i64::from(threshold_days) * 86_400;
         let max_lookback_unix = now_unix - i64::from(max_lookback_days) * 86_400;
-        // Floor at year 2000: messages with epoch-0 Date headers would otherwise
-        // dominate the result. Use whichever is later: the user-asked window or
-        // the hard floor.
         let lookback_floor = max_lookback_unix.max(EARLIEST_PLAUSIBLE_TS);
         let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
 
-        // Decay = inbound is more recent than outbound by more than threshold.
-        // Excludes the boundary (>, not >=) per Slice 13's spec.
-        // Hard floor on last_inbound_at filters out epoch-0 garbage.
         let rows: Vec<(String, Option<String>, i64, Option<i64>)> = sqlx::query_as(
             r#"SELECT
                 email,
@@ -543,8 +518,6 @@ impl super::Store {
               refreshed_at = excluded.refreshed_at"#,
         )
         .bind(row.account_id.as_str())
-        // Stored lowercase, as the refresh writes it: readers join on the
-        // bare column so the (account_id, email) key serves the lookup.
         .bind(row.email.to_ascii_lowercase())
         .bind(&row.display_name)
         .bind(row.first_seen_at.timestamp())
@@ -618,7 +591,6 @@ impl super::Store {
 
 #[allow(dead_code)]
 fn _types_used(_: AccountId, _: ContactRow) {
-    // Keeps `decode_id` re-exported even when query helpers don't pull it.
     let _ = decode_id::<AccountId>;
 }
 

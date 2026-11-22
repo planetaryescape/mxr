@@ -274,8 +274,6 @@ where
                                 Request::DeleteDraft { draft_id, expected_revision } => {
                                     if drafts.get(&draft_id).and_then(|draft| draft.revision) == expected_revision && expected_revision.is_some() { drafts.remove(&draft_id); Some(Response::Ok { data: ResponseData::Ack }) } else { Some(Response::error("Draft revision conflict")) }
                                 }
-                                // Like a daemon that predates the request: the bridge
-                                // falls back to the labels' own counts.
                                 Request::SystemMailboxCounts { .. } => Some(Response::error("unknown request")),
                                 _ => None,
                             }
@@ -394,8 +392,6 @@ async fn slice6_routes_dispatch_correct_request_variants() {
             }),
             Request::Count { mode, .. } => Some(Response::Ok {
                 data: ResponseData::Count {
-                    // surface the mode round-trip so we know the
-                    // handler parsed and forwarded it correctly
                     count: if mode == Some(SearchMode::Lexical) {
                         7
                     } else {
@@ -438,7 +434,6 @@ async fn slice6_routes_dispatch_correct_request_variants() {
 
     let client = test_http_client();
 
-    // admin/ping (Request::Ping → ResponseData::Pong)
     let response = client
         .post(format!("http://{addr}/api/v1/admin/ping"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -483,10 +478,6 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["targets"], serde_json::json!([]));
 
-    // ResponseData uses #[serde(tag = "kind")] (internally tagged), so
-    // the JSON shape is {"kind": "Variant", ...fields}.
-
-    // platform/accounts/config (Request::ListAccountsConfig)
     let response = client
         .get(format!("http://{addr}/api/v1/platform/accounts/config"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -498,7 +489,6 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     assert_eq!(json["kind"], "AccountsConfig");
     assert!(json["accounts"].is_array());
 
-    // platform/saved-searches (Request::ListSavedSearches)
     let response = client
         .get(format!("http://{addr}/api/v1/platform/saved-searches"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -509,8 +499,6 @@ async fn slice6_routes_dispatch_correct_request_variants() {
     let json: serde_json::Value = response.json().await.unwrap();
     assert_eq!(json["kind"], "SavedSearches");
 
-    // mail/count with mode=lexical — verifies query-param parsing on
-    // a route that wasn't covered before slice 6.
     let response = client
         .get(format!(
             "http://{addr}/api/v1/mail/count?query=alice&mode=lexical"
@@ -547,8 +535,6 @@ async fn slice6_routes_reject_invalid_query_params() {
 
     let client = test_http_client();
 
-    // bad mode → BridgeError::Ipc → 5xx; the point is we don't 200
-    // for bad inputs.
     let response = client
         .get(format!(
             "http://{addr}/api/v1/mail/count?query=q&mode=garbage"
@@ -771,9 +757,6 @@ async fn host_header_allowlist_rejects_external_hosts() {
     .await
     .unwrap();
 
-    // Send a request with a Host header pointing at an external
-    // domain — this is the shape of a DNS rebinding attack from a
-    // malicious page.
     let response = test_http_client()
         .get(format!("http://{addr}/api/v1/health"))
         .header(HOST, "evil.example.com")
@@ -1011,9 +994,6 @@ async fn openapi_spec_snapshot() {
         .expect("account_id query filter");
     assert_eq!(account_filter["in"], "query");
 
-    // Snapshot a stable subset (top-level metadata + security scheme +
-    // schema names). Snapshotting the full spec is too noisy across
-    // utoipa version bumps; snapshotting nothing means drift slips by.
     let mut schema_names: Vec<&str> = json
         .pointer("/components/schemas")
         .and_then(|v| v.as_object())
@@ -1839,7 +1819,6 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
                 seen_for_ipc.lock().unwrap().push(label_role.clone());
                 let envelopes = match label_role.as_deref() {
                     Some("inbox" | "all_mail") => {
-                        // The default account's label id rides along for an older daemon.
                         assert!(
                             label_role.as_deref() == Some("all_mail")
                                 || label_id.as_ref() == Some(&inbox_label_id)
@@ -1925,14 +1904,12 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
         subjects(&inbox),
         vec!["From the first account", "From the second account"]
     );
-    // 12 + 3 unread, 144 + 50 total.
     assert_eq!(inbox["mailbox"]["counts"]["unread"], 15);
     assert_eq!(inbox["mailbox"]["counts"]["total"], 194);
     let system = inbox["sidebar"]["sections"][0]["items"].as_array().unwrap();
     let item = |label: &str| system.iter().find(|item| item["label"] == label).unwrap();
     assert_eq!(item("Inbox")["unread"], 15);
     assert_eq!(item("Inbox")["total"], 194);
-    // 8124 + 1000 total, 24 + 6 unread.
     assert_eq!(item("All Mail")["unread"], 30);
     assert_eq!(item("All Mail")["total"], 9124);
 
@@ -3684,7 +3661,6 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     .unwrap();
     let path_str = draft_path.to_str().unwrap().to_string();
 
-    // No sidecar → a plain draft with no iTIP payload.
     let plain = compose_draft_from_file(
         &path_str,
         &account_id.to_string(),
@@ -3695,8 +3671,6 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     .unwrap();
     assert!(plain.inline_calendar_reply.is_none());
 
-    // With a sidecar → the built draft carries the REPLY payload so the
-    // outbound builder emits the ATTENDEE part and PARTSTAT is updated.
     let reply = mxr_core::types::InlineCalendarReply {
         source_message_id: MessageId::new(),
         attendee_email: "hello@planetaryescape.xyz".into(),
@@ -3721,7 +3695,6 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     assert_eq!(got.partstat, mxr_core::types::CalendarPartstat::Accepted);
     assert!(got.ics_body.contains("METHOD:REPLY"));
 
-    // Send/discard cleanup removes the sidecar.
     remove_invite_reply_sidecar(&draft_path).await.unwrap();
     assert!(read_invite_reply_sidecar(&draft_path)
         .await
@@ -3834,8 +3807,6 @@ async fn restoring_an_html_draft_refuses_with_an_actionable_conflict() {
         .await
         .unwrap();
 
-    // 409, not 502: the daemon is healthy and the draft is intact, so the
-    // client must not treat this as a transient upstream failure and retry.
     assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["code"], "html_draft_not_editable");
@@ -3882,9 +3853,6 @@ fn scratch_entries(dir: &Path) -> Vec<PathBuf> {
 /// before the lookup. This asserts the property against the directory itself.
 #[test]
 fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
-    // A client must be able to tell an HTML draft apart in the LIST. Without
-    // this the only way to discover one is uneditable in the markdown
-    // composer is to open it and take the 409.
     let updated_at = chrono::Utc::now();
     let base = Draft {
         revision: Some(1),
@@ -3934,10 +3902,6 @@ async fn refusing_an_html_draft_leaves_no_compose_file_in_the_scratch_directory(
     let draft_id = DraftId::new();
     let account = sample_account(&account_id);
 
-    // The scratch directory is per-user and shared with every other compose
-    // test running concurrently, so a leak is attributed by content rather
-    // than by counting entries: a compose file is rendered from the draft it
-    // was created for, and only this request could have written this subject.
     let subject = format!("scratch proof {draft_id}");
     let mut draft = html_body_draft(&draft_id, &account_id);
     draft.subject = subject.clone();
@@ -4206,8 +4170,6 @@ async fn saving_a_restored_draft_updates_it_in_place_instead_of_storing_a_copy()
     let socket_path = temp.path().join("mxr.sock");
     let account_id = AccountId::new();
     let draft_id = DraftId::new();
-    // Distinctly older than "now" so a create (which stores the payload's
-    // timestamp) cannot be mistaken for an in-place update.
     let created_at = Utc::now() - chrono::Duration::days(3);
     let mut draft = markdown_draft(
         &draft_id,
@@ -4602,7 +4564,6 @@ async fn a_restored_session_carries_the_stored_drafts_intent() {
         assert_eq!(response.status(), reqwest::StatusCode::OK);
         let body: serde_json::Value = response.json().await.unwrap();
         assert_eq!(body["session"]["draftIntent"], json!(expected), "{body}");
-        // The existing flows still see a new message.
         assert_eq!(body["session"]["kind"], json!("new"), "{body}");
         let old_path = compose_draft_path(&body);
         let private_text = format!(
@@ -4678,9 +4639,6 @@ async fn edit_session(
 fn degraded_status_is_not_reported_as_a_quiet_mailbox() {
     use crate::chrome::describe_sync_state;
 
-    // A degraded snapshot arrives with no sync statuses and no counts, which
-    // is indistinguishable from an idle, empty mailbox unless the flag is
-    // honoured.
     let (label, message) = describe_sync_state(true, false, &[]);
     assert_eq!(label, "Daemon busy");
     assert!(
@@ -4997,7 +4955,6 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
         format!("/api/v1/mail/triage?q=invoice&account={account}"),
         format!("/api/v1/mail/search/groups?q=invoice&account={account}"),
         format!("/api/v1/mail/mailbox?view=messages&account={account}"),
-        // `account_id` is accepted as an alias for API-client consistency.
         format!("/api/v1/mail/search?q=invoice&account_id={account}"),
     ] {
         let response = client
@@ -5058,8 +5015,6 @@ async fn mailbox_thread_view_pages_whole_threads() {
         envelope
     };
 
-    // Thread A: two inbox messages around one sent reply, newest first in
-    // the listing. Thread B: one message. Thread C (page 2): two messages.
     let thread_a = ThreadId::new();
     let a1 = message(&thread_a, 50, "Alice", true);
     let mut a2 = message(&thread_a, 40, "Me", false);
@@ -5241,7 +5196,6 @@ async fn mailbox_thread_view_pages_whole_threads() {
     assert_eq!(page2["mailbox"]["has_more"], false);
     assert!(page2["mailbox"]["next_offset"].is_null());
 
-    // Thread view pages through ListThreads, never the envelope list.
     assert_eq!(
         list_envelopes_calls.load(std::sync::atomic::Ordering::SeqCst),
         0
@@ -5307,8 +5261,6 @@ async fn parity_routes_dispatch_daemon_requests() {
                         failure_count: 0,
                     },
                 },
-                // Whois, send-time, archive-ask and (un)watch payloads are
-                // passed through untouched; Ack keeps the fixture small.
                 Request::ExplainEntity { .. }
                 | Request::SendTimeRecommendation { .. }
                 | Request::ArchiveAsk { .. }
@@ -5495,7 +5447,6 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
                 Request::RestoreDeskThreads { .. } => {
                     ResponseData::DeskThreadsRestored { restored: 1 }
                 }
-                // The desk's "everything else" links open these for one account.
                 Request::ListSubscriptions { .. } => ResponseData::Subscriptions {
                     subscriptions: Vec::new(),
                 },
@@ -5882,7 +5833,6 @@ async fn websocket_events_answer_ping_and_release_daemon_on_close() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut framed = Framed::new(stream, IpcCodec::new());
         accept_client_declaration(&mut framed).await;
-        // Never emit an event: only the client side can end this session.
         while let Some(Ok(_)) = framed.next().await {}
         let _ = closed_tx.send(());
     });
@@ -6021,8 +5971,6 @@ async fn mailbox_and_search_rows_carry_labels() {
     );
     assert_eq!(rows[0]["labels"][1]["kind"], "user");
     assert_eq!(label_names(&rows[1]), vec!["Inbox".to_string()]);
-    // Chrome's ListLabels (twice: default account, then all accounts for the
-    // summed system counts) + ListCategories + ListSubscriptions use no account.
     assert_eq!(
         *chrome_lookups.lock().unwrap(),
         vec![None, None, None, None],
@@ -6143,8 +6091,6 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
     );
     assert_eq!(ok.bytes().await.unwrap().as_ref(), b"\x89PNG fake bytes");
 
-    // An SVG inline part is mail-authored markup and must never be served as a
-    // document on the origin that holds the browser credential.
     let svg = client
         .get(url("cid:pixel.svg"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
@@ -6162,7 +6108,6 @@ async fn inline_image_route_serves_materialized_cid_parts_only() {
         .unwrap();
     assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
 
-    // A remote source is never served, even if the daemon reported a file.
     let remote = client
         .get(url("https://tracker.example/pixel.gif"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
@@ -6620,8 +6565,6 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
                     total: Some(14),
                 },
             }),
-            // The daemon's own not-found wording, so the error kind comes from
-            // the same classifier a real daemon error goes through.
             Request::GetAssistantStepRows { .. } => Some(Response::error(
                 "step call9 at 7 not found in assistant conversation c1",
             )),
@@ -6662,7 +6605,6 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
 
-    // seq is required: without it the request never reaches the daemon.
     let response = client
         .get(format!("{base}/c1/steps/call1/rows"))
         .bearer_auth(TEST_AUTH_TOKEN)
@@ -6677,7 +6619,6 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
 
-    // The fake daemon echoes what it received, so the test can check the forwarded fields.
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         |request| match request {
@@ -6732,7 +6673,6 @@ async fn account_identity_route_forwards_colour_tag_and_dry_run() {
         "work Some(Amber) Some(\"W\") dry_run=true"
     );
 
-    // A colour the daemon doesn't know is refused at the bridge, before any IPC.
     let response = test_http_client()
         .post(format!(
             "http://{addr}/api/v1/platform/accounts/work/identity"
@@ -6799,8 +6739,6 @@ async fn cross_site_requests_are_forbidden_even_with_a_valid_token() {
         reqwest::StatusCode::FORBIDDEN
     );
 
-    // The dev SPA on a loopback origin and a same-origin hosted browser both
-    // keep working.
     for origin in [
         "http://localhost:5173",
         &url[..url.len() - "/api/v1/i18n".len()],
@@ -6835,8 +6773,6 @@ async fn every_api_v1_route_requires_a_bridge_token() {
 
     let mut matched_paths = 0usize;
     for literal in bridge_route_literals() {
-        // Absolute literals are mounted as written; everything else lives in
-        // one of the four `/api/v1` buckets.
         let prefixes: &[&str] = if literal.starts_with("/api/v1") {
             &[""]
         } else {

@@ -248,8 +248,6 @@ impl super::Store {
         } else {
             ""
         };
-        // A date a model wrote before due words existed is not a due date:
-        // the promise is mirrored undated rather than nagging on it.
         let sql = format!(
             "SELECT c.id, c.account_id, c.thread_id, c.evidence_msg_id, c.email, c.what,
                     CASE WHEN c.{ACTIONABLE_BY_WHEN_SQL} THEN c.by_when END AS by_when,
@@ -330,7 +328,6 @@ impl super::Store {
                     .unwrap_or(i64::MIN)
                     .to_le_bytes(),
             );
-            // A date turning from unverified to verified changes the mirror.
             hasher.update(
                 row.try_get::<Option<String>, _>("by_when_source")?
                     .unwrap_or_default(),
@@ -428,7 +425,6 @@ mod tests {
         .await
         .unwrap();
 
-        // The dates add up to the same total, so only a per-row hash sees it.
         assert_ne!(
             store.promise_fingerprint(&account.id).await.unwrap(),
             before

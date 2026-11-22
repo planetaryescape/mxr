@@ -88,7 +88,6 @@ impl super::Store {
                 .or_default()
                 .subjects
                 .push(row.try_get("subject")?);
-            // Two spellings of one address: the newest message of either.
             match latest.get_mut(&sender) {
                 Some(newest) if date > newest.0 => *newest = (date, id),
                 Some(_) => {}

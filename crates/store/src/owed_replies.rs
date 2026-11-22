@@ -322,10 +322,6 @@ mod tests {
             .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
             .await
             .unwrap();
-        // Force the contacts entry to be classified as a list sender:
-        // refresh, then update the column directly. (Production marks
-        // is_list_sender based on `messages.list_id`; we overwrite to
-        // isolate the filter from upstream classification.)
         store.refresh_contacts().await.unwrap();
         sqlx::query("UPDATE contacts SET is_list_sender = 1 WHERE email = ?")
             .bind("newsletter@example.com")
@@ -372,8 +368,6 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let account_id = fixture_account(&store).await;
 
-        // Two contacts, both 5 days waiting; alice has cadence p50 = 1d
-        // (very overdue), bob has cadence p50 = 30d (still patient).
         let thread_a = ThreadId::new();
         let thread_b = ThreadId::new();
         let env_a = envelope(&account_id, &thread_a, "alice@example.com", 5);

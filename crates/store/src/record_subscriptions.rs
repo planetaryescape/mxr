@@ -112,9 +112,6 @@ impl super::Store {
 }
 
 fn ending_mail_sql(senders: usize) -> String {
-    // Enumerating the small account table makes the existing account/sender/
-    // date index usable. Without the account prefix this was a mailbox scan
-    // on every Now refresh. Disabled accounts still participate, as before.
     format!(
         "SELECT m.id, m.account_id, LOWER(m.from_email) AS from_email, m.subject, m.date
          FROM accounts own CROSS JOIN messages m ON m.account_id = own.id

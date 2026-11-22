@@ -175,9 +175,6 @@ fn localize<Tz: TimeZone>(tz: &Tz, naive: NaiveDateTime) -> Option<(DateTime<Tz>
         }
         MappedLocalTime::None => {}
     }
-    // Read the skipped wall time with the offset in force just before the
-    // gap. That instant falls after the change, where its wall time is the
-    // requested time plus the real gap, whatever its length.
     let before = naive.checked_sub_signed(Duration::days(1))?;
     let offset_before = tz.from_local_datetime(&before).earliest()?.offset().fix();
     let utc = naive.checked_sub_signed(Duration::seconds(i64::from(
@@ -200,11 +197,6 @@ fn offset<Tz: TimeZone>(
     if parts.iter().any(|(amount, _)| *amount <= 0) {
         return Err(in_past(None, spans));
     }
-    // Days, weeks and months move the calendar and keep the wall-clock time,
-    // so "in 1d" across a clock change is still the same time tomorrow.
-    // Hours and minutes are elapsed time.
-    // Every step is checked: a phrase like twenty "999999w" parts must come
-    // back as an error, never a panic.
     let too_far = || out_of_range(spans);
     let mut wall = now.naive_local();
     let mut elapsed = Duration::zero();
@@ -264,7 +256,6 @@ fn calendar<Tz: TimeZone>(
     }
 
     let tz = now.timezone();
-    // Named in the "already passed" message when no reading is ahead.
     let first_attempt = times.first().map(|(clock, _)| base.and_time(*clock));
     let mut candidates: Vec<Candidate<Tz>> = Vec::new();
     for (clock, time_implied) in times {
@@ -403,7 +394,6 @@ fn base_date(
             day,
             year: None,
         }) => {
-            // Feb 29 means the next leap year that has it.
             let date = (today.year()..today.year() + 8)
                 .find_map(|year| {
                     NaiveDate::from_ymd_opt(year, month, day).filter(|date| *date >= today)

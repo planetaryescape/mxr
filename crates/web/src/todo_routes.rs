@@ -11,8 +11,6 @@ use mxr_protocol::{
 };
 use serde_json::Value;
 
-// Mirrors the protocol's serde default so an omitted limit behaves the same
-// over HTTP as over IPC.
 const DEFAULT_TODO_LIMIT: u32 = 200;
 
 fn parse_state(raw: &str) -> Result<TodoStateData, BridgeError> {

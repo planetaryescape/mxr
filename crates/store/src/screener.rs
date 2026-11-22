@@ -223,7 +223,6 @@ impl super::Store {
         limit: u32,
         only: Option<&[String]>,
     ) -> Result<Vec<ScreenerQueueEntry>, sqlx::Error> {
-        // A named set is never cut; the open queue is capped.
         let limit = if only.is_some() {
             i64::from(limit.max(1))
         } else {
@@ -454,7 +453,6 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let aid = make_account(&store).await;
 
-        // Two senders: alice (no decision) and bob (allowed).
         let mut env_a = TestEnvelopeBuilder::new().account_id(aid.clone()).build();
         env_a.id = MessageId::new();
         env_a.provider_id = "msg-a".into();
@@ -560,7 +558,6 @@ mod tests {
         for (n, email) in (1..).zip(senders) {
             store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
         }
-        // You wrote to Carol, copied Erin and blind-copied Frank.
         store_message(
             &store,
             &aid,
@@ -573,7 +570,6 @@ mod tests {
             ],
         )
         .await;
-        // No contacts refresh needed: the sent mail itself says so.
         assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
     }
 
@@ -588,7 +584,6 @@ mod tests {
         for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {
             store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
         }
-        // Synced before the alias was known: stored with no direction.
         store_message(
             &store,
             &aid,
@@ -597,8 +592,6 @@ mod tests {
             [&["carol@example.com"], &[], &[]],
         )
         .await;
-        // The same from a stranger is not your sent mail, so it does not
-        // keep dave out; its own sender is inbound by the desk's rule.
         store_message(
             &store,
             &aid,
@@ -615,9 +608,6 @@ mod tests {
 
     #[tokio::test]
     async fn screener_queue_treats_provider_sent_unknown_mail_as_sent() {
-        // An alias synced before it was registered, filed by the provider as
-        // sent: its recipient is one you have written to, and the alias is not
-        // a sender waiting in the queue.
         let store = Store::in_memory().await.unwrap();
         let aid = make_account(&store).await;
         for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {

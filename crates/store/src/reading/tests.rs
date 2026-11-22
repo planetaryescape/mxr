@@ -531,7 +531,6 @@ async fn only_your_own_highlights_can_be_edited_or_removed() {
         .await
         .expect("theirs");
 
-    // Anything that isn't mxr's own is refused, whatever its name.
     for id in ["theirs"] {
         assert_eq!(
             fx.store.set_reading_highlight_note(id, None).await.unwrap(),
@@ -622,8 +621,6 @@ async fn a_read_back_never_resurrects_or_loses_what_you_removed() {
         .await
         .unwrap();
 
-    // The mirror leaves your removal alone, and the removal leaves the
-    // mirrored row to the mirror.
     fx.store.remove_reading_highlight("own").await.unwrap();
     fx.store
         .mirror_marginalia_highlights(&sent, std::slice::from_ref(&remote), at(5))
@@ -677,7 +674,6 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
         row: before_edit.clone(),
         removed: false,
     };
-    // Undoing the edit after the removal must not bring the highlight back.
     assert_eq!(
         fx.store
             .put_back_reading_highlights(std::slice::from_ref(&edit))
@@ -709,7 +705,6 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
         fx.store.reading_highlight("own").await.unwrap(),
         Some(before_edit)
     );
-    // A second undo of the removal is a no-op, not a duplicate.
     assert_eq!(
         fx.store
             .put_back_reading_highlights(std::slice::from_ref(&remove))
@@ -718,7 +713,6 @@ async fn undo_puts_a_removed_highlight_and_an_old_note_back() {
         0
     );
 
-    // Its message gone: nothing to put it back on.
     fx.store.remove_reading_highlight("own").await.unwrap();
     fx.store
         .delete_messages_and_derived(&fx.account, &["p1".to_string()])

@@ -8,8 +8,6 @@ use super::routes_v6::{dispatch, passthrough};
 use super::*;
 use mxr_protocol::{RecordEditData, RecordFilterData, RecordKindData};
 
-// Mirrors the protocol's serde defaults so an omitted limit behaves the
-// same over HTTP as over IPC.
 const DEFAULT_RECORD_LIMIT: u32 = 200;
 const DEFAULT_ANSWER_LIMIT: u32 = 4;
 /// A list's page: the ledger's page size.

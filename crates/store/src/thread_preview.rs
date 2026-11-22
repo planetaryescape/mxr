@@ -38,8 +38,6 @@ impl super::Store {
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         let started_at = std::time::Instant::now();
-        // A bad Date: header in the future would otherwise pin the thread's
-        // "latest" message; it counts as undated, as in `get_threads_batch`.
         let rows = sqlx::query(
             "WITH ranked AS (
                 SELECT thread_id, account_id, subject, from_name, from_email, snippet,

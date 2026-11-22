@@ -221,9 +221,6 @@ pub(crate) async fn insert_body_tx(
     .execute(&mut *conn)
     .await?;
 
-    // Promote List-Id from body metadata to the indexed `messages.list_id`
-    // column. Cheap upsert; runs once per body and is overwritten if the
-    // sender's headers change. Powers `mxr unsub --rank` grouping.
     if let Some(list_id) = metadata.list_id.as_ref() {
         sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
             .bind(list_id)
@@ -473,7 +470,6 @@ mod tests {
             vec![attachment(envelope.id.clone(), "kept")],
         );
         store.insert_body(&cached).await.unwrap();
-        // Emulate an old cache, including a field this binary does not own.
         sqlx::query("UPDATE bodies SET metadata_json = ? WHERE message_id = ?")
             .bind(r#"{"list_id":null,"raw_headers":"List-Id: Weekly <WEEKLY.EXAMPLE.ORG>\r\n","future_field":{"keep":true}}"#)
             .bind(envelope.id.as_str()).execute(store.writer()).await.unwrap();

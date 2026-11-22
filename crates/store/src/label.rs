@@ -26,9 +26,6 @@ impl super::Store {
                 .await?;
 
         if let Some(existing_id) = existing_id {
-            // Only a real change writes: sync upserts every label on every
-            // pass, and a rewrite of the same values still counts as a change
-            // for the cached mode views (and grows the WAL).
             sqlx::query(
                 "UPDATE labels SET
                     name = ?1,
@@ -49,9 +46,6 @@ impl super::Store {
             return Ok(());
         }
 
-        // On conflict, do NOT overwrite counts — those are managed by
-        // recalculate_label_counts() from the junction table. Only update
-        // metadata (name, kind, color, provider_id).
         sqlx::query(
             "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count, role)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -189,7 +183,6 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<(), sqlx::Error> {
         let aid = account_id.as_str();
-        // Rows whose counts already match are left alone; see `upsert_label`.
         sqlx::query!(
             "UPDATE labels SET total_count = counts.total, unread_count = counts.unread
             FROM (SELECT l.id,

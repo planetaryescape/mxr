@@ -6,8 +6,6 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 
-// -- System Labels ------------------------------------------------------------
-
 /// Well-known system label identifiers used across providers.
 pub mod system_labels {
     pub const INBOX: &str = "INBOX";
@@ -41,8 +39,6 @@ pub mod system_labels {
     }
 }
 
-// -- Address ------------------------------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Address {
@@ -60,8 +56,6 @@ pub fn first_non_owned_recipient<'a>(
         .chain(cc)
         .find(|address| !is_owner(&address.email))
 }
-
-// -- Account ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -331,8 +325,6 @@ pub enum ProviderKind {
     Fake,
 }
 
-// -- Label --------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Label {
@@ -520,8 +512,6 @@ impl Label {
     }
 }
 
-// -- MessageFlags -------------------------------------------------------------
-
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct MessageFlags: u32 {
@@ -535,8 +525,6 @@ bitflags! {
         const ANSWERED = 0b1000_0000;
     }
 }
-
-// -- EventSource --------------------------------------------------------------
 
 /// Origin attribution for message-state mutations. Threaded through every
 /// store mutation so analytics can distinguish user actions from rule-driven,
@@ -584,8 +572,6 @@ impl EventSource {
         })
     }
 }
-
-// -- MessageEventType --------------------------------------------------------
 
 /// Per-message state-transition events. Persisted to `message_events` so
 /// analytics can answer time-bounded questions ("how long until I archived
@@ -664,8 +650,6 @@ impl MessageEventType {
     }
 }
 
-// -- LargestMessages ---------------------------------------------------------
-
 /// Single message ranked by its envelope `size_bytes`. Powers
 /// `mxr storage --by message`: lets users find and act on the single
 /// biggest emails (the 250 MB attachment from a courier service, the
@@ -679,8 +663,6 @@ pub struct LargestMessageRow {
     pub size_bytes: u64,
     pub date: DateTime<Utc>,
 }
-
-// -- Wrapped -----------------------------------------------------------------
 
 /// Year-in-review summary returned by `mxr wrapped`. Combines volume,
 /// time-pattern, contact, reply-discipline, storage, newsletter, and
@@ -839,8 +821,6 @@ pub struct WrappedMostGhosted {
     pub outbound_count: u32,
 }
 
-// -- ResponseTime ------------------------------------------------------------
-
 /// Aggregate response-time summary for `mxr response-time`. p50/p90 in
 /// seconds; business-hours percentiles are `None` until the reconciler has
 /// backfilled the relevant rows.
@@ -899,8 +879,6 @@ impl ResponseTimeDirection {
     }
 }
 
-// -- Contacts ----------------------------------------------------------------
-
 /// Materialized per-account contact row. Source of truth for `mxr contacts
 /// asymmetry` and `mxr contacts decay`. Refreshed periodically.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -943,8 +921,6 @@ pub struct ContactDecayRow {
     pub days_since_outbound: Option<u32>,
 }
 
-// -- StaleThreads ------------------------------------------------------------
-
 /// Single row of `mxr stale` output: a thread whose latest message points
 /// at one party and has been silent past the threshold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -977,8 +953,6 @@ impl StaleBallInCourt {
     }
 }
 
-// -- StorageBreakdown --------------------------------------------------------
-
 /// Single row of `mxr storage` output: how many bytes / how many items
 /// rolled up under a particular grouping key (sender, mimetype, label).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1002,8 +976,6 @@ pub enum StorageGroupBy {
     Label,
 }
 
-// -- MessageEvent ------------------------------------------------------------
-
 /// A single per-message state-transition event. Ordered by `occurred_at` ASC
 /// when read back; analytics consumers should not assume monotonic IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1021,8 +993,6 @@ pub struct MessageEvent {
     /// label IDs). Kept opt-in to avoid bloat on the common transitions.
     pub metadata_json: Option<String>,
 }
-
-// -- Envelope -----------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1127,9 +1097,6 @@ impl Envelope {
         if link_count >= LINK_DENSITY_HEAVY_ABSOLUTE {
             return LinkDensity::Heavy;
         }
-        // Density = links / (words / WORDS_PER_LINK). Heavy when ≥ 1.0,
-        // implemented in integer arithmetic to avoid floating-point in the hot
-        // path. Equivalent to `link_count * WORDS_PER_LINK >= max(1, words)`.
         let denominator = body_word_count.max(1);
         if link_count * LINK_DENSITY_WORDS_PER_LINK >= denominator {
             return LinkDensity::Heavy;
@@ -1156,8 +1123,6 @@ impl LinkDensity {
     }
 }
 
-// -- UnsubscribeMethod --------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum UnsubscribeMethod {
@@ -1177,8 +1142,6 @@ pub enum UnsubscribeMethod {
     None,
 }
 
-// -- ReplyHeaders ------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReplyHeaders {
@@ -1190,8 +1153,6 @@ pub struct ReplyHeaders {
     #[serde(default)]
     pub thread_id: Option<String>,
 }
-
-// -- MessageMetadata ---------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1357,8 +1318,6 @@ pub struct CalendarReplyMessage {
     pub ics: String,
 }
 
-// -- MessageBody --------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageBody {
@@ -1470,8 +1429,6 @@ impl MessageBody {
     }
 }
 
-// -- AttachmentMeta -----------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AttachmentMeta {
@@ -1580,8 +1537,6 @@ pub enum HtmlImageAssetStatus {
     Failed,
 }
 
-// -- Thread -------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Thread {
@@ -1602,8 +1557,6 @@ pub struct Thread {
     #[serde(default)]
     pub message_ids: Vec<MessageId>,
 }
-
-// -- Draft --------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1777,8 +1730,6 @@ impl Serialize for DraftContent {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let wire = match self {
             Self::Markdown { source } => DraftContentWire {
-                // Always emitted, even when empty, so the markdown wire shape
-                // is unchanged from before HTML drafts existed.
                 body_markdown: Some(source.clone()),
                 body_html: None,
                 body_text: None,
@@ -1797,9 +1748,6 @@ impl<'de> Deserialize<'de> for DraftContent {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = DraftContentWire::deserialize(deserializer)?;
         match (wire.body_markdown, wire.body_html) {
-            // Rejected rather than resolved by precedence: a payload carrying
-            // both is a caller bug, and silently dropping one body is how the
-            // wrong message gets sent.
             (Some(_), Some(_)) => Err(serde::de::Error::custom(
                 "draft carries both body_markdown and body_html; they are mutually exclusive",
             )),
@@ -1807,11 +1755,6 @@ impl<'de> Deserialize<'de> for DraftContent {
                 html,
                 text: wire.body_text,
             }),
-            // Symmetric with the rejection above. A `body_text` with no
-            // `body_html` used to fall through to empty markdown, silently
-            // discarding the caller's text and — when the payload targeted an
-            // existing HTML draft — its stored document too. Strict in one
-            // direction and lossy in the other is indefensible.
             (_, None) if wire.body_text.is_some() => Err(serde::de::Error::custom(
                 "draft carries body_text without body_html; a text alternative \
                  has no meaning without the document it accompanies",
@@ -2132,8 +2075,6 @@ impl DraftStatus {
     }
 }
 
-// -- SavedSearch --------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -2298,8 +2239,6 @@ pub struct SavedSearch {
     pub created_at: DateTime<Utc>,
 }
 
-// -- Subscriptions ------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SubscriptionSummary {
@@ -2340,8 +2279,6 @@ pub enum SortOrder {
     Relevance,
 }
 
-// -- Snoozed ------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Snoozed {
@@ -2351,8 +2288,6 @@ pub struct Snoozed {
     pub wake_at: DateTime<Utc>,
     pub original_labels: Vec<LabelId>,
 }
-
-// -- Sync types ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -2415,17 +2350,11 @@ impl SyncCursor {
     }
 }
 
-// Custom Debug keeps logs bounded and avoids leaking account-scoped
-// tokens that some adapters embed in their cursor payload (e.g. Gmail
-// page tokens). Use `provider.describe_cursor(&cursor)` when a richer
-// representation is wanted.
 impl fmt::Debug for SyncCursor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SyncCursor(len={})", self.0.len())
     }
 }
-
-// -- SyncedMessage ------------------------------------------------------------
 
 /// A message with both envelope and body, returned by sync.
 /// Bodies are always fetched eagerly during sync — no lazy hydration.
@@ -2540,8 +2469,6 @@ impl Mutation {
     }
 }
 
-// -- Export -------------------------------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ExportFormat {
@@ -2550,8 +2477,6 @@ pub enum ExportFormat {
     Mbox,
     LlmContext,
 }
-
-// -- ProviderMeta -------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -2570,8 +2495,6 @@ pub struct ProviderMeta {
     pub uid_validity: Option<u32>,
     pub raw_json: Option<String>,
 }
-
-// -- SyncCapabilities ---------------------------------------------------------
 
 /// Namespaced provider capabilities, MSP-shaped (see `docs/msp/spec.md` §4).
 ///
@@ -2645,8 +2568,6 @@ pub struct PushCaps {
     pub streaming: bool,
 }
 
-// -- SendReceipt --------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SendReceipt {
@@ -2665,8 +2586,6 @@ mod draft_content_tests {
 
     #[test]
     fn empty_markdown_still_emits_the_key() {
-        // Legacy clients read `body_markdown` unconditionally; omitting it on
-        // an empty body would break them.
         let json = serde_json::to_value(DraftContent::markdown("")).unwrap();
         assert_eq!(json, serde_json::json!({ "body_markdown": "" }));
     }
@@ -2704,9 +2623,6 @@ mod draft_content_tests {
 
     #[test]
     fn a_text_alternative_without_a_document_is_rejected() {
-        // Previously fell through to empty markdown, silently discarding the
-        // caller's text — and, when the payload targeted an existing HTML
-        // draft, that draft's stored document with it.
         let err = serde_json::from_value::<DraftContent>(
             serde_json::json!({ "body_text": "plain words" }),
         )
@@ -2731,8 +2647,6 @@ mod draft_content_tests {
 
     #[test]
     fn markdown_source_is_none_for_html_rather_than_an_empty_string() {
-        // An empty-string fallback here would make safety checks analyse
-        // nothing on HTML drafts.
         assert_eq!(
             DraftContent::html("<p>hi</p>", Some("hi".into())).markdown_source(),
             None
@@ -2758,9 +2672,6 @@ mod draft_content_tests {
 
     #[test]
     fn an_empty_markdown_key_alongside_html_is_still_a_conflict() {
-        // The boundary an "ignore it if it's empty" precedence rule would let
-        // through. `body_markdown: ""` is exactly what the store writes beside
-        // an HTML body, so a payload carrying both is still a caller bug.
         let err = serde_json::from_value::<DraftContent>(
             serde_json::json!({ "body_markdown": "", "body_html": "<p>hi</p>" }),
         )
@@ -2773,10 +2684,8 @@ mod draft_content_tests {
 
     #[test]
     fn byte_len_measures_the_authored_body_not_the_alternative() {
-        // "é" is two bytes: bytes, not chars.
         assert_eq!(DraftContent::markdown("é").byte_len(), 2);
         assert_eq!(DraftContent::markdown("").byte_len(), 0);
-        // The alternative is much longer than the HTML; byte_len must ignore it.
         assert_eq!(
             DraftContent::html("<p>x</p>", Some("a much longer alternative".into())).byte_len(),
             "<p>x</p>".len()
@@ -2793,8 +2702,6 @@ mod draft_content_tests {
             DraftContent::html("<p>x</p>", Some("plain".into())).reader_input(),
             (Some("plain"), Some("<p>x</p>"))
         );
-        // No supplied alternative means no text side, not an empty one — the
-        // reader pipeline must fall back to the HTML rather than analyse "".
         assert_eq!(
             DraftContent::html("<p>x</p>", None).reader_input(),
             (None, Some("<p>x</p>"))
@@ -2861,8 +2768,6 @@ mod draft_content_tests {
 
     #[test]
     fn a_draft_carrying_both_bodies_is_rejected_too() {
-        // The flattened path buffers fields separately from the standalone
-        // one, so the mutual exclusion has to be proven here as well.
         let mut json = serde_json::to_value(draft_fixture(DraftContent::markdown("hi"))).unwrap();
         json["body_html"] = serde_json::json!("<p>hi</p>");
 

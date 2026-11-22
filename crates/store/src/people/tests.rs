@@ -49,7 +49,6 @@ async fn a_merge_links_addresses_and_carries_their_own_links() {
         )
         .await
         .unwrap();
-    // Merging the person into a third address moves the old link with it.
     store
         .merge_people(
             &account,
@@ -120,9 +119,7 @@ async fn merge_candidates_need_the_same_name_and_mail_from_you_to_both() {
         2,
     )
     .await;
-    // Same name, never written to: not a candidate.
     contact(&store, &account, "samir@spam.example", "Samir Patel", 0).await;
-    // Written to, unique name.
     contact(&store, &account, "ruth@keystone.example", "Ruth Vega", 4).await;
     let candidates = store.merge_suggestion_candidates(&account).await.unwrap();
     let emails: Vec<&str> = candidates.iter().map(|c| c.email.as_str()).collect();

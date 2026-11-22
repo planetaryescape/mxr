@@ -51,8 +51,6 @@ use mxr_protocol::{
 use mxr_transport::{BoxedIo, Connector, TransportError, UnixConnector};
 use tokio_util::codec::Framed;
 
-// Re-exported so consumers can select a daemon without taking a direct
-// mxr-transport dependency. The web bridge retains its Unix-only resolver.
 pub use mxr_transport::TransportAddr;
 
 /// Whether a client may start a local daemon when its selected Unix socket is
@@ -232,10 +230,7 @@ pub struct IpcConnection {
     source: ClientKind,
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
-    // Set once this connection's daemon turned out not to know
-    // `SystemMailboxCounts` (see `Self::system_mailbox_counts`).
     system_mailbox_counts_unsupported: bool,
-    // TCP/command targets restrict local provisioning without paired authority.
     selected_remote: bool,
     preview_attachment_declarations:
         std::collections::HashMap<mxr_core::DraftId, Vec<mxr_core::DraftAttachment>>,
@@ -282,8 +277,6 @@ impl IpcConnection {
         }
         let mut fresh = reconnect().await?;
         fresh.system_mailbox_counts_unsupported = true;
-        // Byte reviews belong to the session; carry them over when the new
-        // connection is the same one, drop them (to be reviewed again) when not.
         let _ = fresh.retain_draft_attachment_previews_from(self);
         *self = fresh;
         Ok(None)
@@ -439,8 +432,6 @@ impl IpcConnection {
                 remote_admission: None,
                 remote_shutdown_notice: None,
             };
-            // Authentication proves transport access; declaration selects the
-            // cooperative profile. Neither may release events ahead of its ack.
             if let Some(token) = connector.auth_token() {
                 let response = conn
                     .setup_request(Request::Authenticate {
@@ -472,8 +463,6 @@ impl IpcConnection {
     /// Setup cannot consume or discard mailbox events: a peer releasing them
     /// before declaration is incompatible, even if it eventually replies.
     async fn setup_request(&mut self, request: Request) -> Result<ResponseData, ClientError> {
-        // Setup is sequential and hidden from callers. Keep ordinary request
-        // correlation ids unchanged, including bridge-supplied start ids.
         let id = 0;
         self.framed.send(self.envelope(id, request)).await?;
         match self.framed.next().await {
@@ -1439,7 +1428,6 @@ mod tests {
         let mut conn = IpcConnection::connect(&sock, ClientKind::Cli)
             .await
             .unwrap();
-        // Two sequential requests: each must receive its own correlated reply.
         assert!(matches!(
             conn.request(Request::Ping).await.unwrap(),
             ResponseData::Pong
@@ -1475,7 +1463,6 @@ mod tests {
                         let response = match request {
                             Request::SystemMailboxCounts { .. } => {
                                 *counts_writer.lock().unwrap() += 1;
-                                // The old daemon cannot decode this: drop the connection.
                                 return;
                             }
                             Request::Ping => Response::Ok {
@@ -1508,12 +1495,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(counts, None, "unsupported means use the label counts");
-        // The caller's next request runs on the fresh connection.
         assert!(matches!(
             conn.request(Request::Ping).await.unwrap(),
             ResponseData::Pong
         ));
-        // Remembered: no second attempt and no further reconnect.
         let path = sock.clone();
         assert_eq!(
             conn.system_mailbox_counts(None, || async move {
@@ -1802,8 +1787,6 @@ mod tests {
         })
         .await;
 
-        // The web bridge's correlation seam: `with_start_id(N)` must put exactly
-        // `N` on the wire so daemon logs line up with the bridge's request id.
         let mut conn = IpcConnection::connect(&sock, ClientKind::Web)
             .await
             .unwrap()
@@ -1816,8 +1799,6 @@ mod tests {
     async fn unexpected_response_id_is_a_typed_error() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("mxr.sock");
-        // Reply with a mismatched correlation id (never happens against the real
-        // daemon, but pins the typed fail-fast disposition).
         let listener = UnixListener::bind(&sock).unwrap();
         let server = tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
@@ -1861,7 +1842,6 @@ mod tests {
     async fn request_times_out_when_daemon_never_replies() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("mxr.sock");
-        // Accept and read forever, never replying.
         let _server = spawn_fake_daemon(&sock, Vec::new(), |_| None).await;
 
         let mut conn = IpcConnection::connect(&sock, ClientKind::Cli)
@@ -1918,7 +1898,6 @@ mod tests {
         let mut conn = IpcConnection::connect(&sock, ClientKind::Mcp)
             .await
             .unwrap();
-        // The raw primitive does NOT collapse Response::Error into ClientError.
         let response = conn
             .request_response(Request::Ping, drop_event, None)
             .await
@@ -2080,7 +2059,6 @@ mod tests {
     async fn events_interleaved_before_response_are_forwarded_then_response_returned() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("mxr.sock");
-        // Push two events, then reply to the request.
         let _server = spawn_fake_daemon(
             &sock,
             vec![event_frame(sync_completed()), event_frame(sync_completed())],
@@ -2118,7 +2096,6 @@ mod tests {
             if let IpcPayload::Request(request) = &message.payload {
                 writer.lock().unwrap().push(request.clone());
             }
-            // Deliberately never reply — notify must not block on a response.
             None
         })
         .await;
@@ -2128,7 +2105,6 @@ mod tests {
             .unwrap();
         conn.notify(Request::Ping).await.unwrap();
 
-        // The server observes the request even though no response was sent.
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 if !seen.lock().unwrap().is_empty() {
@@ -2164,7 +2140,6 @@ mod tests {
     async fn next_event_reports_closed_connection() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("mxr.sock");
-        // Accept, then immediately drop the connection (no preamble, no reply).
         let listener = UnixListener::bind(&sock).unwrap();
         let server = tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
@@ -2283,7 +2258,6 @@ mod draft_revision_compatibility_tests {
                 negotiation.payload,
                 IpcPayload::Request(Request::GetStatus)
             ));
-            // Missing capability evidence (representative of an older server).
             framed
                 .send(IpcMessage {
                     expected_workspace: None,

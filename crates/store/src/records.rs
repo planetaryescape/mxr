@@ -596,7 +596,6 @@ async fn file_record_in_tx(
     }
     if changed {
         if !inserted {
-            // A stronger origin (schema over rule) updates the why line.
             sqlx::query(
                 "UPDATE records SET updated_at = ?2,
                     origin = CASE WHEN ?3 = 'schema' THEN ?3 ELSE origin END,
@@ -670,8 +669,6 @@ async fn edit_in_tx(
             value_text,
             value_int,
             checked: true,
-            // A user row copies no text from mail, so it never outlives
-            // a delete with words from it.
             evidence: Some(evidence.to_string()),
             observed_at: now,
         }
@@ -730,7 +727,6 @@ async fn edit_in_tx(
         let Some((text, int, checked)) = winner else {
             continue;
         };
-        // Confirming everything leaves checked values as they are.
         if matches!(edit, RecordFieldEdit::ConfirmUnchecked) && checked != 0 {
             continue;
         }
@@ -1291,8 +1287,6 @@ impl super::Store {
             > 0)
     }
 
-    // ----- Groups -----
-
     /// Every group of an account.
     pub async fn list_record_groups(
         &self,
@@ -1418,8 +1412,6 @@ impl super::Store {
         Ok(())
     }
 
-    // ----- Senders -----
-
     pub async fn record_sender_rules(
         &self,
         account_id: &AccountId,
@@ -1470,8 +1462,6 @@ impl super::Store {
         .await?;
         Ok(())
     }
-
-    // ----- First run -----
 
     pub async fn get_record_run(
         &self,
@@ -1580,8 +1570,6 @@ impl super::Store {
         .map(|id| decode_id(id))
         .collect()
     }
-
-    // ----- PDF prefetch -----
 
     /// PDFs of filed records' emails that are not on disk, newest record
     /// first, each at most `max_bytes`.

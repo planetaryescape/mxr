@@ -93,7 +93,6 @@ impl crate::Store {
             host_id,
             workspace_id: owner.as_ref().map(|o| o.0.clone()),
             recovery_generation: owner.map(|o| o.1),
-            // This reports build capability; gateway liveness belongs to its supervisor.
             hosting_available: true,
         })
     }
@@ -141,7 +140,6 @@ impl crate::Store {
         if has_ai {
             grants.push(RemoteCapability::MailAi);
         }
-        // Identity initialization is a mutation and only happens when a pairing starts.
         self.archive_workspace().await?;
         let mut tx = self.writer().begin().await?;
         let (workspace_id, recovery_generation): (String, String) = sqlx::query_as(
@@ -266,12 +264,10 @@ impl crate::Store {
         cleanup: &RemoteSecret,
         now: i64,
     ) -> Result<RegisteredClient, sqlx::Error> {
-        // Malformed proofs consume the retry budget; empty cannot match a live verifier.
         let mail = verifier(mail).unwrap_or_default();
         let cleanup = verifier(cleanup).unwrap_or_default();
         let mut tx = self.writer().begin().await?;
         valid_owner(&mut tx).await?;
-        // Lost ACK retries are bound to both proofs and cannot resurrect revoked/expired authority.
         if let Some(row) = sqlx::query("SELECT * FROM remote_clients WHERE pairing_id=?")
             .bind(id)
             .fetch_optional(&mut *tx)
@@ -329,9 +325,6 @@ impl crate::Store {
                 .await;
         }
         let mail = verifier(mail)?;
-        // One autocommit statement checks the credential and owner at the same
-        // fresh snapshot. Completed revocations stay visible without joining
-        // unrelated background work on the writer connection.
         let row = sqlx::query(
             "SELECT c.* FROM remote_clients c
              WHERE c.client_id=?1 AND c.revoked_at IS NULL AND c.expires_at>?2
@@ -382,7 +375,6 @@ impl crate::Store {
         let mut tx = self.writer().begin().await?;
         valid_owner(&mut tx).await?;
         let known: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM remote_pairings WHERE cleanup_verifier=? UNION ALL SELECT 1 FROM remote_clients WHERE cleanup_verifier=? UNION ALL SELECT 1 FROM remote_pairing_retirements WHERE cleanup_verifier=?)").bind(&cleanup).bind(&cleanup).bind(&cleanup).fetch_one(&mut *tx).await?;
-        // Unknown cleanup must not acknowledge a start that has not reached the host yet.
         if !known {
             return Err(denied());
         }
@@ -411,7 +403,6 @@ impl crate::Store {
         if !matches(&row.get::<String, _>("cleanup_verifier"), &cleanup) {
             return Err(denied());
         }
-        // Keep only cleanup evidence after revocation for retries; no mail work is cancelled.
         revoke_registration(&mut tx, id, now).await?;
         tx.commit().await?;
         Ok(())

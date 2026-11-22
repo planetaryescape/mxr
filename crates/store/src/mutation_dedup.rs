@@ -33,9 +33,6 @@ impl super::Store {
         provider_message_id: &str,
     ) -> Result<bool, sqlx::Error> {
         let scoped = scoped_key(account_id, provider_message_id);
-        // A receipt written before the key carried the account is stored
-        // under the bare provider id; it still counts for its own account (the
-        // row's account_id), so a replay across an upgrade dedupes.
         let row = sqlx::query(
             "SELECT 1 AS hit FROM mutation_dedup_log
              WHERE mutation_id = ?1

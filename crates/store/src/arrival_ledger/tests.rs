@@ -72,7 +72,6 @@ async fn storing_an_inbound_message_records_its_arrival_once() {
         "first seen is when it was stored"
     );
 
-    // Sent mail is not an arrival.
     let sent = arrive(
         &store,
         &account,
@@ -84,7 +83,6 @@ async fn storing_an_inbound_message_records_its_arrival_once() {
     .await;
     assert_eq!(first_seen(&store, &sent).await, None);
 
-    // An old message a first sync stores keeps its date: history, not news.
     let old_date = now - Duration::days(5);
     let old = arrive(
         &store,
@@ -97,7 +95,6 @@ async fn storing_an_inbound_message_records_its_arrival_once() {
     .await;
     assert_eq!(first_seen(&store, &old).await, Some(old_date.timestamp()));
 
-    // Mail older than the ledger's 30 days gets no row at all.
     let ancient = arrive(
         &store,
         &account,
@@ -109,7 +106,6 @@ async fn storing_an_inbound_message_records_its_arrival_once() {
     .await;
     assert_eq!(first_seen(&store, &ancient).await, None);
 
-    // A re-sync of the same message updates it and keeps the first sighting.
     sqlx::query("UPDATE arrivals SET first_seen_at = 100 WHERE message_id = ?1")
         .bind(new.as_str())
         .execute(store.writer())
@@ -207,7 +203,6 @@ async fn counts_sum_and_each_list_matches_its_count() {
             .await,
         );
     }
-    // One stays sorting; the rest are placed, one in Spam.
     let modes = [
         "messages", "messages", "updates", "reading", "reading", "spam",
     ];
@@ -220,7 +215,6 @@ async fn counts_sum_and_each_list_matches_its_count() {
         .set_arrival_placements(&placements, now)
         .await
         .unwrap();
-    // A second placement never rewrites the first.
     store
         .set_arrival_placements(&[placement(&ids[0], "reading")], now)
         .await
@@ -259,7 +253,6 @@ async fn counts_sum_and_each_list_matches_its_count() {
         .unwrap();
     assert_eq!((all.len(), total), (7, 7));
 
-    // Outside the window nothing counts.
     let later = store
         .arrival_counts(&[account], until, until + Duration::hours(1))
         .await
@@ -308,7 +301,6 @@ async fn a_newer_sender_decision_overrides_a_move_and_clearing_it_restores_the_m
         .await
         .unwrap()
         .is_empty());
-    // The sender's mode re-placed the row; the move is kept for undo.
     store
         .set_arrival_now_modes(&[(id.clone(), Some("reading".into()))])
         .await
@@ -354,7 +346,6 @@ async fn corrections_log_undo_once_and_count_only_real_moves() {
         .has_moves(std::slice::from_ref(&account))
         .await
         .unwrap());
-    // Keeping it where it was is an answer, not a move.
     store
         .insert_correction(&correction("updates", "updates"))
         .await
@@ -441,7 +432,6 @@ async fn deleting_a_message_takes_its_arrival_and_keeps_the_correction_log() {
 #[tokio::test]
 async fn after_the_first_sync_old_dated_mail_still_arrives_when_stored() {
     let (store, account) = store_with_account().await;
-    // Past its first sync: sync reached the last page of history.
     store.mark_initial_sync_done(&account).await.unwrap();
     let now = Utc::now();
     let backdated = arrive(
@@ -460,7 +450,6 @@ async fn after_the_first_sync_old_dated_mail_still_arrives_when_stored() {
         (seen - now.timestamp()).abs() <= 5,
         "a header three days back is first seen when stored, not three days ago"
     );
-    // Even a header older than the 30-day backfill horizon is news now.
     let ancient = arrive(
         &store,
         &account,
@@ -510,7 +499,6 @@ async fn only_a_newer_move_of_the_same_email_blocks_undoing_an_older_one() {
         .newer_email_move_stands(&message, first)
         .await
         .unwrap());
-    // An aspect (To do) and a keep-where-it-is answer are not moves.
     store
         .insert_correction(&moved("todo", "updates"))
         .await
@@ -584,7 +572,6 @@ async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
             .unwrap()[0]
             .moved
     );
-    // Restoring the decision with today's date overrides the move ...
     store
         .set_screener_decision(&ScreenerDecision {
             account_id: account.clone(),
@@ -602,7 +589,6 @@ async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
             .unwrap()[0]
             .moved
     );
-    // ... putting the original date back lets the move stand.
     store
         .set_screener_decided_at(&account, "maya@example.com", t0)
         .await
@@ -619,8 +605,6 @@ async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
 #[tokio::test]
 async fn pages_of_an_unfinished_first_sync_stay_history_whatever_the_cursor() {
     let (store, account) = store_with_account().await;
-    // Gmail saves a backfill cursor after the first 200 messages; the
-    // account is still in its first sync.
     store
         .set_sync_cursor(
             &account,
@@ -655,7 +639,6 @@ async fn pages_of_an_unfinished_first_sync_stay_history_whatever_the_cursor() {
     )
     .await;
     assert_eq!(first_seen(&store, &ancient).await, None);
-    // The last page lands: later mail is news.
     store.mark_initial_sync_done(&account).await.unwrap();
     let late = arrive(
         &store,

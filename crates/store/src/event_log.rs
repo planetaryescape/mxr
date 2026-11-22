@@ -136,7 +136,6 @@ impl super::Store {
         .await
     }
 
-    // Dynamic SQL — kept as runtime query since the WHERE clause is conditionally built
     pub async fn list_events(
         &self,
         limit: u32,

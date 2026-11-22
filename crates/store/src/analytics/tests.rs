@@ -153,9 +153,6 @@ async fn insert_message_with_flags(
 
 #[tokio::test]
 async fn reclassify_account_directions_counts_provider_sent_mail_as_outbound() {
-    // Gmail send-as aliases are not registered, so From is not owned. The
-    // provider filed these under SENT, so they stay outbound and the repair
-    // flips the ones an earlier reconcile wrongly made inbound.
     let store = crate::Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -283,8 +280,6 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
         .await
         .unwrap();
 
-    // Sent from the alias before it was registered, so it was stored Inbound
-    // and paired as they_replied with the primary as counterparty.
     let mut reply = TestEnvelopeBuilder::new()
         .account_id(account.id.clone())
         .build();
@@ -423,9 +418,6 @@ async fn dry_run_reports_the_counts_the_real_run_applies_and_writes_nothing() {
 
 #[tokio::test]
 async fn a_late_stale_pair_write_is_rebuilt_by_the_next_reconcile() {
-    // The repair lands, then a sync write puts the pair back with the
-    // direction it computed before the repair. The message is already correct,
-    // so only the account-wide reconcile can fix the pair.
     let store = crate::Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();

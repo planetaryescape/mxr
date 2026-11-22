@@ -21,7 +21,6 @@ impl crate::Store {
         mail: &RemoteSecret,
         now: i64,
     ) -> Result<(RemoteSecret, i64), sqlx::Error> {
-        // Child sessions cannot delegate further authority.
         if parent_id.starts_with("browser:") {
             return Err(denied());
         }
@@ -37,7 +36,6 @@ impl crate::Store {
             .bind(now)
             .execute(&mut *tx)
             .await?;
-        // One outstanding launch per registration bounds storage and retires abandoned codes.
         sqlx::query("DELETE FROM remote_browser_codes WHERE parent_client_id=?")
             .bind(parent_id)
             .execute(&mut *tx)
@@ -109,7 +107,6 @@ impl crate::Store {
         now: i64,
     ) -> Result<RegisteredClient, sqlx::Error> {
         let proof = verifier(mail)?;
-        // Match native authentication's fresh, atomic credential/owner read.
         let row = sqlx::query(
             "SELECT p.*,s.mail_verifier AS session_proof
              FROM remote_browser_sessions s JOIN remote_clients p ON p.client_id=s.parent_client_id

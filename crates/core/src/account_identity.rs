@@ -236,7 +236,6 @@ mod tests {
             serde_json::from_str::<AccountColor>("\"sky\"").unwrap(),
             AccountColor::Sky
         );
-        // Unknown is a decoded value only: it is never one the user can type.
         assert!("unknown".parse::<AccountColor>().is_err());
         assert!(!AccountColor::ALL.contains(&AccountColor::Unknown));
     }
@@ -330,8 +329,6 @@ mod tests {
             .map(|c| c.to_ascii_uppercase())
             .take(3)
             .collect();
-        // Every one-character tag and the id's hex tag are taken, so the search
-        // has to move on to two characters, and "00" is the first free one.
         let mut taken = taken_of(&[hex.as_str()]);
         taken.extend((0..TAG_ALPHABET.len()).map(|i| tag_from_index(i, 1)));
         assert_eq!(

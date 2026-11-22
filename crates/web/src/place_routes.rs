@@ -6,8 +6,6 @@ use super::routes_v6::{dispatch, passthrough};
 use super::*;
 use mxr_protocol::{MailPlaceData, SenderKindData};
 
-// Mirror the protocol's serde defaults so an omitted field behaves the same
-// over HTTP as over IPC.
 const DEFAULT_PLACE_LIMIT: u32 = 50;
 const DEFAULT_MESSAGES_PER_BUNDLE: u32 = 20;
 

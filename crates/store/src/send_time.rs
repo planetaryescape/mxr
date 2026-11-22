@@ -19,7 +19,7 @@ pub enum SendTimeConfidence {
 
 #[derive(Debug, Clone)]
 pub struct SendTimeBucket {
-    pub weekday: u8, // 0 = Monday
+    pub weekday: u8,
     pub hour: u8,
     pub p50_seconds: i64,
     pub sample_count: u32,
@@ -212,14 +212,12 @@ mod tests {
     #[tokio::test]
     async fn fastest_bucket_wins() {
         let (store, account) = fixture().await;
-        // Friday 14:00 UTC = weekday=4, hour=14: fast (60s).
-        // Monday 09:00 UTC = weekday=0, hour=9: slow (3 days).
         for _ in 0..3 {
-            let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap(); // Friday
+            let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
             insert_they_replied(&store, &account, "alice@example.com", t, 60).await;
         }
         for _ in 0..3 {
-            let t = Utc.with_ymd_and_hms(2026, 4, 27, 9, 0, 0).unwrap(); // Monday
+            let t = Utc.with_ymd_and_hms(2026, 4, 27, 9, 0, 0).unwrap();
             insert_they_replied(&store, &account, "alice@example.com", t, 3 * 86_400).await;
         }
         let rec = store
@@ -272,7 +270,6 @@ mod tests {
     #[tokio::test]
     async fn bucket_p50_returns_matching_slot_or_none() {
         let (store, account) = fixture().await;
-        // Friday 14:00 fast (60s), Monday 09:00 slow (3 days).
         for _ in 0..3 {
             let t = Utc.with_ymd_and_hms(2026, 5, 1, 14, 0, 0).unwrap();
             insert_they_replied(&store, &account, "alice@example.com", t, 60).await;

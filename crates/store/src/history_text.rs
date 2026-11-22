@@ -118,7 +118,6 @@ mod tests {
             .record_history_fingerprints(&account.id, &[1, 2, 3], now, week_ago, 10)
             .await
             .unwrap();
-        // Recording again is an upsert, not a duplicate.
         store
             .record_history_fingerprints(&account.id, &[3], now, week_ago, 10)
             .await
@@ -128,7 +127,6 @@ mod tests {
         assert!(!has(&store, Some(&AccountId::new()), &[2], week_ago).await);
         assert!(!has(&store, Some(&account.id), &[2], now + Duration::seconds(1)).await);
 
-        // Past the cap, the oldest go.
         store
             .record_history_fingerprints(
                 &account.id,
@@ -142,7 +140,6 @@ mod tests {
         assert!(has(&store, Some(&account.id), &[4, 5], week_ago).await);
         assert!(!has(&store, Some(&account.id), &[1, 2, 3], week_ago).await);
 
-        // Past the TTL, on the next insert, they go too.
         store
             .record_history_fingerprints(
                 &account.id,

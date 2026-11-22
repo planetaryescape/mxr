@@ -35,7 +35,6 @@ struct UndoEntry {
     after_revision: i64,
 }
 
-// Missing means a C1 snapshot; explicit null is a C2 undo of an absent override.
 fn deserialize_prior_manual_decision<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Option<bool>>, D::Error> {

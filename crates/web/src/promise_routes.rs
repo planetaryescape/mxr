@@ -46,7 +46,6 @@ async fn detect_compose_promises(
     let _compose_guard = state
         .lock_compose_file(Path::new(&request.draft_path))
         .await?;
-    // Read-only: the id never leaves this request, like the safety check's.
     let draft = compose_draft_from_file(
         &request.draft_path,
         &request.account_id,

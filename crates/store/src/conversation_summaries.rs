@@ -93,8 +93,6 @@ impl Store {
         .bind(now + 86_400)
         .fetch_one(self.reader())
         .await?;
-        // A late selector cannot publish a set observed before any source or
-        // same-generation home edit. This stores only IDs, never display rows.
         sqlx::query(
             "INSERT INTO conversation_candidate_sets
             SELECT ?1, ?2, i.revision, f.revision, ?5, ?6, ?7
@@ -138,8 +136,6 @@ impl Store {
              FROM revisions i
              LEFT JOIN conversation_view_inputs v ON v.account_id = ?1 AND v.thread_id = i.thread_id
              LEFT JOIN conversation_summaries s ON s.account_id = ?1 AND s.thread_id = i.thread_id";
-        // One typed JSON page avoids 20k SQLite-worker row handoffs and
-        // decodes each synopsis once, rather than parsing an escaped JSON string.
         let page: String = sqlx::query_scalar(sql)
             .bind(account.as_str())
             .bind(context)
@@ -171,8 +167,6 @@ impl Store {
         if summaries.is_empty() {
             return Ok(());
         }
-        // The SELECT and write share the writer transaction. A late builder
-        // cannot publish facts from before a read, label, facet or input edit.
         sqlx::query("INSERT INTO conversation_summaries
             SELECT ?1, i.thread_id, i.effective_revision, COALESCE(v.revision, 0), ?2,
                 json_extract(w.value, '$.valid_from'), json_extract(w.value, '$.valid_until'), json_extract(w.value, '$.json')
@@ -534,7 +528,6 @@ mod tests {
             "read flags are not classifier inputs"
         );
         assert!(read.revision.view > first.revision.view);
-        // A builder that lost the race to the read edit must not publish.
         save(&store, &account.id, first.revision, now).await;
         assert!(snapshot(&store, &account.id, now).await.json.is_none());
         save(&store, &account.id, read.revision, now).await;

@@ -117,7 +117,6 @@ fn push_filters(
             .push(" AND messages_fts MATCH ")
             .push_bind(expression.to_string());
     }
-    // ASCII lowercasing on both sides, as the index lowercases addresses.
     for address in &query.sender_addresses {
         builder
             .push(" AND LOWER(m.from_email) = ")
@@ -143,8 +142,6 @@ fn push_filters(
             .push(" AND m.account_id = ")
             .push_bind(account_id.as_str());
     }
-    // Both the flag and the label, as the lexical exclusion does: a label
-    // change from delta sync does not always set the flag.
     for (hidden, flag, label) in [
         (query.hide_trash, MessageFlags::TRASH, system_labels::TRASH),
         (query.hide_spam, MessageFlags::SPAM, system_labels::SPAM),
@@ -194,8 +191,6 @@ impl super::Store {
         )
         .map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
 
-        // Without words or address groups there is no FTS5 query to run. With
-        // them, the join keeps every match to messages the table holds.
         let source = if expression.is_some() || !query.address_words.is_empty() {
             "messages_fts JOIN messages m ON m.rowid = messages_fts.rowid"
         } else {
@@ -338,8 +333,6 @@ mod tests {
             "your invoice is due",
             1,
         );
-        // The address is one whole term in the index, so a bare word never
-        // matches it; the display name (here "Sender Person") is searched.
         let in_address = envelope(&account, "c", "Hi", "invoice@three.test", "nothing", 2);
         let other = envelope(&account, "d", "Lunch", "z@four.test", "sandwiches", 0);
         let store = store_with(
@@ -394,7 +387,6 @@ mod tests {
 
         assert_eq!(ids(&store, &by_address).await, vec![exact.id.clone()]);
 
-        // A bare name is an address that matches nothing, as in the index.
         by_address.sender_addresses = vec!["alice".into()];
         assert!(ids(&store, &by_address).await.is_empty());
     }
@@ -444,9 +436,6 @@ mod tests {
         let quoted = envelope(&account, "c", "she said hello", "z@three.test", "", 3);
         let store = store_with(&[&account], &[&plain, &other, &quoted]).await;
 
-        // Each of these is FTS5 syntax. Run as syntax, `alpha NEAR beta`,
-        // `alpha OR gamma` and `-alpha` would match different messages or
-        // fail to parse; quoted, they are phrases of literal words.
         for text in [
             "alpha*",
             "-alpha",
@@ -561,7 +550,6 @@ mod tests {
         one.account_id = Some(second.id.clone());
         assert_eq!(ids(&store, &one).await, vec![in_second.id.clone()]);
 
-        // Naming a disabled account must not reach around the visible set.
         let mut hidden = everyone.clone();
         hidden.account_id = Some(disabled.id.clone());
         assert!(ids(&store, &hidden).await.is_empty());

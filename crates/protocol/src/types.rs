@@ -438,13 +438,6 @@ pub enum NotificationChimeSoundData {
     Alert,
 }
 
-// =========================================================================
-// Activity log types — shared with `crates/store` via the boundary
-// converters at the bottom of this section. The `store` crate has its own
-// `Tier`/`ActivityFilter` because `protocol` is a leaf crate; we duplicate
-// the shape rather than pull in a heavier dep graph.
-// =========================================================================
-
 /// Mirror of `mxr_store::Tier`. Three retention buckets used by the
 /// activity log: 30 / 90 / 365 days for ephemeral / standard / important.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -722,7 +715,6 @@ pub enum Request {
     RemoteAuthority {
         request: crate::RemoteRequest,
     },
-    // Core mail/runtime. This is the most stable bucket.
     ListEnvelopes {
         label_id: Option<LabelId>,
         account_id: Option<AccountId>,
@@ -933,7 +925,6 @@ pub enum Request {
         mutation_id: String,
     },
 
-    // mxr app/platform. Product/runtime capabilities shared by multiple clients.
     ListAccounts,
     ListAccountsConfig,
     AuthorizeAccountConfig {
@@ -1205,8 +1196,6 @@ pub enum Request {
         account_id: Option<AccountId>,
     },
 
-    // Admin / maintenance / operational. Legitimate daemon features, fenced off
-    // from the core mail contract.
     ListEvents {
         limit: u32,
         level: Option<String>,
@@ -1260,7 +1249,6 @@ pub enum Request {
         since: Option<String>,
     },
 
-    // Core mail/runtime. Reusable workflows and data, not screen payloads.
     Search {
         query: String,
         limit: u32,
@@ -2040,7 +2028,6 @@ pub enum Request {
         format: ExportFormat,
     },
 
-    // Admin / maintenance / operational utilities.
     /// Declare a cooperative client identity before any requests or events.
     /// Token transports authenticate first. The kind is fixed for the entire
     /// connection; an exact protocol match is required. Success is `Ack`.
@@ -2068,11 +2055,6 @@ pub enum Request {
         token: String,
     },
 
-    // ============================================================
-    // Activity log — `user_activity` table queries and mutations.
-    // See `docs/activity-log.md`. Strictly local; never
-    // transmitted off-device.
-    // ============================================================
     /// Paginated reverse-chron list of activity rows.
     ListActivity {
         filter: ActivityFilter,
@@ -2116,7 +2098,6 @@ pub enum Request {
     /// Resume recording.
     ResumeActivity,
 
-    // ----- Phase 8 — saved activity filters -----
     /// List all saved filter presets, most-recently-used first.
     ListSavedActivityFilters,
     /// Fetch a single preset by slug.
@@ -2134,7 +2115,6 @@ pub enum Request {
         slug: String,
     },
 
-    // ----- Natural-language time -----
     /// Resolve a time phrase ("fri 3", "tomorrow 9am", "in 2d") in the
     /// daemon's local zone with the user's snooze hours. Read-only; clients
     /// preview with it and send the chosen instant to the real mutation.
@@ -2151,7 +2131,6 @@ pub enum Request {
         time_zone: Option<String>,
     },
 
-    // ----- Reader context -----
     /// What the store knows about a conversation (relationship with the
     /// main counterparty, whether you owe a reply, open promises). No
     /// model; read-only. Returns `ResponseData::ThreadContext`.
@@ -2192,7 +2171,6 @@ pub enum Request {
         thread_ids: Vec<ThreadId>,
     },
 
-    // ----- Promises on send -----
     /// Find promises the sender makes in a draft or a sent message, with
     /// each due phrase resolved in `time_zone`. Read-only and capped by a
     /// short budget, so a send never waits on it. Returns
@@ -2217,7 +2195,6 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
-    // ----- To do -----
     /// Whether the optional `ms-todo` executable is installed on the daemon.
     GetMicrosoftTodoStatus,
     /// Link one to-do with Microsoft To Do. Preview never executes the CLI;
@@ -2351,7 +2328,6 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
-    // ----- Keys -----
     /// Every keyboard shortcut in every client, from the one definition
     /// with the person's `keys.toml` applied (blueprint chapter 35).
     /// Returns `ResponseData::Keymap`.
@@ -2364,7 +2340,6 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
-    // ----- Teaching in place -----
     /// How a mode explains itself: header, empty states, why template,
     /// keys, the `?` explanation and its hints with whether each was
     /// dismissed. `mode: None` returns every shipped mode. Returns
@@ -2383,7 +2358,6 @@ pub enum Request {
         #[serde(default = "default_true")]
         seen: bool,
     },
-    // ----- Modes -----
     /// Mark only the exact To do or Updates row revision that was opened or
     /// peeked. Does not read the source email or complete/let go of the row.
     /// Returns `Ack`; dry runs validate without writing.
@@ -2600,7 +2574,6 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
     },
-    // ----- Archive -----
     /// Archive's ledger: records newest first by transaction date, one page
     /// of `limit` from `offset`, with month counts and totals, facet counts
     /// and the "coming up" strip over every matching record. Local reads
@@ -2711,7 +2684,6 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
-    // ----- Reading -----
     /// The edition: Reading's items in three bands (since your last visit,
     /// earlier, fading), ranked inside by how much you read each source,
     /// plus Later and the sources. Items past their source's window are
@@ -2851,7 +2823,6 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         item_key: Option<String>,
     },
-    // ----- Assistant -----
     /// Whether the assistant can run and on which model. Returns
     /// `ResponseData::AssistantAvailability`.
     GetAssistantAvailability,
@@ -2931,7 +2902,6 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
-    // ----- Updates -----
     /// One-time codes from mail received in the last day, at most `limit`
     /// (default 10): the current ones first, then expired ones, each newest
     /// first. Found by rules in the subject and body, any folder but
@@ -3918,7 +3888,6 @@ pub enum ResponseData {
     RemoteAuthority {
         response: crate::RemoteResponse,
     },
-    // Core mail/runtime responses.
     Envelopes {
         envelopes: Vec<Envelope>,
     },
@@ -4270,7 +4239,6 @@ pub enum ResponseData {
         plan: UnsubscribePlanData,
     },
 
-    // mxr app/platform responses.
     RuleCategoriesResult {
         preview: RuleCategoriesPreviewData,
     },
@@ -4381,7 +4349,6 @@ pub enum ResponseData {
         search: mxr_core::types::SavedSearch,
     },
 
-    // Admin / maintenance / operational responses.
     EventLogEntries {
         entries: Vec<EventLogEntry>,
     },
@@ -4535,7 +4502,6 @@ pub enum ResponseData {
         report: DraftSafetyReport,
     },
 
-    // ------ activity log ------
     /// Paginated activity rows. See `Request::ListActivity`.
     ActivityEntries {
         entries: Vec<ActivityEntry>,
@@ -4570,7 +4536,6 @@ pub enum ResponseData {
     /// (`PauseActivity`, `ResumeActivity`).
     Acknowledged,
 
-    // ----- Phase 8 — saved activity filters -----
     SavedActivityFilters {
         entries: Vec<SavedActivityFilterEntry>,
     },
@@ -6312,7 +6277,6 @@ pub enum DaemonEvent {
         boot_id: String,
         deadline_at: i64,
     },
-    // Core mail/runtime events.
     SyncCompleted {
         account_id: AccountId,
         messages_synced: u32,

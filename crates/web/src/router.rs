@@ -228,15 +228,10 @@ pub(super) fn app_with_state(state: AppState) -> Router {
     let cors = middleware::cors_layer(&config.cors_allowlist);
     let host_allowlist = std::sync::Arc::new(config.host_allowlist.clone());
 
-    // The only two routes that answer without a bridge token. `health` is
-    // liveness so a client can decide whether to acquire a token, and the
-    // handshake only answers a loopback peer and can be disabled.
     let public = Router::new()
         .route("/health", get(health))
         .route("/auth/local-token", get(local_token_handshake));
 
-    // The WebSocket upgrade keeps the documented `?token=` path; everything
-    // else in `/api/v1` is token-in-header only.
     let events = Router::new().route("/events", get(events)).route_layer(
         axum::middleware::from_fn_with_state(
             state.clone(),
@@ -244,10 +239,6 @@ pub(super) fn app_with_state(state: AppState) -> Router {
         ),
     );
 
-    // Every remaining `/api/v1` route — reads, mutations, admin, compose and
-    // the locale bundle — sits behind one layer, so a new route cannot be
-    // added without auth by forgetting a handler call. Handlers keep their
-    // own checks as defence in depth.
     let protected = Router::new()
         .route("/i18n", get(i18n_bundle))
         .nest("/admin", routes_v6::extend_admin(admin_router()))
@@ -288,7 +279,6 @@ pub(super) fn app_with_state(state: AppState) -> Router {
         .merge(protected)
         .with_state(state.clone());
 
-    // The UI only points at the document; `openapi_json` serves it.
     let docs_router = Router::new()
         .merge(
             SwaggerUi::new("/api/v1/docs")
@@ -317,9 +307,6 @@ pub(super) fn app_with_state(state: AppState) -> Router {
         ))
         .layer(cors)
         .layer(axum::middleware::from_fn(middleware::security_headers))
-        // JSON, the embedded SPA and its assets compress; the default
-        // predicate leaves images and `text/event-stream` alone, so the live
-        // event stream is never buffered by a compressor.
         .layer(tower_http::compression::CompressionLayer::new())
 }
 

@@ -94,7 +94,6 @@ impl super::Store {
                 self.latest_outbound_elsewhere(account_id, &email, exclude_thread)
                     .await?,
             ),
-            // Not aggregated yet (a brand-new address): count it live.
             None => {
                 let sql = format!(
                     "SELECT COUNT(*) AS total,
@@ -166,8 +165,6 @@ impl super::Store {
         spellings: &[String],
     ) -> Result<(u32, Option<u32>), sqlx::Error> {
         let started_at = Instant::now();
-        // Reply pairs keep the address as the mail spelled it; match every
-        // known spelling exactly (plus lowercase) so the party index applies.
         let spellings = address_spellings(email, spellings);
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM reply_pairs INDEXED BY idx_reply_pairs_party
@@ -424,7 +421,6 @@ mod tests {
             .unwrap();
         assert_eq!((count, median), (0, None));
 
-        // Three replies of 10s, 30s and 20s: the middle one is 20s.
         for latency in [10_i64, 30, 20] {
             let parent = put(
                 &store,
@@ -475,7 +471,6 @@ mod tests {
             (0, None),
             "stored as Maya@Example.com: lowercase alone misses it"
         );
-        // Given the spelling the thread uses, the stored pairs are found.
         let (count, median) = store
             .reply_latency_median(
                 &account_id,

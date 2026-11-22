@@ -52,8 +52,6 @@ impl super::Store {
         let hidden_flags =
             i64::from((MessageFlags::TRASH | MessageFlags::SPAM | MessageFlags::DRAFT).bits());
         let future_cutoff = Utc::now().timestamp() + 86_400;
-        // `idx_messages_account_date` walks the account newest first, so the
-        // filters only see rows until enough of them pass.
         let rows = sqlx::query(
             "SELECT m.id, m.account_id, m.thread_id, m.direction, m.date, m.stored_at,
                     m.from_name, m.from_email, m.subject
@@ -108,7 +106,6 @@ impl super::Store {
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
-        // Stable, so equal times keep storage order.
         arrivals.sort_by_key(|arrival| std::cmp::Reverse(arrival.date));
         arrivals.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
         trace_query("arrivals.latest", started_at, arrivals.len());
@@ -198,7 +195,6 @@ mod tests {
             MessageFlags::TRASH,
         )
         .await;
-        // A bad Date header a week ahead is not the newest mail.
         put(
             &store,
             id,
@@ -221,7 +217,6 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
         let id = &account.id;
-        // The sender's clock is three hours fast; mxr stored it just now.
         let ahead = put(
             &store,
             id,
@@ -259,8 +254,6 @@ mod tests {
             MessageFlags::empty(),
         )
         .await;
-        // Thirty newer messages of unknown direction from your own
-        // addresses: sent mail synced before the address table knew them.
         for minutes in 0..30 {
             let own = if minutes % 2 == 0 {
                 "TEST@example.com"

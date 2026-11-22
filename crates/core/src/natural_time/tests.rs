@@ -39,7 +39,6 @@ impl TimeZone for London {
     }
 
     fn offset_from_local_datetime(&self, local: &NaiveDateTime) -> MappedLocalTime<FixedOffset> {
-        // BST first so an ambiguous time lists the earlier instant first.
         let valid: Vec<FixedOffset> = [bst(), gmt()]
             .into_iter()
             .filter(|offset| {
@@ -98,7 +97,6 @@ fn local(resolution: &TimeResolution) -> String {
 #[test]
 fn phrase_table() {
     let cases: &[(&str, &str)] = &[
-        // Offsets.
         ("in 30m", "Tue 2024-05-07 14:30"),
         ("in 2h", "Tue 2024-05-07 16:00"),
         ("in 5d", "Sun 2024-05-12 14:00"),
@@ -110,7 +108,6 @@ fn phrase_table() {
         ("in 2 hours", "Tue 2024-05-07 16:00"),
         ("in 2h 30m", "Tue 2024-05-07 16:30"),
         ("in 2 months", "Sun 2024-07-07 14:00"),
-        // Presets the old config parser accepted.
         ("tomorrow", "Wed 2024-05-08 09:00"),
         ("tomorrow_morning", "Wed 2024-05-08 09:00"),
         ("tonight", "Tue 2024-05-07 18:00"),
@@ -120,7 +117,6 @@ fn phrase_table() {
         ("next monday", "Mon 2024-05-13 09:00"),
         ("saturday", "Sat 2024-05-11 10:00"),
         ("sunday", "Sun 2024-05-12 10:00"),
-        // Weekdays: the next one, never today.
         ("tuesday", "Tue 2024-05-14 09:00"),
         ("tue", "Tue 2024-05-14 09:00"),
         ("thu", "Thu 2024-05-09 09:00"),
@@ -128,7 +124,6 @@ fn phrase_table() {
         ("sat", "Sat 2024-05-11 10:00"),
         ("fri", "Fri 2024-05-10 09:00"),
         ("tom", "Wed 2024-05-08 09:00"),
-        // Day plus time, either order, with fillers.
         ("tomorrow 9am", "Wed 2024-05-08 09:00"),
         ("tomorrow 5", "Wed 2024-05-08 17:00"),
         ("monday 17:00", "Mon 2024-05-13 17:00"),
@@ -151,7 +146,6 @@ fn phrase_table() {
         ("today 5", "Tue 2024-05-07 17:00"),
         ("tomorrow 12am", "Wed 2024-05-08 00:00"),
         ("tomorrow 12pm", "Wed 2024-05-08 12:00"),
-        // A time alone means its next occurrence.
         ("5pm", "Tue 2024-05-07 17:00"),
         ("9am", "Wed 2024-05-08 09:00"),
         ("noon", "Wed 2024-05-08 12:00"),
@@ -160,7 +154,6 @@ fn phrase_table() {
         ("end of day", "Tue 2024-05-07 17:00"),
         ("end of the day", "Tue 2024-05-07 17:00"),
         ("eow", "Fri 2024-05-10 17:00"),
-        // Calendar phrases.
         ("next week", "Mon 2024-05-13 09:00"),
         ("next week 3pm", "Mon 2024-05-13 15:00"),
         ("next month", "Sat 2024-06-01 09:00"),
@@ -174,10 +167,8 @@ fn phrase_table() {
         ("3 may", "Sat 2025-05-03 09:00"),
         ("2024-10-03", "Thu 2024-10-03 09:00"),
         ("2024-10-03 15:00", "Thu 2024-10-03 15:00"),
-        // Absolute forms.
         ("2026-06-01T15:00:00Z", "Mon 2026-06-01 16:00"),
         ("2026-12-25T09:00:00", "Fri 2026-12-25 09:00"),
-        // Case and whitespace.
         ("MONDAY 5PM", "Mon 2024-05-13 17:00"),
         ("   tomorrow   9am  ", "Wed 2024-05-08 09:00"),
         ("Fri 3PM", "Fri 2024-05-10 15:00"),
@@ -198,8 +189,6 @@ fn phrase_table() {
 
 #[test]
 fn tomorrow_9am_is_local_not_utc() {
-    // The old parser built "tomorrow 9am" as 09:00 UTC. In London in May
-    // that is 10:00 on the wall clock.
     let resolution = resolve_at("tomorrow 9am", &anchor());
     assert_eq!(
         resolution.at,
@@ -234,7 +223,6 @@ fn fri_3_offers_afternoon_first_then_early_morning() {
 
 #[test]
 fn past_half_of_an_ambiguous_time_is_dropped() {
-    // At 14:00, "today 9" can only be 21:00.
     let resolution = resolve_at("today 9", &anchor());
     assert_eq!(resolution.choices.len(), 1);
     assert_eq!(local(&resolution), "Tue 2024-05-07 21:00");
@@ -386,7 +374,6 @@ fn preferred_hours_come_from_prefs() {
 
 #[test]
 fn spring_forward_gap_moves_forward_by_the_gap() {
-    // Clocks go forward at 01:00 GMT on Sunday 31 March 2024.
     let saturday = london(2024, 3, 30, 12, 0);
     let resolution = resolve_at("tomorrow 1:30am", &saturday);
     assert_eq!(
@@ -396,7 +383,6 @@ fn spring_forward_gap_moves_forward_by_the_gap() {
     assert_eq!(resolution.choices[0].time_label, "02:30");
     assert!(resolution.choices[0].note.is_some());
 
-    // A day keeps the wall-clock time; 24 hours doesn't.
     assert_eq!(
         local(&resolve_at("in 1d", &saturday)),
         "Sun 2024-03-31 12:00"
@@ -409,7 +395,6 @@ fn spring_forward_gap_moves_forward_by_the_gap() {
 
 #[test]
 fn fall_back_overlap_takes_the_first_occurrence() {
-    // Clocks go back at 02:00 BST on Sunday 27 October 2024.
     let saturday = london(2024, 10, 26, 12, 0);
     let resolution = resolve_at("tomorrow 1:30am", &saturday);
     assert_eq!(
@@ -478,7 +463,6 @@ fn pathological_inputs_never_panic() {
         for input in &fixed {
             let _ = resolve_time(input, &now, &TimePrefs::default());
         }
-        // Every number of every unit, near the limits.
         for amount in [0_i64, 1, 59, 99, 999, 99_999, 999_999] {
             for unit in ["m", "h", "d", "w", "mo"] {
                 let _ = resolve_time(&format!("in {amount}{unit}"), &now, &TimePrefs::default());
@@ -492,8 +476,6 @@ fn pathological_inputs_never_panic() {
 fn real_zone_gaps_move_forward_by_their_own_length() {
     use chrono_tz::{Australia::Lord_Howe, Europe::London};
 
-    // Lord Howe Island moves its clocks forward 30 minutes, from 02:00 to
-    // 02:30, on the first Sunday of October (6 October 2024).
     let now = Lord_Howe.with_ymd_and_hms(2024, 10, 5, 12, 0, 0).unwrap();
     let resolution = resolve_time("tomorrow 2:10am", &now, &TimePrefs::default()).unwrap();
     assert_eq!(resolution.choices[0].time_label, "02:40");
@@ -507,7 +489,6 @@ fn real_zone_gaps_move_forward_by_their_own_length() {
         Utc.with_ymd_and_hms(2024, 3, 31, 1, 30, 0).unwrap()
     );
 
-    // And the same phrase resolves to a different instant per zone.
     let utc_now = Utc.with_ymd_and_hms(2024, 5, 7, 12, 0, 0).unwrap();
     let in_zone = |tz: chrono_tz::Tz| {
         resolve_time(

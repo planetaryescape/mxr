@@ -23,7 +23,6 @@ async fn authentication_avoids_the_writer_and_observes_committed_revocation() {
         .unwrap();
     let (browser, proof, _) = store.claim_browser_code(&code, 104).await.unwrap();
 
-    // An older snapshot must not become the authority for a later admission.
     let mut old_reader = store.reader().begin().await.unwrap();
     let _: i64 = sqlx::query_scalar("SELECT count(*) FROM remote_clients")
         .fetch_one(&mut *old_reader)

@@ -44,22 +44,12 @@ impl ContactsRefreshHandle {
         debounce_window: Duration,
     ) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(16);
-        // A receiver only needs to learn that a refresh committed, so a lagged
-        // one loses nothing.
         let (refreshed, _) = broadcast::channel(4);
         let refreshed_tx = refreshed.clone();
         let pending = Arc::new(Mutex::new(HashSet::<AccountId>::new()));
         let handle = tokio::spawn({
             let pending = pending.clone();
             async move {
-                // Trailing-edge debounce: each enqueue resets the timer.
-                // The previous design slept *inside* the command handler,
-                // which blocked the mpsc queue for the full debounce
-                // window and caused new enqueues to backpressure (or
-                // worse, force the sender — including the post-sync
-                // fan-out — to wait synchronously). With a `select!`
-                // loop we keep draining commands at line rate while the
-                // refresh is gated on its own timer.
                 let mut debounce: Option<tokio::time::Instant> = None;
                 loop {
                     if let Some(deadline) = debounce {
@@ -91,7 +81,6 @@ impl ContactsRefreshHandle {
                                 let _bg_permit = background_db.acquire().await;
                                 match store.refresh_contacts().await {
                                     Ok(_) => {
-                                        // No receiver is fine: nobody is listening.
                                         let _ = refreshed_tx.send(());
                                     }
                                     Err(error) => {
@@ -182,7 +171,6 @@ mod tests {
             .await
             .expect("a refresh is announced")
             .expect("channel open");
-        // The burst coalesced into one refresh, so no second wake follows.
         assert!(
             tokio::time::timeout(Duration::from_millis(200), refreshed.recv())
                 .await

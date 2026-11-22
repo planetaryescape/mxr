@@ -108,8 +108,6 @@ impl super::Store {
                 .await?;
             Self::reseat_reply_pair_tx(&mut tx, id).await?;
         }
-        // Pairs a late writer rebuilt from an old direction are not in `flips`.
-        // Rebuild every mismatched pair of the account here as well.
         Self::reseat_mismatched_pairs_tx(&mut tx, &account_id.as_str()).await?;
         tx.commit().await?;
         let changes = AccountDirectionChanges::from_flips(&flips);
@@ -167,8 +165,6 @@ impl super::Store {
         let mut cursor = String::new();
         let mut n = 0u32;
         loop {
-            // Take the writer transaction before reading: sync cannot replace
-            // the cached body between observation and the two related writes.
             let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
             let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
                 "SELECT b.message_id, json_object('list_id', json_extract(b.metadata_json, '$.list_id'),
@@ -377,9 +373,6 @@ impl super::Store {
         let lim = limit as i64;
         let account_filter: Option<String> = account_id.map(mxr_core::AccountId::as_str);
         let direction_str = perspective.as_db_str();
-        // Hard floor: drop messages with bogus Date: headers that fell back
-        // to epoch 0 at parse time. Without this, a 1970 spam message ranks
-        // as "the most stale thread ever" forever.
         let date_floor = within_unix.max(EARLIEST_PLAUSIBLE_TS);
 
         let sql = format!(

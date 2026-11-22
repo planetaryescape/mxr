@@ -204,8 +204,6 @@ impl super::Store {
         account_id: &AccountId,
         since: DateTime<Utc>,
     ) -> Result<Vec<DeskMessage>, sqlx::Error> {
-        // Messages dated in the future (bad Date: headers) would otherwise
-        // pin a thread to the top of every lane forever.
         let future_cutoff = Utc::now().timestamp() + 86_400;
         self.desk_messages_where(
             account_id,
@@ -312,7 +310,6 @@ impl super::Store {
         let started_at = Instant::now();
         let hidden_flags = i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits());
         let sql = desk_messages_sql(active_threads, evidence);
-        // ?1 account, ?2 hidden flags, then the thread selection's own.
         let query = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
             .bind(hidden_flags);
@@ -570,9 +567,6 @@ impl super::Store {
         let wanted =
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
-        // One selection for the preview and the write, so they agree. The
-        // watermark is the newest message by (date, id) plus the count, as
-        // `DeskDismissal` reads it.
         const SELECTION: &str = r#"SELECT t.account_id, t.thread_id, t.through_count,
                       t.covered_ids,
                       (SELECT m.date FROM messages m
@@ -654,10 +648,6 @@ enum Evidence {
 }
 
 fn desk_messages_sql(active_threads: &str, evidence_mode: Evidence) -> String {
-    // Settled homes and asks already decide ordinary lanes and geometry.
-    // Raw response evidence is only needed for pending mail and explicit
-    // timers, where a visibility correction cannot turn automation into an
-    // answer. Timer checks must run before raw response classification.
     let gate = if matches!(evidence_mode, Evidence::PendingAndTimers) {
         format!(
             "NOT EXISTS (SELECT 1 FROM mail_assessments home
@@ -675,8 +665,6 @@ fn desk_messages_sql(active_threads: &str, evidence_mode: Evidence) -> String {
         "1".to_string()
     };
     let evidence = if !matches!(evidence_mode, Evidence::None) {
-        // Unknown-direction mail the provider filed as sent counts as yours,
-        // the same rule as `MessageDirection::for_message`.
         let sent_flag = mxr_core::types::MessageFlags::SENT.bits();
         format!(
             r#"EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
@@ -953,8 +941,6 @@ mod tests {
             .desk_thread_messages(&account.id, now - Duration::days(30))
             .await
             .unwrap();
-        // The old message comes with its recently active thread; the stale
-        // thread stays out.
         assert_eq!(
             rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
             vec![old.id.clone(), recent.id.clone()]
@@ -1018,8 +1004,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // Body insertion changes the input generation. Restore the settled
-        // fixtures, but leave the deliberately stale home stale.
         sqlx::query("UPDATE mail_assessments SET input_revision = (SELECT effective_revision FROM assessment_effective_thread_inputs i JOIN messages m ON m.account_id=i.account_id AND m.thread_id=i.thread_id WHERE m.id=mail_assessments.message_id) WHERE message_id != ?1")
             .bind(stale.id.as_str()).execute(store.writer()).await.unwrap();
         let recent = store
@@ -1110,7 +1094,6 @@ mod tests {
             .unwrap();
         assert!(dismissals[&thread].covers(&thread_messages));
 
-        // Dismissing again is an upsert, and restoring clears it.
         store
             .dismiss_desk_threads(std::slice::from_ref(&thread), false)
             .await
@@ -1124,8 +1107,6 @@ mod tests {
         );
         assert!(store.desk_dismissals(&account.id).await.unwrap().is_empty());
 
-        // A message stored later ends a dismissal, even with a Date older
-        // than the rest of the thread (a delayed delivery).
         store
             .dismiss_desk_threads(std::slice::from_ref(&thread), false)
             .await
@@ -1173,7 +1154,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        // A mark as the rowid watermark wrote it, through the first message.
         let first_rowid: i64 = sqlx::query_scalar("SELECT rowid FROM messages WHERE id = ?1")
             .bind(first.id.as_str())
             .fetch_one(store.reader())
@@ -1208,7 +1188,6 @@ mod tests {
         );
         assert!(mark.saw(messages[0].date, &messages[0].id));
 
-        // Running it again leaves a backfilled or new mark alone.
         sqlx::raw_sql(include_str!("../migrations/062_done_watermark_by_date.sql"))
             .execute(store.writer())
             .await

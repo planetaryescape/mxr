@@ -60,8 +60,6 @@ async fn browser_has_no_loopback_bootstrap_or_cross_origin_mutation_path() {
         .unwrap();
     assert_eq!(launch.status(), reqwest::StatusCode::OK);
     assert!(launch.text().await.unwrap().contains("single-use code"));
-    // A launch URL never carries the credential. Even a query-supplied code is
-    // ignored, and the form is returned clean.
     let code = "a".repeat(64);
     let with_code = client
         .get(format!("{base}/api/v1/remote/browser-launch?code={code}"))

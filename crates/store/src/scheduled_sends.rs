@@ -204,8 +204,6 @@ impl super::Store {
         account_id: Option<&AccountId>,
     ) -> Result<Vec<PendingScheduledSend>, sqlx::Error> {
         let started_at = std::time::Instant::now();
-        // Unchecked query: a read-only join that would otherwise force a
-        // workspace-wide `.sqlx` cache regeneration.
         let rows = sqlx::query(
             r#"SELECT d.id, d.account_id, d.send_at, d.subject,
                       d.to_addrs, d.cc_addrs, d.bcc_addrs,
@@ -435,15 +433,12 @@ mod tests {
         let at = anchor();
         store.schedule_send(&id, at).await.unwrap();
 
-        // Atomic clear + attempt marker: send_at is cleared AND a
-        // NULL-outcome marker now exists (a candidate lost send).
         store.claim_due_scheduled_send(&id, at).await.unwrap();
         assert_eq!(store.get_scheduled_send(&id).await.unwrap(), None);
         let lost = store.list_lost_scheduled_sends().await.unwrap();
         assert_eq!(lost.len(), 1);
         assert_eq!(lost[0].draft_id, id);
 
-        // Recording an outcome resolves it — no longer reported as lost.
         store
             .record_scheduled_send_outcome(&id, at, "sent")
             .await
@@ -466,9 +461,6 @@ mod tests {
 
     #[tokio::test]
     async fn get_due_excludes_already_sending_drafts() {
-        // Once a flusher CAS-promotes a draft to `sending`, the row
-        // must drop out of the due-list so it can't be picked up
-        // twice (concurrent flushers, or a restart mid-send).
         let store = Store::in_memory().await.unwrap();
         let id = seed_draft(&store).await;
         store

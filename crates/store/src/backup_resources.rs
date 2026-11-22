@@ -143,7 +143,6 @@ pub(super) async fn copy_resources(
         let original = source.join(&relative);
         let target = stage.join(&relative);
         std::fs::create_dir_all(target.parent().ok_or("Resource has no parent")?)?;
-        // file_metadata checks every parent, not just the final file.
         let actual = file_metadata(source, &relative)?;
         if actual.length != metadata.length_bytes || actual.sha256 != metadata.sha256 {
             return Err("Incomplete backup: managed resource metadata does not match bytes".into());

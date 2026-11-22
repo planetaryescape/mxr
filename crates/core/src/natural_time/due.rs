@@ -116,7 +116,6 @@ where
         .iter()
         .position(|word| !DUE_FILLERS.contains(&word.to_ascii_lowercase().as_str()))
         .unwrap_or(words.len());
-    // "within 2 days" reads as "in 2 days".
     let within = first_kept > 0 && words[first_kept - 1].eq_ignore_ascii_case("within");
     (first_kept..words.len()).find_map(|start| {
         let mut candidate = words[start..].join(" ");
@@ -197,20 +196,15 @@ mod tests {
             assert!(found.resolution.is_some(), "{words}");
             found.dropped_words
         };
-        // "one week after" is dropped to read "Friday".
         assert!(dropped("one week after Friday"));
-        // Only fillers dropped, or nothing dropped, reads the whole phrase.
         assert!(!dropped("by Friday"));
         assert!(!dropped("no later than friday."));
-        // "first thing" isn't in DUE_FILLERS, so reading "Monday" alone
-        // counts as dropping words.
         assert!(dropped("first thing Monday"));
         assert!(!dropped("within 2 days"));
     }
 
     #[test]
     fn the_result_says_when_it_names_the_weekday_it_was_written_on() {
-        // Tuesday 29 September 2026.
         let names_today = |words: &str| {
             let found = due_words(words, words, &anchor(), &TimePrefs::default()).unwrap();
             assert!(found.resolution.is_some(), "{words}");
@@ -224,7 +218,6 @@ mod tests {
 
     #[test]
     fn only_a_phrase_with_one_reading_gives_a_date_to_store() {
-        // Tuesday 29 September 2026.
         let stored = |words: &str| {
             due_words(words, words, &anchor(), &TimePrefs::default())
                 .unwrap()
@@ -232,14 +225,11 @@ mod tests {
         };
         assert_eq!(stored("by Friday"), Some(friday_nine()));
         assert_eq!(stored("tomorrow"), at("tomorrow", "tomorrow"));
-        // A phrase that resolves two ways ("fri 3" is 15:00 or 03:00).
         let fri_3 = due_words("fri 3", "fri 3", &anchor(), &TimePrefs::default()).unwrap();
         assert!(fri_3.resolution.as_ref().unwrap().is_ambiguous());
         assert_eq!(fri_3.unambiguous_at(), None);
-        // Words dropped to find a reading, and today's own weekday.
         assert_eq!(stored("one week after Friday"), None);
         assert_eq!(stored("by Tuesday"), None);
-        // Words the parser can't read.
         let unread = due_words(
             "at some point",
             "at some point",
@@ -287,7 +277,6 @@ mod tests {
 
     #[test]
     fn words_resolve_against_when_the_text_was_written() {
-        // Written on Monday 7 September: that week's Friday, already past now.
         let written = London.with_ymd_and_hms(2026, 9, 7, 10, 0, 0).unwrap();
         let due = due_words(
             "I'll send it by Friday.",

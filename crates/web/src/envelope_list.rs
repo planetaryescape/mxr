@@ -165,7 +165,6 @@ pub(crate) fn group_envelopes(
 }
 
 pub(crate) fn group_row_views(rows: Vec<(DateTime<Utc>, MessageRowView)>) -> Vec<MessageGroupView> {
-    // Grouping is a web presentation choice, not daemon protocol.
     let mut groups = Vec::<MessageGroupView>::new();
 
     for (date, row) in rows {

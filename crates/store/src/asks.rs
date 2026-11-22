@@ -5,13 +5,9 @@ use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;
 
-// Keep the requested IDs outermost: an account index scan makes per-message projection quadratic.
 const ASKS_FOR_MESSAGES: &str = "SELECT a.assessment_json FROM (SELECT DISTINCT value FROM json_each(?3)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision ORDER BY a.message_id";
 
-// Compute a thread's effective generation once, not once per message/facet.
-// Read asks directly from the compact projection: a CASE over the authoritative
-// table still visits its large source pages before choosing the summary.
 const FACETS_FOR_MESSAGES: &str = "WITH wanted AS MATERIALIZED (
             SELECT m.id, m.thread_id FROM (SELECT DISTINCT value FROM json_each(?4)) requested
             CROSS JOIN messages m ON m.id = requested.value WHERE m.account_id = ?1
@@ -214,8 +210,6 @@ pub(crate) async fn write_asks(
         ));
     }
     for answer in answers {
-        // Each row carries its own thread token, rather than the
-        // maximum of a page whose other threads may be changing.
         let valid: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM messages m JOIN json_each(?3) expected ON expected.key = m.thread_id WHERE m.id = ?1 AND m.account_id = ?2)")
                 .bind(answer.message_id.as_str()).bind(account.as_str()).bind(expected).fetch_one(&mut **tx).await?;
         if !valid {

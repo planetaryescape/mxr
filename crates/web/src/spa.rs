@@ -44,9 +44,6 @@ async fn index_handler() -> Response {
 }
 
 async fn fallback_handler(req: Request) -> Response {
-    // /api/* and /api/v1/openapi.json are handled before this fallback runs
-    // by the parent router. Anything else is either a static asset or a
-    // client-side route — try the asset first, fall back to index.html.
     let path = req.uri().path().trim_start_matches('/');
     if path.is_empty() {
         return index_handler().await;
@@ -54,7 +51,6 @@ async fn fallback_handler(req: Request) -> Response {
     if let Some(resp) = serve_path(path) {
         return resp;
     }
-    // Client-side route — let TanStack Router handle it.
     serve_path("index.html").unwrap_or_else(missing_dist_response)
 }
 
@@ -71,7 +67,6 @@ fn serve_path(path: &str) -> Option<Response> {
         response = response.header(header::CONTENT_SECURITY_POLICY, CSP);
         response = response.header(header::CACHE_CONTROL, "no-cache");
     } else if path.contains("/assets/") {
-        // Vite emits content-hashed asset filenames — safe to cache hard.
         response = response.header(header::CACHE_CONTROL, "public, max-age=31536000, immutable");
     }
     response

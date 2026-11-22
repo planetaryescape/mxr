@@ -49,7 +49,6 @@ impl super::Store {
         .bind(&candidate.who_owes)
         .bind(&candidate.what)
         .bind(candidate.by_when.map(|v| v.timestamp()))
-        // A source only describes a date.
         .bind(
             candidate
                 .by_when
@@ -162,7 +161,6 @@ mod tests {
         let (store, account_id, draft_id) = fixture().await;
         let c = candidate(&account_id, &draft_id, "send deck");
         store.upsert_draft_commitment_candidate(&c).await.unwrap();
-        // Re-insert with a fresh id but same key fields.
         let mut c2 = c.clone();
         c2.id = new_candidate_id();
         store.upsert_draft_commitment_candidate(&c2).await.unwrap();

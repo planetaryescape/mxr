@@ -68,8 +68,6 @@ async fn read_input(
         return Ok(None);
     }
     let task = crate::todos::row_to_todo(&row)?;
-    // Length framing avoids concatenation collisions and hashing raw bytes
-    // detects edits outside the model's truncated reader text too.
     let mut digest = Sha256::new();
     for column in [
         "later_id",
@@ -118,8 +116,6 @@ async fn read_input(
     }))
 }
 
-// Apply this inside the offer transaction, so an edited body or replaced
-// queue revision cannot race the final evidence write.
 pub(crate) async fn input_is_current(
     connection: &mut SqliteConnection,
     work: &TodoResolutionWork,

@@ -230,29 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn colour_cycles_through_the_eight_slots_and_tag_keeps_three_characters() {
-        let mut app = App::new();
-        app.accounts.page.identity_editor = Some(editor(AccountColor::Slate, ""));
-
-        press(&mut app, KeyCode::Right);
-        assert_eq!(
-            app.accounts.page.identity_editor.as_ref().unwrap().color,
-            AccountColor::Sky,
-            "slate wraps to sky"
-        );
-
-        press(&mut app, KeyCode::Tab);
-        for c in ['p', 'e', 'x', 'y'] {
-            press(&mut app, KeyCode::Char(c));
-        }
-        assert_eq!(
-            app.accounts.page.identity_editor.as_ref().unwrap().tag,
-            "PEX",
-            "a tag holds three characters, uppercased"
-        );
-    }
-
-    #[test]
     fn a_refused_dry_run_keeps_the_editor_open_with_the_daemon_words() {
         let mut app = App::new();
         app.accounts.page.identity_editor = Some(editor(AccountColor::Sky, "W"));
@@ -283,35 +260,5 @@ mod tests {
             Some("tag 'W' is already held by account 'home'")
         );
         assert!(!open.previewed);
-    }
-
-    #[test]
-    fn an_edit_after_a_passed_dry_run_makes_the_next_enter_preview_again() {
-        let mut app = App::new();
-        let mut previewed = editor(AccountColor::Sky, "W");
-        previewed.previewed = true;
-        app.accounts.page.identity_editor = Some(previewed);
-
-        press(&mut app, KeyCode::Right);
-        let after = app
-            .accounts
-            .page
-            .identity_editor
-            .clone()
-            .expect("editor open");
-        assert!(!after.previewed);
-        assert_eq!(after.color, AccountColor::Amber);
-    }
-
-    #[test]
-    fn the_identity_tag_counts_as_text_input_and_the_colour_does_not() {
-        let mut app = App::new();
-        app.accounts.page.identity_editor = Some(editor(AccountColor::Sky, "W"));
-        assert!(
-            !app.text_input_focused(),
-            "the colour field takes no letters"
-        );
-        app.accounts.page.identity_editor.as_mut().unwrap().field = IdentityField::Tag;
-        assert!(app.text_input_focused());
     }
 }

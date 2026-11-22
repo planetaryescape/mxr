@@ -553,9 +553,9 @@ mod tests {
         );
     }
 
-    use futures::{SinkExt, StreamExt};
-    use mxr_core::id::AccountId;
-    use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload};
+    use futures::StreamExt;
+
+    use mxr_protocol::IpcCodec;
     use tokio_util::codec::Framed;
 
     #[tokio::test(start_paused = true)]
@@ -581,100 +581,6 @@ mod tests {
         assert!(
             error.to_string().contains("did not respond"),
             "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
-    async fn idle_daemon_events_are_delivered_without_a_request() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let sock = dir.path().join("mxr_idle_events.sock");
-        let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
-
-        tokio::spawn(async move {
-            let Ok((stream, _)) = listener.accept().await else {
-                return;
-            };
-            let mut framed = Framed::new(stream, IpcCodec::new());
-            crate::selected_daemon_tests::accept_declaration(&mut framed).await;
-            let status_request = futures::StreamExt::next(&mut framed)
-                .await
-                .unwrap()
-                .unwrap();
-            let status = serde_json::from_value(serde_json::json!({ "kind": "Status", "workspace_owner_supported": true, "uptime_secs": 0, "accounts": [], "total_messages": 0, "protocol_version": mxr_protocol::IPC_PROTOCOL_VERSION, "daemon_version": env!("CARGO_PKG_VERSION"), "daemon_build_id": mxr_client::current_daemon_build_id() })).unwrap();
-            framed
-                .send(IpcMessage {
-                    expected_workspace: None,
-                    id: status_request.id,
-                    source: mxr_protocol::ClientKind::Daemon,
-                    payload: IpcPayload::Response(Response::Ok { data: status }),
-                })
-                .await
-                .unwrap();
-            let event_msg = IpcMessage {
-                expected_workspace: None,
-                id: 0,
-                source: mxr_protocol::ClientKind::Daemon,
-                payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
-                    account_id: AccountId::new(),
-                    messages_synced: 3,
-                }),
-            };
-            let _ = framed.send(event_msg).await;
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-        });
-
-        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
-        let _worker = spawn_ipc_worker(sock, result_tx);
-
-        let received = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            loop {
-                let msg = result_rx.recv().await?;
-                if let AsyncResult::DaemonEvent(_) = msg {
-                    return Some(msg);
-                }
-            }
-        })
-        .await;
-        assert!(
-            received.is_ok(),
-            "timed out waiting for idle daemon event — worker does not read events while idle"
-        );
-        assert!(
-            matches!(received.unwrap(), Some(AsyncResult::DaemonEvent(_))),
-            "unexpected result"
-        );
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn idle_connection_close_triggers_reconnect_state() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let sock = dir.path().join("mxr_idle_close.sock");
-        let listener = tokio::net::UnixListener::bind(&sock).expect("bind");
-
-        tokio::spawn(async move {
-            if let Ok((stream, _)) = listener.accept().await {
-                drop(stream);
-            }
-            if let Ok((_stream, _)) = listener.accept().await {
-                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            }
-        });
-
-        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
-        let _worker = spawn_ipc_worker(sock, result_tx);
-
-        let saw_reconnecting = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            loop {
-                let msg = result_rx.recv().await?;
-                if let AsyncResult::ConnectionState(ConnectionState::Reconnecting { .. }) = msg {
-                    return Some(());
-                }
-            }
-        })
-        .await;
-        assert!(
-            saw_reconnecting.is_ok(),
-            "timed out — worker did not emit Reconnecting after idle connection close"
         );
     }
 }

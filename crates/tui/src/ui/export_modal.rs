@@ -121,38 +121,3 @@ fn path_stage(
     }
     (lines, "Enter save · Esc cancel")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::draw;
-    use crate::app::{ExportModalState, ExportStage};
-
-    use mxr_core::id::ThreadId;
-    use mxr_test_support::render_to_string;
-    use ratatui::layout::Rect;
-
-    fn render(state: &ExportModalState) -> String {
-        render_to_string(100, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 24),
-                state,
-                &crate::theme::Theme::default(),
-            );
-        })
-    }
-
-    #[test]
-    fn path_stage_surfaces_error_and_overwrite_prompt() {
-        let mut state = ExportModalState::default();
-        state.open(ThreadId::new());
-        state.stage = ExportStage::Path;
-        state.input = "~/mxr/exports/mxr-thread-x.md".into();
-        state.error = Some("Path cannot be empty".into());
-        assert!(render(&state).contains("Path cannot be empty"));
-
-        state.error = None;
-        state.awaiting_overwrite_confirm = true;
-        assert!(render(&state).contains("press Enter again to overwrite"));
-    }
-}

@@ -169,7 +169,6 @@
   "crates/tui/src/ui/mail_list.rs": 1,
   "crates/tui/src/ui/sanitize.rs": 7,
   "crates/tui/src/ui/sidebar.rs": 1,
-  "crates/tui/src/ui/toasts.rs": 2,
   "crates/web/src/auth.rs": 3,
   "crates/web/src/lib.rs": 6,
   "crates/web/src/remote_browser.rs": 2,

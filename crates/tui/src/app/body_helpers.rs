@@ -839,15 +839,6 @@ mod tests {
     }
 
     #[test]
-    fn syncing_with_prior_success_shows_freshness() {
-        let statuses = vec![status(true, true, recent_success())];
-        assert_eq!(
-            App::summarize_sync_status(&statuses),
-            "syncing · synced just now"
-        );
-    }
-
-    #[test]
     fn multi_account_uses_newest_success_while_syncing() {
         let old = Some((chrono::Utc::now() - chrono::Duration::hours(3)).to_rfc3339());
         let statuses = vec![

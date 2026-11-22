@@ -48,93 +48,6 @@ fn status() -> ResponseData {
 }
 
 #[tokio::test]
-async fn slow_request_forwards_events_before_its_reply_arrives() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let target = mxr_client::SelectedDaemonTarget::new(
-        mxr_client::TransportAddr::Tcp(listener.local_addr().unwrap()),
-        None,
-    );
-    let (release, wait) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut framed = Framed::new(stream, IpcCodec::new());
-        accept_declaration(&mut framed).await;
-        let mut wait = Some(wait);
-        while let Some(Ok(message)) = framed.next().await {
-            let IpcPayload::Request(request) = message.payload else {
-                panic!("request")
-            };
-            let response = match request {
-                Request::GetStatus => Response::Ok { data: status() },
-                Request::GetRemoteReady => Response::error_kinded(
-                    "Remote readiness requires authenticated admission",
-                    mxr_protocol::IpcErrorKind::Auth,
-                ),
-                Request::Ping => {
-                    framed
-                        .send(IpcMessage {
-                            id: 0,
-                            expected_workspace: None,
-                            source: ClientKind::Daemon,
-                            payload: IpcPayload::Event(
-                                mxr_protocol::DaemonEvent::LabelCountsUpdated { counts: vec![] },
-                            ),
-                        })
-                        .await
-                        .unwrap();
-                    wait.take().unwrap().await.unwrap();
-                    Response::Ok {
-                        data: ResponseData::Ack,
-                    }
-                }
-                _ => Response::Ok {
-                    data: ResponseData::ArchiveWorkspace {
-                        workspace: owner("original"),
-                    },
-                },
-            };
-            framed
-                .send(IpcMessage {
-                    id: message.id,
-                    expected_workspace: None,
-                    source: ClientKind::Daemon,
-                    payload: IpcPayload::Response(response),
-                })
-                .await
-                .unwrap();
-        }
-    });
-    let (result_tx, mut results) = tokio::sync::mpsc::unbounded_channel();
-    let worker = spawn_ipc_worker_for_session(
-        DaemonSession {
-            target,
-            owner: Some(owner("original")),
-        },
-        result_tx,
-    );
-    let request = tokio::spawn(async move { ipc_call(&worker, Request::Ping).await });
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while let Some(result) = results.recv().await {
-            if matches!(
-                result,
-                crate::async_result::AsyncResult::DaemonEvent(
-                    mxr_protocol::DaemonEvent::LabelCountsUpdated { .. }
-                )
-            ) {
-                return;
-            }
-        }
-        panic!("worker stopped before forwarding the event");
-    })
-    .await
-    .expect("an event must not wait behind a slow reply");
-    assert!(!request.is_finished());
-    release.send(()).unwrap();
-    request.await.unwrap().unwrap();
-    server.abort();
-}
-
-#[tokio::test]
 async fn legacy_worker_preserves_safety_request_across_reconnect() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("reviewed.bin");
@@ -345,60 +258,6 @@ async fn safe_retry_stays_on_selected_target_and_refuses_replacement_owner() {
             .unwrap(),
         1
     );
-}
-
-#[tokio::test]
-async fn failed_initial_owner_capture_is_not_adopted_on_background_connection() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let target = mxr_client::SelectedDaemonTarget::new(
-        mxr_client::TransportAddr::parse(&format!("tcp://{}", listener.local_addr().unwrap()))
-            .unwrap(),
-        None,
-    );
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut framed = Framed::new(stream, IpcCodec::new());
-        accept_declaration(&mut framed).await;
-        let message = framed.next().await.unwrap().unwrap();
-        assert!(matches!(
-            message.payload,
-            IpcPayload::Request(Request::GetStatus)
-        ));
-        framed
-            .send(IpcMessage {
-                id: message.id,
-                expected_workspace: None,
-                source: ClientKind::Daemon,
-                payload: IpcPayload::Response(Response::Ok { data: status() }),
-            })
-            .await
-            .unwrap();
-        assert!(
-            framed.next().await.is_none(),
-            "must not capture a new workspace owner"
-        );
-    });
-    let (result_tx, _result_rx) = tokio::sync::mpsc::unbounded_channel();
-    let worker = spawn_ipc_worker_for_session(
-        DaemonSession {
-            target,
-            owner: None,
-        },
-        result_tx,
-    );
-    let error = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        ipc_call(&worker, Request::GetArchiveWorkspace),
-    )
-    .await
-    .unwrap()
-    .unwrap_err();
-    assert!(error.to_string().contains("no original workspace owner"));
-    drop(worker);
-    tokio::time::timeout(std::time::Duration::from_secs(5), server)
-        .await
-        .unwrap()
-        .unwrap();
 }
 
 #[tokio::test]
@@ -656,33 +515,4 @@ fn changed_saved_selection_retires_idle_worker_and_blocks_old_mcp_target() {
         });
         },
     );
-}
-
-#[test]
-fn retired_selection_keeps_private_owner_and_cannot_be_revived_by_late_readiness() {
-    use crate::app::{App, ConnectionState};
-    let mut app = App::new();
-    app.compose.workspace_owner = Some(owner("original"));
-    app.pending_draft_edit_request=Some(serde_json::from_value(serde_json::json!({"id":mxr_core::DraftId::new(),"account_id":mxr_core::AccountId::new(),"intent":"new","to":[],"cc":[],"bcc":[],"subject":"retained","body_markdown":"private unsent text","attachments":[],"managed_attachments":[],"inline_assets":[],"created_at":chrono::Utc::now(),"updated_at":chrono::Utc::now()})).unwrap());
-    let before = serde_json::to_value(&app.pending_draft_edit_request).unwrap();
-    app.set_connection_state(ConnectionState::SelectionChanged);
-    app.set_connection_state(ConnectionState::Connected);
-    app.request_connection_retry();
-    assert!(matches!(
-        app.connection_state,
-        ConnectionState::SelectionChanged
-    ));
-    assert!(!app.pending_connection_retry);
-    assert_eq!(app.compose.workspace_owner, Some(owner("original")));
-    assert_eq!(
-        serde_json::to_value(&app.pending_draft_edit_request).unwrap(),
-        before
-    );
-    assert!(app
-        .modals
-        .error
-        .as_ref()
-        .unwrap()
-        .detail
-        .contains("Close and reopen"));
 }

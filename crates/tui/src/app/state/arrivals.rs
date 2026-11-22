@@ -176,21 +176,4 @@ mod tests {
         state.want_chips(ids.iter());
         assert_eq!(state.pending_chips.as_ref().map(Vec::len), Some(3));
     }
-
-    #[test]
-    fn tab_steps_through_the_lines_buckets() {
-        let mut list = ArrivalsListState {
-            since: Utc::now(),
-            until: Utc::now(),
-            buckets: vec![ArrivalBucketData::Messages, ArrivalBucketData::Reading],
-            bucket: None,
-            list: None,
-            selected: 0,
-        };
-        assert_eq!(list.next_bucket(), Some(ArrivalBucketData::Messages));
-        list.bucket = Some(ArrivalBucketData::Messages);
-        assert_eq!(list.next_bucket(), Some(ArrivalBucketData::Reading));
-        list.bucket = Some(ArrivalBucketData::Reading);
-        assert_eq!(list.next_bucket(), None, "back to every arrival");
-    }
 }

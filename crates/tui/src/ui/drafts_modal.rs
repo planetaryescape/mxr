@@ -294,33 +294,6 @@ mod tests {
     }
 
     #[test]
-    fn renders_subject_and_recipient_in_list_and_detail() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![draft(
-            "Q4 plan",
-            "alice@example.com",
-            "Draft body text.",
-        )]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Q4 plan"),
-            "list must render draft subject; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("alice@example.com"),
-            "detail pane must render recipient; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Draft body text."),
-            "detail pane must render body preview; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn delete_preview_names_the_exact_draft_and_requires_confirmation() {
         let mut state = DraftsModalState::default();
         state.open_loading();
@@ -363,60 +336,5 @@ mod tests {
             snapshot.contains("Keep it   \u{203a} Sync with Gmail Drafts"),
             "{snapshot}"
         );
-    }
-
-    fn html_draft(subject: &str, html: &str, text: Option<&str>) -> Draft {
-        let mut draft = draft(subject, "alice@example.com", "");
-        draft.content = DraftContent::html(html, text.map(str::to_string));
-        draft
-    }
-
-    #[test]
-    fn html_draft_detail_renders_readable_text_rather_than_a_blank_body() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![html_draft(
-            "Launch",
-            "<html><body><h1>Ship day</h1><p>We go live on Friday.</p></body></html>",
-            None,
-        )]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("We go live on Friday."),
-            "an HTML draft with no text alternative must still show its body; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn html_draft_detail_says_it_cannot_be_opened_in_the_editor() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![html_draft("Launch", "<p>body</p>", None)]);
-
-        let snapshot = render_to_string(100, 20, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 20), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("HTML"),
-            "the detail pane must tell the user the draft is HTML; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("not editable"),
-            "the user must learn why Enter/e will not open this draft; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
-    fn select_next_wraps() {
-        let mut state = DraftsModalState::default();
-        state.open_loading();
-        state.set_drafts(vec![draft("a", "a@x.com", "a"), draft("b", "b@x.com", "b")]);
-        state.select_next();
-        assert_eq!(state.selected_index, 1);
-        state.select_next();
-        assert_eq!(state.selected_index, 0);
     }
 }

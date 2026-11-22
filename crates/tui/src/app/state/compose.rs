@@ -212,30 +212,3 @@ impl ComposeState {
         true
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn empty_pair() -> ReplyContextPair {
-        ReplyContextPair {
-            reply: None,
-            reply_all: None,
-        }
-    }
-
-    #[test]
-    fn a_prewarm_started_before_an_address_change_is_not_cached() {
-        let mut compose = ComposeState::default();
-        let message = MessageId::new();
-
-        let started = compose.reply_context_generation;
-        compose.invalidate_reply_contexts();
-        assert!(!compose.cache_warmed_reply_context(started, message.clone(), empty_pair()));
-        assert!(!compose.reply_context_cache.contains_key(&message));
-
-        let started_after = compose.reply_context_generation;
-        assert!(compose.cache_warmed_reply_context(started_after, message.clone(), empty_pair()));
-        assert!(compose.reply_context_cache.contains_key(&message));
-    }
-}

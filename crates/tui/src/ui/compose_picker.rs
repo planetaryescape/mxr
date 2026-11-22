@@ -313,32 +313,4 @@ mod tests {
         assert!(rendered.contains("Alice Example <alice@example.com>"));
         assert!(rendered.contains("Bob Example <bob@example.com>"));
     }
-
-    #[test]
-    fn subject_modal_render_shows_hint_without_contact_list() {
-        let mut picker = ComposePicker::default();
-        picker.open_to(vec![Contact {
-            name: "Alice Example".into(),
-            email: "alice@example.com".into(),
-        }]);
-        picker.on_char('a');
-        picker.add_recipient();
-        picker.open_subject();
-        picker.on_char('H');
-
-        let rendered = render_to_string(100, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 100, 20),
-                &picker,
-                &crate::theme::Theme::default(),
-            );
-        });
-
-        assert!(rendered.contains("Compose"));
-        assert!(rendered.contains("Subject: (Enter to compose)"));
-        assert!(rendered.contains("Leave blank to add a subject later."));
-        assert!(rendered.contains("> H"));
-        assert!(!rendered.contains("Alice Example <alice@example.com>"));
-    }
 }

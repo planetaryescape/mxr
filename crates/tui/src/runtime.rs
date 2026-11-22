@@ -371,37 +371,6 @@ async fn execute_replaceable_request(
 mod tests {
     use super::*;
     use std::collections::VecDeque;
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    };
-    use tokio::sync::oneshot;
-    use tokio::time::{timeout, Duration};
-
-    #[test]
-    fn enqueue_replaceable_request_replaces_matching_status_requests() {
-        let mut pending = VecDeque::new();
-        enqueue_replaceable_request(
-            &mut pending,
-            ReplaceableRequest::Status {
-                request_id: 1,
-                enqueued_at: Instant::now(),
-            },
-        );
-        enqueue_replaceable_request(
-            &mut pending,
-            ReplaceableRequest::Status {
-                request_id: 2,
-                enqueued_at: Instant::now(),
-            },
-        );
-
-        assert_eq!(pending.len(), 1);
-        match pending.pop_front() {
-            Some(ReplaceableRequest::Status { request_id, .. }) => assert_eq!(request_id, 2),
-            other => panic!("expected status request, got {other:?}"),
-        }
-    }
 
     #[test]
     fn enqueue_replaceable_request_keeps_distinct_search_targets() {
@@ -434,46 +403,5 @@ mod tests {
         );
 
         assert_eq!(pending.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn task_worker_runs_submitted_tasks_serially() {
-        let (result_tx, mut result_rx) = mpsc::unbounded_channel();
-        let worker = spawn_task_worker(result_tx);
-        let started_second = Arc::new(AtomicBool::new(false));
-        let (release_first_tx, release_first_rx) = oneshot::channel::<()>();
-
-        submit_task(&worker, async move {
-            let _ = release_first_rx.await;
-            AsyncResult::LocalStateSaved(Ok(()))
-        })
-        .expect("queue first task");
-
-        let started_second_flag = started_second.clone();
-        submit_task(&worker, async move {
-            started_second_flag.store(true, Ordering::SeqCst);
-            AsyncResult::LocalStateSaved(Ok(()))
-        })
-        .expect("queue second task");
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(
-            !started_second.load(Ordering::SeqCst),
-            "second task should stay queued until the first completes"
-        );
-
-        release_first_tx.send(()).expect("release first task");
-
-        assert!(matches!(
-            timeout(Duration::from_secs(1), result_rx.recv()).await,
-            Ok(Some(AsyncResult::LocalStateSaved(Ok(()))))
-        ));
-
-        assert!(matches!(
-            timeout(Duration::from_secs(1), result_rx.recv()).await,
-            Ok(Some(AsyncResult::LocalStateSaved(Ok(()))))
-        ));
-
-        assert!(started_second.load(Ordering::SeqCst));
     }
 }

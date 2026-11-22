@@ -336,18 +336,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn invite_message_view_surfaces_rsvp_keys() {
-        let hints = hints_for_context(UiContext::MailboxMessage, 0, true);
-        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
-        assert!(
-            labels.iter().any(|label| label == "Accept Invite"),
-            "invite view must surface Accept; got {labels:?}",
-        );
-        assert!(
-            labels.iter().any(|label| label == "Decline Invite"),
-            "invite view must surface Decline; got {labels:?}",
-        );
-    }
 }

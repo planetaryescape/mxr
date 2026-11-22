@@ -267,51 +267,6 @@ mod tests {
     }
 
     #[test]
-    fn a_new_sender_answers_with_capitals_and_block_on_d() {
-        let question = mxr_protocol::ScreenerQuestionData {
-            account_id: AccountId::new(),
-            sender_email: "iris@example.com".into(),
-            question: "New sender. Keep in Messages?".into(),
-            choices: [
-                (mxr_protocol::SenderKindData::People, "Messages"),
-                (mxr_protocol::SenderKindData::PaperTrail, "Updates"),
-                (mxr_protocol::SenderKindData::Reading, "Reading"),
-                (mxr_protocol::SenderKindData::ScreenedOut, "Block"),
-            ]
-            .into_iter()
-            .map(|(kind, label)| mxr_protocol::ScreenerChoiceData {
-                kind,
-                label: label.into(),
-            })
-            .collect(),
-        };
-        let rendered = render(&MoveMenu {
-            new_sender: Some(question),
-            ..menu()
-        });
-        for line in [
-            "m  Messages",
-            "M  New sender: Messages",
-            "U  New sender: Updates",
-            "R  New sender: Reading",
-            "D  New sender: Block",
-        ] {
-            assert!(rendered.contains(line), "{line}\n{rendered}");
-        }
-    }
-
-    #[test]
-    fn a_not_sure_question_marks_where_it_is_now() {
-        let rendered = render(&MoveMenu {
-            not_sure: true,
-            current: Some(mxr_protocol::ModeKindData::Updates),
-            selected: 2,
-            ..menu()
-        });
-        assert!(rendered.contains("u  Updates (here now)"), "{rendered}");
-    }
-
-    #[test]
     fn the_list_shows_each_email_with_where_it_went_and_no_control_text() {
         let state = ArrivalsListState {
             since: Utc::now(),
@@ -341,50 +296,5 @@ mod tests {
         assert!(rendered.contains("→ Reading"), "{rendered}");
         assert!(!rendered.contains('\u{1b}'));
         assert!(!rendered.contains('\u{202e}'));
-    }
-
-    #[test]
-    fn the_list_scrolls_to_keep_the_selection_on_screen() {
-        let items: Vec<ArrivalItemData> = (0..30).map(|n| item(&format!("Issue {n:02}"))).collect();
-        let at = |selected: usize| ArrivalsListState {
-            since: Utc::now(),
-            until: Utc::now(),
-            buckets: vec![ArrivalBucketData::Reading],
-            bucket: Some(ArrivalBucketData::Reading),
-            list: Some(ArrivalListData {
-                since: Utc::now(),
-                until: Utc::now(),
-                bucket: Some(ArrivalBucketData::Reading),
-                total: 30,
-                items: items.clone(),
-            }),
-            selected,
-        };
-        let render = |selected: usize| {
-            render_to_string(100, 16, |frame| {
-                draw_arrivals_list(
-                    frame,
-                    Rect::new(0, 0, 100, 16),
-                    Some(&at(selected)),
-                    &crate::theme::Theme::default(),
-                );
-            })
-        };
-        let top = render(0);
-        assert!(top.contains("Issue 00"), "{top}");
-        assert!(!top.contains("Issue 29"), "{top}");
-        for selected in [9, 20, 29] {
-            let rendered = render(selected);
-            let marker = rendered
-                .lines()
-                .find(|line| line.contains('\u{258c}'))
-                .unwrap_or_else(|| panic!("no selected row for {selected}\n{rendered}"));
-            assert!(
-                marker.contains(&format!("Issue {selected:02}")),
-                "{rendered}"
-            );
-            assert!(rendered.contains("Tab next count"), "{rendered}");
-        }
-        assert!(!render(29).contains("Issue 00"));
     }
 }

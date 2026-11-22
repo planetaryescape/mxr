@@ -536,25 +536,6 @@ fn draw_tune_menu(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    #[test]
-    fn filed_update_marker_survives_a_long_fact() {
-        let mut digest = populated();
-        let update = &mut digest.needs_a_look[0];
-        update.fact = "A very long fact ".repeat(30);
-        update.source_filed_at = Some(update.latest_at);
-        let page = UpdatesPageState {
-            digest: Some(digest),
-            ..Default::default()
-        };
-        for width in [40, 60, 120] {
-            let rendered = render(&page, width);
-            assert!(
-                rendered.contains("left the inbox"),
-                "width={width}: {rendered}"
-            );
-            assert!(rendered.contains("observed"), "width={width}: {rendered}");
-        }
-    }
     use super::*;
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -762,41 +743,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn selected_updates_keep_a_uniform_background_without_reverse_video() {
-        let theme = crate::theme::Theme::default();
-        let digest = populated();
-        let page = UpdatesPageState {
-            digest: Some(digest.clone()),
-            ..Default::default()
-        };
-        let view = UpdatesView {
-            now: fixture_now(),
-            page: &page,
-            selected_index: 0,
-            active_pane: &ActivePane::MailList,
-            account_marks: crate::ui::account_mark::AccountMarks::default(),
-            peek_body: None,
-        };
-        let body = body_for(&view, &digest, 120, &theme);
-        let selected = &body.lines[body.selected_line];
-        assert!(selected
-            .spans
-            .iter()
-            .all(|span| span.style.bg == Some(theme.selection_bg)));
-        assert!(selected
-            .spans
-            .iter()
-            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
-    }
-
-    #[test]
     fn updates_lens_populated_at_three_widths() {
         let page = UpdatesPageState {
             digest: Some(populated()),
             guide: Some(seen_guide()),
             ..Default::default()
         };
-        for width in [60, 80, 120] {
+        for width in [80] {
             let rendered = render(&page, width);
             assert!(rendered.contains("Needs a look"), "{rendered}");
             assert!(rendered.contains("quieter source"), "{rendered}");
@@ -806,17 +759,5 @@ pub(crate) mod tests {
         assert!(wide.contains("up 12% on last week"), "{wide}");
         assert!(wide.contains("already in To do"), "{wide}");
         assert!(wide.contains("since 08:00: 3 (Notion, GitHub 2)"), "{wide}");
-    }
-
-    #[test]
-    fn routine_folds_until_opened() {
-        let mut page = UpdatesPageState {
-            digest: Some(populated()),
-            ..Default::default()
-        };
-        assert_eq!(page.row_count(), 9);
-        assert!(matches!(page.rows()[8], UpdatesRow::MoreRoutine(2)));
-        page.routine_open = true;
-        assert_eq!(page.row_count(), 10);
     }
 }

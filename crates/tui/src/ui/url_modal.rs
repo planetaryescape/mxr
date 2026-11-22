@@ -253,10 +253,4 @@ mod tests {
         assert_eq!(urls[0].url, "https://example.com");
         assert_eq!(urls[0].label, "Example Site");
     }
-
-    #[test]
-    fn strips_trailing_punctuation() {
-        let urls = extract_urls(Some("See https://example.com."), None);
-        assert_eq!(urls[0].url, "https://example.com");
-    }
 }

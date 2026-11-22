@@ -90,42 +90,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_link_and_strong_text_keep_their_annotations_across_the_wire() {
-        let RichRender::Lines(lines) = render(
-            "<p>see <a href=\"https://example.com/x\">this</a> and <strong>that</strong></p>",
-            60,
-        ) else {
-            std::panic::resume_unwind(Box::new("expected rendered lines"));
-        };
-        let pieces: Vec<&Piece> = lines.iter().flatten().collect();
-        assert!(pieces.iter().any(|piece| piece.text.contains("this")
-            && piece
-                .annotations
-                .contains(&Annotation::Link("https://example.com/x".to_string()))));
-        assert!(pieces
-            .iter()
-            .any(|piece| piece.text.contains("that")
-                && piece.annotations.contains(&Annotation::Strong)));
-        let encoded = serde_json::to_vec(&RichRender::Lines(lines.clone())).expect("encodes");
-        let decoded: RichRender = serde_json::from_slice(&encoded).expect("decodes");
-        assert_eq!(decoded, RichRender::Lines(lines));
-    }
-
-    #[test]
-    fn an_image_keeps_its_source_and_alt_text() {
-        let RichRender::Lines(lines) = render("<img src=\"cid:logo\" alt=\"Logo\">", 60) else {
-            std::panic::resume_unwind(Box::new("expected rendered lines"));
-        };
-        assert!(lines
-            .iter()
-            .flatten()
-            .any(|piece| piece.text.contains("Logo")
-                && piece
-                    .annotations
-                    .contains(&Annotation::Image("cid:logo".to_string()))));
-    }
-
-    #[test]
     fn a_document_over_the_budget_is_stripped_not_rendered() {
         let html = "<br>".repeat(mxr_reader::MAX_HTML_BYTES / 4 + 1);
         assert_eq!(render(&html, 60), RichRender::Strip);

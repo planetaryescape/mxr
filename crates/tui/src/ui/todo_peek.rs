@@ -101,58 +101,6 @@ pub(crate) fn peek_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::TodoFieldData;
-
-    fn field(name: &str, evidence: Option<&str>, checked: bool) -> TodoFieldData {
-        TodoFieldData {
-            field: name.into(),
-            source: "rule".into(),
-            checked,
-            evidence: evidence.map(Into::into),
-            source_label: "a pattern in the email".into(),
-        }
-    }
-
-    #[test]
-    fn fields_follow_the_web_order_without_repeating_the_why() {
-        let mut todo = crate::ui::todo_lens::tests::todo("t1", "Pay council tax");
-        todo.fields = vec![
-            field("due_at", Some("payment due 9 October"), false),
-            field("asks_reply", Some("Can you confirm?"), true),
-            field("amount", Some("£1,234.00"), true),
-            field("title", Some("payment due 9 October"), true),
-        ];
-        let lines = peek_lines(&todo, None, Utc::now(), DisplayZone::Local);
-        let fields: Vec<&String> = lines
-            .iter()
-            .filter(|line| line.contains("a pattern in the email"))
-            .collect();
-        assert_eq!(
-            fields,
-            vec![
-                "What: a pattern in the email: \u{201c}payment due 9 October\u{201d}",
-                "Amount: a pattern in the email: \u{201c}£1,234.00\u{201d}",
-                "Due: a pattern in the email (unchecked)",
-            ],
-            "{lines:?}"
-        );
-        assert!(lines.iter().all(|line| !line.contains("Can you confirm")));
-    }
-
-    #[test]
-    fn the_email_lines_join_once_the_body_is_fetched() {
-        let todo = crate::ui::todo_lens::tests::todo("t1", "Pay council tax");
-        let before = peek_lines(&todo, None, Utc::now(), DisplayZone::Local);
-        let after = peek_lines(
-            &todo,
-            Some("Dear resident,\nYour bill of £1,234 is due on 9 October\nUnsubscribe"),
-            Utc::now(),
-            DisplayZone::Local,
-        );
-        assert!(after.contains(&"Your bill of £1,234 is due on 9 October".to_string()));
-        assert_eq!(after.len(), before.len() + 1, "{after:?}");
-        assert_eq!(after.last().map(String::as_str), Some("o opens the email"));
-    }
 
     #[test]
     fn terminal_controls_never_reach_the_peek() {

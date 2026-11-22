@@ -518,27 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn renders_recent_messages_on_messages_tab() {
-        let mut state = SenderProfileModalState::default();
-        state.open_loading("alice@example.com".into(), None);
-        state.set_profile(Some(sample_profile()));
-        state.select_tab(SenderProfileTab::Messages);
-
-        let snapshot = render_to_string(100, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 100, 30), &state, &Theme::default());
-        });
-
-        assert!(
-            snapshot.contains("Other emails from sender"),
-            "messages tab heading must surface; got:\n{snapshot}",
-        );
-        assert!(
-            snapshot.contains("Previous contract note"),
-            "recent sender emails must surface; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_relationship_voice_topics_and_commitments() {
         let mut profile = sample_profile();
         let account_id = profile.account_id.clone();

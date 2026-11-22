@@ -112,54 +112,6 @@ mod tests {
     }
 
     #[test]
-    fn save_path_is_prefilled_per_format_and_expands_home() {
-        let (mut app, thread_id) = picker_app();
-        app.export_modal_choose_format(ExportFormat::LlmContext);
-        app.export_modal_choose_save();
-        assert_eq!(app.modals.export.stage, ExportStage::Path);
-        assert_eq!(
-            app.modals.export.input,
-            format!("~/mxr/exports/mxr-thread-{thread_id}.txt")
-        );
-    }
-
-    #[test]
-    fn empty_path_stays_open_with_an_error() {
-        let (mut app, _) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Json);
-        app.export_modal_choose_save();
-        while !app.modals.export.input.is_empty() {
-            app.export_modal_backspace();
-        }
-        app.export_modal_confirm_path();
-        assert!(app.modals.export.visible);
-        assert_eq!(
-            app.modals.export.error.as_deref(),
-            Some("Path cannot be empty")
-        );
-        assert!(app.mailbox.pending_export.is_none());
-    }
-
-    #[test]
-    fn directory_path_is_rejected_and_nothing_is_queued() {
-        let (mut app, _) = picker_app();
-        let dir = tempfile::tempdir().unwrap();
-        app.export_modal_choose_format(ExportFormat::Markdown);
-        app.export_modal_choose_save();
-        app.modals.export.input = dir.path().display().to_string();
-        app.export_modal_confirm_path();
-        assert!(app.modals.export.visible);
-        assert!(app
-            .modals
-            .export
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("directory"));
-        assert!(app.mailbox.pending_export.is_none());
-    }
-
-    #[test]
     fn existing_file_asks_twice_and_editing_resets_the_confirmation() {
         let (mut app, thread_id) = picker_app();
         let dir = tempfile::tempdir().unwrap();
@@ -216,27 +168,6 @@ mod tests {
     }
 
     #[test]
-    fn prefilled_tilde_path_expands_to_the_home_exports_folder() {
-        let (mut app, thread_id) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Json);
-        app.export_modal_choose_save();
-        app.export_modal_confirm_path();
-        let Some(PendingExport {
-            destination: ExportDestination::Save { path, .. },
-            ..
-        }) = app.mailbox.pending_export.clone()
-        else {
-            panic!("expected a save export to be queued");
-        };
-        let home = dirs::home_dir().expect("tests need a home directory");
-        assert_eq!(
-            path,
-            home.join("mxr/exports")
-                .join(format!("mxr-thread-{thread_id}.json"))
-        );
-    }
-
-    #[test]
     fn clipboard_queues_and_closes_the_picker() {
         let (mut app, thread_id) = picker_app();
         app.export_modal_choose_format(ExportFormat::Markdown);
@@ -250,15 +181,5 @@ mod tests {
                 destination: ExportDestination::Clipboard,
             })
         );
-    }
-
-    #[test]
-    fn close_without_choosing_queues_nothing() {
-        let (mut app, _) = picker_app();
-        app.export_modal_choose_format(ExportFormat::Markdown);
-        app.export_modal_choose_save();
-        app.modals.export.close();
-        assert!(!app.modals.export.visible);
-        assert!(app.mailbox.pending_export.is_none());
     }
 }

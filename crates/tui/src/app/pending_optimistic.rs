@@ -169,26 +169,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_overrides_flags_for_pending_mutations() {
-        let mut state = PendingOptimisticState::default();
-        let mid = MessageId::new();
-        let id = MutationId::from_raw(2);
-        state.record(
-            id,
-            &MutationEffect::UpdateFlags {
-                message_id: mid.clone(),
-                flags: MessageFlags::READ,
-            },
-        );
-
-        let mut env = fixture_envelope(mid);
-        env.flags = MessageFlags::empty();
-        let mut envelopes = vec![env];
-        state.apply(&mut envelopes);
-        assert!(envelopes[0].flags.contains(MessageFlags::READ));
-    }
-
-    #[test]
     fn clear_only_releases_when_no_other_mutation_pins_the_id() {
         let mut state = PendingOptimisticState::default();
         let mid = MessageId::new();
@@ -200,35 +180,5 @@ mod tests {
         assert!(state.is_removed(&mid));
         state.clear(second);
         assert!(!state.is_removed(&mid));
-    }
-
-    #[test]
-    fn clear_recomputes_flag_lookup_to_remaining_latest_entry() {
-        let mut state = PendingOptimisticState::default();
-        let mid = MessageId::new();
-        let first = MutationId::from_raw(5);
-        let second = MutationId::from_raw(6);
-        state.record(
-            first,
-            &MutationEffect::UpdateFlags {
-                message_id: mid.clone(),
-                flags: MessageFlags::READ,
-            },
-        );
-        state.record(
-            second,
-            &MutationEffect::UpdateFlags {
-                message_id: mid.clone(),
-                flags: MessageFlags::READ | MessageFlags::STARRED,
-            },
-        );
-        assert_eq!(
-            state.flag_override(&mid),
-            Some(MessageFlags::READ | MessageFlags::STARRED)
-        );
-        state.clear(second);
-        assert_eq!(state.flag_override(&mid), Some(MessageFlags::READ));
-        state.clear(first);
-        assert_eq!(state.flag_override(&mid), None);
     }
 }

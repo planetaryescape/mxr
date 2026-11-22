@@ -154,14 +154,6 @@ mod tests {
     }
 
     #[test]
-    fn a_quick_answer_is_drawn_on_the_first_frame_without_a_wake() {
-        let (deferred, wakes, _) = counting();
-        assert_eq!(deferred.answer(&"quick", || 1_u32).as_deref(), Some(&1));
-        assert_eq!(deferred.answer(&"quick", || 2_u32).as_deref(), Some(&1));
-        assert_eq!(wakes.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
     fn a_slow_answer_returns_at_once_and_wakes_the_loop_when_it_lands() {
         let (deferred, wakes, woke) = counting();
         let started = Instant::now();

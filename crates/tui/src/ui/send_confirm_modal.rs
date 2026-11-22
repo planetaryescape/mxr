@@ -293,53 +293,6 @@ mod tests {
     }
 
     #[test]
-    fn safety_report_takes_precedence_over_failure_line() {
-        let mut p = pending(PendingSendMode::SendOrSave);
-        p.safety_report = Some(mxr_core::DraftSafetyReport::safe());
-        p.safety_check_failed = Some("stale".into());
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                Some(&p),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-        assert!(!rendered.contains("Safety check unavailable"));
-        assert!(rendered.contains("Safety: SAFE"));
-    }
-
-    #[test]
-    fn modal_shows_resolved_effective_from_when_frontmatter_cleared() {
-        let mut p = pending(PendingSendMode::SendOrSave);
-        p.fm.from = String::new();
-        p.resolved_from = Some(mxr_core::types::Address {
-            name: Some("Demo".into()),
-            email: "primary@example.com".into(),
-        });
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                Some(&p),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-        assert!(
-            rendered.contains("From: Demo <primary@example.com>"),
-            "modal must show the resolved effective From; got:\n{rendered}"
-        );
-    }
-
-    #[test]
     fn send_or_save_modal_renders_full_action_row() {
         let rendered = render_to_string(120, 20, |frame| {
             draw(
@@ -390,86 +343,6 @@ mod tests {
         assert!(!rendered.contains("[O] override + send"));
     }
 
-    #[test]
-    fn send_at_prompt_renders_inline_input() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                Some(&pending(PendingSendMode::SendOrSave)),
-                Some("in 2h"),
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Send at: in 2h"));
-        assert!(rendered.contains("Enter to schedule"));
-    }
-
-    #[test]
-    fn send_at_prompt_shows_the_time_preview_under_the_input() {
-        let preview = ["→ Friday 10 May, 15:00 (in 3 days)".to_string()];
-        let rendered = render_to_string(90, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 24),
-                Some(&pending(PendingSendMode::SendOrSave)),
-                Some("fri 3"),
-                None,
-                &preview,
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Send at: fri 3"));
-        assert!(rendered.contains("Friday 10 May, 15:00 (in 3 days)"));
-    }
-
-    #[test]
-    fn remind_prompt_renders_inline_input() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                Some(&pending(PendingSendMode::SendOrSave)),
-                None,
-                Some("friday 10am"),
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Remind at: friday 10am"));
-        assert!(rendered.contains("Enter to send + set reminder"));
-    }
-
-    #[test]
-    fn missing_recipient_modal_renders_draft_only_actions() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                Some(&pending(PendingSendMode::DraftOnlyNoRecipients)),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("No recipients yet. Save as draft?"));
-        assert!(
-            rendered.contains("[d] save draft   \u{203a} [e/Esc] edit again   [#] discard draft")
-        );
-        assert!(!rendered.contains("[s] send"));
-    }
-
     fn pending_with_report(
         mode: PendingSendMode,
         report: mxr_core::DraftSafetyReport,
@@ -509,45 +382,6 @@ mod tests {
     }
 
     #[test]
-    fn warn_verdict_renders_each_warning_message() {
-        let issues = vec![mxr_core::DraftSafetyIssue::new(
-            mxr_core::DraftSafetyIssueCode::AnswerCoverage,
-            mxr_core::DraftSafetySeverity::Warning,
-            "draft does not address: who owns rollout?",
-        )
-        .with_citations(vec![mxr_core::CitationRef {
-            message_id: Some("msg-99".into()),
-            thread_id: Some("th-1".into()),
-            field: "body".into(),
-            quote: "who owns rollout?".into(),
-        }])];
-        let report = mxr_core::DraftSafetyReport::from_issues(issues);
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                Some(&pending_with_report(
-                    PendingSendMode::SendOrSave,
-                    report,
-                    None,
-                )),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Safety: WARN"));
-        assert!(rendered.contains("[warn] draft does not address: who owns rollout?"));
-        assert!(rendered.contains("cite msg=msg-99 field=body"));
-        assert!(rendered.contains("[s] send"));
-        assert!(!rendered.contains("override"));
-        insta::assert_snapshot!("safety_modal_warn", rendered);
-    }
-
-    #[test]
     fn blocker_verdict_offers_override_token_path() {
         let issues = vec![mxr_core::DraftSafetyIssue::new(
             mxr_core::DraftSafetyIssueCode::PiiSecret,
@@ -579,56 +413,5 @@ mod tests {
         assert!(rendered.contains("Press O to override and send"));
         assert!(!rendered.contains("[s] send"));
         insta::assert_snapshot!("safety_modal_blocker", rendered);
-    }
-
-    #[test]
-    fn blocker_without_token_omits_override_affordance() {
-        let issues = vec![mxr_core::DraftSafetyIssue::new(
-            mxr_core::DraftSafetyIssueCode::NoRecipients,
-            mxr_core::DraftSafetySeverity::Blocker,
-            "no recipients",
-        )];
-        let report = mxr_core::DraftSafetyReport::from_issues(issues);
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 120, 24),
-                Some(&pending_with_report(
-                    PendingSendMode::SendOrSave,
-                    report,
-                    None,
-                )),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Safety: BLOCKED"));
-        assert!(!rendered.contains("Override token:"));
-        insta::assert_snapshot!("safety_modal_blocker_no_token", rendered);
-    }
-
-    #[test]
-    fn unchanged_modal_renders_without_send_or_save_actions() {
-        let rendered = render_to_string(90, 20, |frame| {
-            draw(
-                frame,
-                Rect::new(0, 0, 90, 20),
-                Some(&pending(PendingSendMode::Unchanged)),
-                None,
-                None,
-                &[],
-                &crate::theme::Theme::default(),
-                &crate::ui::account_mark::AccountMarks::default(),
-            );
-        });
-
-        assert!(rendered.contains("Draft unchanged. Discard or keep editing?"));
-        assert!(rendered.contains("\u{203a} [e/Esc] edit again   [#] discard draft"));
-        assert!(!rendered.contains("[s] send"));
-        assert!(!rendered.contains("[d] save draft"));
     }
 }

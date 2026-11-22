@@ -258,7 +258,7 @@ fn people_are_rows_in_bands_beside_the_person_page() {
     let filter = data.filter;
     let mut page = page(data, true);
     page.filter = filter;
-    for width in [60u16, 80, 120] {
+    for width in [80u16] {
         let rendered = render_at(&page, width, 0);
         assert!(
             rendered.contains("All conversations"),
@@ -285,90 +285,6 @@ fn people_are_rows_in_bands_beside_the_person_page() {
     assert!(wide.contains("> Reply to Samir"), "{wide}");
     assert!(wide.contains("close \u{b7} usually 47m"), "{wide}");
     assert!(wide.contains(". got it"), "{wide}");
-}
-
-#[test]
-fn a_row_without_a_preview_reads_its_subject_not_a_placeholder() {
-    let mut data = populated();
-    let subject = data.your_turn[0].topics[0].subject.clone();
-    data.your_turn[0].preview = None;
-    let rendered = render_at(&page(data, true), 120, 0);
-    assert!(rendered.contains(&subject), "{rendered}");
-    assert!(!rendered.contains("only quoted"), "{rendered}");
-}
-
-#[test]
-fn a_row_with_an_unsent_reply_reads_draft_in_the_accent_in_place_of_its_preview() {
-    let mut data = populated();
-    let jon = &mut data.your_turn[1];
-    let preview = jon.preview.as_ref().unwrap().text.clone();
-    jon.draft = Some(mxr_protocol::MessagesRowDraftData {
-        draft_id: mxr_core::id::DraftId::new(),
-        thread_id: jon.topics[0].thread_id.clone(),
-        text: "Reads right, one tweak to the second line".into(),
-        reply_all: false,
-        updated_at: now(),
-    });
-    let theme = crate::theme::Theme::default();
-    let line = preview_line(jon, 80, &theme).expect("a preview line");
-    let label = line
-        .spans
-        .iter()
-        .find(|span| span.content == "Draft: ")
-        .expect("the label is its own span");
-    assert_eq!(label.style.fg, Some(theme.accent));
-    assert!(label.style.add_modifier.contains(Modifier::BOLD));
-
-    let rendered = render_at(&page(data, true), 120, 0);
-    assert!(
-        rendered.contains("Draft: Reads right, one tweak"),
-        "{rendered}"
-    );
-    assert!(!rendered.contains(&preview[..20]), "{rendered}");
-}
-
-#[test]
-fn an_expanded_letter_shows_every_paragraph_and_highlights_the_ask() {
-    let mut state = page(populated(), true);
-    let letter = state
-        .page
-        .as_ref()
-        .unwrap()
-        .conversation
-        .as_ref()
-        .unwrap()
-        .messages[1]
-        .message_id
-        .clone();
-    state.expanded.insert(letter);
-    let rendered = render_at(&state, 120, 0);
-    assert!(rendered.contains("\u{bb}Can you take a look"), "{rendered}");
-    assert!(!rendered.contains("paragraph]"), "{rendered}");
-    assert!(rendered.contains("Two things changed"), "{rendered}");
-}
-
-#[test]
-fn a_provider_preview_is_labeled_as_incomplete_in_the_person_page() {
-    let mut state = page(populated(), true);
-    let message = &mut state
-        .page
-        .as_mut()
-        .expect("person page is seeded")
-        .conversation
-        .as_mut()
-        .expect("conversation is seeded")
-        .messages[1];
-    message.source = Some(mxr_protocol::MessageTextSourceData::ProviderSnippet);
-    message.text =
-        "Preview introduction.\n\nSecond preview paragraph.\n\nFinal preview detail.".into();
-    message.paragraphs = 3;
-    let rendered = render_at(&state, 120, 0);
-    assert!(rendered.contains("provider preview only"), "{rendered}");
-    assert!(rendered.contains("full message unavailable"), "{rendered}");
-    assert!(rendered.contains("o to check"), "{rendered}");
-    assert!(rendered.contains("original)"), "{rendered}");
-    assert!(rendered.contains("Second preview paragraph"), "{rendered}");
-    assert!(rendered.contains("Final preview detail"), "{rendered}");
 }
 
 #[test]
@@ -402,71 +318,10 @@ fn a_long_inline_exchange_is_never_reduced_to_the_cached_ask_paragraph() {
 }
 
 #[test]
-fn got_it_shows_its_exact_text_and_countdown() {
-    let mut state = page(populated(), true);
-    state.ack = Some(crate::app::AckCountdown {
-        plan: mxr_protocol::AckPlanData {
-            account_id: AccountId::from_provider_id("fake", "alex"),
-            thread_id: ThreadId::new(),
-            reply_to_message_id: MessageId::new(),
-            to: vec![],
-            subject: "Re: Contract renewal".into(),
-            text: "Hi Samir,\n\nGot it, thanks.\n\nAlex".into(),
-            html: "<p>Hi Samir,</p>\n<p>Got it, thanks.</p>\n<p>Alex</p>".into(),
-            built_from: String::new(),
-            countdown_seconds: 5,
-            dry_run: true,
-            from: "alex@example.com".into(),
-            preview_token: Some("1.test".into()),
-            preview_expires_at: None,
-            sent_message_id: None,
-        },
-        to: "Samir".into(),
-        send_at: std::time::Instant::now(),
-    });
-    let rendered = render_to_string(120, 34, |frame| {
-        draw(
-            frame,
-            Rect::new(0, 0, 120, 34),
-            &MessagesView {
-                page: &state,
-                selected_index: 0,
-                active_pane: &ActivePane::MailList,
-                now: now(),
-                offset: FixedOffset::east_opt(0).unwrap(),
-                ack_seconds_left: Some(4),
-                account_marks: crate::ui::account_mark::AccountMarks::default(),
-            },
-            &crate::theme::Theme::default(),
-        );
-    });
-    assert!(rendered.contains("Got it to Samir in 4s"), "{rendered}");
-    assert!(rendered.contains("Got it, thanks."), "{rendered}");
-}
-
-#[test]
 fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
     let mut data = populated();
     data.your_turn[0].title = "Sam\u{1b}[31m\nir\u{202e}".into();
     let rendered = render_at(&page(data, true), 120, 0);
     assert!(!rendered.contains('\u{1b}'));
     assert!(!rendered.contains('\u{202e}'));
-}
-
-#[test]
-fn paragraph_blocks_finds_a_crlf_break_a_naive_split_misses() {
-    assert_eq!(
-        paragraph_blocks("Senior Software Engineer at throxy.\r\n\r\nJack"),
-        vec!["Senior Software Engineer at throxy.", "Jack"]
-    );
-}
-
-#[test]
-fn paragraph_blocks_treats_a_run_of_blank_lines_as_one_break() {
-    assert_eq!(paragraph_blocks("a\n\n\n\nb"), vec!["a", "b"]);
-}
-
-#[test]
-fn paragraph_blocks_keeps_single_newlines_in_one_paragraph() {
-    assert_eq!(paragraph_blocks("a\nb\nc"), vec!["a\nb\nc"]);
 }

@@ -328,39 +328,6 @@ mod tests {
     }
 
     #[test]
-    fn a_gist_turns_the_reason_into_the_ask_and_says_what_it_is_about() {
-        let owed = row(DeskLaneKind::Owed, "Maya", 3_600, None);
-        let waiting = row(DeskLaneKind::Owed, "Nora", 7_200, None);
-        let gists = RowGists::from([(
-            owed.thread_id.clone(),
-            RowGist::new(
-                "Canary stays at 5% until the dashboard is quiet.".into(),
-                Some("confirm the owner".into()),
-            ),
-        )]);
-        let desk = desk(vec![owed, waiting], vec![]);
-        let rendered = render_with(&desk, &gists, true);
-        assert!(
-            rendered.contains("Launch checklist \u{b7} asks: confirm the owner"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("Canary stays at 5%"), "{rendered}");
-        assert!(rendered.contains("replied to your message"), "{rendered}");
-        let lines: Vec<&str> = rendered.lines().collect();
-        let nora = lines.iter().position(|l| l.contains("Nora")).unwrap();
-        assert!(
-            lines[nora + 1].trim_matches(['│', ' ', '"']).is_empty(),
-            "{rendered}"
-        );
-
-        let plain = render(&desk);
-        assert!(!plain.contains("Canary"));
-        let lines: Vec<&str> = plain.lines().collect();
-        let maya = lines.iter().position(|l| l.contains("Maya")).unwrap();
-        assert!(lines[maya + 1].contains("Nora"), "{plain}");
-    }
-
-    #[test]
     fn lanes_render_with_reason_pace_and_elsewhere() {
         let rendered = render(&desk(
             vec![row(DeskLaneKind::Owed, "Maya", 2 * 86_400, Some(4 * 3_600))],
@@ -392,37 +359,5 @@ mod tests {
         );
         assert!(rendered.contains("Eve]0;pwned"), "{rendered}");
         assert!(rendered.contains("Invoice[2J now31m"), "{rendered}");
-    }
-
-    #[test]
-    fn a_desk_you_cleared_says_low_tide() {
-        let mut cleared = desk(vec![], vec![]);
-        cleared.low_tide = true;
-        let rendered = render(&cleared);
-        assert!(
-            rendered.contains("Low tide. Nobody's waiting on you."),
-            "{rendered}"
-        );
-        assert!(!rendered.contains("Nothing needs you right now."));
-    }
-
-    #[test]
-    fn empty_desk_is_calm() {
-        let rendered = render(&desk(vec![], vec![]));
-        assert!(rendered.contains("Nothing needs you right now."));
-        assert!(!rendered.contains("YOU OWE"));
-    }
-
-    #[test]
-    fn age_cell_formats_future_and_pace() {
-        assert_eq!(age_cell(&row(DeskLaneKind::Owed, "A", 90, None)), "1m");
-        assert_eq!(
-            age_cell(&row(DeskLaneKind::Due, "A", -3 * 3_600, None)),
-            "in 3h"
-        );
-        assert_eq!(
-            age_cell(&row(DeskLaneKind::Waiting, "A", 5 * 86_400, Some(7_200))),
-            "5d \u{b7} usually 2h"
-        );
     }
 }

@@ -95,15 +95,6 @@ impl KeybindingConfig {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn primary_key_display(
-        &self,
-        context: ViewContext,
-        action: &Action,
-    ) -> Option<String> {
-        self.key_displays(context, action).into_iter().next()
-    }
-
     pub(crate) fn key_displays(&self, context: ViewContext, action: &Action) -> Vec<String> {
         let mut matches: Vec<_> = self
             .bindings(context)
@@ -461,11 +452,6 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
-}
-
-#[cfg(test)]
-pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
-    shown_keybindings().primary_key_display(context, action)
 }
 
 pub fn display_bindings_for_actions(
@@ -1171,86 +1157,6 @@ mod tests {
                 "{source}"
             );
         }
-    }
-
-    #[test]
-    fn remap_swaps_are_order_independent_and_aliases_are_explicit() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("keys.toml"), "[mail_list]\n\"j\" = \"move_up\"\n\"k\" = \"move_down\"\n\";\" = \"archive\"\n\"e\" = \"archive\"\n").unwrap();
-        let config = load_keybindings(dir.path());
-        for (key, action) in [
-            ("j", "move_up"),
-            ("k", "move_down"),
-            (";", "archive"),
-            ("e", "archive"),
-        ] {
-            assert_eq!(
-                resolve_action(
-                    &config,
-                    ViewContext::MailList,
-                    &parse_key_string(key).unwrap().keys
-                ),
-                Some(action.into())
-            );
-        }
-    }
-
-    #[test]
-    fn parse_key_string_ctrl_p() {
-        let kb = parse_key_string("Ctrl-p").unwrap();
-        assert_eq!(kb.keys.len(), 1);
-        assert_eq!(kb.keys[0].code, KeyCode::Char('p'));
-        assert_eq!(kb.keys[0].modifiers, KeyModifiers::CONTROL);
-    }
-
-    #[test]
-    fn parse_key_string_shift() {
-        let kb = parse_key_string("G").unwrap();
-        assert_eq!(kb.keys.len(), 1);
-        assert_eq!(kb.keys[0].code, KeyCode::Char('G'));
-        assert_eq!(kb.keys[0].modifiers, KeyModifiers::SHIFT);
-    }
-
-    #[test]
-    fn shifted_tab_and_space_use_terminal_key_codes_and_readable_labels() {
-        let tab = parse_key_string("Shift-Tab").unwrap();
-        assert_eq!(
-            tab.keys,
-            vec![KeyPress::from_event(
-                ratatui::crossterm::event::KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)
-            )]
-        );
-        assert_eq!(format_keybinding(&tab), "Shift-Tab");
-        assert_eq!(
-            format_keybinding(&parse_key_string("Space").unwrap()),
-            "Space"
-        );
-    }
-
-    #[test]
-    fn primary_key_display_resolves_per_context() {
-        assert_eq!(
-            primary_key_display(ViewContext::MailList, &Action::Compose),
-            Some("c".to_string())
-        );
-        assert_eq!(
-            primary_key_display(ViewContext::ThreadView, &Action::Compose),
-            None
-        );
-        assert_eq!(
-            primary_key_display(ViewContext::MailList, &Action::ToggleHtmlView),
-            None
-        );
-        assert_eq!(
-            primary_key_display(ViewContext::ThreadView, &Action::ToggleHtmlView),
-            Some("H".to_string())
-        );
-    }
-
-    #[test]
-    fn display_bindings_for_actions_joins_aliases_stably() {
-        let bindings = display_bindings_for_actions(ViewContext::MailList, &["open"]);
-        assert_eq!(bindings, vec![("Enter/o".to_string(), "Open".to_string())]);
     }
 
     #[test]

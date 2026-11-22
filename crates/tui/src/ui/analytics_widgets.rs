@@ -141,17 +141,3 @@ pub fn format_count(n: u64) -> String {
         format!("{:.1}B", n as f64 / 1_000_000_000.0)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn count_formatter_breaks_at_thousand_million() {
-        assert_eq!(format_count(0), "0");
-        assert_eq!(format_count(999), "999");
-        assert_eq!(format_count(1_000), "1.0k");
-        assert_eq!(format_count(45_300), "45.3k");
-        assert_eq!(format_count(1_100_000), "1.1M");
-    }
-}

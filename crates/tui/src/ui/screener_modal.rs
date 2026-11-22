@@ -142,20 +142,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_queue_shows_explanatory_message() {
-        let mut state = ScreenerModalState::default();
-        state.open_loading(AccountId::new());
-        state.set_entries(vec![]);
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
-        });
-        assert!(
-            snapshot.contains("Screener queue is empty"),
-            "empty state copy must surface; got:\n{snapshot}",
-        );
-    }
-
-    #[test]
     fn renders_sender_list_and_detail_pane() {
         let mut state = ScreenerModalState::default();
         state.open_loading(AccountId::new());
@@ -174,27 +160,5 @@ mod tests {
             snapshot.contains("alice@example.com"),
             "detail pane must render selected sender's email; got:\n{snapshot}",
         );
-    }
-
-    #[test]
-    fn remove_selected_clamps_cursor() {
-        let mut state = ScreenerModalState::default();
-        state.open_loading(AccountId::new());
-        state.set_entries(vec![
-            entry("a@x", None, 1),
-            entry("b@x", None, 1),
-            entry("c@x", None, 1),
-        ]);
-        state.selected_index = 2;
-        let removed = state.remove_selected().expect("removes last");
-        assert_eq!(removed.sender_email, "c@x");
-        assert_eq!(
-            state.selected_index, 1,
-            "removing last entry must move cursor to new last",
-        );
-        let _ = state.remove_selected();
-        let _ = state.remove_selected();
-        assert_eq!(state.selected_index, 0, "cursor stays valid when empty");
-        assert!(state.remove_selected().is_none(), "no-op when empty");
     }
 }

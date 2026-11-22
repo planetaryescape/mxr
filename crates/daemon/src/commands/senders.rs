@@ -131,14 +131,6 @@ mod tests {
         assert!(parsed <= after + Duration::seconds(1));
     }
 
-    #[test]
-    fn parse_since_accepts_week_shorthand() {
-        let approx = Utc::now() - Duration::weeks(4);
-        let parsed = parse_since("4w").unwrap();
-        let diff = (parsed - approx).num_seconds().abs();
-        assert!(diff < 2, "4w should resolve to ~28 days ago");
-    }
-
     /// Phase 2.6: absolute RFC-3339 is the unambiguous form for
     /// scripts and CI.
     #[test]

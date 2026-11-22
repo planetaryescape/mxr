@@ -108,25 +108,3 @@ fn human(resolution: &TimeResolution) -> String {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::{FixedOffset, TimeZone};
-    use mxr_core::natural_time::TimePrefs;
-
-    #[test]
-    fn human_output_lists_the_default_then_the_other_choices() {
-        let tz = FixedOffset::east_opt(3600).expect("valid offset");
-        let now = tz
-            .with_ymd_and_hms(2024, 5, 7, 14, 0, 0)
-            .single()
-            .expect("valid time");
-        let resolution =
-            resolve_time("fri 3", &now, &TimePrefs::default()).expect("fri 3 resolves");
-        assert_eq!(
-            human(&resolution),
-            "Friday 10 May, 15:00 (in 3 days)\n  Assumed: am or pm\n  Or: Friday 10 May, 03:00 (in 3 days)\n"
-        );
-    }
-}

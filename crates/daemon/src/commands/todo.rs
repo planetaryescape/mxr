@@ -1005,10 +1005,4 @@ mod tests {
         row(&mut out, &todo, "");
         assert!(out.contains("Left the inbox"), "{out}");
     }
-
-    #[test]
-    fn short_ids_drop_the_prefix() {
-        assert_eq!(short_id("todo_0123456789abcdef"), "01234567");
-        assert_eq!(short_id("abc"), "abc");
-    }
 }

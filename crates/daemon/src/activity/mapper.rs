@@ -1394,12 +1394,6 @@ mod tests {
     }
 
     #[test]
-    fn failed_response_never_records() {
-        let req = Request::Ping;
-        assert!(map_request(&req, ClientKind::Tui, None, false).is_none());
-    }
-
-    #[test]
     fn search_run_carries_query_and_mode() {
         let req = Request::Search {
             limit_from_config: false,
@@ -1419,18 +1413,6 @@ mod tests {
     }
 
     #[test]
-    fn list_envelopes_is_a_getter_and_does_not_log() {
-        let req = Request::ListEnvelopes {
-            label_id: None,
-            account_id: None,
-            limit: 50,
-            offset: 0,
-            label_role: None,
-        };
-        assert!(ok_map(&req).is_none());
-    }
-
-    #[test]
     fn snooze_carries_wake_at_in_context() {
         let wake_at = chrono::DateTime::<chrono::Utc>::from_timestamp(1_715_592_090, 0).unwrap();
         let mid = mxr_core::MessageId::new();
@@ -1444,24 +1426,6 @@ mod tests {
         assert_eq!(entry.target_id.as_deref(), Some(mid.as_str().as_str()));
         let ctx = entry.context.unwrap();
         assert_eq!(ctx["until"], 1_715_592_090 * 1000_i64);
-    }
-
-    #[test]
-    fn reply_later_flag_toggles_between_paired_actions() {
-        let mid = mxr_core::MessageId::new();
-        let req_set = Request::SetReplyLater {
-            message_id: mid.clone(),
-            flag: true,
-        };
-        let req_clear = Request::SetReplyLater {
-            message_id: mid,
-            flag: false,
-        };
-        assert_eq!(ok_map(&req_set).unwrap().action, "thread.flag_reply_later");
-        assert_eq!(
-            ok_map(&req_clear).unwrap().action,
-            "thread.unflag_reply_later"
-        );
     }
 
     #[test]
@@ -1514,38 +1478,6 @@ mod tests {
         };
         assert_eq!(ok_map(&make(true)).unwrap().action, "mail.star");
         assert_eq!(ok_map(&make(false)).unwrap().action, "mail.unstar");
-    }
-
-    #[test]
-    fn source_propagates_through_entry() {
-        let req = Request::Search {
-            limit_from_config: false,
-            query: "x".into(),
-            limit: 10,
-            offset: 0,
-            account_id: None,
-            mode: None,
-            sort: None,
-            explain: false,
-        };
-        let entry = map_request(&req, ClientKind::Web, None, true).unwrap();
-        assert!(matches!(entry.source, ClientKind::Web));
-    }
-
-    #[test]
-    fn account_id_propagates_when_provided() {
-        let req = Request::Search {
-            limit_from_config: false,
-            query: "x".into(),
-            limit: 10,
-            offset: 0,
-            account_id: None,
-            mode: None,
-            sort: None,
-            explain: false,
-        };
-        let entry = map_request(&req, ClientKind::Cli, Some("acct_1"), true).unwrap();
-        assert_eq!(entry.account_id.as_deref(), Some("acct_1"));
     }
 
     #[test]

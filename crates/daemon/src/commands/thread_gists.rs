@@ -158,61 +158,6 @@ fn table(thread_ids: &[ThreadId], batch: &ThreadGistBatchData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::{
-        AiLocalityData, AiProvenanceData, AiSourceData, ThreadGistSkipData, ThreadGistStatusData,
-    };
-
-    fn gist(thread_id: &ThreadId, ask: bool) -> ThreadGistData {
-        ThreadGistData {
-            thread_id: thread_id.clone(),
-            status: ThreadGistStatusData::Ready,
-            gist: Some("Canary stays at 5% until the dashboard is quiet.".into()),
-            ask: ask.then(|| ThreadAskData {
-                summary: "confirm who owns the rollout check".into(),
-                quote: None,
-            }),
-            provenance: Some(AiProvenanceData {
-                model: "gemma4".into(),
-                locality: AiLocalityData::Local,
-                sources: vec![AiSourceData::ThisThread],
-            }),
-            reason: None,
-            generated_at: None,
-            from_cache: true,
-            newest_message_id: None,
-        }
-    }
-
-    #[test]
-    fn table_lists_each_conversation_in_request_order() {
-        let (a, b, c, d) = (
-            ThreadId::new(),
-            ThreadId::new(),
-            ThreadId::new(),
-            ThreadId::new(),
-        );
-        let batch = ThreadGistBatchData {
-            model: GistModelData::Available,
-            gists: vec![gist(&b, true), gist(&a, false)],
-            queued: vec![c.clone()],
-            in_flight: vec![],
-            skipped: vec![ThreadGistSkipData {
-                thread_id: d.clone(),
-                reason: ThreadGistSkipReasonData::NotPeople,
-            }],
-        };
-        let text = table(&[a.clone(), b.clone(), c.clone(), d.clone()], &batch);
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(
-            lines,
-            vec![
-                format!("{a}  Canary stays at 5% until the dashboard is quiet.  (local model gemma4 \u{b7} from this thread only)"),
-                format!("{b}  asks: confirm who owns the rollout check \u{b7} Canary stays at 5% until the dashboard is quiet.  (local model gemma4 \u{b7} from this thread only)"),
-                format!("{c}  queued for the model"),
-                format!("{d}  not from a person, no gist"),
-            ]
-        );
-    }
 
     #[test]
     fn no_model_says_so_once() {

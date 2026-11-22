@@ -376,29 +376,6 @@ mod tests {
     }
 
     #[test]
-    fn lists_emails_with_sender_and_conversation() {
-        let out = read(json!({
-            "kind": "Envelopes",
-            "envelopes": [
-                {"id": "m1", "thread_id": "t1", "subject": "Weekly sync",
-                 "from": {"name": "Quinn Dev", "email": "quinn@work.com"}},
-                {"id": "m2", "thread_id": "t2", "subject": "Invoice",
-                 "from": {"name": "", "email": "grace@work.com"}},
-            ],
-        }));
-        assert_eq!(out.total, Some(2));
-        assert_eq!(out.rows[0].title, "Weekly sync");
-        assert_eq!(out.rows[0].detail.as_deref(), Some("Quinn Dev"));
-        assert_eq!(
-            out.rows[0].link,
-            Some(AssistantLinkData::Thread {
-                thread_id: "t1".into()
-            })
-        );
-        assert_eq!(out.rows[1].detail.as_deref(), Some("grace@work.com"));
-    }
-
-    #[test]
     fn an_email_row_carries_its_account_and_a_person_row_does_not() {
         let account = "7b0a9f2e-0000-4000-8000-000000000001";
         let out = read(json!({

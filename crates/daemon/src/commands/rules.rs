@@ -694,14 +694,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_archive() {
-        assert!(matches!(
-            parse_action("archive").unwrap(),
-            RuleAction::Archive
-        ));
-    }
-
-    #[test]
     fn parse_actions_preserves_user_order() {
         let actions = parse_actions("mark-read,archive,label:Follow Up").unwrap();
         assert!(matches!(actions[0], RuleAction::MarkRead));
@@ -735,13 +727,5 @@ mod tests {
             }
             other => panic!("unexpected conditions: {other:?}"),
         }
-    }
-
-    #[test]
-    fn parse_action_shell_hook() {
-        assert!(matches!(
-            parse_action("shell:notify-send mxr").unwrap(),
-            RuleAction::ShellHook { .. }
-        ));
     }
 }

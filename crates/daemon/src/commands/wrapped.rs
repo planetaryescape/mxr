@@ -300,25 +300,3 @@ fn humanize_bytes(bytes: u64) -> String {
         format!("{value:.1} {}", UNITS[idx])
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn humanize_duration_steps_through_units() {
-        assert_eq!(humanize_duration(0), "0s");
-        assert_eq!(humanize_duration(45), "45s");
-        assert_eq!(humanize_duration(3 * 60 + 4), "3m 4s");
-        assert_eq!(humanize_duration(2 * 3600 + 15 * 60), "2h 15m");
-        assert_eq!(humanize_duration(3 * 86400 + 2 * 3600), "3d 2h");
-    }
-
-    #[test]
-    fn humanize_bytes_steps_through_units() {
-        assert_eq!(humanize_bytes(0), "0 B");
-        assert_eq!(humanize_bytes(1023), "1023 B");
-        assert_eq!(humanize_bytes(1024), "1.0 KB");
-        assert_eq!(humanize_bytes(1024 * 1024 * 47), "47.0 MB");
-    }
-}

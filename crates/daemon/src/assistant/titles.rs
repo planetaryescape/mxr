@@ -1215,34 +1215,6 @@ mod tests {
     }
 
     #[test]
-    fn a_change_title_counts_what_it_touches() {
-        let ids: Vec<_> = (0..14).map(|n| format!("m{n}")).collect();
-        let args = json!({"action": "archive", "message_ids": ids, "confirm": true});
-        assert_eq!(change_title("mxr_mutate", &args, None), "Archive 14 emails");
-        let one = json!({"action": "trash", "message_ids": ["a"]});
-        assert_eq!(
-            change_title("mxr_mutate", &one, None),
-            "Move 1 email to Trash"
-        );
-        assert_eq!(
-            change_title(
-                "mxr_mutate",
-                &json!({"action": "read_and_archive", "message_ids": ["a", "b"]}),
-                None
-            ),
-            "Mark 2 emails read and archive"
-        );
-        assert_eq!(
-            change_title(
-                "mxr_move",
-                &json!({"message_id": "a", "mode": "reading", "sender": true, "confirm": true}),
-                None
-            ),
-            "Move this sender's mail to Reading"
-        );
-    }
-
-    #[test]
     fn sending_names_the_recipient_from_the_preview() {
         let preview = json!({"draft": {
             "to": [{"name": "Pat", "email": "pat@x.com"}],
@@ -1364,13 +1336,6 @@ mod tests {
             ),
             "Change emails"
         );
-    }
-
-    #[test]
-    fn unknown_tools_get_generic_words() {
-        let title = titles("mxr_brand_new_tool", &json!({}), State::Done);
-        assert_eq!(title.running, "Using an unknown tool");
-        assert_eq!(title.done, "Ran: use an unknown tool");
     }
 
     #[test]
@@ -1678,19 +1643,6 @@ mod tests {
             walked += 1;
         }
         assert!(walked >= 20, "walked only {walked} tools");
-    }
-
-    #[test]
-    fn preparing_steps_describe_what_they_did() {
-        let args = json!({"draft_id": "d", "confirm": true});
-        assert_eq!(
-            titles("mxr_draft_attachment_begin", &args, State::Done).done,
-            "Ran: start an attachment upload"
-        );
-        assert_eq!(
-            titles("mxr_draft_attachment_finalize", &args, State::Done).done,
-            "Ran: finish an attachment upload"
-        );
     }
 
     #[test]

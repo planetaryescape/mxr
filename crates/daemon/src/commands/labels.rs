@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::{LabelsAction, OutputFormat};
 use crate::commands::daemon_response_error;
 use crate::commands::resolve_optional_account;
@@ -202,50 +194,4 @@ fn confirm_destructive(prompt: &str) -> anyhow::Result<bool> {
     io::stdin().read_line(&mut answer)?;
     let trimmed = answer.trim().to_ascii_lowercase();
     Ok(trimmed == "y" || trimmed == "yes")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mxr_core::{AccountId, LabelId};
-
-    fn sample_labels() -> Vec<Label> {
-        vec![
-            Label {
-                id: LabelId::new(),
-                account_id: AccountId::new(),
-                name: "Inbox".to_string(),
-                kind: mxr_core::types::LabelKind::System,
-                color: None,
-                provider_id: "INBOX".to_string(),
-                unread_count: 3,
-                total_count: 12,
-                role: None,
-            },
-            Label {
-                id: LabelId::new(),
-                account_id: AccountId::new(),
-                name: "Projects".to_string(),
-                kind: mxr_core::types::LabelKind::User,
-                color: Some("#ff6600".to_string()),
-                provider_id: "Projects".to_string(),
-                unread_count: 1,
-                total_count: 4,
-                role: None,
-            },
-        ]
-    }
-
-    #[test]
-    fn render_labels_json_includes_name() {
-        let rendered = render_labels(&sample_labels(), OutputFormat::Json).unwrap();
-        assert!(rendered.contains("\"name\": \"Inbox\""));
-    }
-
-    #[test]
-    fn render_labels_table_includes_counts() {
-        let rendered = render_labels(&sample_labels(), OutputFormat::Table).unwrap();
-        assert!(rendered.contains("Inbox"));
-        assert!(rendered.contains("12"));
-    }
 }

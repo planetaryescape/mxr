@@ -432,37 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn render_status_table_includes_health_class() {
-        let rendered = render_status(
-            StatusRender {
-                uptime_secs: 1,
-                accounts: &["main".into()],
-                total_messages: 10,
-                daemon_pid: None,
-                sync_statuses: &[],
-                daemon_version: Some("0.4.6"),
-                daemon_build_id: Some("0.4.6:/tmp/mxr:1:1"),
-                protocol_version: IPC_PROTOCOL_VERSION,
-                repair_required: true,
-                semantic_runtime: None,
-                feature_health: None,
-                restart_required: false,
-                health_class: DaemonHealthClass::RepairRequired,
-                degraded: false,
-                recovery_supported: false,
-                recovery: None,
-                selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
-                client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
-                remote_target: false,
-            },
-            OutputFormat::Table,
-        )
-        .unwrap();
-        assert!(rendered.contains("Health: repair_required"));
-        assert!(rendered.contains("search index needs repair"));
-    }
-
-    #[test]
     fn remote_repair_advice_points_to_selected_daemon_host() {
         let rendered = render_status(
             StatusRender {

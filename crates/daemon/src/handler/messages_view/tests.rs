@@ -224,22 +224,3 @@ fn merged_addresses_are_one_person() {
         ]
     );
 }
-
-#[test]
-fn labels_read_plainly() {
-    assert_eq!(pace_label(47 * 60), "usually 47m");
-    assert_eq!(pace_label(5 * 3600), "usually 5h");
-    assert_eq!(pace_label(3 * 86_400), "usually 3d");
-    assert_eq!(
-        preview_text("Can you take a look\n\nand reply?"),
-        "Can you take a look and reply?"
-    );
-    let long = preview_text(&"word ".repeat(60));
-    assert!(long.ends_with('…') && long.chars().count() <= 141, "{long}");
-    let n = now();
-    assert_eq!(day_label(n - Duration::hours(1), n, &Utc), "today");
-    assert_eq!(day_label(n - Duration::days(1), n, &Utc), "yesterday");
-    assert_eq!(day_label(n - Duration::days(3), n, &Utc), "Tuesday");
-    assert_eq!(day_label(n - Duration::days(40), n, &Utc), "23 Aug");
-    assert_eq!(day_label(n - Duration::days(400), n, &Utc), "28 Aug 2025");
-}

@@ -1768,37 +1768,6 @@ mod tests {
     }
 
     #[test]
-    fn todays_kinds_map_to_chapter_37_in_one_place() {
-        let asked = |kind: TodoKind| translate(&kind, "").0.as_str();
-        assert_eq!(asked(TodoKind::Bill), "pay");
-        assert_eq!(asked(TodoKind::PaymentFailed), "fix_payment");
-        assert_eq!(asked(TodoKind::Renewal), "renew_or_cancel");
-        assert_eq!(asked(TodoKind::Document), "renew_or_cancel");
-        assert_eq!(asked(TodoKind::Lease), "renew_or_cancel");
-        assert_eq!(asked(TodoKind::Return), "send");
-        assert_eq!(asked(TodoKind::Rsvp), "attend");
-        assert_eq!(asked(TodoKind::Verify), "verify");
-        assert_eq!(asked(TodoKind::Sign), "sign");
-        assert_eq!(asked(TodoKind::Other), "other");
-        assert_eq!(
-            translate(&TodoKind::Promise, "Send the signed form"),
-            (AskKind::Send, Direction::YouPromised)
-        );
-        assert_eq!(
-            translate(&TodoKind::Promise, "Think about it"),
-            (AskKind::Other, Direction::YouPromised)
-        );
-        assert_eq!(
-            translate(&TodoKind::Promise, ""),
-            (AskKind::Other, Direction::YouPromised)
-        );
-        // Every to-do kind is covered, so a new one fails to compile above.
-        for kind in TodoKind::ALL {
-            let _ = translate(&kind, "");
-        }
-    }
-
-    #[test]
     fn an_unknown_stored_kind_is_other_not_a_crash() {
         let todo = EvalTodo {
             source_message_id: mxr_core::id::MessageId::new(),

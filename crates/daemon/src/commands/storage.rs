@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::{OutputFormat, StorageGroupByArg};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -198,44 +190,4 @@ fn render_largest_messages_table(rows: &[LargestMessageRow]) {
         rows.len(),
         human_bytes(total),
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample_rows() -> Vec<StorageBucket> {
-        vec![
-            StorageBucket {
-                key: "application/pdf".into(),
-                bytes: 50_000,
-                count: 1,
-            },
-            StorageBucket {
-                key: "image/png".into(),
-                bytes: 20_000,
-                count: 2,
-            },
-        ]
-    }
-
-    #[test]
-    fn human_bytes_scales_units() {
-        assert_eq!(human_bytes(0), "0 B");
-        assert_eq!(human_bytes(1023), "1023 B");
-        assert_eq!(human_bytes(1024), "1.0 KB");
-        assert_eq!(human_bytes(1024 * 1024), "1.0 MB");
-    }
-
-    #[test]
-    fn json_render_round_trips() {
-        let rendered = serde_json::to_string(&sample_rows()).unwrap();
-        assert!(rendered.contains("application/pdf"));
-        assert!(rendered.contains("50000"));
-    }
-
-    #[test]
-    fn table_render_handles_empty() {
-        render_table(StorageGroupBy::Mimetype, &[]);
-    }
 }

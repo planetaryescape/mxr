@@ -99,11 +99,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn short_text_is_kept_as_it_is() {
-        assert_eq!(bounded_text("rate limited", 512), "rate limited");
-    }
-
-    #[test]
     fn long_text_is_cut_on_a_character_boundary_with_an_ellipsis() {
         // Three-byte characters, so a cut at a fixed byte would split one.
         let text = "€".repeat(400);

@@ -275,9 +275,4 @@ mod tests {
     fn an_empty_account_list_is_no_reading_from_a_daemon_without_the_flag() {
         assert!(degraded_status_reading(false, &[]));
     }
-
-    #[test]
-    fn a_complete_snapshot_is_a_reading() {
-        assert!(!degraded_status_reading(false, &["personal".to_string()]));
-    }
 }

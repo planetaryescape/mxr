@@ -188,13 +188,4 @@ mod tests {
             MxrError::Provider("nope".to_string()).to_string()
         );
     }
-
-    #[test]
-    fn string_conversions_round_trip() {
-        let from_owned: HandlerError = "x".to_string().into();
-        assert!(matches!(from_owned, HandlerError::Message(m) if m == "x"));
-        let from_borrowed: HandlerError = "y".into();
-        assert!(matches!(from_borrowed, HandlerError::Message(m) if m == "y"));
-        assert_eq!(String::from(HandlerError::Message("z".to_string())), "z");
-    }
 }

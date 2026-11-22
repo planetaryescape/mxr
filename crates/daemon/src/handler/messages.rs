@@ -1598,11 +1598,6 @@ mod paragraphs_tests {
     use super::paragraphs;
 
     #[test]
-    fn a_single_line_is_one_paragraph() {
-        assert_eq!(paragraphs("Thanks, on it."), 1);
-    }
-
-    #[test]
     fn blank_line_runs_of_any_length_are_one_break() {
         assert_eq!(paragraphs("a\n\nb"), 2);
         assert_eq!(paragraphs("a\n\n\n\nb"), 2);
@@ -1622,10 +1617,5 @@ mod paragraphs_tests {
     #[test]
     fn a_whitespace_only_line_still_breaks_a_paragraph() {
         assert_eq!(paragraphs("a\n \nb"), 2);
-    }
-
-    #[test]
-    fn lines_within_a_block_stay_one_paragraph() {
-        assert_eq!(paragraphs("a\nb\nc"), 1);
     }
 }

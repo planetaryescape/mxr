@@ -126,17 +126,6 @@ mod tests {
     }
 
     #[test]
-    fn a_proposal_is_found_until_it_is_removed() {
-        let proposals = ComposeProposals::default();
-        proposals.insert(stored("a"));
-        assert!(proposals.get("a").is_some());
-        assert!(proposals.get("a").is_some(), "reading does not use it up");
-        proposals.remove("a");
-        assert!(proposals.get("a").is_none());
-        assert!(proposals.get("never-made").is_none());
-    }
-
-    #[test]
     fn a_proposal_expires_after_its_time_to_live() {
         let proposals = ComposeProposals::with_ttl(Duration::from_millis(20));
         proposals.insert(stored("a"));

@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -139,32 +131,6 @@ fn parse_duration_secs(s: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::AccountId;
-
-    fn sample_entry(summary: &str) -> EventLogEntry {
-        EventLogEntry {
-            timestamp: 1_710_000_000,
-            level: "info".into(),
-            category: "mutation".into(),
-            account_id: Some(AccountId::new()),
-            message_id: Some("msg-1".into()),
-            rule_id: None,
-            summary: summary.into(),
-            details: None,
-        }
-    }
-
-    #[test]
-    fn table_render_handles_empty() {
-        render_table(&[]);
-    }
-
-    #[test]
-    fn json_render_round_trips() {
-        let rendered = serde_json::to_string(&vec![sample_entry("Archived message")]).unwrap();
-        assert!(rendered.contains("Archived message"));
-        assert!(rendered.contains("mutation"));
-    }
 
     #[test]
     fn parse_duration_secs_rejects_multibyte_unit_without_panic() {

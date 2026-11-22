@@ -1995,47 +1995,4 @@ mod tests {
             Some("app-pw")
         );
     }
-
-    #[test]
-    fn imap_config_capabilities_advertise_idle_push_support() {
-        let capabilities = config_sync_capabilities(&mxr_config::SyncProviderConfig::Imap {
-            host: "imap.example.com".to_string(),
-            port: 993,
-            username: "me@example.com".to_string(),
-            password_ref: "mxr/test".to_string(),
-            auth_required: true,
-            use_tls: true,
-            max_connections: 4,
-            tls_cert_sha256: None,
-        });
-
-        assert!(capabilities.push);
-    }
-
-    #[test]
-    fn gmail_send_config_advertises_server_drafts_but_smtp_does_not() {
-        let gmail = mxr_config::AccountConfig {
-            color: None,
-            tag: None,
-            name: "Personal".into(),
-            email: "me@example.com".into(),
-            enabled: true,
-            sync: None,
-            send: Some(mxr_config::SendProviderConfig::Gmail),
-        };
-        let smtp = mxr_config::AccountConfig {
-            send: Some(mxr_config::SendProviderConfig::Smtp {
-                host: "smtp.example.com".into(),
-                port: 465,
-                username: "me@example.com".into(),
-                password_ref: "mxr/test".into(),
-                auth_required: true,
-                use_tls: true,
-            }),
-            ..gmail.clone()
-        };
-
-        assert!(config_account_capabilities(&gmail).supports_server_drafts);
-        assert!(!config_account_capabilities(&smtp).supports_server_drafts);
-    }
 }

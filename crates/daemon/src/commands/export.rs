@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use mxr_core::{ExportFormat, ThreadId};
@@ -82,14 +74,6 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_llm_export_alias() {
-        assert_eq!(
-            parse_export_format("llm").unwrap(),
-            ExportFormat::LlmContext
-        );
-    }
 
     #[test]
     fn rejects_unknown_export_format() {

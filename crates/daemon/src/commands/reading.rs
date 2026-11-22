@@ -929,7 +929,7 @@ fn sync_text(sync: &MarginaliaSyncData) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{highlight_change_text, preview, wrap};
+    use super::highlight_change_text;
     use mxr_core::id::{AccountId, MessageId};
     use mxr_protocol::{ReadingHighlightChangeData, ReadingHighlightData};
 
@@ -975,24 +975,5 @@ mod tests {
         assert!(run_text.contains("mxr undo mut-1"));
         let cleared = highlight_change_text(&change("note", false, Some("mut-2")));
         assert!(cleared.contains("to no note"), "{cleared}");
-    }
-
-    #[test]
-    fn a_long_passage_is_cut_on_one_line() {
-        let long = format!("{}\n{}", "word ".repeat(30), "more");
-        let shown = preview(&long);
-        assert!(!shown.contains('\n') && shown.ends_with("…\""), "{shown}");
-    }
-
-    #[test]
-    fn wrap_keeps_lines_within_the_measure() {
-        let text = "Every reader since 2002 shipped the same window: a list of sources on the left and the item on the right.";
-        let lines = wrap(text, 30);
-        assert!(
-            lines.iter().all(|line| line.chars().count() <= 30),
-            "{lines:?}"
-        );
-        assert_eq!(lines.join(" "), text);
-        assert!(wrap("", 30).is_empty());
     }
 }

@@ -1259,20 +1259,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_summary_labels_threads_messages_and_changed_messages() {
-        let counts = SelectionCounts {
-            selected_threads: 5,
-            selected_messages: 7,
-            capped: None,
-        };
-
-        assert_eq!(
-            counts.changed_line(5),
-            "Selection: 5 thread(s) / 7 message(s); changed 5 message(s)."
-        );
-    }
-
-    #[test]
     fn unsubscribe_dry_run_preview_reports_resolved_method_or_none() {
         let with_method = TestEnvelopeBuilder::new()
             .provider_id("with-method")

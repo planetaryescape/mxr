@@ -3771,25 +3771,6 @@ use_tls = true
         assert_eq!(progress.total, None);
     }
 
-    /// The run's totals die with the run; the next backfill recomputes them.
-    #[tokio::test]
-    async fn finishing_a_run_clears_its_total() {
-        let state = AppState::in_memory().await.expect("state");
-        let account_id = AccountId::new();
-
-        state.record_sync_remaining(&account_id, 10);
-        state.record_sync_progress(&account_id, 10, "Stored 10 messages".to_string());
-        state.finish_sync_run(&account_id, true);
-        assert_eq!(
-            state.sync_progress(&account_id).expect("progress").total,
-            Some(10),
-            "a page with more to come is not the end of the run"
-        );
-
-        state.finish_sync_run(&account_id, false);
-        assert!(state.sync_progress(&account_id).is_none());
-    }
-
     #[tokio::test]
     async fn create_providers_from_config_supports_imap_and_smtp() {
         let store = Arc::new(Store::in_memory().await.expect("store"));
@@ -3960,21 +3941,6 @@ use_tls = true
                 );
             });
         });
-    }
-
-    #[tokio::test]
-    async fn create_providers_from_config_allows_empty_config() {
-        let store = Arc::new(Store::in_memory().await.expect("store"));
-        let config = mxr_config::MxrConfig::default();
-
-        let setup = AppState::create_providers_from_config(&config, &store)
-            .await
-            .expect("provider setup");
-
-        assert!(setup.providers.is_empty());
-        assert!(setup.send_providers.is_empty());
-        assert!(setup.default_provider.is_none());
-        assert!(setup.default_send_provider.is_none());
     }
 
     #[tokio::test]

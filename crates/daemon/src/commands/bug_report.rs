@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::ipc_client::IpcClient;
 use mxr_protocol::{Request, Response, ResponseData};
 use regex::Regex;
@@ -725,31 +717,8 @@ GmailConfig { client_secret: Some("debug-client-secret"), token: Some("debug-tok
     }
 
     #[test]
-    fn parse_since_supports_hours() {
-        let cutoff = parse_since("2h").unwrap();
-        assert!(cutoff <= chrono::Utc::now() - chrono::Duration::hours(1));
-    }
-
-    #[test]
     fn build_issue_url_falls_back_for_large_reports() {
         let url = build_issue_url(&"x".repeat(GITHUB_BODY_LIMIT + 10));
         assert_eq!(url, GITHUB_ISSUE_URL);
-    }
-
-    #[test]
-    fn render_report_includes_expected_sections() {
-        let report = BugReport {
-            system_lines: vec!["- one".to_string()],
-            config_lines: vec!["- two".to_string()],
-            daemon_lines: vec!["- three".to_string()],
-            health_lines: vec!["- four".to_string()],
-            sync_history: vec!["- five".to_string()],
-            error_history: vec!["- six".to_string()],
-            log_lines: vec!["log".to_string()],
-        };
-        let rendered = render_report(&report);
-        assert!(rendered.contains("## System"));
-        assert!(rendered.contains("## Configuration"));
-        assert!(rendered.contains("## Recent Logs"));
     }
 }

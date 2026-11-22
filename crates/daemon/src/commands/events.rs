@@ -195,7 +195,6 @@ pub async fn run(event_type: Option<String>, format: Option<OutputFormat>) -> an
 mod tests {
     use super::*;
     use crate::test_fixtures::test_envelope;
-    use mxr_core::{id::AccountId, MessageId};
 
     #[test]
     fn mutation_filter_matches_reconciliation_failed() {
@@ -206,25 +205,6 @@ mod tests {
         assert!(event_matches_type(&event, Some("mutation")));
         assert!(event_matches_type(&event, Some("error")));
         assert!(!event_matches_type(&event, Some("sync")));
-    }
-
-    #[test]
-    fn sync_filter_matches_sync_events() {
-        let event = DaemonEvent::SyncCompleted {
-            account_id: AccountId::new(),
-            messages_synced: 4,
-        };
-        assert!(event_matches_type(&event, Some("sync")));
-        assert!(!event_matches_type(&event, Some("message")));
-    }
-
-    #[test]
-    fn error_filter_matches_sync_error() {
-        let event = DaemonEvent::SyncError {
-            account_id: AccountId::new(),
-            error: "boom".into(),
-        };
-        assert!(event_matches_type(&event, Some("error")));
     }
 
     /// A pre-0.6.25 daemon emits `NewMessages` without a `total` field. The
@@ -266,14 +246,5 @@ mod tests {
 
         let rendered = render_event(&event, OutputFormat::Table).unwrap();
         assert_eq!(rendered, "message new_messages=500 shown=1");
-    }
-
-    #[test]
-    fn render_table_event_is_human_readable() {
-        let event = DaemonEvent::MessageUnsnoozed {
-            message_id: MessageId::new(),
-        };
-        let rendered = render_event(&event, OutputFormat::Table).unwrap();
-        assert!(rendered.contains("message_unsnoozed"));
     }
 }

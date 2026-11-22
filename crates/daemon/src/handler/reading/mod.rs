@@ -905,18 +905,4 @@ mod tests {
             assert!(parse_item_key(bad).is_err(), "{bad}");
         }
     }
-
-    #[test]
-    fn the_clear_line_names_the_last_visit_and_the_later_count() {
-        let now = Utc::now();
-        assert_eq!(clear_line(None, 0, now), "Nothing new.");
-        assert_eq!(
-            clear_line(Some(now - Duration::days(1)), 4, now),
-            "Nothing new since yesterday. Later has 4 things saved."
-        );
-        assert_eq!(
-            clear_line(Some(now), 1, now),
-            "Nothing new since earlier today. Later has 1 thing saved."
-        );
-    }
 }

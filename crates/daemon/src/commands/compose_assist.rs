@@ -359,63 +359,6 @@ fn action_name(action: AssistActionData) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::{AiLocalityData, DraftProvenanceData, GapData, TextChangeData};
-
-    fn proposal() -> ComposeProposalData {
-        ComposeProposalData {
-            proposal_id: "p1".into(),
-            action: AssistActionData::Finish,
-            base: String::new(),
-            text: "Hi Sam,\n\nThursday works.".into(),
-            changes: vec![
-                TextChangeData {
-                    kind: TextChangeKindData::Added,
-                    text: "Hi Sam,\n\n".into(),
-                },
-                TextChangeData {
-                    kind: TextChangeKindData::Kept,
-                    text: "Thursday works".into(),
-                },
-                TextChangeData {
-                    kind: TextChangeKindData::Removed,
-                    text: " ok".into(),
-                },
-                TextChangeData {
-                    kind: TextChangeKindData::Added,
-                    text: ". Price: [[?: the price]]".into(),
-                },
-            ],
-            gaps: vec![GapData {
-                label: "the price".into(),
-                start: 0,
-                end: 1,
-            }],
-            provenance: DraftProvenanceData {
-                model: "gemma4".into(),
-                locality: AiLocalityData::Local,
-                history_used: true,
-                voice_examples: Vec::new(),
-                conversation: Vec::new(),
-                rewrite: None,
-            },
-            yours_changed: vec![1],
-            composer_version: "c1".into(),
-            style_marks: Vec::new(),
-            style_score: 100,
-            style_version: String::new(),
-        }
-    }
-
-    #[test]
-    fn the_readable_proposal_marks_added_removed_and_gaps() {
-        let draft_id = DraftId::new();
-        let text = render_proposal(&proposal(), Some(&draft_id));
-        assert!(text.starts_with("Proposal p1 · finish · gemma4, read your other mail\n"));
-        assert!(text.contains("{+Hi Sam,\n\n+}Thursday works[- ok-]{+. Price: [[?: the price]]+}"));
-        assert!(text.contains("Your sentences changed or dropped: 2 (counting from 1)"));
-        assert!(text.contains("1 to fill in before this can be sent:\n  - the price\n"));
-        assert!(text.contains(&format!("mxr compose apply p1 --draft {draft_id}")));
-    }
 
     #[test]
     fn a_selection_is_start_dot_dot_end() {

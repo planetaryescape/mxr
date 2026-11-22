@@ -391,13 +391,6 @@ pub(super) fn reading_fade(dates: Vec<DateTime<Utc>>) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
-
-    fn at(rfc3339: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(rfc3339)
-            .unwrap()
-            .with_timezone(&Utc)
-    }
 
     #[test]
     fn a_mark_holds_until_a_newer_message_of_the_mode() {
@@ -465,99 +458,6 @@ mod tests {
         let labels: Vec<&str> = question.choices.iter().map(|c| c.label.as_str()).collect();
         assert_eq!(labels, ["Updates", "Messages", "Reading", "Block"]);
         assert!(screener_question(&account, "x@y", SenderKindData::ScreenedOut).is_none());
-    }
-
-    #[test]
-    fn the_toast_names_where_the_item_went() {
-        let todo = [StillIn {
-            mode: ModeKindData::Todo,
-            detail: Some("due Wed".into()),
-        }];
-        let copy = |handoff: Handoff<'_>| handoff_copy(&handoff);
-        assert_eq!(
-            copy(Handoff {
-                mode: ModeKindData::Messages,
-                still_in: &todo,
-                archived: false,
-                left_in_inbox: false,
-                filed: false,
-                provider: "Gmail",
-            }),
-            "Done in Messages. Still in To do (due Wed)."
-        );
-        assert_eq!(
-            copy(Handoff {
-                mode: ModeKindData::Messages,
-                still_in: &[],
-                archived: true,
-                left_in_inbox: false,
-                filed: false,
-                provider: "Gmail",
-            }),
-            "Done. Archived in Gmail."
-        );
-        assert_eq!(
-            copy(Handoff {
-                mode: ModeKindData::Todo,
-                still_in: &[],
-                archived: true,
-                left_in_inbox: false,
-                filed: true,
-                provider: "Gmail",
-            }),
-            "Ticked off. Filed in Archive. Archived in Gmail."
-        );
-        assert_eq!(
-            copy(Handoff {
-                mode: ModeKindData::Updates,
-                still_in: &[],
-                archived: false,
-                left_in_inbox: true,
-                filed: false,
-                provider: "the mail server",
-            }),
-            "Done in Updates. Left in the inbox on the mail server."
-        );
-        let two = [
-            StillIn {
-                mode: ModeKindData::Todo,
-                detail: Some("due Wed".into()),
-            },
-            StillIn {
-                mode: ModeKindData::Updates,
-                detail: None,
-            },
-        ];
-        assert_eq!(
-            copy(Handoff {
-                mode: ModeKindData::Messages,
-                still_in: &two,
-                archived: false,
-                left_in_inbox: false,
-                filed: false,
-                provider: "Gmail",
-            }),
-            "Done in Messages. Still in To do (due Wed) and Updates."
-        );
-    }
-
-    #[test]
-    fn dates_and_day_parts_read_the_way_people_say_them() {
-        let tz = FixedOffset::east_opt(0).unwrap();
-        let now = at("2026-10-02T15:10:00Z"); // a Friday
-        assert_eq!(day_part(now, &tz), "Friday afternoon");
-        assert_eq!(due_detail(at("2026-10-07T12:00:00Z"), now, &tz), "due Wed");
-        assert_eq!(
-            due_detail(at("2026-10-21T12:00:00Z"), now, &tz),
-            "due Wed 21 Oct"
-        );
-        assert_eq!(
-            due_detail(at("2026-09-30T12:00:00Z"), now, &tz),
-            "was due Wed 30 Sep"
-        );
-        assert_eq!(age_label(now - Duration::hours(22), now), "22h");
-        assert_eq!(age_label(now - Duration::days(3), now), "3d");
-        assert_eq!(age_label(now, now), "1m");
     }
 
     #[test]

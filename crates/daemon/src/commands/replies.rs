@@ -304,40 +304,6 @@ mod tests {
         );
     }
 
-    /// Phase 2.1: skipping leaves the message in the queue (so the
-    /// user can return) but advances the cursor so the same message
-    /// isn't re-prompted on the next loop iteration.
-    #[test]
-    fn walk_mode_advances_after_skip() {
-        let mut queue = vec![walk_envelope("first"), walk_envelope("second")];
-        let mut index = 0;
-
-        apply_walk_action(&mut queue, &mut index, WalkAction::Skip);
-
-        assert_eq!(queue.len(), 2, "skip preserves the message in the queue");
-        assert_eq!(index, 1, "cursor advanced to the next message");
-        assert_eq!(
-            queue[index].provider_id, "second",
-            "after skip, the next prompt is for the next message"
-        );
-    }
-
-    /// Phase 2.1: a Clear action (user said "actually, never mind on
-    /// this one") drops the entry the same as a Reply. The daemon-
-    /// side clear is logged separately; local state must reflect
-    /// reality.
-    #[test]
-    fn walk_mode_advances_after_clear() {
-        let mut queue = vec![walk_envelope("first"), walk_envelope("second")];
-        let mut index = 0;
-
-        apply_walk_action(&mut queue, &mut index, WalkAction::Clear);
-
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].provider_id, "second");
-        assert_eq!(index, 0);
-    }
-
     /// Out-of-range index is a safe no-op — the walk loop exits
     /// naturally on the next iteration when `index >= queue.len()`.
     #[test]

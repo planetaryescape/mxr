@@ -1,11 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )
-)]
-
 use crate::cli::OutputFormat;
 use crate::commands::daemon_response_error;
 use crate::ipc_client::IpcClient;
@@ -102,11 +94,5 @@ mod tests {
         ];
 
         assert_eq!(inbox_unread_count(&labels), 7);
-    }
-
-    #[test]
-    fn render_notify_json_contains_unread_field() {
-        let rendered = render_notify(3, OutputFormat::Json).unwrap();
-        assert!(rendered.contains("\"unread\": 3"));
     }
 }

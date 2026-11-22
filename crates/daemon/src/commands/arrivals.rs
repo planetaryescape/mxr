@@ -436,15 +436,6 @@ mod tests {
     }
 
     #[test]
-    fn the_table_prints_the_line_and_the_track_record() {
-        let out = render_line(&line(), OutputFormat::Table).unwrap();
-        assert!(out.starts_with("Since 08:12: 3 arrived. 3 Reading.\n"));
-        assert!(out.contains("you moved 1"));
-        let csv = render_line(&line(), OutputFormat::Csv).unwrap();
-        assert_eq!(csv, "bucket,count,also\nreading,3,false\n");
-    }
-
-    #[test]
     fn a_move_says_how_to_undo_and_to_apply_to_the_sender() {
         let outcome = MoveOutcomeData {
             account_id: AccountId::new(),

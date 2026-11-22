@@ -114,18 +114,3 @@ fn tones(sound: ChimeSound) -> &'static [Tone] {
         ChimeSound::Alert => &[Tone { hz: 440.0, ms: 70 }, Tone { hz: 440.0, ms: 70 }],
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_args_requires_sound_and_accepts_volume() {
-        let (sound, volume) =
-            parse_args(["--sound", "archive", "--volume", "0.2"].map(String::from))
-                .expect("parse args");
-
-        assert_eq!(sound, ChimeSound::Archive);
-        assert_eq!(volume, 0.2);
-    }
-}

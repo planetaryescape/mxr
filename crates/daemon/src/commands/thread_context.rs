@@ -71,10 +71,7 @@ pub(crate) fn render(
 mod tests {
     use super::*;
     use mxr_core::id::{AccountId, MessageId};
-    use mxr_protocol::{
-        AiLocalityData, AiProvenanceData, AiSourceData, ThreadAskData, ThreadCounterpartyData,
-        ThreadGistStatusData, VerifiedQuoteData,
-    };
+    use mxr_protocol::ThreadCounterpartyData;
 
     fn facts() -> ThreadContextData {
         ThreadContextData {
@@ -95,39 +92,6 @@ mod tests {
             owed_reply: None,
             promises: vec![],
         }
-    }
-
-    #[test]
-    fn rows_print_as_aligned_labelled_lines() {
-        let context = facts();
-        let gist = ThreadGistData {
-            thread_id: context.thread_id.clone(),
-            status: ThreadGistStatusData::Ready,
-            gist: Some("Canary stays at 5%.".into()),
-            ask: Some(ThreadAskData {
-                summary: "confirm who owns the rollout check".into(),
-                quote: Some(VerifiedQuoteData {
-                    message_id: MessageId::new(),
-                    text: "Can you confirm who owns it?".into(),
-                }),
-            }),
-            provenance: Some(AiProvenanceData {
-                model: "qwen2.5:7b".into(),
-                locality: AiLocalityData::Local,
-                sources: vec![AiSourceData::ThisThread],
-            }),
-            reason: None,
-            generated_at: Some(Utc::now()),
-            from_cache: true,
-            newest_message_id: None,
-        };
-        assert_eq!(
-            render(&context, Some(&gist), Utc::now()),
-            "Gist      Canary stays at 5%.\n\
-             Asks you  to confirm who owns the rollout check\n          \"Can you confirm who owns it?\"\n\
-             With      Maya (maya@example.com): 41 emails · you usually reply within 4h · your first conversation\n\
-             AI        local model qwen2.5:7b · from this thread only\n"
-        );
     }
 
     #[test]

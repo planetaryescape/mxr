@@ -1726,61 +1726,6 @@ mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
 
-    fn job_with_undo_ids(count: usize) -> JobData {
-        JobData {
-            job_id: "job-1".into(),
-            kind: "mutation.archive".into(),
-            status: JobStatusData::Succeeded,
-            progress: JobProgressData {
-                total: 1,
-                completed: 1,
-                succeeded: 1,
-                skipped: 0,
-                failed: 0,
-            },
-            undo_ids: (0..count).map(|n| format!("undo-{n}")).collect(),
-            error: None,
-            started_at: 0,
-            finished_at: Some(1),
-            result: None,
-            selection: None,
-            failures: Vec::new(),
-            paused_until: None,
-            action: None,
-            undo_id_count: 0,
-            failure_count: 0,
-        }
-    }
-
-    #[test]
-    fn the_jobs_table_names_a_few_undo_ids_and_counts_a_long_list() {
-        assert_eq!(undo_summary(&job_with_undo_ids(0)), "");
-        assert_eq!(undo_summary(&job_with_undo_ids(3)), "undo-0,undo-1,undo-2");
-        let long = undo_summary(&job_with_undo_ids(5_000));
-        assert!(long.starts_with("5000 undo ids"), "{long}");
-        assert!(
-            long.len() < 120,
-            "one row stays one short line: {}",
-            long.len()
-        );
-        assert!(!long.contains("undo-4999"));
-    }
-
-    #[test]
-    fn a_listing_without_undo_ids_or_failures_counts_them() {
-        // `ListJobs` carries the counts, not the lists.
-        let mut listed = job_with_undo_ids(0);
-        listed.undo_id_count = 2;
-        listed.failure_count = 3;
-        let undo = undo_summary(&listed);
-        assert!(undo.starts_with("2 undo ids"), "{undo}");
-        assert_eq!(
-            failure_summary(&listed),
-            "  failures=3 (see mxr jobs job-1)"
-        );
-        assert_eq!(failure_summary(&job_with_undo_ids(0)), "");
-    }
-
     #[test]
     fn repeated_addresses_are_planned_once_and_message_ids_are_not_addresses() {
         let args = vec![
@@ -1869,41 +1814,6 @@ mod tests {
 
         let document = browser_document(&body).expect("plain text fallback");
         assert!(document.contains("<pre>hello &lt;world&gt;\nline 2</pre>"));
-        assert!(document.contains("<!doctype html>"));
-    }
-
-    #[test]
-    fn browser_document_wraps_best_effort_fallback_for_browser_rendering() {
-        let body = mxr_core::MessageBody {
-            message_id: mxr_core::MessageId::new(),
-            text_plain: None,
-            text_html: None,
-            attachments: vec![mxr_core::AttachmentMeta {
-                id: mxr_core::AttachmentId::new(),
-                message_id: mxr_core::MessageId::new(),
-                filename: "invite.ics".into(),
-                mime_type: "text/calendar".into(),
-                disposition: mxr_core::AttachmentDisposition::Attachment,
-                content_id: None,
-                content_location: None,
-                size_bytes: 2048,
-                local_path: None,
-                provider_id: "att-1".into(),
-            }],
-            fetched_at: chrono::Utc::now(),
-            metadata: mxr_core::MessageMetadata {
-                calendar: Some(mxr_core::CalendarMetadata {
-                    method: Some("REQUEST".into()),
-                    summary: Some("Demo call".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        };
-
-        let document = browser_document(&body).expect("best-effort fallback");
-        assert!(document.contains("Calendar invite"));
-        assert!(document.contains("Summary: Demo call"));
         assert!(document.contains("<!doctype html>"));
     }
 

@@ -1,4 +1,3 @@
-/** Escape sender-controlled text before it is placed in Raycast markdown. */
 export function escapeLine(line: string): string {
   if (/^\s*([-=])\1{2,}\s*$/.test(line)) return `\\${line.trim()}`;
   return line

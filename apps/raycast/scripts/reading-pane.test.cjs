@@ -7,9 +7,6 @@ const Module = require("node:module");
 const React = require("react");
 const ts = require("typescript");
 
-// Renders the real commands against a fake bridge, so these tests see every
-// request a command makes. Raycast's components become plain host elements.
-
 const dataDirectory = mkdtempSync(join(tmpdir(), "mxr-reading-pane-tests-"));
 after(() => rmSync(dataDirectory, { recursive: true, force: true }));
 
@@ -107,7 +104,6 @@ Module._load = function (request, parent, isMain) {
   return loadModule.call(this, request, parent, isMain);
 };
 
-// The renderer announces its deprecation on every first render.
 const consoleError = console.error;
 console.error = (...args) => {
   if (!String(args[0]).includes("react-test-renderer is deprecated")) consoleError(...args);
@@ -124,7 +120,6 @@ const { senderFace } = require("../src/components/faces.ts");
 const { fileSize } = require("../src/components/threadFacts.ts");
 const { keyFor } = require("../src/components/keys.ts");
 
-/** Longer than the reader's 600 ms wait before it marks a conversation read. */
 const PAST_READ_DELAY_MS = 800;
 const when = "2026-11-10T09:00:00Z";
 
@@ -294,7 +289,6 @@ for (const [name, Command, rowId] of [
   });
 }
 
-// Without this the test above could pass because the harness misses the request.
 test("opening the reader does mark the conversation read", async () => {
   await mount(React.createElement(ThreadDetail, { threadId: "t1", webPath: "/m/inbox/t1" }));
   await settle(PAST_READ_DELAY_MS);

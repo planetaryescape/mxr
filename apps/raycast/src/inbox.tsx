@@ -9,10 +9,6 @@ import { MailRowItem } from "./components/MailRow";
 import { usePane, usePreview } from "./components/pane";
 import { web } from "./components/web";
 
-/**
- * The whole inbox, newest first, a page at a time. Typing searches all
- * mail through mxr's index and query language instead.
- */
 export default function Inbox() {
   const [account, setAccount] = useState<string>();
   const [query, setQuery] = useState("");
@@ -32,7 +28,6 @@ export default function Inbox() {
     [q, account],
     { keepPreviousData: true },
   );
-  // A conversation can land on two pages when mail arrives between them.
   const rows = [...new Map((data ?? []).map((row) => [row.thread_id, row])).values()];
   const badge = useAccountBadge(account);
   useLiveRefresh(revalidate, (data?.length ?? 0) <= PAGE_SIZE);

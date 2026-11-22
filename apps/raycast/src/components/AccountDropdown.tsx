@@ -2,13 +2,8 @@ import { Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { getAccounts } from "../bridge/mail";
 
-/** The dropdown's value for every account; the bridge reads no `account` as all. */
 const ALL = "all";
 
-/**
- * The account filter in the search bar; Raycast opens it with ⌘P. Each
- * command remembers its own choice.
- */
 export function AccountDropdown({ onChange }: { onChange: (account?: string) => void }) {
   const { data: accounts } = useCachedPromise(getAccounts, [], { keepPreviousData: true });
   return (

@@ -41,13 +41,11 @@ import { message } from "./previewed";
 import { useWebBase, web } from "./web";
 import { keyFor } from "./keys";
 
-/** The daemon owns the wait, so closing Raycast does not lose the reply. */
 const UNDO_SECONDS = 10;
 
 interface Props {
   messageId: string;
   kind?: ReplyKind;
-  /** Who the reply goes to, for the title while the draft opens. */
   to: string;
   onSent?: () => void;
 }
@@ -62,12 +60,9 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   const selectedModel = useRef<string | undefined>(undefined);
   const current = useRef<ReplyDraft>(undefined);
   const formGeneration = useRef(0);
-  // What the form shows now; a submission compares it with what it checked.
   const latestBody = useRef("");
   const submissions = useRef(new OwnedRequestGate());
   const closed = useRef(false);
-  // Once the daemon owns the reply (sent, scheduled or saved for the web
-  // composer), leaving the form must not discard it.
   const handedOver = useRef(false);
   const keepDraft = useRef(false);
   const proposalOpen = useRef(false);
@@ -122,7 +117,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       const submissionInFlight = submissions.current.isRunning;
       submissions.current.cancel();
       assistRequests.current.cancel();
-      // An in-flight write may have reached the daemon; preserve that draft.
       if (submissionInFlight) keepDraft.current = true;
       if (!submissionInFlight) discardIfAbandoned();
       proposalOpen.current = false;
@@ -130,7 +124,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     };
   }, [messageId, kind]);
 
-  /** Save the shown body, unless a submission already owns the draft. */
   async function saveShownBody(
     expectedOwner?: ReplyDraft,
     stillOwned: () => boolean = () => true,
@@ -178,8 +171,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       }
       const confirmed = await confirmIssues(report);
       if (!submissions.current.isCurrent(submission) || closed.current || !confirmed) return;
-      // The text area stays editable while the daemon checks; send only the
-      // body that was checked and is still on screen.
       if (latestBody.current !== saved.text) {
         await showToast({
           style: Toast.Style.Failure,
@@ -193,8 +184,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       if (report.allowed) {
         await scheduleWithUndo(saved.written);
       } else {
-        // A scheduled send re-checks when it fires and has no override, so
-        // an overridden reply goes now.
         const override = report.issues.find((issue) => issue.override_token)?.override_token;
         if (!override) {
           await showToast({
@@ -242,7 +231,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
             shown.style = Toast.Style.Success;
             shown.title = "Not sent; kept as a draft in mxr";
           } catch (failure) {
-            // The daemon refuses a cancel once the send has started.
             shown.style = Toast.Style.Failure;
             shown.title = "Too late to stop it";
             shown.message = message(failure);
@@ -427,7 +415,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     }
   }
 
-  /** Hand the reply as written to the web composer instead of starting over. */
   async function openInMxr() {
     if (
       !webBase ||
@@ -437,8 +424,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       closed.current
     )
       return;
-    // Same guard as Send: one handover at a time, and leaving the form
-    // waits for this one to settle before discarding anything.
     const submission = submissions.current.begin();
     if (submission === undefined) return;
     const owner = current.current;
@@ -529,7 +514,6 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   );
 }
 
-/** Show what the daemon's check found; a blocker needs an explicit override. */
 async function confirmIssues(report: SafetyReport): Promise<boolean> {
   if (report.issues.length === 0) return true;
   const blocked = !report.allowed;

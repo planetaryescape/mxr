@@ -2,7 +2,6 @@ import { proofRuns, runsText } from "../../../web/src/features/compose/assist/pr
 import type { ComposeAssistProposal } from "../bridge/types";
 import { escapeLine } from "./markdown";
 
-/** Show the daemon's word changes without interpreting proposal text as markdown. */
 export function proposalMarkdown(proposal: ComposeAssistProposal): string {
   const runs = proofRuns(proposal.changes, proposal.gaps);
   if (runsText(runs) !== proposal.text) {
@@ -37,8 +36,6 @@ function formatRun(kind: "kept" | "added" | "removed", text: string): string {
   const escaped = escapeProofText(text);
   if (kind === "kept") return escaped;
   const marker = kind === "added" ? "**" : "~~";
-  // CommonMark emphasis cannot contain paragraph breaks. Keep leading and
-  // trailing spaces outside the markers so adjacent runs remain parseable.
   return escaped
     .split(/(\n)/)
     .map((line) => {

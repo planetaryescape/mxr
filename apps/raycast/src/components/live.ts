@@ -8,11 +8,6 @@ import { useEffect, useRef } from "react";
  */
 const EVERY_MS = 20_000;
 
-/**
- * Reload a list in the background while it is showing. `active: false`
- * pauses it, for a paged list scrolled past its first page: reloading one
- * starts it again from the top.
- */
 export function useLiveRefresh(revalidate: () => unknown, active = true): void {
   const latest = useRef(revalidate);
   latest.current = revalidate;

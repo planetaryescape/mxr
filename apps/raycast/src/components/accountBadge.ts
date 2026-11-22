@@ -2,7 +2,6 @@ import { Color, type List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { type Account, getAccounts } from "../bridge/mail";
 
-/** One colour per account, in the daemon's account order, so it stays put. */
 const PALETTE = [
   Color.Blue,
   Color.Green,
@@ -13,24 +12,16 @@ const PALETTE = [
   Color.Red,
 ];
 
-/** The short name: the config key ("work"), else the address before the @. */
 function label(account: Account): string {
   return account.key || account.email.split("@")[0] || account.name;
 }
 
-/** An account's short name and colour, for a tag. */
 export interface AccountTag {
   label: string;
   color: Color;
   email: string;
 }
 
-/**
- * A coloured tag naming the account a row came from. Shown only while the
- * list covers every account and there is more than one; a filtered list is
- * all one account already. `tagOf` names the account anywhere else, such as
- * the reading pane, which always says where the mail is.
- */
 export function useAccountBadge(selected: string | undefined) {
   const { data: accounts } = useCachedPromise(getAccounts, [], { keepPreviousData: true });
   const tagOf = (accountId: string | null | undefined): AccountTag | undefined => {

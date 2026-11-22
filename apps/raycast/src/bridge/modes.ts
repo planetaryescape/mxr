@@ -10,11 +10,6 @@ import type {
   UpdatesDigest,
 } from "./types";
 
-// Reads never mark anything seen or visited, so they stay answerable from
-// the daemon's ready-made views and leave the web app's "since you were
-// last here" lines alone.
-
-/** A mode read, scoped to one account when `account` is set. */
 function read<T>(path: string, account: string | undefined): Promise<T> {
   if (!account) return request<T>(path);
   const separator = path.includes("?") ? "&" : "?";
@@ -25,7 +20,6 @@ export async function getNow(account?: string): Promise<NowData> {
   return (await read<Reply<"Now">>("/api/v1/mail/now", account)).now;
 }
 
-/** What Messages keeps: a turn and the two toggles, as the daemon names them. */
 export interface MessagesFilter {
   turn?: "all" | "mine" | "theirs";
   unread?: boolean;
@@ -59,10 +53,8 @@ export async function getRecords(account?: string): Promise<RecordLedger> {
   return (await read<Reply<"RecordLedger">>("/api/v1/mail/records?limit=100", account)).ledger;
 }
 
-/** The modes a conversation can be marked done in. */
 export type DoneMode = Exclude<ModeKind, "archive">;
 
-/** "Done here": the conversations leave `mode` until someone writes again. */
 export function markDone(
   mode: DoneMode,
   threadIds: string[],
@@ -80,7 +72,6 @@ export function tickOffTodo(todoId: string, dryRun: boolean): Promise<Reply<"Tod
   });
 }
 
-/** Let go of the digest the user is looking at; `selection_token` refuses a changed one. */
 export function letGoDigest(
   digest: UpdatesDigest,
   dryRun: boolean,
